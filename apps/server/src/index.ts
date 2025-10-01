@@ -46,6 +46,11 @@ app.use('/api/invoices', requireAuth, invoicesRouter)
 app.use('/api/analytics', requireAuth, analyticsRouter)
 app.use('/api/auth', authRouter)
 
+// Direct auth routes for backward compatibility
+app.get('/api/login', (req, res) => res.redirect('/api/auth/login'))
+app.get('/api/logout', (req, res) => res.redirect('/api/auth/logout'))
+app.post('/api/logout', (req, res) => res.redirect(307, '/api/auth/logout'))
+
 const port = process.env.PORT || 5000
 if (process.env.NODE_ENV !== 'test') {
   app.listen(port, () => {
