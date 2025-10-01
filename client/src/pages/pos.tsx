@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, Minus, CreditCard, DollarSign, Smartphone, Receipt } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, Minus, CreditCard, DollarSign, Smartphone, Receipt, Tag, Award, Star } from "lucide-react";
 import { Link } from "wouter";
 
 interface Product {
@@ -46,6 +46,10 @@ export default function POS() {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<any>(null);
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+  const [customerTier, setCustomerTier] = useState<any>(null);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
@@ -55,6 +59,11 @@ export default function POS() {
   // Fetch customers
   const { data: customers = [], isLoading: customersLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
+  });
+
+  // Fetch loyalty tiers
+  const { data: loyaltyTiers = [] } = useQuery({
+    queryKey: ["/api/loyalty-tiers"],
   });
 
   // Filter products based on search
@@ -72,6 +81,31 @@ export default function POS() {
       (customer.phone && customer.phone.includes(customerSearch)) ||
       (customer.email && customer.email.toLowerCase().includes(customerSearch.toLowerCase()))
   );
+
+  // Validate promo code mutation
+  const validatePromoMutation = useMutation({
+    mutationFn: async (code: string) => {
+      return apiRequest("/api/promotions/validate", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+    },
+    onSuccess: (promo) => {
+      setAppliedPromo(promo);
+      toast({
+        title: "Promo Applied",
+        description: `${promo.name} applied successfully!`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Invalid Code",
+        description: "The promo code is invalid or expired.",
+        variant: "destructive",
+      });
+      setAppliedPromo(null);
+    },
+  });
 
   // Place order mutation
   const placeOrderMutation = useMutation({
@@ -160,10 +194,38 @@ export default function POS() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
-  // Calculate totals
+  // Update customer tier when customer is selected
+  useEffect(() => {
+    if (selectedCustomer && loyaltyTiers.length > 0) {
+      const sortedTiers = [...loyaltyTiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
+      const tier = sortedTiers.find((t: any) => selectedCustomer.loyaltyPoints >= t.pointsRequired);
+      setCustomerTier(tier);
+      
+      // Calculate loyalty discount based on tier
+      if (tier) {
+        setLoyaltyDiscount(parseFloat(tier.discountPercentage || 0));
+      } else {
+        setLoyaltyDiscount(0);
+      }
+    } else {
+      setCustomerTier(null);
+      setLoyaltyDiscount(0);
+    }
+  }, [selectedCustomer, loyaltyTiers]);
+
+  // Calculate totals with discounts
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const tax = subtotal * 0.1; // 10% tax
-  const total = subtotal + tax;
+  const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
+  const promoDiscountAmount = appliedPromo ? 
+    (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
+    : 0;
+  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount;
+  const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
+  const tax = discountedSubtotal * 0.1; // 10% tax
+  const total = discountedSubtotal + tax;
+  
+  // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
+  const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
 
   // Handle checkout
   const handleCheckout = () => {
@@ -289,6 +351,8 @@ export default function POS() {
             onValueChange={(value) => {
               if (value === "walk-in") {
                 setSelectedCustomer(null);
+                setPromoCode("");
+                setAppliedPromo(null);
               } else {
                 const customer = customers.find((c) => c.id === value);
                 setSelectedCustomer(customer || null);
@@ -321,7 +385,70 @@ export default function POS() {
               ))}
             </SelectContent>
           </Select>
+          
+          {/* Customer Loyalty Info */}
+          {selectedCustomer && customerTier && (
+            <Card className="mt-2">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Award className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium">{customerTier.name} Member</span>
+                  </div>
+                  <Badge variant="outline">
+                    <Star className="h-3 w-3 mr-1" />
+                    {selectedCustomer.loyaltyPoints} pts
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
+        
+        {/* Promo Code Field */}
+        {selectedCustomer && (
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter promo code..."
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                data-testid="input-promo-code"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (promoCode) {
+                    validatePromoMutation.mutate(promoCode);
+                  }
+                }}
+                disabled={!promoCode || validatePromoMutation.isPending}
+                data-testid="button-apply-promo"
+              >
+                <Tag className="h-4 w-4" />
+              </Button>
+            </div>
+            {appliedPromo && (
+              <div className="mt-2 flex items-center justify-between p-2 bg-secondary rounded">
+                <span className="text-sm">{appliedPromo.name}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAppliedPromo(null);
+                    setPromoCode("");
+                  }}
+                  data-testid="button-remove-promo"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         <Separator className="mb-4" />
 
@@ -394,6 +521,18 @@ export default function POS() {
                 <span>Subtotal</span>
                 <span data-testid="cart-subtotal">${subtotal.toFixed(2)}</span>
               </div>
+              {loyaltyDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Loyalty Discount ({loyaltyDiscount}%)</span>
+                  <span data-testid="loyalty-discount">-${loyaltyDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {promoDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Promo: {appliedPromo?.name}</span>
+                  <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span>Tax (10%)</span>
                 <span data-testid="cart-tax">${tax.toFixed(2)}</span>
@@ -403,6 +542,12 @@ export default function POS() {
                 <span>Total</span>
                 <span data-testid="cart-total">${total.toFixed(2)}</span>
               </div>
+              {selectedCustomer && pointsEarned > 0 && (
+                <div className="flex justify-between text-sm text-muted-foreground pt-2">
+                  <span>Points Earned</span>
+                  <span data-testid="points-earned">+{pointsEarned} pts</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
