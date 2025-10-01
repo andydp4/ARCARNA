@@ -45,15 +45,11 @@ export default function LoyaltyPage() {
   const tierMutation = useMutation({
     mutationFn: async (data: TierFormValues) => {
       if (editingTier) {
-        return apiRequest(`/api/loyalty-tiers/${editingTier.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(data),
-        });
+        const response = await apiRequest("PATCH", `/api/loyalty-tiers/${editingTier.id}`, data);
+        return response.json();
       }
-      return apiRequest("/api/loyalty-tiers", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      const response = await apiRequest("POST", "/api/loyalty-tiers", data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/loyalty-tiers"] });
@@ -77,9 +73,8 @@ export default function LoyaltyPage() {
   // Delete tier
   const deleteTier = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/loyalty-tiers/${id}`, {
-        method: "DELETE",
-      });
+      const response = await apiRequest("DELETE", `/api/loyalty-tiers/${id}`);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/loyalty-tiers"] });

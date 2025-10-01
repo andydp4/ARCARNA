@@ -54,15 +54,11 @@ export default function PromotionsPage() {
       };
 
       if (editingPromo) {
-        return apiRequest(`/api/promotions/${editingPromo.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(formattedData),
-        });
+        const response = await apiRequest("PATCH", `/api/promotions/${editingPromo.id}`, formattedData);
+        return response.json();
       }
-      return apiRequest("/api/promotions", {
-        method: "POST",
-        body: JSON.stringify(formattedData),
-      });
+      const response = await apiRequest("POST", "/api/promotions", formattedData);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/promotions"] });
@@ -86,9 +82,8 @@ export default function PromotionsPage() {
   // Delete promotion
   const deletePromo = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/promotions/${id}`, {
-        method: "DELETE",
-      });
+      const response = await apiRequest("DELETE", `/api/promotions/${id}`);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/promotions"] });
