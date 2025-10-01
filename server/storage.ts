@@ -54,6 +54,11 @@ export interface IStorage {
   // Inventory operations
   getProductsWithStock(): Promise<Product[]>;
   updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string): Promise<Product>;
+  
+  // Reports operations
+  getReportData(fromDate: Date, toDate: Date): Promise<any>;
+  generateCSVReport(data: any, type: string): Promise<string>;
+  generatePDFReport(data: any, type: string): Promise<Buffer>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -265,6 +270,290 @@ export class DatabaseStorage implements IStorage {
 
       return updatedProduct;
     });
+  }
+
+  async getReportData(fromDate: Date, toDate: Date): Promise<any> {
+    const [
+      revenueData,
+      orderData, 
+      customerData,
+      inventoryData
+    ] = await Promise.all([
+      this.getRevenueReports(fromDate, toDate),
+      this.getOrderReports(fromDate, toDate),
+      this.getCustomerReports(fromDate, toDate),
+      this.getInventoryReports(fromDate, toDate)
+    ]);
+
+    return {
+      revenue: revenueData,
+      orders: orderData,
+      customers: customerData,
+      inventory: inventoryData
+    };
+  }
+
+  private async getRevenueReports(fromDate: Date, toDate: Date) {
+    // Get total revenue
+    const totalRevenue = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(CAST(${orders.totalAmount} AS DECIMAL)), 0)`
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      );
+
+    // Get daily revenue
+    const dailyRevenue = await db
+      .select({
+        date: sql<string>`DATE(${orders.createdAt})`.as('date'),
+        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue'),
+        orders: sql<number>`COUNT(*)`.as('orders')
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      )
+      .groupBy(sql`DATE(${orders.createdAt})`)
+      .orderBy(sql`DATE(${orders.createdAt})`);
+
+    // Get revenue by payment method
+    const byPaymentMethod = await db
+      .select({
+        method: orders.paymentMethod,
+        count: sql<number>`COUNT(*)`.as('count'),
+        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue')
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      )
+      .groupBy(orders.paymentMethod);
+
+    return {
+      total: totalRevenue[0]?.total || 0,
+      byDay: dailyRevenue,
+      byCategory: [], // Would need to join with products and categories
+      byPaymentMethod
+    };
+  }
+
+  private async getOrderReports(fromDate: Date, toDate: Date) {
+    // Get total orders
+    const totalOrders = await db
+      .select({
+        total: sql<number>`COUNT(*)`
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      );
+
+    // Get average order value
+    const avgOrder = await db
+      .select({
+        average: sql<number>`AVG(CAST(${orders.totalAmount} AS DECIMAL))`
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      );
+
+    // Get top products
+    const topProducts = await db
+      .select({
+        name: products.name,
+        quantity: sql<number>`SUM(${orderItems.quantity})`.as('quantity'),
+        revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`.as('revenue')
+      })
+      .from(orderItems)
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      )
+      .groupBy(products.name)
+      .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
+      .limit(10);
+
+    // Get hourly distribution
+    const hourlyDistribution = await db
+      .select({
+        hour: sql<number>`EXTRACT(HOUR FROM ${orders.createdAt})`.as('hour'),
+        count: sql<number>`COUNT(*)`.as('count')
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      )
+      .groupBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`)
+      .orderBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`);
+
+    return {
+      total: totalOrders[0]?.total || 0,
+      average: avgOrder[0]?.average || 0,
+      topProducts,
+      hourlyDistribution
+    };
+  }
+
+  private async getCustomerReports(fromDate: Date, toDate: Date) {
+    // Get total active customers
+    const totalCustomers = await db
+      .select({
+        total: sql<number>`COUNT(DISTINCT ${orders.customerId})`
+      })
+      .from(orders)
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      );
+
+    // Get new vs returning customers
+    const newCustomers = await db
+      .select({
+        count: sql<number>`COUNT(DISTINCT c.id)`
+      })
+      .from(customers.as('c'))
+      .where(
+        sql`c.created_at >= ${fromDate} AND c.created_at <= ${toDate}`
+      );
+
+    // Get top customers
+    const topCustomers = await db
+      .select({
+        name: customers.name,
+        orders: sql<number>`COUNT(${orders.id})`.as('orders'),
+        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue'),
+        loyalty: customers.loyaltyPoints
+      })
+      .from(orders)
+      .innerJoin(customers, eq(orders.customerId, customers.id))
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
+      )
+      .groupBy(customers.id, customers.name, customers.loyaltyPoints)
+      .orderBy(sql`SUM(CAST(${orders.totalAmount} AS DECIMAL)) DESC`)
+      .limit(10);
+
+    const total = totalCustomers[0]?.total || 0;
+    const newCount = newCustomers[0]?.count || 0;
+
+    return {
+      total,
+      new: newCount,
+      returning: total - newCount,
+      topCustomers,
+      rfmSegments: [] // Would need more complex RFM calculation
+    };
+  }
+
+  private async getInventoryReports(fromDate: Date, toDate: Date) {
+    // Get total stock value
+    const stockValue = await db
+      .select({
+        total: sql<number>`SUM(${products.stock} * CAST(${products.costPrice} AS DECIMAL))`
+      })
+      .from(products);
+
+    // Get low stock count
+    const lowStock = await db
+      .select({
+        count: sql<number>`COUNT(*)`
+      })
+      .from(products)
+      .where(
+        sql`${products.stock} <= ${products.stockLimit} * 0.2 AND ${products.stock} > 0`
+      );
+
+    // Get out of stock count
+    const outOfStock = await db
+      .select({
+        count: sql<number>`COUNT(*)`
+      })
+      .from(products)
+      .where(eq(products.stock, 0));
+
+    // Get top moving products
+    const topMoving = await db
+      .select({
+        product: products.name,
+        sold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)`.as('sold'),
+        remaining: products.stock
+      })
+      .from(products)
+      .leftJoin(orderItems, eq(products.id, orderItems.productId))
+      .leftJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`
+      )
+      .groupBy(products.id, products.name, products.stock)
+      .orderBy(sql`COALESCE(SUM(${orderItems.quantity}), 0) DESC`)
+      .limit(10);
+
+    return {
+      totalValue: stockValue[0]?.total || 0,
+      lowStock: lowStock[0]?.count || 0,
+      outOfStock: outOfStock[0]?.count || 0,
+      turnoverRate: 0, // Would need more calculation
+      topMoving
+    };
+  }
+
+  async generateCSVReport(data: any, type: string): Promise<string> {
+    let csv = '';
+    
+    switch (type) {
+      case 'revenue':
+        csv = 'Date,Revenue,Orders\n';
+        data.revenue.byDay.forEach((day: any) => {
+          csv += `${day.date},${day.revenue},${day.orders}\n`;
+        });
+        break;
+        
+      case 'orders':
+        csv = 'Product,Quantity,Revenue\n';
+        data.orders.topProducts.forEach((product: any) => {
+          csv += `${product.name},${product.quantity},${product.revenue}\n`;
+        });
+        break;
+        
+      case 'customers':
+        csv = 'Customer,Orders,Revenue,Loyalty Points\n';
+        data.customers.topCustomers.forEach((customer: any) => {
+          csv += `${customer.name},${customer.orders},${customer.revenue},${customer.loyalty}\n`;
+        });
+        break;
+        
+      case 'inventory':
+        csv = 'Product,Sold,Remaining\n';
+        data.inventory.topMoving.forEach((item: any) => {
+          csv += `${item.product},${item.sold},${item.remaining}\n`;
+        });
+        break;
+        
+      case 'full':
+        // Generate comprehensive report
+        csv = 'FULL REPORT\n\n';
+        csv += 'REVENUE SUMMARY\n';
+        csv += `Total Revenue,${data.revenue.total}\n\n`;
+        csv += 'Daily Revenue\n';
+        csv += 'Date,Revenue,Orders\n';
+        data.revenue.byDay.forEach((day: any) => {
+          csv += `${day.date},${day.revenue},${day.orders}\n`;
+        });
+        csv += '\n';
+        break;
+    }
+    
+    return csv;
+  }
+
+  async generatePDFReport(data: any, type: string): Promise<Buffer> {
+    // For now, return a simple buffer with CSV content
+    // In production, you would use Puppeteer to generate actual PDF
+    const csvContent = await this.generateCSVReport(data, type);
+    return Buffer.from(csvContent);
   }
 }
 

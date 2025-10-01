@@ -73,6 +73,13 @@ export default function Home() {
                 <i className="fas fa-chart-line mr-2"></i>Analytics
               </a>
               <a
+                href="/reports"
+                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
+                data-testid="link-reports"
+              >
+                <i className="fas fa-file-chart-line mr-2"></i>Reports
+              </a>
+              <a
                 href="/pos"
                 className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
                 data-testid="link-pos"
