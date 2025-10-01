@@ -69,14 +69,27 @@ export default function Home() {
             </Link>
 
             {/* Customers */}
-            <Link href="/loyalty">
+            <Link href="/customers">
               <a className="group" data-testid="quick-action-customers">
                 <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
                   <div className="flex items-center justify-center w-12 h-12 bg-pink-500/10 rounded-lg mb-4">
                     <i className="fas fa-users text-2xl text-pink-500"></i>
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">Customers</h3>
-                  <p className="text-sm text-muted-foreground">Loyalty & rewards</p>
+                  <p className="text-sm text-muted-foreground">Manage customer database</p>
+                </div>
+              </a>
+            </Link>
+
+            {/* Loyalty */}
+            <Link href="/loyalty">
+              <a className="group" data-testid="quick-action-loyalty">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-cyan-500/10 rounded-lg mb-4">
+                    <i className="fas fa-award text-2xl text-cyan-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Loyalty</h3>
+                  <p className="text-sm text-muted-foreground">Rewards & tiers</p>
                 </div>
               </a>
             </Link>

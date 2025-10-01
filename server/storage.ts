@@ -65,6 +65,12 @@ export interface IStorage {
   getCustomers(): Promise<Customer[]>;
   createOrder(orderData: any): Promise<Order>;
   
+  // Customer operations
+  createCustomer(data: any): Promise<Customer>;
+  updateCustomer(id: string, data: any): Promise<Customer>;
+  deleteCustomer(id: string): Promise<void>;
+  getCustomer(id: string): Promise<Customer | null>;
+  
   // Inventory operations
   getProductsWithStock(): Promise<Product[]>;
   updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string): Promise<Product>;
@@ -217,6 +223,42 @@ export class DatabaseStorage implements IStorage {
 
   async getCustomers(): Promise<Customer[]> {
     return await db.select().from(customers).orderBy(customers.name);
+  }
+
+  async createCustomer(data: any): Promise<Customer> {
+    const [customer] = await db
+      .insert(customers)
+      .values({
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return customer;
+  }
+
+  async updateCustomer(id: string, data: any): Promise<Customer> {
+    const [customer] = await db
+      .update(customers)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(customers.id, id))
+      .returning();
+    return customer;
+  }
+
+  async deleteCustomer(id: string): Promise<void> {
+    await db.delete(customers).where(eq(customers.id, id));
+  }
+
+  async getCustomer(id: string): Promise<Customer | null> {
+    const [customer] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.id, id));
+    return customer || null;
   }
 
   async createOrder(orderData: any): Promise<Order> {

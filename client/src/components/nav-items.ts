@@ -9,7 +9,8 @@ import {
   MapPin,
   FileText,
   BarChart3,
-  Home
+  Home,
+  Award
 } from 'lucide-react'
 
 export const navItems = [
@@ -37,9 +38,16 @@ export const navItems = [
   {
     key: 'customers',
     label: 'Customers',
-    href: '/loyalty',
+    href: '/customers',
     icon: Users,
     testId: 'nav-customers'
+  },
+  {
+    key: 'loyalty',
+    label: 'Loyalty',
+    href: '/loyalty',
+    icon: Award,
+    testId: 'nav-loyalty'
   },
   {
     key: 'reports',
