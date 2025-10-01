@@ -43,6 +43,7 @@ export default function Customers() {
     phone: '',
     email: '',
     address: '',
+    deliveryAddress: '',
     category: 'Bronze',
   })
 
