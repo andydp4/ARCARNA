@@ -20,6 +20,8 @@ import Customers from "@/pages/customers";
 import ProductManagement from "@/pages/product-management";
 import Settings from "@/pages/settings";
 import TickList from "@/pages/tick-list";
+import Analytics from "@/pages/analytics";
+import Invoices from "@/pages/invoices";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -42,8 +44,8 @@ function Router() {
           <Route path="/promotions" component={Promotions} />
           <Route path="/expenses" component={ExpensesPage} />
           <Route path="/expense-reports" component={ExpenseReportsPage} />
-          <Route path="/invoices" component={Home} />
-          <Route path="/analytics" component={Home} />
+          <Route path="/invoices" component={Invoices} />
+          <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
           <Route path="/tick-list" component={TickList} />
         </Layout>
