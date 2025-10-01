@@ -153,6 +153,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Low stock alerts endpoint
+  app.get("/api/inventory/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const products = await storage.getProductsWithStock();
+      const alerts = products
+        .filter(product => {
+          const stockPercentage = (product.stock / product.stockLimit) * 100;
+          return product.stock <= product.stockLimit && stockPercentage <= 30;
+        })
+        .map(product => ({
+          ...product,
+          alertLevel: product.stock === 0 ? 'critical' : 
+                      (product.stock / product.stockLimit) * 100 <= 10 ? 'high' : 
+                      'medium',
+          stockPercentage: (product.stock / product.stockLimit) * 100
+        }))
+        .sort((a, b) => a.stockPercentage - b.stockPercentage);
+      
+      res.json({
+        alerts,
+        summary: {
+          critical: alerts.filter(a => a.alertLevel === 'critical').length,
+          high: alerts.filter(a => a.alertLevel === 'high').length,
+          medium: alerts.filter(a => a.alertLevel === 'medium').length,
+          total: alerts.length
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching inventory alerts:", error);
+      res.status(500).json({ message: "Failed to fetch inventory alerts" });
+    }
+  });
+
   // Reports routes
   app.get("/api/reports", isAuthenticated, async (req: any, res) => {
     try {
