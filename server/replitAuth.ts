@@ -128,6 +128,24 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // In development mode, bypass authentication
+  if (process.env.NODE_ENV === 'development') {
+    // Set a mock user for development
+    req.user = req.user || {
+      id: 'dev-user',
+      username: 'Developer',
+      email: 'dev@example.com',
+      isAnonymous: false,
+      claims: {
+        sub: 'dev-user',
+        email: 'dev@example.com',
+        name: 'Developer'
+      },
+      expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
+    };
+    return next();
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
