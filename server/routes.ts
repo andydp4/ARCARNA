@@ -101,7 +101,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/products", isAuthenticated, async (req, res) => {
     try {
-      const product = await storage.createProduct(req.body);
+      // Import domain engine (will be wired properly in apps/server)
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const product = await engine.createProduct(req.body);
       res.json(product);
     } catch (error) {
       console.error("Error creating product:", error);
@@ -111,7 +113,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/products/:id", isAuthenticated, async (req, res) => {
     try {
-      const product = await storage.updateProduct(req.params.id, req.body);
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const product = await engine.updateProduct(req.params.id, req.body);
       res.json(product);
     } catch (error) {
       console.error("Error updating product:", error);
@@ -121,7 +124,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/products/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteProduct(req.params.id);
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      await engine.deleteProduct(req.params.id);
       res.json({ message: "Product deleted successfully" });
     } catch (error) {
       console.error("Error deleting product:", error);
@@ -169,7 +173,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/customers", isAuthenticated, async (req, res) => {
     try {
-      const customer = await storage.createCustomer(req.body);
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const customer = await engine.createCustomer(req.body);
       res.json(customer);
     } catch (error) {
       console.error("Error creating customer:", error);
@@ -179,7 +184,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/customers/:id", isAuthenticated, async (req, res) => {
     try {
-      const customer = await storage.updateCustomer(req.params.id, req.body);
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const customer = await engine.updateCustomer(req.params.id, req.body);
       res.json(customer);
     } catch (error) {
       console.error("Error updating customer:", error);
@@ -189,7 +195,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/customers/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteCustomer(req.params.id);
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      await engine.deleteCustomer(req.params.id);
       res.json({ message: "Customer deleted successfully" });
     } catch (error) {
       console.error("Error deleting customer:", error);
