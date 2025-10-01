@@ -22,7 +22,7 @@ app.use(session({
     pool: pgPool,
     tableName: 'user_sessions'
   }),
-  secret: process.env.SESSION_SECRET || 'dev_secret',
+  secret: process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -33,7 +33,15 @@ app.use(session({
   }
 }))
 
-app.use(helmet()); app.use(cors({ origin: true, credentials: true })); app.use(express.json()); app.use(cookieParser())
+app.use(helmet())
+app.use(cors({ 
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.REPLIT_DOMAINS?.split(',') || ['https://*.replit.app', 'https://*.replit.dev']
+    : true, 
+  credentials: true 
+}))
+app.use(express.json())
+app.use(cookieParser())
 
 app.get('/healthz', (_, res)=> res.json({ ok:true }))
 app.post('/api/orders', requireAuth, async (req, res, next)=>{
