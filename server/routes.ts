@@ -217,9 +217,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const userId = req.user.claims.sub;
       
-      // Create order with items
+      // Create order with items (map camelCase to snake_case)
       const order = await storage.createOrder({
-        ...validatedData,
+        customer_id: validatedData.customerId,
+        location_id: validatedData.locationId,
+        total: validatedData.total,
+        payment_method: validatedData.paymentMethod,
         items: req.body.items, // Items validated separately by storage layer
         created_by: userId,
       });
