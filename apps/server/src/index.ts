@@ -7,6 +7,7 @@ import invoicesRouter from './routes/invoices'
 import { requireAuth } from './middleware/auth'
 import analyticsRouter from './routes/analytics'
 import authRouter from './routes/auth'
+import { analyticsWorker } from './workers/analytics.worker'
 
 const app = express()
 
@@ -46,6 +47,22 @@ app.use('/api/analytics', requireAuth, analyticsRouter)
 app.use('/api/auth', authRouter)
 
 const port = process.env.PORT || 5000
-if (process.env.NODE_ENV !== 'test') app.listen(port, ()=> console.log(`Server :${port}`))
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    console.log(`Server :${port}`)
+    // Start analytics worker
+    if (process.env.DATABASE_URL) {
+      analyticsWorker.start().catch(console.error)
+      console.log('Analytics worker started')
+    }
+  })
+}
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...')
+  analyticsWorker.stop()
+  process.exit(0)
+})
 
 export default app
