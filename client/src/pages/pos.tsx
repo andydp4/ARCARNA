@@ -51,6 +51,14 @@ export default function POS() {
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
   const [customerTier, setCustomerTier] = useState<any>(null);
+  const [orderExpenses, setOrderExpenses] = useState<Array<{
+    category: string;
+    description: string;
+    amount: number;
+  }>>([]);
+  const [expenseCategory, setExpenseCategory] = useState("shipping");
+  const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
@@ -120,6 +128,9 @@ export default function POS() {
       setCart([]);
       setSelectedCustomer(null);
       setCheckoutDialogOpen(false);
+      setOrderExpenses([]); // Clear expenses after successful order
+      setExpenseDescription("");
+      setExpenseAmount("");
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
     },
@@ -252,6 +263,48 @@ export default function POS() {
     setCheckoutDialogOpen(true);
   };
 
+  // Add expense to order
+  const addExpense = () => {
+    if (!expenseDescription || !expenseAmount) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter expense description and amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const amount = parseFloat(expenseAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setOrderExpenses([...orderExpenses, {
+      category: expenseCategory,
+      description: expenseDescription,
+      amount
+    }]);
+
+    // Reset form
+    setExpenseDescription("");
+    setExpenseAmount("");
+    
+    toast({
+      title: "Expense Added",
+      description: `Added ${expenseCategory} expense: $${amount.toFixed(2)}`,
+    });
+  };
+
+  // Remove expense from order
+  const removeExpense = (index: number) => {
+    setOrderExpenses(orderExpenses.filter((_, i) => i !== index));
+  };
+
   // Process payment
   const processPayment = () => {
     const orderData = {
@@ -266,6 +319,7 @@ export default function POS() {
       tax,
       total,
       payment_method: paymentMethod,
+      expenses: orderExpenses // Include expenses in order data
     };
 
     placeOrderMutation.mutate(orderData);
@@ -640,6 +694,81 @@ export default function POS() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Order Expenses Section */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Order Expenses (Optional)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                    <SelectTrigger className="w-[130px]" data-testid="select-expense-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shipping">Shipping</SelectItem>
+                      <SelectItem value="travel">Travel</SelectItem>
+                      <SelectItem value="packaging">Packaging</SelectItem>
+                      <SelectItem value="handling">Handling</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Description"
+                    value={expenseDescription}
+                    onChange={(e) => setExpenseDescription(e.target.value)}
+                    className="flex-1"
+                    data-testid="input-expense-desc"
+                  />
+                  <Input
+                    placeholder="0.00"
+                    type="number"
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    className="w-[100px]"
+                    data-testid="input-expense-amt"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={addExpense}
+                    variant="outline"
+                    data-testid="button-add-order-expense"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                {orderExpenses.length > 0 && (
+                  <div className="space-y-1">
+                    {orderExpenses.map((expense, index) => (
+                      <div key={index} className="flex items-center justify-between text-sm py-1">
+                        <span className="text-muted-foreground">
+                          {expense.category}: {expense.description}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span>${expense.amount.toFixed(2)}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeExpense(index)}
+                            className="h-6 w-6 p-0"
+                            data-testid={`button-remove-expense-${index}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <Separator />
+                    <div className="flex justify-between font-medium">
+                      <span>Total Expenses</span>
+                      <span>${orderExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardContent className="p-4">

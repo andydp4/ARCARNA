@@ -115,6 +115,13 @@ export default function Home() {
                 <i className="fas fa-gift mr-2"></i>Promotions
               </a>
               <a
+                href="/expenses"
+                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
+                data-testid="link-expenses"
+              >
+                <i className="fas fa-wallet mr-2"></i>Expenses
+              </a>
+              <a
                 href="#"
                 className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
                 data-testid="link-invoices"

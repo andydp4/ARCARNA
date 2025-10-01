@@ -186,6 +186,48 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
 });
 export type InsertOrderData = z.infer<typeof insertOrderSchema>;
 
+// Overhead expenses table (general business costs)
+export const overheadExpenses = pgTable("overhead_expenses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull(), // rent, utilities, insurance, salaries, etc.
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  frequency: varchar("frequency", { length: 20 }).notNull(), // daily, weekly, monthly, yearly
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  isActive: integer("is_active").default(1).notNull(),
+  description: varchar("description", { length: 1024 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type OverheadExpense = typeof overheadExpenses.$inferSelect;
+export type InsertOverheadExpense = typeof overheadExpenses.$inferInsert;
+export const insertOverheadExpenseSchema = createInsertSchema(overheadExpenses).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertOverheadExpenseData = z.infer<typeof insertOverheadExpenseSchema>;
+
+// Order expenses table (order-specific costs)
+export const orderExpenses = pgTable("order_expenses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").references(() => orders.id).notNull(),
+  category: varchar("category", { length: 100 }).notNull(), // travel, shipping, packaging, other
+  description: varchar("description", { length: 500 }),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type OrderExpense = typeof orderExpenses.$inferSelect;
+export type InsertOrderExpense = typeof orderExpenses.$inferInsert;
+export const insertOrderExpenseSchema = createInsertSchema(orderExpenses).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertOrderExpenseData = z.infer<typeof insertOrderExpenseSchema>;
+
 // Order items table
 export const orderItems = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),

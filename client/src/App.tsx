@@ -12,6 +12,7 @@ import Reports from "@/pages/reports";
 import Locations from "@/pages/locations";
 import Loyalty from "@/pages/loyalty";
 import Promotions from "@/pages/promotions";
+import { ExpensesPage } from "@/pages/expenses";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -30,6 +31,7 @@ function Router() {
           <Route path="/locations" component={Locations} />
           <Route path="/loyalty" component={Loyalty} />
           <Route path="/promotions" component={Promotions} />
+          <Route path="/expenses" component={ExpensesPage} />
         </>
       )}
       <Route component={NotFound} />

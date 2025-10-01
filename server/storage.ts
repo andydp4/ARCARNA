@@ -10,6 +10,8 @@ import {
   locations,
   loyaltyTiers,
   promotions,
+  overheadExpenses,
+  orderExpenses,
   type User,
   type UpsertUser,
   type Customer,
@@ -22,9 +24,13 @@ import {
   type InsertLoyaltyTier,
   type Promotion,
   type InsertPromotion,
+  type OverheadExpense,
+  type InsertOverheadExpense,
+  type OrderExpense,
+  type InsertOrderExpense,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
@@ -89,6 +95,21 @@ export interface IStorage {
   deletePromotion(id: string): Promise<void>;
   validatePromoCode(code: string): Promise<Promotion | null>;
   applyPromotion(orderId: string, promoCode: string): Promise<number>;
+  
+  // Expense operations
+  getOverheadExpenses(): Promise<OverheadExpense[]>;
+  createOverheadExpense(data: InsertOverheadExpense): Promise<OverheadExpense>;
+  updateOverheadExpense(id: string, data: Partial<InsertOverheadExpense>): Promise<OverheadExpense>;
+  deleteOverheadExpense(id: string): Promise<void>;
+  getOrderExpenses(orderId: string): Promise<OrderExpense[]>;
+  createOrderExpenses(orderId: string, expenses: InsertOrderExpense[]): Promise<void>;
+  getExpenseAnalytics(startDate: Date, endDate: Date): Promise<{
+    overheadTotal: number;
+    orderExpenseTotal: number;
+    totalExpenses: number;
+    dailyOverhead: number;
+    overheadBreakdown: any[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -220,6 +241,18 @@ export class DatabaseStorage implements IStorage {
             totalPrice: item.total_price,
           }))
         );
+        
+        // Create order expenses if provided
+        if (orderData.expenses && orderData.expenses.length > 0) {
+          await tx.insert(orderExpenses).values(
+            orderData.expenses.map((expense: any) => ({
+              orderId: order.id,
+              category: expense.category,
+              description: expense.description,
+              amount: expense.amount,
+            }))
+          );
+        }
 
         // Update product stock
         for (const item of orderData.items) {
@@ -769,6 +802,105 @@ export class DatabaseStorage implements IStorage {
     }
 
     return customer;
+  }
+
+  // Expense methods
+  async getOverheadExpenses(): Promise<any[]> {
+    const result = await db.select().from(overheadExpenses).orderBy(overheadExpenses.createdAt);
+    return result;
+  }
+
+  async createOverheadExpense(data: any): Promise<any> {
+    const [expense] = await db.insert(overheadExpenses).values(data).returning();
+    return expense;
+  }
+
+  async updateOverheadExpense(id: string, data: any): Promise<any> {
+    const [expense] = await db
+      .update(overheadExpenses)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(overheadExpenses.id, id))
+      .returning();
+    return expense;
+  }
+
+  async deleteOverheadExpense(id: string): Promise<void> {
+    await db.delete(overheadExpenses).where(eq(overheadExpenses.id, id));
+  }
+
+  async getOrderExpenses(orderId: string): Promise<any[]> {
+    const result = await db
+      .select()
+      .from(orderExpenses)
+      .where(eq(orderExpenses.orderId, orderId));
+    return result;
+  }
+
+  async createOrderExpenses(orderId: string, expenses: any[]): Promise<void> {
+    if (expenses && expenses.length > 0) {
+      const expensesWithOrderId = expenses.map(exp => ({
+        ...exp,
+        orderId
+      }));
+      await db.insert(orderExpenses).values(expensesWithOrderId);
+    }
+  }
+
+  async getExpenseAnalytics(startDate: Date, endDate: Date): Promise<any> {
+    // Get overhead expenses for the period
+    const overheads = await db
+      .select({
+        name: overheadExpenses.name,
+        category: overheadExpenses.category,
+        amount: sql<number>`CAST(${overheadExpenses.amount} AS DECIMAL)`,
+        frequency: overheadExpenses.frequency,
+      })
+      .from(overheadExpenses)
+      .where(
+        and(
+          lte(overheadExpenses.startDate, endDate),
+          eq(overheadExpenses.isActive, 1),
+          or(
+            isNull(overheadExpenses.endDate),
+            gte(overheadExpenses.endDate, startDate)
+          )
+        )
+      );
+    
+    // Calculate total daily overhead
+    let totalDailyOverhead = 0;
+    overheads.forEach(expense => {
+      let dailyCost = 0;
+      switch (expense.frequency) {
+        case 'daily': dailyCost = expense.amount; break;
+        case 'weekly': dailyCost = expense.amount / 7; break;
+        case 'monthly': dailyCost = expense.amount / 30; break;
+        case 'yearly': dailyCost = expense.amount / 365; break;
+      }
+      totalDailyOverhead += dailyCost;
+    });
+    
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const totalOverhead = totalDailyOverhead * daysDiff;
+    
+    // Get order expenses
+    const orderExpenseResult = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(CAST(${orderExpenses.amount} AS DECIMAL)), 0)`,
+      })
+      .from(orderExpenses)
+      .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
+      .where(between(orders.createdAt, startDate, endDate));
+    
+    const orderExpenseTotal = orderExpenseResult[0]?.total || 0;
+    
+    return {
+      overheadTotal: totalOverhead,
+      orderExpenseTotal,
+      totalExpenses: totalOverhead + orderExpenseTotal,
+      dailyOverhead: totalDailyOverhead,
+      overheadBreakdown: overheads,
+    };
   }
 
   // Promotions methods
