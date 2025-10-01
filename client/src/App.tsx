@@ -18,6 +18,8 @@ import { ExpensesPage } from "@/pages/expenses";
 import { ExpenseReportsPage } from "@/pages/expense-reports";
 import Customers from "@/pages/customers";
 import ProductManagement from "@/pages/product-management";
+import Settings from "@/pages/settings";
+import TickList from "@/pages/tick-list";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -42,6 +44,8 @@ function Router() {
           <Route path="/expense-reports" component={ExpenseReportsPage} />
           <Route path="/invoices" component={Home} />
           <Route path="/analytics" component={Home} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/tick-list" component={TickList} />
         </Layout>
       )}
       <Route component={NotFound} />

@@ -11,7 +11,9 @@ import {
   BarChart3,
   Home,
   Award,
-  Boxes
+  Boxes,
+  Settings,
+  CreditCard
 } from 'lucide-react'
 
 export const navItems = [
@@ -100,10 +102,24 @@ export const navItems = [
     testId: 'nav-invoices'
   },
   {
+    key: 'tick-list',
+    label: 'Tick List',
+    href: '/tick-list',
+    icon: CreditCard,
+    testId: 'nav-tick-list'
+  },
+  {
     key: 'analytics',
     label: 'Analytics',
     href: '/analytics',
     icon: BarChart3,
     testId: 'nav-analytics'
+  },
+  {
+    key: 'settings',
+    label: 'Settings',
+    href: '/settings',
+    icon: Settings,
+    testId: 'nav-settings'
   }
 ]
