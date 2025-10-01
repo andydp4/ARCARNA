@@ -235,13 +235,23 @@ export default function Customers() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="address">Billing Address</Label>
                   <Input
                     id="address"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     placeholder="123 Main St, City, State"
                     data-testid="input-customer-address"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="deliveryAddress">Delivery Address</Label>
+                  <Input
+                    id="deliveryAddress"
+                    value={formData.deliveryAddress || ''}
+                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                    placeholder="Delivery address (if different from billing)"
+                    data-testid="input-customer-delivery-address"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -442,12 +452,21 @@ export default function Customers() {
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-address">Address</Label>
+                                  <Label htmlFor="edit-address">Billing Address</Label>
                                   <Input
                                     id="edit-address"
                                     value={formData.address}
                                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                     placeholder="123 Main St, City, State"
+                                  />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label htmlFor="edit-deliveryAddress">Delivery Address</Label>
+                                  <Input
+                                    id="edit-deliveryAddress"
+                                    value={formData.deliveryAddress || ''}
+                                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                                    placeholder="Delivery address (if different from billing)"
                                   />
                                 </div>
                                 <div className="grid gap-2">
