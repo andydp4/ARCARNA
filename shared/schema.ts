@@ -15,6 +15,25 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
+// Locations table
+export const locations = pgTable("locations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: varchar("address", { length: 500 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  state: varchar("state", { length: 2 }).notNull(),
+  zipCode: varchar("zip_code", { length: 10 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  isActive: integer("is_active").default(1).notNull(),
+  isDefault: integer("is_default").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = typeof locations.$inferInsert;
+
 // Session storage table (mandatory for Replit Auth)
 export const sessions = pgTable(
   "sessions",
@@ -61,6 +80,7 @@ export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
   productId: varchar("product_id", { length: 100 }).notNull().unique(),
+  locationId: uuid("location_id").references(() => locations.id),
   costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
   defaultSalePrice: numeric("default_sale_price", {
     precision: 10,
@@ -80,6 +100,7 @@ export type InsertProduct = typeof products.$inferInsert;
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
   customerId: uuid("customer_id").references(() => customers.id),
+  locationId: uuid("location_id").references(() => locations.id),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),

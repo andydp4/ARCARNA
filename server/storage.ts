@@ -7,6 +7,7 @@ import {
   products,
   orders,
   orderItems,
+  locations,
   type User,
   type UpsertUser,
   type Customer,
@@ -14,6 +15,7 @@ import {
   type Product,
   type Order,
   type OrderItem,
+  type Location,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
@@ -59,6 +61,13 @@ export interface IStorage {
   getReportData(fromDate: Date, toDate: Date): Promise<any>;
   generateCSVReport(data: any, type: string): Promise<string>;
   generatePDFReport(data: any, type: string): Promise<Buffer>;
+  
+  // Locations operations
+  getLocations(): Promise<Location[]>;
+  createLocation(data: any): Promise<Location>;
+  updateLocation(id: string, data: any): Promise<Location>;
+  deleteLocation(id: string): Promise<void>;
+  setDefaultLocation(id: string): Promise<Location>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -554,6 +563,121 @@ export class DatabaseStorage implements IStorage {
     // In production, you would use Puppeteer to generate actual PDF
     const csvContent = await this.generateCSVReport(data, type);
     return Buffer.from(csvContent);
+  }
+
+  async getLocations(): Promise<Location[]> {
+    // Fetch locations with stats
+    const locs = await db
+      .select()
+      .from(locations)
+      .orderBy(desc(locations.isDefault), locations.name);
+
+    // For each location, calculate stats
+    const locationsWithStats = await Promise.all(
+      locs.map(async (location) => {
+        // Get revenue and order stats
+        const stats = await db
+          .select({
+            totalRevenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
+            totalOrders: sql<number>`COUNT(*)`,
+          })
+          .from(orders)
+          .where(eq(orders.locationId, location.id));
+
+        // Get product count
+        const productCount = await db
+          .select({
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(products)
+          .where(eq(products.locationId, location.id));
+
+        return {
+          ...location,
+          isActive: location.isActive === 1,
+          isDefault: location.isDefault === 1,
+          stats: {
+            totalRevenue: stats[0]?.totalRevenue || 0,
+            totalOrders: stats[0]?.totalOrders || 0,
+            totalProducts: productCount[0]?.count || 0,
+            activeStaff: 0, // Would need staff table
+          },
+        };
+      })
+    );
+
+    return locationsWithStats;
+  }
+
+  async createLocation(data: any): Promise<Location> {
+    // If this is the first location, make it default
+    const existingCount = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(locations);
+
+    const isFirst = existingCount[0].count === 0;
+
+    const [location] = await db
+      .insert(locations)
+      .values({
+        ...data,
+        isActive: data.isActive ? 1 : 0,
+        isDefault: isFirst ? 1 : 0,
+      })
+      .returning();
+
+    return location;
+  }
+
+  async updateLocation(id: string, data: any): Promise<Location> {
+    const [location] = await db
+      .update(locations)
+      .set({
+        ...data,
+        isActive: data.isActive ? 1 : 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(locations.id, id))
+      .returning();
+
+    return location;
+  }
+
+  async deleteLocation(id: string): Promise<void> {
+    // Check if it's the default location
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(eq(locations.id, id));
+
+    if (location?.isDefault === 1) {
+      throw new Error("Cannot delete default location");
+    }
+
+    await db.delete(locations).where(eq(locations.id, id));
+  }
+
+  async setDefaultLocation(id: string): Promise<Location> {
+    await db.transaction(async (tx) => {
+      // Remove default from all locations
+      await tx
+        .update(locations)
+        .set({ isDefault: 0 })
+        .where(eq(locations.isDefault, 1));
+
+      // Set new default
+      await tx
+        .update(locations)
+        .set({ isDefault: 1 })
+        .where(eq(locations.id, id));
+    });
+
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(eq(locations.id, id));
+
+    return location;
   }
 }
 

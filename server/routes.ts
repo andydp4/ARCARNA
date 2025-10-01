@@ -210,6 +210,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Locations routes
+  app.get("/api/locations", isAuthenticated, async (req, res) => {
+    try {
+      const locations = await storage.getLocations();
+      res.json(locations);
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ message: "Failed to fetch locations" });
+    }
+  });
+
+  app.post("/api/locations", isAuthenticated, async (req: any, res) => {
+    try {
+      const locationData = req.body;
+      const location = await storage.createLocation(locationData);
+      res.json(location);
+    } catch (error) {
+      console.error("Error creating location:", error);
+      res.status(500).json({ message: "Failed to create location" });
+    }
+  });
+
+  app.patch("/api/locations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const locationData = req.body;
+      const location = await storage.updateLocation(id, locationData);
+      res.json(location);
+    } catch (error) {
+      console.error("Error updating location:", error);
+      res.status(500).json({ message: "Failed to update location" });
+    }
+  });
+
+  app.delete("/api/locations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteLocation(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting location:", error);
+      res.status(500).json({ message: "Failed to delete location" });
+    }
+  });
+
+  app.post("/api/locations/:id/set-default", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const location = await storage.setDefaultLocation(id);
+      res.json(location);
+    } catch (error) {
+      console.error("Error setting default location:", error);
+      res.status(500).json({ message: "Failed to set default location" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
