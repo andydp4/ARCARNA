@@ -59,6 +59,44 @@ export const users = pgTable("users", {
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
+// Loyalty tiers table
+export const loyaltyTiers = pgTable("loyalty_tiers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 50 }).notNull().unique(),
+  pointsRequired: integer("points_required").notNull(),
+  discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
+  pointsMultiplier: numeric("points_multiplier", { precision: 3, scale: 2 }).default("1.00"),
+  color: varchar("color", { length: 7 }).default("#808080"),
+  benefits: varchar("benefits", { length: 1024 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type LoyaltyTier = typeof loyaltyTiers.$inferSelect;
+export type InsertLoyaltyTier = typeof loyaltyTiers.$inferInsert;
+
+// Promotions/campaigns table
+export const promotions = pgTable("promotions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  code: varchar("code", { length: 50 }).unique(),
+  type: varchar("type", { length: 20 }).notNull(), // percentage, fixed, bogo, points
+  value: numeric("value", { precision: 10, scale: 2 }).notNull(),
+  minPurchase: numeric("min_purchase", { precision: 10, scale: 2 }),
+  maxDiscount: numeric("max_discount", { precision: 10, scale: 2 }),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isActive: integer("is_active").default(1).notNull(),
+  usageLimit: integer("usage_limit"),
+  usageCount: integer("usage_count").default(0),
+  tierRequired: uuid("tier_required").references(() => loyaltyTiers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Promotion = typeof promotions.$inferSelect;
+export type InsertPromotion = typeof promotions.$inferInsert;
+
 // Customers table
 export const customers = pgTable("customers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -68,6 +106,8 @@ export const customers = pgTable("customers", {
   address: varchar("address", { length: 1024 }),
   category: varchar("category", { length: 20 }).default("Bronze"),
   loyaltyPoints: integer("loyalty_points").default(0),
+  tierId: uuid("tier_id").references(() => loyaltyTiers.id),
+  totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

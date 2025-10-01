@@ -8,6 +8,8 @@ import {
   orders,
   orderItems,
   locations,
+  loyaltyTiers,
+  promotions,
   type User,
   type UpsertUser,
   type Customer,
@@ -16,6 +18,10 @@ import {
   type Order,
   type OrderItem,
   type Location,
+  type LoyaltyTier,
+  type InsertLoyaltyTier,
+  type Promotion,
+  type InsertPromotion,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
@@ -68,6 +74,21 @@ export interface IStorage {
   updateLocation(id: string, data: any): Promise<Location>;
   deleteLocation(id: string): Promise<void>;
   setDefaultLocation(id: string): Promise<Location>;
+  
+  // Loyalty operations
+  getLoyaltyTiers(): Promise<LoyaltyTier[]>;
+  createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier>;
+  updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>): Promise<LoyaltyTier>;
+  deleteLoyaltyTier(id: string): Promise<void>;
+  updateCustomerTier(customerId: string): Promise<Customer>;
+  
+  // Promotions operations
+  getPromotions(active?: boolean): Promise<Promotion[]>;
+  createPromotion(data: InsertPromotion): Promise<Promotion>;
+  updatePromotion(id: string, data: Partial<InsertPromotion>): Promise<Promotion>;
+  deletePromotion(id: string): Promise<void>;
+  validatePromoCode(code: string): Promise<Promotion | null>;
+  applyPromotion(orderId: string, promoCode: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -250,7 +271,7 @@ export class DatabaseStorage implements IStorage {
       // Calculate new stock
       const newStock = type === 'set' 
         ? adjustment 
-        : currentProduct.stock + adjustment;
+        : (currentProduct.stock ?? 0) + adjustment;
 
       // Validate stock
       if (newStock < 0) {
@@ -306,7 +327,7 @@ export class DatabaseStorage implements IStorage {
     // Get total revenue
     const totalRevenue = await db
       .select({
-        total: sql<number>`COALESCE(SUM(CAST(${orders.totalAmount} AS DECIMAL)), 0)`
+        total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
       })
       .from(orders)
       .where(
@@ -317,7 +338,7 @@ export class DatabaseStorage implements IStorage {
     const dailyRevenue = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`.as('date'),
-        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue'),
+        revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue'),
         orders: sql<number>`COUNT(*)`.as('orders')
       })
       .from(orders)
@@ -332,7 +353,7 @@ export class DatabaseStorage implements IStorage {
       .select({
         method: orders.paymentMethod,
         count: sql<number>`COUNT(*)`.as('count'),
-        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue')
+        revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue')
       })
       .from(orders)
       .where(
@@ -362,7 +383,7 @@ export class DatabaseStorage implements IStorage {
     // Get average order value
     const avgOrder = await db
       .select({
-        average: sql<number>`AVG(CAST(${orders.totalAmount} AS DECIMAL))`
+        average: sql<number>`AVG(CAST(${orders.total} AS DECIMAL))`
       })
       .from(orders)
       .where(
@@ -421,11 +442,11 @@ export class DatabaseStorage implements IStorage {
     // Get new vs returning customers
     const newCustomers = await db
       .select({
-        count: sql<number>`COUNT(DISTINCT c.id)`
+        count: sql<number>`COUNT(DISTINCT ${customers.id})`
       })
-      .from(customers.as('c'))
+      .from(customers)
       .where(
-        sql`c.created_at >= ${fromDate} AND c.created_at <= ${toDate}`
+        sql`${customers.createdAt} >= ${fromDate} AND ${customers.createdAt} <= ${toDate}`
       );
 
     // Get top customers
@@ -433,7 +454,7 @@ export class DatabaseStorage implements IStorage {
       .select({
         name: customers.name,
         orders: sql<number>`COUNT(${orders.id})`.as('orders'),
-        revenue: sql<number>`SUM(CAST(${orders.totalAmount} AS DECIMAL))`.as('revenue'),
+        revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue'),
         loyalty: customers.loyaltyPoints
       })
       .from(orders)
@@ -442,7 +463,7 @@ export class DatabaseStorage implements IStorage {
         sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
       )
       .groupBy(customers.id, customers.name, customers.loyaltyPoints)
-      .orderBy(sql`SUM(CAST(${orders.totalAmount} AS DECIMAL)) DESC`)
+      .orderBy(sql`SUM(CAST(${orders.total} AS DECIMAL)) DESC`)
       .limit(10);
 
     const total = totalCustomers[0]?.total || 0;
@@ -678,6 +699,179 @@ export class DatabaseStorage implements IStorage {
       .where(eq(locations.id, id));
 
     return location;
+  }
+
+  // Loyalty tier methods
+  async getLoyaltyTiers(): Promise<LoyaltyTier[]> {
+    return await db
+      .select()
+      .from(loyaltyTiers)
+      .orderBy(loyaltyTiers.pointsRequired);
+  }
+
+  async createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier> {
+    const [tier] = await db
+      .insert(loyaltyTiers)
+      .values(data)
+      .returning();
+    return tier;
+  }
+
+  async updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>): Promise<LoyaltyTier> {
+    const [tier] = await db
+      .update(loyaltyTiers)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(loyaltyTiers.id, id))
+      .returning();
+    return tier;
+  }
+
+  async deleteLoyaltyTier(id: string): Promise<void> {
+    await db.delete(loyaltyTiers).where(eq(loyaltyTiers.id, id));
+  }
+
+  async updateCustomerTier(customerId: string): Promise<Customer> {
+    // Get customer's current points
+    const [customer] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.id, customerId));
+
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    // Find appropriate tier based on points
+    const tiers = await db
+      .select()
+      .from(loyaltyTiers)
+      .orderBy(desc(loyaltyTiers.pointsRequired));
+
+    const appropriateTier = tiers.find(
+      tier => (customer.loyaltyPoints ?? 0) >= tier.pointsRequired
+    );
+
+    if (appropriateTier && appropriateTier.id !== customer.tierId) {
+      // Update customer's tier
+      const [updated] = await db
+        .update(customers)
+        .set({
+          tierId: appropriateTier.id,
+          category: appropriateTier.name,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, customerId))
+        .returning();
+      return updated;
+    }
+
+    return customer;
+  }
+
+  // Promotions methods
+  async getPromotions(active?: boolean): Promise<Promotion[]> {
+    let query = db.select().from(promotions);
+    
+    if (active !== undefined) {
+      query = query.where(eq(promotions.isActive, active ? 1 : 0));
+    }
+    
+    return await query.orderBy(desc(promotions.createdAt));
+  }
+
+  async createPromotion(data: InsertPromotion): Promise<Promotion> {
+    const [promo] = await db
+      .insert(promotions)
+      .values({
+        ...data,
+        isActive: data.isActive ?? 1,
+      })
+      .returning();
+    return promo;
+  }
+
+  async updatePromotion(id: string, data: Partial<InsertPromotion>): Promise<Promotion> {
+    const [promo] = await db
+      .update(promotions)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(promotions.id, id))
+      .returning();
+    return promo;
+  }
+
+  async deletePromotion(id: string): Promise<void> {
+    await db.delete(promotions).where(eq(promotions.id, id));
+  }
+
+  async validatePromoCode(code: string): Promise<Promotion | null> {
+    const now = new Date();
+    
+    const [promo] = await db
+      .select()
+      .from(promotions)
+      .where(
+        sql`${promotions.code} = ${code} 
+        AND ${promotions.isActive} = 1
+        AND ${promotions.startDate} <= ${now}
+        AND ${promotions.endDate} >= ${now}
+        AND (${promotions.usageLimit} IS NULL OR ${promotions.usageCount} < ${promotions.usageLimit})`
+      );
+    
+    return promo || null;
+  }
+
+  async applyPromotion(orderId: string, promoCode: string): Promise<number> {
+    const promo = await this.validatePromoCode(promoCode);
+    if (!promo) {
+      throw new Error("Invalid or expired promo code");
+    }
+
+    // Get order details
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId));
+
+    if (!order) {
+      throw new Error("Order not found");
+    }
+
+    let discount = 0;
+    const orderTotal = parseFloat(order.total);
+
+    // Check minimum purchase requirement
+    if (promo.minPurchase && orderTotal < parseFloat(promo.minPurchase)) {
+      throw new Error(`Minimum purchase of ${promo.minPurchase} required`);
+    }
+
+    // Calculate discount based on promo type
+    if (promo.type === 'percentage') {
+      discount = orderTotal * (parseFloat(promo.value) / 100);
+      if (promo.maxDiscount) {
+        discount = Math.min(discount, parseFloat(promo.maxDiscount));
+      }
+    } else if (promo.type === 'fixed') {
+      discount = parseFloat(promo.value);
+    } else if (promo.type === 'points') {
+      // Award bonus points (handled elsewhere)
+      discount = 0;
+    }
+
+    // Update promo usage count
+    await db
+      .update(promotions)
+      .set({
+        usageCount: sql`${promotions.usageCount} + 1`,
+      })
+      .where(eq(promotions.id, promo.id));
+
+    return discount;
   }
 }
 

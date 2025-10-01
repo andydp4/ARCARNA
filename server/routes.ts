@@ -266,6 +266,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Loyalty tier routes
+  app.get("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
+    try {
+      const tiers = await storage.getLoyaltyTiers();
+      res.json(tiers);
+    } catch (error) {
+      console.error("Error fetching loyalty tiers:", error);
+      res.status(500).json({ message: "Failed to fetch loyalty tiers" });
+    }
+  });
+
+  app.post("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
+    try {
+      const tierData = req.body;
+      const tier = await storage.createLoyaltyTier(tierData);
+      res.json(tier);
+    } catch (error) {
+      console.error("Error creating loyalty tier:", error);
+      res.status(500).json({ message: "Failed to create loyalty tier" });
+    }
+  });
+
+  app.patch("/api/loyalty-tiers/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const tierData = req.body;
+      const tier = await storage.updateLoyaltyTier(id, tierData);
+      res.json(tier);
+    } catch (error) {
+      console.error("Error updating loyalty tier:", error);
+      res.status(500).json({ message: "Failed to update loyalty tier" });
+    }
+  });
+
+  app.delete("/api/loyalty-tiers/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteLoyaltyTier(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting loyalty tier:", error);
+      res.status(500).json({ message: "Failed to delete loyalty tier" });
+    }
+  });
+
+  // Promotions routes
+  app.get("/api/promotions", isAuthenticated, async (req: any, res) => {
+    try {
+      const activeOnly = req.query.active === 'true';
+      const promotions = await storage.getPromotions(activeOnly);
+      res.json(promotions);
+    } catch (error) {
+      console.error("Error fetching promotions:", error);
+      res.status(500).json({ message: "Failed to fetch promotions" });
+    }
+  });
+
+  app.post("/api/promotions", isAuthenticated, async (req: any, res) => {
+    try {
+      const promoData = req.body;
+      const promo = await storage.createPromotion(promoData);
+      res.json(promo);
+    } catch (error) {
+      console.error("Error creating promotion:", error);
+      res.status(500).json({ message: "Failed to create promotion" });
+    }
+  });
+
+  app.patch("/api/promotions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const promoData = req.body;
+      const promo = await storage.updatePromotion(id, promoData);
+      res.json(promo);
+    } catch (error) {
+      console.error("Error updating promotion:", error);
+      res.status(500).json({ message: "Failed to update promotion" });
+    }
+  });
+
+  app.delete("/api/promotions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deletePromotion(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting promotion:", error);
+      res.status(500).json({ message: "Failed to delete promotion" });
+    }
+  });
+
+  app.post("/api/promotions/validate", isAuthenticated, async (req: any, res) => {
+    try {
+      const { code } = req.body;
+      const promo = await storage.validatePromoCode(code);
+      if (promo) {
+        res.json(promo);
+      } else {
+        res.status(404).json({ message: "Invalid or expired promo code" });
+      }
+    } catch (error) {
+      console.error("Error validating promo code:", error);
+      res.status(500).json({ message: "Failed to validate promo code" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
