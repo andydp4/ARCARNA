@@ -1,11 +1,12 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { Link } from "wouter";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
 
 export default function Home() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -33,228 +34,117 @@ export default function Home() {
     );
   }
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
-  };
-
-  const userName = (user as any)?.firstName && (user as any)?.lastName 
-    ? `${(user as any).firstName} ${(user as any).lastName}`
-    : (user as any)?.email || "User";
-  
-  const userInitials = (user as any)?.firstName && (user as any)?.lastName
-    ? `${(user as any).firstName[0]}${(user as any).lastName[0]}`
-    : (user as any)?.email ? (user as any).email.substring(0, 2).toUpperCase()
-    : "U";
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-primary border-b border-slate-700 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo & Title */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-10 h-10 bg-accent rounded-lg">
-                <i className="fas fa-cash-register text-xl text-white"></i>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-white">Midnight EPOS</h1>
-                <p className="text-xs text-slate-400">Real-time Analytics</p>
-              </div>
-            </div>
-
-            {/* Navigation */}
-            <nav className="hidden md:flex items-center gap-1">
-              <a
-                href="/"
-                className="px-4 py-2 text-white bg-slate-700 rounded-lg font-medium text-sm"
-                data-testid="link-analytics"
-              >
-                <i className="fas fa-chart-line mr-2"></i>Analytics
-              </a>
-              <a
-                href="/reports"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-reports"
-              >
-                <i className="fas fa-file-chart-line mr-2"></i>Reports
-              </a>
-              <a
-                href="/pos"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-pos"
-              >
-                <i className="fas fa-cash-register mr-2"></i>POS Terminal
-              </a>
-              <a
-                href="/locations"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-locations"
-              >
-                <i className="fas fa-map-marker-alt mr-2"></i>Locations
-              </a>
-              <a
-                href="/inventory"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-inventory"
-              >
-                <i className="fas fa-boxes mr-2"></i>Inventory
-              </a>
-              <a
-                href="/loyalty"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-loyalty"
-              >
-                <i className="fas fa-award mr-2"></i>Loyalty
-              </a>
-              <a
-                href="/promotions"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-promotions"
-              >
-                <i className="fas fa-gift mr-2"></i>Promotions
-              </a>
-              <a
-                href="/expenses"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-expenses"
-              >
-                <i className="fas fa-wallet mr-2"></i>Expenses
-              </a>
-              <a
-                href="/expense-reports"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-expense-reports"
-              >
-                <i className="fas fa-chart-pie mr-2"></i>Profit Analysis
-              </a>
-              <a
-                href="#"
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="link-invoices"
-              >
-                <i className="fas fa-file-invoice mr-2"></i>Invoices
-              </a>
-            </nav>
-
-            {/* User Menu */}
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:block text-right">
-                <p className="text-sm font-medium text-white" data-testid="text-username">
-                  {userName}
-                </p>
-                <p className="text-xs text-slate-400" data-testid="text-userrole">
-                  Administrator
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-gradient-to-br from-secondary to-accent rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
-                <span data-testid="text-userinitials">{userInitials}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
-                data-testid="button-logout"
-              >
-                <i className="fas fa-sign-out-alt mr-2"></i>Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="w-full">
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Quick Actions Grid */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-foreground mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {/* POS Terminal */}
-            <a href="/pos" className="group" data-testid="quick-action-pos">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-lg mb-4">
-                  <i className="fas fa-cash-register text-2xl text-blue-500"></i>
+            <Link href="/pos">
+              <a className="group" data-testid="quick-action-pos">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-lg mb-4">
+                    <i className="fas fa-cash-register text-2xl text-blue-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">POS Terminal</h3>
+                  <p className="text-sm text-muted-foreground">Process sales and orders</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">POS Terminal</h3>
-                <p className="text-sm text-muted-foreground">Process sales and orders</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Inventory */}
-            <a href="/inventory" className="group" data-testid="quick-action-inventory">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-green-500/10 rounded-lg mb-4">
-                  <i className="fas fa-boxes text-2xl text-green-500"></i>
+            <Link href="/inventory">
+              <a className="group" data-testid="quick-action-inventory">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-green-500/10 rounded-lg mb-4">
+                    <i className="fas fa-boxes text-2xl text-green-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Inventory</h3>
+                  <p className="text-sm text-muted-foreground">Manage products & stock</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Inventory</h3>
-                <p className="text-sm text-muted-foreground">Manage products & stock</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Customers */}
-            <a href="/loyalty" className="group" data-testid="quick-action-customers">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-pink-500/10 rounded-lg mb-4">
-                  <i className="fas fa-users text-2xl text-pink-500"></i>
+            <Link href="/loyalty">
+              <a className="group" data-testid="quick-action-customers">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-pink-500/10 rounded-lg mb-4">
+                    <i className="fas fa-users text-2xl text-pink-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Customers</h3>
+                  <p className="text-sm text-muted-foreground">Loyalty & rewards</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Customers</h3>
-                <p className="text-sm text-muted-foreground">Loyalty & rewards</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Reports */}
-            <a href="/reports" className="group" data-testid="quick-action-reports">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-purple-500/10 rounded-lg mb-4">
-                  <i className="fas fa-chart-line text-2xl text-purple-500"></i>
+            <Link href="/reports">
+              <a className="group" data-testid="quick-action-reports">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-purple-500/10 rounded-lg mb-4">
+                    <i className="fas fa-chart-line text-2xl text-purple-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Reports</h3>
+                  <p className="text-sm text-muted-foreground">Analytics & insights</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Reports</h3>
-                <p className="text-sm text-muted-foreground">Analytics & insights</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Expenses */}
-            <a href="/expenses" className="group" data-testid="quick-action-expenses">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-red-500/10 rounded-lg mb-4">
-                  <i className="fas fa-wallet text-2xl text-red-500"></i>
+            <Link href="/expenses">
+              <a className="group" data-testid="quick-action-expenses">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-red-500/10 rounded-lg mb-4">
+                    <i className="fas fa-wallet text-2xl text-red-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Expenses</h3>
+                  <p className="text-sm text-muted-foreground">Track business costs</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Expenses</h3>
-                <p className="text-sm text-muted-foreground">Track business costs</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Profit Analysis */}
-            <a href="/expense-reports" className="group" data-testid="quick-action-profit">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-indigo-500/10 rounded-lg mb-4">
-                  <i className="fas fa-chart-pie text-2xl text-indigo-500"></i>
+            <Link href="/expense-reports">
+              <a className="group" data-testid="quick-action-profit">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-indigo-500/10 rounded-lg mb-4">
+                    <i className="fas fa-chart-pie text-2xl text-indigo-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Profit Analysis</h3>
+                  <p className="text-sm text-muted-foreground">Financial reports</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Profit Analysis</h3>
-                <p className="text-sm text-muted-foreground">Financial reports</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Promotions */}
-            <a href="/promotions" className="group" data-testid="quick-action-promotions">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-yellow-500/10 rounded-lg mb-4">
-                  <i className="fas fa-gift text-2xl text-yellow-500"></i>
+            <Link href="/promotions">
+              <a className="group" data-testid="quick-action-promotions">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-yellow-500/10 rounded-lg mb-4">
+                    <i className="fas fa-gift text-2xl text-yellow-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Promotions</h3>
+                  <p className="text-sm text-muted-foreground">Sales & discounts</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Promotions</h3>
-                <p className="text-sm text-muted-foreground">Sales & discounts</p>
-              </div>
-            </a>
+              </a>
+            </Link>
 
             {/* Locations */}
-            <a href="/locations" className="group" data-testid="quick-action-locations">
-              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                <div className="flex items-center justify-center w-12 h-12 bg-orange-500/10 rounded-lg mb-4">
-                  <i className="fas fa-map-marker-alt text-2xl text-orange-500"></i>
+            <Link href="/locations">
+              <a className="group" data-testid="quick-action-locations">
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center justify-center w-12 h-12 bg-orange-500/10 rounded-lg mb-4">
+                    <i className="fas fa-map-marker-alt text-2xl text-orange-500"></i>
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Locations</h3>
+                  <p className="text-sm text-muted-foreground">Multi-store management</p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Locations</h3>
-                <p className="text-sm text-muted-foreground">Multi-store management</p>
-              </div>
-            </a>
+              </a>
+            </Link>
           </div>
         </div>
 
@@ -263,32 +153,7 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-foreground mb-6">Analytics Overview</h2>
           <AnalyticsDashboard />
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-card border-t border-border mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">
-              © 2024 Midnight EPOS. All rights reserved.
-            </p>
-            <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">
-                Documentation
-              </a>
-              <a href="#" className="hover:text-foreground transition-colors">
-                Support
-              </a>
-              <a href="#" className="hover:text-foreground transition-colors">
-                Privacy
-              </a>
-              <a href="#" className="hover:text-foreground transition-colors">
-                Terms
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
