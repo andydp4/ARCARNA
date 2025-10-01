@@ -35,6 +35,7 @@ interface Customer {
 interface CartItem {
   product: Product;
   quantity: number;
+  customPrice: number;
   subtotal: number;
 }
 
@@ -145,7 +146,7 @@ export default function POS() {
             ? {
                 ...item,
                 quantity: item.quantity + 1,
-                subtotal: (item.quantity + 1) * price,
+                subtotal: (item.quantity + 1) * item.customPrice,
               }
             : item
         );
@@ -155,6 +156,7 @@ export default function POS() {
         {
           product,
           quantity: 1,
+          customPrice: price,
           subtotal: price,
         },
       ];
@@ -172,18 +174,30 @@ export default function POS() {
         .map((item) => {
           if (item.product.id === productId) {
             const newQuantity = Math.max(0, item.quantity + delta);
-            const price = typeof item.product.defaultSalePrice === 'string' 
-              ? parseFloat(item.product.defaultSalePrice) 
-              : item.product.defaultSalePrice;
             return {
               ...item,
               quantity: newQuantity,
-              subtotal: newQuantity * price,
+              subtotal: newQuantity * item.customPrice,
             };
           }
           return item;
         })
         .filter((item) => item.quantity > 0)
+    );
+  };
+  
+  // Update custom price for cart item
+  const updateCustomPrice = (productId: string, newPrice: number) => {
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? {
+              ...item,
+              customPrice: newPrice,
+              subtotal: item.quantity * newPrice,
+            }
+          : item
+      )
     );
   };
 
@@ -245,9 +259,7 @@ export default function POS() {
       items: cart.map((item) => ({
         product_id: item.product.id,
         quantity: item.quantity,
-        unit_price: typeof item.product.defaultSalePrice === 'string' 
-          ? parseFloat(item.product.defaultSalePrice) 
-          : item.product.defaultSalePrice,
+        unit_price: item.customPrice,
         total_price: item.subtotal,
       })),
       subtotal,
@@ -463,9 +475,9 @@ export default function POS() {
                       <div className="flex-1">
                         <div className="font-medium line-clamp-1">{item.product.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          ${typeof item.product.defaultSalePrice === 'string' 
+                          Default: ${typeof item.product.defaultSalePrice === 'string' 
                             ? parseFloat(item.product.defaultSalePrice).toFixed(2) 
-                            : item.product.defaultSalePrice.toFixed(2)} each
+                            : item.product.defaultSalePrice.toFixed(2)}
                         </div>
                       </div>
                       <Button
@@ -478,6 +490,29 @@ export default function POS() {
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
+                    
+                    {/* Price editing field */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Label className="text-sm">Price:</Label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm">$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.customPrice.toFixed(2)}
+                          onChange={(e) => {
+                            const newPrice = parseFloat(e.target.value);
+                            if (!isNaN(newPrice) && newPrice >= 0) {
+                              updateCustomPrice(item.product.id, newPrice);
+                            }
+                          }}
+                          className="h-8 w-24"
+                          data-testid={`price-input-${item.product.id}`}
+                        />
+                      </div>
+                    </div>
+                    
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Button
