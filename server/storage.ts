@@ -4,10 +4,16 @@ import {
   customerMetrics,
   analyticsDaily,
   analyticsMonthly,
+  products,
+  orders,
+  orderItems,
   type User,
   type UpsertUser,
   type Customer,
   type CustomerMetric,
+  type Product,
+  type Order,
+  type OrderItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
@@ -39,6 +45,11 @@ export interface IStorage {
       totalRevenue: string;
     }>
   >;
+  
+  // POS operations
+  getProducts(): Promise<Product[]>;
+  getCustomers(): Promise<Customer[]>;
+  createOrder(orderData: any): Promise<Order>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -136,6 +147,65 @@ export class DatabaseStorage implements IStorage {
       totalOrders: r.totalOrders || 0,
       totalRevenue: r.totalRevenue || "0",
     }));
+  }
+
+  async getProducts(): Promise<Product[]> {
+    return await db.select().from(products).orderBy(products.name);
+  }
+
+  async getCustomers(): Promise<Customer[]> {
+    return await db.select().from(customers).orderBy(customers.name);
+  }
+
+  async createOrder(orderData: any): Promise<Order> {
+    return await db.transaction(async (tx) => {
+      // Create order
+      const [order] = await tx
+        .insert(orders)
+        .values({
+          customerId: orderData.customer_id,
+          total: orderData.total,
+          paymentMethod: orderData.payment_method,
+          status: 'completed',
+        })
+        .returning();
+
+      // Create order items
+      if (orderData.items && orderData.items.length > 0) {
+        await tx.insert(orderItems).values(
+          orderData.items.map((item: any) => ({
+            orderId: order.id,
+            productId: item.product_id,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            totalPrice: item.total_price,
+          }))
+        );
+
+        // Update product stock
+        for (const item of orderData.items) {
+          await tx
+            .update(products)
+            .set({
+              stock: sql`stock - ${item.quantity}`,
+            })
+            .where(eq(products.id, item.product_id));
+        }
+      }
+
+      // Update customer loyalty points if applicable
+      if (orderData.customer_id) {
+        const points = Math.floor(orderData.total / 10); // 1 point per $10
+        await tx
+          .update(customers)
+          .set({
+            loyaltyPoints: sql`loyalty_points + ${points}`,
+          })
+          .where(eq(customers.id, orderData.customer_id));
+      }
+
+      return order;
+    });
   }
 }
 

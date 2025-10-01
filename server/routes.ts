@@ -66,6 +66,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Products routes
+  app.get("/api/products", isAuthenticated, async (req, res) => {
+    try {
+      const products = await storage.getProducts();
+      res.json(products);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      res.status(500).json({ message: "Failed to fetch products" });
+    }
+  });
+
+  // Customers routes
+  app.get("/api/customers", isAuthenticated, async (req, res) => {
+    try {
+      const customers = await storage.getCustomers();
+      res.json(customers);
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      res.status(500).json({ message: "Failed to fetch customers" });
+    }
+  });
+
+  // Orders routes
+  app.post("/api/orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const orderData = req.body;
+      const userId = req.user.claims.sub;
+      
+      // Create order with items
+      const order = await storage.createOrder({
+        ...orderData,
+        created_by: userId,
+      });
+      
+      res.json(order);
+    } catch (error) {
+      console.error("Error creating order:", error);
+      res.status(500).json({ message: "Failed to create order" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

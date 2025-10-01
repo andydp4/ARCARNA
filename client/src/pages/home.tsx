@@ -66,11 +66,18 @@ export default function Home() {
             {/* Navigation */}
             <nav className="hidden md:flex items-center gap-1">
               <a
-                href="#"
+                href="/"
                 className="px-4 py-2 text-white bg-slate-700 rounded-lg font-medium text-sm"
                 data-testid="link-analytics"
               >
                 <i className="fas fa-chart-line mr-2"></i>Analytics
+              </a>
+              <a
+                href="/pos"
+                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
+                data-testid="link-pos"
+              >
+                <i className="fas fa-cash-register mr-2"></i>POS Terminal
               </a>
               <a
                 href="#"
