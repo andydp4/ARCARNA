@@ -110,6 +110,8 @@ export interface IStorage {
     dailyOverhead: number;
     overheadBreakdown: any[];
   }>;
+  getExpenseReport(startDate: Date, endDate: Date): Promise<any>;
+  getProfitAnalysis(startDate: Date, endDate: Date): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -844,6 +846,218 @@ export class DatabaseStorage implements IStorage {
       }));
       await db.insert(orderExpenses).values(expensesWithOrderId);
     }
+  }
+
+  async getExpenseReport(startDate: Date, endDate: Date): Promise<any> {
+    // Get expense analytics first
+    const analytics = await this.getExpenseAnalytics(startDate, endDate);
+    
+    // Get detailed overhead expenses by category
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const overheadByCategory = await db
+      .select({
+        category: overheadExpenses.category,
+        total: sql<number>`SUM(CASE 
+          WHEN ${overheadExpenses.frequency} = 'daily' THEN CAST(${overheadExpenses.amount} AS DECIMAL) * ${daysDiff.toString()}
+          WHEN ${overheadExpenses.frequency} = 'weekly' THEN CAST(${overheadExpenses.amount} AS DECIMAL) / 7 * ${daysDiff.toString()}
+          WHEN ${overheadExpenses.frequency} = 'monthly' THEN CAST(${overheadExpenses.amount} AS DECIMAL) / 30 * ${daysDiff.toString()}
+          WHEN ${overheadExpenses.frequency} = 'yearly' THEN CAST(${overheadExpenses.amount} AS DECIMAL) / 365 * ${daysDiff.toString()}
+          ELSE 0
+        END)`,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(overheadExpenses)
+      .where(
+        and(
+          lte(overheadExpenses.startDate, endDate),
+          eq(overheadExpenses.isActive, 1),
+          or(
+            isNull(overheadExpenses.endDate),
+            gte(overheadExpenses.endDate, startDate)
+          )
+        )
+      )
+      .groupBy(overheadExpenses.category);
+    
+    // Get order expenses by category
+    const orderExpensesByCategory = await db
+      .select({
+        category: orderExpenses.category,
+        total: sql<number>`SUM(CAST(${orderExpenses.amount} AS DECIMAL))`,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(orderExpenses)
+      .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
+      .where(between(orders.createdAt, startDate, endDate))
+      .groupBy(orderExpenses.category);
+    
+    // Get daily expense trends
+    const dailyTrends = await db
+      .select({
+        date: sql<string>`DATE(${orders.createdAt})`,
+        orderExpenses: sql<number>`COALESCE(SUM(CAST(${orderExpenses.amount} AS DECIMAL)), 0)`,
+      })
+      .from(orders)
+      .leftJoin(orderExpenses, eq(orderExpenses.orderId, orders.id))
+      .where(between(orders.createdAt, startDate, endDate))
+      .groupBy(sql`DATE(${orders.createdAt})`);
+    
+    // Add daily overhead to trends  
+    const enhancedTrends = dailyTrends.map(day => ({
+      ...day,
+      overhead: analytics.dailyOverhead,
+      total: parseFloat(day.orderExpenses.toString()) + analytics.dailyOverhead,
+    }));
+    
+    return {
+      summary: analytics,
+      overheadByCategory: overheadByCategory.map(cat => ({
+        ...cat,
+        percentage: (cat.total / analytics.overheadTotal) * 100,
+      })),
+      orderExpensesByCategory: orderExpensesByCategory.map(cat => ({
+        ...cat,
+        percentage: (cat.total / analytics.orderExpenseTotal) * 100,
+      })),
+      dailyTrends: enhancedTrends,
+      period: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        days: daysDiff,
+      },
+    };
+  }
+
+  async getProfitAnalysis(startDate: Date, endDate: Date): Promise<any> {
+    // Get revenue data
+    const revenueData = await db
+      .select({
+        totalRevenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
+        orderCount: sql<number>`COUNT(*)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          between(orders.createdAt, startDate, endDate),
+          eq(orders.status, 'completed')
+        )
+      );
+    
+    const totalRevenue = revenueData[0]?.totalRevenue || 0;
+    const orderCount = revenueData[0]?.orderCount || 0;
+    
+    // Get COGS (Cost of Goods Sold)
+    const cogsData = await db
+      .select({
+        totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS INTEGER) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .where(
+        and(
+          between(orders.createdAt, startDate, endDate),
+          eq(orders.status, 'completed')
+        )
+      );
+    
+    const totalCOGS = cogsData[0]?.totalCOGS || 0;
+    
+    // Get expenses
+    const expenses = await this.getExpenseAnalytics(startDate, endDate);
+    
+    // Calculate profit margins
+    const grossProfit = totalRevenue - totalCOGS;
+    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    
+    const operatingProfit = grossProfit - expenses.totalExpenses;
+    const operatingMargin = totalRevenue > 0 ? (operatingProfit / totalRevenue) * 100 : 0;
+    
+    const netProfit = operatingProfit; // Could subtract taxes here if tracked
+    const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+    
+    // Get daily profit trends
+    const dailyProfits = await db
+      .select({
+        date: sql<string>`DATE(${orders.createdAt})`,
+        revenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
+        orderCount: sql<number>`COUNT(*)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          between(orders.createdAt, startDate, endDate),
+          eq(orders.status, 'completed')
+        )
+      )
+      .groupBy(sql`DATE(${orders.createdAt})`);
+    
+    // Get daily COGS for the profit trends
+    const dailyCOGS = await db
+      .select({
+        date: sql<string>`DATE(${orders.createdAt})`,
+        cogs: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS INTEGER) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .where(
+        and(
+          between(orders.createdAt, startDate, endDate),
+          eq(orders.status, 'completed')
+        )
+      )
+      .groupBy(sql`DATE(${orders.createdAt})`);
+    
+    // Combine daily data
+    const profitTrends = dailyProfits.map(day => {
+      const dailyCog = dailyCOGS.find(c => c.date === day.date)?.cogs || 0;
+      const revenue = typeof day.revenue === 'number' ? day.revenue : parseFloat(day.revenue.toString());
+      const dailyGrossProfit = revenue - (typeof dailyCog === 'number' ? dailyCog : parseFloat(dailyCog.toString()));
+      const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
+      
+      return {
+        date: day.date,
+        revenue: revenue,
+        cogs: typeof dailyCog === 'number' ? dailyCog : parseFloat(dailyCog.toString()),
+        grossProfit: dailyGrossProfit,
+        expenses: expenses.dailyOverhead,
+        netProfit: dailyNetProfit,
+        grossMargin: revenue > 0 ? (dailyGrossProfit / revenue) * 100 : 0,
+        netMargin: revenue > 0 ? (dailyNetProfit / revenue) * 100 : 0,
+      };
+    });
+    
+    // Calculate average order value
+    const averageOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
+    
+    return {
+      summary: {
+        revenue: totalRevenue,
+        cogs: totalCOGS,
+        grossProfit,
+        grossMargin,
+        operatingExpenses: expenses.totalExpenses,
+        operatingProfit,
+        operatingMargin,
+        netProfit,
+        netMargin,
+        orderCount,
+        averageOrderValue,
+      },
+      expenses: {
+        overhead: expenses.overheadTotal,
+        orderExpenses: expenses.orderExpenseTotal,
+        total: expenses.totalExpenses,
+        dailyOverhead: expenses.dailyOverhead,
+      },
+      dailyTrends: profitTrends,
+      period: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        days: Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+      },
+    };
   }
 
   async getExpenseAnalytics(startDate: Date, endDate: Date): Promise<any> {

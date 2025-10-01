@@ -490,6 +490,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/expense-report", isAuthenticated, async (req, res) => {
+    try {
+      const startDate = new Date(req.query.startDate as string);
+      const endDate = new Date(req.query.endDate as string);
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        res.status(400).json({ message: 'Invalid date format' });
+        return;
+      }
+      
+      const report = await storage.getExpenseReport(startDate, endDate);
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching expense report:", error);
+      res.status(500).json({ message: "Failed to fetch expense report" });
+    }
+  });
+
+  app.get("/api/profit-analysis", isAuthenticated, async (req, res) => {
+    try {
+      const startDate = new Date(req.query.startDate as string);
+      const endDate = new Date(req.query.endDate as string);
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        res.status(400).json({ message: 'Invalid date format' });
+        return;
+      }
+      
+      const analysis = await storage.getProfitAnalysis(startDate, endDate);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching profit analysis:", error);
+      res.status(500).json({ message: "Failed to fetch profit analysis" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

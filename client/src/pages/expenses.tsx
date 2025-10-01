@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, TrendingDown, DollarSign, Calendar } from "lucide-react";
+import { Plus, Edit, Trash2, TrendingDown, DollarSign, Calendar, FileText } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -212,10 +212,18 @@ export function ExpensesPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Expense Management</h1>
-        <Button onClick={openCreateDialog} data-testid="button-add-expense">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Overhead Expense
-        </Button>
+        <div className="flex gap-4">
+          <a href="/expense-reports">
+            <Button variant="outline" data-testid="button-view-reports">
+              <FileText className="mr-2 h-4 w-4" />
+              View Reports
+            </Button>
+          </a>
+          <Button onClick={openCreateDialog} data-testid="button-add-expense">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Overhead Expense
+          </Button>
+        </div>
       </div>
 
       {/* Analytics Cards */}
