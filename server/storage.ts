@@ -50,6 +50,10 @@ export interface IStorage {
   getProducts(): Promise<Product[]>;
   getCustomers(): Promise<Customer[]>;
   createOrder(orderData: any): Promise<Order>;
+  
+  // Inventory operations
+  getProductsWithStock(): Promise<Product[]>;
+  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string): Promise<Product>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -205,6 +209,61 @@ export class DatabaseStorage implements IStorage {
       }
 
       return order;
+    });
+  }
+
+  async getProductsWithStock(): Promise<Product[]> {
+    return await db.select().from(products).orderBy(products.name);
+  }
+
+  async updateProductStock(
+    productId: string, 
+    adjustment: number, 
+    type: 'add' | 'set',
+    userId: string
+  ): Promise<Product> {
+    return await db.transaction(async (tx) => {
+      // Get current product
+      const [currentProduct] = await tx
+        .select()
+        .from(products)
+        .where(eq(products.id, productId));
+      
+      if (!currentProduct) {
+        throw new Error('Product not found');
+      }
+
+      // Calculate new stock
+      const newStock = type === 'set' 
+        ? adjustment 
+        : currentProduct.stock + adjustment;
+
+      // Validate stock
+      if (newStock < 0) {
+        throw new Error('Stock cannot be negative');
+      }
+
+      // Update stock
+      const [updatedProduct] = await tx
+        .update(products)
+        .set({
+          stock: newStock,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, productId))
+        .returning();
+
+      // Log audit entry (optional - you can add audit logging here)
+      // await tx.insert(auditLogs).values({
+      //   userId,
+      //   action: 'UPDATE_STOCK',
+      //   entityType: 'product',
+      //   entityId: productId,
+      //   oldValues: { stock: currentProduct.stock },
+      //   newValues: { stock: newStock },
+      // });
+
+      return updatedProduct;
     });
   }
 }

@@ -107,6 +107,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Inventory routes
+  app.get("/api/inventory", isAuthenticated, async (req, res) => {
+    try {
+      const products = await storage.getProductsWithStock();
+      res.json(products);
+    } catch (error) {
+      console.error("Error fetching inventory:", error);
+      res.status(500).json({ message: "Failed to fetch inventory" });
+    }
+  });
+
+  app.patch("/api/inventory/:productId", isAuthenticated, async (req: any, res) => {
+    try {
+      const { productId } = req.params;
+      const { adjustment, type } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const product = await storage.updateProductStock(productId, adjustment, type, userId);
+      res.json(product);
+    } catch (error) {
+      console.error("Error updating inventory:", error);
+      res.status(500).json({ message: "Failed to update inventory" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
