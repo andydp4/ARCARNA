@@ -98,19 +98,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Orders routes
   app.post("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
-      const orderData = req.body;
+      // Validate order data using shared schema
+      const validatedData = insertOrderSchema.parse({
+        customerId: req.body.customer_id || null,
+        locationId: req.body.location_id || null,
+        total: req.body.total,
+        paymentMethod: req.body.payment_method,
+      });
+      
       const userId = req.user.claims.sub;
       
       // Create order with items
       const order = await storage.createOrder({
-        ...orderData,
+        ...validatedData,
+        items: req.body.items, // Items validated separately by storage layer
         created_by: userId,
       });
       
       res.json(order);
-    } catch (error) {
-      console.error("Error creating order:", error);
-      res.status(500).json({ message: "Failed to create order" });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ message: "Invalid order data", errors: error.errors });
+      } else {
+        console.error("Error creating order:", error);
+        res.status(500).json({ message: "Failed to create order" });
+      }
     }
   });
 
@@ -302,12 +314,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/loyalty-tiers/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const tierData = req.body;
-      const tier = await storage.updateLoyaltyTier(id, tierData);
+      // Partial validation - only validate provided fields
+      const validatedData = insertLoyaltyTierSchema.partial().parse(req.body);
+      const tier = await storage.updateLoyaltyTier(id, validatedData);
       res.json(tier);
-    } catch (error) {
-      console.error("Error updating loyalty tier:", error);
-      res.status(500).json({ message: "Failed to update loyalty tier" });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ message: "Invalid data", errors: error.errors });
+      } else {
+        console.error("Error updating loyalty tier:", error);
+        res.status(500).json({ message: "Failed to update loyalty tier" });
+      }
     }
   });
 
@@ -352,12 +369,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/promotions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const promoData = req.body;
-      const promo = await storage.updatePromotion(id, promoData);
+      // Partial validation - only validate provided fields
+      const validatedData = insertPromotionSchema.partial().parse(req.body);
+      const promo = await storage.updatePromotion(id, validatedData);
       res.json(promo);
-    } catch (error) {
-      console.error("Error updating promotion:", error);
-      res.status(500).json({ message: "Failed to update promotion" });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ message: "Invalid data", errors: error.errors });
+      } else {
+        console.error("Error updating promotion:", error);
+        res.status(500).json({ message: "Failed to update promotion" });
+      }
     }
   });
 
