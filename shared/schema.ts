@@ -74,6 +74,12 @@ export const loyaltyTiers = pgTable("loyalty_tiers", {
 
 export type LoyaltyTier = typeof loyaltyTiers.$inferSelect;
 export type InsertLoyaltyTier = typeof loyaltyTiers.$inferInsert;
+export const insertLoyaltyTierSchema = createInsertSchema(loyaltyTiers).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertLoyaltyTierData = z.infer<typeof insertLoyaltyTierSchema>;
 
 // Promotions/campaigns table
 export const promotions = pgTable("promotions", {
@@ -96,6 +102,13 @@ export const promotions = pgTable("promotions", {
 
 export type Promotion = typeof promotions.$inferSelect;
 export type InsertPromotion = typeof promotions.$inferInsert;
+export const insertPromotionSchema = createInsertSchema(promotions).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  usageCount: true 
+});
+export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 
 // Customers table
 export const customers = pgTable("customers", {
@@ -114,6 +127,14 @@ export const customers = pgTable("customers", {
 
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;
+export const insertCustomerSchema = createInsertSchema(customers).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  loyaltyPoints: true,
+  totalSpent: true
+});
+export type InsertCustomerData = z.infer<typeof insertCustomerSchema>;
 
 // Products table
 export const products = pgTable("products", {
@@ -135,6 +156,13 @@ export const products = pgTable("products", {
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = typeof products.$inferInsert;
+export const insertProductSchema = createInsertSchema(products).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  stock: true
+});
+export type InsertProductData = z.infer<typeof insertProductSchema>;
 
 // Orders table
 export const orders = pgTable("orders", {
@@ -150,6 +178,13 @@ export const orders = pgTable("orders", {
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
+export const insertOrderSchema = createInsertSchema(orders).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  status: true
+});
+export type InsertOrderData = z.infer<typeof insertOrderSchema>;
 
 // Order items table
 export const orderItems = pgTable("order_items", {

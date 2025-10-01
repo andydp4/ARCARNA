@@ -85,10 +85,8 @@ export default function POS() {
   // Validate promo code mutation
   const validatePromoMutation = useMutation({
     mutationFn: async (code: string) => {
-      return apiRequest("/api/promotions/validate", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
+      const response = await apiRequest("POST", "/api/promotions/validate", { code });
+      return response.json();
     },
     onSuccess: (promo) => {
       setAppliedPromo(promo);

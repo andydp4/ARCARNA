@@ -2,6 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { 
+  insertLoyaltyTierSchema, 
+  insertPromotionSchema,
+  insertOrderSchema,
+  insertCustomerSchema,
+  insertProductSchema
+} from "../shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -279,12 +286,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
     try {
-      const tierData = req.body;
-      const tier = await storage.createLoyaltyTier(tierData);
+      const validatedData = insertLoyaltyTierSchema.parse(req.body);
+      const tier = await storage.createLoyaltyTier(validatedData);
       res.json(tier);
-    } catch (error) {
-      console.error("Error creating loyalty tier:", error);
-      res.status(500).json({ message: "Failed to create loyalty tier" });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ message: "Invalid data", errors: error.errors });
+      } else {
+        console.error("Error creating loyalty tier:", error);
+        res.status(500).json({ message: "Failed to create loyalty tier" });
+      }
     }
   });
 
@@ -325,12 +336,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/promotions", isAuthenticated, async (req: any, res) => {
     try {
-      const promoData = req.body;
-      const promo = await storage.createPromotion(promoData);
+      const validatedData = insertPromotionSchema.parse(req.body);
+      const promo = await storage.createPromotion(validatedData);
       res.json(promo);
-    } catch (error) {
-      console.error("Error creating promotion:", error);
-      res.status(500).json({ message: "Failed to create promotion" });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        res.status(400).json({ message: "Invalid data", errors: error.errors });
+      } else {
+        console.error("Error creating promotion:", error);
+        res.status(500).json({ message: "Failed to create promotion" });
+      }
     }
   });
 
