@@ -16,17 +16,19 @@ import { Gift, Plus, Edit2, Trash2, Calendar, Percent, DollarSign, Tag, Clock, U
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
+import { insertPromotionSchema } from "@shared/schema";
 
-const promoFormSchema = z.object({
+// Extend the shared schema with form-specific validation
+const promoFormSchema = insertPromotionSchema.extend({
   name: z.string().min(1, "Name is required"),
-  code: z.string().min(1, "Code is required").toUpperCase(),
+  code: z.string().min(1, "Code is required").toUpperCase().optional(),
   type: z.enum(["percentage", "fixed", "bogo", "points"]),
-  value: z.number().min(0, "Value must be 0 or greater"),
-  minPurchase: z.number().min(0).optional(),
-  maxDiscount: z.number().min(0).optional(),
+  value: z.coerce.number().min(0, "Value must be 0 or greater").transform(v => String(v)),
+  minPurchase: z.coerce.number().min(0).optional().transform(v => v ? String(v) : undefined),
+  maxDiscount: z.coerce.number().min(0).optional().transform(v => v ? String(v) : undefined),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
-  usageLimit: z.number().min(1).optional(),
+  usageLimit: z.coerce.number().min(1).optional(),
   isActive: z.boolean(),
 });
 

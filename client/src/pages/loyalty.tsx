@@ -14,14 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Award, Crown, Star, Plus, Edit2, Trash2, Users, TrendingUp, Gift } from "lucide-react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { insertLoyaltyTierSchema } from "@shared/schema";
 
-const tierFormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  pointsRequired: z.number().min(0, "Points must be 0 or greater"),
-  discountPercentage: z.number().min(0).max(100, "Discount must be between 0 and 100"),
-  pointsMultiplier: z.number().min(1).max(10, "Multiplier must be between 1 and 10"),
-  color: z.string().regex(/^#[0-9A-F]{6}$/i, "Must be a valid hex color"),
-  benefits: z.string().optional(),
+// Extend the shared schema with form-specific validation
+const tierFormSchema = insertLoyaltyTierSchema.extend({
+  pointsRequired: z.coerce.number().min(0, "Points must be 0 or greater"),
+  discountPercentage: z.coerce.number().min(0).max(100, "Discount must be between 0 and 100").transform(v => String(v)),
+  pointsMultiplier: z.coerce.number().min(1).max(10, "Multiplier must be between 1 and 10").transform(v => String(v)),
+  color: z.string().regex(/^#[0-9A-F]{6}$/i, "Must be a valid hex color").optional().default("#808080"),
 });
 
 type TierFormValues = z.infer<typeof tierFormSchema>;
