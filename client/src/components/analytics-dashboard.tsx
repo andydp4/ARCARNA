@@ -6,20 +6,22 @@ import TopCustomersTable from "./top-customers-table";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AnalyticsDashboard() {
-  const { data: monthlySummary, isLoading: isLoadingMonthly } = useQuery({
+  const { data: monthlySummary = [], isLoading: isLoadingMonthly } = useQuery<any[]>({
     queryKey: ["/api/analytics/monthly-summary"],
   });
 
-  const totalRevenue =
-    monthlySummary?.reduce(
-      (sum: number, month: any) => sum + parseFloat(month.totalRevenue || "0"),
-      0
-    ) || 0;
-  const totalOrders =
-    monthlySummary?.reduce(
-      (sum: number, month: any) => sum + (month.totalOrders || 0),
-      0
-    ) || 0;
+  const totalRevenue = Array.isArray(monthlySummary) 
+    ? monthlySummary.reduce(
+        (sum: number, month: any) => sum + parseFloat(month.totalRevenue || "0"),
+        0
+      )
+    : 0;
+  const totalOrders = Array.isArray(monthlySummary)
+    ? monthlySummary.reduce(
+        (sum: number, month: any) => sum + (month.totalOrders || 0),
+        0
+      )
+    : 0;
   const avgOrderValue =
     totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
