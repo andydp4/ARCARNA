@@ -22,7 +22,7 @@ if (hasDb()){
     InvoicesPortPuppeteer,
     AnalyticsSinkDrizzle,
     AuditPortDrizzle,
-    async (fn) => withTransaction(async (tx)=> fn(tx))
+    async (fn: any) => withTransaction(async (tx: any)=> fn(tx))
   )
 } else {
   // In-memory wiring (no external services required)

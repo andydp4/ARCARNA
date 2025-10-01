@@ -37,13 +37,13 @@ export default function Home() {
     window.location.href = "/api/logout";
   };
 
-  const userName = user?.firstName && user?.lastName 
-    ? `${user.firstName} ${user.lastName}`
-    : user?.email || "User";
+  const userName = (user as any)?.firstName && (user as any)?.lastName 
+    ? `${(user as any).firstName} ${(user as any).lastName}`
+    : (user as any)?.email || "User";
   
-  const userInitials = user?.firstName && user?.lastName
-    ? `${user.firstName[0]}${user.lastName[0]}`
-    : user?.email ? user.email.substring(0, 2).toUpperCase()
+  const userInitials = (user as any)?.firstName && (user as any)?.lastName
+    ? `${(user as any).firstName[0]}${(user as any).lastName[0]}`
+    : (user as any)?.email ? (user as any).email.substring(0, 2).toUpperCase()
     : "U";
 
   return (

@@ -159,15 +159,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const products = await storage.getProductsWithStock();
       const alerts = products
         .filter(product => {
+          if (product.stock == null || product.stockLimit == null) return false;
           const stockPercentage = (product.stock / product.stockLimit) * 100;
           return product.stock <= product.stockLimit && stockPercentage <= 30;
         })
         .map(product => ({
           ...product,
           alertLevel: product.stock === 0 ? 'critical' : 
-                      (product.stock / product.stockLimit) * 100 <= 10 ? 'high' : 
+                      ((product.stock || 0) / (product.stockLimit || 1)) * 100 <= 10 ? 'high' : 
                       'medium',
-          stockPercentage: (product.stock / product.stockLimit) * 100
+          stockPercentage: ((product.stock || 0) / (product.stockLimit || 1)) * 100
         }))
         .sort((a, b) => a.stockPercentage - b.stockPercentage);
       

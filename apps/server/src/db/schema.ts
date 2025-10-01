@@ -91,7 +91,8 @@ export const domain_outbox = pgTable('domain_outbox', {
 
 
 /* === Analytics Tables === */
-import { primaryKey, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
+import { primaryKey } from 'drizzle-orm/pg-core'
 
 export const analytics_daily = pgTable('analytics_daily', {
   date: date('date').primaryKey(),
