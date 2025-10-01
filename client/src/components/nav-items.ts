@@ -10,7 +10,8 @@ import {
   FileText,
   BarChart3,
   Home,
-  Award
+  Award,
+  Boxes
 } from 'lucide-react'
 
 export const navItems = [
@@ -29,10 +30,17 @@ export const navItems = [
     testId: 'nav-pos'
   },
   {
+    key: 'products',
+    label: 'Products',
+    href: '/products',
+    icon: Package,
+    testId: 'nav-products'
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     href: '/inventory',
-    icon: Package,
+    icon: Boxes,
     testId: 'nav-inventory'
   },
   {

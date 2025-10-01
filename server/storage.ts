@@ -65,6 +65,13 @@ export interface IStorage {
   getCustomers(): Promise<Customer[]>;
   createOrder(orderData: any): Promise<Order>;
   
+  // Product operations
+  createProduct(data: any): Promise<Product>;
+  updateProduct(id: string, data: any): Promise<Product>;
+  deleteProduct(id: string): Promise<void>;
+  getProduct(id: string): Promise<Product | null>;
+  importProducts(products: any[]): Promise<{ imported: number; failed: number; errors: string[] }>;
+  
   // Customer operations
   createCustomer(data: any): Promise<Customer>;
   updateCustomer(id: string, data: any): Promise<Customer>;
@@ -219,6 +226,114 @@ export class DatabaseStorage implements IStorage {
 
   async getProducts(): Promise<Product[]> {
     return await db.select().from(products).orderBy(products.name);
+  }
+
+  async createProduct(data: any): Promise<Product> {
+    const [product] = await db
+      .insert(products)
+      .values({
+        productId: data.productId || `PRD-${Date.now()}`,
+        name: data.name,
+        barcode: data.barcode,
+        price: data.price,
+        tax: data.tax || 0,
+        stock: data.stock || 0,
+        stockLimit: data.stockLimit || 100,
+        categoryId: data.categoryId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return product;
+  }
+
+  async updateProduct(id: string, data: any): Promise<Product> {
+    const [product] = await db
+      .update(products)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(products.id, id))
+      .returning();
+    return product;
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    await db.delete(products).where(eq(products.id, id));
+  }
+
+  async getProduct(id: string): Promise<Product | null> {
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, id));
+    return product || null;
+  }
+
+  async importProducts(productList: any[]): Promise<{ imported: number; failed: number; errors: string[] }> {
+    let imported = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const productData of productList) {
+      try {
+        // Validate required fields
+        if (!productData.name || !productData.price) {
+          errors.push(`Row ${failed + imported + 1}: Missing required fields (name or price)`);
+          failed++;
+          continue;
+        }
+
+        // Check if product with same productId or barcode exists
+        let existingProduct = null;
+        if (productData.productId) {
+          [existingProduct] = await db
+            .select()
+            .from(products)
+            .where(eq(products.productId, productData.productId));
+        }
+
+        if (existingProduct) {
+          // Update existing product
+          await db
+            .update(products)
+            .set({
+              name: productData.name,
+              barcode: productData.barcode || existingProduct.barcode,
+              price: productData.price,
+              tax: productData.tax ?? existingProduct.tax,
+              stock: productData.stock ?? existingProduct.stock,
+              stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
+              categoryId: productData.categoryId || existingProduct.categoryId,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, existingProduct.id));
+        } else {
+          // Create new product
+          await db
+            .insert(products)
+            .values({
+              productId: productData.productId || `PRD-${Date.now()}-${imported}`,
+              name: productData.name,
+              barcode: productData.barcode,
+              price: productData.price,
+              tax: productData.tax || 0,
+              stock: productData.stock || 0,
+              stockLimit: productData.stockLimit || 100,
+              categoryId: productData.categoryId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+        }
+        imported++;
+      } catch (error: any) {
+        errors.push(`Row ${failed + imported + 1}: ${error.message}`);
+        failed++;
+      }
+    }
+
+    return { imported, failed, errors };
   }
 
   async getCustomers(): Promise<Customer[]> {

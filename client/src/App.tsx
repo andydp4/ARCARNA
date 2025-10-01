@@ -17,6 +17,7 @@ import Promotions from "@/pages/promotions";
 import { ExpensesPage } from "@/pages/expenses";
 import { ExpenseReportsPage } from "@/pages/expense-reports";
 import Customers from "@/pages/customers";
+import ProductManagement from "@/pages/product-management";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -31,6 +32,7 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/pos" component={POS} />
           <Route path="/inventory" component={Inventory} />
+          <Route path="/products" component={ProductManagement} />
           <Route path="/reports" component={Reports} />
           <Route path="/locations" component={Locations} />
           <Route path="/customers" component={Customers} />
