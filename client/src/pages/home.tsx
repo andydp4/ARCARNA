@@ -101,6 +101,13 @@ export default function Home() {
                 <i className="fas fa-boxes mr-2"></i>Inventory
               </a>
               <a
+                href="/loyalty"
+                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
+                data-testid="link-loyalty"
+              >
+                <i className="fas fa-award mr-2"></i>Loyalty
+              </a>
+              <a
                 href="#"
                 className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium text-sm transition-colors"
                 data-testid="link-customers"
