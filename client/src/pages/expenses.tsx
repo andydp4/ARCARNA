@@ -210,18 +210,18 @@ export function ExpensesPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Expense Management</h1>
-        <div className="flex gap-4">
-          <a href="/expense-reports">
-            <Button variant="outline" data-testid="button-view-reports">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold">Expense Management</h1>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <a href="/expense-reports" className="flex-1 sm:flex-initial">
+            <Button variant="outline" className="min-h-[44px] w-full" data-testid="button-view-reports">
               <FileText className="mr-2 h-4 w-4" />
-              View Reports
+              <span className="hidden sm:inline">View Reports</span>
             </Button>
           </a>
-          <Button onClick={openCreateDialog} data-testid="button-add-expense">
+          <Button onClick={openCreateDialog} className="min-h-[44px] flex-1 sm:flex-initial" data-testid="button-add-expense">
             <Plus className="mr-2 h-4 w-4" />
-            Add Overhead Expense
+            <span className="hidden sm:inline">Add Expense</span>
           </Button>
         </div>
       </div>

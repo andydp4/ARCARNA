@@ -132,9 +132,9 @@ export default function LoyaltyPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Loyalty Program</h1>
-        <Button onClick={() => openTierDialog()} data-testid="button-add-tier">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold">Loyalty Program</h1>
+        <Button onClick={() => openTierDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-tier">
           <Plus className="mr-2 h-4 w-4" />
           Add Tier
         </Button>
@@ -142,11 +142,11 @@ export default function LoyaltyPage() {
 
       <Tabs defaultValue="tiers" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="tiers" data-testid="tab-tiers">
+          <TabsTrigger value="tiers" className="min-h-[44px]" data-testid="tab-tiers">
             <Crown className="mr-2 h-4 w-4" />
             Loyalty Tiers
           </TabsTrigger>
-          <TabsTrigger value="customers" data-testid="tab-customers">
+          <TabsTrigger value="customers" className="min-h-[44px]" data-testid="tab-customers">
             <Users className="mr-2 h-4 w-4" />
             Customer Status
           </TabsTrigger>
@@ -154,7 +154,7 @@ export default function LoyaltyPage() {
 
         <TabsContent value="tiers" className="space-y-4">
           {/* Tier Overview Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Tiers</CardTitle>
@@ -205,7 +205,7 @@ export default function LoyaltyPage() {
           {tiersLoading ? (
             <div>Loading tiers...</div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {tierStats
                 .sort((a: any, b: any) => a.pointsRequired - b.pointsRequired)
                 .map((tier: any) => (

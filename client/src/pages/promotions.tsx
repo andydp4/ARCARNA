@@ -191,16 +191,16 @@ export default function PromotionsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Promotional Campaigns</h1>
-        <Button onClick={() => openPromoDialog()} data-testid="button-add-promotion">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold">Promotional Campaigns</h1>
+        <Button onClick={() => openPromoDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-promotion">
           <Plus className="mr-2 h-4 w-4" />
           New Campaign
         </Button>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Campaigns</CardTitle>
