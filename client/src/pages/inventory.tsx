@@ -130,21 +130,21 @@ export default function Inventory() {
       {/* Header */}
       <header className="bg-primary border-b border-slate-700 sticky top-0 z-50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-10 h-10 bg-accent rounded-lg">
-                <Package className="h-5 w-5 text-white" />
+          <div className="flex items-center justify-between h-14 sm:h-16">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-accent rounded-lg">
+                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">Inventory Management</h1>
-                <p className="text-xs text-slate-400">Real-time Stock Tracking</p>
+                <h1 className="text-base sm:text-xl font-bold text-white">Inventory Management</h1>
+                <p className="hidden sm:block text-xs text-slate-400">Real-time Stock Tracking</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button asChild variant="ghost" className="text-white" data-testid="link-home">
+              <Button asChild variant="ghost" className="text-white min-h-[44px]" data-testid="link-home">
                 <Link href="/">
-                  <Home className="mr-2 h-4 w-4" />
-                  Dashboard
+                  <Home className="mr-0 sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Dashboard</span>
                 </Link>
               </Button>
             </div>
@@ -152,15 +152,15 @@ export default function Inventory() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Alerts Section */}
         {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (
-          <div className="mb-6 space-y-4">
+          <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
             {outOfStockProducts.length > 0 && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Out of Stock Alert</AlertTitle>
-                <AlertDescription>
+                <AlertTitle className="text-sm sm:text-base">Out of Stock Alert</AlertTitle>
+                <AlertDescription className="text-xs sm:text-sm">
                   {outOfStockProducts.length} product{outOfStockProducts.length !== 1 ? 's are' : ' is'} out of stock:
                   {' '}{outOfStockProducts.slice(0, 3).map(p => p.name).join(', ')}
                   {outOfStockProducts.length > 3 && ` and ${outOfStockProducts.length - 3} more`}
@@ -170,8 +170,8 @@ export default function Inventory() {
             {lowStockProducts.length > 0 && (
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Low Stock Warning</AlertTitle>
-                <AlertDescription>
+                <AlertTitle className="text-sm sm:text-base">Low Stock Warning</AlertTitle>
+                <AlertDescription className="text-xs sm:text-sm">
                   {lowStockProducts.length} product{lowStockProducts.length !== 1 ? 's have' : ' has'} low stock:
                   {' '}{lowStockProducts.slice(0, 3).map(p => p.name).join(', ')}
                   {lowStockProducts.length > 3 && ` and ${lowStockProducts.length - 3} more`}
@@ -182,7 +182,7 @@ export default function Inventory() {
         )}
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Products</CardTitle>
@@ -223,18 +223,18 @@ export default function Inventory() {
         </div>
 
         {/* Search and Actions */}
-        <div className="mb-6 flex gap-2">
+        <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by product name, SKU, or barcode..."
+              placeholder="Search products..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 min-h-[44px]"
               data-testid="search-inventory"
             />
           </div>
-          <Button onClick={() => refetch()} variant="outline" data-testid="button-refresh">
+          <Button onClick={() => refetch()} variant="outline" className="min-h-[44px]" data-testid="button-refresh">
             Refresh
           </Button>
         </div>
@@ -242,98 +242,175 @@ export default function Inventory() {
         {/* Products Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Product Inventory</CardTitle>
-            <CardDescription>Manage stock levels and monitor inventory in real-time</CardDescription>
+            <CardTitle className="text-base sm:text-lg">Product Inventory</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Manage stock levels and monitor inventory in real-time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Cost Price</TableHead>
-                    <TableHead>Sale Price</TableHead>
-                    <TableHead>Stock Level</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">Loading inventory...</TableCell>
-                    </TableRow>
-                  ) : filteredProducts.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">No products found</TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredProducts.map((product) => {
-                      const stockStatus = getStockStatus(product);
-                      const stockPercentage = (product.stock / product.stockLimit) * 100;
-                      
-                      return (
-                        <TableRow key={product.id} data-testid={`inventory-row-${product.id}`}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{product.name}</div>
-                              {product.barcode && (
-                                <div className="text-xs text-muted-foreground">{product.barcode}</div>
-                              )}
+            {isLoading ? (
+              <div className="text-center py-8">Loading inventory...</div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="text-center py-8">No products found</div>
+            ) : (
+              <>
+                {/* Mobile Card View */}
+                <div className="block lg:hidden space-y-3">
+                  {filteredProducts.map((product) => {
+                    const stockStatus = getStockStatus(product);
+                    const stockPercentage = (product.stock / product.stockLimit) * 100;
+                    
+                    return (
+                      <Card key={product.id} className="border-2" data-testid={`inventory-card-${product.id}`}>
+                        <CardContent className="p-4">
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="font-semibold text-base">{product.name}</div>
+                                <div className="text-xs text-muted-foreground">SKU: {product.productId}</div>
+                                {product.barcode && (
+                                  <div className="text-xs text-muted-foreground">{product.barcode}</div>
+                                )}
+                              </div>
+                              <Badge variant={stockStatus.variant}>{stockStatus.status}</Badge>
                             </div>
-                          </TableCell>
-                          <TableCell>{product.productId}</TableCell>
-                          <TableCell>
-                            ${typeof product.costPrice === 'string' 
-                              ? parseFloat(product.costPrice).toFixed(2) 
-                              : (product.costPrice || 0).toFixed(2)}
-                          </TableCell>
-                          <TableCell>
-                            ${typeof product.defaultSalePrice === 'string' 
-                              ? parseFloat(product.defaultSalePrice).toFixed(2) 
-                              : product.defaultSalePrice.toFixed(2)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`font-medium ${stockStatus.color}`}>
+                            
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Cost Price</div>
+                                <div className="font-medium">
+                                  ${typeof product.costPrice === 'string' 
+                                    ? parseFloat(product.costPrice).toFixed(2) 
+                                    : (product.costPrice || 0).toFixed(2)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Sale Price</div>
+                                <div className="font-medium">
+                                  ${typeof product.defaultSalePrice === 'string' 
+                                    ? parseFloat(product.defaultSalePrice).toFixed(2) 
+                                    : product.defaultSalePrice.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-muted-foreground">Stock Level</span>
+                                <span className={`text-sm font-medium ${stockStatus.color}`}>
                                   {product.stock} / {product.stockLimit}
                                 </span>
                               </div>
                               <Progress value={stockPercentage} className="h-2" />
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={stockStatus.variant}>{stockStatus.status}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
+                            
+                            <div className="flex gap-2 pt-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openAdjustmentDialog(product, "add")}
+                                className="flex-1 min-h-[44px]"
                                 data-testid={`button-add-stock-${product.id}`}
                               >
-                                <Plus className="h-3 w-3" />
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Stock
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openAdjustmentDialog(product, "set")}
+                                className="flex-1 min-h-[44px]"
                                 data-testid={`button-set-stock-${product.id}`}
                               >
-                                Set
+                                Set Level
                               </Button>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Cost Price</TableHead>
+                        <TableHead>Sale Price</TableHead>
+                        <TableHead>Stock Level</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProducts.map((product) => {
+                        const stockStatus = getStockStatus(product);
+                        const stockPercentage = (product.stock / product.stockLimit) * 100;
+                        
+                        return (
+                          <TableRow key={product.id} data-testid={`inventory-row-${product.id}`}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{product.name}</div>
+                                {product.barcode && (
+                                  <div className="text-xs text-muted-foreground">{product.barcode}</div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>{product.productId}</TableCell>
+                            <TableCell>
+                              ${typeof product.costPrice === 'string' 
+                                ? parseFloat(product.costPrice).toFixed(2) 
+                                : (product.costPrice || 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              ${typeof product.defaultSalePrice === 'string' 
+                                ? parseFloat(product.defaultSalePrice).toFixed(2) 
+                                : product.defaultSalePrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-medium ${stockStatus.color}`}>
+                                    {product.stock} / {product.stockLimit}
+                                  </span>
+                                </div>
+                                <Progress value={stockPercentage} className="h-2" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={stockStatus.variant}>{stockStatus.status}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openAdjustmentDialog(product, "add")}
+                                  data-testid={`button-add-stock-${product.id}`}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openAdjustmentDialog(product, "set")}
+                                  data-testid={`button-set-stock-${product.id}`}
+                                >
+                                  Set
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </main>
@@ -361,17 +438,19 @@ export default function Inventory() {
               placeholder={adjustmentType === "add" ? "Enter adjustment amount (+ or -)" : "Enter new stock level"}
               value={adjustmentValue}
               onChange={(e) => setAdjustmentValue(e.target.value)}
+              className="min-h-[44px]"
               data-testid="input-adjustment"
             />
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAdjustmentDialogOpen(false)}>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setAdjustmentDialogOpen(false)} className="min-h-[44px]">
               Cancel
             </Button>
             <Button 
               onClick={handleStockAdjustment} 
               disabled={!adjustmentValue || adjustStockMutation.isPending}
+              className="min-h-[44px]"
               data-testid="button-confirm-adjustment"
             >
               {adjustStockMutation.isPending ? "Updating..." : "Confirm"}

@@ -119,6 +119,7 @@ export default function Customers() {
       phone: '',
       email: '',
       address: '',
+      deliveryAddress: '',
       category: 'Bronze',
     })
   }
@@ -147,6 +148,7 @@ export default function Customers() {
       phone: customer.phone || '',
       email: customer.email || '',
       address: customer.address || '',
+      deliveryAddress: customer.deliveryAddress || '',
       category: customer.category || 'Bronze',
     })
   }
@@ -182,16 +184,16 @@ export default function Customers() {
 
   return (
     <div className="w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Customer Database</h1>
-            <p className="text-muted-foreground mt-1">Manage your customer records and information</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Customer Database</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">Manage your customer records and information</p>
           </div>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button className="gap-2" data-testid="button-add-customer">
+              <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
                 <UserPlus className="h-4 w-4" />
                 Add Customer
               </Button>
@@ -211,6 +213,7 @@ export default function Customers() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="John Doe"
+                    className="min-h-[44px]"
                     data-testid="input-customer-name"
                   />
                 </div>
@@ -221,6 +224,7 @@ export default function Customers() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="+1 234 567 8900"
+                    className="min-h-[44px]"
                     data-testid="input-customer-phone"
                   />
                 </div>
@@ -232,6 +236,7 @@ export default function Customers() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="john@example.com"
+                    className="min-h-[44px]"
                     data-testid="input-customer-email"
                   />
                 </div>
@@ -242,6 +247,7 @@ export default function Customers() {
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     placeholder="123 Main St, City, State"
+                    className="min-h-[44px]"
                     data-testid="input-customer-address"
                   />
                 </div>
@@ -252,13 +258,14 @@ export default function Customers() {
                     value={formData.deliveryAddress || ''}
                     onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                     placeholder="Delivery address (if different from billing)"
+                    className="min-h-[44px]"
                     data-testid="input-customer-delivery-address"
                   />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="category">Category</Label>
                   <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                    <SelectTrigger data-testid="select-customer-category">
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-customer-category">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -270,11 +277,11 @@ export default function Customers() {
                   </Select>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setShowAddDialog(false)} className="min-h-[44px]">
                   Cancel
                 </Button>
-                <Button onClick={handleSubmit} disabled={createMutation.isPending} data-testid="button-save-customer">
+                <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-customer">
                   {createMutation.isPending ? 'Creating...' : 'Create Customer'}
                 </Button>
               </DialogFooter>
@@ -283,7 +290,7 @@ export default function Customers() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
@@ -329,14 +336,14 @@ export default function Customers() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
-              placeholder="Search customers by name, email, or phone..."
+              placeholder="Search customers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 min-h-[44px]"
               data-testid="input-search-customers"
             />
           </div>
@@ -345,77 +352,78 @@ export default function Customers() {
         {/* Customers Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Customer List</CardTitle>
-            <CardDescription>View and manage all customer records</CardDescription>
+            <CardTitle className="text-base sm:text-lg">Customer List</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">View and manage all customer records</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Loyalty Points</TableHead>
-                  <TableHead>Total Spent</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCustomers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
-                      No customers found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredCustomers.map((customer: any) => (
-                    <TableRow key={customer.id} data-testid={`customer-row-${customer.id}`}>
-                      <TableCell className="font-medium">{customer.name}</TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          {customer.phone && (
-                            <div className="flex items-center gap-1 text-sm">
-                              <Phone className="h-3 w-3" />
-                              {customer.phone}
+            {filteredCustomers.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">No customers found</div>
+            ) : (
+              <>
+                {/* Mobile Card View */}
+                <div className="block lg:hidden space-y-3">
+                  {filteredCustomers.map((customer: any) => (
+                    <Card key={customer.id} className="border-2" data-testid={`customer-card-${customer.id}`}>
+                      <CardContent className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="font-semibold text-base">{customer.name}</div>
+                              <Badge className={`${getCategoryColor(customer.category)} mt-1`}>
+                                {customer.category}
+                              </Badge>
                             </div>
-                          )}
-                          {customer.email && (
-                            <div className="flex items-center gap-1 text-sm">
-                              <Mail className="h-3 w-3" />
-                              {customer.email}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {customer.address && (
-                          <div className="flex items-center gap-1 text-sm">
-                            <MapPin className="h-3 w-3" />
-                            {customer.address}
                           </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getCategoryColor(customer.category)}>
-                          {customer.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{customer.loyaltyPoints || 0}</TableCell>
-                      <TableCell>${customer.totalSpent || '0.00'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Dialog open={editingCustomer?.id === customer.id} onOpenChange={(open) => !open && setEditingCustomer(null)}>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(customer)}
-                                data-testid={`button-edit-${customer.id}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
+                          
+                          {(customer.phone || customer.email) && (
+                            <div className="space-y-1 text-sm">
+                              {customer.phone && (
+                                <div className="flex items-center gap-2">
+                                  <Phone className="h-3 w-3 text-muted-foreground" />
+                                  <span>{customer.phone}</span>
+                                </div>
+                              )}
+                              {customer.email && (
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-3 w-3 text-muted-foreground" />
+                                  <span className="truncate">{customer.email}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {customer.address && (
+                            <div className="flex items-start gap-2 text-sm">
+                              <MapPin className="h-3 w-3 text-muted-foreground mt-0.5" />
+                              <span className="text-muted-foreground">{customer.address}</span>
+                            </div>
+                          )}
+                          
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t text-sm">
+                            <div>
+                              <div className="text-xs text-muted-foreground">Loyalty Points</div>
+                              <div className="font-medium">{customer.loyaltyPoints || 0}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Total Spent</div>
+                              <div className="font-medium">${customer.totalSpent || '0.00'}</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-2 pt-2">
+                            <Dialog open={editingCustomer?.id === customer.id} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleEdit(customer)}
+                                  className="flex-1 min-h-[44px]"
+                                  data-testid={`button-edit-${customer.id}`}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Button>
+                              </DialogTrigger>
                             <DialogContent>
                               <DialogHeader>
                                 <DialogTitle>Edit Customer</DialogTitle>
@@ -425,55 +433,60 @@ export default function Customers() {
                               </DialogHeader>
                               <div className="grid gap-4 py-4">
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-name">Name *</Label>
+                                  <Label htmlFor="edit-name-mobile">Name *</Label>
                                   <Input
-                                    id="edit-name"
+                                    id="edit-name-mobile"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="John Doe"
+                                    className="min-h-[44px]"
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-phone">Phone</Label>
+                                  <Label htmlFor="edit-phone-mobile">Phone</Label>
                                   <Input
-                                    id="edit-phone"
+                                    id="edit-phone-mobile"
                                     value={formData.phone}
                                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                     placeholder="+1 234 567 8900"
+                                    className="min-h-[44px]"
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-email">Email</Label>
+                                  <Label htmlFor="edit-email-mobile">Email</Label>
                                   <Input
-                                    id="edit-email"
+                                    id="edit-email-mobile"
                                     type="email"
                                     value={formData.email}
                                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                     placeholder="john@example.com"
+                                    className="min-h-[44px]"
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-address">Billing Address</Label>
+                                  <Label htmlFor="edit-address-mobile">Billing Address</Label>
                                   <Input
-                                    id="edit-address"
+                                    id="edit-address-mobile"
                                     value={formData.address}
                                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                     placeholder="123 Main St, City, State"
+                                    className="min-h-[44px]"
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-deliveryAddress">Delivery Address</Label>
+                                  <Label htmlFor="edit-deliveryAddress-mobile">Delivery Address</Label>
                                   <Input
-                                    id="edit-deliveryAddress"
+                                    id="edit-deliveryAddress-mobile"
                                     value={formData.deliveryAddress || ''}
                                     onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                                     placeholder="Delivery address (if different from billing)"
+                                    className="min-h-[44px]"
                                   />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label htmlFor="edit-category">Category</Label>
+                                  <Label htmlFor="edit-category-mobile">Category</Label>
                                   <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="min-h-[44px]">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -485,31 +498,196 @@ export default function Customers() {
                                   </Select>
                                 </div>
                               </div>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setEditingCustomer(null)}>
+                              <DialogFooter className="gap-2">
+                                <Button variant="outline" onClick={() => setEditingCustomer(null)} className="min-h-[44px]">
                                   Cancel
                                 </Button>
-                                <Button onClick={handleSubmit} disabled={updateMutation.isPending}>
+                                <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
                                   {updateMutation.isPending ? 'Updating...' : 'Update Customer'}
                                 </Button>
                               </DialogFooter>
                             </DialogContent>
                           </Dialog>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(customer.id)}
-                            data-testid={`button-delete-${customer.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(customer.id)}
+                              className="flex-1 min-h-[44px]"
+                              data-testid={`button-delete-${customer.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                              Delete
+                            </Button>
+                          </div>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Address</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Loyalty Points</TableHead>
+                        <TableHead>Total Spent</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCustomers.map((customer: any) => (
+                        <TableRow key={customer.id} data-testid={`customer-row-${customer.id}`}>
+                          <TableCell className="font-medium">{customer.name}</TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              {customer.phone && (
+                                <div className="flex items-center gap-1 text-sm">
+                                  <Phone className="h-3 w-3" />
+                                  {customer.phone}
+                                </div>
+                              )}
+                              {customer.email && (
+                                <div className="flex items-center gap-1 text-sm">
+                                  <Mail className="h-3 w-3" />
+                                  {customer.email}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {customer.address && (
+                              <div className="flex items-center gap-1 text-sm">
+                                <MapPin className="h-3 w-3" />
+                                {customer.address}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getCategoryColor(customer.category)}>
+                              {customer.category}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{customer.loyaltyPoints || 0}</TableCell>
+                          <TableCell>${customer.totalSpent || '0.00'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Dialog open={editingCustomer?.id === customer.id} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEdit(customer)}
+                                    data-testid={`button-edit-${customer.id}`}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Edit Customer</DialogTitle>
+                                    <DialogDescription>
+                                      Update customer information
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="grid gap-4 py-4">
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-name-desktop">Name *</Label>
+                                      <Input
+                                        id="edit-name-desktop"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="John Doe"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-phone-desktop">Phone</Label>
+                                      <Input
+                                        id="edit-phone-desktop"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        placeholder="+1 234 567 8900"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-email-desktop">Email</Label>
+                                      <Input
+                                        id="edit-email-desktop"
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        placeholder="john@example.com"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-address-desktop">Billing Address</Label>
+                                      <Input
+                                        id="edit-address-desktop"
+                                        value={formData.address}
+                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                        placeholder="123 Main St, City, State"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-deliveryAddress-desktop">Delivery Address</Label>
+                                      <Input
+                                        id="edit-deliveryAddress-desktop"
+                                        value={formData.deliveryAddress || ''}
+                                        onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                                        placeholder="Delivery address (if different from billing)"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-category-desktop">Category</Label>
+                                      <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                                        <SelectTrigger className="min-h-[44px]">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Bronze">Bronze</SelectItem>
+                                          <SelectItem value="Silver">Silver</SelectItem>
+                                          <SelectItem value="Gold">Gold</SelectItem>
+                                          <SelectItem value="Platinum">Platinum</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <DialogFooter className="gap-2">
+                                    <Button variant="outline" onClick={() => setEditingCustomer(null)} className="min-h-[44px]">
+                                      Cancel
+                                    </Button>
+                                    <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
+                                      {updateMutation.isPending ? 'Updating...' : 'Update Customer'}
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(customer.id)}
+                                data-testid={`button-delete-${customer.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )
           </CardContent>
         </Card>
       </div>
