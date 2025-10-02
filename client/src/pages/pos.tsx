@@ -4,14 +4,17 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, Minus, CreditCard, DollarSign, Smartphone, Receipt, Tag, Award, Star } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, Minus, CreditCard, DollarSign, Smartphone, Receipt, Tag, Award, Star, X } from "lucide-react";
 import { Link } from "wouter";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Product {
   id: string;
@@ -41,6 +44,8 @@ interface CartItem {
 
 export default function POS() {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const [cartOpen, setCartOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -71,7 +76,7 @@ export default function POS() {
   });
 
   // Fetch loyalty tiers
-  const { data: loyaltyTiers = [] } = useQuery({
+  const { data: loyaltyTiers = [] } = useQuery<any[]>({
     queryKey: ["/api/loyalty-tiers"],
   });
 
@@ -338,34 +343,294 @@ export default function POS() {
     return <Badge variant="outline">Stock: {product.stock}</Badge>;
   };
 
+  // Cart panel content component (used in both desktop and mobile views)
+  const CartPanel = () => (
+    <>
+      <div className="mb-4">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <ShoppingCart className="h-5 w-5" />
+          Shopping Cart
+        </h2>
+      </div>
+
+      {/* Customer Selection */}
+      <div className="mb-4">
+        <Select
+          value={selectedCustomer?.id || "walk-in"}
+          onValueChange={(value) => {
+            if (value === "walk-in") {
+              setSelectedCustomer(null);
+              setPromoCode("");
+              setAppliedPromo(null);
+            } else {
+              const customer = customers.find((c) => c.id === value);
+              setSelectedCustomer(customer || null);
+            }
+          }}
+        >
+          <SelectTrigger data-testid="select-customer" className="min-h-[44px]">
+            <SelectValue placeholder="Walk-in Customer" />
+          </SelectTrigger>
+          <SelectContent>
+            <div className="p-2">
+              <Input
+                placeholder="Search customers..."
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                className="mb-2"
+                data-testid="search-customer"
+              />
+            </div>
+            <SelectItem value="walk-in">Walk-in Customer</SelectItem>
+            {filteredCustomers.map((customer) => (
+              <SelectItem key={customer.id} value={customer.id}>
+                <div>
+                  <div>{customer.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {customer.category} • {customer.loyaltyPoints} pts
+                  </div>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        {/* Customer Loyalty Info */}
+        {selectedCustomer && customerTier && (
+          <Card className="mt-2">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Award className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm font-medium">{customerTier.name} Member</span>
+                </div>
+                <Badge variant="outline">
+                  <Star className="h-3 w-3 mr-1" />
+                  {selectedCustomer.loyaltyPoints} pts
+                </Badge>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+      
+      {/* Promo Code Field */}
+      {selectedCustomer && (
+        <div className="mb-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Enter promo code..."
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              data-testid="input-promo-code"
+              className="min-h-[44px]"
+            />
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (promoCode) {
+                  validatePromoMutation.mutate(promoCode);
+                }
+              }}
+              disabled={!promoCode || validatePromoMutation.isPending}
+              data-testid="button-apply-promo"
+              className="min-h-[44px] min-w-[44px]"
+            >
+              <Tag className="h-4 w-4" />
+            </Button>
+          </div>
+          {appliedPromo && (
+            <div className="mt-2 flex items-center justify-between p-2 bg-secondary rounded">
+              <span className="text-sm">{appliedPromo.name}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAppliedPromo(null);
+                  setPromoCode("");
+                }}
+                data-testid="button-remove-promo"
+                className="min-h-[44px] min-w-[44px]"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Separator className="mb-4" />
+
+      {/* Cart Items */}
+      <ScrollArea className="flex-1 mb-4">
+        {cart.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">Cart is empty</div>
+        ) : (
+          <div className="space-y-3">
+            {cart.map((item) => (
+              <Card key={item.product.id} data-testid={`cart-item-${item.product.id}`}>
+                <CardContent className="p-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <div className="font-medium line-clamp-1">{item.product.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Default: ${typeof item.product.defaultSalePrice === 'string' 
+                          ? parseFloat(item.product.defaultSalePrice).toFixed(2) 
+                          : item.product.defaultSalePrice.toFixed(2)}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 min-h-[36px] min-w-[36px]"
+                      onClick={() => removeFromCart(item.product.id)}
+                      data-testid={`remove-item-${item.product.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Price editing field */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label className="text-sm">Price:</Label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm">$</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.customPrice.toFixed(2)}
+                        onChange={(e) => {
+                          const newPrice = parseFloat(e.target.value);
+                          if (!isNaN(newPrice) && newPrice >= 0) {
+                            updateCustomPrice(item.product.id, newPrice);
+                          }
+                        }}
+                        className="h-9 w-24 min-h-[36px]"
+                        data-testid={`price-input-${item.product.id}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 min-h-[44px] min-w-[44px]"
+                        onClick={() => updateQuantity(item.product.id, -1)}
+                        data-testid={`decrease-qty-${item.product.id}`}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="w-12 text-center font-medium" data-testid={`qty-${item.product.id}`}>
+                        {item.quantity}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 min-h-[44px] min-w-[44px]"
+                        onClick={() => updateQuantity(item.product.id, 1)}
+                        data-testid={`increase-qty-${item.product.id}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <span className="font-semibold text-lg">${item.subtotal.toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      {/* Totals */}
+      <Card className="mb-4">
+        <CardContent className="p-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Subtotal</span>
+              <span data-testid="cart-subtotal">${subtotal.toFixed(2)}</span>
+            </div>
+            {loyaltyDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Loyalty Discount ({loyaltyDiscount}%)</span>
+                <span data-testid="loyalty-discount">-${loyaltyDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {promoDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Promo: {appliedPromo?.name}</span>
+                <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm">
+              <span>Tax (10%)</span>
+              <span data-testid="cart-tax">${tax.toFixed(2)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-lg font-bold">
+              <span>Total</span>
+              <span data-testid="cart-total">${total.toFixed(2)}</span>
+            </div>
+            {selectedCustomer && pointsEarned > 0 && (
+              <div className="text-xs text-center text-muted-foreground pt-2 border-t">
+                <Award className="h-3 w-3 inline mr-1" />
+                Earn {pointsEarned} loyalty points with this purchase
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Checkout Button */}
+      <Button
+        onClick={handleCheckout}
+        disabled={cart.length === 0}
+        className="w-full min-h-[48px]"
+        size="lg"
+        data-testid="button-checkout"
+      >
+        <Receipt className="mr-2 h-5 w-5" />
+        Checkout
+      </Button>
+    </>
+  );
+
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex flex-col lg:flex-row h-screen bg-background">
       {/* Products Panel */}
       <div className="flex-1 p-4 overflow-hidden">
         <div className="mb-4">
-          <h1 className="text-2xl font-bold mb-4">POS Terminal</h1>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, SKU, or barcode..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-                data-testid="search-products"
-              />
-            </div>
-            <Button asChild variant="outline" data-testid="link-dashboard">
-              <Link href="/">
-                <Package className="mr-2 h-4 w-4" />
-                Dashboard
-              </Link>
-            </Button>
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold">POS Terminal</h1>
+            {!isMobile && (
+              <Button asChild variant="outline" data-testid="link-dashboard">
+                <Link href="/">
+                  <Package className="mr-2 h-4 w-4" />
+                  Dashboard
+                </Link>
+              </Button>
+            )}
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, SKU, or barcode..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 min-h-[44px]"
+              data-testid="search-products"
+            />
           </div>
         </div>
 
-        <ScrollArea className="h-[calc(100vh-140px)]">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-140px)]">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-20 lg:pb-0">
             {productsLoading ? (
               <div className="col-span-full text-center py-8 text-muted-foreground">Loading products...</div>
             ) : filteredProducts.length === 0 ? (
@@ -399,261 +664,77 @@ export default function POS() {
         </ScrollArea>
       </div>
 
-      {/* Cart Panel */}
-      <div className="w-96 border-l bg-card p-4 flex flex-col">
-        <div className="mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5" />
-            Shopping Cart
-          </h2>
+      {/* Desktop Cart Panel */}
+      {!isMobile && (
+        <div className="w-96 border-l bg-card p-4 flex flex-col">
+          <CartPanel />
         </div>
+      )}
 
-        {/* Customer Selection */}
-        <div className="mb-4">
-          <Select
-            value={selectedCustomer?.id || "walk-in"}
-            onValueChange={(value) => {
-              if (value === "walk-in") {
-                setSelectedCustomer(null);
-                setPromoCode("");
-                setAppliedPromo(null);
-              } else {
-                const customer = customers.find((c) => c.id === value);
-                setSelectedCustomer(customer || null);
-              }
-            }}
-          >
-            <SelectTrigger data-testid="select-customer">
-              <SelectValue placeholder="Walk-in Customer" />
-            </SelectTrigger>
-            <SelectContent>
-              <div className="p-2">
-                <Input
-                  placeholder="Search customers..."
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="mb-2"
-                  data-testid="search-customer"
-                />
-              </div>
-              <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-              {filteredCustomers.map((customer) => (
-                <SelectItem key={customer.id} value={customer.id}>
-                  <div>
-                    <div>{customer.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {customer.category} • {customer.loyaltyPoints} pts
-                    </div>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          {/* Customer Loyalty Info */}
-          {selectedCustomer && customerTier && (
-            <Card className="mt-2">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Award className="h-4 w-4 text-yellow-500" />
-                    <span className="text-sm font-medium">{customerTier.name} Member</span>
-                  </div>
-                  <Badge variant="outline">
-                    <Star className="h-3 w-3 mr-1" />
-                    {selectedCustomer.loyaltyPoints} pts
-                  </Badge>
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-        
-        {/* Promo Code Field */}
-        {selectedCustomer && (
-          <div className="mb-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter promo code..."
-                value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                data-testid="input-promo-code"
-              />
+      {/* Mobile Cart Sheet */}
+      {isMobile && (
+        <>
+          <Sheet open={cartOpen} onOpenChange={setCartOpen}>
+            <SheetTrigger asChild>
               <Button
-                variant="outline"
-                onClick={() => {
-                  if (promoCode) {
-                    validatePromoMutation.mutate(promoCode);
-                  }
-                }}
-                disabled={!promoCode || validatePromoMutation.isPending}
-                data-testid="button-apply-promo"
+                size="lg"
+                className="fixed bottom-4 right-4 z-50 rounded-full shadow-lg h-14 w-14 p-0"
+                data-testid="mobile-cart-button"
               >
-                <Tag className="h-4 w-4" />
+                <div className="relative">
+                  <ShoppingCart className="h-6 w-6" />
+                  {cart.length > 0 && (
+                    <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
+                      {cart.length}
+                    </Badge>
+                  )}
+                </div>
               </Button>
-            </div>
-            {appliedPromo && (
-              <div className="mt-2 flex items-center justify-between p-2 bg-secondary rounded">
-                <span className="text-sm">{appliedPromo.name}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setAppliedPromo(null);
-                    setPromoCode("");
-                  }}
-                  data-testid="button-remove-promo"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:w-96 flex flex-col p-4">
+              <SheetHeader className="mb-4">
+                <SheetTitle>
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="h-5 w-5" />
+                    Shopping Cart
+                  </div>
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <CartPanel />
               </div>
+            </SheetContent>
+          </Sheet>
+          
+          {/* Mobile Quick Actions Bar */}
+          <div className="fixed bottom-20 left-4 right-4 z-40 lg:hidden">
+            {cart.length > 0 && (
+              <Card className="shadow-lg">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-muted-foreground">{cart.length} items</div>
+                      <div className="text-lg font-bold">${total.toFixed(2)}</div>
+                    </div>
+                    <Button
+                      onClick={() => setCartOpen(true)}
+                      size="sm"
+                      className="min-h-[44px]"
+                      data-testid="view-cart-button"
+                    >
+                      View Cart
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
-        )}
+        </>
+      )}
 
-        <Separator className="mb-4" />
-
-        {/* Cart Items */}
-        <ScrollArea className="flex-1 mb-4">
-          {cart.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">Cart is empty</div>
-          ) : (
-            <div className="space-y-3">
-              {cart.map((item) => (
-                <Card key={item.product.id} data-testid={`cart-item-${item.product.id}`}>
-                  <CardContent className="p-3">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <div className="font-medium line-clamp-1">{item.product.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Default: ${typeof item.product.defaultSalePrice === 'string' 
-                            ? parseFloat(item.product.defaultSalePrice).toFixed(2) 
-                            : item.product.defaultSalePrice.toFixed(2)}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => removeFromCart(item.product.id)}
-                        data-testid={`remove-item-${item.product.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    
-                    {/* Price editing field */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <Label className="text-sm">Price:</Label>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">$</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.customPrice.toFixed(2)}
-                          onChange={(e) => {
-                            const newPrice = parseFloat(e.target.value);
-                            if (!isNaN(newPrice) && newPrice >= 0) {
-                              updateCustomPrice(item.product.id, newPrice);
-                            }
-                          }}
-                          className="h-8 w-24"
-                          data-testid={`price-input-${item.product.id}`}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => updateQuantity(item.product.id, -1)}
-                          data-testid={`decrease-qty-${item.product.id}`}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-12 text-center" data-testid={`qty-${item.product.id}`}>
-                          {item.quantity}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => updateQuantity(item.product.id, 1)}
-                          data-testid={`increase-qty-${item.product.id}`}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <span className="font-semibold">${item.subtotal.toFixed(2)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-
-        {/* Totals */}
-        <Card className="mb-4">
-          <CardContent className="p-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Subtotal</span>
-                <span data-testid="cart-subtotal">${subtotal.toFixed(2)}</span>
-              </div>
-              {loyaltyDiscountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Loyalty Discount ({loyaltyDiscount}%)</span>
-                  <span data-testid="loyalty-discount">-${loyaltyDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              {promoDiscountAmount > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Promo: {appliedPromo?.name}</span>
-                  <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span>Tax (10%)</span>
-                <span data-testid="cart-tax">${tax.toFixed(2)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total</span>
-                <span data-testid="cart-total">${total.toFixed(2)}</span>
-              </div>
-              {selectedCustomer && pointsEarned > 0 && (
-                <div className="flex justify-between text-sm text-muted-foreground pt-2">
-                  <span>Points Earned</span>
-                  <span data-testid="points-earned">+{pointsEarned} pts</span>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Checkout Button */}
-        <Button
-          size="lg"
-          className="w-full"
-          onClick={handleCheckout}
-          disabled={cart.length === 0 || placeOrderMutation.isPending}
-          data-testid="button-checkout"
-        >
-          {placeOrderMutation.isPending ? "Processing..." : "Checkout"}
-        </Button>
-      </div>
-
-      {/* Checkout Dialog */}
+      {/* Checkout Dialog - Mobile Responsive */}
       <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Complete Payment</DialogTitle>
             <DialogDescription>Choose payment method to complete the order</DialogDescription>
@@ -663,7 +744,7 @@ export default function POS() {
             <div>
               <label className="text-sm font-medium mb-2 block">Payment Method</label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger data-testid="select-payment">
+                <SelectTrigger data-testid="select-payment" className="min-h-[44px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -701,9 +782,9 @@ export default function POS() {
                 <CardTitle className="text-sm font-medium">Order Expenses (Optional)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                    <SelectTrigger className="w-[130px]" data-testid="select-expense-category">
+                    <SelectTrigger className="w-full sm:w-[130px] min-h-[44px]" data-testid="select-expense-category">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -718,41 +799,44 @@ export default function POS() {
                     placeholder="Description"
                     value={expenseDescription}
                     onChange={(e) => setExpenseDescription(e.target.value)}
-                    className="flex-1"
+                    className="flex-1 min-h-[44px]"
                     data-testid="input-expense-desc"
                   />
-                  <Input
-                    placeholder="0.00"
-                    type="number"
-                    value={expenseAmount}
-                    onChange={(e) => setExpenseAmount(e.target.value)}
-                    className="w-[100px]"
-                    data-testid="input-expense-amt"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={addExpense}
-                    variant="outline"
-                    data-testid="button-add-order-expense"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="0.00"
+                      type="number"
+                      value={expenseAmount}
+                      onChange={(e) => setExpenseAmount(e.target.value)}
+                      className="w-full sm:w-[100px] min-h-[44px]"
+                      data-testid="input-expense-amt"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={addExpense}
+                      variant="outline"
+                      className="min-h-[44px] min-w-[44px]"
+                      data-testid="button-add-order-expense"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 
                 {orderExpenses.length > 0 && (
                   <div className="space-y-1">
                     {orderExpenses.map((expense, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm py-1">
-                        <span className="text-muted-foreground">
+                      <div key={index} className="flex items-center justify-between text-sm py-2 gap-2">
+                        <span className="text-muted-foreground flex-1 break-words">
                           {expense.category}: {expense.description}
                         </span>
-                        <div className="flex items-center gap-2">
-                          <span>${expense.amount.toFixed(2)}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-medium">${expense.amount.toFixed(2)}</span>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => removeExpense(index)}
-                            className="h-6 w-6 p-0"
+                            className="h-8 w-8 p-0 min-h-[32px] min-w-[32px]"
                             data-testid={`button-remove-expense-${index}`}
                           >
                             <Trash2 className="h-3 w-3" />
@@ -761,7 +845,7 @@ export default function POS() {
                       </div>
                     ))}
                     <Separator />
-                    <div className="flex justify-between font-medium">
+                    <div className="flex justify-between font-medium pt-1">
                       <span>Total Expenses</span>
                       <span>${orderExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</span>
                     </div>
@@ -791,11 +875,11 @@ export default function POS() {
             </Card>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)} className="w-full sm:w-auto min-h-[44px]">
               Cancel
             </Button>
-            <Button onClick={processPayment} disabled={placeOrderMutation.isPending} data-testid="button-confirm-payment">
+            <Button onClick={processPayment} disabled={placeOrderMutation.isPending} data-testid="button-confirm-payment" className="w-full sm:w-auto min-h-[44px]">
               {placeOrderMutation.isPending ? "Processing..." : "Confirm Payment"}
             </Button>
           </DialogFooter>
