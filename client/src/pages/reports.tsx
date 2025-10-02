@@ -198,15 +198,15 @@ export default function Reports() {
                 <BarChart3 className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">Advanced Reports</h1>
-                <p className="text-xs text-slate-400">Analytics & Insights</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white">Advanced Reports</h1>
+                <p className="text-xs sm:text-sm text-slate-400">Analytics & Insights</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button asChild variant="ghost" className="text-white" data-testid="link-home">
+              <Button asChild variant="ghost" className="text-white min-h-[44px]" data-testid="link-home">
                 <Link href="/">
-                  <Home className="mr-2 h-4 w-4" />
-                  Dashboard
+                  <Home className="h-4 w-4 sm:mr-2" />
+                  <span className="sr-only sm:not-sr-only">Dashboard</span>
                 </Link>
               </Button>
             </div>
@@ -226,7 +226,7 @@ export default function Reports() {
               {/* Preset Ranges */}
               <div className="flex-1">
                 <Select value={presetRange} onValueChange={handlePresetRange}>
-                  <SelectTrigger data-testid="select-preset-range">
+                  <SelectTrigger className="min-h-[44px]" data-testid="select-preset-range">
                     <SelectValue placeholder="Select preset range" />
                   </SelectTrigger>
                   <SelectContent>
@@ -244,9 +244,9 @@ export default function Reports() {
               <div className="flex gap-2 flex-1">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start" data-testid="button-date-from">
+                    <Button variant="outline" className="w-full justify-start min-h-[44px]" data-testid="button-date-from">
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(dateRange.from, "PPP")}
+                      <span className="truncate">{format(dateRange.from, "PP")}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -260,9 +260,9 @@ export default function Reports() {
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start" data-testid="button-date-to">
+                    <Button variant="outline" className="w-full justify-start min-h-[44px]" data-testid="button-date-to">
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(dateRange.to, "PPP")}
+                      <span className="truncate">{format(dateRange.to, "PP")}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -276,9 +276,9 @@ export default function Reports() {
               </div>
 
               {/* Export Options */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap lg:flex-nowrap">
                 <Select value={exportFormat} onValueChange={(value: "csv" | "pdf") => setExportFormat(value)}>
-                  <SelectTrigger className="w-32" data-testid="select-export-format">
+                  <SelectTrigger className="w-full lg:w-32 min-h-[44px]" data-testid="select-export-format">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -289,6 +289,7 @@ export default function Reports() {
                 <Button 
                   onClick={() => handleExport("full")} 
                   disabled={isExporting || isLoading}
+                  className="min-h-[44px] w-full lg:w-auto"
                   data-testid="button-export-full"
                 >
                   <Download className="mr-2 h-4 w-4" />
@@ -300,7 +301,7 @@ export default function Reports() {
         </Card>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
@@ -356,11 +357,11 @@ export default function Reports() {
 
         {/* Detailed Reports Tabs */}
         <Tabs defaultValue="revenue" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="revenue">Revenue</TabsTrigger>
-            <TabsTrigger value="orders">Orders</TabsTrigger>
-            <TabsTrigger value="customers">Customers</TabsTrigger>
-            <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+            <TabsTrigger value="revenue" className="min-h-[44px]">Revenue</TabsTrigger>
+            <TabsTrigger value="orders" className="min-h-[44px]">Orders</TabsTrigger>
+            <TabsTrigger value="customers" className="min-h-[44px]">Customers</TabsTrigger>
+            <TabsTrigger value="inventory" className="min-h-[44px]">Inventory</TabsTrigger>
           </TabsList>
 
           {/* Revenue Tab */}
@@ -376,6 +377,7 @@ export default function Reports() {
                     size="sm" 
                     onClick={() => handleExport("revenue")}
                     disabled={isExporting}
+                    className="min-h-[44px]"
                     data-testid="button-export-revenue"
                   >
                     <Download className="mr-2 h-3 w-3" />
@@ -431,28 +433,30 @@ export default function Reports() {
                   <CardTitle>Payment Methods</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Method</TableHead>
-                        <TableHead>Orders</TableHead>
-                        <TableHead>Revenue</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {reportData?.revenue.byPaymentMethod?.map((method) => (
-                        <TableRow key={method.method} data-testid={`payment-method-${method.method}`}>
-                          <TableCell>{method.method}</TableCell>
-                          <TableCell>{method.count}</TableCell>
-                          <TableCell>${method.revenue.toFixed(2)}</TableCell>
-                        </TableRow>
-                      )) || (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center">No data</TableCell>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Orders</TableHead>
+                          <TableHead>Revenue</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {reportData?.revenue.byPaymentMethod?.map((method) => (
+                          <TableRow key={method.method} data-testid={`payment-method-${method.method}`}>
+                            <TableCell>{method.method}</TableCell>
+                            <TableCell>{method.count}</TableCell>
+                            <TableCell>${method.revenue.toFixed(2)}</TableCell>
+                          </TableRow>
+                        )) || (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center">No data</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -471,6 +475,7 @@ export default function Reports() {
                     size="sm" 
                     onClick={() => handleExport("orders")}
                     disabled={isExporting}
+                    className="min-h-[44px]"
                     data-testid="button-export-orders"
                   >
                     <Download className="mr-2 h-3 w-3" />
@@ -495,28 +500,30 @@ export default function Reports() {
 
                   <div>
                     <h4 className="text-sm font-medium mb-4">Top Products</h4>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Product</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Revenue</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData?.orders.topProducts?.slice(0, 5).map((product) => (
-                          <TableRow key={product.name} data-testid={`top-product-${product.name}`}>
-                            <TableCell className="font-medium">{product.name}</TableCell>
-                            <TableCell>{product.quantity}</TableCell>
-                            <TableCell>${product.revenue.toFixed(2)}</TableCell>
-                          </TableRow>
-                        )) || (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center">No data</TableCell>
+                            <TableHead>Product</TableHead>
+                            <TableHead>Quantity</TableHead>
+                            <TableHead>Revenue</TableHead>
                           </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {reportData?.orders.topProducts?.slice(0, 5).map((product) => (
+                            <TableRow key={product.name} data-testid={`top-product-${product.name}`}>
+                              <TableCell className="font-medium">{product.name}</TableCell>
+                              <TableCell>{product.quantity}</TableCell>
+                              <TableCell>${product.revenue.toFixed(2)}</TableCell>
+                            </TableRow>
+                          )) || (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center">No data</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -536,6 +543,7 @@ export default function Reports() {
                     size="sm" 
                     onClick={() => handleExport("customers")}
                     disabled={isExporting}
+                    className="min-h-[44px]"
                     data-testid="button-export-customers"
                   >
                     <Download className="mr-2 h-3 w-3" />
@@ -578,56 +586,60 @@ export default function Reports() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <h4 className="text-sm font-medium mb-4">Top Customers</h4>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Orders</TableHead>
-                          <TableHead>Revenue</TableHead>
-                          <TableHead>Points</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData?.customers.topCustomers?.slice(0, 5).map((customer) => (
-                          <TableRow key={customer.name} data-testid={`top-customer-${customer.name}`}>
-                            <TableCell className="font-medium">{customer.name}</TableCell>
-                            <TableCell>{customer.orders}</TableCell>
-                            <TableCell>${customer.revenue.toFixed(2)}</TableCell>
-                            <TableCell>{customer.loyalty}</TableCell>
-                          </TableRow>
-                        )) || (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center">No data</TableCell>
+                            <TableHead>Customer</TableHead>
+                            <TableHead>Orders</TableHead>
+                            <TableHead>Revenue</TableHead>
+                            <TableHead>Points</TableHead>
                           </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {reportData?.customers.topCustomers?.slice(0, 5).map((customer) => (
+                            <TableRow key={customer.name} data-testid={`top-customer-${customer.name}`}>
+                              <TableCell className="font-medium">{customer.name}</TableCell>
+                              <TableCell>{customer.orders}</TableCell>
+                              <TableCell>${customer.revenue.toFixed(2)}</TableCell>
+                              <TableCell>{customer.loyalty}</TableCell>
+                            </TableRow>
+                          )) || (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center">No data</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-medium mb-4">RFM Segments</h4>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Segment</TableHead>
-                          <TableHead>Count</TableHead>
-                          <TableHead>Avg Revenue</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData?.customers.rfmSegments?.map((segment) => (
-                          <TableRow key={segment.segment} data-testid={`rfm-segment-${segment.segment}`}>
-                            <TableCell className="font-medium">{segment.segment}</TableCell>
-                            <TableCell>{segment.count}</TableCell>
-                            <TableCell>${segment.avgRevenue.toFixed(2)}</TableCell>
-                          </TableRow>
-                        )) || (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center">No data</TableCell>
+                            <TableHead>Segment</TableHead>
+                            <TableHead>Count</TableHead>
+                            <TableHead>Avg Revenue</TableHead>
                           </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {reportData?.customers.rfmSegments?.map((segment) => (
+                            <TableRow key={segment.segment} data-testid={`rfm-segment-${segment.segment}`}>
+                              <TableCell className="font-medium">{segment.segment}</TableCell>
+                              <TableCell>{segment.count}</TableCell>
+                              <TableCell>${segment.avgRevenue.toFixed(2)}</TableCell>
+                            </TableRow>
+                          )) || (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center">No data</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -647,6 +659,7 @@ export default function Reports() {
                     size="sm" 
                     onClick={() => handleExport("inventory")}
                     disabled={isExporting}
+                    className="min-h-[44px]"
                     data-testid="button-export-inventory"
                   >
                     <Download className="mr-2 h-3 w-3" />
@@ -655,7 +668,7 @@ export default function Reports() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <Card>
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm">Stock Value</CardTitle>
@@ -700,32 +713,34 @@ export default function Reports() {
 
                 <div>
                   <h4 className="text-sm font-medium mb-4">Top Moving Products</h4>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Sold</TableHead>
-                        <TableHead>Remaining</TableHead>
-                        <TableHead>Movement Rate</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {reportData?.inventory.topMoving?.slice(0, 10).map((product) => (
-                        <TableRow key={product.product} data-testid={`top-moving-${product.product}`}>
-                          <TableCell className="font-medium">{product.product}</TableCell>
-                          <TableCell>{product.sold}</TableCell>
-                          <TableCell>{product.remaining}</TableCell>
-                          <TableCell>
-                            {((product.sold / (product.sold + product.remaining)) * 100).toFixed(1)}%
-                          </TableCell>
-                        </TableRow>
-                      )) || (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center">No data</TableCell>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Sold</TableHead>
+                          <TableHead>Remaining</TableHead>
+                          <TableHead>Movement Rate</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {reportData?.inventory.topMoving?.slice(0, 10).map((product) => (
+                          <TableRow key={product.product} data-testid={`top-moving-${product.product}`}>
+                            <TableCell className="font-medium">{product.product}</TableCell>
+                            <TableCell>{product.sold}</TableCell>
+                            <TableCell>{product.remaining}</TableCell>
+                            <TableCell>
+                              {((product.sold / (product.sold + product.remaining)) * 100).toFixed(1)}%
+                            </TableCell>
+                          </TableRow>
+                        )) || (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center">No data</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </CardContent>
             </Card>
