@@ -336,17 +336,17 @@ export default function ProductManagement() {
 
   return (
     <div className="w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col gap-4 mb-4 sm:mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Product Management</h1>
-            <p className="text-muted-foreground mt-1">Add, edit, and manage your product catalog</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Product Management</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">Add, edit, and manage your product catalog</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
-              className="gap-2"
+              className="gap-2 min-h-[44px]"
               onClick={downloadTemplate}
               data-testid="button-download-template"
             >
@@ -355,7 +355,7 @@ export default function ProductManagement() {
             </Button>
             <Button
               variant="outline"
-              className="gap-2"
+              className="gap-2 min-h-[44px]"
               onClick={() => fileInputRef.current?.click()}
               data-testid="button-import-csv"
             >
@@ -371,7 +371,7 @@ export default function ProductManagement() {
             />
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
               <DialogTrigger asChild>
-                <Button className="gap-2" data-testid="button-add-product">
+                <Button className="gap-2 min-h-[44px]" data-testid="button-add-product">
                   <Plus className="h-4 w-4" />
                   Add Product
                 </Button>
@@ -391,6 +391,7 @@ export default function ProductManagement() {
                       value={formData.productId}
                       onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
                       placeholder="PRD001 (optional)"
+                      className="min-h-[44px]"
                       data-testid="input-product-id"
                     />
                   </div>
@@ -401,6 +402,7 @@ export default function ProductManagement() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="Product Name"
+                      className="min-h-[44px]"
                       data-testid="input-product-name"
                     />
                   </div>
@@ -411,6 +413,7 @@ export default function ProductManagement() {
                       value={formData.barcode}
                       onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                       placeholder="123456789"
+                      className="min-h-[44px]"
                       data-testid="input-product-barcode"
                     />
                   </div>
@@ -424,6 +427,7 @@ export default function ProductManagement() {
                         value={formData.price}
                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                         placeholder="9.99"
+                        className="min-h-[44px]"
                         data-testid="input-product-price"
                       />
                     </div>
@@ -436,6 +440,7 @@ export default function ProductManagement() {
                         value={formData.tax}
                         onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
                         placeholder="0.15"
+                        className="min-h-[44px]"
                         data-testid="input-product-tax"
                       />
                     </div>
@@ -449,6 +454,7 @@ export default function ProductManagement() {
                         value={formData.stock}
                         onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                         placeholder="100"
+                        className="min-h-[44px]"
                         data-testid="input-product-stock"
                       />
                     </div>
@@ -460,16 +466,17 @@ export default function ProductManagement() {
                         value={formData.stockLimit}
                         onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
                         placeholder="500"
+                        className="min-h-[44px]"
                         data-testid="input-product-stock-limit"
                       />
                     </div>
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)} className="min-h-[44px]">
                     Cancel
                   </Button>
-                  <Button onClick={handleSubmit} disabled={createMutation.isPending} data-testid="button-save-product">
+                  <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">
                     {createMutation.isPending ? 'Creating...' : 'Create Product'}
                   </Button>
                 </DialogFooter>
@@ -513,7 +520,7 @@ export default function ProductManagement() {
                 <Button onClick={() => {
                   setShowImportDialog(false)
                   setImportResults(null)
-                }}>
+                }} className="min-h-[44px]">
                   Close
                 </Button>
               </div>
@@ -531,16 +538,17 @@ export default function ProductManagement() {
                     {parseCsvContent(csvContent).length} valid products found
                   </p>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => {
                     setShowImportDialog(false)
                     setCsvContent('')
-                  }}>
+                  }} className="min-h-[44px]">
                     Cancel
                   </Button>
                   <Button 
                     onClick={handleImport} 
                     disabled={importMutation.isPending}
+                    className="min-h-[44px]"
                     data-testid="button-import-confirm"
                   >
                     {importMutation.isPending ? 'Importing...' : 'Import Products'}
@@ -552,34 +560,34 @@ export default function ProductManagement() {
         </Dialog>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Total Products</CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{products.length}</div>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="text-xl sm:text-2xl font-bold">{products.length}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Stock</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">In Stock</CardTitle>
               <CheckCircle className="h-4 w-4 text-green-500" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {products.filter((p: any) => p.stock > 0).length}
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Low Stock</CardTitle>
               <AlertCircle className="h-4 w-4 text-orange-500" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {products.filter((p: any) => {
                   const stockPercentage = (p.stock / (p.stockLimit || 100)) * 100
                   return stockPercentage <= 20 && p.stock > 0
@@ -588,12 +596,12 @@ export default function ProductManagement() {
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+              <CardTitle className="text-xs sm:text-sm font-medium">Out of Stock</CardTitle>
               <X className="h-4 w-4 text-red-500" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="text-xl sm:text-2xl font-bold">
                 {products.filter((p: any) => p.stock === 0).length}
               </div>
             </CardContent>
@@ -601,14 +609,14 @@ export default function ProductManagement() {
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Search products by name, ID, or barcode..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 min-h-[44px]"
               data-testid="input-search-products"
             />
           </div>
@@ -617,35 +625,208 @@ export default function ProductManagement() {
         {/* Products Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Product Catalog</CardTitle>
-            <CardDescription>Manage your complete product inventory</CardDescription>
+            <CardTitle className="text-base sm:text-lg">Product Catalog</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Manage your complete product inventory</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product ID</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Barcode</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Tax</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProducts.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
-                      No products found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredProducts.map((product: any) => {
+            {filteredProducts.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">No products found</div>
+            )}
+
+            {filteredProducts.length > 0 && (
+              <div>
+                {/* Mobile Card View */}
+                <div className="block lg:hidden space-y-3">
+                  {filteredProducts.map((product: any) => {
                     const stockStatus = getStockStatus(product)
                     return (
-                      <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
+                      <Card key={product.id} className="border-2" data-testid={`product-card-${product.id}`}>
+                        <CardContent className="p-4">
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="font-semibold text-base">{product.name}</div>
+                                {product.productId && (
+                                  <div className="text-xs font-mono text-muted-foreground mt-0.5">{product.productId}</div>
+                                )}
+                              </div>
+                              <Badge variant={stockStatus.variant} className="ml-2">
+                                {stockStatus.status}
+                              </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Price</div>
+                                <div className="font-medium">${product.price.toFixed(2)}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Stock</div>
+                                <div className="font-medium">{product.stock} / {product.stockLimit || 100}</div>
+                              </div>
+                              {product.barcode && (
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Barcode</div>
+                                  <div className="font-mono text-xs">{product.barcode}</div>
+                                </div>
+                              )}
+                              {product.tax && (
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Tax</div>
+                                  <div className="font-medium">{(product.tax * 100).toFixed(0)}%</div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2 pt-2 border-t">
+                              <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEdit(product)}
+                                    className="flex-1 min-h-[44px]"
+                                    data-testid={`button-edit-${product.id}`}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Edit Product</DialogTitle>
+                                    <DialogDescription>Update product information</DialogDescription>
+                                  </DialogHeader>
+                                  <div className="grid gap-4 py-4">
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-productId-mobile">Product ID</Label>
+                                      <Input
+                                        id="edit-productId-mobile"
+                                        value={formData.productId}
+                                        onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+                                        placeholder="PRD001"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-name-mobile">Name *</Label>
+                                      <Input
+                                        id="edit-name-mobile"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Product Name"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-barcode-mobile">Barcode</Label>
+                                      <Input
+                                        id="edit-barcode-mobile"
+                                        value={formData.barcode}
+                                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                                        placeholder="123456789"
+                                        className="min-h-[44px]"
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="grid gap-2">
+                                        <Label htmlFor="edit-price-mobile">Price *</Label>
+                                        <Input
+                                          id="edit-price-mobile"
+                                          type="number"
+                                          step="0.01"
+                                          value={formData.price}
+                                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                          placeholder="9.99"
+                                          className="min-h-[44px]"
+                                        />
+                                      </div>
+                                      <div className="grid gap-2">
+                                        <Label htmlFor="edit-tax-mobile">Tax Rate</Label>
+                                        <Input
+                                          id="edit-tax-mobile"
+                                          type="number"
+                                          step="0.01"
+                                          value={formData.tax}
+                                          onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
+                                          placeholder="0.15"
+                                          className="min-h-[44px]"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="grid gap-2">
+                                        <Label htmlFor="edit-stock-mobile">Stock</Label>
+                                        <Input
+                                          id="edit-stock-mobile"
+                                          type="number"
+                                          value={formData.stock}
+                                          onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                                          placeholder="100"
+                                          className="min-h-[44px]"
+                                        />
+                                      </div>
+                                      <div className="grid gap-2">
+                                        <Label htmlFor="edit-stockLimit-mobile">Stock Limit</Label>
+                                        <Input
+                                          id="edit-stockLimit-mobile"
+                                          type="number"
+                                          value={formData.stockLimit}
+                                          onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
+                                          placeholder="500"
+                                          className="min-h-[44px]"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <DialogFooter className="gap-2">
+                                    <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
+                                      Cancel
+                                    </Button>
+                                    <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
+                                      {updateMutation.isPending ? 'Updating...' : 'Update Product'}
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDelete(product.id)}
+                                className="flex-1 min-h-[44px]"
+                                data-testid={`button-delete-${product.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product ID</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Barcode</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>Tax</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProducts.map((product: any) => {
+                        const stockStatus = getStockStatus(product)
+                        return (
+                          <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
                         <TableCell className="font-mono text-sm">{product.productId || '-'}</TableCell>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
@@ -690,6 +871,7 @@ export default function ProductManagement() {
                                       value={formData.productId}
                                       onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
                                       placeholder="PRD001"
+                                      className="min-h-[44px]"
                                     />
                                   </div>
                                   <div className="grid gap-2">
@@ -699,6 +881,7 @@ export default function ProductManagement() {
                                       value={formData.name}
                                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                       placeholder="Product Name"
+                                      className="min-h-[44px]"
                                     />
                                   </div>
                                   <div className="grid gap-2">
@@ -708,6 +891,7 @@ export default function ProductManagement() {
                                       value={formData.barcode}
                                       onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                                       placeholder="123456789"
+                                      className="min-h-[44px]"
                                     />
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
@@ -720,6 +904,7 @@ export default function ProductManagement() {
                                         value={formData.price}
                                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                                         placeholder="9.99"
+                                        className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
@@ -731,6 +916,7 @@ export default function ProductManagement() {
                                         value={formData.tax}
                                         onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
                                         placeholder="0.15"
+                                        className="min-h-[44px]"
                                       />
                                     </div>
                                   </div>
@@ -743,6 +929,7 @@ export default function ProductManagement() {
                                         value={formData.stock}
                                         onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                                         placeholder="100"
+                                        className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
@@ -753,15 +940,16 @@ export default function ProductManagement() {
                                         value={formData.stockLimit}
                                         onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
                                         placeholder="500"
+                                        className="min-h-[44px]"
                                       />
                                     </div>
                                   </div>
                                 </div>
-                                <DialogFooter>
-                                  <Button variant="outline" onClick={() => setEditingProduct(null)}>
+                                <DialogFooter className="gap-2">
+                                  <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
                                     Cancel
                                   </Button>
-                                  <Button onClick={handleSubmit} disabled={updateMutation.isPending}>
+                                  <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
                                     {updateMutation.isPending ? 'Updating...' : 'Update Product'}
                                   </Button>
                                 </DialogFooter>
@@ -777,12 +965,14 @@ export default function ProductManagement() {
                             </Button>
                           </div>
                         </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
