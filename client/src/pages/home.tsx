@@ -37,20 +37,20 @@ export default function Home() {
   return (
     <div className="w-full">
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Quick Actions Grid */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-foreground mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6">Quick Actions</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* POS Terminal */}
             <Link href="/pos">
               <a className="group" data-testid="quick-action-pos">
-                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-6 transition-all duration-200 transform hover:scale-105">
-                  <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-lg mb-4">
-                    <i className="fas fa-cash-register text-2xl text-blue-500"></i>
+                <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-4 sm:p-6 transition-all duration-200 transform hover:scale-105 min-h-[140px] flex flex-col justify-center">
+                  <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-blue-500/10 rounded-lg mb-3 sm:mb-4">
+                    <i className="fas fa-cash-register text-xl sm:text-2xl text-blue-500"></i>
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-2">POS Terminal</h3>
-                  <p className="text-sm text-muted-foreground">Process sales and orders</p>
+                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">POS Terminal</h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Process sales & orders</p>
                 </div>
               </a>
             </Link>

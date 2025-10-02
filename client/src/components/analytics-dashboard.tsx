@@ -26,19 +26,19 @@ export default function AnalyticsDashboard() {
     totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
   return (
-    <div>
+    <div className="px-4 sm:px-6 lg:px-8 py-6">
       {/* Page Header */}
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-foreground mb-2">
+      <div className="mb-6 sm:mb-8">
+        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
           Analytics Dashboard
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Real-time insights into your business performance
         </p>
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         {isLoadingMonthly ? (
           <>
             <Skeleton className="h-40 rounded-xl" />
@@ -85,7 +85,7 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <DailyRevenueChart />
         <MonthlyOrdersChart />
       </div>
@@ -94,28 +94,28 @@ export default function AnalyticsDashboard() {
       <TopCustomersTable />
 
       {/* Recent Activity Section */}
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="mt-6 sm:mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Quick Actions */}
-        <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-          <h3 className="text-lg font-semibold text-foreground mb-4">
+        <div className="bg-card rounded-xl p-4 sm:p-6 border border-border shadow-sm">
+          <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">
             Quick Actions
           </h3>
-          <div className="space-y-3">
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-secondary text-white rounded-lg hover:bg-blue-600 transition-colors" data-testid="button-neworder">
-              <i className="fas fa-plus-circle text-xl"></i>
-              <span className="font-medium">New Order</span>
+          <div className="space-y-2 sm:space-y-3">
+            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-secondary text-white rounded-lg hover:bg-blue-600 transition-colors" data-testid="button-neworder">
+              <i className="fas fa-plus-circle text-lg sm:text-xl"></i>
+              <span className="font-medium text-sm sm:text-base">New Order</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addcustomer">
-              <i className="fas fa-user-plus text-xl text-accent"></i>
-              <span className="font-medium">Add Customer</span>
+            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addcustomer">
+              <i className="fas fa-user-plus text-lg sm:text-xl text-accent"></i>
+              <span className="font-medium text-sm sm:text-base">Add Customer</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addproduct">
-              <i className="fas fa-box text-xl text-orange-500"></i>
-              <span className="font-medium">Add Product</span>
+            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addproduct">
+              <i className="fas fa-box text-lg sm:text-xl text-orange-500"></i>
+              <span className="font-medium text-sm sm:text-base">Add Product</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-createinvoice">
-              <i className="fas fa-file-invoice text-xl text-purple-500"></i>
-              <span className="font-medium">Create Invoice</span>
+            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-createinvoice">
+              <i className="fas fa-file-invoice text-lg sm:text-xl text-purple-500"></i>
+              <span className="font-medium text-sm sm:text-base">Create Invoice</span>
             </button>
           </div>
         </div>
