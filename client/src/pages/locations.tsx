@@ -223,14 +223,14 @@ export default function Locations() {
                 <MapPin className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">Location Management</h1>
-                <p className="text-xs text-slate-400">Manage Multiple Store Locations</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white">Location Management</h1>
+                <p className="text-xs sm:text-sm text-slate-400">Manage Multiple Store Locations</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {locations.length > 0 && (
                 <Select value={currentLocationId} onValueChange={handleLocationSwitch}>
-                  <SelectTrigger className="w-48 bg-slate-700 text-white border-slate-600" data-testid="select-location">
+                  <SelectTrigger className="w-full sm:w-48 bg-slate-700 text-white border-slate-600 min-h-[44px]" data-testid="select-location">
                     <SelectValue placeholder="Select Location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -242,10 +242,10 @@ export default function Locations() {
                   </SelectContent>
                 </Select>
               )}
-              <Button asChild variant="ghost" className="text-white" data-testid="link-home">
+              <Button asChild variant="ghost" className="text-white min-h-[44px]" data-testid="link-home">
                 <Link href="/">
-                  <Home className="mr-2 h-4 w-4" />
-                  Dashboard
+                  <Home className="h-4 w-4 sm:mr-2" />
+                  <span className="sr-only sm:not-sr-only">Dashboard</span>
                 </Link>
               </Button>
             </div>
@@ -255,7 +255,7 @@ export default function Locations() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Locations</CardTitle>
@@ -319,7 +319,7 @@ export default function Locations() {
                   <Button onClick={() => {
                     setEditingLocation(null);
                     form.reset();
-                  }} data-testid="button-add-location">
+                  }} className="min-h-[44px]" data-testid="button-add-location">
                     <Plus className="mr-2 h-4 w-4" />
                     Add Location
                   </Button>
@@ -344,7 +344,7 @@ export default function Locations() {
                             <FormItem>
                               <FormLabel>Location Name</FormLabel>
                               <FormControl>
-                                <Input placeholder="Main Street Store" {...field} data-testid="input-location-name" />
+                                <Input placeholder="Main Street Store" {...field} className="min-h-[44px]" data-testid="input-location-name" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -362,6 +362,7 @@ export default function Locations() {
                                   placeholder="(555) 123-4567" 
                                   {...field}
                                   onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
+                                  className="min-h-[44px]"
                                   data-testid="input-location-phone"
                                 />
                               </FormControl>
@@ -378,7 +379,7 @@ export default function Locations() {
                           <FormItem>
                             <FormLabel>Street Address</FormLabel>
                             <FormControl>
-                              <Input placeholder="123 Main Street" {...field} data-testid="input-location-address" />
+                              <Input placeholder="123 Main Street" {...field} className="min-h-[44px]" data-testid="input-location-address" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -393,7 +394,7 @@ export default function Locations() {
                             <FormItem>
                               <FormLabel>City</FormLabel>
                               <FormControl>
-                                <Input placeholder="New York" {...field} data-testid="input-location-city" />
+                                <Input placeholder="New York" {...field} className="min-h-[44px]" data-testid="input-location-city" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -412,6 +413,7 @@ export default function Locations() {
                                   {...field} 
                                   onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                                   maxLength={2}
+                                  className="min-h-[44px]"
                                   data-testid="input-location-state"
                                 />
                               </FormControl>
@@ -427,7 +429,7 @@ export default function Locations() {
                             <FormItem>
                               <FormLabel>ZIP Code</FormLabel>
                               <FormControl>
-                                <Input placeholder="10001" {...field} data-testid="input-location-zip" />
+                                <Input placeholder="10001" {...field} className="min-h-[44px]" data-testid="input-location-zip" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -446,6 +448,7 @@ export default function Locations() {
                                 type="email" 
                                 placeholder="store@example.com" 
                                 {...field} 
+                                className="min-h-[44px]"
                                 data-testid="input-location-email"
                               />
                             </FormControl>
@@ -474,11 +477,11 @@ export default function Locations() {
                         )}
                       />
 
-                      <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                      <DialogFooter className="gap-2">
+                        <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="min-h-[44px]">
                           Cancel
                         </Button>
-                        <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-location">
+                        <Button type="submit" disabled={saveMutation.isPending} className="min-h-[44px]" data-testid="button-save-location">
                           {saveMutation.isPending ? "Saving..." : editingLocation ? "Update" : "Create"}
                         </Button>
                       </DialogFooter>
@@ -489,76 +492,68 @@ export default function Locations() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Revenue</TableHead>
-                  <TableHead>Orders</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">Loading locations...</TableCell>
-                  </TableRow>
-                ) : locations.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      No locations found. Add your first location to get started.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  locations.map((location) => (
-                    <TableRow key={location.id} data-testid={`location-row-${location.id}`}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium flex items-center gap-2">
-                            {location.name}
-                            {location.isDefault && (
-                              <Badge variant="secondary" className="text-xs">Default</Badge>
-                            )}
+            {/* Mobile Card View */}
+            {isLoading ? (
+              <div className="block lg:hidden text-center py-8">Loading locations...</div>
+            ) : locations.length === 0 ? (
+              <div className="block lg:hidden text-center py-8">
+                No locations found. Add your first location to get started.
+              </div>
+            ) : (
+              <div className="block lg:hidden space-y-4">
+                {locations.map((location) => (
+                  <Card key={location.id} data-testid={`location-card-${location.id}`}>
+                    <CardContent className="pt-6">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              {location.name}
+                              {location.isDefault && (
+                                <Badge variant="secondary" className="text-xs">Default</Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">{location.email}</div>
                           </div>
-                          <div className="text-xs text-muted-foreground">{location.email}</div>
+                          {location.isActive ? (
+                            <Badge variant="outline" className="text-green-600">
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-red-600">
+                              <XCircle className="mr-1 h-3 w-3" />
+                              Inactive
+                            </Badge>
+                          )}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
+                        <div className="text-sm space-y-1">
                           <div>{location.address}</div>
                           <div className="text-muted-foreground">
                             {location.city}, {location.state} {location.zipCode}
                           </div>
+                          <div className="text-muted-foreground">{location.phone}</div>
                         </div>
-                      </TableCell>
-                      <TableCell>{location.phone}</TableCell>
-                      <TableCell>${location.stats?.totalRevenue?.toFixed(2) || "0.00"}</TableCell>
-                      <TableCell>{location.stats?.totalOrders || 0}</TableCell>
-                      <TableCell>
-                        {location.isActive ? (
-                          <Badge variant="outline" className="text-green-600">
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-red-600">
-                            <XCircle className="mr-1 h-3 w-3" />
-                            Inactive
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                          <div>
+                            <div className="text-xs text-muted-foreground">Revenue</div>
+                            <div className="font-medium">${location.stats?.totalRevenue?.toFixed(2) || "0.00"}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">Orders</div>
+                            <div className="font-medium">{location.stats?.totalOrders || 0}</div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleEdit(location)}
+                            className="flex-1 min-h-[44px]"
                             data-testid={`button-edit-${location.id}`}
                           >
-                            <Edit className="h-3 w-3" />
+                            <Edit className="mr-2 h-3 w-3" />
+                            Edit
                           </Button>
                           {!location.isDefault && (
                             <Button
@@ -566,6 +561,7 @@ export default function Locations() {
                               variant="outline"
                               onClick={() => setDefaultMutation.mutate(location.id)}
                               disabled={setDefaultMutation.isPending}
+                              className="flex-1 min-h-[44px]"
                               data-testid={`button-set-default-${location.id}`}
                             >
                               Set Default
@@ -575,7 +571,7 @@ export default function Locations() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-red-600"
+                              className="text-red-600 min-h-[44px]"
                               onClick={() => setDeletingId(location.id)}
                               data-testid={`button-delete-${location.id}`}
                             >
@@ -583,12 +579,118 @@ export default function Locations() {
                             </Button>
                           )}
                         </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Desktop Table View */}
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Revenue</TableHead>
+                    <TableHead>Orders</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">Loading locations...</TableCell>
+                    </TableRow>
+                  ) : locations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        No locations found. Add your first location to get started.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    locations.map((location) => (
+                      <TableRow key={location.id} data-testid={`location-row-${location.id}`}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              {location.name}
+                              {location.isDefault && (
+                                <Badge variant="secondary" className="text-xs">Default</Badge>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{location.email}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>{location.address}</div>
+                            <div className="text-muted-foreground">
+                              {location.city}, {location.state} {location.zipCode}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{location.phone}</TableCell>
+                        <TableCell>${location.stats?.totalRevenue?.toFixed(2) || "0.00"}</TableCell>
+                        <TableCell>{location.stats?.totalOrders || 0}</TableCell>
+                        <TableCell>
+                          {location.isActive ? (
+                            <Badge variant="outline" className="text-green-600">
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-red-600">
+                              <XCircle className="mr-1 h-3 w-3" />
+                              Inactive
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEdit(location)}
+                              className="min-h-[44px]"
+                              data-testid={`button-edit-${location.id}`}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            {!location.isDefault && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setDefaultMutation.mutate(location.id)}
+                                disabled={setDefaultMutation.isPending}
+                                className="min-h-[44px]"
+                                data-testid={`button-set-default-${location.id}`}
+                              >
+                                Set Default
+                              </Button>
+                            )}
+                            {!location.isDefault && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 min-h-[44px]"
+                                onClick={() => setDeletingId(location.id)}
+                                data-testid={`button-delete-${location.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </main>
@@ -603,14 +705,15 @@ export default function Locations() {
               All data associated with this location will be permanently removed.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeletingId(null)}>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeletingId(null)} className="min-h-[44px]">
               Cancel
             </Button>
             <Button 
               variant="destructive" 
               onClick={() => deletingId && deleteMutation.mutate(deletingId)}
               disabled={deleteMutation.isPending}
+              className="min-h-[44px]"
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
