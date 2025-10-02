@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
+import { type Customer } from '@shared/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,16 +44,13 @@ export default function Customers() {
     phone: '',
     email: '',
     address: '',
-    deliveryAddress: '',
     category: 'Bronze',
   })
 
-  // Fetch customers
-  const { data: customers = [], isLoading } = useQuery({
+  const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ['/api/customers'],
   })
 
-  // Create customer mutation
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest('/api/customers', 'POST', data),
     onSuccess: () => {
@@ -73,7 +71,6 @@ export default function Customers() {
     },
   })
 
-  // Update customer mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: any) => apiRequest(`/api/customers/${id}`, 'PUT', data),
     onSuccess: () => {
@@ -94,7 +91,6 @@ export default function Customers() {
     },
   })
 
-  // Delete customer mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest(`/api/customers/${id}`, 'DELETE'),
     onSuccess: () => {
@@ -119,7 +115,6 @@ export default function Customers() {
       phone: '',
       email: '',
       address: '',
-      deliveryAddress: '',
       category: 'Bronze',
     })
   }
@@ -141,14 +136,13 @@ export default function Customers() {
     }
   }
 
-  const handleEdit = (customer: any) => {
+  const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer)
     setFormData({
       name: customer.name,
       phone: customer.phone || '',
       email: customer.email || '',
       address: customer.address || '',
-      deliveryAddress: customer.deliveryAddress || '',
       category: customer.category || 'Bronze',
     })
   }
@@ -159,7 +153,7 @@ export default function Customers() {
     }
   }
 
-  const filteredCustomers = customers.filter((customer: any) => 
+  const filteredCustomers = customers.filter((customer) => 
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone?.includes(searchTerm)
@@ -185,7 +179,6 @@ export default function Customers() {
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Customer Database</h1>
@@ -223,9 +216,8 @@ export default function Customers() {
                     id="phone"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+1 234 567 8900"
+                    placeholder="+44 1234 567890"
                     className="min-h-[44px]"
-                    data-testid="input-customer-phone"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -235,9 +227,8 @@ export default function Customers() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="john@example.com"
+                    placeholder="customer@example.com"
                     className="min-h-[44px]"
-                    data-testid="input-customer-email"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -246,26 +237,14 @@ export default function Customers() {
                     id="address"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="123 Main St, City, State"
+                    placeholder="123 Main Street, City"
                     className="min-h-[44px]"
-                    data-testid="input-customer-address"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="deliveryAddress">Delivery Address</Label>
-                  <Input
-                    id="deliveryAddress"
-                    value={formData.deliveryAddress || ''}
-                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                    placeholder="Delivery address (if different from billing)"
-                    className="min-h-[44px]"
-                    data-testid="input-customer-delivery-address"
                   />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="category">Category</Label>
                   <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                    <SelectTrigger className="min-h-[44px]" data-testid="select-customer-category">
+                    <SelectTrigger className="min-h-[44px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -281,7 +260,7 @@ export default function Customers() {
                 <Button variant="outline" onClick={() => setShowAddDialog(false)} className="min-h-[44px]">
                   Cancel
                 </Button>
-                <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-customer">
+                <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]">
                   {createMutation.isPending ? 'Creating...' : 'Create Customer'}
                 </Button>
               </DialogFooter>
@@ -289,53 +268,53 @@ export default function Customers() {
           </Dialog>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="grid gap-4 sm:gap-6 grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-              <UserPlus className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{customers.length}</div>
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3">
+                <UserPlus className="h-4 w-4 text-muted-foreground" />
+                <div className="text-xs sm:text-sm font-medium text-muted-foreground">Total Customers</div>
+              </div>
+              <div className="text-2xl font-bold mt-2">
+                {customers.length}
+              </div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Gold Members</CardTitle>
-              <Award className="h-4 w-4 text-yellow-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3">
+                <Award className="h-4 w-4 text-yellow-500" />
+                <div className="text-xs sm:text-sm font-medium text-muted-foreground">Gold</div>
+              </div>
+              <div className="text-2xl font-bold mt-2">
                 {customers.filter((c: any) => c.category === 'Gold').length}
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Silver Members</CardTitle>
-              <Award className="h-4 w-4 text-gray-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3">
+                <Award className="h-4 w-4 text-gray-400" />
+                <div className="text-xs sm:text-sm font-medium text-muted-foreground">Silver</div>
+              </div>
+              <div className="text-2xl font-bold mt-2">
                 {customers.filter((c: any) => c.category === 'Silver').length}
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Bronze Members</CardTitle>
-              <Award className="h-4 w-4 text-amber-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-3">
+                <Award className="h-4 w-4 text-amber-600" />
+                <div className="text-xs sm:text-sm font-medium text-muted-foreground">Bronze</div>
+              </div>
+              <div className="text-2xl font-bold mt-2">
                 {customers.filter((c: any) => c.category === 'Bronze').length}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Search */}
         <div className="mb-4 sm:mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -349,18 +328,18 @@ export default function Customers() {
           </div>
         </div>
 
-        {/* Customers Table */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base sm:text-lg">Customer List</CardTitle>
             <CardDescription className="text-xs sm:text-sm">View and manage all customer records</CardDescription>
           </CardHeader>
           <CardContent>
-            {filteredCustomers.length === 0 ? (
+            {filteredCustomers.length === 0 && (
               <div className="text-center text-muted-foreground py-8">No customers found</div>
-            ) : (
-              <>
-                {/* Mobile Card View */}
+            )}
+
+            {filteredCustomers.length > 0 && (
+              <div>
                 <div className="block lg:hidden space-y-3">
                   {filteredCustomers.map((customer: any) => (
                     <Card key={customer.id} className="border-2" data-testid={`customer-card-${customer.id}`}>
@@ -374,7 +353,7 @@ export default function Customers() {
                               </Badge>
                             </div>
                           </div>
-                          
+
                           {(customer.phone || customer.email) && (
                             <div className="space-y-1 text-sm">
                               {customer.phone && (
@@ -391,27 +370,27 @@ export default function Customers() {
                               )}
                             </div>
                           )}
-                          
+
                           {customer.address && (
-                            <div className="flex items-start gap-2 text-sm">
+                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
                               <MapPin className="h-3 w-3 text-muted-foreground mt-0.5" />
-                              <span className="text-muted-foreground">{customer.address}</span>
+                              <span className="text-xs">{customer.address}</span>
                             </div>
                           )}
-                          
+
                           <div className="grid grid-cols-2 gap-2 pt-2 border-t text-sm">
                             <div>
-                              <div className="text-xs text-muted-foreground">Loyalty Points</div>
+                              <div className="text-xs text-muted-foreground">Points</div>
                               <div className="font-medium">{customer.loyaltyPoints || 0}</div>
                             </div>
                             <div>
                               <div className="text-xs text-muted-foreground">Total Spent</div>
-                              <div className="font-medium">${customer.totalSpent || '0.00'}</div>
+                              <div className="font-medium">£{(customer.totalSpent || 0).toFixed(2)}</div>
                             </div>
                           </div>
-                          
+
                           <div className="flex gap-2 pt-2">
-                            <Dialog open={editingCustomer?.id === customer.id} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+                            <Dialog>
                               <DialogTrigger asChild>
                                 <Button
                                   variant="outline"
@@ -424,90 +403,74 @@ export default function Customers() {
                                   Edit
                                 </Button>
                               </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Edit Customer</DialogTitle>
-                                <DialogDescription>
-                                  Update customer information
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="grid gap-4 py-4">
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-name-mobile">Name *</Label>
-                                  <Input
-                                    id="edit-name-mobile"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="John Doe"
-                                    className="min-h-[44px]"
-                                  />
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Edit Customer</DialogTitle>
+                                  <DialogDescription>Update customer information</DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-name-mobile">Name *</Label>
+                                    <Input
+                                      id="edit-name-mobile"
+                                      value={formData.name}
+                                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                      className="min-h-[44px]"
+                                    />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-phone-mobile">Phone</Label>
+                                    <Input
+                                      id="edit-phone-mobile"
+                                      value={formData.phone}
+                                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                      className="min-h-[44px]"
+                                    />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-email-mobile">Email</Label>
+                                    <Input
+                                      id="edit-email-mobile"
+                                      type="email"
+                                      value={formData.email}
+                                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                      className="min-h-[44px]"
+                                    />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-address-mobile">Billing Address</Label>
+                                    <Input
+                                      id="edit-address-mobile"
+                                      value={formData.address}
+                                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                      className="min-h-[44px]"
+                                    />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-category-mobile">Category</Label>
+                                    <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                                      <SelectTrigger className="min-h-[44px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Bronze">Bronze</SelectItem>
+                                        <SelectItem value="Silver">Silver</SelectItem>
+                                        <SelectItem value="Gold">Gold</SelectItem>
+                                        <SelectItem value="Platinum">Platinum</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                 </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-phone-mobile">Phone</Label>
-                                  <Input
-                                    id="edit-phone-mobile"
-                                    value={formData.phone}
-                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                    placeholder="+1 234 567 8900"
-                                    className="min-h-[44px]"
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-email-mobile">Email</Label>
-                                  <Input
-                                    id="edit-email-mobile"
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    placeholder="john@example.com"
-                                    className="min-h-[44px]"
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-address-mobile">Billing Address</Label>
-                                  <Input
-                                    id="edit-address-mobile"
-                                    value={formData.address}
-                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                    placeholder="123 Main St, City, State"
-                                    className="min-h-[44px]"
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-deliveryAddress-mobile">Delivery Address</Label>
-                                  <Input
-                                    id="edit-deliveryAddress-mobile"
-                                    value={formData.deliveryAddress || ''}
-                                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                                    placeholder="Delivery address (if different from billing)"
-                                    className="min-h-[44px]"
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="edit-category-mobile">Category</Label>
-                                  <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                    <SelectTrigger className="min-h-[44px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Bronze">Bronze</SelectItem>
-                                      <SelectItem value="Silver">Silver</SelectItem>
-                                      <SelectItem value="Gold">Gold</SelectItem>
-                                      <SelectItem value="Platinum">Platinum</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                              <DialogFooter className="gap-2">
-                                <Button variant="outline" onClick={() => setEditingCustomer(null)} className="min-h-[44px]">
-                                  Cancel
-                                </Button>
-                                <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
-                                  {updateMutation.isPending ? 'Updating...' : 'Update Customer'}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
+                                <DialogFooter className="gap-2">
+                                  <Button variant="outline" onClick={() => setEditingCustomer(null)} className="min-h-[44px]">
+                                    Cancel
+                                  </Button>
+                                  <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
+                                    {updateMutation.isPending ? 'Updating...' : 'Update Customer'}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
                             <Button
                               variant="outline"
                               size="sm"
@@ -525,7 +488,6 @@ export default function Customers() {
                   ))}
                 </div>
 
-                {/* Desktop Table View */}
                 <div className="hidden lg:block overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -561,7 +523,7 @@ export default function Customers() {
                           </TableCell>
                           <TableCell>
                             {customer.address && (
-                              <div className="flex items-center gap-1 text-sm">
+                              <div className="flex items-start gap-1 text-sm">
                                 <MapPin className="h-3 w-3" />
                                 {customer.address}
                               </div>
@@ -573,10 +535,10 @@ export default function Customers() {
                             </Badge>
                           </TableCell>
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
-                          <TableCell>${customer.totalSpent || '0.00'}</TableCell>
+                          <TableCell>£{(customer.totalSpent || 0).toFixed(2)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Dialog open={editingCustomer?.id === customer.id} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+                              <Dialog>
                                 <DialogTrigger asChild>
                                   <Button
                                     variant="ghost"
@@ -590,64 +552,48 @@ export default function Customers() {
                                 <DialogContent>
                                   <DialogHeader>
                                     <DialogTitle>Edit Customer</DialogTitle>
-                                    <DialogDescription>
-                                      Update customer information
-                                    </DialogDescription>
+                                    <DialogDescription>Update customer information</DialogDescription>
                                   </DialogHeader>
                                   <div className="grid gap-4 py-4">
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-name-desktop">Name *</Label>
+                                      <Label htmlFor="edit-name">Name *</Label>
                                       <Input
-                                        id="edit-name-desktop"
+                                        id="edit-name"
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="John Doe"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-phone-desktop">Phone</Label>
+                                      <Label htmlFor="edit-phone">Phone</Label>
                                       <Input
-                                        id="edit-phone-desktop"
+                                        id="edit-phone"
                                         value={formData.phone}
                                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                        placeholder="+1 234 567 8900"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-email-desktop">Email</Label>
+                                      <Label htmlFor="edit-email">Email</Label>
                                       <Input
-                                        id="edit-email-desktop"
+                                        id="edit-email"
                                         type="email"
                                         value={formData.email}
                                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        placeholder="john@example.com"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-address-desktop">Billing Address</Label>
+                                      <Label htmlFor="edit-address">Billing Address</Label>
                                       <Input
-                                        id="edit-address-desktop"
+                                        id="edit-address"
                                         value={formData.address}
                                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                        placeholder="123 Main St, City, State"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-deliveryAddress-desktop">Delivery Address</Label>
-                                      <Input
-                                        id="edit-deliveryAddress-desktop"
-                                        value={formData.deliveryAddress || ''}
-                                        onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                                        placeholder="Delivery address (if different from billing)"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-category-desktop">Category</Label>
+                                      <Label htmlFor="edit-category">Category</Label>
                                       <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
                                         <SelectTrigger className="min-h-[44px]">
                                           <SelectValue />
@@ -686,8 +632,8 @@ export default function Customers() {
                     </TableBody>
                   </Table>
                 </div>
-              </>
-            )
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
