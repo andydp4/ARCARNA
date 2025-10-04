@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
 import { type Customer } from '@shared/schema'
@@ -109,14 +109,42 @@ export default function Customers() {
     },
   })
 
+  const AUTOSAVE_KEY = 'customer_form_autosave'
+
+  // Load autosaved data when dialog opens
+  useEffect(() => {
+    if (showAddDialog && !editingCustomer) {
+      const saved = localStorage.getItem(AUTOSAVE_KEY)
+      if (saved) {
+        try {
+          const parsedData = JSON.parse(saved)
+          setFormData(parsedData)
+          toast({
+            title: 'Draft Restored',
+            description: 'Your previous work has been restored',
+          })
+        } catch (e) {
+          console.error('Failed to parse autosaved data')
+        }
+      }
+    }
+  }, [showAddDialog, editingCustomer])
+
+  // Auto-save form data to localStorage
+  const autoSaveFormData = (updatedData: typeof formData) => {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(updatedData))
+  }
+
   const resetForm = () => {
-    setFormData({
+    const defaultData = {
       name: '',
       phone: '',
       email: '',
       address: '',
       category: 'Bronze',
-    })
+    }
+    setFormData(defaultData)
+    localStorage.removeItem(AUTOSAVE_KEY)
   }
 
   const handleSubmit = () => {
@@ -134,6 +162,9 @@ export default function Customers() {
     } else {
       createMutation.mutate(formData)
     }
+    
+    // Clear autosave after successful submission
+    localStorage.removeItem(AUTOSAVE_KEY)
   }
 
   const handleEdit = (customer: Customer) => {
@@ -204,7 +235,11 @@ export default function Customers() {
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...formData, name: e.target.value }
+                      setFormData(updated)
+                    }}
+                    onBlur={() => autoSaveFormData(formData)}
                     placeholder="John Doe"
                     className="min-h-[44px]"
                     data-testid="input-customer-name"
@@ -215,7 +250,11 @@ export default function Customers() {
                   <Input
                     id="phone"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...formData, phone: e.target.value }
+                      setFormData(updated)
+                    }}
+                    onBlur={() => autoSaveFormData(formData)}
                     placeholder="+44 1234 567890"
                     className="min-h-[44px]"
                   />
@@ -226,7 +265,11 @@ export default function Customers() {
                     id="email"
                     type="email"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...formData, email: e.target.value }
+                      setFormData(updated)
+                    }}
+                    onBlur={() => autoSaveFormData(formData)}
                     placeholder="customer@example.com"
                     className="min-h-[44px]"
                   />
@@ -236,14 +279,22 @@ export default function Customers() {
                   <Input
                     id="address"
                     value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    onChange={(e) => {
+                      const updated = { ...formData, address: e.target.value }
+                      setFormData(updated)
+                    }}
+                    onBlur={() => autoSaveFormData(formData)}
                     placeholder="123 Main Street, City"
                     className="min-h-[44px]"
                   />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="category">Category</Label>
-                  <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                  <Select value={formData.category} onValueChange={(value) => {
+                    const updated = { ...formData, category: value }
+                    setFormData(updated)
+                    autoSaveFormData(updated)
+                  }}>
                     <SelectTrigger className="min-h-[44px]">
                       <SelectValue />
                     </SelectTrigger>

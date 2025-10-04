@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
 import { Button } from '@/components/ui/button'
@@ -161,8 +161,34 @@ export default function ProductManagement() {
     },
   })
 
+  const AUTOSAVE_KEY = 'product_form_autosave'
+
+  // Load autosaved data when dialog opens
+  useEffect(() => {
+    if (showAddDialog && !editingProduct) {
+      const saved = localStorage.getItem(AUTOSAVE_KEY)
+      if (saved) {
+        try {
+          const parsedData = JSON.parse(saved)
+          setFormData(parsedData)
+          toast({
+            title: 'Draft Restored',
+            description: 'Your previous work has been restored',
+          })
+        } catch (e) {
+          console.error('Failed to parse autosaved data')
+        }
+      }
+    }
+  }, [showAddDialog, editingProduct])
+
+  // Auto-save form data to localStorage
+  const autoSaveFormData = (updatedData: typeof formData) => {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(updatedData))
+  }
+
   const resetForm = () => {
-    setFormData({
+    const defaultData = {
       productId: '',
       name: '',
       barcode: '',
@@ -171,7 +197,9 @@ export default function ProductManagement() {
       stock: '',
       stockLimit: '',
       categoryId: ''
-    })
+    }
+    setFormData(defaultData)
+    localStorage.removeItem(AUTOSAVE_KEY)
   }
 
   const handleSubmit = () => {
@@ -197,6 +225,9 @@ export default function ProductManagement() {
     } else {
       createMutation.mutate(productData)
     }
+    
+    // Clear autosave after successful submission
+    localStorage.removeItem(AUTOSAVE_KEY)
   }
 
   const handleEdit = (product: any) => {
@@ -389,7 +420,11 @@ export default function ProductManagement() {
                     <Input
                       id="productId"
                       value={formData.productId}
-                      onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+                      onChange={(e) => {
+                        const updated = { ...formData, productId: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
                       placeholder="PRD001 (optional)"
                       className="min-h-[44px]"
                       data-testid="input-product-id"
@@ -400,7 +435,11 @@ export default function ProductManagement() {
                     <Input
                       id="name"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => {
+                        const updated = { ...formData, name: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
                       placeholder="Product Name"
                       className="min-h-[44px]"
                       data-testid="input-product-name"
@@ -411,7 +450,11 @@ export default function ProductManagement() {
                     <Input
                       id="barcode"
                       value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      onChange={(e) => {
+                        const updated = { ...formData, barcode: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
                       placeholder="123456789"
                       className="min-h-[44px]"
                       data-testid="input-product-barcode"
@@ -425,7 +468,11 @@ export default function ProductManagement() {
                         type="number"
                         step="0.01"
                         value={formData.price}
-                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        onChange={(e) => {
+                          const updated = { ...formData, price: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
                         placeholder="9.99"
                         className="min-h-[44px]"
                         data-testid="input-product-price"
@@ -438,7 +485,11 @@ export default function ProductManagement() {
                         type="number"
                         step="0.01"
                         value={formData.tax}
-                        onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
+                        onChange={(e) => {
+                          const updated = { ...formData, tax: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
                         placeholder="0.15"
                         className="min-h-[44px]"
                         data-testid="input-product-tax"
@@ -452,7 +503,11 @@ export default function ProductManagement() {
                         id="stock"
                         type="number"
                         value={formData.stock}
-                        onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                        onChange={(e) => {
+                          const updated = { ...formData, stock: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
                         placeholder="100"
                         className="min-h-[44px]"
                         data-testid="input-product-stock"
@@ -464,7 +519,11 @@ export default function ProductManagement() {
                         id="stockLimit"
                         type="number"
                         value={formData.stockLimit}
-                        onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
+                        onChange={(e) => {
+                          const updated = { ...formData, stockLimit: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
                         placeholder="500"
                         className="min-h-[44px]"
                         data-testid="input-product-stock-limit"

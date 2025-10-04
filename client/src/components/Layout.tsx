@@ -29,21 +29,21 @@ export function Layout({ children }: LayoutProps) {
         const Icon = item.icon
         const isActive = location === item.href
         return (
-          <Link key={item.key} href={item.href}>
-            <a
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
-                'hover:bg-accent hover:text-accent-foreground',
-                isActive && 'bg-accent text-accent-foreground'
-              )}
-              data-testid={item.testId}
-              onClick={() => isMobile && setSidebarOpen(false)}
-            >
-              <Icon className="h-4 w-4" />
-              {(!isMobile || sidebarOpen) && (
-                <span className="text-sm font-medium">{item.label}</span>
-              )}
-            </a>
+          <Link
+            key={item.key}
+            href={item.href}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
+              'hover:bg-accent hover:text-accent-foreground',
+              isActive && 'bg-accent text-accent-foreground'
+            )}
+            data-testid={item.testId}
+            onClick={() => isMobile && setSidebarOpen(false)}
+          >
+            <Icon className="h-4 w-4" />
+            {(!isMobile || sidebarOpen) && (
+              <span className="text-sm font-medium">{item.label}</span>
+            )}
           </Link>
         )
       })}
