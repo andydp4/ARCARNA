@@ -195,15 +195,15 @@ export default function Settings() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Settings2 className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
+            <Settings2 className="h-6 sm:h-8 w-6 sm:w-8" />
             System Settings
           </h1>
           <p className="text-muted-foreground mt-1">Configure your EPOS system settings and preferences</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
@@ -224,13 +224,14 @@ export default function Settings() {
                   <CardDescription>Your business details used on invoices and receipts</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="businessName">Business Name</Label>
                       <Input
                         id="businessName"
                         value={settings.businessName}
                         onChange={(e) => handleSettingChange('general', 'businessName', e.target.value)}
+                        className="min-h-[44px]"
                         data-testid="input-business-name"
                       />
                     </div>
@@ -243,6 +244,7 @@ export default function Settings() {
                           value={settings.businessWebsite}
                           onChange={(e) => handleSettingChange('general', 'businessWebsite', e.target.value)}
                           placeholder="www.example.com"
+                          className="min-h-[44px]"
                         />
                       </div>
                     </div>
@@ -260,7 +262,7 @@ export default function Settings() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="businessPhone">Phone</Label>
                       <div className="flex gap-2">
@@ -270,6 +272,7 @@ export default function Settings() {
                           value={settings.businessPhone}
                           onChange={(e) => handleSettingChange('general', 'businessPhone', e.target.value)}
                           placeholder="+1 234 567 8900"
+                          className="min-h-[44px]"
                         />
                       </div>
                     </div>
@@ -311,7 +314,7 @@ export default function Settings() {
                   </div>
                   {settings.vatEnabled && (
                     <>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="vatRate">VAT Rate (%)</Label>
                           <Input
@@ -376,7 +379,7 @@ export default function Settings() {
                   <CardDescription>Configure accepted payment methods</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="cardPayment">Card Payment</Label>
                       <Switch
@@ -420,7 +423,7 @@ export default function Settings() {
                   <CardDescription>Bank account information for transfers and card payments</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="bankName">Bank Name</Label>
                       <Input
@@ -575,7 +578,7 @@ export default function Settings() {
                       />
                     </div>
                     {settings.deliveryEnabled && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="deliveryFee">Delivery Fee</Label>
                           <Input
@@ -614,7 +617,7 @@ export default function Settings() {
                   <CardDescription>Customize invoice format and content</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="invoicePrefix">Invoice Prefix</Label>
                       <Input
@@ -679,7 +682,7 @@ export default function Settings() {
                   <CardDescription>Configure inventory thresholds and alerts</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="lowStockThreshold">Low Stock Alert (%)</Label>
                       <Input

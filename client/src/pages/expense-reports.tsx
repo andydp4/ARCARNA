@@ -116,14 +116,14 @@ export function ExpenseReportsPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Financial Reports</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Financial Reports</h1>
           <p className="text-muted-foreground">Expense tracking and profit analysis</p>
         </div>
-        <div className="flex gap-4 items-center">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[180px]" data-testid="select-date-range">
+            <SelectTrigger className="min-h-[44px] w-full sm:w-[180px]" data-testid="select-date-range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -136,6 +136,7 @@ export function ExpenseReportsPage() {
           </Select>
           <Button 
             variant="outline"
+            className="min-h-[44px] w-full sm:w-auto"
             onClick={() => exportToCSV(profitAnalysis?.dailyTrends || [], 'profit_report')}
             data-testid="button-export"
           >
@@ -176,7 +177,7 @@ export function ExpenseReportsPage() {
         {/* Profit Analysis Tab */}
         <TabsContent value="profit" className="space-y-4">
           {/* Key Metrics */}
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Revenue</CardTitle>
@@ -278,7 +279,7 @@ export function ExpenseReportsPage() {
         {/* Expense Report Tab */}
         <TabsContent value="expenses" className="space-y-4">
           {/* Expense Summary */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Overhead Expenses</CardTitle>
@@ -320,7 +321,7 @@ export function ExpenseReportsPage() {
           </div>
           
           {/* Expense Categories */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Overhead by Category</CardTitle>
@@ -397,7 +398,7 @@ export function ExpenseReportsPage() {
         {/* Profit Margins Tab */}
         <TabsContent value="margins" className="space-y-4">
           {/* Margin Overview */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Gross Margin</CardTitle>

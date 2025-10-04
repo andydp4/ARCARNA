@@ -14,16 +14,16 @@ export default function Landing() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-accent rounded-2xl mb-4 shadow-lg">
             <i className="fas fa-cash-register text-3xl text-white"></i>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">Midnight EPOS</h1>
-          <p className="text-slate-300 text-lg">
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Midnight EPOS</h1>
+          <p className="text-slate-300 text-base sm:text-lg">
             Enterprise Point of Sale System
           </p>
         </div>
 
         {/* Login Card */}
         <Card className="shadow-2xl border-slate-700">
-          <CardContent className="p-8">
-            <h2 className="text-2xl font-semibold text-foreground mb-2">
+          <CardContent className="p-6 sm:p-8">
+            <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">
               Welcome Back
             </h2>
             <p className="text-muted-foreground mb-6">
@@ -32,7 +32,7 @@ export default function Landing() {
 
             <Button
               onClick={handleLogin}
-              className="w-full bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
+              className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
               data-testid="button-login"
             >
               <i className="fab fa-codepen text-xl"></i>

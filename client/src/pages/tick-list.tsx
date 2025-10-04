@@ -201,15 +201,15 @@ export default function TickList() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <CreditCard className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
+            <CreditCard className="h-6 sm:h-8 w-6 sm:w-8" />
             Tick List (Credit Customers)
           </h1>
           <p className="text-muted-foreground mt-1">Manage customer credit and outstanding payments</p>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Outstanding</CardTitle>
@@ -251,21 +251,21 @@ export default function TickList() {
         </div>
 
         {/* Filters and Actions */}
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex gap-2">
-            <div className="relative w-64">
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 flex-1">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
                 type="text"
                 placeholder="Search customers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
+                className="pl-8 min-h-[44px]"
                 data-testid="input-search-tick"
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="min-h-[44px] w-full sm:w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -276,7 +276,7 @@ export default function TickList() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={exportToCSV} variant="outline" className="gap-2">
+          <Button onClick={exportToCSV} variant="outline" className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-export-csv">
             <Download className="h-4 w-4" />
             Export CSV
           </Button>
