@@ -670,6 +670,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Invoices endpoints - for Invoice Management page
+  app.get("/api/invoices", isAuthenticated, async (req, res) => {
+    try {
+      const orders = await storage.getOrders?.() || [];
+      // Transform orders into invoice format
+      const invoices = orders.map((order: any) => ({
+        id: order.id,
+        invoiceNumber: `INV-${new Date(order.createdAt).getFullYear()}-${String(order.id).padStart(3, '0')}`,
+        orderId: order.id,
+        customerId: order.customerId,
+        customerName: order.customer?.name || 'Walk-in Customer',
+        customerEmail: order.customer?.email || '',
+        date: order.createdAt,
+        dueDate: new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from order
+        total: parseFloat(order.total),
+        subtotal: parseFloat(order.total) / 1.2, // Assuming 20% VAT
+        vat: parseFloat(order.total) - (parseFloat(order.total) / 1.2),
+        status: order.status === 'completed' ? 'paid' : 'pending',
+        paymentMethod: order.paymentMethod,
+        items: order.orderItems?.map((item: any) => ({
+          name: item.product?.name || 'Unknown Product',
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unitPrice),
+          total: parseFloat(item.totalPrice)
+        })) || []
+      }));
+      res.json(invoices);
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      res.status(500).json({ message: "Failed to fetch invoices" });
+    }
+  });
+
+  app.get("/api/invoices/:id/pdf", isAuthenticated, async (req, res) => {
+    try {
+      // For now, return a placeholder response
+      // In production, this would generate a real PDF
+      res.json({ 
+        message: "PDF generation not yet implemented",
+        invoiceId: req.params.id 
+      });
+    } catch (error) {
+      console.error("Error generating invoice PDF:", error);
+      res.status(500).json({ message: "Failed to generate invoice PDF" });
+    }
+  });
+
+  // Tick Customers endpoints - for Credit/Tick List page
+  app.get("/api/tick-customers", isAuthenticated, async (req, res) => {
+    try {
+      const customers = await storage.getCustomers();
+      // Filter customers with outstanding credit
+      const tickCustomers = customers
+        .filter(customer => customer.category === 'tick' || (customer.loyaltyPoints && customer.loyaltyPoints > 0))
+        .map(customer => ({
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          totalDebt: 0, // Would calculate from unpaid orders
+          lastOrderDate: customer.createdAt,
+          orders: []
+        }));
+      res.json(tickCustomers);
+    } catch (error) {
+      console.error("Error fetching tick customers:", error);
+      res.status(500).json({ message: "Failed to fetch tick customers" });
+    }
+  });
+
+  // Settings endpoints - for Settings page
+  app.get("/api/settings", isAuthenticated, async (req, res) => {
+    try {
+      // Return default settings - in production, these would be stored in DB
+      const settings = {
+        businessName: 'Midnight EPOS',
+        businessAddress: '',
+        businessPhone: '',
+        businessEmail: '',
+        businessWebsite: '',
+        vatEnabled: true,
+        vatRate: 20,
+        vatNumber: '',
+        cardPaymentEnabled: true,
+        cashPaymentEnabled: true,
+        tickPaymentEnabled: true,
+        transferPaymentEnabled: true,
+        lowStockThreshold: 20,
+        criticalStockThreshold: 5,
+        multiLocationEnabled: false,
+      };
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching settings:", error);
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  app.put("/api/settings", isAuthenticated, async (req, res) => {
+    try {
+      // In production, this would save to database
+      res.json({ message: "Settings updated successfully", settings: req.body });
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
