@@ -385,7 +385,7 @@ export default function Customers() {
                             </div>
                             <div>
                               <div className="text-xs text-muted-foreground">Total Spent</div>
-                              <div className="font-medium">£{(customer.totalSpent || 0).toFixed(2)}</div>
+                              <div className="font-medium">£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</div>
                             </div>
                           </div>
 
@@ -535,7 +535,7 @@ export default function Customers() {
                             </Badge>
                           </TableCell>
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
-                          <TableCell>£{(customer.totalSpent || 0).toFixed(2)}</TableCell>
+                          <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Dialog>

@@ -338,7 +338,7 @@ export default function LoyaltyPage() {
                             </div>
                           </td>
                           <td className="p-4 text-center" data-testid={`text-spent-${customer.id}`}>
-                            ${(customer.totalSpent || 0).toFixed(2)}
+                            ${(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}
                           </td>
                           <td className="p-4 text-center">
                             {nextTier && (
