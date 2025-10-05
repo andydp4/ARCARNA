@@ -207,34 +207,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Orders routes
   app.post("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
-      // Validate order data using shared schema
-      const validatedData = insertOrderSchema.parse({
+      const { engine } = await import('./engine.wiring');
+      
+      // Map frontend format to domain engine format
+      const orderInput = {
         customerId: req.body.customer_id || null,
-        locationId: req.body.location_id || null,
-        total: req.body.total,
+        lines: (req.body.items || []).map((item: any) => ({
+          productId: item.product_id,
+          productName: item.name || item.product_name || 'Unknown',
+          quantity: item.quantity,
+          unitPrice: item.price || item.unit_price,
+        })),
         paymentMethod: req.body.payment_method,
-      });
+      };
       
-      const userId = req.user.claims.sub;
+      // Use domain engine to place order - this will:
+      // 1. Save order
+      // 2. Reserve stock
+      // 3. Update customer debt (if tick)
+      // 4. Create invoice
+      // 5. Trigger analytics
+      // 6. Update customer metrics
+      const result = await engine.placeOrder(orderInput);
       
-      // Create order with items (map camelCase to snake_case)
-      const order = await storage.createOrder({
-        customer_id: validatedData.customerId,
-        location_id: validatedData.locationId,
-        total: validatedData.total,
-        payment_method: validatedData.paymentMethod,
-        items: req.body.items, // Items validated separately by storage layer
-        created_by: userId,
-      });
-      
-      res.json(order);
+      res.json({ id: result.orderId, message: "Order placed successfully" });
     } catch (error: any) {
-      if (error.name === 'ZodError') {
-        res.status(400).json({ message: "Invalid order data", errors: error.errors });
-      } else {
-        console.error("Error creating order:", error);
-        res.status(500).json({ message: "Failed to create order" });
-      }
+      console.error("Error creating order:", error);
+      res.status(500).json({ message: error.message || "Failed to create order" });
     }
   });
 
