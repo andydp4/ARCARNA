@@ -75,7 +75,32 @@ app.use((req, res, next) => {
     port,
     host: "0.0.0.0",
     reusePort: true,
-  }, () => {
+  }, async () => {
     log(`serving on port ${port}`);
+    
+    // Start analytics worker if database is available
+    if (process.env.DATABASE_URL) {
+      try {
+        const { analyticsWorker } = await import('../apps/server/src/workers/analytics.worker');
+        await analyticsWorker.start();
+        log('Analytics worker started');
+      } catch (error) {
+        console.error('Failed to start analytics worker:', error);
+      }
+    }
+  });
+  
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    log('SIGTERM received, shutting down gracefully...');
+    if (process.env.DATABASE_URL) {
+      try {
+        const { analyticsWorker } = await import('../apps/server/src/workers/analytics.worker');
+        analyticsWorker.stop();
+      } catch (error) {
+        console.error('Error stopping worker:', error);
+      }
+    }
+    process.exit(0);
   });
 })();
