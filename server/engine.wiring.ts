@@ -1,4 +1,5 @@
 import { DomainEngine, InMemoryBus } from '../packages/domain/src/index'
+import { InvoicesPortStub } from './ports/invoices.stub'
 
 const bus = new InMemoryBus()
 
@@ -13,14 +14,14 @@ async function createEngine() {
     const { OrdersRepoDrizzle, ProductsRepoDrizzle, CustomersRepoDrizzle } = await import('../apps/server/src/db/repos')
     const { AnalyticsSinkDrizzle, AuditPortDrizzle } = await import('../apps/server/src/db/analytics_audit')
     const { withTransaction } = await import('../apps/server/src/db')
-    const { InvoicesPortPuppeteer } = await import('../apps/server/src/ports/invoices.puppeteer')
     
+    // Use stub invoice port (puppeteer requires chromium which may not be available in production)
     return new DomainEngine(
       bus,
       OrdersRepoDrizzle,
       ProductsRepoDrizzle,
       CustomersRepoDrizzle,
-      InvoicesPortPuppeteer,
+      InvoicesPortStub,
       AnalyticsSinkDrizzle,
       AuditPortDrizzle,
       async (fn: any) => withTransaction(async (tx: any)=> fn(tx))
@@ -29,7 +30,6 @@ async function createEngine() {
     // In-memory wiring (no external services required)
     const { OrdersRepoMemory, ProductsRepoMemory, CustomersRepoMemory } = await import('../apps/server/src/db/memory.repos')
     const { AnalyticsSinkMemory, AuditPortMemory } = await import('../apps/server/src/db/memory.ports')
-    const { InvoicesPortPuppeteer } = await import('../apps/server/src/ports/invoices.puppeteer')
     // simple passthrough transaction
     const withTx = async (fn: any) => await fn()
     
@@ -38,7 +38,7 @@ async function createEngine() {
       OrdersRepoMemory,
       ProductsRepoMemory,
       CustomersRepoMemory,
-      InvoicesPortPuppeteer,
+      InvoicesPortStub,
       AnalyticsSinkMemory,
       AuditPortMemory,
       withTx

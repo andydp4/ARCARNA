@@ -209,31 +209,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { engine } = await import('./engine.wiring');
       
+      // Validate required fields
+      if (!req.body.items || !Array.isArray(req.body.items) || req.body.items.length === 0) {
+        return res.status(400).json({ message: "Order must contain at least one item" });
+      }
+      
+      // Validate payment method against domain enum
+      const validPaymentMethods = ['cash', 'card', 'transfer', 'tick'];
+      if (!req.body.payment_method || !validPaymentMethods.includes(req.body.payment_method)) {
+        return res.status(400).json({ 
+          message: `Payment method must be one of: ${validPaymentMethods.join(', ')}` 
+        });
+      }
+      
+      // Validate all items have required fields before mapping
+      for (let i = 0; i < req.body.items.length; i++) {
+        const item = req.body.items[i];
+        if (!item.product_id || !item.quantity || item.price == null) {
+          return res.status(400).json({ 
+            message: `Item ${i + 1}: product_id, quantity, and price are required` 
+          });
+        }
+        if (isNaN(Number(item.quantity)) || Number(item.quantity) <= 0) {
+          return res.status(400).json({ 
+            message: `Item ${i + 1}: quantity must be a positive number` 
+          });
+        }
+        if (isNaN(Number(item.price)) || Number(item.price) < 0) {
+          return res.status(400).json({ 
+            message: `Item ${i + 1}: price must be a non-negative number` 
+          });
+        }
+      }
+      
       // Map frontend format to domain engine format
+      // Domain expects: { customerId?, lines: [{productId, quantity, unitPrice}], paymentMethod }
       const orderInput = {
-        customerId: req.body.customer_id || null,
-        lines: (req.body.items || []).map((item: any) => ({
+        customerId: req.body.customer_id || undefined,
+        lines: req.body.items.map((item: any) => ({
           productId: item.product_id,
-          productName: item.name || item.product_name || 'Unknown',
-          quantity: item.quantity,
-          unitPrice: item.price || item.unit_price,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.price),
         })),
-        paymentMethod: req.body.payment_method,
+        paymentMethod: req.body.payment_method as 'cash' | 'card' | 'transfer' | 'tick',
       };
       
       // Use domain engine to place order - this will:
-      // 1. Save order
-      // 2. Reserve stock
-      // 3. Update customer debt (if tick)
-      // 4. Create invoice
-      // 5. Trigger analytics
-      // 6. Update customer metrics
+      // 1. Validate input with PlaceOrderInput schema
+      // 2. Save order and line items
+      // 3. Reserve stock for each product
+      // 4. Update customer debt (if tick payment)
+      // 5. Create invoice via InvoicesPort
+      // 6. Trigger analytics events via AnalyticsSink
+      // 7. Update customer metrics (CLV, RFM scores)
+      // 8. Write audit logs
       const result = await engine.placeOrder(orderInput);
       
       res.json({ id: result.orderId, message: "Order placed successfully" });
     } catch (error: any) {
       console.error("Error creating order:", error);
-      res.status(500).json({ message: error.message || "Failed to create order" });
+      const message = error.message || "Failed to create order";
+      const status = error.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ message, errors: error.errors });
     }
   });
 
