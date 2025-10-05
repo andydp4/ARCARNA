@@ -205,6 +205,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Orders routes
+  app.get("/api/orders", isAuthenticated, async (req, res) => {
+    try {
+      const orders = await storage.getOrders?.() || [];
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
   app.post("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
       const { engine } = await import('./engine.wiring');
