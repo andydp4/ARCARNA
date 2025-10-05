@@ -2,7 +2,19 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pkg from 'pg'
 const { Pool } = pkg
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+export const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+})
+
+// Handle pool errors to prevent crashes
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err)
+  // Don't throw - just log it
+})
+
 export const db = drizzle(pool)
 
 export async function withTransaction<T>(fn: (tx: any)=>Promise<T>): Promise<T> {
