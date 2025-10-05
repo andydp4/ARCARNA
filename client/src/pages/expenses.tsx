@@ -144,10 +144,22 @@ export function ExpensesPage() {
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
     // Convert the form data to InsertOverheadExpense format
-    const expenseData: InsertOverheadExpense = {
-      ...data,
-      amount: data.amount.toString(), // Convert number to string for database
+    const expenseData: any = {
+      name: data.name,
+      category: data.category,
+      amount: data.amount.toString(),
+      frequency: data.frequency,
+      startDate: data.startDate,
+      isActive: data.isActive,
     };
+    
+    // Only include optional fields if they have values
+    if (data.endDate) {
+      expenseData.endDate = data.endDate;
+    }
+    if (data.description) {
+      expenseData.description = data.description;
+    }
     
     if (editingExpense) {
       updateMutation.mutate({ id: editingExpense.id, data: expenseData });
