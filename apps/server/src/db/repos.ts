@@ -45,14 +45,13 @@ export const ProductsRepoDrizzle: ProductsRepo = {
   async create(product: Product): Promise<Product> {
     const [created] = await db.insert(s.products).values({
       id: product.id as any,
-      product_id: product.productCode,
+      product_id: product.productCode, // Using snake_case as schema expects
       name: product.name,
       barcode: product.barcode,
-      price: product.price,
-      tax: product.tax,
+      default_sale_price: String(product.price || 0),
+      cost_price: String(product.tax || 0), // Using tax field as cost price for now
       stock: product.stock,
       stock_limit: product.stockLimit,
-      category_id: product.categoryId,
       created_at: product.createdAt,
       updated_at: product.updatedAt,
     }).returning()
@@ -67,11 +66,10 @@ export const ProductsRepoDrizzle: ProductsRepo = {
         product_id: updates.productCode,
         name: updates.name,
         barcode: updates.barcode,
-        price: updates.price,
-        tax: updates.tax,
+        default_sale_price: updates.price ? String(updates.price) : undefined,
+        cost_price: updates.tax ? String(updates.tax) : undefined,
         stock: updates.stock,
         stock_limit: updates.stockLimit,
-        category_id: updates.categoryId,
         updated_at: updates.updatedAt,
       })
       .where(eq(s.products.id, id as any))
@@ -81,11 +79,11 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: updated.product_id,
       name: updated.name,
       barcode: updated.barcode,
-      price: updated.price,
-      tax: updated.tax,
+      price: parseFloat(updated.default_sale_price),
+      tax: parseFloat(updated.cost_price || '0'),
       stock: updated.stock,
       stockLimit: updated.stock_limit,
-      categoryId: updated.category_id,
+      categoryId: undefined,
       createdAt: updated.created_at,
       updatedAt: updated.updated_at,
     } as Product
@@ -101,29 +99,29 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: product.product_id,
       name: product.name,
       barcode: product.barcode,
-      price: product.price,
-      tax: product.tax,
+      price: parseFloat(product.default_sale_price),
+      tax: parseFloat(product.cost_price || '0'),
       stock: product.stock,
       stockLimit: product.stock_limit,
-      categoryId: product.category_id,
+      categoryId: undefined,
       createdAt: product.created_at,
       updatedAt: product.updated_at,
     } as Product
   },
   async findAll(): Promise<Product[]> {
     const products = await db.select().from(s.products).orderBy(s.products.name)
-    return products.map(p => ({
-      id: p.id as ProductId,
-      productCode: p.product_id,
-      name: p.name,
-      barcode: p.barcode,
-      price: p.price,
-      tax: p.tax,
-      stock: p.stock,
-      stockLimit: p.stock_limit,
-      categoryId: p.category_id,
-      createdAt: p.created_at,
-      updatedAt: p.updated_at,
+    return products.map(product => ({
+      id: product.id as ProductId,
+      productCode: product.product_id,
+      name: product.name,
+      barcode: product.barcode,
+      price: parseFloat(product.default_sale_price),
+      tax: parseFloat(product.cost_price || '0'),
+      stock: product.stock,
+      stockLimit: product.stock_limit,
+      categoryId: undefined,
+      createdAt: product.created_at,
+      updatedAt: product.updated_at,
     } as Product))
   }
 }
