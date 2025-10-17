@@ -236,10 +236,10 @@ export default function ProductManagement() {
       productId: product.productId || '',
       name: product.name,
       barcode: product.barcode || '',
-      price: product.price.toString(),
-      tax: product.tax?.toString() || '',
-      stock: product.stock?.toString() || '',
-      stockLimit: product.stockLimit?.toString() || '',
+      price: (product.price || product.defaultSalePrice || '').toString(),
+      tax: (product.tax || product.costPrice || '').toString(),
+      stock: (product.stock || '').toString(),
+      stockLimit: (product.stockLimit || '').toString(),
       categoryId: product.categoryId || ''
     })
   }
@@ -717,7 +717,7 @@ export default function ProductManagement() {
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
                                 <div className="text-xs text-muted-foreground">Price</div>
-                                <div className="font-medium">${product.price.toFixed(2)}</div>
+                                <div className="font-medium">${(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</div>
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">Stock</div>
@@ -729,10 +729,10 @@ export default function ProductManagement() {
                                   <div className="font-mono text-xs">{product.barcode}</div>
                                 </div>
                               )}
-                              {product.tax && (
+                              {(product.tax || product.costPrice) && (
                                 <div>
-                                  <div className="text-xs text-muted-foreground">Tax</div>
-                                  <div className="font-medium">{(product.tax * 100).toFixed(0)}%</div>
+                                  <div className="text-xs text-muted-foreground">Cost</div>
+                                  <div className="font-medium">${parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</div>
                                 </div>
                               )}
                             </div>
@@ -889,8 +889,8 @@ export default function ProductManagement() {
                         <TableCell className="font-mono text-sm">{product.productId || '-'}</TableCell>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
-                        <TableCell>${product.price.toFixed(2)}</TableCell>
-                        <TableCell>{product.tax ? `${(product.tax * 100).toFixed(0)}%` : '-'}</TableCell>
+                        <TableCell>${(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
+                        <TableCell>${parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>
