@@ -207,8 +207,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Orders routes
   app.get("/api/orders", isAuthenticated, async (req, res) => {
     try {
-      const orders = await storage.getOrders?.() || [];
-      res.json(orders);
+      // TODO: Implement getOrders method in storage
+      res.json([]);
     } catch (error) {
       console.error("Error fetching orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
@@ -719,7 +719,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Invoices endpoints - for Invoice Management page
   app.get("/api/invoices", isAuthenticated, async (req, res) => {
     try {
-      const orders = await storage.getOrders?.() || [];
+      // TODO: Implement getOrders method in storage
+      const orders: any[] = [];
       // Transform orders into invoice format
       const invoices = orders.map((order: any) => ({
         id: order.id,
