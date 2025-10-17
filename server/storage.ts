@@ -235,11 +235,11 @@ export class DatabaseStorage implements IStorage {
         productId: data.productId || `PRD-${Date.now()}`,
         name: data.name,
         barcode: data.barcode,
-        price: data.price,
-        tax: data.tax || 0,
-        stock: data.stock || 0,
-        stockLimit: data.stockLimit || 100,
-        categoryId: data.categoryId,
+        defaultSalePrice: data.defaultSalePrice ?? data.price,
+        costPrice: data.costPrice ?? data.tax ?? 0,
+        stock: data.stock ?? 0,
+        stockLimit: data.stockLimit ?? 100,
+        locationId: data.locationId,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -300,12 +300,12 @@ export class DatabaseStorage implements IStorage {
             .update(products)
             .set({
               name: productData.name,
-              barcode: productData.barcode || existingProduct.barcode,
-              price: productData.price,
-              tax: productData.tax ?? existingProduct.tax,
+              barcode: productData.barcode ?? existingProduct.barcode,
+              defaultSalePrice: productData.defaultSalePrice ?? productData.price,
+              costPrice: productData.costPrice ?? productData.tax ?? existingProduct.costPrice,
               stock: productData.stock ?? existingProduct.stock,
               stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
-              categoryId: productData.categoryId || existingProduct.categoryId,
+              locationId: productData.locationId ?? existingProduct.locationId,
               updatedAt: new Date(),
             })
             .where(eq(products.id, existingProduct.id));
@@ -317,11 +317,11 @@ export class DatabaseStorage implements IStorage {
               productId: productData.productId || `PRD-${Date.now()}-${imported}`,
               name: productData.name,
               barcode: productData.barcode,
-              price: productData.price,
-              tax: productData.tax || 0,
-              stock: productData.stock || 0,
-              stockLimit: productData.stockLimit || 100,
-              categoryId: productData.categoryId,
+              defaultSalePrice: productData.defaultSalePrice ?? productData.price,
+              costPrice: productData.costPrice ?? productData.tax ?? 0,
+              stock: productData.stock ?? 0,
+              stockLimit: productData.stockLimit ?? 100,
+              locationId: productData.locationId,
               createdAt: new Date(),
               updatedAt: new Date(),
             });
@@ -382,9 +382,10 @@ export class DatabaseStorage implements IStorage {
       const [order] = await tx
         .insert(orders)
         .values({
-          customerId: orderData.customer_id,
+          customerId: orderData.customerId ?? orderData.customer_id,
+          locationId: orderData.locationId ?? orderData.location_id,
           total: orderData.total,
-          paymentMethod: orderData.payment_method,
+          paymentMethod: orderData.paymentMethod ?? orderData.payment_method,
           status: 'completed',
         })
         .returning();
@@ -394,10 +395,10 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(orderItems).values(
           orderData.items.map((item: any) => ({
             orderId: order.id,
-            productId: item.product_id,
+            productId: item.productId ?? item.product_id,
             quantity: item.quantity,
-            unitPrice: item.unit_price,
-            totalPrice: item.total_price,
+            unitPrice: item.unitPrice ?? item.unit_price,
+            totalPrice: item.totalPrice ?? item.total_price,
           }))
         );
         
