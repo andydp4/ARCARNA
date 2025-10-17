@@ -199,7 +199,8 @@ export default function Inventory() {
               <p className="text-2xl font-bold">
                 ${products.reduce((sum, p) => {
                   const price = typeof p.costPrice === 'string' ? parseFloat(p.costPrice) : p.costPrice || 0;
-                  return sum + (price * p.stock);
+                  const stockValue = (isNaN(price) ? 0 : price) * (p.stock || 0);
+                  return sum + (isNaN(stockValue) ? 0 : stockValue);
                 }, 0).toFixed(2)}
               </p>
             </CardContent>

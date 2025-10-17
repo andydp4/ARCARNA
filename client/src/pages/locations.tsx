@@ -285,7 +285,12 @@ export default function Locations() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-bold">
-                  ${locations.reduce((sum, l) => sum + (l.stats?.totalRevenue || 0), 0).toFixed(2)}
+                  ${locations.reduce((sum, l) => {
+                    const revenue = typeof l.stats?.totalRevenue === 'string' 
+                      ? parseFloat(l.stats.totalRevenue) 
+                      : l.stats?.totalRevenue || 0;
+                    return sum + (isNaN(revenue) ? 0 : revenue);
+                  }, 0).toFixed(2)}
                 </p>
                 <DollarSign className="h-5 w-5 text-muted-foreground" />
               </div>

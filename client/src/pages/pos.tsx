@@ -301,7 +301,7 @@ export default function POS() {
     
     toast({
       title: "Expense Added",
-      description: `Added ${expenseCategory} expense: $${amount.toFixed(2)}`,
+      description: `Added ${expenseCategory} expense: $${(isNaN(amount) ? 0 : amount).toFixed(2)}`,
     });
   };
 
@@ -478,8 +478,8 @@ export default function POS() {
                       <div className="font-medium line-clamp-1">{item.product.name}</div>
                       <div className="text-sm text-muted-foreground">
                         Default: ${typeof item.product.defaultSalePrice === 'string' 
-                          ? parseFloat(item.product.defaultSalePrice).toFixed(2) 
-                          : item.product.defaultSalePrice.toFixed(2)}
+                          ? (isNaN(parseFloat(item.product.defaultSalePrice)) ? 0 : parseFloat(item.product.defaultSalePrice)).toFixed(2) 
+                          : (item.product.defaultSalePrice || 0).toFixed(2)}
                       </div>
                     </div>
                     <Button
@@ -651,8 +651,8 @@ export default function POS() {
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-2xl font-bold">
                         ${typeof product.defaultSalePrice === 'string' 
-                          ? parseFloat(product.defaultSalePrice).toFixed(2) 
-                          : product.defaultSalePrice.toFixed(2)}
+                          ? (isNaN(parseFloat(product.defaultSalePrice)) ? 0 : parseFloat(product.defaultSalePrice)).toFixed(2) 
+                          : (product.defaultSalePrice || 0).toFixed(2)}
                       </span>
                     </div>
                     {getStockBadge(product)}

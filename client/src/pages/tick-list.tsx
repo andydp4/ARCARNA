@@ -216,7 +216,7 @@ export default function TickList() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">£{totalDebt.toFixed(2)}</div>
+              <div className="text-2xl font-bold">£{(isNaN(totalDebt) ? 0 : totalDebt).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Across all credit customers
               </p>
@@ -241,7 +241,7 @@ export default function TickList() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                £{customersWithDebt > 0 ? (totalDebt / customersWithDebt).toFixed(2) : '0.00'}
+                £{customersWithDebt > 0 ? (isNaN(totalDebt / customersWithDebt) ? 0 : totalDebt / customersWithDebt).toFixed(2) : '0.00'}
               </div>
               <p className="text-xs text-muted-foreground">
                 Per credit customer

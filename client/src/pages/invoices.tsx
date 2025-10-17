@@ -229,7 +229,7 @@ export default function Invoices() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">£{totalRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold">£{(isNaN(totalRevenue) ? 0 : totalRevenue).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Paid invoices
               </p>
@@ -241,7 +241,7 @@ export default function Invoices() {
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">£{pendingRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold">£{(isNaN(pendingRevenue) ? 0 : pendingRevenue).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Awaiting payment
               </p>
@@ -253,7 +253,7 @@ export default function Invoices() {
               <AlertCircle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-destructive">£{overdueRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-destructive">£{(isNaN(overdueRevenue) ? 0 : overdueRevenue).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Past due date
               </p>
