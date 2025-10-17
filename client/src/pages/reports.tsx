@@ -309,7 +309,7 @@ export default function Reports() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-bold">
-                  ${reportData?.revenue.total.toFixed(2) || "0.00"}
+                  ${(typeof reportData?.revenue?.total === 'number' ? reportData.revenue.total : parseFloat(reportData?.revenue?.total || '0')).toFixed(2)}
                 </p>
                 <DollarSign className="h-5 w-5 text-muted-foreground" />
               </div>
@@ -347,7 +347,7 @@ export default function Reports() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-bold">
-                  ${reportData?.orders.average?.toFixed(2) || "0.00"}
+                  ${(typeof reportData?.orders?.average === 'number' ? reportData.orders.average : parseFloat(reportData?.orders?.average || '0')).toFixed(2)}
                 </p>
                 <TrendingUp className="h-5 w-5 text-muted-foreground" />
               </div>
@@ -447,7 +447,7 @@ export default function Reports() {
                           <TableRow key={method.method} data-testid={`payment-method-${method.method}`}>
                             <TableCell>{method.method}</TableCell>
                             <TableCell>{method.count}</TableCell>
-                            <TableCell>${method.revenue.toFixed(2)}</TableCell>
+                            <TableCell>${(typeof method.revenue === 'number' ? method.revenue : parseFloat(method.revenue || '0')).toFixed(2)}</TableCell>
                           </TableRow>
                         )) || (
                           <TableRow>
@@ -514,7 +514,7 @@ export default function Reports() {
                             <TableRow key={product.name} data-testid={`top-product-${product.name}`}>
                               <TableCell className="font-medium">{product.name}</TableCell>
                               <TableCell>{product.quantity}</TableCell>
-                              <TableCell>${product.revenue.toFixed(2)}</TableCell>
+                              <TableCell>${(typeof product.revenue === 'number' ? product.revenue : parseFloat(product.revenue || '0')).toFixed(2)}</TableCell>
                             </TableRow>
                           )) || (
                             <TableRow>
@@ -601,7 +601,7 @@ export default function Reports() {
                             <TableRow key={customer.name} data-testid={`top-customer-${customer.name}`}>
                               <TableCell className="font-medium">{customer.name}</TableCell>
                               <TableCell>{customer.orders}</TableCell>
-                              <TableCell>${customer.revenue.toFixed(2)}</TableCell>
+                              <TableCell>${(typeof customer.revenue === 'number' ? customer.revenue : parseFloat(customer.revenue || '0')).toFixed(2)}</TableCell>
                               <TableCell>{customer.loyalty}</TableCell>
                             </TableRow>
                           )) || (
@@ -630,7 +630,7 @@ export default function Reports() {
                             <TableRow key={segment.segment} data-testid={`rfm-segment-${segment.segment}`}>
                               <TableCell className="font-medium">{segment.segment}</TableCell>
                               <TableCell>{segment.count}</TableCell>
-                              <TableCell>${segment.avgRevenue.toFixed(2)}</TableCell>
+                              <TableCell>${(typeof segment.avgRevenue === 'number' ? segment.avgRevenue : parseFloat(segment.avgRevenue || '0')).toFixed(2)}</TableCell>
                             </TableRow>
                           )) || (
                             <TableRow>
@@ -675,7 +675,7 @@ export default function Reports() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-2xl font-bold">
-                        ${reportData?.inventory.totalValue?.toFixed(2) || "0.00"}
+                        ${(typeof reportData?.inventory?.totalValue === 'number' ? reportData.inventory.totalValue : parseFloat(reportData?.inventory?.totalValue || '0')).toFixed(2)}
                       </p>
                     </CardContent>
                   </Card>
