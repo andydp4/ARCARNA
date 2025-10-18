@@ -101,6 +101,7 @@ export function ExpenseReportsPage() {
   };
   
   const isLoading = expenseLoading || profitLoading;
+  const hasError = !isLoading && (!expenseReport || !profitAnalysis);
   
   if (isLoading) {
     return (
@@ -108,6 +109,20 @@ export function ExpenseReportsPage() {
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading reports...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (hasError) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-center py-12">
+          <p className="text-destructive font-semibold mb-2">Failed to load reports</p>
+          <p className="text-muted-foreground">Please try refreshing the page</p>
+          <Button onClick={() => window.location.reload()} className="mt-4">
+            Refresh Page
+          </Button>
         </div>
       </div>
     );

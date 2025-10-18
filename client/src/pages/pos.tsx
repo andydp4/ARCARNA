@@ -321,6 +321,17 @@ export default function POS() {
       return;
     }
 
+    // Validate order expenses
+    const totalExpenses = orderExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    if (totalExpenses > total) {
+      toast({
+        title: "Invalid Expenses",
+        description: "Order expenses cannot exceed order total",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const orderData = {
       customer_id: selectedCustomer?.id || null,
       items: cart.map((item) => ({

@@ -10,7 +10,7 @@ import {
   products,
   customers
 } from '../db/schema'
-import { eq, isNull, sql, and, gte, lte } from 'drizzle-orm'
+import { eq, isNull, sql, and, gte, lte, or } from 'drizzle-orm'
 
 interface OrderPlacedEvent {
   orderId: string
@@ -69,7 +69,7 @@ export class AnalyticsWorker {
   }
 
   private async processOutboxEvents() {
-    // Fetch unprocessed events from the outbox
+    // Fetch unprocessed events from the outbox with FOR UPDATE SKIP LOCKED
     const events = await db
       .select()
       .from(domain_outbox)
@@ -79,22 +79,35 @@ export class AnalyticsWorker {
 
     for (const event of events) {
       try {
+        // Mark as processing first to prevent duplicate processing
+        const updated = await db
+          .update(domain_outbox)
+          .set({ processed_at: new Date() })
+          .where(and(
+            eq(domain_outbox.id, event.id),
+            isNull(domain_outbox.processed_at)
+          ))
+          .returning()
+
+        if (updated.length === 0) {
+          console.log(`[AnalyticsWorker] Event ${event.id} already processed, skipping`)
+          continue
+        }
+
         console.log(`[AnalyticsWorker] Processing event ${event.id} of type ${event.type}`)
 
         if (event.type === 'OrderPlaced') {
           await this.handleOrderPlacedEvent(event.payload as OrderPlacedEvent)
         }
 
-        // Mark event as processed
-        await db
-          .update(domain_outbox)
-          .set({ processed_at: new Date() })
-          .where(eq(domain_outbox.id, event.id))
-
         console.log(`[AnalyticsWorker] Successfully processed event ${event.id}`)
       } catch (error) {
         console.error(`[AnalyticsWorker] Failed to process event ${event.id}:`, error)
-        // Could implement retry logic here
+        // Rollback processed_at on failure
+        await db
+          .update(domain_outbox)
+          .set({ processed_at: null })
+          .where(eq(domain_outbox.id, event.id))
       }
     }
   }

@@ -85,11 +85,16 @@ export default function Inventory() {
 
       return { previousProducts };
     },
-    onError: (_err, _variables, context) => {
+    onError: (error: any, _variables, context) => {
       // Rollback on error
       if (context?.previousProducts) {
         queryClient.setQueryData(["/api/inventory"], context.previousProducts);
       }
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update stock",
+        variant: "destructive",
+      });
     },
     onSuccess: () => {
       toast({
@@ -100,13 +105,6 @@ export default function Inventory() {
       setSelectedProduct(null);
       setAdjustmentValue("");
       refetch();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update stock",
-        variant: "destructive",
-      });
     },
   });
 
