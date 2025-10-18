@@ -1,3 +1,31 @@
+/**
+ * API Routes - HTTP Endpoint Layer
+ * 
+ * This module registers all HTTP endpoints for the Midnight EPOS system.
+ * Routes are organized by functional domain (auth, analytics, products, customers, etc.)
+ * 
+ * IMPORTANT: 
+ * - All routes (except auth check) require isAuthenticated middleware
+ * - Request validation uses Zod schemas from shared/schema.ts
+ * - Storage layer returns camelCase objects - no transformation needed
+ * - Error handling wraps all operations with try/catch
+ * 
+ * ROUTE ORGANIZATION:
+ * - Auth: /api/auth/* - User authentication and session management
+ * - Analytics: /api/analytics/* - Business intelligence and metrics
+ * - Products: /api/products/* - Product management and inventory
+ * - Customers: /api/customers/* - Customer records and loyalty
+ * - Orders: /api/orders/* - Order processing and history
+ * - POS: /api/pos/* - Point of sale checkout
+ * - Inventory: /api/inventory/* - Stock adjustments
+ * - Locations: /api/locations/* - Multi-location management
+ * - Loyalty: /api/loyalty-tiers/* - Loyalty tier configuration
+ * - Promotions: /api/promotions/* - Promotional campaigns
+ * - Expenses: /api/expenses/* - Overhead and order expenses
+ * - Reports: /api/reports/* - Financial and sales reports
+ * - Invoices: /api/invoices/* - Invoice generation and export
+ * - Settings: /api/settings/* - System configuration
+ */
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";

@@ -1,3 +1,24 @@
+/**
+ * Storage Layer - Data Access Interface
+ * 
+ * This module provides the primary data access layer for the Midnight EPOS system.
+ * It abstracts database operations and provides a clean interface for the API layer.
+ * 
+ * IMPORTANT FIELD NAME CONVENTIONS:
+ * - Database columns use snake_case (e.g., default_sale_price, cost_price)
+ * - API/Frontend expects camelCase (e.g., defaultSalePrice, costPrice)
+ * - Drizzle ORM automatically handles the mapping via shared/schema.ts
+ * - All methods return camelCase objects for API consumption
+ * 
+ * DATA FLOW:
+ * Database (PostgreSQL) -> Drizzle ORM -> Storage Layer -> API Routes -> Frontend
+ * 
+ * CRITICAL NOTES:
+ * - Always use shared/schema.ts as the single source of truth for types
+ * - Use nullish coalescing (??) for numeric fields to handle 0 values correctly
+ * - Never use || for numeric fields as it treats 0 as falsy
+ * - All numeric values from DB are strings (numeric type) - parse carefully
+ */
 import {
   users,
   customers,
@@ -32,6 +53,10 @@ import {
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
 
+/**
+ * Storage Interface - Defines all data operations
+ * Each method is consumed by corresponding API endpoints in server/routes.ts
+ */
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
