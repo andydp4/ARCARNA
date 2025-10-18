@@ -833,8 +833,6 @@ export class DatabaseStorage implements IStorage {
 
         return {
           ...location,
-          isActive: location.isActive === 1,
-          isDefault: location.isDefault === 1,
           stats: {
             totalRevenue: stats[0]?.totalRevenue || 0,
             totalOrders: stats[0]?.totalOrders || 0,
@@ -1195,14 +1193,15 @@ export class DatabaseStorage implements IStorage {
     // Combine daily data
     const profitTrends = dailyProfits.map(day => {
       const dailyCog = dailyCOGS.find(c => c.date === day.date)?.cogs || 0;
-      const revenue = typeof day.revenue === 'number' ? day.revenue : parseFloat(day.revenue.toString());
-      const dailyGrossProfit = revenue - (typeof dailyCog === 'number' ? dailyCog : parseFloat(dailyCog.toString()));
+      const revenue = Number(day.revenue) || 0;
+      const cogs = Number(dailyCog) || 0;
+      const dailyGrossProfit = revenue - cogs;
       const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
       
       return {
         date: day.date,
         revenue: revenue,
-        cogs: typeof dailyCog === 'number' ? dailyCog : parseFloat(dailyCog.toString()),
+        cogs: cogs,
         grossProfit: dailyGrossProfit,
         expenses: expenses.dailyOverhead,
         netProfit: dailyNetProfit,
@@ -1302,13 +1301,15 @@ export class DatabaseStorage implements IStorage {
 
   // Promotions methods
   async getPromotions(active?: boolean): Promise<Promotion[]> {
-    let query = db.select().from(promotions);
-    
     if (active !== undefined) {
-      query = query.where(eq(promotions.isActive, active ? 1 : 0));
+      return await db
+        .select()
+        .from(promotions)
+        .where(eq(promotions.isActive, active ? 1 : 0))
+        .orderBy(desc(promotions.createdAt));
     }
     
-    return await query.orderBy(desc(promotions.createdAt));
+    return await db.select().from(promotions).orderBy(desc(promotions.createdAt));
   }
 
   async createPromotion(data: InsertPromotion): Promise<Promotion> {
