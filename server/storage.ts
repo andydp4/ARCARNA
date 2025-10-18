@@ -49,10 +49,27 @@ import {
   type InsertOverheadExpense,
   type OrderExpense,
   type InsertOrderExpense,
+  type InsertProduct, // Import InsertProduct type
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
 
+// --- Utility Functions ---
+function safeParseFloat(value: string | number | null | undefined, defaultValue: number = 0): number {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'number') return isNaN(value) ? defaultValue : value;
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+function safeParseInt(value: string | number | null | undefined, defaultValue: number = 0): number {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'number') return isNaN(value) ? defaultValue : Math.floor(value);
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+// --- CRITICAL NOTE: Storage <-> API Field Mapping ---
 /**
  * Storage Interface - Defines all data operations
  * Each method is consumed by corresponding API endpoints in server/routes.ts
@@ -84,48 +101,48 @@ export interface IStorage {
       totalRevenue: string;
     }>
   >;
-  
+
   // POS operations
   getProducts(): Promise<Product[]>;
   getCustomers(): Promise<Customer[]>;
   createOrder(orderData: any): Promise<Order>;
-  
+
   // Product operations
-  createProduct(data: any): Promise<Product>;
+  createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
   updateProduct(id: string, data: any): Promise<Product>;
   deleteProduct(id: string): Promise<void>;
   getProduct(id: string): Promise<Product | null>;
   importProducts(products: any[]): Promise<{ imported: number; failed: number; errors: string[] }>;
-  
+
   // Customer operations
   createCustomer(data: any): Promise<Customer>;
   updateCustomer(id: string, data: any): Promise<Customer>;
   deleteCustomer(id: string): Promise<void>;
   getCustomer(id: string): Promise<Customer | null>;
-  
+
   // Inventory operations
   getProductsWithStock(): Promise<Product[]>;
   updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string): Promise<Product>;
-  
+
   // Reports operations
   getReportData(fromDate: Date, toDate: Date): Promise<any>;
   generateCSVReport(data: any, type: string): Promise<string>;
   generatePDFReport(data: any, type: string): Promise<Buffer>;
-  
+
   // Locations operations
   getLocations(): Promise<Location[]>;
   createLocation(data: any): Promise<Location>;
   updateLocation(id: string, data: any): Promise<Location>;
   deleteLocation(id: string): Promise<void>;
   setDefaultLocation(id: string): Promise<Location>;
-  
+
   // Loyalty operations
   getLoyaltyTiers(): Promise<LoyaltyTier[]>;
   createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier>;
   updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>): Promise<LoyaltyTier>;
   deleteLoyaltyTier(id: string): Promise<void>;
   updateCustomerTier(customerId: string): Promise<Customer>;
-  
+
   // Promotions operations
   getPromotions(active?: boolean): Promise<Promotion[]>;
   createPromotion(data: InsertPromotion): Promise<Promotion>;
@@ -133,7 +150,7 @@ export interface IStorage {
   deletePromotion(id: string): Promise<void>;
   validatePromoCode(code: string): Promise<Promotion | null>;
   applyPromotion(orderId: string, promoCode: string): Promise<number>;
-  
+
   // Expense operations
   getOverheadExpenses(): Promise<OverheadExpense[]>;
   createOverheadExpense(data: InsertOverheadExpense): Promise<OverheadExpense>;
@@ -253,23 +270,20 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(products).orderBy(products.name);
   }
 
-  async createProduct(data: any): Promise<Product> {
-    const [product] = await db
-      .insert(products)
-      .values({
-        productId: data.productId || `PRD-${Date.now()}`,
-        name: data.name,
-        barcode: data.barcode,
-        defaultSalePrice: data.defaultSalePrice ?? data.price,
-        costPrice: data.costPrice ?? data.tax ?? 0,
-        stock: data.stock ?? 0,
-        stockLimit: data.stockLimit ?? 100,
-        locationId: data.locationId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning();
-    return product;
+  async createProduct(data: InsertProduct): Promise<Product> {
+    // Validate data before insertion
+    if (!data.name || data.name.trim().length === 0) {
+      throw new Error('Product name is required');
+    }
+    if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
+      throw new Error('Product price cannot be negative');
+    }
+    if (data.stock !== undefined && safeParseInt(data.stock) < 0) {
+      throw new Error('Stock cannot be negative');
+    }
+
+    const [product] = await db.insert(products).values(data).returning()
+    return product
   }
 
   async updateProduct(id: string, data: any): Promise<Product> {
@@ -426,7 +440,7 @@ export class DatabaseStorage implements IStorage {
             totalPrice: item.totalPrice ?? item.total_price,
           }))
         );
-        
+
         // Create order expenses if provided
         if (orderData.expenses && orderData.expenses.length > 0) {
           await tx.insert(orderExpenses).values(
@@ -481,7 +495,7 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(products)
         .where(eq(products.id, productId));
-      
+
       if (!currentProduct) {
         throw new Error('Product not found');
       }
@@ -750,7 +764,7 @@ export class DatabaseStorage implements IStorage {
 
   async generateCSVReport(data: any, type: string): Promise<string> {
     let csv = '';
-    
+
     switch (type) {
       case 'revenue':
         csv = 'Date,Revenue,Orders\n';
@@ -758,28 +772,28 @@ export class DatabaseStorage implements IStorage {
           csv += `${day.date},${day.revenue},${day.orders}\n`;
         });
         break;
-        
+
       case 'orders':
         csv = 'Product,Quantity,Revenue\n';
         data.orders.topProducts.forEach((product: any) => {
           csv += `${product.name},${product.quantity},${product.revenue}\n`;
         });
         break;
-        
+
       case 'customers':
         csv = 'Customer,Orders,Revenue,Loyalty Points\n';
         data.customers.topCustomers.forEach((customer: any) => {
           csv += `${customer.name},${customer.orders},${customer.revenue},${customer.loyalty}\n`;
         });
         break;
-        
+
       case 'inventory':
         csv = 'Product,Sold,Remaining\n';
         data.inventory.topMoving.forEach((item: any) => {
           csv += `${item.product},${item.sold},${item.remaining}\n`;
         });
         break;
-        
+
       case 'full':
         // Generate comprehensive report
         csv = 'FULL REPORT\n\n';
@@ -793,7 +807,7 @@ export class DatabaseStorage implements IStorage {
         csv += '\n';
         break;
     }
-    
+
     return csv;
   }
 
@@ -1032,7 +1046,7 @@ export class DatabaseStorage implements IStorage {
   async getExpenseReport(startDate: Date, endDate: Date): Promise<any> {
     // Get expense analytics first
     const analytics = await this.getExpenseAnalytics(startDate, endDate);
-    
+
     // Get detailed overhead expenses by category
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const overheadByCategory = await db
@@ -1059,7 +1073,7 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .groupBy(overheadExpenses.category);
-    
+
     // Get order expenses by category
     const orderExpensesByCategory = await db
       .select({
@@ -1071,7 +1085,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
       .where(between(orders.createdAt, startDate, endDate))
       .groupBy(orderExpenses.category);
-    
+
     // Get daily expense trends
     const dailyTrends = await db
       .select({
@@ -1082,14 +1096,14 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(orderExpenses, eq(orderExpenses.orderId, orders.id))
       .where(between(orders.createdAt, startDate, endDate))
       .groupBy(sql`DATE(${orders.createdAt})`);
-    
+
     // Add daily overhead to trends  
     const enhancedTrends = dailyTrends.map(day => ({
       ...day,
       overhead: analytics.dailyOverhead,
       total: parseFloat(day.orderExpenses.toString()) + analytics.dailyOverhead,
     }));
-    
+
     return {
       summary: analytics,
       overheadByCategory: overheadByCategory.map(cat => ({
@@ -1123,10 +1137,10 @@ export class DatabaseStorage implements IStorage {
           eq(orders.status, 'completed')
         )
       );
-    
+
     const totalRevenue = revenueData[0]?.totalRevenue || 0;
     const orderCount = revenueData[0]?.orderCount || 0;
-    
+
     // Get COGS (Cost of Goods Sold)
     const cogsData = await db
       .select({
@@ -1141,22 +1155,22 @@ export class DatabaseStorage implements IStorage {
           eq(orders.status, 'completed')
         )
       );
-    
+
     const totalCOGS = cogsData[0]?.totalCOGS || 0;
-    
+
     // Get expenses
     const expenses = await this.getExpenseAnalytics(startDate, endDate);
-    
+
     // Calculate profit margins
     const grossProfit = totalRevenue - totalCOGS;
     const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    
+
     const operatingProfit = grossProfit - expenses.totalExpenses;
     const operatingMargin = totalRevenue > 0 ? (operatingProfit / totalRevenue) * 100 : 0;
-    
+
     const netProfit = operatingProfit; // Could subtract taxes here if tracked
     const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-    
+
     // Get daily profit trends
     const dailyProfits = await db
       .select({
@@ -1172,7 +1186,7 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .groupBy(sql`DATE(${orders.createdAt})`);
-    
+
     // Get daily COGS for the profit trends
     const dailyCOGS = await db
       .select({
@@ -1189,7 +1203,7 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .groupBy(sql`DATE(${orders.createdAt})`);
-    
+
     // Combine daily data
     const profitTrends = dailyProfits.map(day => {
       const dailyCog = dailyCOGS.find(c => c.date === day.date)?.cogs || 0;
@@ -1197,7 +1211,7 @@ export class DatabaseStorage implements IStorage {
       const cogs = Number(dailyCog) || 0;
       const dailyGrossProfit = revenue - cogs;
       const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
-      
+
       return {
         date: day.date,
         revenue: revenue,
@@ -1209,10 +1223,10 @@ export class DatabaseStorage implements IStorage {
         netMargin: revenue > 0 ? (dailyNetProfit / revenue) * 100 : 0,
       };
     });
-    
+
     // Calculate average order value
     const averageOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
-    
+
     return {
       summary: {
         revenue: totalRevenue,
@@ -1262,7 +1276,7 @@ export class DatabaseStorage implements IStorage {
           )
         )
       );
-    
+
     // Calculate total daily overhead
     let totalDailyOverhead = 0;
     overheads.forEach(expense => {
@@ -1275,10 +1289,10 @@ export class DatabaseStorage implements IStorage {
       }
       totalDailyOverhead += dailyCost;
     });
-    
+
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const totalOverhead = totalDailyOverhead * daysDiff;
-    
+
     // Get order expenses
     const orderExpenseResult = await db
       .select({
@@ -1287,9 +1301,9 @@ export class DatabaseStorage implements IStorage {
       .from(orderExpenses)
       .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
       .where(between(orders.createdAt, startDate, endDate));
-    
+
     const orderExpenseTotal = orderExpenseResult[0]?.total || 0;
-    
+
     return {
       overheadTotal: totalOverhead,
       orderExpenseTotal,
@@ -1308,7 +1322,7 @@ export class DatabaseStorage implements IStorage {
         .where(eq(promotions.isActive, active ? 1 : 0))
         .orderBy(desc(promotions.createdAt));
     }
-    
+
     return await db.select().from(promotions).orderBy(desc(promotions.createdAt));
   }
 
@@ -1341,7 +1355,7 @@ export class DatabaseStorage implements IStorage {
 
   async validatePromoCode(code: string): Promise<Promotion | null> {
     const now = new Date();
-    
+
     const [promo] = await db
       .select()
       .from(promotions)
@@ -1352,7 +1366,7 @@ export class DatabaseStorage implements IStorage {
         AND ${promotions.endDate} >= ${now}
         AND (${promotions.usageLimit} IS NULL OR ${promotions.usageCount} < ${promotions.usageLimit})`
       );
-    
+
     return promo || null;
   }
 

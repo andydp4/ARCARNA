@@ -46,12 +46,15 @@ router.post('/logout', (req, res) => {
   if ((req as any).session) {
     (req as any).session.destroy((err: any) => {
       if (err) {
-        return res.status(500).json({ error: 'Logout failed' })
+        console.error('[Auth] Session destruction error:', err)
+        res.clearCookie('connect.sid') // Clear cookie anyway
+        return res.status(500).json({ error: 'Logout failed', message: err.message })
       }
       res.clearCookie('connect.sid')
       return res.json({ message: 'Logged out' })
     })
   } else {
+    res.clearCookie('connect.sid') // Clear cookie even if no session
     res.json({ message: 'No session' })
   }
 })

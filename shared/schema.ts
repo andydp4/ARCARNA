@@ -243,13 +243,13 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
 
 // Analytics tables
-export const analyticsDaily = pgTable("analytics_daily", {
-  date: date("date").primaryKey(),
-  totalOrders: integer("total_orders").default(0),
-  totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).default(
-    "0"
-  ),
-});
+export const analyticsDaily = pgTable('analytics_daily', {
+  date: date('date').primaryKey(),
+  totalOrders: integer('total_orders').default(0),
+  totalRevenue: numeric('total_revenue', { precision: 12, scale: 2 }).default('0'),
+}, (table) => ({
+  dateIdx: index('analytics_daily_date_idx').on(table.date),
+}));
 
 export const analyticsWeekly = pgTable(
   "analytics_weekly",
@@ -277,14 +277,17 @@ export const analyticsMonthly = pgTable(
   (t) => ({ pk: primaryKey({ columns: [t.year, t.month] }) })
 );
 
-export const customerMetrics = pgTable("customer_metrics", {
-  customerId: uuid("customer_id").primaryKey(),
-  lastOrderDate: date("last_order_date"),
-  totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
-  orderCount: integer("order_count").default(0),
-  rfmScore: integer("rfm_score"),
-  clv: numeric("clv", { precision: 12, scale: 2 }),
-});
+export const customerMetrics = pgTable('customer_metrics', {
+  customerId: uuid('customer_id').primaryKey(),
+  lastOrderDate: date('last_order_date'),
+  totalSpent: numeric('total_spent', { precision: 12, scale: 2 }).default('0'),
+  orderCount: integer('order_count').default(0),
+  rfmScore: integer('rfm_score'),
+  clv: numeric('clv', { precision: 12, scale: 2 }),
+}, (table) => ({
+  clvIdx: index('customer_metrics_clv_idx').on(table.clv),
+  lastOrderIdx: index('customer_metrics_last_order_idx').on(table.lastOrderDate),
+}));
 
 export type CustomerMetric = typeof customerMetrics.$inferSelect;
 

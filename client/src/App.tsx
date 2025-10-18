@@ -55,16 +55,20 @@ function Router() {
   );
 }
 
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <NavigationProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </NavigationProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <NavigationProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </NavigationProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -312,6 +312,15 @@ export default function POS() {
 
   // Process payment
   const processPayment = () => {
+    if (placeOrderMutation.isPending) {
+      toast({
+        title: "Processing",
+        description: "Please wait, order is being processed...",
+        variant: "default",
+      });
+      return;
+    }
+
     const orderData = {
       customer_id: selectedCustomer?.id || null,
       items: cart.map((item) => ({

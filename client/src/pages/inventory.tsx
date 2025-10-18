@@ -64,6 +64,33 @@ export default function Inventory() {
       });
       return response.json();
     },
+    onMutate: async (data) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/inventory"] });
+
+      // Snapshot previous value
+      const previousProducts = queryClient.getQueryData(["/api/inventory"]);
+
+      // Optimistically update
+      queryClient.setQueryData(["/api/inventory"], (old: Product[] = []) =>
+        old.map((p) =>
+          p.id === data.productId
+            ? {
+                ...p,
+                stock: data.type === "set" ? data.adjustment : p.stock + data.adjustment,
+              }
+            : p
+        )
+      );
+
+      return { previousProducts };
+    },
+    onError: (_err, _variables, context) => {
+      // Rollback on error
+      if (context?.previousProducts) {
+        queryClient.setQueryData(["/api/inventory"], context.previousProducts);
+      }
+    },
     onSuccess: () => {
       toast({
         title: "Stock Updated",

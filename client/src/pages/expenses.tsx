@@ -30,10 +30,14 @@ type ExpenseFormData = {
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   category: z.string().min(1, "Category is required"),
-  amount: z.coerce.number().positive("Amount must be positive"),
+  amount: z.string().min(1, "Amount is required").transform((val) => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num <= 0) throw new Error("Amount must be a positive number");
+    return num.toString();
+  }),
   frequency: z.string().min(1, "Frequency is required"),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date().optional(),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
   isActive: z.number(),
   description: z.string().optional(),
 });
