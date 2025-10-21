@@ -1,0 +1,188 @@
+
+# Midnight EPOS  
+## TESTING_PLAN_AGENT_EXECUTION.md (v3)
+**Integrated Version:** Includes dynamic test generation (Section 2), NX-safe performance testing (Section 4), and final readiness summary.
+
+---
+
+## SECTION 2 – CORE FUNCTIONAL TESTS  
+**Objective:** Ensure CRUD operations, order processing, and invoice workflows operate end-to-end.  
+**Directive:** Follow each step exactly. Stay on task.
+
+**Environment Setup:**
+```bash
+cd server && npm ci
+npm run db:migrate
+npm run seed:test
+```
+
+**Agent Directive:**  
+If any listed test files are missing or unsupported, automatically generate them using the following templates.  
+Store all generated tests in `/server/tests/core/`.
+
+**Auto-Generate Templates:**
+1. **Product CRUD Test**
+   - File: `/server/tests/core/products.test.ts`
+   - Purpose: Verify product create/read/update/delete endpoints and DB persistence.
+   - Agent command:
+     ```bash
+     npx jest --init products
+     ```
+2. **Inventory Bulk Upload**
+   - File: `/server/tests/core/inventoryBulk.test.ts`
+   - Validate CSV import and stock update logic.
+3. **Customer Creation + Linking**
+   - File: `/server/tests/core/customers.test.ts`
+   - Test relationships between customers, orders, and loyalty tiers.
+4. **Order Lifecycle**
+   - File: `/server/tests/core/orders.test.ts`
+   - Verify new → processing → complete flow updates inventory and analytics.
+5. **Invoice Generation**
+   - File: `/server/tests/core/invoiceGeneration.test.ts`
+   - Confirm PDF/CSV outputs and file creation under `/attached_assets/invoices/`.
+
+**Execution Command:**
+```bash
+npx jest --config=jest.server.config.js --runInBand
+```
+
+**Expected Outputs:**
+- Each test suite passes ≥ 95 % assertions.
+- Generated invoices visible in `/attached_assets/invoices/`.
+- Database state valid after full run.
+
+**Failure Protocol:**
+If agent detects unsupported tests, regenerate once using these templates and rerun entire Section 2.  
+Do not proceed to Section 3 until all suites pass.
+
+---
+
+## SECTION 4 – PERFORMANCE AND SECURITY ASSESSMENT  
+**Objective:** Stress-test endpoints and verify security controls.  
+**Directive:** Stay on task; follow each sub-step exactly.
+
+### 4.1 – Environment Preparation
+If performance or security toolchains are missing, install them locally inside `/server/`:
+```bash
+cd server
+npm pkg set scripts.preparePerf="npm install --save-dev artillery@latest"
+npm run preparePerf
+```
+Confirm installation:
+```bash
+npx --no-install artillery --version || npx artillery --version
+```
+
+### 4.2 – Performance Testing (NX Safe Mode)
+Use NX task runner instead of raw npx:
+```bash
+npx nx run server:load-test --args="--config=tests/load/load_test.yml"
+```
+If no NX target exists, create temporary script:
+```bash
+npm pkg set scripts.load-test="artillery run tests/load/load_test.yml"
+npm run load-test
+```
+
+**Metrics Targets**
+- P95 latency < 250 ms  
+- Error rate < 1 %  
+- Throughput > 200 req/s  
+
+Logs → `/reports/performance/perf_results.json`
+
+### 4.3 – Security Verification
+Run lightweight built-in checks first:
+```bash
+npm audit --production
+```
+If custom GDPR or input-validation scripts are undefined, auto-create:
+```bash
+npm pkg set scripts.gdpr:check="node scripts/security/gdprCheck.js"
+npm pkg set scripts.fuzz="node scripts/security/fuzzEndpoints.js"
+```
+Then execute sequentially:
+```bash
+npm run gdpr:check
+npm run fuzz
+```
+
+**Output:**  
+`/reports/security/security_audit.json`  
+`/logs/testing/04_perf_security.log`
+
+**Success Criteria:**  
+All thresholds met, no critical vulnerabilities.  
+If any command fails, re-install dependencies and rerun this entire section from 4.1.  
+**Do not deviate or skip verification.**
+
+---
+
+## SECTION 7 – DATA PURGE & SYSTEM RESET FOR PRODUCTION  
+**Objective:** Remove all test data and restore a clean, production-ready state.  
+**Directive:** Execute this sequence exactly. Do not deviate or skip steps.
+
+**Steps (SQL / Drizzle sequence):**
+1. **Delete Orders:**
+   ```sql
+   DELETE FROM orders;
+   ```
+2. **Delete Invoices:**
+   ```sql
+   DELETE FROM invoices;
+   ```
+3. **Delete Analytics Data:**
+   ```sql
+   DELETE FROM analytics;
+   DELETE FROM reports;
+   ```
+4. **Delete Products:**
+   ```sql
+   DELETE FROM products;
+   ```
+5. **Delete Customers:**
+   ```sql
+   DELETE FROM customers;
+   ```
+
+**Alternative Drizzle Script (Node Execution):**
+```bash
+npm run db:reset:test
+```
+*(This should internally follow the same sequence.)*
+
+**Validation:**
+- Re-run `npm run analytics:recalculate` to confirm zero results returned.  
+- Verify `/attached_assets/` only contains production template assets.  
+- Confirm no records remain in Postgres tables.
+
+**Success Criteria:**  
+All test data removed. System analytics and database tables show 0 rows.  
+Commit and tag release as `v1.0.0-production-ready`.  
+
+---
+
+## FINAL READINESS SUMMARY  
+✅ **Comprehensive Testing Complete**  
+All 7 sections executed without deviation.  
+Key Achievements:
+- Structural Integrity: 100% compliance  
+- CRUD Operations: verified and logged  
+- Analytics Engine: metrics validated  
+- Performance & Security: passed thresholds under NX-safe mode  
+- CI/CD: artifacts verified  
+- Reports Consolidated: combined summary generated  
+- Data Purge: clean production-ready state confirmed  
+
+**System Status:** PRODUCTION READY ✅  
+**Do not proceed with deployment within this script.**  
+Execution stops here. Manual confirmation required for next phase.
+
+---
+
+### POST-EXECUTION DIRECTIVE  
+All agents must:
+- Retain test artifacts for 7 days.  
+- Append execution timestamp to system audit log.  
+- Notify lead architect if any metric falls below threshold.  
+**Do not deviate from this process.**
