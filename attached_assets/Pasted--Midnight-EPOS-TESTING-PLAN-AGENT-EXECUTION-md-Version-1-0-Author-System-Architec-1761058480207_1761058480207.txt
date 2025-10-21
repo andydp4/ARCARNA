@@ -1,0 +1,209 @@
+# Midnight EPOS  
+## TESTING_PLAN_AGENT_EXECUTION.md  
+**Version:** 1.0  **Author:** System Architect Directive  
+**Purpose:** Define a strict, sequential, and verifiable testing process across all major system domains.  
+**Agents:** @replit-agent / @architect-agent  
+**Primary Directive:** Follow this plan in order. **Do not deviate. Stay on task until each section’s objective is met.**
+
+---
+
+### CONTROL BLOCK
+```yaml
+project_root: /MidnightEPOS
+reference_docs:
+  - SYSTEM_AUDIT_REPORT.md
+  - FINAL_SYSTEM_STATUS.md
+  - COMPREHENSIVE_TEST_REPORT.md
+log_output: /MidnightEPOS/logs/testing/
+report_output: /MidnightEPOS/reports/
+strict_mode: true
+allow_deviation: false
+```
+
+---
+
+## SECTION 1 – STRUCTURAL INTEGRITY VERIFICATION  
+**Objective:** Confirm that repository structure, module boundaries, and dependencies align with intended architecture.  
+**Directive:** Do not deviate from the following sequence.
+
+**Steps:**
+1. Scan all top-level directories (`client`, `server`, `shared`, `packages`, `apps`).
+2. Generate dependency graph using `npx madge --extensions ts,tsx --image ./reports/dependencies.svg ./server ./client`.
+3. Validate no circular imports or duplicate submodules.  
+4. Compare results to `SYSTEM_AUDIT_REPORT.md` architecture section.  
+5. Output compliance score (0–100).  
+6. Log as `01_structure_verification.log`.
+
+**Success Criteria:**  
+- Directory map matches baseline.  
+- No circular imports.  
+- Shared utilities are correctly referenced.  
+
+---
+
+## SECTION 2 – CORE FUNCTIONAL TESTS  
+**Objective:** Ensure CRUD operations, order processing, and invoice workflows operate end-to-end.  
+**Directive:** Follow each test exactly as defined. Stay on task.
+
+**Environment Setup:**
+```bash
+cd server && npm ci
+npm run db:migrate
+npm run seed:test
+```
+
+**Tests to Execute:**
+1. Product CRUD → `jest --config=jest.server.config.js --testPathPattern=tests/products.test.ts`  
+2. Inventory Bulk Upload → `tests/inventoryBulk.test.ts`  
+3. Customer Creation + Linking → `tests/customers.test.ts`  
+4. Order Lifecycle → `tests/orders.test.ts`  
+5. Invoice Generation → `tests/invoiceGeneration.test.ts`
+
+**Expected Outputs:**  
+- Each suite passes ≥ 95% of assertions.  
+- New data persists in Postgres via Drizzle ORM.  
+- Generated invoices stored under `/attached_assets/invoices/`.  
+
+**Failure Protocol:** If any suite fails, halt immediately. Log issue, fix dependencies, and rerun full Section 2. Do not proceed to Section 3 until all tests pass.
+
+---
+
+## SECTION 3 – ENGINE ANALYTICS VALIDATION  
+**Objective:** Verify that the analytics engine correctly aggregates and persists sales, inventory, and loyalty metrics.  
+**Directive:** No deviation. Execute tests in exact order.
+
+**Procedure:**
+1. Mock transactions (≥ 50 records) using `/scripts/mockData/generateTransactions.ts`.  
+2. Run analytics recalculation:  
+   ```bash
+   npm run analytics:recalculate
+   ```
+3. Validate:
+   - Totals match sum of mock transactions.  
+   - Loyalty tiers update based on threshold rules in `shared/constants/tiers.ts`.  
+   - Reports stored at `/reports/analytics/analytics_report.json`.  
+4. Cross-reference figures with `COMPREHENSIVE_TEST_REPORT.md` benchmarks.  
+
+**Success Criteria:**  
+- Discrepancy ≤ 0.1% vs. expected totals.  
+- Correct tier assignment for each customer.  
+
+---
+
+## SECTION 4 – PERFORMANCE AND SECURITY ASSESSMENT  
+**Objective:** Stress-test endpoints and verify security controls.  
+**Directive:** Stay on task; run each sub-test in sequence.
+
+**Performance Testing:**
+```bash
+npx artillery run ./tests/load/load_test.yml
+```
+Metrics:  
+- P95 latency < 250 ms  
+- Error rate < 1%  
+- Throughput > 200 req/sec  
+
+**Security Verification:**
+1. Input Sanitization – Fuzz `/api/products`, `/api/orders` for injection attempts.  
+2. Auth Middleware – Confirm 401/403 for unauthorized requests.  
+3. GDPR Compliance – Run lint check on PII fields using `npm run gdpr:check`.  
+
+**Output:** `04_perf_security.log` and summary in `/reports/security/security_audit.json`.  
+
+**Success Criteria:** All thresholds met, no critical vulnerabilities detected.  
+
+---
+
+## SECTION 5 – CI/CD AND AUTOMATION VERIFICATION  
+**Objective:** Confirm automated build, test, and deploy pipelines execute consistently.  
+**Directive:** No deviation or skipping steps.
+
+**Procedure:**
+1. Validate GitHub Actions or Replit workflow exists (`.replit` or `.github/workflows/`).  
+2. Run pipeline locally:  
+   ```bash
+   npm run lint && npm run typecheck && npm test
+   ```
+3. Simulate deploy build via:  
+   ```bash
+   npm run build
+   ```
+4. Ensure artifacts (output bundles, PDF reports, CSV analytics) generate under `/dist` and `/reports`.  
+5. Cross-reference `FINAL_SYSTEM_STATUS.md` for post-deploy consistency.  
+
+**Success Criteria:**  
+- Pipeline completes without manual intervention.  
+- All tests auto-rerun on commit.  
+- Reports updated and timestamped within log directory.  
+
+---
+
+## SECTION 6 – FINAL INTEGRITY CHECK AND REPORT MERGE  
+**Objective:** Merge new test results into existing audit framework.  
+**Directive:** Maintain sequential execution. Do not deviate.
+
+**Steps:**
+1. Consolidate logs (`/logs/testing/*.log`) into `/reports/combined_test_summary.md`.  
+2. Update `FINAL_SYSTEM_STATUS.md` with new test timestamp and pass rate.  
+3. Re-generate `COMPREHENSIVE_TEST_REPORT.md` with updated sections.  
+4. Commit and push to main branch with message:  
+   ```
+   git add .
+   git commit -m "Automated test plan completed - no deviation."
+   git push
+   ```
+**Completion Criteria:** All sections executed and verified.  
+System status: ✅ Green = ready for production.  
+
+---
+
+## SECTION 7 – DATA PURGE & SYSTEM RESET FOR PRODUCTION  
+**Objective:** Remove all test data and restore a clean, production-ready state.  
+**Directive:** Execute this sequence exactly. Do not deviate or skip steps.
+
+**Steps (SQL / Drizzle sequence):**
+1. **Delete Orders:**
+   ```sql
+   DELETE FROM orders;
+   ```
+2. **Delete Invoices:**
+   ```sql
+   DELETE FROM invoices;
+   ```
+3. **Delete Analytics Data:**
+   ```sql
+   DELETE FROM analytics;
+   DELETE FROM reports;
+   ```
+4. **Delete Products:**
+   ```sql
+   DELETE FROM products;
+   ```
+5. **Delete Customers:**
+   ```sql
+   DELETE FROM customers;
+   ```
+
+**Alternative Drizzle Script (Node Execution):**
+```bash
+npm run db:reset:test
+```
+*(This should internally follow the same sequence.)*
+
+**Validation:**
+- Re-run `npm run analytics:recalculate` to confirm zero results returned.  
+- Verify `/attached_assets/` only contains production template assets.  
+- Confirm no records remain in Postgres tables.
+
+**Success Criteria:**  
+All test data removed. System analytics and database tables show 0 rows.  
+Commit and tag release as `v1.0.0-production-ready`.  
+
+---
+
+### POST-EXECUTION DIRECTIVE  
+All agents must:
+- Retain test artifacts for 7 days.  
+- Append execution timestamp to system audit log.  
+- Notify lead architect if any metric falls below threshold.  
+**Do not deviate from this process.**

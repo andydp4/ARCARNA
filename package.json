@@ -70,6 +70,7 @@
     "jest": "^30.2.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.453.0",
+    "madge": "^8.0.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
     "nanoid": "^5.1.6",
