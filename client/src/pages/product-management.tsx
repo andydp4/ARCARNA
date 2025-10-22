@@ -71,7 +71,7 @@ export default function ProductManagement() {
   })
 
   // Fetch products
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/products'],
   })
 
