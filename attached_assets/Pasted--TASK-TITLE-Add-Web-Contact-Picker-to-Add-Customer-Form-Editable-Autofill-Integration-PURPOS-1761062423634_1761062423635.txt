@@ -1,0 +1,111 @@
+# TASK TITLE:
+Add Web Contact Picker to Add Customer Form (Editable Autofill Integration)
+
+## PURPOSE:
+Enable users to import a single contact from their phonebook when creating a new customer. 
+The contact data (name, email, phone) pre-fills the “Add Customer” form but remains fully editable before submission.
+
+The feature should only activate when the browser supports the Web Contacts Picker API. 
+If unsupported, the app must gracefully show a fallback message (“Contact picker not supported on this device”).
+
+## TARGET FILES:
+- src/pages/customers/AddCustomer.tsx (or current equivalent component)
+- src/components/forms/CustomerForm.tsx if modular forms exist
+- No backend changes required
+
+## FRONT-END CODE INJECTION:
+Add this inside the React component managing customer creation:
+
+```tsx
+import React, { useState } from 'react';
+
+export default function AddCustomer() {
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
+
+  async function handleImportContact() {
+    if (!('contacts' in navigator) || !('ContactsManager' in window)) {
+      alert('Contact picker not supported on this device or browser.');
+      return;
+    }
+
+    try {
+      const [contact] = await navigator.contacts.select(['name', 'email', 'tel'], { multiple: false });
+      if (contact) {
+        setFormData(prev => ({
+          ...prev,
+          name: contact.name?.[0] || '',
+          email: contact.email?.[0] || '',
+          phone: contact.tel?.[0] || ''
+        }));
+      }
+    } catch (err) {
+      console.error('Contact import failed:', err);
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const response = await fetch('/api/customers/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    });
+    if (response.ok) alert('Customer added successfully!');
+    else alert('Error adding customer.');
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="p-6 max-w-md mx-auto">
+      <h2 className="text-xl font-bold mb-4">Add New Customer</h2>
+
+      <button
+        type="button"
+        onClick={handleImportContact}
+        className="rounded bg-blue-600 text-white px-3 py-1 mb-3 hover:bg-blue-700"
+      >
+        Import from Contacts
+      </button>
+
+      <input
+        name="name"
+        placeholder="Full Name"
+        value={formData.name}
+        onChange={e => setFormData({ ...formData, name: e.target.value })}
+        className="block w-full mb-3 border p-2 rounded"
+      />
+      <input
+        name="email"
+        placeholder="Email Address"
+        value={formData.email}
+        onChange={e => setFormData({ ...formData, email: e.target.value })}
+        className="block w-full mb-3 border p-2 rounded"
+      />
+      <input
+        name="phone"
+        placeholder="Phone Number"
+        value={formData.phone}
+        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+        className="block w-full mb-3 border p-2 rounded"
+      />
+
+      <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+        Save Customer
+      </button>
+    </form>
+  );
+}
+```
+
+## TESTING INSTRUCTIONS (Agent Section):
+1. Serve project over HTTPS (Replit handles this automatically).
+2. Run `npm run dev` and open on mobile Chrome or Edge.
+3. Navigate to “Add Customer.”
+4. Tap **Import from Contacts** → select any contact.
+5. Verify the form pre-fills name/email/phone and remains editable.
+6. Manually edit the data → press **Save Customer** → confirm entry created via `/api/customers/create`.
+7. Retry in unsupported browser (Safari/iOS) → ensure alert message appears.
+
+## EXPECTED OUTCOME:
+When clicking “Add Customer → Import from Contacts,” the user sees the system contact picker. 
+Data imports into the form, remains editable, and successfully submits through the existing endpoint. 
+No other functions or database schemas are modified.
