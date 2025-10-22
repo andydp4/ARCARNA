@@ -77,7 +77,7 @@ export default function ProductManagement() {
 
   // Create product mutation
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/products', 'POST', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/products', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] })
       queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
@@ -99,7 +99,7 @@ export default function ProductManagement() {
 
   // Update product mutation
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: any) => apiRequest(`/api/products/${id}`, 'PUT', data),
+    mutationFn: ({ id, data }: any) => apiRequest('PUT', `/api/products/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] })
       queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
@@ -121,7 +121,7 @@ export default function ProductManagement() {
 
   // Delete product mutation
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/products/${id}`, 'DELETE'),
+    mutationFn: (id: string) => apiRequest('DELETE', `/api/products/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] })
       queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
@@ -141,7 +141,7 @@ export default function ProductManagement() {
 
   // Import products mutation
   const importMutation = useMutation({
-    mutationFn: (products: any[]) => apiRequest('/api/products/import', 'POST', { products }),
+    mutationFn: (products: any[]) => apiRequest('POST', '/api/products/import', { products }),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/products'] })
       queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })

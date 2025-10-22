@@ -52,7 +52,7 @@ export default function Customers() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/customers', 'POST', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/customers', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setShowAddDialog(false)
@@ -72,7 +72,7 @@ export default function Customers() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: any) => apiRequest(`/api/customers/${id}`, 'PUT', data),
+    mutationFn: ({ id, data }: any) => apiRequest('PUT', `/api/customers/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setEditingCustomer(null)
@@ -92,7 +92,7 @@ export default function Customers() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/customers/${id}`, 'DELETE'),
+    mutationFn: (id: string) => apiRequest('DELETE', `/api/customers/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       toast({
