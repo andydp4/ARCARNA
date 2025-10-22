@@ -32,7 +32,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award } from 'lucide-react'
+import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact } from 'lucide-react'
 
 export default function Customers() {
   const { toast } = useToast()
@@ -184,6 +184,47 @@ export default function Customers() {
     }
   }
 
+  const handleImportContact = async () => {
+    if (!('contacts' in navigator) || !('ContactsManager' in window)) {
+      toast({
+        title: 'Not Supported',
+        description: 'Contact picker is not supported on this device or browser.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const props = ['name', 'email', 'tel']
+      const opts = { multiple: false }
+      const contacts = await (navigator as any).contacts.select(props, opts)
+      
+      if (contacts && contacts.length > 0) {
+        const contact = contacts[0]
+        const updatedData = {
+          ...formData,
+          name: contact.name?.[0] || formData.name,
+          email: contact.email?.[0] || formData.email,
+          phone: contact.tel?.[0] || formData.phone,
+        }
+        setFormData(updatedData)
+        autoSaveFormData(updatedData)
+        
+        toast({
+          title: 'Contact Imported',
+          description: 'Contact data has been imported. You can edit it before saving.',
+        })
+      }
+    } catch (err) {
+      console.error('Contact import failed:', err)
+      toast({
+        title: 'Import Failed',
+        description: 'Unable to import contact. Please try again.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const filteredCustomers = customers.filter((customer) => 
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -229,6 +270,18 @@ export default function Customers() {
                   Enter customer information to create a new record
                 </DialogDescription>
               </DialogHeader>
+              <div className="py-3 border-b">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleImportContact}
+                  className="w-full gap-2 min-h-[44px]"
+                  data-testid="button-import-contact"
+                >
+                  <Contact className="h-4 w-4" />
+                  Import from Contacts
+                </Button>
+              </div>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label htmlFor="name">Name *</Label>

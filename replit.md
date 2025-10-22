@@ -88,6 +88,13 @@ The project uses a monorepo architecture with three main workspaces:
 
 **Chart Library**: Recharts for analytics visualizations (revenue trends, order volume, customer metrics)
 
+**Web Contact Picker Integration**: Customer creation form supports importing contacts from device phonebook using the Web Contacts API:
+- Browser compatibility check with graceful fallback for unsupported browsers
+- One-tap import of contact name, email, and phone number
+- Imported data pre-fills the form but remains fully editable
+- Auto-save functionality preserves imported data
+- Mobile-optimized with touch-friendly 44px minimum button height
+
 ### Database Schema
 
 **ORM**: Drizzle ORM with PostgreSQL dialect
