@@ -100,6 +100,17 @@ app.get('/api/login', (req, res) => res.redirect('/api/auth/login'))
 app.get('/api/logout', (req, res) => res.redirect('/api/auth/logout'))
 app.post('/api/logout', (req, res) => res.redirect(307, '/api/auth/logout'))
 
+// Error handler middleware - MUST be last
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('API Error:', err)
+  const status = err.status || err.statusCode || 500
+  const message = err.message || 'Internal server error'
+  res.status(status).json({ 
+    message,
+    errors: err.errors || undefined
+  })
+})
+
 const port = process.env.PORT || 5000
 if (process.env.NODE_ENV !== 'test') {
   app.listen(port, () => {
