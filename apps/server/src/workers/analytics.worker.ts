@@ -113,7 +113,14 @@ export class AnalyticsWorker {
   }
 
   private async handleOrderPlacedEvent(payload: OrderPlacedEvent) {
-    const orderDate = new Date(payload.orderDate)
+    // Use orderDate from payload, or fall back to current date if missing (for old events)
+    const orderDate = payload.orderDate ? new Date(payload.orderDate) : new Date()
+    
+    // Skip if invalid date
+    if (isNaN(orderDate.getTime())) {
+      console.warn(`[AnalyticsWorker] Skipping event with invalid orderDate:`, payload)
+      return
+    }
 
     // Update daily analytics
     await this.updateDailyAnalytics(orderDate, payload.total)

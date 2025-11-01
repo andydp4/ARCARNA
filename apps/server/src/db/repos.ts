@@ -25,7 +25,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
     // Write to domain outbox for analytics worker
     await db.insert(s.domain_outbox).values({
       type: 'OrderPlaced',
-      payload: { orderId: o.id, customerId: o.customerId, total: o.total },
+      payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt },
       created_at: new Date(),
     })
   },
