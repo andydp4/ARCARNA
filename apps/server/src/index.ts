@@ -50,6 +50,40 @@ app.post('/api/orders', requireAuth, async (req, res, next)=>{
     res.status(201).json(result)
   }catch(e){ next(e) }
 })
+app.get('/api/orders', requireAuth, async (req, res, next) => {
+  try {
+    const { db } = await import('./db')
+    const schema = await import('./db/schema')
+    const orders = await db.select({
+      id: schema.orders.id,
+      customerId: schema.orders.customer_id,
+      total: schema.orders.total,
+      paymentMethod: schema.orders.payment_method,
+      status: schema.orders.status,
+      createdAt: schema.orders.created_at,
+    }).from(schema.orders).orderBy(schema.orders.created_at)
+    res.json(orders)
+  } catch(e) { next(e) }
+})
+app.patch('/api/orders/:id', requireAuth, async (req, res, next) => {
+  try {
+    const { db } = await import('./db')
+    const schema = await import('./db/schema')
+    const { eq } = await import('drizzle-orm')
+    const { status } = req.body
+    if (!status) {
+      return res.status(400).json({ message: 'Status is required' })
+    }
+    const [updated] = await db.update(schema.orders)
+      .set({ status, updated_at: new Date() })
+      .where(eq(schema.orders.id, req.params.id))
+      .returning()
+    if (!updated) {
+      return res.status(404).json({ message: 'Order not found' })
+    }
+    res.json(updated)
+  } catch(e) { next(e) }
+})
 app.use('/api/invoices', requireAuth, invoicesRouter)
 app.use('/api/analytics', requireAuth, analyticsRouter)
 app.use('/api/auth', authRouter)
