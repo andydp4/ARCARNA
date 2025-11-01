@@ -30,11 +30,7 @@ type ExpenseFormData = {
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   category: z.string().min(1, "Category is required"),
-  amount: z.string().min(1, "Amount is required").transform((val) => {
-    const num = parseFloat(val);
-    if (isNaN(num) || num <= 0) throw new Error("Amount must be a positive number");
-    return num.toString();
-  }),
+  amount: z.coerce.number().positive("Amount must be a positive number"),
   frequency: z.string().min(1, "Frequency is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().optional(),
@@ -139,8 +135,8 @@ export function ExpensesPage() {
       category: "rent",
       amount: 0,
       frequency: "monthly",
-      startDate: new Date(),
-      endDate: undefined,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
       isActive: 1,
       description: "",
     },
@@ -158,7 +154,7 @@ export function ExpensesPage() {
     };
     
     // Only include optional fields if they have values
-    if (data.endDate) {
+    if (data.endDate && data.endDate.trim() !== "") {
       expenseData.endDate = data.endDate;
     }
     if (data.description) {
@@ -179,8 +175,8 @@ export function ExpensesPage() {
       category: expense.category,
       amount: parseFloat(expense.amount),
       frequency: expense.frequency,
-      startDate: new Date(expense.startDate),
-      endDate: expense.endDate ? new Date(expense.endDate) : undefined,
+      startDate: new Date(expense.startDate).toISOString().split('T')[0],
+      endDate: expense.endDate ? new Date(expense.endDate).toISOString().split('T')[0] : "",
       isActive: expense.isActive,
       description: expense.description || "",
     });
@@ -194,8 +190,8 @@ export function ExpensesPage() {
       category: "rent",
       amount: 0,
       frequency: "monthly",
-      startDate: new Date(),
-      endDate: undefined,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
       isActive: 1,
       description: "",
     });
@@ -479,8 +475,6 @@ export function ExpensesPage() {
                       <Input 
                         {...field} 
                         type="date" 
-                        value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''} 
-                        onChange={(e) => field.onChange(new Date(e.target.value))}
                         data-testid="input-expense-start-date"
                       />
                     </FormControl>
@@ -498,8 +492,6 @@ export function ExpensesPage() {
                       <Input 
                         {...field} 
                         type="date" 
-                        value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''} 
-                        onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
                         data-testid="input-expense-end-date"
                       />
                     </FormControl>
