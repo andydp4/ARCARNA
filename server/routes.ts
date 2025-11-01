@@ -232,7 +232,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Orders routes - Moved to apps/server/src/index.ts to use domain engine
+  // Orders routes using domain engine
+  app.post("/api/orders", isAuthenticated, async (req, res) => {
+    try {
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const result = await engine.placeOrder(req.body);
+      res.status(201).json(result);
+    } catch (error: any) {
+      console.error("Error creating order:", error);
+      const message = error.message || "Failed to create order";
+      const status = error.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ message, errors: error.errors });
+    }
+  });
+
+  app.get("/api/orders", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders } = await import('../apps/server/src/db/schema');
+      const allOrders = await db.select({
+        id: orders.id,
+        customerId: orders.customer_id,
+        total: orders.total,
+        paymentMethod: orders.payment_method,
+        status: orders.status,
+        createdAt: orders.created_at,
+      }).from(orders).orderBy(orders.created_at);
+      res.json(allOrders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  app.patch("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders } = await import('../apps/server/src/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const { updateOrderStatusSchema } = await import('../shared/schema');
+      
+      // Validate status
+      const validation = updateOrderStatusSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: 'Invalid status value',
+          errors: validation.error.errors
+        });
+      }
+      
+      const [updated] = await db.update(orders)
+        .set({ status: validation.data.status, updated_at: new Date() })
+        .where(eq(orders.id, req.params.id))
+        .returning();
+        
+      if (!updated) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating order:", error);
+      res.status(500).json({ message: "Failed to update order" });
+    }
+  });
 
   // Inventory routes
   app.get("/api/inventory", isAuthenticated, async (req, res) => {

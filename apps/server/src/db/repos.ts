@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer } from '@midnight/domain'
@@ -24,7 +24,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
     
     // Write to domain outbox for analytics worker
     await db.insert(s.domain_outbox).values({
-      event_type: 'OrderPlaced',
+      type: 'OrderPlaced',
       payload: { orderId: o.id, customerId: o.customerId, total: o.total },
       created_at: new Date(),
     })
@@ -40,7 +40,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
 export const ProductsRepoDrizzle: ProductsRepo = {
   async reserveStock(p: ProductId, qty: number) {
     // Decrement stock atomically
-    await db.execute(`UPDATE products SET stock = stock - $1 WHERE id = $2`, [qty, p as any])
+    await db.execute(sql`UPDATE products SET stock = stock - ${qty} WHERE id = ${p as any}`)
   },
   async create(product: Product): Promise<Product> {
     const [created] = await db.insert(s.products).values({

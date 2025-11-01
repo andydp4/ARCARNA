@@ -332,8 +332,7 @@ export default function POS() {
       return;
     }
 
-    const orderData = {
-      customerId: selectedCustomer?.id || null,
+    const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -341,6 +340,11 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
     };
+    
+    // Only include customerId if a customer is selected (Zod expects optional, not null)
+    if (selectedCustomer?.id) {
+      orderData.customerId = selectedCustomer.id;
+    }
 
     placeOrderMutation.mutate(orderData);
   };
