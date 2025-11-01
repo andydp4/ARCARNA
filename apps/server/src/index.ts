@@ -70,12 +70,19 @@ app.patch('/api/orders/:id', requireAuth, async (req, res, next) => {
     const { db } = await import('./db')
     const schema = await import('./db/schema')
     const { eq } = await import('drizzle-orm')
-    const { status } = req.body
-    if (!status) {
-      return res.status(400).json({ message: 'Status is required' })
+    const { updateOrderStatusSchema } = await import('../../../shared/schema')
+    
+    // Validate status
+    const validation = updateOrderStatusSchema.safeParse(req.body)
+    if (!validation.success) {
+      return res.status(400).json({ 
+        message: 'Invalid status value',
+        errors: validation.error.errors
+      })
     }
+    
     const [updated] = await db.update(schema.orders)
-      .set({ status, updated_at: new Date() })
+      .set({ status: validation.data.status, updated_at: new Date() })
       .where(eq(schema.orders.id, req.params.id))
       .returning()
     if (!updated) {

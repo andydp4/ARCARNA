@@ -164,6 +164,10 @@ export const insertProductSchema = createInsertSchema(products).omit({
 });
 export type InsertProductData = z.infer<typeof insertProductSchema>;
 
+// Order status enum
+export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
+export type OrderStatus = typeof ORDER_STATUSES[number];
+
 // Orders table
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -185,6 +189,12 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   status: true
 });
 export type InsertOrderData = z.infer<typeof insertOrderSchema>;
+
+// Order status update schema
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(ORDER_STATUSES)
+});
+export type UpdateOrderStatus = z.infer<typeof updateOrderStatusSchema>;
 
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {

@@ -22,6 +22,7 @@ import Settings from "@/pages/settings";
 import TickList from "@/pages/tick-list";
 import Analytics from "@/pages/analytics";
 import Invoices from "@/pages/invoices";
+import Orders from "@/pages/orders";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -35,6 +36,7 @@ function Router() {
         <Layout>
           <Route path="/" component={Home} />
           <Route path="/pos" component={POS} />
+          <Route path="/orders" component={Orders} />
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
           <Route path="/reports" component={Reports} />

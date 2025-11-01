@@ -13,7 +13,8 @@ import {
   Award,
   Boxes,
   Settings,
-  CreditCard
+  CreditCard,
+  PackageCheck
 } from 'lucide-react'
 
 export const navItems = [
@@ -30,6 +31,13 @@ export const navItems = [
     href: '/pos',
     icon: ShoppingCart,
     testId: 'nav-pos'
+  },
+  {
+    key: 'orders',
+    label: 'Orders',
+    href: '/orders',
+    icon: PackageCheck,
+    testId: 'nav-orders'
   },
   {
     key: 'products',
