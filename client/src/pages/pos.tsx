@@ -333,18 +333,13 @@ export default function POS() {
     }
 
     const orderData = {
-      customer_id: selectedCustomer?.id || null,
-      items: cart.map((item) => ({
-        product_id: item.product.id,
+      customerId: selectedCustomer?.id || null,
+      lines: cart.map((item) => ({
+        productId: item.product.id,
         quantity: item.quantity,
-        unit_price: item.customPrice,
-        total_price: item.subtotal,
+        unitPrice: item.customPrice,
       })),
-      subtotal,
-      tax,
-      total,
-      payment_method: paymentMethod,
-      expenses: orderExpenses // Include expenses in order data
+      paymentMethod: paymentMethod,
     };
 
     placeOrderMutation.mutate(orderData);
