@@ -95,6 +95,47 @@ The project uses a monorepo architecture with three main workspaces:
 - Auto-save functionality preserves imported data
 - Mobile-optimized with touch-friendly 44px minimum button height
 
+### Progressive Web App (PWA) Offline Support
+
+**Problem**: Point of Sale systems must continue operating during network outages to prevent sales disruptions.
+
+**Solution**: Full PWA implementation with offline-first architecture using service workers, IndexedDB storage, and background sync:
+
+**Service Worker** (`client/sw.js`):
+- Caches static assets and app shell for instant offline loading
+- Network-first strategy for API calls with fallback to cache
+- Automatic cache invalidation on new deployments
+
+**Offline Storage** (`client/src/lib/offline-storage.ts`):
+- IndexedDB-based storage for offline orders, products, and customers
+- Queues orders created while offline for automatic sync when connection returns
+- Tracks sync status (0 = unsynced, 1 = synced) for each offline order
+
+**Background Sync** (`client/src/lib/sync-service.ts`):
+- Registers Background Sync API when offline orders are created
+- Polls for unsynced orders every 30 seconds when online
+- Automatically uploads queued orders to server and marks as synced
+- Sends completion notifications to service worker
+
+**Offline Detection** (`client/src/components/offline-indicator.tsx`):
+- Visual indicator showing online/offline status
+- Toast notifications when connection state changes
+- Persistent badge when offline to remind users
+
+**POS Integration**:
+- POS page checks `navigator.onLine` before placing orders
+- Saves orders to IndexedDB with timestamp when offline
+- Shows distinct success messages for online vs offline order placement
+- Cart clears immediately whether online or offline for smooth UX
+
+**Manifest** (`client/manifest.json`):
+- Installable as standalone app on mobile and desktop
+- Dark theme color (#1E293B) matching EPOS branding
+- Portrait-primary orientation for mobile POS use
+
+**Pros**: Sales continue during outages, orders never lost, seamless offline/online transitions
+**Cons**: Requires modern browser with service worker support, IndexedDB storage limits (~50MB typical)
+
 ### Database Schema
 
 **ORM**: Drizzle ORM with PostgreSQL dialect

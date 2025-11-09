@@ -126,9 +126,15 @@ export default function POS() {
       if (!navigator.onLine) {
         await offlineStorage.saveOfflineOrder(orderData);
         
-        if ('serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype) {
-          const registration = await navigator.serviceWorker.ready;
-          await registration.sync.register('sync-orders');
+        try {
+          if ('serviceWorker' in navigator) {
+            const registration = await navigator.serviceWorker.ready;
+            if ('sync' in registration) {
+              await (registration as any).sync.register('sync-orders');
+            }
+          }
+        } catch (error) {
+          console.log('[PWA] Background sync not supported, will sync on next online event');
         }
         
         return { offline: true, orderId: null };
