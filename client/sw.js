@@ -41,14 +41,6 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') {
-    if (!navigator.onLine) {
-      event.respondWith(
-        new Response(JSON.stringify({ error: 'Offline', message: 'Request queued for sync' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        })
-      );
-    }
     return;
   }
 

@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { syncService } from "./lib/sync-service";
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
@@ -20,6 +21,9 @@ if ('serviceWorker' in navigator) {
           });
         }
       });
+
+      syncService.start();
+      console.log('[PWA] Sync service started');
     } catch (error) {
       console.error('[PWA] Service Worker registration failed:', error);
     }

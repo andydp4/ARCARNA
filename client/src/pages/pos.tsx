@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -122,18 +123,36 @@ export default function POS() {
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
+      if (!navigator.onLine) {
+        await offlineStorage.saveOfflineOrder(orderData);
+        
+        if ('serviceWorker' in navigator && 'sync' in ServiceWorkerRegistration.prototype) {
+          const registration = await navigator.serviceWorker.ready;
+          await registration.sync.register('sync-orders');
+        }
+        
+        return { offline: true, orderId: null };
+      }
+      
       const response = await apiRequest("POST", "/api/orders", orderData);
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Order Placed",
-        description: "Order has been successfully processed.",
-      });
+    onSuccess: (data: any) => {
+      if (data?.offline) {
+        toast({
+          title: "Order Saved Offline",
+          description: "You're offline. Order will sync automatically when connection returns.",
+        });
+      } else {
+        toast({
+          title: "Order Placed",
+          description: "Order has been successfully processed.",
+        });
+      }
       setCart([]);
       setSelectedCustomer(null);
       setCheckoutDialogOpen(false);
-      setOrderExpenses([]); // Clear expenses after successful order
+      setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
