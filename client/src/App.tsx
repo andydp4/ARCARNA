@@ -58,6 +58,7 @@ function Router() {
 }
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineIndicator } from "@/components/offline-indicator";
 
 function App() {
   return (
@@ -66,6 +67,7 @@ function App() {
         <NavigationProvider>
           <TooltipProvider>
             <Toaster />
+            <OfflineIndicator />
             <Router />
           </TooltipProvider>
         </NavigationProvider>

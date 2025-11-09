@@ -1,0 +1,176 @@
+const DB_NAME = 'midnight-epos-db';
+const DB_VERSION = 1;
+
+export interface OfflineOrder {
+  id?: number;
+  data: any;
+  timestamp: number;
+  synced: number;
+}
+
+class OfflineStorage {
+  private dbPromise: Promise<IDBDatabase> | null = null;
+
+  private openDB(): Promise<IDBDatabase> {
+    if (this.dbPromise) {
+      return this.dbPromise;
+    }
+
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+
+        if (!db.objectStoreNames.contains('offline-orders')) {
+          const orderStore = db.createObjectStore('offline-orders', { 
+            keyPath: 'id', 
+            autoIncrement: true 
+          });
+          orderStore.createIndex('synced', 'synced', { unique: false });
+          orderStore.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('products-cache')) {
+          db.createObjectStore('products-cache', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('customers-cache')) {
+          db.createObjectStore('customers-cache', { keyPath: 'id' });
+        }
+      };
+    });
+
+    return this.dbPromise;
+  }
+
+  async saveOfflineOrder(orderData: any): Promise<number> {
+    const db = await this.openDB();
+    const tx = db.transaction('offline-orders', 'readwrite');
+    const store = tx.objectStore('offline-orders');
+
+    const order: OfflineOrder = {
+      data: orderData,
+      timestamp: Date.now(),
+      synced: 0
+    };
+
+    return new Promise((resolve, reject) => {
+      const request = store.add(order);
+      request.onsuccess = () => resolve(request.result as number);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getOfflineOrders(): Promise<OfflineOrder[]> {
+    const db = await this.openDB();
+    const tx = db.transaction('offline-orders', 'readonly');
+    const store = tx.objectStore('offline-orders');
+
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getUnsyncedOrders(): Promise<OfflineOrder[]> {
+    const db = await this.openDB();
+    const tx = db.transaction('offline-orders', 'readonly');
+    const store = tx.objectStore('offline-orders');
+    const index = store.index('synced');
+
+    return new Promise((resolve, reject) => {
+      const request = index.getAll(IDBKeyRange.only(0));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async markOrderSynced(id: number): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('offline-orders', 'readwrite');
+    const store = tx.objectStore('offline-orders');
+
+    return new Promise((resolve, reject) => {
+      const getRequest = store.get(id);
+      getRequest.onsuccess = () => {
+        const order = getRequest.result;
+        if (order) {
+          order.synced = 1;
+          const updateRequest = store.put(order);
+          updateRequest.onsuccess = () => resolve();
+          updateRequest.onerror = () => reject(updateRequest.error);
+        } else {
+          resolve();
+        }
+      };
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+  }
+
+  async deleteOrder(id: number): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('offline-orders', 'readwrite');
+    const store = tx.objectStore('offline-orders');
+
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async cacheProducts(products: any[]): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('products-cache', 'readwrite');
+    const store = tx.objectStore('products-cache');
+
+    await store.clear();
+
+    for (const product of products) {
+      await store.put(product);
+    }
+  }
+
+  async getCachedProducts(): Promise<any[]> {
+    const db = await this.openDB();
+    const tx = db.transaction('products-cache', 'readonly');
+    const store = tx.objectStore('products-cache');
+
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async cacheCustomers(customers: any[]): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('customers-cache', 'readwrite');
+    const store = tx.objectStore('customers-cache');
+
+    await store.clear();
+
+    for (const customer of customers) {
+      await store.put(customer);
+    }
+  }
+
+  async getCachedCustomers(): Promise<any[]> {
+    const db = await this.openDB();
+    const tx = db.transaction('customers-cache', 'readonly');
+    const store = tx.objectStore('customers-cache');
+
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
+export const offlineStorage = new OfflineStorage();
