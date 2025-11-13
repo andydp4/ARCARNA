@@ -31,7 +31,15 @@ export class DomainEngine {
       await this.orders.save(order)
       for (const l of order.lines) await this.products.reserveStock(l.productId as any, l.quantity)
       if (order.paymentMethod === 'tick' && order.customerId) await this.customers.addTickDebt(order.customerId as any, order.total)
-      const { invoiceId } = await this.invoices.createAndStore(order.id)
+      
+      let invoiceId = null
+      try {
+        const result = await this.invoices.createAndStore(order.id)
+        invoiceId = result.invoiceId
+      } catch (error) {
+        console.warn('[DomainEngine] Invoice generation failed (non-critical):', error)
+      }
+      
       await this.analytics.recordOrder(order.id)
       if (order.customerId) {
         await this.customers.addOrderHistory(order.customerId as any, order.id)
@@ -43,7 +51,7 @@ export class DomainEngine {
       await this.bus.publish({ type: 'OrderPlaced', orderId: order.id, customerId: order.customerId as any })
       await this.bus.publish({ type: 'StockReserved', orderId: order.id })
       if (order.paymentMethod === 'tick' && order.customerId) await this.bus.publish({ type: 'TickAdded', orderId: order.id, customerId: order.customerId as any })
-      await this.bus.publish({ type: 'InvoiceCreated', orderId: order.id, invoiceId })
+      if (invoiceId) await this.bus.publish({ type: 'InvoiceCreated', orderId: order.id, invoiceId })
       await this.bus.publish({ type: 'AnalyticsProjected', orderId: order.id })
       if (order.customerId) await this.bus.publish({ type: 'CustomerHistoryUpdated', orderId: order.id, customerId: order.customerId as any })
       return order.id

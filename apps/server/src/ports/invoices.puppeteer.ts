@@ -7,17 +7,28 @@ import type { InvoicesPort, OrderId } from '@midnight/domain'
 export const InvoicesPortPuppeteer: InvoicesPort = {
   async createAndStore(orderId: OrderId){
     // Minimal demo payload; replace with DB lookup
+    const items = [{ name:'Legend Tee — Neon Blue', quantity:1, price: 35, total: 35 }];
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    const tax = subtotal * 0.2;
+    const total = subtotal + tax;
+    
     const data = {
       invoiceNumber: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(orderId).slice(-4)}`,
-      invoiceDateISO: new Date().toISOString(),
+      date: new Date().toLocaleDateString(),
       customerName: 'Demo Customer',
-      customerAddressLines: ['1 Demo Street','Birmingham','B1 1AA'],
-      vatRate: 0.2,
-      items: [{ name:'Legend Tee — Neon Blue', quantity:1, unitPriceGBP:35 }],
-      company: { name:'Midnight Standard', address:'Birmingham, UK', vatNumber:'GBXXXXXXXX' }
+      customerEmail: undefined,
+      customerAddress: '1 Demo Street, Birmingham, B1 1AA',
+      items,
+      subtotal,
+      tax,
+      total,
+      businessName: 'Midnight Standard',
+      businessAddress: 'Birmingham, UK',
+      businessPhone: undefined,
+      businessEmail: 'info@midnightepos.com'
     }
     const out = path.join(os.tmpdir(), `${data.invoiceNumber}.pdf`)
-    await generateInvoicePDF(data as any, out)
+    await generateInvoicePDF(data)
     // In real use, upload to Drive/S3 and return link
     return { invoiceId: data.invoiceNumber, fileUrl: out }
   }
