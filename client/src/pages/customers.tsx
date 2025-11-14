@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
+import { offlineStorage } from '@/lib/offline-storage'
 import { type Customer } from '@shared/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,14 +53,25 @@ export default function Customers() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('POST', '/api/customers', data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'CUSTOMER_CREATE',
+          method: 'POST',
+          endpoint: '/api/customers',
+          data
+        });
+        return { offline: true };
+      }
+      return apiRequest('POST', '/api/customers', data);
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setShowAddDialog(false)
       resetForm()
       toast({
         title: 'Success',
-        description: 'Customer created successfully',
+        description: data?.offline ? 'Customer saved offline and will sync when connection returns' : 'Customer created successfully',
       })
     },
     onError: () => {
@@ -72,14 +84,25 @@ export default function Customers() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: any) => apiRequest('PUT', `/api/customers/${id}`, data),
-    onSuccess: () => {
+    mutationFn: async ({ id, data }: any) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'CUSTOMER_UPDATE',
+          method: 'PUT',
+          endpoint: `/api/customers/${id}`,
+          data
+        });
+        return { offline: true };
+      }
+      return apiRequest('PUT', `/api/customers/${id}`, data);
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setEditingCustomer(null)
       resetForm()
       toast({
         title: 'Success',
-        description: 'Customer updated successfully',
+        description: data?.offline ? 'Update saved offline and will sync when connection returns' : 'Customer updated successfully',
       })
     },
     onError: () => {

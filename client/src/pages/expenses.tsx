@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,14 +65,24 @@ export function ExpensesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: InsertOverheadExpense) => 
-      apiRequest("POST", "/api/overhead-expenses", data),
-    onSuccess: () => {
+    mutationFn: async (data: InsertOverheadExpense) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'EXPENSE_CREATE',
+          method: 'POST',
+          endpoint: '/api/overhead-expenses',
+          data
+        });
+        return { offline: true };
+      }
+      return apiRequest("POST", "/api/overhead-expenses", data);
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/overhead-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expense-analytics"] });
       toast({
         title: "Success",
-        description: "Overhead expense created successfully",
+        description: data?.offline ? "Expense saved offline and will sync when connection returns" : "Overhead expense created successfully",
       });
       setIsDialogOpen(false);
       form.reset();

@@ -106,7 +106,11 @@ class OfflineStorage {
 
     return new Promise((resolve, reject) => {
       const request = index.getAll(IDBKeyRange.only(0));
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const orders = request.result;
+        orders.sort((a, b) => a.timestamp - b.timestamp);
+        resolve(orders);
+      };
       request.onerror = () => reject(request.error);
     });
   }
@@ -219,7 +223,11 @@ class OfflineStorage {
 
     return new Promise((resolve, reject) => {
       const request = index.getAll(IDBKeyRange.only(0));
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const mutations = request.result;
+        mutations.sort((a, b) => a.timestamp - b.timestamp);
+        resolve(mutations);
+      };
       request.onerror = () => reject(request.error);
     });
   }

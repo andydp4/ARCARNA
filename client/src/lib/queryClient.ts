@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { offlineStorage } from "./offline-storage";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -29,16 +30,44 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
-    });
+    const endpoint = queryKey.join("/") as string;
+    
+    try {
+      const res = await fetch(endpoint, {
+        credentials: "include",
+      });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+      if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+        return null;
+      }
+
+      await throwIfResNotOk(res);
+      const data = await res.json();
+      
+      if (endpoint.startsWith('/api/products') && Array.isArray(data)) {
+        offlineStorage.cacheProducts(data).catch(err => 
+          console.warn('[QueryClient] Failed to cache products:', err)
+        );
+      } else if (endpoint.startsWith('/api/customers') && Array.isArray(data)) {
+        offlineStorage.cacheCustomers(data).catch(err => 
+          console.warn('[QueryClient] Failed to cache customers:', err)
+        );
+      }
+      
+      return data;
+    } catch (error) {
+      if (!navigator.onLine || (error as Error).message.includes('Failed to fetch')) {
+        if (endpoint.startsWith('/api/products')) {
+          console.log('[QueryClient] Offline: Loading products from cache');
+          return await offlineStorage.getCachedProducts();
+        } else if (endpoint.startsWith('/api/customers')) {
+          console.log('[QueryClient] Offline: Loading customers from cache');
+          return await offlineStorage.getCachedCustomers();
+        }
+      }
+      
+      throw error;
     }
-
-    await throwIfResNotOk(res);
-    return await res.json();
   };
 
 export const queryClient = new QueryClient({

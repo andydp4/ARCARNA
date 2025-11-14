@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -49,17 +50,34 @@ export default function Orders() {
   // Update order status mutation
   const updateStatusMutation = useMutation({
     mutationFn: async (data: { orderId: string; status: string }) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'ORDER_UPDATE',
+          method: 'PATCH',
+          endpoint: `/api/orders/${data.orderId}`,
+          data: { status: data.status }
+        });
+        return { offline: true };
+      }
+      
       const response = await apiRequest("PATCH", `/api/orders/${data.orderId}`, {
         status: data.status,
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      toast({
-        title: "Status Updated",
-        description: "Order status has been successfully updated.",
-      });
+      if (data?.offline) {
+        toast({
+          title: "Update Queued",
+          description: "Status update saved offline and will sync when connection returns.",
+        });
+      } else {
+        toast({
+          title: "Status Updated",
+          description: "Order status has been successfully updated.",
+        });
+      }
       setStatusDialogOpen(false);
       setSelectedOrder(null);
     },

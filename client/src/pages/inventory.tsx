@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,16 @@ export default function Inventory() {
   // Stock adjustment mutation
   const adjustStockMutation = useMutation({
     mutationFn: async (data: { productId: string; adjustment: number; type: "add" | "set" }) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'PRODUCT_UPDATE',
+          method: 'PATCH',
+          endpoint: `/api/inventory/${data.productId}`,
+          data: { adjustment: data.adjustment, type: data.type }
+        });
+        return { offline: true };
+      }
+      
       const response = await apiRequest("PATCH", `/api/inventory/${data.productId}`, {
         adjustment: data.adjustment,
         type: data.type
@@ -96,11 +107,18 @@ export default function Inventory() {
         variant: "destructive",
       });
     },
-    onSuccess: () => {
-      toast({
-        title: "Stock Updated",
-        description: "Product stock has been successfully adjusted.",
-      });
+    onSuccess: (data: any) => {
+      if (data?.offline) {
+        toast({
+          title: "Update Queued",
+          description: "Stock adjustment saved offline and will sync when connection returns.",
+        });
+      } else {
+        toast({
+          title: "Stock Updated",
+          description: "Product stock has been successfully adjusted.",
+        });
+      }
       setAdjustmentDialogOpen(false);
       setSelectedProduct(null);
       setAdjustmentValue("");

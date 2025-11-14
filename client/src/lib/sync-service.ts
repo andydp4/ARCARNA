@@ -4,13 +4,14 @@ import { apiRequest } from './queryClient';
 export class SyncService {
   private syncing = false;
   private syncInterval: number | null = null;
+  private boundSyncOnline = this.syncOnline.bind(this);
 
   start() {
     if (this.syncInterval) return;
 
     this.syncOnline();
 
-    window.addEventListener('online', () => this.syncOnline());
+    window.addEventListener('online', this.boundSyncOnline);
 
     this.syncInterval = window.setInterval(() => {
       if (navigator.onLine) {
@@ -24,7 +25,7 @@ export class SyncService {
       window.clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
-    window.removeEventListener('online', () => this.syncOnline());
+    window.removeEventListener('online', this.boundSyncOnline);
   }
 
   async syncOnline() {
