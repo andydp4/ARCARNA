@@ -123,13 +123,20 @@ export default function POS() {
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
-      if (!navigator.onLine) {
-        await offlineStorage.queueMutation({
-          type: 'ORDER_CREATE',
-          method: 'POST',
-          endpoint: '/api/orders',
-          data: orderData
-        });
+      const queueOffline = async () => {
+        console.log('[POS] Queueing order mutation offline');
+        try {
+          await offlineStorage.queueMutation({
+            type: 'ORDER_CREATE',
+            method: 'POST',
+            endpoint: '/api/orders',
+            data: orderData
+          });
+          console.log('[POS] Order mutation queued successfully');
+        } catch (queueError) {
+          console.error('[POS] Failed to queue mutation:', queueError);
+          throw queueError;
+        }
         
         try {
           if ('serviceWorker' in navigator) {
@@ -138,15 +145,44 @@ export default function POS() {
               await (registration as any).sync.register('sync-orders');
             }
           }
-        } catch (error) {
+        } catch (swError) {
           console.log('[PWA] Background sync not supported, will sync on next online event');
         }
         
         return { offline: true, orderId: null };
+      };
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData),
+          credentials: 'include',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const text = await response.text() || response.statusText;
+          throw new Error(`${response.status}: ${text}`);
+        }
+        
+        return response.json();
+      } catch (error) {
+        const isNetworkError = !navigator.onLine || 
+          (error as Error).name === 'AbortError' ||
+          (error as Error).message.includes('Failed to fetch') ||
+          (error as Error).message.includes('NetworkError');
+        
+        if (isNetworkError) {
+          return queueOffline();
+        }
+        throw error;
       }
-      
-      const response = await apiRequest("POST", "/api/orders", orderData);
-      return response.json();
     },
     onSuccess: (data: any) => {
       if (data?.offline) {

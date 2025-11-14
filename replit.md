@@ -97,9 +97,9 @@ The project uses a monorepo architecture with three main workspaces:
 
 ### Progressive Web App (PWA) Offline Support
 
-**Problem**: Point of Sale systems must continue operating during network outages to prevent sales disruptions.
+**Problem**: Point of Sale systems must continue operating during network outages to prevent sales disruptions. All critical operations (orders, inventory, customers, expenses) must queue offline and sync automatically when connectivity returns.
 
-**Solution**: Full PWA implementation with offline-first architecture using service workers, IndexedDB storage, and background sync:
+**Solution**: Comprehensive offline-first architecture using service workers, IndexedDB storage, generic mutation queue, and background sync:
 
 **Service Worker** (`client/sw.js`):
 - Caches static assets and app shell for instant offline loading
@@ -107,34 +107,64 @@ The project uses a monorepo architecture with three main workspaces:
 - Automatic cache invalidation on new deployments
 
 **Offline Storage** (`client/src/lib/offline-storage.ts`):
-- IndexedDB-based storage for offline orders, products, and customers
-- Queues orders created while offline for automatic sync when connection returns
-- Tracks sync status (0 = unsynced, 1 = synced) for each offline order
+- IndexedDB v2 schema with three object stores:
+  - `offline-orders` - Legacy order queue (deprecated but maintained for backwards compatibility)
+  - `mutations-queue` - Generic mutation queue for all offline operations
+  - `products-cache` - Cached products for offline browsing
+  - `customers-cache` - Cached customers for offline browsing
+- Mutation queue tracks: type, method, endpoint, data, timestamp, sync status
+- Supported mutation types: ORDER_CREATE, ORDER_UPDATE, PRODUCT_UPDATE, CUSTOMER_CREATE, CUSTOMER_UPDATE, EXPENSE_CREATE
+- **Critical**: Mutations sorted by timestamp to prevent data corruption during sync
 
 **Background Sync** (`client/src/lib/sync-service.ts`):
-- Registers Background Sync API when offline orders are created
-- Polls for unsynced orders every 30 seconds when online
-- Automatically uploads queued orders to server and marks as synced
+- Polls for unsynced mutations every 30 seconds when online
+- Processes mutations sequentially in timestamp order to preserve causality
+- Replays each mutation using stored method (POST/PUT/PATCH/DELETE) and endpoint
+- Marks mutations as synced or error state
+- Event listener uses bound method reference to prevent memory leaks
 - Sends completion notifications to service worker
+
+**QueryClient Integration** (`client/src/lib/queryClient.ts`):
+- Auto-caches /api/products and /api/customers responses to IndexedDB when online
+- Falls back to cached data when offline or fetch fails
+- Uses endpoint prefix matching (`startsWith()`) to handle query parameters
+- Transparent to UI - pages don't need offline-aware code
+- Console logging for debugging offline cache hits
 
 **Offline Detection** (`client/src/components/offline-indicator.tsx`):
 - Visual indicator showing online/offline status
 - Toast notifications when connection state changes
 - Persistent badge when offline to remind users
 
-**POS Integration**:
-- POS page checks `navigator.onLine` before placing orders
-- Saves orders to IndexedDB with timestamp when offline
-- Shows distinct success messages for online vs offline order placement
-- Cart clears immediately whether online or offline for smooth UX
+**Comprehensive Page Integration**:
+- **POS** (`pos.tsx`): Order creation queues when offline
+- **Orders** (`orders.tsx`): Status updates queue when offline
+- **Inventory** (`inventory.tsx`): Stock adjustments queue when offline
+- **Customers** (`customers.tsx`): Customer create/update queues when offline
+- **Expenses** (`expenses.tsx`): Expense creation queues when offline
+- All pages check `navigator.onLine` before mutations
+- Distinct toast messages for online vs offline operations
+- Optimistic UI updates work whether online or offline
+
+**Invoice Generation**:
+- Non-blocking operation wrapped in try-catch
+- PDF generation failures don't abort order creation
+- Graceful degradation when Puppeteer Chrome binary unavailable
 
 **Manifest** (`client/manifest.json`):
 - Installable as standalone app on mobile and desktop
 - Dark theme color (#1E293B) matching EPOS branding
 - Portrait-primary orientation for mobile POS use
 
-**Pros**: Sales continue during outages, orders never lost, seamless offline/online transitions
-**Cons**: Requires modern browser with service worker support, IndexedDB storage limits (~50MB typical)
+**Architecture Decisions**:
+- Generic mutation queue replaces per-feature queues for maintainability
+- Timestamp-based ordering prevents out-of-order updates
+- Centralized caching in queryClient keeps page code simple
+- Fire-and-forget cache writes don't block queries
+- No conflict resolution needed - sequential replay ensures consistency
+
+**Pros**: All operations work offline, automatic sync, no data loss, seamless transitions, centralized logic
+**Cons**: Requires modern browser with service worker support, IndexedDB storage limits (~50MB typical), sequential sync may be slow for large queues
 
 ### Database Schema
 
