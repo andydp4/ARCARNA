@@ -35,13 +35,14 @@ export class SyncService {
 
     try {
       const unsyncedOrders = await offlineStorage.getUnsyncedOrders();
+      const unsyncedMutations = await offlineStorage.getUnsyncedMutations();
 
-      if (unsyncedOrders.length === 0) {
-        console.log('[Sync] No orders to sync');
+      if (unsyncedOrders.length === 0 && unsyncedMutations.length === 0) {
+        console.log('[Sync] Nothing to sync');
         return;
       }
 
-      console.log(`[Sync] Syncing ${unsyncedOrders.length} orders...`);
+      console.log(`[Sync] Syncing ${unsyncedOrders.length} legacy orders and ${unsyncedMutations.length} mutations...`);
 
       for (const order of unsyncedOrders) {
         try {
@@ -51,9 +52,27 @@ export class SyncService {
             await offlineStorage.markOrderSynced(order.id);
           }
           
-          console.log('[Sync] Successfully synced order:', order.id);
+          console.log('[Sync] Successfully synced legacy order:', order.id);
         } catch (error) {
-          console.error('[Sync] Failed to sync order:', order.id, error);
+          console.error('[Sync] Failed to sync legacy order:', order.id, error);
+        }
+      }
+
+      for (const mutation of unsyncedMutations) {
+        try {
+          const response = await apiRequest(mutation.method, mutation.endpoint, mutation.data);
+          
+          if (mutation.id) {
+            await offlineStorage.markMutationSynced(mutation.id);
+          }
+          
+          console.log(`[Sync] Successfully synced mutation ${mutation.type}:`, mutation.id);
+        } catch (error: any) {
+          console.error(`[Sync] Failed to sync mutation ${mutation.type}:`, mutation.id, error);
+          
+          if (mutation.id) {
+            await offlineStorage.markMutationError(mutation.id, error.message || 'Unknown error');
+          }
         }
       }
 

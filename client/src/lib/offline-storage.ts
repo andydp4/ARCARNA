@@ -1,11 +1,22 @@
 const DB_NAME = 'midnight-epos-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface OfflineOrder {
   id?: number;
   data: any;
   timestamp: number;
   synced: number;
+}
+
+export interface QueuedMutation {
+  id?: number;
+  type: 'ORDER_CREATE' | 'ORDER_UPDATE' | 'PRODUCT_UPDATE' | 'CUSTOMER_CREATE' | 'CUSTOMER_UPDATE' | 'EXPENSE_CREATE';
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  endpoint: string;
+  data: any;
+  timestamp: number;
+  synced: number;
+  error?: string;
 }
 
 class OfflineStorage {
@@ -32,6 +43,16 @@ class OfflineStorage {
           });
           orderStore.createIndex('synced', 'synced', { unique: false });
           orderStore.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('mutations-queue')) {
+          const mutationsStore = db.createObjectStore('mutations-queue', { 
+            keyPath: 'id', 
+            autoIncrement: true 
+          });
+          mutationsStore.createIndex('synced', 'synced', { unique: false });
+          mutationsStore.createIndex('timestamp', 'timestamp', { unique: false });
+          mutationsStore.createIndex('type', 'type', { unique: false });
         }
 
         if (!db.objectStoreNames.contains('products-cache')) {
@@ -170,6 +191,98 @@ class OfflineStorage {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  async queueMutation(mutation: Omit<QueuedMutation, 'id' | 'timestamp' | 'synced'>): Promise<number> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readwrite');
+    const store = tx.objectStore('mutations-queue');
+
+    const queuedMutation: QueuedMutation = {
+      ...mutation,
+      timestamp: Date.now(),
+      synced: 0
+    };
+
+    return new Promise((resolve, reject) => {
+      const request = store.add(queuedMutation);
+      request.onsuccess = () => resolve(request.result as number);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getUnsyncedMutations(): Promise<QueuedMutation[]> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readonly');
+    const store = tx.objectStore('mutations-queue');
+    const index = store.index('synced');
+
+    return new Promise((resolve, reject) => {
+      const request = index.getAll(IDBKeyRange.only(0));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async markMutationSynced(id: number): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readwrite');
+    const store = tx.objectStore('mutations-queue');
+
+    return new Promise((resolve, reject) => {
+      const getRequest = store.get(id);
+      getRequest.onsuccess = () => {
+        const mutation = getRequest.result;
+        if (mutation) {
+          mutation.synced = 1;
+          const updateRequest = store.put(mutation);
+          updateRequest.onsuccess = () => resolve();
+          updateRequest.onerror = () => reject(updateRequest.error);
+        } else {
+          resolve();
+        }
+      };
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+  }
+
+  async markMutationError(id: number, error: string): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readwrite');
+    const store = tx.objectStore('mutations-queue');
+
+    return new Promise((resolve, reject) => {
+      const getRequest = store.get(id);
+      getRequest.onsuccess = () => {
+        const mutation = getRequest.result;
+        if (mutation) {
+          mutation.error = error;
+          const updateRequest = store.put(mutation);
+          updateRequest.onsuccess = () => resolve();
+          updateRequest.onerror = () => reject(updateRequest.error);
+        } else {
+          resolve();
+        }
+      };
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+  }
+
+  async deleteMutation(id: number): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readwrite');
+    const store = tx.objectStore('mutations-queue');
+
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getPendingMutationsCount(): Promise<number> {
+    const mutations = await this.getUnsyncedMutations();
+    return mutations.length;
   }
 }
 

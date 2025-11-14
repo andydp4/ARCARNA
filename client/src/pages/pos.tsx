@@ -124,7 +124,12 @@ export default function POS() {
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
       if (!navigator.onLine) {
-        await offlineStorage.saveOfflineOrder(orderData);
+        await offlineStorage.queueMutation({
+          type: 'ORDER_CREATE',
+          method: 'POST',
+          endpoint: '/api/orders',
+          data: orderData
+        });
         
         try {
           if ('serviceWorker' in navigator) {
