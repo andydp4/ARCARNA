@@ -731,30 +731,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Invoices endpoints - for Invoice Management page
   app.get("/api/invoices", isAuthenticated, async (req, res) => {
     try {
-      // TODO: Implement getOrders method in storage
-      const orders: any[] = [];
-      // Transform orders into invoice format
-      const invoices = orders.map((order: any) => ({
-        id: order.id,
-        invoiceNumber: `INV-${new Date(order.createdAt).getFullYear()}-${String(order.id).padStart(3, '0')}`,
-        orderId: order.id,
-        customerId: order.customerId,
-        customerName: order.customer?.name || 'Walk-in Customer',
-        customerEmail: order.customer?.email || '',
-        date: order.createdAt,
-        dueDate: new Date(new Date(order.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from order
-        total: parseFloat(order.total),
-        subtotal: parseFloat(order.total) / 1.2, // Assuming 20% VAT
-        vat: parseFloat(order.total) - (parseFloat(order.total) / 1.2),
-        status: order.status === 'completed' ? 'paid' : 'pending',
-        paymentMethod: order.paymentMethod,
-        items: order.orderItems?.map((item: any) => ({
-          name: item.product?.name || 'Unknown Product',
-          quantity: item.quantity,
-          unitPrice: parseFloat(item.unitPrice),
-          total: parseFloat(item.totalPrice)
-        })) || []
-      }));
+      const invoices = await storage.getInvoicesWithDetails();
       res.json(invoices);
     } catch (error) {
       console.error("Error fetching invoices:", error);

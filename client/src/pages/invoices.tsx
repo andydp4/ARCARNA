@@ -72,64 +72,10 @@ export default function Invoices() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all')
   const [selectedPeriod, setSelectedPeriod] = useState<'all' | 'today' | 'week' | 'month'>('month')
 
-  // Mock invoice data - would come from API
-  const invoices: Invoice[] = [
-    {
-      id: '1',
-      invoiceNumber: 'INV-2024-001',
-      orderId: 'ORD-001',
-      customerId: 'CUST-001',
-      customerName: 'John Doe',
-      customerEmail: 'john@example.com',
-      date: '2024-01-15',
-      dueDate: '2024-02-15',
-      total: 250.00,
-      subtotal: 208.33,
-      vat: 41.67,
-      status: 'paid',
-      paymentMethod: 'card',
-      items: [
-        { name: 'Product A', quantity: 2, unitPrice: 75.00, total: 150.00 },
-        { name: 'Product B', quantity: 1, unitPrice: 100.00, total: 100.00 },
-      ]
-    },
-    {
-      id: '2',
-      invoiceNumber: 'INV-2024-002',
-      orderId: 'ORD-002',
-      customerId: 'CUST-002',
-      customerName: 'Jane Smith',
-      customerEmail: 'jane@example.com',
-      date: '2024-01-14',
-      dueDate: '2024-02-14',
-      total: 175.50,
-      subtotal: 146.25,
-      vat: 29.25,
-      status: 'pending',
-      paymentMethod: 'tick',
-      items: [
-        { name: 'Service C', quantity: 1, unitPrice: 175.50, total: 175.50 },
-      ]
-    },
-    {
-      id: '3',
-      invoiceNumber: 'INV-2024-003',
-      orderId: 'ORD-003',
-      customerId: 'CUST-003',
-      customerName: 'Bob Wilson',
-      customerEmail: 'bob@example.com',
-      date: '2024-01-10',
-      dueDate: '2024-02-10',
-      total: 500.00,
-      subtotal: 416.67,
-      vat: 83.33,
-      status: 'overdue',
-      paymentMethod: 'transfer',
-      items: [
-        { name: 'Premium Service', quantity: 1, unitPrice: 500.00, total: 500.00 },
-      ]
-    }
-  ]
+  // Fetch invoices from API
+  const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
+    queryKey: ['/api/invoices'],
+  })
 
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = 
@@ -337,7 +283,13 @@ export default function Invoices() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredInvoices.map((invoice) => (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      Loading invoices...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredInvoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">

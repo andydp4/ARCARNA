@@ -167,6 +167,9 @@ export interface IStorage {
   }>;
   getExpenseReport(startDate: Date, endDate: Date): Promise<any>;
   getProfitAnalysis(startDate: Date, endDate: Date): Promise<any>;
+
+  // Invoice operations
+  getInvoicesWithDetails(): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1416,6 +1419,73 @@ export class DatabaseStorage implements IStorage {
       .where(eq(promotions.id, promo.id));
 
     return discount;
+  }
+
+  async getInvoicesWithDetails(): Promise<any[]> {
+    // Fetch all orders with customer and item details
+    const ordersData = await db
+      .select({
+        order: orders,
+        customer: customers,
+      })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .orderBy(desc(orders.createdAt));
+
+    // For each order, fetch order items with product details
+    const invoices = await Promise.all(
+      ordersData.map(async ({ order, customer }) => {
+        const items = await db
+          .select({
+            item: orderItems,
+            product: products,
+          })
+          .from(orderItems)
+          .leftJoin(products, eq(orderItems.productId, products.id))
+          .where(eq(orderItems.orderId, order.id));
+
+        const invoiceNumber = `INV-${new Date(order.createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
+        const orderTotal = parseFloat(order.total);
+        const subtotal = orderTotal / 1.2; // Assuming 20% VAT
+        const vat = orderTotal - subtotal;
+        const dueDate = new Date(order.createdAt);
+        dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
+
+        // Determine invoice status
+        let status: 'paid' | 'pending' | 'overdue' | 'cancelled' = 'pending';
+        if (order.status === 'cancelled') {
+          status = 'cancelled';
+        } else if (order.status === 'completed') {
+          status = 'paid';
+        } else if (new Date() > dueDate) {
+          status = 'overdue';
+        }
+
+        return {
+          id: order.id,
+          invoiceNumber,
+          orderId: order.id,
+          customerId: order.customerId,
+          customerName: customer?.name || 'Walk-in Customer',
+          customerEmail: customer?.email || '',
+          date: order.createdAt.toISOString(),
+          dueDate: dueDate.toISOString(),
+          total: orderTotal,
+          subtotal,
+          vat,
+          status,
+          paymentMethod: order.paymentMethod,
+          items: items.map(({ item, product }) => ({
+            name: product?.name || 'Unknown Product',
+            quantity: item.quantity,
+            unitPrice: parseFloat(item.unitPrice),
+            total: parseFloat(item.totalPrice)
+          }))
+        };
+      })
+    );
+
+    return invoices;
   }
 }
 
