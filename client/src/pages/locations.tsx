@@ -542,7 +542,14 @@ export default function Locations() {
                         <div className="grid grid-cols-2 gap-2 pt-2 border-t">
                           <div>
                             <div className="text-xs text-muted-foreground">Revenue</div>
-                            <div className="font-medium">${location.stats?.totalRevenue?.toFixed(2) || "0.00"}</div>
+                            <div className="font-medium">
+                              ${(() => {
+                                const revenue = typeof location.stats?.totalRevenue === 'string' 
+                                  ? parseFloat(location.stats.totalRevenue) 
+                                  : location.stats?.totalRevenue || 0;
+                                return (isNaN(revenue) ? 0 : revenue).toFixed(2);
+                              })()}
+                            </div>
                           </div>
                           <div>
                             <div className="text-xs text-muted-foreground">Orders</div>
@@ -639,7 +646,14 @@ export default function Locations() {
                           </div>
                         </TableCell>
                         <TableCell>{location.phone}</TableCell>
-                        <TableCell>${location.stats?.totalRevenue?.toFixed(2) || "0.00"}</TableCell>
+                        <TableCell>
+                          ${(() => {
+                            const revenue = typeof location.stats?.totalRevenue === 'string' 
+                              ? parseFloat(location.stats.totalRevenue) 
+                              : location.stats?.totalRevenue || 0;
+                            return (isNaN(revenue) ? 0 : revenue).toFixed(2);
+                          })()}
+                        </TableCell>
                         <TableCell>{location.stats?.totalOrders || 0}</TableCell>
                         <TableCell>
                           {location.isActive ? (
