@@ -62,9 +62,13 @@ export class DomainEngine {
   // Product Management Methods
   async createProduct(input: unknown): Promise<Product> {
     const product = await this.withTransaction(async () => {
+      // Generate unique product code if not provided or empty
+      const providedCode = (input as any).productId?.trim()
+      const productCode = providedCode || `PRD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
+      
       const newProduct: Product = {
         id: crypto.randomUUID() as ProductId,
-        productCode: (input as any).productId || `PRD-${Date.now()}`,
+        productCode,
         name: (input as any).name,
         barcode: (input as any).barcode,
         price: (input as any).price || 0,

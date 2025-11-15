@@ -1,0 +1,233 @@
+GLOBAL RULES – DO NOT BREAK ANYTHING
+	1.	No unrelated changes
+	•	Only work on the specific issues listed below (1–5).
+	•	Do not refactor, “tidy up,” or optimize other areas of the code.
+	•	Do not remove or rename functions, classes, or files unless explicitly required to fix the bug.
+	2.	Change control
+	•	For each issue, make changes in small, isolated steps.
+	•	After each change:
+	•	Re-check syntax / linting.
+	•	Run relevant tests.
+	•	Perform a quick manual test of the affected feature.
+	3.	Code checking after every edit
+After every single code edit or block of edits:
+	•	Validate code compiles / runs (no syntax errors).
+	•	Run static analysis / linter (if available).
+	•	Run any existing unit/integration tests relevant to the changed module.
+	•	If any new error appears:
+	•	Stop.
+	•	Revert the last change or adjust it until the error is resolved before proceeding.
+	4.	Logging & explanation
+For each issue fixed:
+	•	Add a short comment in the code if the fix is not obvious.
+	•	Provide a brief written summary:
+	•	What was wrong.
+	•	What was changed.
+	•	How it was tested.
+	5.	Database safety
+	•	Do not alter database schema (tables/columns/indexes) unless absolutely required.
+	•	If a schema change is required:
+	•	Use a migration, not ad-hoc changes.
+	•	Clearly document the change.
+
+⸻
+
+ISSUE 1 – “Unable to create product” error
+
+Objective: Fix the error when adding a product so that product creation works reliably.
+
+Instructions:
+	1.	Reproduce
+	•	Use the UI to add a product with typical/valid data.
+	•	Capture:
+	•	Exact error message (e.g., “Unable to create product”).
+	•	Any stack trace / API response.
+	•	Relevant logs from backend.
+	2.	Investigate
+	•	Check the product creation endpoint / function:
+	•	Validate request payload structure and required fields.
+	•	Check any validation logic for product name, price, SKU, tax, etc.
+	•	Check for database constraints (e.g., unique keys, NOT NULL fields).
+	•	Confirm that:
+	•	The DB connection is working.
+	•	Required tables/columns exist and match the code.
+	3.	Fix
+	•	Correct the root cause (e.g., bad validation, incorrect field name, missing value, null handling).
+	•	Do not modify unrelated product features (e.g., bulk import, stock management) unless they are directly broken by the same bug.
+	4.	Test
+	•	Create a product with valid data — should succeed.
+	•	Try edge cases:
+	•	Missing optional fields.
+	•	Boundary values (e.g., price = 0 if allowed).
+	•	Confirm:
+	•	New product appears correctly in product list.
+	•	No new errors are introduced in product edit/delete.
+
+⸻
+
+ISSUE 2 – Expenses screen crashes the system
+
+Objective: Opening the Expenses section should not crash; it should load normally.
+
+Instructions:
+	1.	Reproduce
+	•	Open the Expenses section in the UI.
+	•	Note exactly:
+	•	What the user sees before the crash.
+	•	Any visible error message.
+	•	Capture:
+	•	Frontend console errors.
+	•	Backend logs.
+	•	Any stack traces.
+	2.	Investigate
+	•	Check frontend:
+	•	The component/view responsible for Expenses.
+	•	API calls made on load (network requests, responses, status codes).
+	•	Handling of empty / null data from the server.
+	•	Check backend:
+	•	Endpoint that serves expenses data.
+	•	Any queries that might throw exceptions (e.g., date parsing, null values, joins).
+	•	Permissions / auth checks.
+	3.	Fix
+	•	Fix the root cause such as:
+	•	Null/undefined data not handled in frontend.
+	•	Broken query or missing table/column.
+	•	Unhandled exception when no expenses exist.
+	•	Ensure errors are gracefully handled (show an error message instead of crashing).
+	4.	Test
+	•	Open Expenses with:
+	•	Existing expenses in the system.
+	•	No expenses in the system (ensure it still loads, maybe showing “No expenses yet”).
+	•	Confirm:
+	•	No system crash.
+	•	UI is responsive.
+	•	No new errors in other finance-related screens.
+
+⸻
+
+ISSUE 3 – Invoice system errors / not working
+
+Objective: Invoice creation/management should work end-to-end without errors.
+
+Instructions:
+	1.	Reproduce
+	•	Go through the normal invoice workflow:
+	•	Create a new invoice.
+	•	Add line items/products.
+	•	Apply tax/discounts if applicable.
+	•	Save / finalize / send (depending on system).
+	•	Capture all errors shown to the user and in logs.
+	2.	Investigate
+	•	Check business logic:
+	•	Calculation of totals, tax, discounts.
+	•	Required fields (customer, date, line items, etc.).
+	•	Check backend:
+	•	Invoice creation/update endpoints.
+	•	DB operations (inserting invoice, invoice lines, relationships to customers/orders).
+	•	Check frontend:
+	•	Form validation.
+	•	Handling of async calls (no double submits, correct error handling).
+	3.	Fix
+	•	Fix specific errors found (do not rewrite the entire invoice module).
+	•	Ensure:
+	•	Required fields are validated clearly with user-friendly messages.
+	•	Calculations are correct and consistent between UI and backend.
+	•	Status updates (draft, sent, paid, etc.) work as intended.
+	4.	Test
+	•	Test creating an invoice with:
+	•	Single line item.
+	•	Multiple line items.
+	•	Test:
+	•	Editing an invoice.
+	•	Viewing an existing invoice.
+	•	Confirm:
+	•	No errors thrown.
+	•	Data persists correctly and appears in any invoice lists / reports.
+
+⸻
+
+ISSUE 4 – Locality area missing data and crashing
+
+Objective: The Locality area (e.g., locations/regions/branches/settings) should load with correct data and not crash.
+
+Instructions:
+	1.	Reproduce
+	•	Open the Locality area in the UI.
+	•	Note:
+	•	What data is expected vs what is missing.
+	•	At what point it crashes.
+	2.	Investigate
+	•	Frontend:
+	•	Component/view that renders locality data.
+	•	API calls made and their responses.
+	•	Handling of empty or malformed data.
+	•	Backend:
+	•	Endpoint providing locality data.
+	•	Queries for locations/regions.
+	•	Any joins to other tables (e.g. stores, taxes, languages).
+	3.	Fix
+	•	Ensure backend returns a well-structured payload (even if there is no data — return an empty list, not null or invalid shape).
+	•	Update frontend to:
+	•	Handle empty sets (e.g., show “No localities configured”).
+	•	Avoid crashing when fields are missing.
+	•	Avoid changes to unrelated settings pages.
+	4.	Test
+	•	Test with:
+	•	One or more localities configured.
+	•	No localities (empty state).
+	•	Confirm:
+	•	No crash.
+	•	Localities display correctly.
+	•	Any actions (edit/add locality) still work.
+
+⸻
+
+ISSUE 5 – Analytics worker and reporting area
+
+Objective: Ensure the analytics worker is correctly gathering data and passing it to the reporting area as expected.
+
+Instructions:
+	1.	Trace the data flow
+	•	Identify:
+	•	Where/when the analytics worker runs (cron, queue, background task, etc.).
+	•	What input data it reads (tables, events, logs).
+	•	Where it writes processed analytics.
+	•	How the reporting area reads and displays this data.
+	2.	Verify correctness
+	•	Check the worker:
+	•	No runtime errors in logs.
+	•	Handles edge cases (no data, partial data, older records).
+	•	Correct time ranges, filters, and aggregations.
+	•	Check the reporting module:
+	•	Queries or API calls to the analytics storage.
+	•	Mapping between raw values and what’s shown in the UI.
+	3.	Fix
+	•	If the worker fails:
+	•	Fix the specific error (e.g., invalid query, bad date handling, null reference).
+	•	If data is being written incorrectly:
+	•	Correct aggregation logic and/or target tables/fields.
+	•	If reporting is misreading data:
+	•	Adjust queries or mapping so it aligns with how the worker stores data.
+	•	Do not introduce new metrics or change definitions unless necessary; keep existing behavior, just make it work correctly.
+	4.	Test
+	•	Trigger the analytics worker (manually if possible, or wait for next scheduled run).
+	•	Confirm:
+	•	Worker completes successfully (no errors in logs).
+	•	Reporting screens show updated, sensible data.
+	•	Cross-check a few values manually against raw transactions to ensure accuracy.
+
+⸻
+
+FINAL EXPECTATION
+
+For each of the 5 issues:
+	•	Fix only the necessary code.
+	•	After each edit, check the code and run tests before continuing.
+	•	Perform a short manual test of the affected feature.
+	•	Confirm no new errors have been introduced elsewhere in the system.
+	•	Provide a short summary of:
+	•	Cause
+	•	Fix
+	•	Tests performed
+
+This keeps your EPOS evolving like a well-run lab experiment: controlled variables, clear hypothesis, measured results—not a free-for-all refactor party.
