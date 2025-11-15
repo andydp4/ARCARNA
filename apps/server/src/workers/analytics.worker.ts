@@ -1,15 +1,15 @@
 import { db } from '../db'
 import {
-  domain_outbox,
-  analytics_daily,
-  analytics_weekly,
-  analytics_monthly,
-  customer_metrics,
+  analyticsDaily,
+  analyticsWeekly,
+  analyticsMonthly,
+  customerMetrics,
   orders,
-  order_items,
+  orderItems,
   products,
   customers
-} from '../db/schema'
+} from '../../../../shared/schema'
+import { domain_outbox } from '../db/schema'
 import { eq, isNull, sql, and, gte, lte, or } from 'drizzle-orm'
 
 interface OrderPlacedEvent {
@@ -143,31 +143,31 @@ export class AnalyticsWorker {
     // Try to update existing record
     const existing = await db
       .select()
-      .from(analytics_daily)
-      .where(eq(analytics_daily.date, dateStr))
+      .from(analyticsDaily)
+      .where(eq(analyticsDaily.date, dateStr))
       .limit(1)
 
     if (existing.length > 0) {
       await db
-        .update(analytics_daily)
+        .update(analyticsDaily)
         .set({
-          total_orders: sql`${analytics_daily.total_orders} + 1`,
-          total_revenue: sql`${analytics_daily.total_revenue} + ${revenue}`,
+          totalOrders: sql`${analyticsDaily.totalOrders} + 1`,
+          totalRevenue: sql`${analyticsDaily.totalRevenue} + ${revenue}`,
         })
-        .where(eq(analytics_daily.date, dateStr))
+        .where(eq(analyticsDaily.date, dateStr))
     } else {
       await db
-        .insert(analytics_daily)
+        .insert(analyticsDaily)
         .values({
           date: dateStr,
-          total_orders: 1,
-          total_revenue: revenue.toString(),
+          totalOrders: 1,
+          totalRevenue: revenue.toString(),
         })
         .onConflictDoUpdate({
-          target: analytics_daily.date,
+          target: analyticsDaily.date,
           set: {
-            total_orders: sql`${analytics_daily.total_orders} + 1`,
-            total_revenue: sql`${analytics_daily.total_revenue} + ${revenue}`,
+            totalOrders: sql`${analyticsDaily.totalOrders} + 1`,
+            totalRevenue: sql`${analyticsDaily.totalRevenue} + ${revenue}`,
           }
         })
     }
@@ -180,32 +180,32 @@ export class AnalyticsWorker {
     // Try to update existing record
     const existing = await db
       .select()
-      .from(analytics_weekly)
+      .from(analyticsWeekly)
       .where(and(
-        eq(analytics_weekly.year, year),
-        eq(analytics_weekly.week, week)
+        eq(analyticsWeekly.year, year),
+        eq(analyticsWeekly.week, week)
       ))
       .limit(1)
 
     if (existing.length > 0) {
       await db
-        .update(analytics_weekly)
+        .update(analyticsWeekly)
         .set({
-          total_orders: sql`${analytics_weekly.total_orders} + 1`,
-          total_revenue: sql`${analytics_weekly.total_revenue} + ${revenue}`,
+          totalOrders: sql`${analyticsWeekly.totalOrders} + 1`,
+          totalRevenue: sql`${analyticsWeekly.totalRevenue} + ${revenue}`,
         })
         .where(and(
-          eq(analytics_weekly.year, year),
-          eq(analytics_weekly.week, week)
+          eq(analyticsWeekly.year, year),
+          eq(analyticsWeekly.week, week)
         ))
     } else {
       await db
-        .insert(analytics_weekly)
+        .insert(analyticsWeekly)
         .values({
           year,
           week,
-          total_orders: 1,
-          total_revenue: revenue.toString(),
+          totalOrders: 1,
+          totalRevenue: revenue.toString(),
         })
     }
   }
@@ -217,32 +217,32 @@ export class AnalyticsWorker {
     // Try to update existing record
     const existing = await db
       .select()
-      .from(analytics_monthly)
+      .from(analyticsMonthly)
       .where(and(
-        eq(analytics_monthly.year, year),
-        eq(analytics_monthly.month, month)
+        eq(analyticsMonthly.year, year),
+        eq(analyticsMonthly.month, month)
       ))
       .limit(1)
 
     if (existing.length > 0) {
       await db
-        .update(analytics_monthly)
+        .update(analyticsMonthly)
         .set({
-          total_orders: sql`${analytics_monthly.total_orders} + 1`,
-          total_revenue: sql`${analytics_monthly.total_revenue} + ${revenue}`,
+          totalOrders: sql`${analyticsMonthly.totalOrders} + 1`,
+          totalRevenue: sql`${analyticsMonthly.totalRevenue} + ${revenue}`,
         })
         .where(and(
-          eq(analytics_monthly.year, year),
-          eq(analytics_monthly.month, month)
+          eq(analyticsMonthly.year, year),
+          eq(analyticsMonthly.month, month)
         ))
     } else {
       await db
-        .insert(analytics_monthly)
+        .insert(analyticsMonthly)
         .values({
           year,
           month,
-          total_orders: 1,
-          total_revenue: revenue.toString(),
+          totalOrders: 1,
+          totalRevenue: revenue.toString(),
         })
     }
   }
@@ -253,10 +253,10 @@ export class AnalyticsWorker {
       .select({
         total_spent: sql<number>`COALESCE(SUM(CAST(${orders.total} as DECIMAL)), 0)`,
         order_count: sql<number>`COUNT(*)`,
-        last_order_date: sql<string>`MAX(${orders.created_at})`,
+        last_order_date: sql<string>`MAX(${orders.createdAt})`,
       })
       .from(orders)
-      .where(eq(orders.customer_id, customerId))
+      .where(eq(orders.customerId, customerId))
 
     if (customerOrders.length === 0) return
 
@@ -277,22 +277,22 @@ export class AnalyticsWorker {
 
     // Update or insert customer metrics
     await db
-      .insert(customer_metrics)
+      .insert(customerMetrics)
       .values({
-        customer_id: customerId,
-        last_order_date: lastOrderDate.toISOString().split('T')[0],
-        total_spent: metrics.total_spent.toString(),
-        order_count: metrics.order_count,
-        rfm_score: rfmScore,
+        customerId: customerId,
+        lastOrderDate: lastOrderDate.toISOString().split('T')[0],
+        totalSpent: metrics.total_spent.toString(),
+        orderCount: metrics.order_count,
+        rfmScore: rfmScore,
         clv: clv.toString(),
       })
       .onConflictDoUpdate({
-        target: customer_metrics.customer_id,
+        target: customerMetrics.customerId,
         set: {
-          last_order_date: lastOrderDate.toISOString().split('T')[0],
-          total_spent: metrics.total_spent.toString(),
-          order_count: metrics.order_count,
-          rfm_score: rfmScore,
+          lastOrderDate: lastOrderDate.toISOString().split('T')[0],
+          totalSpent: metrics.total_spent.toString(),
+          orderCount: metrics.order_count,
+          rfmScore: rfmScore,
           clv: clv.toString(),
         }
       })

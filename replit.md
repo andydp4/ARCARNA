@@ -2,7 +2,16 @@
 
 ## Overview
 
-Midnight EPOS is an enterprise Point of Sale system built as a full-stack TypeScript monorepo. The system handles order processing, inventory management, customer analytics, invoice generation, and business intelligence. It follows a domain-driven design approach with a clean separation between business logic (domain layer), application layer (server), and presentation layer (web client).
+Midnight EPOS is an enterprise Point of Sale system built as a full-stack TypeScript monorepo.
+
+## Recent Changes (November 15, 2025)
+
+Fixed 5 critical bugs:
+1. **Product creation** - Fixed unique product code generation using UUID segments
+2. **Expenses screen crash** - Fixed analytics query JSON parsing and date schema validation
+3. **Invoice system** - Implemented getInvoicesWithDetails() API endpoint with proper aggregation
+4. **Locations page crash** - Fixed .toFixed() error on string revenue values by parsing to number first
+5. **Analytics worker** - Fixed schema mismatch between apps/server (snake_case) and shared/schema (camelCase), now uses camelCase consistently The system handles order processing, inventory management, customer analytics, invoice generation, and business intelligence. It follows a domain-driven design approach with a clean separation between business logic (domain layer), application layer (server), and presentation layer (web client).
 
 The application supports multiple payment methods (cash, card, transfer, and "tick"/credit), tracks customer lifetime value (CLV) and RFM scores, generates PDF invoices, and provides real-time analytics dashboards for revenue tracking and customer insights.
 
