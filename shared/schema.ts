@@ -217,6 +217,9 @@ export const insertOverheadExpenseSchema = createInsertSchema(overheadExpenses).
   id: true, 
   createdAt: true, 
   updatedAt: true 
+}).extend({
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().optional()
 });
 export type InsertOverheadExpenseData = z.infer<typeof insertOverheadExpenseSchema>;
 

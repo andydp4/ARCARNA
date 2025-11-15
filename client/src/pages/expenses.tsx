@@ -54,13 +54,8 @@ export function ExpensesPage() {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return apiRequest("GET", `/api/expense-analytics?startDate=${startOfMonth.toISOString()}&endDate=${endOfMonth.toISOString()}`, null) as unknown as {
-        dailyOverhead: number;
-        overheadTotal: number;
-        orderExpenseTotal: number;
-        totalExpenses: number;
-        overheadBreakdown: any[];
-      };
+      const response = await apiRequest("GET", `/api/expense-analytics?startDate=${startOfMonth.toISOString()}&endDate=${endOfMonth.toISOString()}`, null);
+      return response.json();
     },
   });
 
@@ -160,13 +155,13 @@ export function ExpensesPage() {
       category: data.category,
       amount: data.amount.toString(),
       frequency: data.frequency,
-      startDate: data.startDate,
+      startDate: new Date(data.startDate),
       isActive: data.isActive,
     };
     
     // Only include optional fields if they have values
     if (data.endDate && data.endDate.trim() !== "") {
-      expenseData.endDate = data.endDate;
+      expenseData.endDate = new Date(data.endDate);
     }
     if (data.description) {
       expenseData.description = data.description;
