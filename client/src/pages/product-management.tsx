@@ -60,7 +60,7 @@ export default function ProductManagement() {
   const [csvContent, setCsvContent] = useState('')
   const [importResults, setImportResults] = useState<any>(null)
   const [formData, setFormData] = useState({
-    productId: '',
+    productCode: '',
     name: '',
     barcode: '',
     price: '',
@@ -189,7 +189,7 @@ export default function ProductManagement() {
 
   const resetForm = () => {
     const defaultData = {
-      productId: '',
+      productCode: '',
       name: '',
       barcode: '',
       price: '',
@@ -233,7 +233,7 @@ export default function ProductManagement() {
   const handleEdit = (product: any) => {
     setEditingProduct(product)
     setFormData({
-      productId: product.productId || '',
+      productCode: product.productCode || product.productId || '',
       name: product.name,
       barcode: product.barcode || '',
       price: (product.price || product.defaultSalePrice || '').toString(),
@@ -418,10 +418,10 @@ export default function ProductManagement() {
                   <div className="grid gap-2">
                     <Label htmlFor="productId">Product ID</Label>
                     <Input
-                      id="productId"
-                      value={formData.productId}
+                      id="productCode"
+                      value={formData.productCode}
                       onChange={(e) => {
-                        const updated = { ...formData, productId: e.target.value }
+                        const updated = { ...formData, productCode: e.target.value }
                         setFormData(updated)
                       }}
                       onBlur={() => autoSaveFormData(formData)}
@@ -761,8 +761,8 @@ export default function ProductManagement() {
                                       <Label htmlFor="edit-productId-mobile">Product ID</Label>
                                       <Input
                                         id="edit-productId-mobile"
-                                        value={formData.productId}
-                                        onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+                                        value={formData.productCode}
+                                        onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
                                         placeholder="PRD001"
                                         className="min-h-[44px]"
                                       />
@@ -927,8 +927,8 @@ export default function ProductManagement() {
                                     <Label htmlFor="edit-productId">Product ID</Label>
                                     <Input
                                       id="edit-productId"
-                                      value={formData.productId}
-                                      onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+                                      value={formData.productCode}
+                                      onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
                                       placeholder="PRD001"
                                       className="min-h-[44px]"
                                     />
