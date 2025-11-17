@@ -88,10 +88,11 @@ export default function ProductManagement() {
         description: 'Product created successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create product'
       toast({
         title: 'Error',
-        description: 'Failed to create product',
+        description: errorMessage,
         variant: 'destructive',
       })
     },
@@ -110,10 +111,11 @@ export default function ProductManagement() {
         description: 'Product updated successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update product'
       toast({
         title: 'Error',
-        description: 'Failed to update product',
+        description: errorMessage,
         variant: 'destructive',
       })
     },
@@ -130,10 +132,11 @@ export default function ProductManagement() {
         description: 'Product deleted successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to delete product'
       toast({
         title: 'Error',
-        description: 'Failed to delete product',
+        description: errorMessage,
         variant: 'destructive',
       })
     },

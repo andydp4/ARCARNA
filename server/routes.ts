@@ -133,9 +133,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { engine } = await import('../apps/server/src/engine.wiring');
       const product = await engine.createProduct(req.body);
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating product:", error);
-      res.status(500).json({ message: "Failed to create product" });
+      
+      // Check for duplicate product code error
+      if (error.message?.includes('duplicate key') || error.message?.includes('unique constraint') || error.code === '23505') {
+        return res.status(400).json({ 
+          message: `Product code "${req.body.productCode}" already exists. Please use a different code.` 
+        });
+      }
+      
+      // Check for validation errors
+      if (error.message?.includes('required') || error.message?.includes('invalid')) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      // Generic error
+      res.status(500).json({ message: error.message || "Failed to create product" });
     }
   });
 
@@ -144,9 +158,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { engine } = await import('../apps/server/src/engine.wiring');
       const product = await engine.updateProduct(req.params.id, req.body);
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating product:", error);
-      res.status(500).json({ message: "Failed to update product" });
+      
+      // Check for duplicate product code error
+      if (error.message?.includes('duplicate key') || error.message?.includes('unique constraint') || error.code === '23505') {
+        return res.status(400).json({ 
+          message: `Product code "${req.body.productCode}" already exists. Please use a different code.` 
+        });
+      }
+      
+      // Check for validation errors
+      if (error.message?.includes('required') || error.message?.includes('invalid')) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      // Generic error
+      res.status(500).json({ message: error.message || "Failed to update product" });
     }
   });
 
