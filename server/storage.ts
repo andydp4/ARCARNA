@@ -320,9 +320,9 @@ export class DatabaseStorage implements IStorage {
 
     for (const productData of productList) {
       try {
-        // Validate required fields
-        if (!productData.name || !productData.price) {
-          errors.push(`Row ${failed + imported + 1}: Missing required fields (name or price)`);
+        // Validate required fields (accept both old 'price' and new 'salePrice' field names)
+        if (!productData.name || (!productData.price && !productData.defaultSalePrice && !productData.salePrice)) {
+          errors.push(`Row ${failed + imported + 1}: Missing required fields (name or sale price)`);
           failed++;
           continue;
         }
@@ -343,7 +343,7 @@ export class DatabaseStorage implements IStorage {
             .set({
               name: productData.name,
               barcode: productData.barcode ?? existingProduct.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.price,
+              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
               costPrice: productData.costPrice ?? productData.tax ?? existingProduct.costPrice,
               stock: productData.stock ?? existingProduct.stock,
               stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
@@ -359,7 +359,7 @@ export class DatabaseStorage implements IStorage {
               productId: productData.productId || `PRD-${Date.now()}-${imported}`,
               name: productData.name,
               barcode: productData.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.price,
+              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
               costPrice: productData.costPrice ?? productData.tax ?? 0,
               stock: productData.stock ?? 0,
               stockLimit: productData.stockLimit ?? 100,

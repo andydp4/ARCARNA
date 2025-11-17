@@ -63,8 +63,8 @@ export default function ProductManagement() {
     productCode: '',
     name: '',
     barcode: '',
-    price: '',
-    tax: '',
+    costPrice: '',
+    salePrice: '',
     stock: '',
     stockLimit: '',
     categoryId: ''
@@ -192,8 +192,8 @@ export default function ProductManagement() {
       productCode: '',
       name: '',
       barcode: '',
-      price: '',
-      tax: '',
+      costPrice: '',
+      salePrice: '',
       stock: '',
       stockLimit: '',
       categoryId: ''
@@ -203,10 +203,10 @@ export default function ProductManagement() {
   }
 
   const handleSubmit = () => {
-    if (!formData.name || !formData.price) {
+    if (!formData.name || !formData.salePrice) {
       toast({
         title: 'Error',
-        description: 'Product name and price are required',
+        description: 'Product name and sale price are required',
         variant: 'destructive',
       })
       return
@@ -214,8 +214,8 @@ export default function ProductManagement() {
 
     const productData = {
       ...formData,
-      price: parseFloat(formData.price),
-      tax: formData.tax ? parseFloat(formData.tax) : 0,
+      costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
+      salePrice: parseFloat(formData.salePrice),
       stock: formData.stock ? parseInt(formData.stock) : 0,
       stockLimit: formData.stockLimit ? parseInt(formData.stockLimit) : 100,
     }
@@ -236,8 +236,8 @@ export default function ProductManagement() {
       productCode: product.productCode || product.productId || '',
       name: product.name,
       barcode: product.barcode || '',
-      price: (product.price || product.defaultSalePrice || '').toString(),
-      tax: (product.tax || product.costPrice || '').toString(),
+      costPrice: (product.costPrice || '').toString(),
+      salePrice: (product.salePrice || product.defaultSalePrice || '').toString(),
       stock: (product.stock || '').toString(),
       stockLimit: (product.stockLimit || '').toString(),
       categoryId: product.categoryId || ''
@@ -462,37 +462,37 @@ export default function ProductManagement() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="price">Price *</Label>
+                      <Label htmlFor="costPrice">Cost Price</Label>
                       <Input
-                        id="price"
+                        id="costPrice"
                         type="number"
                         step="0.01"
-                        value={formData.price}
+                        value={formData.costPrice}
                         onChange={(e) => {
-                          const updated = { ...formData, price: e.target.value }
+                          const updated = { ...formData, costPrice: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
+                        placeholder="5.00"
+                        className="min-h-[44px]"
+                        data-testid="input-product-cost-price"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="salePrice">Sale Price *</Label>
+                      <Input
+                        id="salePrice"
+                        type="number"
+                        step="0.01"
+                        value={formData.salePrice}
+                        onChange={(e) => {
+                          const updated = { ...formData, salePrice: e.target.value }
                           setFormData(updated)
                         }}
                         onBlur={() => autoSaveFormData(formData)}
                         placeholder="9.99"
                         className="min-h-[44px]"
-                        data-testid="input-product-price"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="tax">Tax Rate</Label>
-                      <Input
-                        id="tax"
-                        type="number"
-                        step="0.01"
-                        value={formData.tax}
-                        onChange={(e) => {
-                          const updated = { ...formData, tax: e.target.value }
-                          setFormData(updated)
-                        }}
-                        onBlur={() => autoSaveFormData(formData)}
-                        placeholder="0.15"
-                        className="min-h-[44px]"
-                        data-testid="input-product-tax"
+                        data-testid="input-product-sale-price"
                       />
                     </div>
                   </div>
@@ -789,26 +789,26 @@ export default function ProductManagement() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="grid gap-2">
-                                        <Label htmlFor="edit-price-mobile">Price *</Label>
+                                        <Label htmlFor="edit-costPrice-mobile">Cost Price</Label>
                                         <Input
-                                          id="edit-price-mobile"
+                                          id="edit-costPrice-mobile"
                                           type="number"
                                           step="0.01"
-                                          value={formData.price}
-                                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                          placeholder="9.99"
+                                          value={formData.costPrice}
+                                          onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+                                          placeholder="5.00"
                                           className="min-h-[44px]"
                                         />
                                       </div>
                                       <div className="grid gap-2">
-                                        <Label htmlFor="edit-tax-mobile">Tax Rate</Label>
+                                        <Label htmlFor="edit-salePrice-mobile">Sale Price *</Label>
                                         <Input
-                                          id="edit-tax-mobile"
+                                          id="edit-salePrice-mobile"
                                           type="number"
                                           step="0.01"
-                                          value={formData.tax}
-                                          onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
-                                          placeholder="0.15"
+                                          value={formData.salePrice}
+                                          onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
+                                          placeholder="9.99"
                                           className="min-h-[44px]"
                                         />
                                       </div>
@@ -955,26 +955,26 @@ export default function ProductManagement() {
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-price">Price *</Label>
+                                      <Label htmlFor="edit-costPrice">Cost Price</Label>
                                       <Input
-                                        id="edit-price"
+                                        id="edit-costPrice"
                                         type="number"
                                         step="0.01"
-                                        value={formData.price}
-                                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                        placeholder="9.99"
+                                        value={formData.costPrice}
+                                        onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+                                        placeholder="5.00"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-tax">Tax Rate</Label>
+                                      <Label htmlFor="edit-salePrice">Sale Price *</Label>
                                       <Input
-                                        id="edit-tax"
+                                        id="edit-salePrice"
                                         type="number"
                                         step="0.01"
-                                        value={formData.tax}
-                                        onChange={(e) => setFormData({ ...formData, tax: e.target.value })}
-                                        placeholder="0.15"
+                                        value={formData.salePrice}
+                                        onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
+                                        placeholder="9.99"
                                         className="min-h-[44px]"
                                       />
                                     </div>

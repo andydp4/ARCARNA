@@ -4,10 +4,19 @@
 
 Midnight EPOS is an enterprise Point of Sale system built as a full-stack TypeScript monorepo.
 
-## Recent Changes (November 15, 2025)
+## Recent Changes (November 17, 2025)
+
+**Product Pricing Field Migration**:
+- Updated Product type to use `costPrice` and `salePrice` instead of `tax` and `price` for clarity
+- Frontend forms now show "Cost Price" and "Sale Price" labels
+- Repository layer correctly maps domain fields to database columns (cost_price/default_sale_price)
+- Product import maintains backward compatibility with old field names (price/tax)
+- All areas verified: POS, inventory, reports, analytics, and order processing work correctly
+
+## Previous Changes (November 15, 2025)
 
 Fixed 5 critical bugs:
-1. **Product creation** - Fixed unique product code generation using UUID segments
+1. **Product creation** - Fixed unique product code generation using UUID segments and productCode field naming
 2. **Expenses screen crash** - Fixed analytics query JSON parsing and date schema validation
 3. **Invoice system** - Implemented getInvoicesWithDetails() API endpoint with proper aggregation
 4. **Locations page crash** - Fixed .toFixed() error on string revenue values by parsing to number first

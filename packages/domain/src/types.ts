@@ -9,8 +9,8 @@ export type Product = {
   productCode: string
   name: string
   barcode?: string
-  price: MoneyGBP
-  tax: number
+  costPrice: MoneyGBP
+  salePrice: MoneyGBP
   stock: number
   stockLimit: number
   categoryId?: string

@@ -63,7 +63,7 @@ export class DomainEngine {
   async createProduct(input: unknown): Promise<Product> {
     const product = await this.withTransaction(async () => {
       // Generate unique product code if not provided or empty
-      const providedCode = (input as any).productId?.trim()
+      const providedCode = (input as any).productCode?.trim()
       const productCode = providedCode || `PRD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
       
       const newProduct: Product = {
@@ -71,8 +71,8 @@ export class DomainEngine {
         productCode,
         name: (input as any).name,
         barcode: (input as any).barcode,
-        price: (input as any).price || 0,
-        tax: (input as any).tax || 0,
+        costPrice: (input as any).costPrice || 0,
+        salePrice: (input as any).salePrice || 0,
         stock: (input as any).stock || 0,
         stockLimit: (input as any).stockLimit || 100,
         categoryId: (input as any).categoryId,
