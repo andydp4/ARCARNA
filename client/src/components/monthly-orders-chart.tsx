@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function MonthlyOrdersChart() {
-  const { data: monthlySummary, isLoading } = useQuery({
+  const { data: monthlySummary = [], isLoading } = useQuery({
     queryKey: ["/api/analytics/monthly-summary"],
   });
 
@@ -13,7 +13,7 @@ export default function MonthlyOrdersChart() {
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
   ];
 
-  const chartData = monthlySummary?.map((month: any) => ({
+  const chartData = (monthlySummary as any[])?.map((month: any) => ({
     month: monthNames[month.month - 1] || "",
     orders: month.totalOrders || 0,
   })) || [];

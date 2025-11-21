@@ -4,11 +4,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DailyRevenueChart() {
-  const { data: dailyRevenue, isLoading } = useQuery({
+  const { data: dailyRevenue = [], isLoading } = useQuery({
     queryKey: ["/api/analytics/daily-revenue"],
   });
 
-  const chartData = dailyRevenue?.map((day: any) => ({
+  const chartData = (dailyRevenue as any[])?.map((day: any) => ({
     date: new Date(day.date).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",

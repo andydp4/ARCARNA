@@ -78,8 +78,8 @@ export default function TopCustomersTable() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {topCustomers?.length > 0 ? (
-                    topCustomers.map((customer: any, index: number) => {
+                  {(topCustomers as any[])?.length > 0 ? (
+                    (topCustomers as any[]).map((customer: any, index: number) => {
                       const status = getCustomerStatus(customer.category);
                       const rfmBars = getRFMBars(customer.rfmScore || 0);
                       const initials = getInitials(customer.name || "");
