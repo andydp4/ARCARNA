@@ -129,14 +129,24 @@ export const ProductsRepoDrizzle: ProductsRepo = {
 export const CustomersRepoDrizzle: CustomersRepo = {
   async addTickDebt(c: CustomerId, amount: number) {
     // Update customer total spent and track tick debt
-    await db.execute(`UPDATE customers SET total_spent = total_spent + $1 WHERE id = $2`, [amount, c as any])
+    await db.update(s.customers)
+      .set({ 
+        total_spent: sql`total_spent + ${amount}`,
+        updated_at: new Date()
+      })
+      .where(eq(s.customers.id, c as any))
     await db.insert(s.audit_logs).values({ user_id: 'system', action: 'TickDebt', entity_type: 'customer', entity_id: c as any, new_values: { amount } })
   },
   async addOrderHistory(c: CustomerId, orderId: OrderId) {
     // Update customer total spent and order count for metrics
     const [order] = await db.select().from(s.orders).where(eq(s.orders.id, orderId as any))
     if (order) {
-      await db.execute(`UPDATE customers SET total_spent = total_spent + $1, updated_at = NOW() WHERE id = $2`, [order.total, c as any])
+      await db.update(s.customers)
+        .set({ 
+          total_spent: sql`total_spent + ${order.total}`,
+          updated_at: new Date()
+        })
+        .where(eq(s.customers.id, c as any))
     }
     await db.insert(s.audit_logs).values({ user_id: 'system', action: 'OrderHistory', entity_type: 'customer', entity_id: c as any, new_values: { orderId } })
   },

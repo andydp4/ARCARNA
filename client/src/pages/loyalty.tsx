@@ -19,12 +19,19 @@ import { insertLoyaltyTierSchema } from "@shared/schema";
 // Extend the shared schema with form-specific validation
 const tierFormSchema = insertLoyaltyTierSchema.extend({
   pointsRequired: z.coerce.number().min(0, "Points must be 0 or greater"),
-  discountPercentage: z.coerce.number().min(0).max(100, "Discount must be between 0 and 100").transform(v => String(v)),
-  pointsMultiplier: z.coerce.number().min(1).max(10, "Multiplier must be between 1 and 10").transform(v => String(v)),
+  discountPercentage: z.string().transform(v => v.toString()),
+  pointsMultiplier: z.string().transform(v => v.toString()),
   color: z.string().regex(/^#[0-9A-F]{6}$/i, "Must be a valid hex color").optional().default("#808080"),
 });
 
-type TierFormValues = z.infer<typeof tierFormSchema>;
+type TierFormValues = {
+  name: string;
+  pointsRequired: number;
+  discountPercentage: string;
+  pointsMultiplier: string;
+  color?: string;
+  benefits?: string | null;
+};
 
 export default function LoyaltyPage() {
   const { toast } = useToast();
@@ -89,7 +96,7 @@ export default function LoyaltyPage() {
     resolver: zodResolver(tierFormSchema),
     defaultValues: {
       name: "",
-      pointsRequired: "0",
+      pointsRequired: 0,
       discountPercentage: "0",
       pointsMultiplier: "1",
       color: "#808080",
@@ -102,8 +109,8 @@ export default function LoyaltyPage() {
       tierForm.reset({
         name: tier.name,
         pointsRequired: tier.pointsRequired,
-        discountPercentage: parseFloat(tier.discountPercentage || 0),
-        pointsMultiplier: parseFloat(tier.pointsMultiplier || 1),
+        discountPercentage: String(tier.discountPercentage || 0),
+        pointsMultiplier: String(tier.pointsMultiplier || 1),
         color: tier.color || "#808080",
         benefits: tier.benefits || "",
       });
@@ -161,7 +168,7 @@ export default function LoyaltyPage() {
                 <Award className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-total-tiers">{tiers.length}</div>
+                <div className="text-2xl font-bold" data-testid="text-total-tiers">{(tiers as any[]).length}</div>
               </CardContent>
             </Card>
             <Card>
@@ -171,7 +178,7 @@ export default function LoyaltyPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-active-members">
-                  {customers.filter((c: any) => c.loyaltyPoints > 0).length}
+                  {(customers as any[]).filter((c: any) => c.loyaltyPoints > 0).length}
                 </div>
               </CardContent>
             </Card>
@@ -182,7 +189,7 @@ export default function LoyaltyPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-total-points">
-                  {customers.reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString()}
+                  {(customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString()}
                 </div>
               </CardContent>
             </Card>
@@ -193,8 +200,8 @@ export default function LoyaltyPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-avg-points">
-                  {customers.length > 0
-                    ? Math.round(customers.reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0) / customers.length)
+                  {(customers as any[]).length > 0
+                    ? Math.round((customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0) / (customers as any[]).length)
                     : 0}
                 </div>
               </CardContent>
@@ -292,12 +299,12 @@ export default function LoyaltyPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {customers
+                  {(customers as any[])
                     .filter((c: any) => c.loyaltyPoints > 0)
                     .sort((a: any, b: any) => b.loyaltyPoints - a.loyaltyPoints)
                     .map((customer: any) => {
                       const currentTier = getCustomerTier(customer.loyaltyPoints || 0);
-                      const nextTier = tiers
+                      const nextTier = (tiers as any[])
                         .filter((t: any) => t.pointsRequired > (customer.loyaltyPoints || 0))
                         .sort((a: any, b: any) => a.pointsRequired - b.pointsRequired)[0];
 
@@ -355,7 +362,7 @@ export default function LoyaltyPage() {
                     })}
                 </tbody>
               </table>
-              {customers.filter((c: any) => c.loyaltyPoints > 0).length === 0 && (
+              {(customers as any[]).filter((c: any) => c.loyaltyPoints > 0).length === 0 && (
                 <div className="p-8 text-center text-muted-foreground">
                   No customers with loyalty points yet
                 </div>
@@ -472,7 +479,8 @@ export default function LoyaltyPage() {
                     <FormLabel>Benefits (Optional)</FormLabel>
                     <FormControl>
                       <Input 
-                        {...field} 
+                        {...field}
+                        value={field.value || ""}
                         placeholder="e.g., Free shipping, Early access"
                         data-testid="input-benefits"
                       />
