@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 export default function TopCustomersTable() {
-  const { data: topCustomers, isLoading } = useQuery({
+  const { data: topCustomers = [], isLoading } = useQuery({
     queryKey: ["/api/analytics/top-customers"],
   });
 
@@ -178,11 +178,11 @@ export default function TopCustomersTable() {
                   Showing <span className="font-medium text-foreground">1</span>{" "}
                   to{" "}
                   <span className="font-medium text-foreground">
-                    {topCustomers?.length || 0}
+                    {(topCustomers as any[]).length || 0}
                   </span>{" "}
                   of{" "}
                   <span className="font-medium text-foreground">
-                    {topCustomers?.length || 0}
+                    {(topCustomers as any[]).length || 0}
                   </span>{" "}
                   customers
                 </p>

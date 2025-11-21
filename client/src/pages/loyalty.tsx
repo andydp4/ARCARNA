@@ -89,9 +89,9 @@ export default function LoyaltyPage() {
     resolver: zodResolver(tierFormSchema),
     defaultValues: {
       name: "",
-      pointsRequired: 0,
-      discountPercentage: 0,
-      pointsMultiplier: 1,
+      pointsRequired: "0",
+      discountPercentage: "0",
+      pointsMultiplier: "1",
       color: "#808080",
       benefits: "",
     },
@@ -117,13 +117,13 @@ export default function LoyaltyPage() {
 
   // Get tier for customer based on points
   const getCustomerTier = (points: number) => {
-    const sortedTiers = [...tiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
+    const sortedTiers = [...(tiers as any[])].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
     return sortedTiers.find((tier: any) => points >= tier.pointsRequired);
   };
 
   // Calculate tier statistics
-  const tierStats = tiers.map((tier: any) => {
-    const count = customers.filter((c: any) => {
+  const tierStats = (tiers as any[]).map((tier: any) => {
+    const count = (customers as any[]).filter((c: any) => {
       const customerTier = getCustomerTier(c.loyaltyPoints || 0);
       return customerTier?.id === tier.id;
     }).length;
