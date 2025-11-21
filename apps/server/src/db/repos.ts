@@ -128,22 +128,20 @@ export const ProductsRepoDrizzle: ProductsRepo = {
 
 export const CustomersRepoDrizzle: CustomersRepo = {
   async addTickDebt(c: CustomerId, amount: number) {
-    // Update customer total spent and track tick debt
+    // Track tick debt in audit log
     await db.update(s.customers)
       .set({ 
-        total_spent: sql`total_spent + ${amount}`,
         updated_at: new Date()
       })
       .where(eq(s.customers.id, c as any))
     await db.insert(s.audit_logs).values({ user_id: 'system', action: 'TickDebt', entity_type: 'customer', entity_id: c as any, new_values: { amount } })
   },
   async addOrderHistory(c: CustomerId, orderId: OrderId) {
-    // Update customer total spent and order count for metrics
+    // Track order in audit log and update timestamp
     const [order] = await db.select().from(s.orders).where(eq(s.orders.id, orderId as any))
     if (order) {
       await db.update(s.customers)
         .set({ 
-          total_spent: sql`total_spent + ${order.total}`,
           updated_at: new Date()
         })
         .where(eq(s.customers.id, c as any))
@@ -298,8 +296,10 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       FROM rfm_calc
     `
     
-    const [rfmResult] = await db.execute(rfmQuery, [customerId])
-    if (!rfmResult) return
+    const rfmQueryWithId = rfmQuery.replace('$1', `'${customerId}'`)
+    const rfmResults = await db.execute(sql.raw(rfmQueryWithId))
+    if (!rfmResults || !rfmResults[0]) return
+    const rfmResult = rfmResults[0]
     
     const { rfm_score, total_spent, order_count, recency_days } = rfmResult as any
     
@@ -309,12 +309,30 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     const customerLifespan = 3 // Assume 3 year customer lifespan
     const clv = avgOrderValue * ordersPerYear * customerLifespan
     
-    // Update or insert customer metrics
-    await db.execute(`
-      INSERT INTO customer_metrics (customer_id, total_spent, order_count, last_order_date, rfm_score, clv, updated_at)
-      VALUES ($1, $2, $3, NOW(), $4, $5, NOW())
-      ON CONFLICT (customer_id) DO UPDATE
-      SET total_spent = $2, order_count = $3, last_order_date = NOW(), rfm_score = $4, clv = $5, updated_at = NOW()
-    `, [customerId, total_spent, order_count, rfm_score, clv])
+    // Update or insert customer metrics using Drizzle ORM
+    const existingMetric = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, customerId as any)).limit(1)
+    
+    if (existingMetric.length > 0) {
+      await db.update(s.customer_metrics)
+        .set({
+          total_spent: total_spent,
+          order_count: order_count,
+          last_order_date: new Date(),
+          rfm_score: rfm_score,
+          clv: clv,
+          updated_at: new Date()
+        })
+        .where(eq(s.customer_metrics.customer_id, customerId as any))
+    } else {
+      await db.insert(s.customer_metrics).values({
+        customer_id: customerId as any,
+        total_spent: total_spent,
+        order_count: order_count,
+        last_order_date: new Date(),
+        rfm_score: rfm_score,
+        clv: clv,
+        updated_at: new Date()
+      })
+    }
   }
 }

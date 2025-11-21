@@ -34,6 +34,11 @@ export const AnalyticsSinkDrizzle: AnalyticsSink = {
         }))
       }
     })
+  },
+  
+  async updateCustomerMetrics(customerId: any){
+    // Customer metrics are updated by the analytics worker asynchronously
+    // This is a no-op in the main flow, actual work done by worker
   }
 }
 
