@@ -41,6 +41,9 @@ interface CartItem {
   quantity: number;
   customPrice: number;
   subtotal: number;
+  // Local editing states (not in sync with actual values)
+  priceInput?: string;
+  quantityInput?: string;
 }
 
 export default function POS() {
@@ -592,14 +595,60 @@ export default function POS() {
                     <div className="flex items-center gap-1">
                       <span className="text-sm">$</span>
                       <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.customPrice.toFixed(2)}
+                        type="text"
+                        inputMode="decimal"
+                        value={item.priceInput ?? item.customPrice.toFixed(2)}
                         onChange={(e) => {
+                          // Update local state only, no validation yet
+                          setCart((prev) =>
+                            prev.map((cartItem) =>
+                              cartItem.product.id === item.product.id
+                                ? { ...cartItem, priceInput: e.target.value }
+                                : cartItem
+                            )
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        onBlur={(e) => {
+                          console.log('[POS] Price blur event triggered, value:', e.target.value);
+                          // Validate and apply on blur
                           const newPrice = parseFloat(e.target.value);
+                          console.log('[POS] Parsed price:', newPrice, 'for product:', item.product.id);
                           if (!isNaN(newPrice) && newPrice >= 0) {
-                            updateCustomPrice(item.product.id, newPrice);
+                            console.log('[POS] Updating price to:', newPrice, 'quantity:', item.quantity);
+                            // Update price, subtotal, and clear local state in one operation
+                            setCart((prev) =>
+                              prev.map((cartItem) =>
+                                cartItem.product.id === item.product.id
+                                  ? {
+                                      ...cartItem,
+                                      customPrice: newPrice,
+                                      subtotal: cartItem.quantity * newPrice,
+                                      priceInput: undefined,
+                                    }
+                                  : cartItem
+                              )
+                            );
+                          } else {
+                            console.log('[POS] Invalid price, resetting');
+                            // Reset to actual value if invalid
+                            setCart((prev) =>
+                              prev.map((cartItem) =>
+                                cartItem.product.id === item.product.id
+                                  ? { ...cartItem, priceInput: undefined }
+                                  : cartItem
+                              )
+                            );
+                            toast({
+                              title: "Invalid Price",
+                              description: "Please enter a valid price",
+                              variant: "destructive",
+                            });
                           }
                         }}
                         className="h-9 w-24 min-h-[36px]"
@@ -619,9 +668,69 @@ export default function POS() {
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
-                      <span className="w-12 text-center font-medium" data-testid={`qty-${item.product.id}`}>
-                        {item.quantity}
-                      </span>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.quantityInput ?? item.quantity.toString()}
+                        onChange={(e) => {
+                          // Update local state only
+                          setCart((prev) =>
+                            prev.map((cartItem) =>
+                              cartItem.product.id === item.product.id
+                                ? { ...cartItem, quantityInput: e.target.value }
+                                : cartItem
+                            )
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        onBlur={(e) => {
+                          console.log('[POS] Quantity blur event triggered, value:', e.target.value);
+                          // Validate and apply on blur
+                          const newQty = parseInt(e.target.value);
+                          console.log('[POS] Parsed quantity:', newQty, 'for product:', item.product.id);
+                          if (!isNaN(newQty) && newQty > 0) {
+                            console.log('[POS] Updating quantity to:', newQty, 'price:', item.customPrice);
+                            setCart((prev) =>
+                              prev.map((cartItem) =>
+                                cartItem.product.id === item.product.id
+                                  ? {
+                                      ...cartItem,
+                                      quantity: newQty,
+                                      subtotal: newQty * cartItem.customPrice,
+                                      quantityInput: undefined,
+                                    }
+                                  : cartItem
+                              )
+                            );
+                          } else if (newQty === 0 || e.target.value === '0') {
+                            console.log('[POS] Removing item (quantity 0)');
+                            // Remove item if quantity is 0
+                            removeFromCart(item.product.id);
+                          } else {
+                            console.log('[POS] Invalid quantity, resetting');
+                            // Reset to actual value if invalid
+                            setCart((prev) =>
+                              prev.map((cartItem) =>
+                                cartItem.product.id === item.product.id
+                                  ? { ...cartItem, quantityInput: undefined }
+                                  : cartItem
+                              )
+                            );
+                            toast({
+                              title: "Invalid Quantity",
+                              description: "Please enter a valid quantity",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        className="h-9 w-16 text-center font-medium min-h-[36px]"
+                        data-testid={`qty-input-${item.product.id}`}
+                      />
                       <Button
                         variant="outline"
                         size="icon"

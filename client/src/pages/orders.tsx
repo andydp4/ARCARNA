@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar } from "lucide-react";
+import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +53,8 @@ export default function Orders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [newStatus, setNewStatus] = useState("");
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
 
@@ -111,6 +113,32 @@ export default function Orders() {
     },
   });
 
+  // Delete order mutation
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      const response = await apiRequest("DELETE", `/api/orders/${orderId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+      toast({
+        title: "Order Deleted",
+        description: "Order has been successfully deleted and stock has been released.",
+      });
+      setDeleteDialogOpen(false);
+      setOrderToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Failed to delete order",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Filter orders based on status
   const filteredOrders = orders.filter((order) => {
     if (filterStatus === "active") {
@@ -160,6 +188,16 @@ export default function Orders() {
   const closeDetailsDialog = () => {
     setDetailsDialogOpen(false);
     setOrderDetailsId(null);
+  };
+
+  const openDeleteDialog = (order: Order) => {
+    setOrderToDelete(order);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = () => {
+    if (!orderToDelete) return;
+    deleteOrderMutation.mutate(orderToDelete.id);
   };
 
   const handleStatusUpdate = () => {
@@ -321,6 +359,14 @@ export default function Orders() {
                               <DropdownMenuItem onClick={() => openStatusDialog(order)} data-testid="menu-update-status">
                                 Update Status
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => openDeleteDialog(order)} 
+                                data-testid="menu-delete-order"
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Order
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -457,6 +503,51 @@ export default function Orders() {
                 data-testid="button-confirm-status-update"
               >
                 {updateStatusMutation.isPending ? "Updating..." : "Update Status"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Delete Order</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete order #{orderToDelete?.id.slice(0, 8)}?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-muted-foreground">
+                This action cannot be undone. The order will be permanently deleted and any reserved stock will be released back to inventory.
+              </p>
+              <div className="mt-4 p-3 bg-muted rounded-lg">
+                <p className="text-sm font-medium">Order Details:</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Total: ${orderToDelete?.total ? parseFloat(orderToDelete.total).toFixed(2) : '0.00'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Payment: {orderToDelete?.paymentMethod}
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+                className="min-h-[44px]"
+                data-testid="button-cancel-delete"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteOrderMutation.isPending}
+                className="min-h-[44px]"
+                data-testid="button-confirm-delete"
+              >
+                {deleteOrderMutation.isPending ? "Deleting..." : "Delete Order"}
               </Button>
             </DialogFooter>
           </DialogContent>

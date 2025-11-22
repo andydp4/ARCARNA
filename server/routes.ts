@@ -375,6 +375,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders, order_items, products } = await import('../apps/server/src/db/schema');
+      const { eq, sql } = await import('drizzle-orm');
+      
+      // Begin transaction to delete order and its items, and release stock
+      await db.transaction(async (tx) => {
+        // Get order items to release stock
+        const items = await tx.select().from(order_items).where(eq(order_items.order_id, req.params.id));
+        
+        // Release stock for each item
+        for (const item of items) {
+          await tx.update(products)
+            .set({ stock: sql`stock + ${item.quantity}` })
+            .where(eq(products.id, item.product_id));
+        }
+        
+        // Delete order items
+        await tx.delete(order_items).where(eq(order_items.order_id, req.params.id));
+        
+        // Delete order
+        const [deleted] = await tx.delete(orders).where(eq(orders.id, req.params.id)).returning();
+        
+        if (!deleted) {
+          throw new Error('Order not found');
+        }
+      });
+      
+      res.json({ message: "Order deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting order:", error);
+      const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';
+      const status = error.message === 'Order not found' ? 404 : 500;
+      res.status(status).json({ message });
+    }
+  });
+
   // Inventory routes
   app.get("/api/inventory", isAuthenticated, async (req, res) => {
     try {
