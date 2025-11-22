@@ -190,6 +190,14 @@ export default function POS() {
           title: "Order Saved Offline",
           description: "You're offline. Order will sync automatically when connection returns.",
         });
+      } else if (data?.warnings && data.warnings.length > 0) {
+        // Order was created but with stock warnings
+        toast({
+          title: "Order On Hold",
+          description: data.warnings.join(". ") + ". Order has been placed on hold.",
+          variant: "destructive",
+          duration: 8000,
+        });
       } else {
         toast({
           title: "Order Placed",
