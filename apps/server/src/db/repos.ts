@@ -38,6 +38,10 @@ export const OrdersRepoDrizzle: OrdersRepo = {
 }
 
 export const ProductsRepoDrizzle: ProductsRepo = {
+  async checkStock(p: ProductId): Promise<number> {
+    const [product] = await db.select({ stock: s.products.stock }).from(s.products).where(eq(s.products.id, p as any))
+    return product?.stock || 0
+  },
   async reserveStock(p: ProductId, qty: number) {
     // Decrement stock atomically
     await db.execute(sql`UPDATE products SET stock = stock - ${qty} WHERE id = ${p as any}`)

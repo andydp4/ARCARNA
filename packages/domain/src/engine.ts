@@ -15,21 +15,40 @@ export class DomainEngine {
     private readonly withTransaction: <T>(fn: ()=>Promise<T>)=>Promise<T>,
   ){}
 
-  async placeOrder(input: unknown): Promise<{ orderId: OrderId }> {
+  async placeOrder(input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = PlaceOrderInput.parse(input)
     const subtotal = +dto.lines.reduce((s: number, l: any)=> s + l.quantity*l.unitPrice, 0).toFixed(2)
     const vat = +(subtotal * 0.20).toFixed(2)
     const total = +(subtotal + vat).toFixed(2)
 
-    const orderId = await this.withTransaction(async () => {
+    const result = await this.withTransaction(async () => {
+      // Check stock availability for all line items
+      const stockWarnings: string[] = []
+      for (const line of dto.lines) {
+        const availableStock = await this.products.checkStock(line.productId as any)
+        if (availableStock < line.quantity) {
+          const product = await this.products.findById(line.productId as any)
+          const productName = product?.name || line.productId
+          stockWarnings.push(`Insufficient stock for ${productName}: requested ${line.quantity}, available ${availableStock}`)
+        }
+      }
+
+      // Determine order status based on stock availability
+      const orderStatus = stockWarnings.length > 0 ? 'hold' : 'completed'
+
       const order: Order = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
         lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
-        subtotal, vat, total, paymentMethod: dto.paymentMethod, status: 'completed', createdAt: new Date(),
+        subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, createdAt: new Date(),
       }
       await this.orders.save(order)
-      for (const l of order.lines) await this.products.reserveStock(l.productId as any, l.quantity)
+      
+      // Only reserve stock if order is completed (sufficient stock available)
+      if (orderStatus === 'completed') {
+        for (const l of order.lines) await this.products.reserveStock(l.productId as any, l.quantity)
+      }
+      
       if (order.paymentMethod === 'tick' && order.customerId) await this.customers.addTickDebt(order.customerId as any, order.total)
       
       let invoiceId = null
@@ -47,16 +66,18 @@ export class DomainEngine {
         await this.customers.updateMetrics(order.customerId as any)
         await this.analytics.updateCustomerMetrics(order.customerId as any)
       }
-      await this.audit.log('OrderCompleted', { orderId: order.id, total: order.total })
+      await this.audit.log('OrderCompleted', { orderId: order.id, total: order.total, status: orderStatus })
       await this.bus.publish({ type: 'OrderPlaced', orderId: order.id, customerId: order.customerId as any })
-      await this.bus.publish({ type: 'StockReserved', orderId: order.id })
+      if (orderStatus === 'completed') {
+        await this.bus.publish({ type: 'StockReserved', orderId: order.id })
+      }
       if (order.paymentMethod === 'tick' && order.customerId) await this.bus.publish({ type: 'TickAdded', orderId: order.id, customerId: order.customerId as any })
       if (invoiceId) await this.bus.publish({ type: 'InvoiceCreated', orderId: order.id, invoiceId })
       await this.bus.publish({ type: 'AnalyticsProjected', orderId: order.id })
       if (order.customerId) await this.bus.publish({ type: 'CustomerHistoryUpdated', orderId: order.id, customerId: order.customerId as any })
-      return order.id
+      return { orderId: order.id, warnings: stockWarnings }
     })
-    return { orderId }
+    return result
   }
 
   // Product Management Methods

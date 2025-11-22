@@ -13,10 +13,18 @@ export const OrdersRepoMemory: OrdersRepo = {
 }
 
 export const ProductsRepoMemory: ProductsRepo = {
+  async checkStock(p: ProductId): Promise<number> {
+    return state.stock.get(p as any) ?? 100
+  },
   async reserveStock(p: ProductId, qty: number){
     const cur = state.stock.get(p as any) ?? 100
     state.stock.set(p as any, cur - qty)
-  }
+  },
+  async create(product: any) { return product },
+  async update(id: ProductId, product: any) { return product as any },
+  async delete(id: ProductId) {},
+  async findById(id: ProductId) { return null },
+  async findAll() { return [] }
 }
 
 export const CustomersRepoMemory: CustomersRepo = {
@@ -28,5 +36,11 @@ export const CustomersRepoMemory: CustomersRepo = {
     const arr = state.history.get(c as any) ?? []
     arr.push(orderId as any)
     state.history.set(c as any, arr)
-  }
+  },
+  async create(customer: any) { return customer },
+  async update(id: CustomerId, customer: any) { return customer as any },
+  async delete(id: CustomerId) {},
+  async findById(id: CustomerId) { return null },
+  async findAll() { return [] },
+  async updateMetrics(c: CustomerId) {}
 }

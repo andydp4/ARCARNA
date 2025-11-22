@@ -4,6 +4,7 @@ export interface OrdersRepo {
   findById(id: OrderId): Promise<Order|null> 
 }
 export interface ProductsRepo { 
+  checkStock(p: ProductId): Promise<number>
   reserveStock(p: ProductId, qty: number): Promise<void>
   create(product: Product): Promise<Product>
   update(id: ProductId, product: Partial<Product>): Promise<Product>
