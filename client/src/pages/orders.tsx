@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye } from "lucide-react";
+import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,14 +16,27 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import { Separator } from "@/components/ui/separator";
 
 interface Order {
   id: string;
   customerId?: string;
+  customerName?: string;
   total: string;
   paymentMethod: string;
   status: string;
   createdAt: string;
+}
+
+interface OrderDetail extends Order {
+  items: Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitPrice: string;
+    total: string;
+  }>;
 }
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: any }> = {
@@ -39,12 +52,20 @@ export default function Orders() {
   const [filterStatus, setFilterStatus] = useState<string>("active");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("");
+  const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
 
   // Fetch orders
   const { data: orders = [], isLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
     refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  // Fetch order details
+  const { data: orderDetails, isLoading: isLoadingDetails } = useQuery<OrderDetail>({
+    queryKey: ["order-details", orderDetailsId],
+    enabled: !!orderDetailsId,
   });
 
   // Update order status mutation
@@ -129,6 +150,16 @@ export default function Orders() {
     setSelectedOrder(order);
     setNewStatus(order.status || "pending");
     setStatusDialogOpen(true);
+  };
+
+  const openDetailsDialog = (orderId: string) => {
+    setOrderDetailsId(orderId);
+    setDetailsDialogOpen(true);
+  };
+
+  const closeDetailsDialog = () => {
+    setDetailsDialogOpen(false);
+    setOrderDetailsId(null);
   };
 
   const handleStatusUpdate = () => {
@@ -283,12 +314,12 @@ export default function Orders() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openStatusDialog(order)} data-testid="menu-update-status">
-                                Update Status
-                              </DropdownMenuItem>
-                              <DropdownMenuItem data-testid="menu-view-details">
+                              <DropdownMenuItem onClick={() => openDetailsDialog(order.id)} data-testid="menu-view-details">
                                 <Eye className="mr-2 h-4 w-4" />
                                 View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openStatusDialog(order)} data-testid="menu-update-status">
+                                Update Status
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -301,6 +332,92 @@ export default function Orders() {
             ))}
           </div>
         )}
+
+        {/* Order Details Dialog */}
+        <Dialog open={detailsDialogOpen} onOpenChange={closeDetailsDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Order Details</DialogTitle>
+              <DialogDescription>
+                Complete information for order #{orderDetails?.id.slice(0, 8) || '...'}
+              </DialogDescription>
+            </DialogHeader>
+            {isLoadingDetails ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : orderDetails && (
+              <div className="space-y-4">
+                {/* Order Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      <span>Customer</span>
+                    </div>
+                    <p className="font-medium">{orderDetails.customerName}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CreditCard className="h-4 w-4" />
+                      <span>Payment</span>
+                    </div>
+                    <p className="font-medium capitalize">{orderDetails.paymentMethod}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>Date</span>
+                    </div>
+                    <p className="font-medium">{new Date(orderDetails.createdAt).toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <PackageCheck className="h-4 w-4" />
+                      <span>Status</span>
+                    </div>
+                    <div>{getStatusBadge(orderDetails.status)}</div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Order Items */}
+                <div>
+                  <h4 className="font-semibold mb-3">Order Items</h4>
+                  <div className="space-y-2">
+                    {orderDetails.items?.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium">{item.productName || 'Unknown Product'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {item.quantity} × ${typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice).toFixed(2) : item.unitPrice.toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="font-semibold">
+                          ${typeof item.total === 'string' ? parseFloat(item.total).toFixed(2) : item.total.toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Order Total */}
+                <div className="flex justify-between items-center text-lg font-bold">
+                  <span>Total</span>
+                  <span className="text-2xl text-primary">
+                    ${parseFloat(orderDetails.total).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={closeDetailsDialog} className="min-h-[44px]">Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Status Update Dialog */}
         <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>

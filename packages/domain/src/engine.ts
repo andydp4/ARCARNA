@@ -34,7 +34,7 @@ export class DomainEngine {
       }
 
       // Determine order status based on stock availability
-      const orderStatus = stockWarnings.length > 0 ? 'hold' : 'completed'
+      const orderStatus = stockWarnings.length > 0 ? 'on-hold' : 'pending'
 
       const order: Order = {
         id: crypto.randomUUID() as OrderId,
@@ -44,8 +44,8 @@ export class DomainEngine {
       }
       await this.orders.save(order)
       
-      // Only reserve stock if order is completed (sufficient stock available)
-      if (orderStatus === 'completed') {
+      // Only reserve stock if order is not on hold (sufficient stock available)
+      if (orderStatus !== 'on-hold') {
         for (const l of order.lines) await this.products.reserveStock(l.productId as any, l.quantity)
       }
       
@@ -66,9 +66,9 @@ export class DomainEngine {
         await this.customers.updateMetrics(order.customerId as any)
         await this.analytics.updateCustomerMetrics(order.customerId as any)
       }
-      await this.audit.log('OrderCompleted', { orderId: order.id, total: order.total, status: orderStatus })
+      await this.audit.log('OrderCreated', { orderId: order.id, total: order.total, status: orderStatus })
       await this.bus.publish({ type: 'OrderPlaced', orderId: order.id, customerId: order.customerId as any })
-      if (orderStatus === 'completed') {
+      if (orderStatus !== 'on-hold') {
         await this.bus.publish({ type: 'StockReserved', orderId: order.id })
       }
       if (order.paymentMethod === 'tick' && order.customerId) await this.bus.publish({ type: 'TickAdded', orderId: order.id, customerId: order.customerId as any })

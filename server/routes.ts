@@ -293,6 +293,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders, order_items, products, customers } = await import('../apps/server/src/db/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const [order] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+      
+      const items = await db.select({
+        id: order_items.id,
+        productId: order_items.product_id,
+        productName: products.name,
+        quantity: order_items.quantity,
+        unitPrice: order_items.unit_price,
+        totalPrice: order_items.total_price,
+      }).from(order_items)
+        .leftJoin(products, eq(order_items.product_id, products.id))
+        .where(eq(order_items.order_id, req.params.id));
+      
+      let customer = null;
+      if (order.customer_id) {
+        const [c] = await db.select().from(customers).where(eq(customers.id, order.customer_id));
+        customer = c;
+      }
+      
+      res.json({
+        id: order.id,
+        customerId: order.customer_id,
+        customerName: customer?.name || 'Walk-in',
+        total: order.total,
+        paymentMethod: order.payment_method,
+        status: order.status,
+        createdAt: order.created_at,
+        items: items.map(item => ({
+          id: item.id,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.totalPrice,
+        }))
+      });
+    } catch (error) {
+      console.error("Error fetching order details:", error);
+      res.status(500).json({ message: "Failed to fetch order details" });
+    }
+  });
+
   app.patch("/api/orders/:id", isAuthenticated, async (req, res) => {
     try {
       const { db } = await import('../apps/server/src/db');
