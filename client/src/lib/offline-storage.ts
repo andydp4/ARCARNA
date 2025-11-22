@@ -10,7 +10,7 @@ export interface OfflineOrder {
 
 export interface QueuedMutation {
   id?: number;
-  type: 'ORDER_CREATE' | 'ORDER_UPDATE' | 'PRODUCT_UPDATE' | 'CUSTOMER_CREATE' | 'CUSTOMER_UPDATE' | 'EXPENSE_CREATE';
+  type: 'ORDER_CREATE' | 'ORDER_UPDATE' | 'ORDER_DELETE' | 'PRODUCT_UPDATE' | 'CUSTOMER_CREATE' | 'CUSTOMER_UPDATE' | 'EXPENSE_CREATE';
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   endpoint: string;
   data: any;

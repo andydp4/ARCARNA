@@ -116,17 +116,35 @@ export default function Orders() {
   // Delete order mutation
   const deleteOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
+      if (!navigator.onLine) {
+        await offlineStorage.queueMutation({
+          type: 'ORDER_DELETE',
+          method: 'DELETE',
+          endpoint: `/api/orders/${orderId}`,
+          data: {},
+        });
+        return { offline: true };
+      }
       const response = await apiRequest("DELETE", `/api/orders/${orderId}`);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, orderId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order-details", orderId] });
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
-      toast({
-        title: "Order Deleted",
-        description: "Order has been successfully deleted and stock has been released.",
-      });
+      
+      if (data.offline) {
+        toast({
+          title: "Order Queued for Deletion",
+          description: "Order will be deleted when you're back online.",
+        });
+      } else {
+        toast({
+          title: "Order Deleted",
+          description: "Order has been successfully deleted and stock has been released.",
+        });
+      }
       setDeleteDialogOpen(false);
       setOrderToDelete(null);
     },
@@ -196,7 +214,7 @@ export default function Orders() {
   };
 
   const handleDelete = () => {
-    if (!orderToDelete) return;
+    if (!orderToDelete || deleteOrderMutation.isPending) return;
     deleteOrderMutation.mutate(orderToDelete.id);
   };
 
