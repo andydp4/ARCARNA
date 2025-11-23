@@ -68,11 +68,11 @@ export const navItems = [
     testId: 'nav-loyalty'
   },
   {
-    key: 'reports',
-    label: 'Reports',
-    href: '/reports',
+    key: 'insights',
+    label: 'Business Insights',
+    href: '/insights',
     icon: TrendingUp,
-    testId: 'nav-reports'
+    testId: 'nav-insights'
   },
   {
     key: 'expenses',
@@ -115,13 +115,6 @@ export const navItems = [
     href: '/tick-list',
     icon: CreditCard,
     testId: 'nav-tick-list'
-  },
-  {
-    key: 'analytics',
-    label: 'Analytics',
-    href: '/analytics',
-    icon: BarChart3,
-    testId: 'nav-analytics'
   },
   {
     key: 'settings',

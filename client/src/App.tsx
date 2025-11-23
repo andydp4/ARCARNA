@@ -10,7 +10,7 @@ import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import POS from "@/pages/pos";
 import Inventory from "@/pages/inventory";
-import Reports from "@/pages/reports";
+import Insights from "@/pages/insights";
 import Locations from "@/pages/locations";
 import Loyalty from "@/pages/loyalty";
 import Promotions from "@/pages/promotions";
@@ -20,7 +20,6 @@ import Customers from "@/pages/customers";
 import ProductManagement from "@/pages/product-management";
 import Settings from "@/pages/settings";
 import TickList from "@/pages/tick-list";
-import Analytics from "@/pages/analytics";
 import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,7 +38,9 @@ function Router() {
           <Route path="/orders" component={Orders} />
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
-          <Route path="/reports" component={Reports} />
+          <Route path="/insights" component={Insights} />
+          <Route path="/reports" component={Insights} />
+          <Route path="/analytics" component={Insights} />
           <Route path="/locations" component={Locations} />
           <Route path="/customers" component={Customers} />
           <Route path="/loyalty" component={Loyalty} />
@@ -47,7 +48,6 @@ function Router() {
           <Route path="/expenses" component={ExpensesPage} />
           <Route path="/expense-reports" component={ExpenseReportsPage} />
           <Route path="/invoices" component={Invoices} />
-          <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
           <Route path="/tick-list" component={TickList} />
         </Layout>
