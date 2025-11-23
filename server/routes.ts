@@ -265,7 +265,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { engine } = await import('../apps/server/src/engine.wiring');
       const result = await engine.placeOrder(req.body);
-      res.status(201).json(result);
+      
+      // Fetch the complete order to return with status
+      const { db } = await import('../apps/server/src/db');
+      const { orders } = await import('../apps/server/src/db/schema');
+      const { eq } = await import('drizzle-orm');
+      const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
+      
+      res.status(201).json({ 
+        ...result, 
+        order: createdOrder ? {
+          id: createdOrder.id,
+          status: createdOrder.status,
+          total: createdOrder.total,
+          paymentMethod: createdOrder.payment_method,
+          createdAt: createdOrder.created_at
+        } : null
+      });
     } catch (error: any) {
       console.error("Error creating order:", error);
       const message = error.message || "Failed to create order";

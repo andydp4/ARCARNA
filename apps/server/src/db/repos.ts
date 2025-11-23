@@ -5,35 +5,82 @@ import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId
 
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
-    await db.insert(s.orders).values({
-      id: o.id as any,
-      customer_id: o.customerId as any,
-      total: o.total,
-      payment_method: o.paymentMethod,
-      status: o.status,
-    })
-    for (const l of o.lines) {
-      await db.insert(s.order_items).values({
-        order_id: o.id as any,
-        product_id: l.productId as any,
-        quantity: l.quantity,
-        unit_price: l.unitPrice,
-        total_price: l.lineTotal,
+    // Check if order exists
+    const existing = await db.select().from(s.orders).where(eq(s.orders.id, o.id as any)).limit(1)
+    
+    if (existing.length > 0) {
+      // Update existing order
+      await db.update(s.orders)
+        .set({
+          customer_id: o.customerId as any,
+          total: o.total,
+          payment_method: o.paymentMethod,
+          status: o.status,
+        })
+        .where(eq(s.orders.id, o.id as any))
+      
+      // Delete existing line items and re-insert
+      await db.delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
+      for (const l of o.lines) {
+        await db.insert(s.order_items).values({
+          order_id: o.id as any,
+          product_id: l.productId as any,
+          quantity: l.quantity,
+          unit_price: l.unitPrice,
+          total_price: l.lineTotal,
+        })
+      }
+    } else {
+      // Insert new order
+      await db.insert(s.orders).values({
+        id: o.id as any,
+        customer_id: o.customerId as any,
+        total: o.total,
+        payment_method: o.paymentMethod,
+        status: o.status,
+      })
+      for (const l of o.lines) {
+        await db.insert(s.order_items).values({
+          order_id: o.id as any,
+          product_id: l.productId as any,
+          quantity: l.quantity,
+          unit_price: l.unitPrice,
+          total_price: l.lineTotal,
+        })
+      }
+      
+      // Write to domain outbox for analytics worker (only for new orders)
+      await db.insert(s.domain_outbox).values({
+        type: 'OrderPlaced',
+        payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt },
+        created_at: new Date(),
       })
     }
-    
-    // Write to domain outbox for analytics worker
-    await db.insert(s.domain_outbox).values({
-      type: 'OrderPlaced',
-      payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt },
-      created_at: new Date(),
-    })
   },
   async findById(id: OrderId) {
-    const rows = await db.select().from(s.orders).where(eq(s.orders.id, id as any)).limit(1)
-    if (rows.length === 0) return null
-    // Simplified: not reconstructing full lines here
-    return rows[0] as any
+    const [orderRow] = await db.select().from(s.orders).where(eq(s.orders.id, id as any)).limit(1)
+    if (!orderRow) return null
+    
+    // Fetch line items
+    const items = await db.select().from(s.order_items).where(eq(s.order_items.order_id, id as any))
+    
+    // Reconstruct full Order object
+    return {
+      id: orderRow.id as OrderId,
+      customerId: orderRow.customer_id as CustomerId,
+      lines: items.map(item => ({
+        productId: item.product_id as ProductId,
+        quantity: item.quantity!,
+        unitPrice: parseFloat(String(item.unit_price!)),
+        lineTotal: parseFloat(String(item.total_price!)),
+      })),
+      subtotal: parseFloat(String(orderRow.total!)) / 1.20, // Reverse calculate from total (total includes VAT)
+      vat: parseFloat(String(orderRow.total!)) * 0.20 / 1.20,
+      total: parseFloat(String(orderRow.total!)),
+      paymentMethod: orderRow.payment_method as any,
+      status: orderRow.status as any,
+      createdAt: orderRow.created_at!,
+    } as Order
   }
 }
 
