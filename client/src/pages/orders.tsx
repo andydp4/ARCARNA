@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2 } from "lucide-react";
+import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2, Edit2, Minus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +55,10 @@ export default function Orders() {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<OrderDetail | null>(null);
+  const [editLines, setEditLines] = useState<Array<{productId: string; productName: string; quantity: number; unitPrice: number}>>([]);
   const [newStatus, setNewStatus] = useState("");
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
 
@@ -157,6 +161,46 @@ export default function Orders() {
     },
   });
 
+  // Edit order mutation
+  const editOrderMutation = useMutation({
+    mutationFn: async (data: { orderId: string; lines: Array<{productId: string; quantity: number; unitPrice: number}> }) => {
+      const response = await apiRequest("PUT", `/api/orders/${data.orderId}`, {
+        lines: data.lines,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order-details", orderToEdit?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+      
+      if (data?.warnings && data.warnings.length > 0) {
+        toast({
+          title: "Order Updated with Warnings",
+          description: data.warnings.join(". ") + ". Order status may have changed.",
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Order Updated",
+          description: "Order has been successfully updated.",
+        });
+      }
+      setEditDialogOpen(false);
+      setOrderToEdit(null);
+      setEditLines([]);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update order",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Filter orders based on status
   const filteredOrders = orders.filter((order) => {
     if (filterStatus === "active") {
@@ -216,6 +260,42 @@ export default function Orders() {
   const handleDelete = () => {
     if (!orderToDelete || deleteOrderMutation.isPending) return;
     deleteOrderMutation.mutate(orderToDelete.id);
+  };
+
+  const openEditDialog = async (orderId: string) => {
+    setOrderDetailsId(orderId);
+    const response = await fetch(`/api/orders/${orderId}`, { credentials: 'include' });
+    const orderData = await response.json();
+    setOrderToEdit(orderData);
+    setEditLines(orderData.items.map((item: any) => ({
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: parseFloat(item.unitPrice),
+    })));
+    setEditDialogOpen(true);
+  };
+
+  const handleEditLineChange = (index: number, field: 'quantity' | 'unitPrice', value: number) => {
+    setEditLines(prev => prev.map((line, i) => 
+      i === index ? { ...line, [field]: value } : line
+    ));
+  };
+
+  const handleRemoveLine = (index: number) => {
+    setEditLines(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveEdit = () => {
+    if (!orderToEdit || editLines.length === 0) return;
+    editOrderMutation.mutate({
+      orderId: orderToEdit.id,
+      lines: editLines.map(line => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+      })),
+    });
   };
 
   const handleStatusUpdate = () => {
@@ -373,6 +453,10 @@ export default function Orders() {
                               <DropdownMenuItem onClick={() => openDetailsDialog(order.id)} data-testid="menu-view-details">
                                 <Eye className="mr-2 h-4 w-4" />
                                 View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEditDialog(order.id)} data-testid="menu-edit-order">
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                Edit Order
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openStatusDialog(order)} data-testid="menu-update-status">
                                 Update Status
@@ -566,6 +650,97 @@ export default function Orders() {
                 data-testid="button-confirm-delete"
               >
                 {deleteOrderMutation.isPending ? "Deleting..." : "Delete Order"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Order Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Order</DialogTitle>
+              <DialogDescription>
+                Modify line items, quantities, and prices for order #{orderToEdit?.id.slice(0, 8)}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {editLines.map((line, index) => (
+                <div key={index} className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-medium">{line.productName}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Quantity</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={(e) => handleEditLineChange(index, 'quantity', parseInt(e.target.value) || 1)}
+                          className="min-h-[44px]"
+                          data-testid={`input-edit-quantity-${index}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Price</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.unitPrice}
+                          onChange={(e) => handleEditLineChange(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          className="min-h-[44px]"
+                          data-testid={`input-edit-price-${index}`}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Subtotal: ${(line.quantity * line.unitPrice).toFixed(2)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveLine(index)}
+                    className="min-h-[44px] min-w-[44px]"
+                    data-testid={`button-remove-line-${index}`}
+                  >
+                    <Minus className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              
+              {editLines.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No line items. Add at least one item to save.
+                </p>
+              )}
+
+              <Separator />
+
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">New Total:</span>
+                <span className="text-xl font-bold text-primary">
+                  ${editLines.reduce((sum, line) => sum + (line.quantity * line.unitPrice), 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditDialogOpen(false)}
+                className="min-h-[44px]"
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={editOrderMutation.isPending || editLines.length === 0}
+                className="min-h-[44px]"
+                data-testid="button-save-edit"
+              >
+                {editOrderMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -1,4 +1,4 @@
-import { PlaceOrderInput } from './schemas'
+import { PlaceOrderInput, UpdateOrderInput } from './schemas'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSink, AuditPort } from './ports'
 import type { EventBus } from './bus'
 import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
@@ -221,5 +221,82 @@ export class DomainEngine {
       await this.analytics.updateCustomerMetrics(customerId)
       await this.bus.publish({ type: 'CustomerMetricsUpdated', customerId })
     })
+  }
+
+  // Order editing - update line items, quantities, prices
+  async updateOrder(id: string, input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
+    const dto = UpdateOrderInput.parse(input)
+    const result = await this.withTransaction(async () => {
+      const orderId = id as OrderId
+      const existingOrder = await this.orders.findById(orderId)
+      if (!existingOrder) throw new Error('Order not found')
+
+      // Build stock delta map: productId -> quantity change
+      const stockDeltas = new Map<string, number>()
+      
+      // Calculate current stock usage by existing order (only if not on-hold)
+      if (existingOrder.status !== 'on-hold') {
+        for (const line of existingOrder.lines) {
+          const current = stockDeltas.get(line.productId) || 0
+          stockDeltas.set(line.productId, current + line.quantity)
+        }
+      }
+      
+      // Subtract new stock requirements
+      for (const line of dto.lines) {
+        const current = stockDeltas.get(line.productId) || 0
+        stockDeltas.set(line.productId, current - line.quantity)
+      }
+
+      // Apply stock deltas and check availability
+      const stockWarnings: string[] = []
+      for (const [productId, delta] of stockDeltas.entries()) {
+        if (delta > 0) {
+          // Positive delta means releasing stock
+          await this.products.releaseStock(productId as any, delta)
+        } else if (delta < 0) {
+          // Negative delta means reserving more stock
+          const requiredIncrease = Math.abs(delta)
+          const availableStock = await this.products.checkStock(productId as any)
+          if (availableStock < requiredIncrease) {
+            const product = await this.products.findById(productId as any)
+            const productName = product?.name || productId
+            stockWarnings.push(`Insufficient stock for ${productName}: need ${requiredIncrease} more, only ${availableStock} available`)
+          } else {
+            await this.products.reserveStock(productId as any, requiredIncrease)
+          }
+        }
+      }
+
+      // Calculate new totals
+      const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
+      const vat = +(subtotal * 0.20).toFixed(2)
+      const total = +(subtotal + vat).toFixed(2)
+
+      // Determine order status: 
+      // - If warnings exist, set to on-hold
+      // - If no warnings and was on-hold, promote to pending  
+      // - Otherwise keep existing status
+      const orderStatus = stockWarnings.length > 0 
+        ? 'on-hold' 
+        : (existingOrder.status === 'on-hold' ? 'pending' : existingOrder.status)
+
+      // Update order, preserving existing metadata
+      const updatedOrder: Order = {
+        ...existingOrder,
+        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity * l.unitPrice).toFixed(2) })),
+        subtotal,
+        vat,
+        total,
+        status: orderStatus,
+      }
+      await this.orders.save(updatedOrder)
+
+      await this.audit.log('OrderUpdated', { orderId, changes: input, newTotal: total, newStatus: orderStatus })
+      await this.bus.publish({ type: 'OrderUpdated', orderId })
+
+      return { orderId, warnings: stockWarnings }
+    })
+    return result
   }
 }

@@ -375,6 +375,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const result = await engine.updateOrder(req.params.id, req.body);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error updating order:", error);
+      const message = error.message || "Failed to update order";
+      const status = error.name === 'ZodError' ? 400 : 500;
+      res.status(status).json({ message, errors: error.errors });
+    }
+  });
+
   app.delete("/api/orders/:id", isAuthenticated, async (req, res) => {
     try {
       const { db } = await import('../apps/server/src/db');
