@@ -4,7 +4,20 @@
 
 Midnight EPOS is an enterprise Point of Sale system built as a full-stack TypeScript monorepo.
 
-## Recent Changes (November 17, 2025)
+## Recent Changes (November 25, 2025)
+
+**Order System Fixes - Complete Order Lifecycle**:
+- Fixed order status on creation: now correctly 'pending' instead of 'completed'
+- Added missing `releaseStock()` method to ProductsRepo interface and implementations
+- Fixed OrdersRepo.save() to handle both INSERT (new orders) and UPDATE (edited orders) with upsert pattern
+- Fixed OrdersRepo.findById() to properly fetch line items via join with order_items table
+- Stock reconciliation now works correctly across entire order lifecycle:
+  - Create: reserves stock (decrements)
+  - Edit: applies delta-based adjustment (release old qty, reserve new qty difference)
+  - Delete: releases all reserved stock (increments back to original)
+- Navigation consolidated: Reports, Analytics, Profit Analysis merged into single "Business Insights" page
+
+## Previous Changes (November 17, 2025)
 
 **Product Pricing Field Migration**:
 - Updated Product type to use `costPrice` and `salePrice` instead of `tax` and `price` for clarity
@@ -13,7 +26,7 @@ Midnight EPOS is an enterprise Point of Sale system built as a full-stack TypeSc
 - Product import maintains backward compatibility with old field names (price/tax)
 - All areas verified: POS, inventory, reports, analytics, and order processing work correctly
 
-## Previous Changes (November 15, 2025)
+## Changes (November 15, 2025)
 
 Fixed 5 critical bugs:
 1. **Product creation** - Fixed unique product code generation using UUID segments and productCode field naming

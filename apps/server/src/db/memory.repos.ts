@@ -20,6 +20,10 @@ export const ProductsRepoMemory: ProductsRepo = {
     const cur = state.stock.get(p as any) ?? 100
     state.stock.set(p as any, cur - qty)
   },
+  async releaseStock(p: ProductId, qty: number){
+    const cur = state.stock.get(p as any) ?? 100
+    state.stock.set(p as any, cur + qty)
+  },
   async create(product: any) { return product },
   async update(id: ProductId, product: any) { return product as any },
   async delete(id: ProductId) {},

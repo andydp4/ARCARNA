@@ -6,6 +6,7 @@ export interface OrdersRepo {
 export interface ProductsRepo { 
   checkStock(p: ProductId): Promise<number>
   reserveStock(p: ProductId, qty: number): Promise<void>
+  releaseStock(p: ProductId, qty: number): Promise<void>
   create(product: Product): Promise<Product>
   update(id: ProductId, product: Partial<Product>): Promise<Product>
   delete(id: ProductId): Promise<void>

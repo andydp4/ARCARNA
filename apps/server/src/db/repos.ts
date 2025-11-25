@@ -74,7 +74,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         unitPrice: parseFloat(String(item.unit_price!)),
         lineTotal: parseFloat(String(item.total_price!)),
       })),
-      subtotal: parseFloat(String(orderRow.total!)) / 1.20, // Reverse calculate from total (total includes VAT)
+      subtotal: parseFloat(String(orderRow.total!)) / 1.20,
       vat: parseFloat(String(orderRow.total!)) * 0.20 / 1.20,
       total: parseFloat(String(orderRow.total!)),
       paymentMethod: orderRow.payment_method as any,
@@ -92,6 +92,10 @@ export const ProductsRepoDrizzle: ProductsRepo = {
   async reserveStock(p: ProductId, qty: number) {
     // Decrement stock atomically
     await db.execute(sql`UPDATE products SET stock = stock - ${qty} WHERE id = ${p as any}`)
+  },
+  async releaseStock(p: ProductId, qty: number) {
+    // Increment stock atomically (restore stock)
+    await db.execute(sql`UPDATE products SET stock = stock + ${qty} WHERE id = ${p as any}`)
   },
   async create(product: Product): Promise<Product> {
     const [created] = await db.insert(s.products).values({
