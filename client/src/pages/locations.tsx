@@ -21,8 +21,12 @@ import {
   Trash2,
   Home,
   CheckCircle,
-  XCircle
+  XCircle,
+  Eye,
+  AlertTriangle,
+  PackageX
 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link } from "wouter";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
@@ -54,14 +58,34 @@ const locationSchema = z.object({
   name: z.string().min(1, "Location name is required"),
   address: z.string().min(1, "Address is required"),
   city: z.string().min(1, "City is required"),
-  state: z.string().min(2, "State is required").max(2, "State must be 2 characters"),
-  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, "Invalid ZIP code format"),
-  phone: z.string().regex(/^\(\d{3}\) \d{3}-\d{4}$/, "Phone must be in format (xxx) xxx-xxxx"),
+  state: z.string().min(1, "County/Region is required"),
+  zipCode: z.string().regex(/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i, "Invalid UK postcode format (e.g., SW1A 1AA)"),
+  phone: z.string().regex(/^(\+44\s?|0)\d{4}\s?\d{6}$|^(\+44\s?|0)\d{3}\s?\d{3}\s?\d{4}$/, "Phone must be a valid UK number (e.g., 07700 900123)"),
   email: z.string().email("Invalid email address"),
   isActive: z.boolean().default(true),
 });
 
 type LocationFormData = z.infer<typeof locationSchema>;
+
+interface StockData {
+  locationId: string;
+  products: Array<{
+    id: string;
+    name: string;
+    productCode: string;
+    stock: number;
+    salePrice: string;
+    costPrice: string;
+    category: string;
+  }>;
+  summary: {
+    totalProducts: number;
+    totalStock: number;
+    lowStock: number;
+    criticalStock: number;
+    outOfStock: number;
+  };
+}
 
 export default function Locations() {
   const { toast } = useToast();
@@ -69,6 +93,9 @@ export default function Locations() {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [stockDialogOpen, setStockDialogOpen] = useState(false);
+  const [stockLocationId, setStockLocationId] = useState<string | null>(null);
+  const [stockLocationName, setStockLocationName] = useState<string>("");
 
   // Get current location from localStorage or session
   const currentLocationId = localStorage.getItem("currentLocationId") || "";
@@ -77,6 +104,28 @@ export default function Locations() {
   const { data: locations = [], isLoading, refetch } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
   });
+
+  // Fetch stock for selected location
+  const { data: stockData, isLoading: isLoadingStock } = useQuery<StockData>({
+    queryKey: ["/api/locations", stockLocationId, "stock"],
+    queryFn: async () => {
+      const response = await fetch(`/api/locations/${stockLocationId}/stock`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch stock');
+      return response.json();
+    },
+    enabled: !!stockLocationId,
+  });
+
+  const openStockDialog = (location: Location) => {
+    setStockLocationId(location.id);
+    setStockLocationName(location.name);
+    setStockDialogOpen(true);
+  };
+
+  const closeStockDialog = () => {
+    setStockDialogOpen(false);
+    setStockLocationId(null);
+  };
 
   // Form setup
   const form = useForm<LocationFormData>({
@@ -364,9 +413,8 @@ export default function Locations() {
                               <FormLabel>Phone</FormLabel>
                               <FormControl>
                                 <Input 
-                                  placeholder="(555) 123-4567" 
+                                  placeholder="07700 900123" 
                                   {...field}
-                                  onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))}
                                   className="min-h-[44px]"
                                   data-testid="input-location-phone"
                                 />
@@ -411,13 +459,11 @@ export default function Locations() {
                           name="state"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>State</FormLabel>
+                              <FormLabel>County</FormLabel>
                               <FormControl>
                                 <Input 
-                                  placeholder="NY" 
+                                  placeholder="Greater London" 
                                   {...field} 
-                                  onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                                  maxLength={2}
                                   className="min-h-[44px]"
                                   data-testid="input-location-state"
                                 />
@@ -432,9 +478,15 @@ export default function Locations() {
                           name="zipCode"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>ZIP Code</FormLabel>
+                              <FormLabel>Postcode</FormLabel>
                               <FormControl>
-                                <Input placeholder="10001" {...field} className="min-h-[44px]" data-testid="input-location-zip" />
+                                <Input 
+                                  placeholder="SW1A 1AA" 
+                                  {...field} 
+                                  onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                  className="min-h-[44px]" 
+                                  data-testid="input-location-zip" 
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -560,6 +612,16 @@ export default function Locations() {
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => openStockDialog(location)}
+                            className="flex-1 min-h-[44px]"
+                            data-testid={`button-view-stock-${location.id}`}
+                          >
+                            <Package className="mr-2 h-3 w-3" />
+                            Stock
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => handleEdit(location)}
                             className="flex-1 min-h-[44px]"
                             data-testid={`button-edit-${location.id}`}
@@ -567,18 +629,6 @@ export default function Locations() {
                             <Edit className="mr-2 h-3 w-3" />
                             Edit
                           </Button>
-                          {!location.isDefault && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setDefaultMutation.mutate(location.id)}
-                              disabled={setDefaultMutation.isPending}
-                              className="flex-1 min-h-[44px]"
-                              data-testid={`button-set-default-${location.id}`}
-                            >
-                              Set Default
-                            </Button>
-                          )}
                           {!location.isDefault && (
                             <Button
                               size="sm"
@@ -673,6 +723,15 @@ export default function Locations() {
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => openStockDialog(location)}
+                              className="min-h-[44px]"
+                              data-testid={`button-view-stock-${location.id}`}
+                            >
+                              <Package className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleEdit(location)}
                               className="min-h-[44px]"
                               data-testid={`button-edit-${location.id}`}
@@ -737,6 +796,128 @@ export default function Locations() {
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock Levels Dialog */}
+      <Dialog open={stockDialogOpen} onOpenChange={closeStockDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Stock Levels - {stockLocationName}
+            </DialogTitle>
+            <DialogDescription>
+              View current inventory stock at this location
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingStock ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : stockData ? (
+            <div className="space-y-4">
+              {/* Stock Summary */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <Card>
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground">Total Products</div>
+                    <div className="text-xl font-bold">{stockData.summary.totalProducts}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground">Total Stock</div>
+                    <div className="text-xl font-bold">{stockData.summary.totalStock}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-yellow-200 bg-yellow-50/50 dark:bg-yellow-900/10">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                      Low Stock
+                    </div>
+                    <div className="text-xl font-bold text-yellow-600">{stockData.summary.lowStock}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-orange-200 bg-orange-50/50 dark:bg-orange-900/10">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 text-orange-600" />
+                      Critical
+                    </div>
+                    <div className="text-xl font-bold text-orange-600">{stockData.summary.criticalStock}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-200 bg-red-50/50 dark:bg-red-900/10">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <PackageX className="h-3 w-3 text-red-600" />
+                      Out of Stock
+                    </div>
+                    <div className="text-xl font-bold text-red-600">{stockData.summary.outOfStock}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Products Table */}
+              <ScrollArea className="h-[350px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead className="text-right">Sale Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stockData.products.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          No products found at this location
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      stockData.products.map(product => (
+                        <TableRow key={product.id} data-testid={`stock-row-${product.id}`}>
+                          <TableCell className="font-medium">{product.name}</TableCell>
+                          <TableCell className="text-muted-foreground font-mono text-xs">{product.productCode}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{product.category || 'Uncategorized'}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {product.stock === 0 ? (
+                              <Badge variant="destructive">Out of Stock</Badge>
+                            ) : product.stock <= 5 ? (
+                              <Badge className="bg-orange-500">{product.stock}</Badge>
+                            ) : product.stock <= 20 ? (
+                              <Badge className="bg-yellow-500">{product.stock}</Badge>
+                            ) : (
+                              <span className="font-medium">{product.stock}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            £{typeof product.salePrice === 'string' ? parseFloat(product.salePrice).toFixed(2) : (product.salePrice || 0).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Failed to load stock data
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={closeStockDialog} className="min-h-[44px]">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

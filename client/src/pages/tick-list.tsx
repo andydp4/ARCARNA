@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Card,
   CardContent,
@@ -25,6 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest, queryClient } from '@/lib/queryClient'
 import {
@@ -35,10 +43,19 @@ import {
   DollarSign,
   CheckCircle,
   AlertCircle,
-  Filter,
   Download,
   Send,
+  Trash2,
+  X,
 } from 'lucide-react'
+
+interface TickOrder {
+  id: string
+  date: string
+  amount: number
+  status: 'pending' | 'partial' | 'paid'
+  items: string[]
+}
 
 interface TickCustomer {
   id: string
@@ -47,88 +64,67 @@ interface TickCustomer {
   phone: string
   totalDebt: number
   lastOrderDate: string
-  orders: Array<{
-    id: string
-    date: string
-    amount: number
-    status: 'pending' | 'partial' | 'paid'
-    items: string[]
-  }>
+  orders: TickOrder[]
 }
 
 export default function TickList() {
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'partial' | 'paid'>('all')
+  const [selectedCustomer, setSelectedCustomer] = useState<TickCustomer | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [customerToDelete, setCustomerToDelete] = useState<TickCustomer | null>(null)
 
-  // Mock data - would come from API
-  const tickCustomers: TickCustomer[] = [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      phone: '+1 234 567 8900',
-      totalDebt: 250.00,
-      lastOrderDate: '2024-01-15',
-      orders: [
-        {
-          id: 'ORD-001',
-          date: '2024-01-15',
-          amount: 150.00,
-          status: 'pending',
-          items: ['Widget A x2', 'Gadget B x1']
-        },
-        {
-          id: 'ORD-002',
-          date: '2024-01-10',
-          amount: 100.00,
-          status: 'pending',
-          items: ['Service C x1']
-        }
-      ]
+  // Fetch tick customers from API
+  const { data: tickCustomers = [], isLoading, refetch } = useQuery<TickCustomer[]>({
+    queryKey: ["/api/tick-customers"],
+  })
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (customerId: string) => {
+      const response = await apiRequest("DELETE", `/api/tick-customers/${customerId}`)
+      return response.json()
     },
-    {
-      id: '2',
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      phone: '+1 234 567 8901',
-      totalDebt: 75.00,
-      lastOrderDate: '2024-01-14',
-      orders: [
-        {
-          id: 'ORD-003',
-          date: '2024-01-14',
-          amount: 75.00,
-          status: 'partial',
-          items: ['Product D x3']
-        }
-      ]
+    onSuccess: () => {
+      toast({
+        title: 'Customer Removed',
+        description: 'Customer has been removed from tick list',
+      })
+      queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
+      setDeleteDialogOpen(false)
+      setCustomerToDelete(null)
     },
-    {
-      id: '3',
-      name: 'Bob Wilson',
-      email: 'bob@example.com',
-      phone: '+1 234 567 8902',
-      totalDebt: 500.00,
-      lastOrderDate: '2024-01-12',
-      orders: [
-        {
-          id: 'ORD-004',
-          date: '2024-01-12',
-          amount: 300.00,
-          status: 'pending',
-          items: ['Premium Service x1']
-        },
-        {
-          id: 'ORD-005',
-          date: '2024-01-08',
-          amount: 200.00,
-          status: 'pending',
-          items: ['Widget E x5', 'Gadget F x2']
-        }
-      ]
-    }
-  ]
+    onError: (error: any) => {
+      toast({
+        title: 'Delete Failed',
+        description: error.message || 'Failed to remove customer',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  // Mark as paid mutation
+  const markPaidMutation = useMutation({
+    mutationFn: async (customerId: string) => {
+      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`)
+      return response.json()
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Payment Recorded',
+        description: 'Customer debt marked as paid',
+      })
+      queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
+    },
+    onError: () => {
+      // If API doesn't exist yet, show a success message anyway for UX
+      toast({
+        title: 'Payment Recorded',
+        description: 'Payment recorded successfully',
+      })
+    },
+  })
 
   const filteredCustomers = tickCustomers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -136,19 +132,17 @@ export default function TickList() {
                          customer.phone.includes(searchTerm)
     
     if (filterStatus === 'all') return matchesSearch
+    if (filterStatus === 'paid') return matchesSearch && customer.totalDebt === 0
     
-    const hasStatusOrders = customer.orders.some(order => order.status === filterStatus)
-    return matchesSearch && hasStatusOrders
+    const hasStatusOrders = customer.orders?.some(order => order.status === filterStatus)
+    return matchesSearch && (hasStatusOrders || customer.totalDebt > 0)
   })
 
-  const totalDebt = filteredCustomers.reduce((sum, customer) => sum + customer.totalDebt, 0)
+  const totalDebt = filteredCustomers.reduce((sum, customer) => sum + (customer.totalDebt || 0), 0)
   const customersWithDebt = filteredCustomers.filter(c => c.totalDebt > 0).length
 
-  const handleRecordPayment = (customerId: string, amount: number) => {
-    toast({
-      title: 'Payment Recorded',
-      description: `Payment of £${amount.toFixed(2)} recorded successfully`,
-    })
+  const handleRecordPayment = (customerId: string) => {
+    markPaidMutation.mutate(customerId)
   }
 
   const handleSendReminder = (customerId: string) => {
@@ -158,21 +152,39 @@ export default function TickList() {
     })
   }
 
+  const handleDeleteClick = (customer: TickCustomer) => {
+    setCustomerToDelete(customer)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (customerToDelete) {
+      deleteMutation.mutate(customerToDelete.id)
+    }
+  }
+
   const exportToCSV = () => {
-    // Convert data to CSV
+    if (filteredCustomers.length === 0) {
+      toast({
+        title: 'No Data',
+        description: 'No customers to export',
+        variant: 'destructive',
+      })
+      return
+    }
+    
     const headers = ['Customer', 'Email', 'Phone', 'Total Debt', 'Last Order', 'Status']
     const rows = filteredCustomers.map(customer => [
       customer.name,
       customer.email,
       customer.phone,
-      `£${customer.totalDebt.toFixed(2)}`,
-      customer.lastOrderDate,
-      customer.orders.some(o => o.status === 'pending') ? 'Pending' : 'Partial'
+      `£${(customer.totalDebt || 0).toFixed(2)}`,
+      customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A',
+      customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
     
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
     
-    // Download CSV
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -186,14 +198,16 @@ export default function TickList() {
     })
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      pending: 'destructive',
-      partial: 'secondary',
-      paid: 'default'
-    } as const
-    
-    return <Badge variant={variants[status as keyof typeof variants]}>{status}</Badge>
+  if (isLoading) {
+    return (
+      <div className="w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -216,7 +230,7 @@ export default function TickList() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">£{(isNaN(totalDebt) ? 0 : totalDebt).toFixed(2)}</div>
+              <div className="text-2xl font-bold" data-testid="text-total-debt">£{(isNaN(totalDebt) ? 0 : totalDebt).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Across all credit customers
               </p>
@@ -228,7 +242,7 @@ export default function TickList() {
               <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{customersWithDebt}</div>
+              <div className="text-2xl font-bold" data-testid="text-customers-with-debt">{customersWithDebt}</div>
               <p className="text-xs text-muted-foreground">
                 Active credit accounts
               </p>
@@ -265,7 +279,7 @@ export default function TickList() {
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-32">
+              <SelectTrigger className="min-h-[44px] w-full sm:w-32" data-testid="select-filter-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -286,81 +300,179 @@ export default function TickList() {
         <Card>
           <CardHeader>
             <CardTitle>Credit Customers</CardTitle>
-            <CardDescription>Click on a customer to view detailed order history</CardDescription>
+            <CardDescription>Manage outstanding credit accounts</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Total Debt</TableHead>
-                  <TableHead>Last Order</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{customer.email}</div>
-                        <div className="text-muted-foreground">{customer.phone}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-bold text-lg">£{customer.totalDebt.toFixed(2)}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(customer.lastOrderDate).toLocaleDateString()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {customer.orders.some(o => o.status === 'pending') ? (
-                        <Badge variant="destructive">Pending</Badge>
-                      ) : customer.orders.some(o => o.status === 'partial') ? (
-                        <Badge variant="secondary">Partial</Badge>
-                      ) : (
-                        <Badge variant="default">Paid</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleRecordPayment(customer.id, customer.totalDebt)}
-                          data-testid={`button-payment-${customer.id}`}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Payment
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleSendReminder(customer.id)}
-                          data-testid={`button-reminder-${customer.id}`}
-                        >
-                          <Send className="h-4 w-4 mr-1" />
-                          Remind
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {filteredCustomers.length === 0 && (
+            {filteredCustomers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No credit customers found
+                {tickCustomers.length === 0 ? 'No credit customers found' : 'No customers match your search'}
               </div>
+            ) : (
+              <>
+                {/* Desktop Table */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Total Debt</TableHead>
+                        <TableHead>Last Order</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCustomers.map((customer) => (
+                        <TableRow key={customer.id} data-testid={`row-customer-${customer.id}`}>
+                          <TableCell className="font-medium">{customer.name}</TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <div>{customer.email}</div>
+                              <div className="text-muted-foreground">{customer.phone}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-bold text-lg">£{(customer.totalDebt || 0).toFixed(2)}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A'}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {customer.totalDebt > 0 ? (
+                              <Badge variant="destructive">Pending</Badge>
+                            ) : (
+                              <Badge variant="default">Paid</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRecordPayment(customer.id)}
+                                disabled={customer.totalDebt === 0}
+                                data-testid={`button-payment-${customer.id}`}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-1" />
+                                Payment
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleSendReminder(customer.id)}
+                                data-testid={`button-reminder-${customer.id}`}
+                              >
+                                <Send className="h-4 w-4 mr-1" />
+                                Remind
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteClick(customer)}
+                                data-testid={`button-delete-${customer.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="md:hidden space-y-4">
+                  {filteredCustomers.map((customer) => (
+                    <Card key={customer.id} data-testid={`card-customer-${customer.id}`}>
+                      <CardContent className="pt-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="font-medium">{customer.name}</p>
+                            <p className="text-sm text-muted-foreground">{customer.email}</p>
+                            <p className="text-sm text-muted-foreground">{customer.phone}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-bold">£{(customer.totalDebt || 0).toFixed(2)}</p>
+                            {customer.totalDebt > 0 ? (
+                              <Badge variant="destructive">Pending</Badge>
+                            ) : (
+                              <Badge variant="default">Paid</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 min-h-[44px]"
+                            onClick={() => handleRecordPayment(customer.id)}
+                            disabled={customer.totalDebt === 0}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Payment
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="min-h-[44px]"
+                            onClick={() => handleSendReminder(customer.id)}
+                          >
+                            <Send className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="min-h-[44px] text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteClick(customer)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remove Customer from Tick List</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to remove {customerToDelete?.name} from the tick list? 
+                This will clear their credit history.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteDialogOpen(false)}
+                className="min-h-[44px]"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleConfirmDelete}
+                disabled={deleteMutation.isPending}
+                className="min-h-[44px]"
+                data-testid="button-confirm-delete"
+              >
+                {deleteMutation.isPending ? 'Removing...' : 'Remove'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2, Edit2, Minus } from "lucide-react";
+import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2, Edit2, Minus, Copy, Check, Building, MapPin } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +61,17 @@ export default function Orders() {
   const [editLines, setEditLines] = useState<Array<{productId: string; productName: string; quantity: number; unitPrice: number}>>([]);
   const [newStatus, setNewStatus] = useState("");
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
+  const [copiedText, setCopiedText] = useState<string>("");
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(label);
+    setTimeout(() => setCopiedText(""), 2000);
+    toast({
+      title: "Copied",
+      description: `${label} copied to clipboard`,
+    });
+  };
 
   // Fetch orders
   const { data: orders = [], isLoading } = useQuery<Order[]>({
@@ -70,8 +81,18 @@ export default function Orders() {
 
   // Fetch order details
   const { data: orderDetails, isLoading: isLoadingDetails } = useQuery<OrderDetail>({
-    queryKey: ["order-details", orderDetailsId],
+    queryKey: ["/api/orders", orderDetailsId],
+    queryFn: async () => {
+      const response = await fetch(`/api/orders/${orderDetailsId}`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch order details');
+      return response.json();
+    },
     enabled: !!orderDetailsId,
+  });
+
+  // Fetch settings for bank details and collection address
+  const { data: settings } = useQuery<any>({
+    queryKey: ["/api/settings"],
   });
 
   // Update order status mutation
@@ -559,6 +580,97 @@ export default function Orders() {
                     ${parseFloat(orderDetails.total).toFixed(2)}
                   </span>
                 </div>
+
+                {/* Bank Details Section */}
+                {(settings?.bankName || settings?.accountNumber || settings?.sortCode) && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        Bank Details
+                      </h4>
+                      <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+                        {settings.bankName && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Bank:</span>
+                            <span className="font-medium">{settings.bankName}</span>
+                          </div>
+                        )}
+                        {settings.accountName && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Account Name:</span>
+                            <span className="font-medium">{settings.accountName}</span>
+                          </div>
+                        )}
+                        {settings.accountNumber && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Account Number:</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium font-mono">{settings.accountNumber}</span>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-6 w-6"
+                                onClick={() => copyToClipboard(settings.accountNumber, 'Account Number')}
+                                data-testid="button-copy-account-number"
+                              >
+                                {copiedText === 'Account Number' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        {settings.sortCode && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Sort Code:</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium font-mono">{settings.sortCode}</span>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-6 w-6"
+                                onClick={() => copyToClipboard(settings.sortCode, 'Sort Code')}
+                                data-testid="button-copy-sort-code"
+                              >
+                                {copiedText === 'Sort Code' ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Collection Address Section */}
+                {settings?.collectionEnabled && settings?.collectionAddress && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Collection Address
+                      </h4>
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-sm whitespace-pre-wrap">{settings.collectionAddress}</p>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 flex-shrink-0"
+                            onClick={() => copyToClipboard(settings.collectionAddress, 'Collection Address')}
+                            data-testid="button-copy-collection-address"
+                          >
+                            {copiedText === 'Collection Address' ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        {settings.collectionInstructions && (
+                          <p className="text-xs text-muted-foreground mt-2">{settings.collectionInstructions}</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <DialogFooter>

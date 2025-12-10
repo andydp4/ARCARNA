@@ -635,6 +635,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/locations/:id/stock", isAuthenticated, async (req: any, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { products } = await import('../apps/server/src/db/schema');
+      const { eq, desc } = await import('drizzle-orm');
+      
+      // For now, return all products with their stock levels
+      // In a multi-location system, this would filter by location_id
+      const allProducts = await db.select({
+        id: products.id,
+        name: products.name,
+        productCode: products.productCode,
+        stock: products.stock,
+        salePrice: products.salePrice,
+        costPrice: products.costPrice,
+        category: products.category,
+      }).from(products).orderBy(desc(products.stock));
+      
+      const stockSummary = {
+        totalProducts: allProducts.length,
+        totalStock: allProducts.reduce((sum, p) => sum + (p.stock || 0), 0),
+        lowStock: allProducts.filter(p => (p.stock || 0) <= 20 && (p.stock || 0) > 5).length,
+        criticalStock: allProducts.filter(p => (p.stock || 0) <= 5).length,
+        outOfStock: allProducts.filter(p => (p.stock || 0) === 0).length,
+      };
+      
+      res.json({
+        locationId: req.params.id,
+        products: allProducts,
+        summary: stockSummary,
+      });
+    } catch (error) {
+      console.error("Error fetching location stock:", error);
+      res.status(500).json({ message: "Failed to fetch stock levels" });
+    }
+  });
+
   // Loyalty tier routes
   app.get("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
     try {
@@ -902,23 +939,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Tick Customers endpoints - for Credit/Tick List page
   app.get("/api/tick-customers", isAuthenticated, async (req, res) => {
     try {
-      const customers = await storage.getCustomers();
-      // Filter customers with outstanding credit
-      const tickCustomers = customers
-        .filter(customer => customer.category === 'tick' || (customer.loyaltyPoints && customer.loyaltyPoints > 0))
-        .map(customer => ({
-          id: customer.id,
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone,
-          totalDebt: 0, // Would calculate from unpaid orders
-          lastOrderDate: customer.createdAt,
-          orders: []
-        }));
+      const { db } = await import('../apps/server/src/db');
+      const { customers, orders } = await import('../apps/server/src/db/schema');
+      const { eq, and, sql } = await import('drizzle-orm');
+      
+      // Get customers with tick orders
+      const allCustomers = await storage.getCustomers();
+      
+      // Get tick payment orders grouped by customer
+      const tickOrders = await db
+        .select({
+          customerId: orders.customer_id,
+          totalDebt: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
+          lastOrderDate: sql<string>`MAX(${orders.created_at})`,
+          orderCount: sql<number>`COUNT(*)`,
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.payment_method, 'tick'),
+            sql`${orders.status} != 'completed'`
+          )
+        )
+        .groupBy(orders.customer_id);
+      
+      // Merge customer data with tick orders
+      const tickCustomers = tickOrders
+        .filter(t => t.customerId)
+        .map(tickData => {
+          const customer = allCustomers.find(c => c.id === tickData.customerId);
+          return {
+            id: tickData.customerId,
+            name: customer?.name || 'Unknown Customer',
+            email: customer?.email || '',
+            phone: customer?.phone || '',
+            totalDebt: Number(tickData.totalDebt) || 0,
+            lastOrderDate: tickData.lastOrderDate,
+            orders: []
+          };
+        });
+      
       res.json(tickCustomers);
     } catch (error) {
       console.error("Error fetching tick customers:", error);
       res.status(500).json({ message: "Failed to fetch tick customers" });
+    }
+  });
+
+  app.delete("/api/tick-customers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders } = await import('../apps/server/src/db/schema');
+      const { eq, and } = await import('drizzle-orm');
+      
+      // Mark all tick orders for this customer as completed (paid)
+      await db.update(orders)
+        .set({ status: 'completed', updated_at: new Date() })
+        .where(
+          and(
+            eq(orders.customer_id, req.params.id),
+            eq(orders.payment_method, 'tick')
+          )
+        );
+      
+      res.json({ message: "Customer removed from tick list" });
+    } catch (error) {
+      console.error("Error removing tick customer:", error);
+      res.status(500).json({ message: "Failed to remove customer from tick list" });
+    }
+  });
+
+  app.post("/api/tick-customers/:id/mark-paid", isAuthenticated, async (req, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { orders } = await import('../apps/server/src/db/schema');
+      const { eq, and } = await import('drizzle-orm');
+      
+      // Mark all tick orders for this customer as completed
+      await db.update(orders)
+        .set({ status: 'completed', updated_at: new Date() })
+        .where(
+          and(
+            eq(orders.customer_id, req.params.id),
+            eq(orders.payment_method, 'tick')
+          )
+        );
+      
+      res.json({ message: "Customer debt marked as paid" });
+    } catch (error) {
+      console.error("Error marking customer as paid:", error);
+      res.status(500).json({ message: "Failed to mark customer as paid" });
     }
   });
 
