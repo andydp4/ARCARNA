@@ -66,6 +66,65 @@ async function upsertUser(
   });
 }
 
+async function checkAndHandleAllowList(claims: any): Promise<{ allowed: boolean; isOwner: boolean; isPending: boolean }> {
+  const replitUserId = claims["sub"];
+  const email = claims["email"];
+  const name = `${claims["first_name"] || ''} ${claims["last_name"] || ''}`.trim() || email;
+  const profileImageUrl = claims["profile_image_url"];
+  
+  // Check if user is already on allow list
+  const isAllowed = await storage.isUserAllowed(replitUserId);
+  if (isAllowed) {
+    const owner = await storage.getOwner();
+    return { allowed: true, isOwner: owner?.replitUserId === replitUserId, isPending: false };
+  }
+  
+  // Check if there's an owner already
+  const owner = await storage.getOwner();
+  
+  if (!owner) {
+    // No owner exists - first user becomes owner automatically
+    await storage.addAllowedUser({
+      replitUserId,
+      email,
+      name,
+      isOwner: 1,
+    });
+    return { allowed: true, isOwner: true, isPending: false };
+  }
+  
+  // User is not on allow list and not owner - check pending status
+  const existingRequest = await storage.getApprovalRequest(replitUserId);
+  
+  if (existingRequest) {
+    if (existingRequest.status === 'approved') {
+      // User was approved, add to allow list
+      await storage.addAllowedUser({
+        replitUserId,
+        email,
+        name,
+        isOwner: 0,
+      });
+      return { allowed: true, isOwner: false, isPending: false };
+    } else if (existingRequest.status === 'rejected') {
+      return { allowed: false, isOwner: false, isPending: false };
+    }
+    // Status is pending
+    return { allowed: false, isOwner: false, isPending: true };
+  }
+  
+  // Create new pending approval request
+  await storage.createApprovalRequest({
+    replitUserId,
+    email,
+    name,
+    profileImageUrl,
+    status: 'pending',
+  });
+  
+  return { allowed: false, isOwner: false, isPending: true };
+}
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
@@ -109,9 +168,38 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
+    passport.authenticate(`replitauth:${req.hostname}`, async (err: any, user: any, info: any) => {
+      if (err) {
+        console.error('[Auth] Callback error:', err);
+        return res.redirect('/api/login');
+      }
+      if (!user) {
+        return res.redirect('/api/login');
+      }
+      
+      // Check allow list
+      const claims = user.claims;
+      const allowListStatus = await checkAndHandleAllowList(claims);
+      
+      // Store allow list status in user session
+      user.isOwner = allowListStatus.isOwner;
+      user.isAllowed = allowListStatus.allowed;
+      user.isPending = allowListStatus.isPending;
+      
+      req.logIn(user, (loginErr: any) => {
+        if (loginErr) {
+          console.error('[Auth] Login error:', loginErr);
+          return res.redirect('/api/login');
+        }
+        
+        if (!allowListStatus.allowed) {
+          // Redirect to pending approval page
+          return res.redirect('/pending-approval');
+        }
+        
+        // Allowed user - redirect to home
+        return res.redirect('/');
+      });
     })(req, res, next);
   });
 
@@ -130,12 +218,15 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   // In development mode, bypass authentication
   if (process.env.NODE_ENV === 'development') {
-    // Set a mock user for development
+    // Set a mock user for development (as owner)
     req.user = req.user || {
       id: 'dev-user',
       username: 'Developer',
       email: 'dev@example.com',
       isAnonymous: false,
+      isOwner: true,
+      isAllowed: true,
+      isPending: false,
       claims: {
         sub: 'dev-user',
         email: 'dev@example.com',
@@ -150,6 +241,15 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   if (!req.isAuthenticated() || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Check if user is allowed
+  if (user.isAllowed === false) {
+    return res.status(403).json({ 
+      message: "Access pending approval", 
+      isPending: user.isPending,
+      code: 'PENDING_APPROVAL'
+    });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -172,4 +272,20 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
+};
+
+// Owner-only middleware for admin routes
+export const isOwner: RequestHandler = async (req, res, next) => {
+  // In development mode, allow access
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
+
+  const user = req.user as any;
+  
+  if (!user || !user.isOwner) {
+    return res.status(403).json({ message: "Access denied. Owner only." });
+  }
+  
+  return next();
 };

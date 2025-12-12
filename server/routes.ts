@@ -29,7 +29,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, isOwner } from "./replitAuth";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -1067,6 +1067,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating settings:", error);
       res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
+  // ===== ADMIN ROUTES - User Access Management =====
+  
+  // Get allowed users list (owner only)
+  app.get("/api/admin/allowed-users", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const users = await storage.getAllowedUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching allowed users:", error);
+      res.status(500).json({ message: "Failed to fetch allowed users" });
+    }
+  });
+
+  // Remove allowed user (owner only)
+  app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { replitUserId } = req.params;
+      
+      // Prevent owner from removing themselves
+      const owner = await storage.getOwner();
+      if (owner && owner.replitUserId === replitUserId) {
+        return res.status(400).json({ message: "Cannot remove owner from allowed users" });
+      }
+      
+      await storage.removeAllowedUser(replitUserId);
+      res.json({ message: "User removed from allowed list" });
+    } catch (error) {
+      console.error("Error removing allowed user:", error);
+      res.status(500).json({ message: "Failed to remove user" });
+    }
+  });
+
+  // Get pending approval requests (owner only)
+  app.get("/api/admin/pending-approvals", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const requests = await storage.getPendingApprovals();
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching pending approvals:", error);
+      res.status(500).json({ message: "Failed to fetch pending approvals" });
+    }
+  });
+
+  // Approve user (owner only)
+  app.post("/api/admin/approve/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { replitUserId } = req.params;
+      const approvedBy = req.user.claims?.sub || 'owner';
+      
+      await storage.approveUser(replitUserId, approvedBy);
+      res.json({ message: "User approved successfully" });
+    } catch (error) {
+      console.error("Error approving user:", error);
+      res.status(500).json({ message: "Failed to approve user" });
+    }
+  });
+
+  // Reject user (owner only)
+  app.post("/api/admin/reject/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { replitUserId } = req.params;
+      const rejectedBy = req.user.claims?.sub || 'owner';
+      
+      await storage.rejectUser(replitUserId, rejectedBy);
+      res.json({ message: "User rejected" });
+    } catch (error) {
+      console.error("Error rejecting user:", error);
+      res.status(500).json({ message: "Failed to reject user" });
+    }
+  });
+
+  // Check current user's approval status (for pending approval page)
+  app.get("/api/auth/approval-status", async (req: any, res) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ authenticated: false });
+      }
+      
+      const replitUserId = user.claims?.sub;
+      if (!replitUserId) {
+        return res.status(401).json({ authenticated: false });
+      }
+      
+      const isAllowed = await storage.isUserAllowed(replitUserId);
+      const approvalRequest = await storage.getApprovalRequest(replitUserId);
+      
+      res.json({
+        authenticated: true,
+        isAllowed,
+        isPending: approvalRequest?.status === 'pending',
+        isRejected: approvalRequest?.status === 'rejected',
+        name: user.claims?.name || user.claims?.first_name || 'User',
+        email: user.claims?.email,
+      });
+    } catch (error) {
+      console.error("Error checking approval status:", error);
+      res.status(500).json({ message: "Failed to check approval status" });
     }
   });
 
