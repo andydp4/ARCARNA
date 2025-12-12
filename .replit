@@ -7,9 +7,10 @@ channel = "stable-24_05"
 packages = ["zip"]
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
 build = ["npm", "run", "build"]
 run = ["npm", "run", "start"]
+ignorePorts = true
 
 [[ports]]
 localPort = 5000
