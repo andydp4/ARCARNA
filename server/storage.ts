@@ -33,6 +33,8 @@ import {
   promotions,
   overheadExpenses,
   orderExpenses,
+  allowedUsers,
+  userApprovalRequests,
   type User,
   type UpsertUser,
   type Customer,
@@ -49,7 +51,11 @@ import {
   type InsertOverheadExpense,
   type OrderExpense,
   type InsertOrderExpense,
-  type InsertProduct, // Import InsertProduct type
+  type InsertProduct,
+  type AllowedUser,
+  type InsertAllowedUser,
+  type UserApprovalRequest,
+  type InsertUserApprovalRequest,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
@@ -170,6 +176,20 @@ export interface IStorage {
 
   // Invoice operations
   getInvoicesWithDetails(): Promise<any[]>;
+
+  // Allow list operations
+  isUserAllowed(replitUserId: string): Promise<boolean>;
+  getAllowedUsers(): Promise<AllowedUser[]>;
+  addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser>;
+  removeAllowedUser(replitUserId: string): Promise<void>;
+  getOwner(): Promise<AllowedUser | null>;
+
+  // Approval request operations
+  getPendingApprovals(): Promise<UserApprovalRequest[]>;
+  getApprovalRequest(replitUserId: string): Promise<UserApprovalRequest | null>;
+  createApprovalRequest(data: InsertUserApprovalRequest): Promise<UserApprovalRequest>;
+  approveUser(replitUserId: string, approvedBy: string): Promise<void>;
+  rejectUser(replitUserId: string, rejectedBy: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1486,6 +1506,123 @@ export class DatabaseStorage implements IStorage {
     );
 
     return invoices;
+  }
+
+  // Allow list operations
+  async isUserAllowed(replitUserId: string): Promise<boolean> {
+    const [user] = await db
+      .select()
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId));
+    return !!user;
+  }
+
+  async getAllowedUsers(): Promise<AllowedUser[]> {
+    return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+  }
+
+  async addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser> {
+    const [user] = await db
+      .insert(allowedUsers)
+      .values(data)
+      .onConflictDoUpdate({
+        target: allowedUsers.replitUserId,
+        set: {
+          email: data.email,
+          name: data.name,
+          isOwner: data.isOwner,
+        },
+      })
+      .returning();
+    return user;
+  }
+
+  async removeAllowedUser(replitUserId: string): Promise<void> {
+    await db.delete(allowedUsers).where(eq(allowedUsers.replitUserId, replitUserId));
+  }
+
+  async getOwner(): Promise<AllowedUser | null> {
+    const [owner] = await db
+      .select()
+      .from(allowedUsers)
+      .where(eq(allowedUsers.isOwner, 1));
+    return owner || null;
+  }
+
+  // Approval request operations
+  async getPendingApprovals(): Promise<UserApprovalRequest[]> {
+    return db
+      .select()
+      .from(userApprovalRequests)
+      .where(eq(userApprovalRequests.status, 'pending'))
+      .orderBy(desc(userApprovalRequests.requestedAt));
+  }
+
+  async getApprovalRequest(replitUserId: string): Promise<UserApprovalRequest | null> {
+    const [request] = await db
+      .select()
+      .from(userApprovalRequests)
+      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+    return request || null;
+  }
+
+  async createApprovalRequest(data: InsertUserApprovalRequest): Promise<UserApprovalRequest> {
+    const [request] = await db
+      .insert(userApprovalRequests)
+      .values(data)
+      .onConflictDoUpdate({
+        target: userApprovalRequests.replitUserId,
+        set: {
+          email: data.email,
+          name: data.name,
+          profileImageUrl: data.profileImageUrl,
+          status: 'pending',
+        },
+      })
+      .returning();
+    return request;
+  }
+
+  async approveUser(replitUserId: string, approvedBy: string): Promise<void> {
+    // Update the approval request status
+    await db
+      .update(userApprovalRequests)
+      .set({
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: approvedBy,
+      })
+      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+
+    // Get the request details
+    const [request] = await db
+      .select()
+      .from(userApprovalRequests)
+      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+
+    // Add to allowed users
+    if (request) {
+      await db
+        .insert(allowedUsers)
+        .values({
+          replitUserId: request.replitUserId,
+          email: request.email,
+          name: request.name,
+          isOwner: 0,
+        })
+        .onConflictDoNothing();
+    }
+  }
+
+  async rejectUser(replitUserId: string, rejectedBy: string): Promise<void> {
+    await db
+      .update(userApprovalRequests)
+      .set({
+        status: 'rejected',
+        reviewedAt: new Date(),
+        reviewedBy: rejectedBy,
+      })
+      .where(eq(userApprovalRequests.replitUserId, replitUserId));
   }
 }
 

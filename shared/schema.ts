@@ -335,3 +335,44 @@ export const customerMetricsRelations = relations(customerMetrics, ({ one }) => 
     references: [customers.id],
   }),
 }));
+
+// Allowed users table - users who can access the system
+export const allowedUsers = pgTable("allowed_users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  replitUserId: varchar("replit_user_id", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }),
+  name: varchar("name", { length: 255 }),
+  isOwner: integer("is_owner").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AllowedUser = typeof allowedUsers.$inferSelect;
+export type InsertAllowedUser = typeof allowedUsers.$inferInsert;
+export const insertAllowedUserSchema = createInsertSchema(allowedUsers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAllowedUserData = z.infer<typeof insertAllowedUserSchema>;
+
+// User approval requests - pending users waiting for approval
+export const userApprovalRequests = pgTable("user_approval_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  replitUserId: varchar("replit_user_id", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }),
+  name: varchar("name", { length: 255 }),
+  profileImageUrl: varchar("profile_image_url", { length: 500 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, approved, rejected
+  requestedAt: timestamp("requested_at").defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+});
+
+export type UserApprovalRequest = typeof userApprovalRequests.$inferSelect;
+export type InsertUserApprovalRequest = typeof userApprovalRequests.$inferInsert;
+export const insertUserApprovalRequestSchema = createInsertSchema(userApprovalRequests).omit({
+  id: true,
+  requestedAt: true,
+  reviewedAt: true,
+  reviewedBy: true,
+});
+export type InsertUserApprovalRequestData = z.infer<typeof insertUserApprovalRequestSchema>;
