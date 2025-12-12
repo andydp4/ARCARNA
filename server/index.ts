@@ -71,6 +71,8 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+  let workerInstance: any = null;
+  
   server.listen({
     port,
     host: "0.0.0.0",
@@ -78,14 +80,16 @@ app.use((req, res, next) => {
   }, async () => {
     log(`serving on port ${port}`);
     
-    // Start analytics worker if database is available
+    // Start analytics worker if database is available (non-blocking)
     if (process.env.DATABASE_URL) {
       try {
-        const { analyticsWorker } = await import('../apps/server/src/workers/analytics.worker');
-        await analyticsWorker.start();
+        const workerModule = await import('../apps/server/src/workers/analytics.worker');
+        workerInstance = workerModule.analyticsWorker;
+        await workerInstance.start();
         log('Analytics worker started');
       } catch (error) {
-        console.error('Failed to start analytics worker:', error);
+        // Worker is optional - app works without it
+        log('Analytics worker not available (non-critical)');
       }
     }
   });
@@ -93,12 +97,11 @@ app.use((req, res, next) => {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     log('SIGTERM received, shutting down gracefully...');
-    if (process.env.DATABASE_URL) {
+    if (workerInstance) {
       try {
-        const { analyticsWorker } = await import('../apps/server/src/workers/analytics.worker');
-        analyticsWorker.stop();
+        workerInstance.stop();
       } catch (error) {
-        console.error('Error stopping worker:', error);
+        // Ignore shutdown errors
       }
     }
     process.exit(0);
