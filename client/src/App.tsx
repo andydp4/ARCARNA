@@ -22,6 +22,8 @@ import Settings from "@/pages/settings";
 import TickList from "@/pages/tick-list";
 import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
+import UserAccess from "@/pages/user-access";
+import PendingApproval from "@/pages/pending-approval";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -29,6 +31,7 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/pending-approval" component={PendingApproval} />
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
@@ -50,6 +53,7 @@ function Router() {
           <Route path="/invoices" component={Invoices} />
           <Route path="/settings" component={Settings} />
           <Route path="/tick-list" component={TickList} />
+          <Route path="/user-access" component={UserAccess} />
         </Layout>
       )}
       <Route component={NotFound} />

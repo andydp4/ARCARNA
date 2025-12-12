@@ -14,7 +14,8 @@ import {
   Boxes,
   Settings,
   CreditCard,
-  PackageCheck
+  PackageCheck,
+  Shield
 } from 'lucide-react'
 
 export const navItems = [
@@ -115,6 +116,13 @@ export const navItems = [
     href: '/tick-list',
     icon: CreditCard,
     testId: 'nav-tick-list'
+  },
+  {
+    key: 'user-access',
+    label: 'User Access',
+    href: '/user-access',
+    icon: Shield,
+    testId: 'nav-user-access'
   },
   {
     key: 'settings',
