@@ -24,6 +24,7 @@ import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
+import WorkerLogs from "@/pages/worker-logs";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -54,6 +55,7 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
+          <Route path="/worker-logs" component={WorkerLogs} />
         </Layout>
       )}
       <Route component={NotFound} />

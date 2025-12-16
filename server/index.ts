@@ -91,6 +91,28 @@ app.use((req, res, next) => {
         // Worker is optional - app works without it
         log('Analytics worker not available (non-critical)');
       }
+      
+      // Start event-driven worker runner
+      try {
+        const { startWorkerRunner } = await import('./workers');
+        startWorkerRunner({
+          dispatchIntervalMs: 1000,
+          processIntervalMs: 200,
+          concurrency: 3,
+        });
+        log('Event-driven worker runner started');
+      } catch (error) {
+        log('Event-driven worker runner not available (non-critical)');
+      }
+      
+      // Start reconciliation job for stuck events
+      try {
+        const { startReconciliationJob } = await import('./eventBus');
+        startReconciliationJob(5 * 60 * 1000); // Every 5 minutes
+        log('Reconciliation job started');
+      } catch (error) {
+        log('Reconciliation job not available (non-critical)');
+      }
     }
   });
   
@@ -103,6 +125,20 @@ app.use((req, res, next) => {
       } catch (error) {
         // Ignore shutdown errors
       }
+    }
+    // Stop event-driven worker runner
+    try {
+      const { stopWorkerRunner } = await import('./workers');
+      stopWorkerRunner();
+    } catch (error) {
+      // Ignore shutdown errors
+    }
+    // Stop reconciliation job
+    try {
+      const { stopReconciliationJob } = await import('./eventBus');
+      stopReconciliationJob();
+    } catch (error) {
+      // Ignore shutdown errors
     }
     process.exit(0);
   });

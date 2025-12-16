@@ -268,9 +268,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Fetch the complete order to return with status
       const { db } = await import('../apps/server/src/db');
-      const { orders } = await import('../apps/server/src/db/schema');
+      const { orders, order_items } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
       const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
+      
+      // Publish OrderCreated event for workers
+      try {
+        const { publishEvent } = await import('./eventBus');
+        const items = await db.select().from(order_items).where(eq(order_items.order_id, result.orderId));
+        await publishEvent('OrderCreated', result.orderId, {
+          order: {
+            orderId: result.orderId,
+            status: createdOrder?.status || 'pending',
+            customerId: createdOrder?.customer_id,
+            total: parseFloat(createdOrder?.total || '0'),
+            items: items.map(item => ({
+              lineId: item.id,
+              productId: item.product_id,
+              qty: item.quantity,
+              unitPrice: parseFloat(item.unit_price || '0'),
+              lineTotal: parseFloat(item.total_price || '0'),
+            })),
+          }
+        }, { source: 'api-orders' });
+      } catch (eventError) {
+        console.error("Error publishing OrderCreated event:", eventError);
+      }
       
       res.status(201).json({ 
         ...result, 
@@ -376,6 +399,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Get current status before update
+      const [currentOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+      const previousStatus = currentOrder?.status;
+      
       const [updated] = await db.update(orders)
         .set({ status: validation.data.status, updated_at: new Date() })
         .where(eq(orders.id, req.params.id))
@@ -384,6 +411,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) {
         return res.status(404).json({ message: 'Order not found' });
       }
+      
+      // Publish OrderStatusChanged event
+      try {
+        const { publishEvent } = await import('./eventBus');
+        await publishEvent('OrderStatusChanged', req.params.id, {
+          orderId: req.params.id,
+          from: previousStatus,
+          to: validation.data.status,
+          changedAt: new Date().toISOString(),
+        }, { source: 'api-orders' });
+      } catch (eventError) {
+        console.error("Error publishing OrderStatusChanged event:", eventError);
+      }
+      
       res.json(updated);
     } catch (error) {
       console.error("Error updating order:", error);
@@ -395,6 +436,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { engine } = await import('../apps/server/src/engine.wiring');
       const result = await engine.updateOrder(req.params.id, req.body);
+      
+      // Publish OrderUpdated event
+      try {
+        const { publishEvent } = await import('./eventBus');
+        const { db } = await import('../apps/server/src/db');
+        const { orders, order_items } = await import('../apps/server/src/db/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+        const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
+        
+        await publishEvent('OrderUpdated', req.params.id, {
+          order: {
+            orderId: req.params.id,
+            status: updatedOrder?.status,
+            customerId: updatedOrder?.customer_id,
+            total: parseFloat(updatedOrder?.total || '0'),
+            items: items.map(item => ({
+              lineId: item.id,
+              productId: item.product_id,
+              qty: item.quantity,
+              unitPrice: parseFloat(item.unit_price || '0'),
+              lineTotal: parseFloat(item.total_price || '0'),
+            })),
+          }
+        }, { source: 'api-orders' });
+      } catch (eventError) {
+        console.error("Error publishing OrderUpdated event:", eventError);
+      }
+      
       res.json(result);
     } catch (error: any) {
       console.error("Error updating order:", error);
@@ -1168,6 +1239,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking approval status:", error);
       res.status(500).json({ message: "Failed to check approval status" });
+    }
+  });
+
+  // ===== WORKER RUN LOGS ROUTES (Owner only) =====
+  
+  // Get worker run logs with filters
+  app.get("/api/admin/worker-logs", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { getWorkerRunLogs } = await import('./eventBus');
+      const logs = await getWorkerRunLogs({
+        eventId: req.query.eventId as string,
+        correlationId: req.query.correlationId as string,
+        workerName: req.query.workerName as string,
+        status: req.query.status as string,
+        limit: parseInt(req.query.limit as string) || 100,
+        offset: parseInt(req.query.offset as string) || 0,
+      });
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching worker logs:", error);
+      res.status(500).json({ message: "Failed to fetch worker logs" });
+    }
+  });
+
+  // Get dead letters
+  app.get("/api/admin/dead-letters", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { getDeadLetters } = await import('./eventBus');
+      const deadLetters = await getDeadLetters({
+        eventId: req.query.eventId as string,
+        workerName: req.query.workerName as string,
+        limit: parseInt(req.query.limit as string) || 100,
+        offset: parseInt(req.query.offset as string) || 0,
+      });
+      res.json(deadLetters);
+    } catch (error) {
+      console.error("Error fetching dead letters:", error);
+      res.status(500).json({ message: "Failed to fetch dead letters" });
+    }
+  });
+
+  // Get job queue stats
+  app.get("/api/admin/worker-stats", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { getJobQueueStats } = await import('./eventBus');
+      const stats = await getJobQueueStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching worker stats:", error);
+      res.status(500).json({ message: "Failed to fetch worker stats" });
+    }
+  });
+
+  // Retry a dead letter
+  app.post("/api/admin/dead-letters/:id/retry", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { retryDeadLetter } = await import('./eventBus');
+      const success = await retryDeadLetter(req.params.id);
+      if (success) {
+        res.json({ message: "Dead letter requeued for retry" });
+      } else {
+        res.status(404).json({ message: "Dead letter not found" });
+      }
+    } catch (error) {
+      console.error("Error retrying dead letter:", error);
+      res.status(500).json({ message: "Failed to retry dead letter" });
+    }
+  });
+
+  // Get event details
+  app.get("/api/admin/events/:eventId", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { getEvent, getWorkerRunLogs } = await import('./eventBus');
+      const event = await getEvent(req.params.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const workerLogs = await getWorkerRunLogs({ eventId: req.params.eventId });
+      
+      res.json({
+        event,
+        workerLogs,
+      });
+    } catch (error) {
+      console.error("Error fetching event details:", error);
+      res.status(500).json({ message: "Failed to fetch event details" });
     }
   });
 

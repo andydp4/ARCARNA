@@ -1,0 +1,526 @@
+EPOS Event-Driven Sync Spec (Engine + Domain Workers)
+====================================================
+
+0) Outcome
+----------
+When an order is created/updated/status-changed/refunded (etc), the system publishes an event once, and all modules stay consistent via dedicated workers. Every worker reports back. You get a Settings → Worker Run Logs screen that shows exactly what happened.
+
+No continuous “bots moving data” loops. Use event-driven, idempotent workers.
+
+1) Architecture
+---------------
+
+1.1 Components
+- Central Engine
+  - Event publisher + orchestrator (workflow runner)
+  - Owns: event creation, orchestration steps, run logs, retries, dead letters, reconciliation
+- Event Transport
+  - Postgres Transactional Outbox + Job Queue (recommended, simplest + reliable)
+  - Optionally later: Redis/BullMQ / Kafka
+- Domain Workers (Dedicated)
+  - Order, Inventory, Customer, Invoice, Loyalty, BusinessInsights, Finance, Expenses
+  - Each worker:
+    - Consumes events (jobs)
+    - Updates its own tables
+    - Records idempotency
+    - Emits a “worker result” back (via DB log + optional event)
+- Admin UI
+  - Settings → Worker Run Logs
+  - Filters, retry, dead-letter viewer
+
+2) Event Model
+--------------
+
+2.1 Event Envelope (JSON)
+All events use the same envelope:
+
+{
+  "eventId": "evt_01J...ULID",
+  "eventType": "OrderCreated",
+  "occurredAt": "2025-12-16T14:12:52.123Z",
+  "correlationId": "ord_0001",
+  "actor": { "type": "user", "id": "usr_123" },
+  "source": "pos-terminal-01",
+  "version": 1,
+  "payload": { }
+}
+
+Required fields:
+- eventId (ULID recommended)
+- eventType
+- occurredAt
+- correlationId (usually orderId; for expense events use expenseId)
+- version
+- payload
+
+2.2 Canonical Event Types
+
+Orders:
+- OrderCreated
+- OrderUpdated (items/qty/discounts/customer changed)
+- OrderStatusChanged (InProgress/Hold/Delayed/Completed/Cancelled)
+- PaymentCaptured
+- RefundIssued
+- OrderCancelled
+
+Expenses:
+- ExpenseLogged
+- ExpenseUpdated
+- ExpenseDeleted
+
+Optional (future):
+- InventoryAdjusted
+- CustomerMerged
+
+2.3 Payload Schemas
+
+OrderCreated / OrderUpdated (shared)
+{
+  "order": {
+    "orderId": "ord_0001",
+    "status": "InProgress",
+    "createdAt": "2025-12-16T14:12:50.000Z",
+    "updatedAt": "2025-12-16T14:12:50.000Z",
+    "customerId": "cus_100",
+    "currency": "GBP",
+    "totals": {
+      "subtotal": 1000,
+      "discount": 0,
+      "tax": 0,
+      "total": 1000
+    },
+    "items": [
+      {
+        "lineId": "li_1",
+        "sku": "SKU123",
+        "name": "Product A",
+        "qty": 2,
+        "unitPrice": 500,
+        "lineTotal": 1000,
+        "cogsUnit": 250
+      }
+    ],
+    "payment": {
+      "method": "cash",
+      "paid": false
+    }
+  }
+}
+
+OrderStatusChanged
+{
+  "orderId": "ord_0001",
+  "from": "InProgress",
+  "to": "Completed",
+  "changedAt": "2025-12-16T14:18:10.000Z"
+}
+
+PaymentCaptured
+{
+  "orderId": "ord_0001",
+  "capturedAt": "2025-12-16T14:18:10.000Z",
+  "amount": 1000,
+  "method": "cash",
+  "reference": "till_01_000882"
+}
+
+RefundIssued
+{
+  "orderId": "ord_0001",
+  "refundedAt": "2025-12-16T15:01:10.000Z",
+  "amount": 500,
+  "reason": "partial_return",
+  "lines": [
+    { "lineId": "li_1", "qty": 1, "amount": 500 }
+  ]
+}
+
+ExpenseLogged
+{
+  "expense": {
+    "expenseId": "exp_9001",
+    "occurredAt": "2025-12-16T10:00:00.000Z",
+    "category": "Supplies",
+    "amount": 2000,
+    "currency": "GBP",
+    "vendor": "Supplier Ltd",
+    "notes": "Packing materials",
+    "linkedOrderId": null
+  }
+}
+
+3) Worker Contracts
+-------------------
+
+3.1 Worker Interface (logical)
+Each worker implements:
+- supports(eventType)
+- handle(eventEnvelope) → WorkerResult
+
+WorkerResult schema:
+{
+  "worker": "InventoryWorker",
+  "eventId": "evt_...",
+  "correlationId": "ord_0001",
+  "status": "success",
+  "summary": "Inventory updated for 2 SKUs",
+  "data": { "changedSkus": ["SKU123"], "lowStockWarnings": [] }
+}
+
+3.2 Idempotency Rules (non-negotiable)
+Each worker records it processed (eventId, workerName) exactly once.
+If the same event is delivered again:
+- no-op and return “already_processed”
+Prevents double stock deductions, duplicate invoices, etc.
+
+4) Database Design (Postgres)
+-----------------------------
+
+4.1 Core Tables (examples)
+
+orders
+- order_id PK
+- status
+- customer_id
+- currency
+- subtotal, discount, tax, total (integer minor units)
+- created_at, updated_at
+
+order_items
+- order_id FK
+- line_id PK
+- sku
+- qty
+- unit_price, line_total
+- cogs_unit (optional but recommended)
+
+inventory_items
+- sku PK
+- on_hand
+- reserved (optional)
+- updated_at
+
+inventory_movements
+- movement_id PK
+- sku
+- delta (negative for sale, positive for return)
+- reason (sale/refund/adjustment)
+- correlation_id (orderId)
+- event_id
+- created_at
+Unique constraint: (event_id, sku)
+
+customers
+- customer_id PK
+- lifetime_value
+- orders_count
+- last_order_at
+- etc
+
+invoices
+- invoice_id PK
+- order_id unique (or allow multiple types with (order_id, invoice_type) unique)
+- status
+- file_path / drive_url
+- created_at
+
+loyalty_accounts
+- customer_id PK
+- points_balance
+- tier
+- updated_at
+
+loyalty_ledger
+- ledger_id PK
+- customer_id
+- order_id
+- event_id
+- points_delta
+- reason (earn/reverse/adjust)
+Unique constraint: (event_id, customer_id)
+
+Insights / Finance Aggregates (start simple)
+- insights_daily (date, revenue, orders_count, aov, etc)
+- insights_sku_daily (date, sku, qty_sold, revenue)
+- profit_daily (date, revenue, cogs, gross_profit, expenses_allocated?)
+- expenses (expense_id pk, occurred_at, category, amount, etc)
+
+4.2 Event System Tables (critical)
+
+event_outbox
+- event_id PK
+- event_type
+- occurred_at
+- correlation_id
+- version
+- payload JSONB
+- status enum: pending | dispatched
+- created_at
+Indexes:
+- (status, occurred_at)
+- (correlation_id)
+
+job_queue (deliveries to workers - fan-out)
+- job_id PK
+- event_id FK
+- worker_name
+- status enum: queued | running | success | failed | dead_letter
+- attempts int
+- max_attempts int default 10
+- run_at timestamp (for scheduling retries)
+- locked_at timestamp
+- locked_by text
+- last_error text
+- created_at, updated_at
+Unique: (event_id, worker_name)
+
+processed_events (worker idempotency record)
+- event_id
+- worker_name
+- processed_at
+- result_summary
+Unique: (event_id, worker_name)
+
+worker_run_logs (UI reads this)
+- log_id PK
+- event_id
+- correlation_id
+- event_type
+- worker_name
+- status enum: success | failed | retrying | dead_letter | already_processed
+- attempt
+- summary
+- data JSONB (optional)
+- error text (optional)
+- created_at
+
+dead_letters
+- dead_letter_id PK
+- job_id
+- event_id
+- worker_name
+- failed_at
+- error
+- payload_snapshot JSONB
+
+5) Event Publishing + Fan-out (Transactional Outbox)
+----------------------------------------------------
+
+5.1 Order creation flow (single transaction)
+When POS creates an order:
+1) Insert/Update orders, order_items
+2) Insert row into event_outbox with OrderCreated
+3) Commit transaction
+
+A dispatcher (Engine):
+- reads event_outbox where status=pending
+- marks as dispatched
+- creates job_queue rows for relevant workers
+
+This ensures: if the order is saved, the event exists. If the order fails, no phantom event.
+
+6) Orchestrator Workflows (Sagas)
+---------------------------------
+
+Pattern A (recommended): Choreography with required worker set
+Engine defines “required workers per event type”, waits until all required workers are success (or already_processed), then marks the event complete.
+
+Required workers matrix
+
+OrderCreated:
+- InventoryWorker
+- CustomerWorker
+- LoyaltyWorker
+- InvoiceWorker (or on PaymentCaptured depending on rules)
+- BusinessInsightsWorker
+- FinanceWorker
+- DashboardWorker (optional; or dashboard reads aggregates)
+
+OrderUpdated:
+- InventoryWorker (recalculate delta)
+- CustomerWorker
+- LoyaltyWorker (recalc delta)
+- BusinessInsightsWorker
+- FinanceWorker
+- DashboardWorker (optional)
+
+OrderStatusChanged:
+- CustomerWorker (last status)
+- BusinessInsightsWorker (depends on what status drives metrics)
+- FinanceWorker
+- DashboardWorker
+
+RefundIssued:
+- InventoryWorker (increase stock for returned lines)
+- LoyaltyWorker (reverse points)
+- FinanceWorker
+- BusinessInsightsWorker
+- CustomerWorker
+- DashboardWorker
+
+ExpenseLogged:
+- ExpensesWorker
+- FinanceWorker
+- BusinessInsightsWorker (if dashboard shows expenses)
+- DashboardWorker
+
+7) Worker Logic Requirements (by domain)
+----------------------------------------
+
+7.1 InventoryWorker
+Input: OrderCreated/Updated/RefundIssued/Cancelled
+
+Rules:
+- On OrderCreated: subtract qty from inventory_items.on_hand using inventory_movements for audit.
+- On OrderUpdated: compute diff between previous and new items (requires previous snapshot or DB read).
+- On RefundIssued or Cancelled: add stock back for relevant lines.
+
+Idempotency:
+- unique (event_id, sku) in inventory_movements
+
+7.2 CustomerWorker
+Update:
+- Orders count / lifetime value
+- Append order reference
+- Last order date/status
+
+Idempotency:
+- processed_events is enough if updates are computed from authoritative order table totals
+
+7.3 InvoiceWorker
+- Generate PDF invoice
+- Save to Drive/storage
+- Insert/Update invoices
+
+Idempotency:
+- unique (order_id, invoice_type) OR key off event_id depending on your rule
+
+7.4 LoyaltyWorker
+- Earn points based on your business rule
+- Reverse points on refund/cancel
+- Write ledger entry with unique (event_id, customer_id)
+
+7.5 BusinessInsightsWorker
+- Update daily aggregates and sku aggregates
+- Prefer incremental updates based on event payload totals
+
+7.6 FinanceWorker
+- Update profit insights: revenue, cogs, gross profit
+- Merge expenses at dashboard layer or update profit_daily
+
+7.7 ExpensesWorker
+- Maintain expenses tables
+- Emit updates for dashboard if required
+
+7.8 Dashboard Strategy
+Best: dashboard reads precomputed aggregate tables.
+Optional: dashboard_snapshots table updated by DashboardWorker.
+
+If snapshot approach:
+dashboard_snapshots
+- snapshot_id
+- as_of
+- data JSONB
+
+8) Retry / Backoff / Dead Letters
+---------------------------------
+
+8.1 Retry policy
+- max_attempts = 10
+- backoff: run_at = now + (2^attempts * 10 seconds) (cap at ~15 minutes)
+- after max attempts → dead_letter
+
+8.2 Locking
+Workers pick jobs where:
+- status='queued' AND run_at <= now()
+Lock row FOR UPDATE SKIP LOCKED
+Set status='running', locked_at, locked_by
+
+9) Settings UI: Worker Run Logs
+-------------------------------
+
+Pages:
+1) Event Runs
+- occurredAt, eventType, correlationId (orderId), overall status (computed), View details
+
+2) Event Detail
+- per worker: status, attempt count, summary, last error
+- actions: Retry failed workers; Re-run worker (admin only; safe/idempotent)
+
+3) Dead Letters
+- list + error + payload snapshot + Requeue button
+
+10) Minimal Internal API Endpoints (if needed)
+----------------------------------------------
+
+- POST /engine/events (internal): publish event (usually engine only)
+- POST /engine/retry/:eventId (admin)
+- POST /engine/retry/:eventId/:worker (admin)
+- GET /engine/logs?correlationId=&eventType=&status=
+- GET /engine/logs/:eventId
+- GET /engine/deadletters
+
+If workers run in-process, you may not need HTTP; can be function calls driven by job runner.
+
+11) Reconciliation Job (safety net)
+-----------------------------------
+
+Scheduled job every 5–15 mins:
+- Find events dispatched where required workers not complete after X mins
+- Requeue missing jobs safely (idempotent)
+- Flag stuck workflows in UI
+
+12) Implementation Skeleton (TypeScript shape)
+----------------------------------------------
+
+Event types:
+type EventType =
+  | "OrderCreated"
+  | "OrderUpdated"
+  | "OrderStatusChanged"
+  | "PaymentCaptured"
+  | "RefundIssued"
+  | "OrderCancelled"
+  | "ExpenseLogged"
+  | "ExpenseUpdated"
+  | "ExpenseDeleted";
+
+type EventEnvelope<TPayload = unknown> = {
+  eventId: string;
+  eventType: EventType;
+  occurredAt: string;
+  correlationId: string;
+  actor?: { type: "user" | "system"; id: string };
+  source?: string;
+  version: number;
+  payload: TPayload;
+};
+
+Worker base contract:
+type WorkerStatus = "success" | "failed" | "already_processed";
+
+type WorkerResult = {
+  worker: string;
+  eventId: string;
+  correlationId: string;
+  status: WorkerStatus;
+  summary: string;
+  data?: Record<string, unknown>;
+};
+
+interface Worker {
+  name: string;
+  supports: Set<EventType>;
+  handle(event: EventEnvelope): Promise<WorkerResult>;
+}
+
+13) “Order 001 updated everything” log line
+-------------------------------------------
+
+Generated by querying worker_run_logs grouped by eventId and rendering a compact badge row like:
+
+Order ord_0001 | OrderCreated | inventory✅ customer✅ loyalty✅ invoice✅ insights✅ finance✅ dashboard✅
+
+Final rule (don’t mess this up)
+-------------------------------
+The order write + outbox insert must be the same DB transaction.

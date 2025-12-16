@@ -376,3 +376,211 @@ export const insertUserApprovalRequestSchema = createInsertSchema(userApprovalRe
   reviewedBy: true,
 });
 export type InsertUserApprovalRequestData = z.infer<typeof insertUserApprovalRequestSchema>;
+
+// ==================== EVENT-DRIVEN SYNC SYSTEM ====================
+
+// Event types for the system
+export const EVENT_TYPES = [
+  'OrderCreated',
+  'OrderUpdated', 
+  'OrderStatusChanged',
+  'PaymentCaptured',
+  'RefundIssued',
+  'OrderCancelled',
+  'ExpenseLogged',
+  'ExpenseUpdated',
+  'ExpenseDeleted'
+] as const;
+export type EventType = typeof EVENT_TYPES[number];
+
+// Worker names
+export const WORKER_NAMES = [
+  'InventoryWorker',
+  'CustomerWorker',
+  'InvoiceWorker',
+  'LoyaltyWorker',
+  'BusinessInsightsWorker',
+  'FinanceWorker',
+  'ExpensesWorker'
+] as const;
+export type WorkerName = typeof WORKER_NAMES[number];
+
+// Job statuses
+export const JOB_STATUSES = ['queued', 'running', 'success', 'failed', 'dead_letter'] as const;
+export type JobStatus = typeof JOB_STATUSES[number];
+
+// Worker result statuses
+export const WORKER_RESULT_STATUSES = ['success', 'failed', 'already_processed', 'retrying'] as const;
+export type WorkerResultStatus = typeof WORKER_RESULT_STATUSES[number];
+
+// Event Outbox - stores events before dispatch
+export const eventOutbox = pgTable("event_outbox", {
+  eventId: varchar("event_id", { length: 36 }).primaryKey(),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  correlationId: varchar("correlation_id", { length: 100 }).notNull(),
+  actor: jsonb("actor").$type<{ type: 'user' | 'system'; id: string }>(),
+  source: varchar("source", { length: 100 }),
+  version: integer("version").notNull().default(1),
+  payload: jsonb("payload").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, dispatched
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("event_outbox_status_occurred_idx").on(table.status, table.occurredAt),
+  index("event_outbox_correlation_idx").on(table.correlationId),
+]);
+
+export type EventOutbox = typeof eventOutbox.$inferSelect;
+export type InsertEventOutbox = typeof eventOutbox.$inferInsert;
+
+// Job Queue - fan-out deliveries to workers
+export const jobQueue = pgTable("job_queue", {
+  jobId: varchar("job_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id", { length: 36 }).notNull().references(() => eventOutbox.eventId),
+  workerName: varchar("worker_name", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("queued"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(10),
+  runAt: timestamp("run_at").notNull().defaultNow(),
+  lockedAt: timestamp("locked_at"),
+  lockedBy: varchar("locked_by", { length: 100 }),
+  lastError: varchar("last_error", { length: 2000 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("job_queue_status_run_at_idx").on(table.status, table.runAt),
+  index("job_queue_event_worker_idx").on(table.eventId, table.workerName),
+]);
+
+export type JobQueue = typeof jobQueue.$inferSelect;
+export type InsertJobQueue = typeof jobQueue.$inferInsert;
+
+// Processed Events - worker idempotency tracking
+export const processedEvents = pgTable("processed_events", {
+  eventId: varchar("event_id", { length: 36 }).notNull(),
+  workerName: varchar("worker_name", { length: 50 }).notNull(),
+  processedAt: timestamp("processed_at").defaultNow(),
+  resultSummary: varchar("result_summary", { length: 500 }),
+}, (table) => [
+  primaryKey({ columns: [table.eventId, table.workerName] }),
+]);
+
+export type ProcessedEvent = typeof processedEvents.$inferSelect;
+export type InsertProcessedEvent = typeof processedEvents.$inferInsert;
+
+// Worker Run Logs - UI display table
+export const workerRunLogs = pgTable("worker_run_logs", {
+  logId: varchar("log_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id", { length: 36 }).notNull(),
+  correlationId: varchar("correlation_id", { length: 100 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  workerName: varchar("worker_name", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  attempt: integer("attempt").notNull().default(1),
+  summary: varchar("summary", { length: 500 }),
+  data: jsonb("data"),
+  error: varchar("error", { length: 2000 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("worker_run_logs_event_idx").on(table.eventId),
+  index("worker_run_logs_correlation_idx").on(table.correlationId),
+  index("worker_run_logs_worker_status_idx").on(table.workerName, table.status),
+  index("worker_run_logs_created_idx").on(table.createdAt),
+]);
+
+export type WorkerRunLog = typeof workerRunLogs.$inferSelect;
+export type InsertWorkerRunLog = typeof workerRunLogs.$inferInsert;
+
+// Dead Letters - permanently failed jobs
+export const deadLetters = pgTable("dead_letters", {
+  deadLetterId: varchar("dead_letter_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  jobId: varchar("job_id", { length: 36 }).notNull(),
+  eventId: varchar("event_id", { length: 36 }).notNull(),
+  workerName: varchar("worker_name", { length: 50 }).notNull(),
+  failedAt: timestamp("failed_at").defaultNow(),
+  error: varchar("error", { length: 2000 }),
+  payloadSnapshot: jsonb("payload_snapshot"),
+}, (table) => [
+  index("dead_letters_event_idx").on(table.eventId),
+  index("dead_letters_worker_idx").on(table.workerName),
+  index("dead_letters_failed_at_idx").on(table.failedAt),
+]);
+
+export type DeadLetter = typeof deadLetters.$inferSelect;
+export type InsertDeadLetter = typeof deadLetters.$inferInsert;
+
+// Inventory Movements - audit trail for stock changes
+export const inventoryMovements = pgTable("inventory_movements", {
+  movementId: varchar("movement_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  sku: varchar("sku", { length: 100 }).notNull(),
+  productId: uuid("product_id").references(() => products.id),
+  delta: integer("delta").notNull(), // negative for sale, positive for return
+  reason: varchar("reason", { length: 50 }).notNull(), // sale, refund, adjustment, order_update
+  correlationId: varchar("correlation_id", { length: 100 }).notNull(), // orderId
+  eventId: varchar("event_id", { length: 36 }).notNull(),
+  previousStock: integer("previous_stock"),
+  newStock: integer("new_stock"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("inventory_movements_sku_idx").on(table.sku),
+  index("inventory_movements_event_sku_idx").on(table.eventId, table.sku),
+  index("inventory_movements_correlation_idx").on(table.correlationId),
+]);
+
+export type InventoryMovement = typeof inventoryMovements.$inferSelect;
+export type InsertInventoryMovement = typeof inventoryMovements.$inferInsert;
+
+// Loyalty Ledger - audit trail for points changes
+export const loyaltyLedger = pgTable("loyalty_ledger", {
+  ledgerId: varchar("ledger_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  customerId: uuid("customer_id").notNull().references(() => customers.id),
+  orderId: uuid("order_id").references(() => orders.id),
+  eventId: varchar("event_id", { length: 36 }).notNull(),
+  pointsDelta: integer("points_delta").notNull(),
+  reason: varchar("reason", { length: 50 }).notNull(), // earn, reverse, adjust
+  previousBalance: integer("previous_balance"),
+  newBalance: integer("new_balance"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("loyalty_ledger_customer_idx").on(table.customerId),
+  index("loyalty_ledger_event_customer_idx").on(table.eventId, table.customerId),
+]);
+
+export type LoyaltyLedger = typeof loyaltyLedger.$inferSelect;
+export type InsertLoyaltyLedger = typeof loyaltyLedger.$inferInsert;
+
+// Event Envelope type for runtime use
+export type EventEnvelope<TPayload = unknown> = {
+  eventId: string;
+  eventType: EventType;
+  occurredAt: string;
+  correlationId: string;
+  actor?: { type: 'user' | 'system'; id: string };
+  source?: string;
+  version: number;
+  payload: TPayload;
+};
+
+// Worker Result type
+export type WorkerResult = {
+  worker: WorkerName;
+  eventId: string;
+  correlationId: string;
+  status: WorkerResultStatus;
+  summary: string;
+  data?: Record<string, unknown>;
+  error?: string;
+};
+
+// Required workers per event type configuration
+export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
+  OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  OrderUpdated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  OrderStatusChanged: ['CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  PaymentCaptured: ['InvoiceWorker', 'FinanceWorker'],
+  RefundIssued: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  OrderCancelled: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+  ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+  ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+};
