@@ -33,6 +33,7 @@ function generateEventId(): string {
 /**
  * Publish an event to the outbox
  * This should be called within the same transaction as the business operation
+ * @param txClient - Optional transaction client for transactional outbox pattern
  */
 export async function publishEvent<TPayload>(
   eventType: EventType,
@@ -41,12 +42,16 @@ export async function publishEvent<TPayload>(
   options?: {
     actor?: { type: 'user' | 'system'; id: string };
     source?: string;
-  }
+  },
+  txClient?: typeof db
 ): Promise<string> {
   const eventId = generateEventId();
   const now = new Date();
+  
+  // Use transaction client if provided, otherwise use global db
+  const dbClient = txClient || db;
 
-  await db.insert(eventOutbox).values({
+  await dbClient.insert(eventOutbox).values({
     eventId,
     eventType,
     occurredAt: now,
@@ -61,6 +66,21 @@ export async function publishEvent<TPayload>(
 
   console.log(`[EventBus] Published event: ${eventType} (${eventId}) for ${correlationId}`);
   return eventId;
+}
+
+/**
+ * Helper to create a transactional event publisher bound to a transaction
+ */
+export function createTransactionalPublisher(tx: typeof db) {
+  return async <TPayload>(
+    eventType: EventType,
+    correlationId: string,
+    payload: TPayload,
+    options?: {
+      actor?: { type: 'user' | 'system'; id: string };
+      source?: string;
+    }
+  ) => publishEvent(eventType, correlationId, payload, options, tx);
 }
 
 /**

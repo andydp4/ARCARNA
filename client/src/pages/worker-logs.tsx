@@ -80,8 +80,14 @@ export default function WorkerLogsPage() {
     queryKey: ['/api/admin/worker-stats'],
   });
 
+  // Build query string from filters
+  const logsQueryString = new URLSearchParams(
+    Object.entries(filters).filter(([_, v]) => v !== '' && v !== null)
+  ).toString();
+  const logsEndpoint = `/api/admin/worker-logs${logsQueryString ? '?' + logsQueryString : ''}`;
+  
   const { data: logs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery<WorkerLog[]>({
-    queryKey: ['/api/admin/worker-logs', filters],
+    queryKey: [logsEndpoint],
   });
 
   const { data: deadLetters = [], isLoading: deadLettersLoading, refetch: refetchDeadLetters } = useQuery<DeadLetter[]>({
@@ -96,6 +102,7 @@ export default function WorkerLogsPage() {
       toast({ title: 'Success', description: 'Dead letter requeued for retry' });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/dead-letters'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/worker-stats'] });
+      refetchLogs();
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });

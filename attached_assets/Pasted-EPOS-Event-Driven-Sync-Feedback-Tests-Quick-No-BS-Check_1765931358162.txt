@@ -1,0 +1,150 @@
+EPOS Event-Driven Sync – Feedback + Tests (Quick, No-BS Checklist)
+==============================================================
+
+Context / What’s happening
+--------------------------
+- The Worker Logs UI page rendering does NOT prove the system works.
+- If Stats/Logs are all zeros and “No logs found”, you have not proven any events are flowing end-to-end.
+- “API returned the main page (HTML) instead of JSON” is almost always a routing/proxy/auth fallback issue — not harmless.
+
+1) What looks good (based on agent summary)
+-------------------------------------------
+- Transactional outbox pattern implemented
+- Job queue + retry/backoff + dead letters implemented
+- Idempotency guards added (inventory movements + loyalty ledger)
+- Reconciliation job every ~5 minutes
+- Logs UI page exists
+
+2) Main risks / red flags
+-------------------------
+A) Stats = 0 / No logs
+- Likely means outbox events are not being published OR jobs are not being created OR runner isn’t processing jobs.
+
+B) API returns HTML main page instead of JSON
+- Usually means frontend is calling the wrong path, API routes are registered after SPA catch-all, auth middleware redirects, or dev proxy is misconfigured.
+- Must be fixed to reliably observe logs and stats.
+
+3) End-to-End Proof: Database Checks (run after creating a real order)
+----------------------------------------------------------------------
+Create a real order in the POS, then run:
+
+A) Outbox (did we publish an event?)
+------------------------------------
+select event_id, event_type, correlation_id, occurred_at, status
+from event_outbox
+order by occurred_at desc
+limit 20;
+
+B) Jobs (did the engine fan-out jobs?)
+--------------------------------------
+select event_id, worker_name, status, attempts, run_at, last_error
+from job_queue
+order by created_at desc
+limit 50;
+
+C) Worker runs (did workers actually run + log?)
+------------------------------------------------
+select event_id, worker_name, status, attempt, summary, created_at
+from worker_run_logs
+order by created_at desc
+limit 50;
+
+D) Idempotency records (did workers mark processed?)
+----------------------------------------------------
+select event_id, worker_name, processed_at
+from processed_events
+order by processed_at desc
+limit 50;
+
+Expected “good” results
+-----------------------
+- event_outbox contains OrderCreated (or OrderUpdated/StatusChanged) with your orderId as correlation_id
+- job_queue has one row per worker for that event (e.g., 7 rows), moving from queued → running → success
+- worker_run_logs has one row per worker showing success/failed
+- processed_events has one record per worker for (event_id, worker_name)
+
+Interpretation if broken
+------------------------
+- If event_outbox is empty after order creation:
+  → Order routes are NOT publishing to outbox (or transaction not committed)
+- If event_outbox exists but job_queue is empty:
+  → Dispatcher/fan-out is not running or not picking up pending outbox rows
+- If job_queue exists but worker_run_logs is empty:
+  → Runner not executing jobs or not writing logs (or crashing)
+- If some workers succeed and others fail:
+  → Investigate last_error, retry behaviour, and dead_letters
+
+4) Fix the “API returns main page HTML instead of JSON” bug
+----------------------------------------------------------
+Symptom:
+- Your fetch/call to stats/logs returns HTML (often starts with <!doctype html>) instead of JSON.
+
+Most common causes + fixes
+--------------------------
+Cause A: Frontend calling wrong path
+- UI calls /worker-logs/stats instead of /api/worker-logs/stats
+Fix:
+- Standardise all API calls under /api (or whatever your backend uses)
+- Use one API base constant for fetch calls
+
+Cause B: Backend routes registered AFTER SPA catch-all
+- Express/Vite setups often have app.use('*', serveIndexHtml)
+- If API routes are declared after that, the SPA HTML will be returned.
+Fix:
+- Register /api/** routes BEFORE the catch-all wildcard fallback
+
+Cause C: Auth middleware redirecting to home page
+- If API requires auth and middleware redirects to “/”, you’ll receive HTML.
+Fix:
+- For API endpoints, return 401 JSON (do not redirect)
+- UI handles 401 and shows login/permission error
+
+Cause D: Dev proxy / test harness misconfigured
+- Vite/Replit proxy not forwarding /api correctly for automated tests.
+Fix:
+- Align proxy config and automated test base URL with the real server path
+
+Quick verification
+------------------
+Browser devtools → Network → click the stats/log request:
+- If response begins with <!doctype html>, you’re getting HTML fallback.
+- Confirm the request URL is correct (/api/...).
+
+5) API sanity tests (no UI involved)
+------------------------------------
+Run these (adjust PORT if needed):
+
+curl -i http://localhost:<PORT>/api/worker-logs/stats
+curl -i http://localhost:<PORT>/api/worker-logs?limit=10
+
+Expected:
+- HTTP 200
+- Content-Type: application/json
+- Body is JSON, not HTML
+
+If you get HTML:
+- Route is not being hit; fix path/mounting/order of route registration.
+
+6) Add a test hook (recommended)
+--------------------------------
+Add an admin-only endpoint:
+- POST /api/engine/test-event
+Which publishes a synthetic OrderCreated event for a known test order (or creates one).
+Purpose:
+- Lets you test outbox → job queue → workers → logs without relying on POS flows.
+
+7) Acceptance criteria (definition of “it works”)
+-------------------------------------------------
+To close the work as DONE, all must be true:
+
+1) Creating an order produces exactly 1 outbox event
+2) That event produces exactly N jobs (N = number of required workers, e.g., 7)
+3) Jobs complete and write N worker_run_logs rows
+4) Re-delivery of same event produces NO duplicates (inventory movements, loyalty ledger, invoices)
+5) Worker Logs UI shows the event and filters work
+6) Stats endpoint always returns JSON (never SPA HTML)
+
+Notes / Non-negotiable rule
+---------------------------
+Order write + outbox insert MUST be the same DB transaction.
+If that is not enforced, you will get random desync and missing updates.

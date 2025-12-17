@@ -1329,6 +1329,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint to verify event-driven system end-to-end
+  app.post("/api/admin/test-event", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { publishEvent, dispatchPendingEvents } = await import('./eventBus');
+      const testOrderId = `test-order-${Date.now()}`;
+      
+      // Publish a test OrderCreated event
+      const eventId = await publishEvent('OrderCreated', testOrderId, {
+        order: {
+          orderId: testOrderId,
+          status: 'pending',
+          customerId: null,
+          total: 50.00,
+          items: [
+            {
+              lineId: 'test-line-1',
+              productId: 'test-product-1',
+              qty: 2,
+              unitPrice: 25.00,
+              lineTotal: 50.00,
+            }
+          ],
+        }
+      }, { source: 'test-endpoint' });
+      
+      // Immediately dispatch to create jobs
+      const jobsCreated = await dispatchPendingEvents();
+      
+      console.log(`[TestEvent] Published event ${eventId}, dispatched ${jobsCreated} jobs`);
+      
+      res.json({
+        success: true,
+        eventId,
+        correlationId: testOrderId,
+        jobsCreated,
+        message: `Test event published. Check /api/admin/worker-logs to see results.`,
+      });
+    } catch (error) {
+      console.error("Error creating test event:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to create test event",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
