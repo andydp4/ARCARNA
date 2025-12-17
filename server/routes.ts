@@ -260,43 +260,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Orders routes using domain engine
+  // Orders routes using domain engine with transactional outbox
   app.post("/api/orders", isAuthenticated, async (req, res) => {
     try {
-      const { engine } = await import('../apps/server/src/engine.wiring');
-      const result = await engine.placeOrder(req.body);
-      
-      // Fetch the complete order to return with status
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
-      const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
+      const { publishEvent } = await import('./eventBus');
+      const { engine } = await import('../apps/server/src/engine.wiring');
       
-      // Publish OrderCreated event for workers
-      try {
-        const { publishEvent } = await import('./eventBus');
-        const items = await db.select().from(order_items).where(eq(order_items.order_id, result.orderId));
-        await publishEvent('OrderCreated', result.orderId, {
-          order: {
-            orderId: result.orderId,
-            status: createdOrder?.status || 'pending',
-            customerId: createdOrder?.customer_id,
-            total: parseFloat(createdOrder?.total || '0'),
-            items: items.map(item => ({
-              lineId: item.id,
-              productId: item.product_id,
-              qty: item.quantity,
-              unitPrice: parseFloat(item.unit_price || '0'),
-              lineTotal: parseFloat(item.total_price || '0'),
-            })),
-          }
-        }, { source: 'api-orders' });
-      } catch (eventError) {
-        console.error("Error publishing OrderCreated event:", eventError);
-      }
+      // Create order via engine (handles its own validation/logic)
+      const result = await engine.placeOrder(req.body);
+      
+      // Fetch the complete order and items
+      const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
+      const items = await db.select().from(order_items).where(eq(order_items.order_id, result.orderId));
+      
+      // Publish event - this is critical, failure should be visible
+      // Note: True transactional outbox requires engine refactor to accept tx client
+      const eventId = await publishEvent('OrderCreated', result.orderId, {
+        order: {
+          orderId: result.orderId,
+          status: createdOrder?.status || 'pending',
+          customerId: createdOrder?.customer_id,
+          total: parseFloat(createdOrder?.total || '0'),
+          items: items.map(item => ({
+            lineId: item.id,
+            productId: item.product_id,
+            qty: item.quantity,
+            unitPrice: parseFloat(item.unit_price || '0'),
+            lineTotal: parseFloat(item.total_price || '0'),
+          })),
+        }
+      }, { source: 'api-orders' });
+      
+      console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
       
       res.status(201).json({ 
         ...result, 
+        eventId, // Include eventId in response for tracing
         order: createdOrder ? {
           id: createdOrder.id,
           status: createdOrder.status,
@@ -389,6 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { orders } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
       const { updateOrderStatusSchema } = await import('../shared/schema');
+      const { publishEvent } = await import('./eventBus');
       
       // Validate status
       const validation = updateOrderStatusSchema.safeParse(req.body);
@@ -412,20 +415,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Order not found' });
       }
       
-      // Publish OrderStatusChanged event
-      try {
-        const { publishEvent } = await import('./eventBus');
-        await publishEvent('OrderStatusChanged', req.params.id, {
-          orderId: req.params.id,
-          from: previousStatus,
-          to: validation.data.status,
-          changedAt: new Date().toISOString(),
-        }, { source: 'api-orders' });
-      } catch (eventError) {
-        console.error("Error publishing OrderStatusChanged event:", eventError);
-      }
+      // Publish OrderStatusChanged event - critical, visible failure
+      const eventId = await publishEvent('OrderStatusChanged', req.params.id, {
+        orderId: req.params.id,
+        from: previousStatus,
+        to: validation.data.status,
+        changedAt: new Date().toISOString(),
+      }, { source: 'api-orders' });
       
-      res.json(updated);
+      console.log(`[Orders] Status changed ${req.params.id}: ${previousStatus} → ${validation.data.status} (event: ${eventId})`);
+      
+      res.json({ ...updated, eventId });
     } catch (error) {
       console.error("Error updating order:", error);
       res.status(500).json({ message: "Failed to update order" });
@@ -435,38 +435,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/orders/:id", isAuthenticated, async (req, res) => {
     try {
       const { engine } = await import('../apps/server/src/engine.wiring');
+      const { publishEvent } = await import('./eventBus');
+      const { db } = await import('../apps/server/src/db');
+      const { orders, order_items } = await import('../apps/server/src/db/schema');
+      const { eq } = await import('drizzle-orm');
+      
       const result = await engine.updateOrder(req.params.id, req.body);
       
-      // Publish OrderUpdated event
-      try {
-        const { publishEvent } = await import('./eventBus');
-        const { db } = await import('../apps/server/src/db');
-        const { orders, order_items } = await import('../apps/server/src/db/schema');
-        const { eq } = await import('drizzle-orm');
-        
-        const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
-        const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
-        
-        await publishEvent('OrderUpdated', req.params.id, {
-          order: {
-            orderId: req.params.id,
-            status: updatedOrder?.status,
-            customerId: updatedOrder?.customer_id,
-            total: parseFloat(updatedOrder?.total || '0'),
-            items: items.map(item => ({
-              lineId: item.id,
-              productId: item.product_id,
-              qty: item.quantity,
-              unitPrice: parseFloat(item.unit_price || '0'),
-              lineTotal: parseFloat(item.total_price || '0'),
-            })),
-          }
-        }, { source: 'api-orders' });
-      } catch (eventError) {
-        console.error("Error publishing OrderUpdated event:", eventError);
-      }
+      // Fetch updated order details
+      const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+      const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
       
-      res.json(result);
+      // Publish OrderUpdated event - critical, visible failure
+      const eventId = await publishEvent('OrderUpdated', req.params.id, {
+        order: {
+          orderId: req.params.id,
+          status: updatedOrder?.status,
+          customerId: updatedOrder?.customer_id,
+          total: parseFloat(updatedOrder?.total || '0'),
+          items: items.map(item => ({
+            lineId: item.id,
+            productId: item.product_id,
+            qty: item.quantity,
+            unitPrice: parseFloat(item.unit_price || '0'),
+            lineTotal: parseFloat(item.total_price || '0'),
+          })),
+        }
+      }, { source: 'api-orders' });
+      
+      console.log(`[Orders] Updated order ${req.params.id} (event: ${eventId})`);
+      
+      res.json({ ...result, eventId });
     } catch (error: any) {
       console.error("Error updating order:", error);
       const message = error.message || "Failed to update order";
@@ -1333,19 +1332,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/test-event", isAuthenticated, isOwner, async (req: any, res) => {
     try {
       const { publishEvent, dispatchPendingEvents } = await import('./eventBus');
-      const testOrderId = `test-order-${Date.now()}`;
+      const { randomUUID } = await import('crypto');
       
-      // Publish a test OrderCreated event
+      // Use valid UUIDs for all IDs to prevent database errors
+      const testOrderId = randomUUID();
+      const testLineId = randomUUID();
+      const testProductId = randomUUID(); // Valid UUID prevents InventoryWorker failures
+      
+      // Publish a test OrderCreated event with valid UUIDs
       const eventId = await publishEvent('OrderCreated', testOrderId, {
         order: {
           orderId: testOrderId,
           status: 'pending',
-          customerId: null,
+          customerId: null, // No customer to avoid lookup failures
           total: 50.00,
           items: [
             {
-              lineId: 'test-line-1',
-              productId: 'test-product-1',
+              lineId: testLineId,
+              productId: testProductId, // Valid UUID - InventoryWorker will gracefully handle non-existent product
               qty: 2,
               unitPrice: 25.00,
               lineTotal: 50.00,

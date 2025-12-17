@@ -8,8 +8,8 @@
  */
 
 import { db } from "../db";
-import { customers, customerMetrics } from "../../shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { customers, customerMetrics, processedEvents } from "../../shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -38,6 +38,28 @@ export class CustomerWorker implements IWorker {
     const payload = event.payload as OrderPayload;
     
     try {
+      // Idempotency check - verify we haven't processed this event for this worker
+      const alreadyProcessed = await db
+        .select()
+        .from(processedEvents)
+        .where(
+          and(
+            eq(processedEvents.eventId, event.eventId),
+            eq(processedEvents.workerName, this.name)
+          )
+        )
+        .limit(1);
+
+      if (alreadyProcessed.length > 0) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'already_processed',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
       const customerId = payload.order?.customerId || payload.customerId;
       
       if (!customerId) {

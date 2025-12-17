@@ -8,7 +8,8 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { processedEvents } from "../../shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -61,6 +62,28 @@ export class FinanceWorker implements IWorker {
 
   async handle(event: EventEnvelope): Promise<WorkerResult> {
     try {
+      // Idempotency check - verify we haven't processed this event for this worker
+      const alreadyProcessed = await db
+        .select()
+        .from(processedEvents)
+        .where(
+          and(
+            eq(processedEvents.eventId, event.eventId),
+            eq(processedEvents.workerName, this.name)
+          )
+        )
+        .limit(1);
+
+      if (alreadyProcessed.length > 0) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'already_processed',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
       if (event.eventType.startsWith('Expense')) {
         return await this.handleExpenseEvent(event);
       } else {

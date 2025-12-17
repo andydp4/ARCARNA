@@ -6,6 +6,9 @@
  * - Updates expense aggregates
  */
 
+import { db } from "../db";
+import { processedEvents } from "../../shared/schema";
+import { eq, and } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -36,6 +39,28 @@ export class ExpensesWorker implements IWorker {
     const payload = event.payload as ExpensePayload;
     
     try {
+      // Idempotency check - verify we haven't processed this event for this worker
+      const alreadyProcessed = await db
+        .select()
+        .from(processedEvents)
+        .where(
+          and(
+            eq(processedEvents.eventId, event.eventId),
+            eq(processedEvents.workerName, this.name)
+          )
+        )
+        .limit(1);
+
+      if (alreadyProcessed.length > 0) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'already_processed',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
       const expense = payload.expense;
       const expenseId = expense?.expenseId || payload.expenseId || event.correlationId;
       const amount = expense?.amount || payload.amount || 0;

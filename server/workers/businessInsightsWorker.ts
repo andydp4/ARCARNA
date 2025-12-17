@@ -8,7 +8,7 @@
  */
 
 import { db } from "../db";
-import { analyticsDaily, analyticsWeekly, analyticsMonthly } from "../../shared/schema";
+import { analyticsDaily, analyticsWeekly, analyticsMonthly, processedEvents } from "../../shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
@@ -47,6 +47,28 @@ export class BusinessInsightsWorker implements IWorker {
     const payload = event.payload as OrderPayload;
     
     try {
+      // Idempotency check - verify we haven't processed this event for this worker
+      const alreadyProcessed = await db
+        .select()
+        .from(processedEvents)
+        .where(
+          and(
+            eq(processedEvents.eventId, event.eventId),
+            eq(processedEvents.workerName, this.name)
+          )
+        )
+        .limit(1);
+
+      if (alreadyProcessed.length > 0) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'already_processed',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
       const total = payload.order?.totals?.total || payload.order?.total || payload.total || payload.amount || 0;
       const eventDate = new Date(event.occurredAt);
       const dateStr = eventDate.toISOString().split('T')[0];

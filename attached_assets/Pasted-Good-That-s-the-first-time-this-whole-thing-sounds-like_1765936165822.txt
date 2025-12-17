@@ -1,0 +1,53 @@
+Good. That’s the first time this whole thing sounds like it actually works instead of just looking pretty. Fixing that /[object Object] URL bug and adding a test-event endpoint are exactly the kind of boring-but-critical wins that stop you flying blind.
+
+That said, I’m going to be picky (because production is picky).
+
+Quick sanity check on your numbers (a couple things don’t perfectly add up)
+	•	You say 7 workers registered, but “6 workers × 2 events = 12 jobs”.
+→ Fine if 1 worker doesn’t subscribe to OrderCreated (e.g., Invoice only on PaymentCaptured or OrderCompleted).
+Action: confirm the “required workers per eventType” matrix is explicit in code, not vibes.
+	•	12 jobs created, 10 successful, Queued=2, Failed=0.
+→ That’s plausible if two jobs are waiting on run_at (scheduled) or locked/rate-limited.
+Action: identify which two workers are queued and why (run_at in future? dependency? throttle?).
+	•	Worker run logs: 19 entries but Processed records: 10.
+→ Also plausible if you log multiple attempts / “already_processed” / reconciliation touches, but only write processed_events once per job success.
+Action: make sure processed_events gets written on success for every worker that claims to have completed.
+
+The key thing to verify now (before you trust it with real money)
+
+1) Transactional outbox is truly transactional
+
+You added “publishEvent accepts optional transaction client” — perfect.
+Now confirm the order write + outbox insert are in the same DB transaction in the real order routes (not just in the test endpoint).
+
+2) Idempotency isn’t only for inventory/loyalty
+
+You’ve guarded inventory movements + loyalty ledger (great), but the usual duplicate pain also hits:
+	•	InvoiceWorker (unique (order_id, invoice_type) or (event_id)), otherwise you’ll mint double PDFs.
+	•	CustomerWorker (order count / lifetime value updates need to be safe)
+	•	Finance/Insights (aggregates must be event-idempotent)
+
+3) “OrderUpdated” delta logic
+
+This is where systems go to die:
+	•	Update items/qty/discounts → inventory adjustments must be diff-based, not “reapply full order”.
+	•	Loyalty/finance/insights must also adjust by delta or recompute from a canonical source safely.
+
+4) Failure mode drill (do this once and you’ll sleep better)
+
+Force one worker to fail (e.g., throw error in InvoiceWorker for a test order) and confirm:
+	•	Job goes failed then retries with backoff
+	•	Eventually dead-letters after max attempts
+	•	UI shows it
+	•	“Retry failed workers” actually requeues and succeeds after you remove the forced failure
+
+What I’d tell your agent to do next (tight scope)
+	1.	Add a “required workers per eventType” config (single source of truth) and display it in logs detail.
+	2.	Add a job detail view showing run_at, locked_at, locked_by, last_error.
+	3.	Extend idempotency to Invoice + Finance/Insights (if not already).
+	4.	Add one end-to-end test for:
+	•	OrderCreated → Completed → RefundIssued
+	•	OrderUpdated changing quantities
+	•	Repeat event delivery (same eventId) → zero duplicate side effects
+
+If you paste the list of workers and which eventTypes they subscribe to (or the code snippet), I’ll tell you immediately whether your “6 workers per OrderCreated” is correct or if you’ve accidentally left a module out.

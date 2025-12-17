@@ -6,6 +6,9 @@
  * - PaymentCaptured: Trigger invoice generation
  */
 
+import { db } from "../db";
+import { processedEvents } from "../../shared/schema";
+import { eq, and } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -34,6 +37,28 @@ export class InvoiceWorker implements IWorker {
     const payload = event.payload as OrderPayload;
     
     try {
+      // Idempotency check - prevent duplicate invoice generation
+      const alreadyProcessed = await db
+        .select()
+        .from(processedEvents)
+        .where(
+          and(
+            eq(processedEvents.eventId, event.eventId),
+            eq(processedEvents.workerName, this.name)
+          )
+        )
+        .limit(1);
+
+      if (alreadyProcessed.length > 0) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'already_processed',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
       const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
 
       // Invoice generation is a non-blocking operation
