@@ -1328,6 +1328,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get job queue with detailed info (run_at, locked_at, last_error)
+  app.get("/api/admin/job-queue", isAuthenticated, isOwner, async (req: any, res) => {
+    try {
+      const { db } = await import('../apps/server/src/db');
+      const { jobQueue } = await import('../shared/schema');
+      const { desc, eq, and } = await import('drizzle-orm');
+      
+      // Build filters
+      const conditions: any[] = [];
+      if (req.query.status) {
+        conditions.push(eq(jobQueue.status, req.query.status));
+      }
+      if (req.query.workerName) {
+        conditions.push(eq(jobQueue.workerName, req.query.workerName));
+      }
+      if (req.query.eventId) {
+        conditions.push(eq(jobQueue.eventId, req.query.eventId));
+      }
+      
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      let query = db.select().from(jobQueue);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+      
+      const jobs = await query.orderBy(desc(jobQueue.createdAt)).limit(limit).offset(offset);
+      
+      res.json(jobs);
+    } catch (error) {
+      console.error("Error fetching job queue:", error);
+      res.status(500).json({ message: "Failed to fetch job queue" });
+    }
+  });
+
   // Test endpoint to verify event-driven system end-to-end
   app.post("/api/admin/test-event", isAuthenticated, isOwner, async (req: any, res) => {
     try {

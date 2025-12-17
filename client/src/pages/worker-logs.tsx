@@ -46,6 +46,20 @@ type WorkerStats = {
   deadLetter: number;
 };
 
+type Job = {
+  id: string;
+  eventId: string;
+  workerName: string;
+  status: string;
+  attempts: number;
+  maxAttempts: number;
+  runAt: string | null;
+  lockedAt: string | null;
+  lockedBy: string | null;
+  lastError: string | null;
+  createdAt: string;
+};
+
 const statusColors: Record<string, string> = {
   success: 'bg-green-500',
   failed: 'bg-red-500',
@@ -94,6 +108,20 @@ export default function WorkerLogsPage() {
     queryKey: ['/api/admin/dead-letters'],
   });
 
+  // Job queue with detailed info
+  const [jobFilters, setJobFilters] = useState({
+    status: '',
+    workerName: '',
+  });
+  const jobQueryString = new URLSearchParams(
+    Object.entries(jobFilters).filter(([_, v]) => v !== '' && v !== null)
+  ).toString();
+  const jobQueueEndpoint = `/api/admin/job-queue${jobQueryString ? '?' + jobQueryString : ''}`;
+  
+  const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useQuery<Job[]>({
+    queryKey: [jobQueueEndpoint],
+  });
+
   const retryMutation = useMutation({
     mutationFn: async (deadLetterId: string) => {
       return apiRequest('POST', `/api/admin/dead-letters/${deadLetterId}/retry`);
@@ -113,6 +141,7 @@ export default function WorkerLogsPage() {
     refetchStats();
     refetchLogs();
     refetchDeadLetters();
+    refetchJobs();
   };
 
   const workerNames = [
@@ -200,6 +229,12 @@ export default function WorkerLogsPage() {
       <Tabs defaultValue="logs" className="space-y-4">
         <TabsList>
           <TabsTrigger value="logs" data-testid="tab-logs">Worker Logs</TabsTrigger>
+          <TabsTrigger value="job-queue" data-testid="tab-job-queue">
+            Job Queue
+            {(stats?.queued || 0) > 0 && (
+              <Badge variant="secondary" className="ml-2">{stats?.queued}</Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="dead-letters" data-testid="tab-dead-letters">
             Dead Letters
             {(stats?.deadLetter || 0) > 0 && (
@@ -388,6 +423,118 @@ export default function WorkerLogsPage() {
                                 </div>
                               </DialogContent>
                             </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="job-queue" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Job Queue</CardTitle>
+              <CardDescription>
+                Current job queue status with run_at, locked_at, and last_error details
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Job Queue Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Status</label>
+                  <Select
+                    value={jobFilters.status || 'all'}
+                    onValueChange={(value) => setJobFilters({ ...jobFilters, status: value === 'all' ? '' : value })}
+                  >
+                    <SelectTrigger data-testid="select-job-status">
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="queued">Queued</SelectItem>
+                      <SelectItem value="running">Running</SelectItem>
+                      <SelectItem value="success">Success</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Worker</label>
+                  <Select
+                    value={jobFilters.workerName || 'all'}
+                    onValueChange={(value) => setJobFilters({ ...jobFilters, workerName: value === 'all' ? '' : value })}
+                  >
+                    <SelectTrigger data-testid="select-job-worker">
+                      <SelectValue placeholder="All Workers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Workers</SelectItem>
+                      {workerNames.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button variant="outline" onClick={() => refetchJobs()} data-testid="btn-refresh-jobs">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh Jobs
+                  </Button>
+                </div>
+              </div>
+
+              {jobsLoading ? (
+                <div className="flex justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No jobs found matching filters</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[500px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Worker</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Attempts</TableHead>
+                        <TableHead>Run At</TableHead>
+                        <TableHead>Locked At</TableHead>
+                        <TableHead>Last Error</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobs.map((job) => (
+                        <TableRow key={job.id} data-testid={`row-job-${job.id}`}>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {job.createdAt ? format(new Date(job.createdAt), 'MMM d, HH:mm:ss') : '-'}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{job.workerName}</TableCell>
+                          <TableCell>
+                            <Badge className={`${statusColors[job.status] || 'bg-gray-500'} text-white`}>
+                              {statusIcons[job.status]}
+                              <span className="ml-1">{job.status}</span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {job.attempts}/{job.maxAttempts}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {job.runAt ? format(new Date(job.runAt), 'MMM d, HH:mm:ss') : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {job.lockedAt ? format(new Date(job.lockedAt), 'HH:mm:ss') : '-'}
+                            {job.lockedBy && <span className="text-xs block">{job.lockedBy.slice(0, 20)}...</span>}
+                          </TableCell>
+                          <TableCell className="max-w-[250px] truncate text-red-600 text-sm" title={job.lastError || ''}>
+                            {job.lastError || '-'}
                           </TableCell>
                         </TableRow>
                       ))}
