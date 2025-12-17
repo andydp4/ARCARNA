@@ -255,6 +255,32 @@ export const orderItems = pgTable("order_items", {
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
 
+// Invoices table
+export const invoices = pgTable("invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").references(() => orders.id),
+  customerId: uuid("customer_id").references(() => customers.id),
+  invoiceNumber: varchar("invoice_number", { length: 50 }).notNull().unique(),
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
+  tax: numeric("tax", { precision: 10, scale: 2 }).default("0"),
+  total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).default("sent"),
+  dueDate: varchar("due_date", { length: 10 }),
+  googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
+  googleDriveLink: varchar("google_drive_link", { length: 1024 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = typeof invoices.$inferInsert;
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertInvoiceData = z.infer<typeof insertInvoiceSchema>;
+
 // Analytics tables
 export const analyticsDaily = pgTable('analytics_daily', {
   date: date('date').primaryKey(),

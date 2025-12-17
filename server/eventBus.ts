@@ -200,6 +200,7 @@ export async function acquireJob(workerId: string): Promise<typeof jobQueue.$inf
 
 /**
  * Mark a job as successful
+ * Wraps all operations in a transaction for atomicity and concurrent safety
  */
 export async function completeJob(
   jobId: string,
@@ -211,41 +212,45 @@ export async function completeJob(
 ): Promise<void> {
   const now = new Date();
 
-  // Update job status
-  await db
-    .update(jobQueue)
-    .set({
-      status: 'success',
-      updatedAt: now,
-    })
-    .where(eq(jobQueue.jobId, jobId));
+  // Wrap all completion operations in a transaction for atomicity
+  await db.transaction(async (tx) => {
+    // Update job status
+    await tx
+      .update(jobQueue)
+      .set({
+        status: 'success',
+        updatedAt: now,
+      })
+      .where(eq(jobQueue.jobId, jobId));
 
-  // Record in processed_events for idempotency
-  await db
-    .insert(processedEvents)
-    .values({
+    // Record in processed_events for idempotency
+    await tx
+      .insert(processedEvents)
+      .values({
+        eventId,
+        workerName,
+        processedAt: now,
+        resultSummary: summary,
+      })
+      .onConflictDoNothing();
+
+    // Log the successful run
+    await tx.insert(workerRunLogs).values({
       eventId,
+      correlationId,
+      eventType,
       workerName,
-      processedAt: now,
-      resultSummary: summary,
-    })
-    .onConflictDoNothing();
-
-  // Log the successful run
-  await db.insert(workerRunLogs).values({
-    eventId,
-    correlationId,
-    eventType,
-    workerName,
-    status: 'success',
-    attempt: 1,
-    summary,
-    createdAt: now,
+      status: 'success',
+      attempt: 1,
+      summary,
+      createdAt: now,
+    });
   });
 }
 
 /**
  * Mark a job as failed with retry logic
+ * Wraps all operations in a transaction for atomicity and concurrent safety
  */
 export async function failJob(
   jobId: string,
@@ -260,43 +265,46 @@ export async function failJob(
   const now = new Date();
 
   if (attempt >= maxAttempts) {
-    // Move to dead letter
-    await db
-      .update(jobQueue)
-      .set({
+    // Move to dead letter - wrap in transaction
+    await db.transaction(async (tx) => {
+      // Update job status
+      await tx
+        .update(jobQueue)
+        .set({
+          status: 'dead_letter',
+          lastError: error,
+          updatedAt: now,
+        })
+        .where(eq(jobQueue.jobId, jobId));
+
+      // Get the event payload for snapshot
+      const event = await tx
+        .select()
+        .from(eventOutbox)
+        .where(eq(eventOutbox.eventId, eventId))
+        .limit(1);
+
+      // Insert into dead_letters
+      await tx.insert(deadLetters).values({
+        jobId,
+        eventId,
+        workerName,
+        failedAt: now,
+        error,
+        payloadSnapshot: event[0]?.payload || {},
+      });
+
+      // Log dead letter
+      await tx.insert(workerRunLogs).values({
+        eventId,
+        correlationId,
+        eventType,
+        workerName,
         status: 'dead_letter',
-        lastError: error,
-        updatedAt: now,
-      })
-      .where(eq(jobQueue.jobId, jobId));
-
-    // Get the event payload for snapshot
-    const event = await db
-      .select()
-      .from(eventOutbox)
-      .where(eq(eventOutbox.eventId, eventId))
-      .limit(1);
-
-    // Insert into dead_letters
-    await db.insert(deadLetters).values({
-      jobId,
-      eventId,
-      workerName,
-      failedAt: now,
-      error,
-      payloadSnapshot: event[0]?.payload || {},
-    });
-
-    // Log dead letter
-    await db.insert(workerRunLogs).values({
-      eventId,
-      correlationId,
-      eventType,
-      workerName,
-      status: 'dead_letter',
-      attempt,
-      error,
-      createdAt: now,
+        attempt,
+        error,
+        createdAt: now,
+      });
     });
 
     console.log(`[EventBus] Job ${jobId} moved to dead letter after ${attempt} attempts`);
@@ -305,29 +313,32 @@ export async function failJob(
     const backoffMs = Math.min(Math.pow(2, attempt) * 10000, 15 * 60 * 1000);
     const nextRunAt = new Date(now.getTime() + backoffMs);
 
-    await db
-      .update(jobQueue)
-      .set({
-        status: 'queued',
-        lockedAt: null,
-        lockedBy: null,
-        lastError: error,
-        runAt: nextRunAt,
-        updatedAt: now,
-      })
-      .where(eq(jobQueue.jobId, jobId));
+    // Wrap retry operations in transaction
+    await db.transaction(async (tx) => {
+      await tx
+        .update(jobQueue)
+        .set({
+          status: 'queued',
+          lockedAt: null,
+          lockedBy: null,
+          lastError: error,
+          runAt: nextRunAt,
+          updatedAt: now,
+        })
+        .where(eq(jobQueue.jobId, jobId));
 
-    // Log retry
-    await db.insert(workerRunLogs).values({
-      eventId,
-      correlationId,
-      eventType,
-      workerName,
-      status: 'retrying',
-      attempt,
-      error,
-      summary: `Retry scheduled in ${Math.round(backoffMs / 1000)}s`,
-      createdAt: now,
+      // Log retry
+      await tx.insert(workerRunLogs).values({
+        eventId,
+        correlationId,
+        eventType,
+        workerName,
+        status: 'retrying',
+        attempt,
+        error,
+        summary: `Retry scheduled in ${Math.round(backoffMs / 1000)}s`,
+        createdAt: now,
+      });
     });
 
     console.log(`[EventBus] Job ${jobId} scheduled for retry in ${Math.round(backoffMs / 1000)}s`);

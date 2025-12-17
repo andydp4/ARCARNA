@@ -487,9 +487,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Release stock for each item
         for (const item of items) {
-          await tx.update(products)
-            .set({ stock: sql`stock + ${item.quantity}` })
-            .where(eq(products.id, item.product_id));
+          if (item.product_id) {
+            await tx.update(products)
+              .set({ stock: sql`stock + ${item.quantity}` })
+              .where(eq(products.id, item.product_id));
+          }
         }
         
         // Delete order items
@@ -716,11 +718,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allProducts = await db.select({
         id: products.id,
         name: products.name,
-        productCode: products.productCode,
+        productCode: products.product_id,
         stock: products.stock,
-        salePrice: products.salePrice,
-        costPrice: products.costPrice,
-        category: products.category,
+        salePrice: products.default_sale_price,
+        costPrice: products.cost_price,
       }).from(products).orderBy(desc(products.stock));
       
       const stockSummary = {

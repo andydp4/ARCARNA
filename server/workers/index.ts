@@ -3,6 +3,10 @@
  * 
  * This module provides the worker infrastructure for processing events.
  * It handles job acquisition, execution, retry logic, and logging.
+ * 
+ * SINGLE SOURCE OF TRUTH: Worker registration is driven by REQUIRED_WORKERS
+ * from shared/schema.ts. Any worker referenced in REQUIRED_WORKERS must have
+ * a factory registered in WORKER_FACTORIES below.
  */
 
 import { 
@@ -13,7 +17,7 @@ import {
   getEvent,
   dispatchPendingEvents 
 } from "../eventBus";
-import { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
+import { EventEnvelope, EventType, WorkerName, WorkerResult, REQUIRED_WORKERS } from "../../shared/schema";
 import { InventoryWorker } from "./inventoryWorker";
 import { CustomerWorker } from "./customerWorker";
 import { LoyaltyWorker } from "./loyaltyWorker";
@@ -29,26 +33,54 @@ export interface IWorker {
   handle(event: EventEnvelope): Promise<WorkerResult>;
 }
 
+// Worker factories - SINGLE SOURCE OF TRUTH for worker instantiation
+// Any worker referenced in REQUIRED_WORKERS must have a factory here
+const WORKER_FACTORIES: Record<WorkerName, () => IWorker> = {
+  InventoryWorker: () => new InventoryWorker(),
+  CustomerWorker: () => new CustomerWorker(),
+  LoyaltyWorker: () => new LoyaltyWorker(),
+  InvoiceWorker: () => new InvoiceWorker(),
+  BusinessInsightsWorker: () => new BusinessInsightsWorker(),
+  FinanceWorker: () => new FinanceWorker(),
+  ExpensesWorker: () => new ExpensesWorker(),
+};
+
 // Worker registry
 const workers: Map<WorkerName, IWorker> = new Map();
 
-// Register all workers
+// Register all workers - driven by REQUIRED_WORKERS config
 function registerWorkers() {
-  const workerInstances: IWorker[] = [
-    new InventoryWorker(),
-    new CustomerWorker(),
-    new LoyaltyWorker(),
-    new InvoiceWorker(),
-    new BusinessInsightsWorker(),
-    new FinanceWorker(),
-    new ExpensesWorker(),
-  ];
-
-  for (const worker of workerInstances) {
-    workers.set(worker.name, worker);
+  // Collect all unique worker names from REQUIRED_WORKERS
+  const requiredWorkerNames = new Set<WorkerName>();
+  for (const eventType of Object.keys(REQUIRED_WORKERS) as EventType[]) {
+    for (const workerName of REQUIRED_WORKERS[eventType]) {
+      requiredWorkerNames.add(workerName);
+    }
   }
 
-  console.log(`[WorkerRunner] Registered ${workers.size} workers`);
+  // Validate and instantiate workers
+  const missingFactories: WorkerName[] = [];
+  const workerNamesArray = Array.from(requiredWorkerNames);
+  for (let i = 0; i < workerNamesArray.length; i++) {
+    const workerName = workerNamesArray[i];
+    const factory = WORKER_FACTORIES[workerName];
+    if (!factory) {
+      missingFactories.push(workerName);
+      continue;
+    }
+    const worker = factory();
+    workers.set(workerName, worker);
+  }
+
+  // Fail fast if any required workers are missing factories
+  if (missingFactories.length > 0) {
+    throw new Error(
+      `[WorkerRunner] Missing factories for workers: ${missingFactories.join(', ')}. ` +
+      `Add them to WORKER_FACTORIES in server/workers/index.ts`
+    );
+  }
+
+  console.log(`[WorkerRunner] Registered ${workers.size} workers from REQUIRED_WORKERS config`);
 }
 
 // Get worker by name
