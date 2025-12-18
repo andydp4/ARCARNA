@@ -42,6 +42,8 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react'
 
 interface Invoice {
@@ -111,6 +113,8 @@ export default function Invoices() {
     )
   }
 
+  const [regenerating, setRegenerating] = useState(false)
+
   const downloadInvoice = async (invoiceId: string, invoiceNumber: string) => {
     try {
       const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
@@ -118,25 +122,49 @@ export default function Invoices() {
       })
       
       if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${invoiceNumber}.pdf`
-        a.click()
-        window.URL.revokeObjectURL(url)
-        
-        toast({
-          title: 'Success',
-          description: 'Invoice downloaded successfully',
-        })
+        const data = await response.json()
+        if (data.pdfUrl) {
+          window.open(data.pdfUrl, '_blank')
+          toast({
+            title: 'Success',
+            description: 'Opening invoice PDF in Google Drive',
+          })
+        } else {
+          toast({
+            title: 'PDF Not Ready',
+            description: data.message || 'PDF is being generated',
+          })
+        }
       }
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to download invoice',
+        description: 'Failed to get invoice PDF',
         variant: 'destructive',
       })
+    }
+  }
+
+  const regenerateAllMissing = async () => {
+    setRegenerating(true)
+    try {
+      const response = await apiRequest('POST', '/api/invoices/regenerate-all-missing')
+      const data = await response.json()
+      
+      toast({
+        title: 'PDFs Generated',
+        description: data.message,
+      })
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/invoices'] })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to regenerate PDFs',
+        variant: 'destructive',
+      })
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -256,10 +284,22 @@ export default function Invoices() {
               </SelectContent>
             </Select>
           </div>
-          <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-create-invoice">
-            <FileText className="h-4 w-4" />
-            Create Invoice
-          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button 
+              variant="outline" 
+              className="gap-2 min-h-[44px] flex-1 sm:flex-none" 
+              onClick={regenerateAllMissing}
+              disabled={regenerating}
+              data-testid="button-regenerate-pdfs"
+            >
+              <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
+              {regenerating ? 'Generating...' : 'Generate Missing PDFs'}
+            </Button>
+            <Button className="gap-2 min-h-[44px] flex-1 sm:flex-none" data-testid="button-create-invoice">
+              <FileText className="h-4 w-4" />
+              Create Invoice
+            </Button>
+          </div>
         </div>
 
         {/* Invoices Table */}
@@ -334,10 +374,10 @@ export default function Invoices() {
                           variant="ghost"
                           size="icon"
                           onClick={() => downloadInvoice(invoice.id, invoice.invoiceNumber)}
-                          title="Download PDF"
+                          title="View PDF in Google Drive"
                           data-testid={`button-download-${invoice.id}`}
                         >
-                          <Download className="h-4 w-4" />
+                          <ExternalLink className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"

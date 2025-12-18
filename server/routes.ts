@@ -1126,6 +1126,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Batch regenerate all invoices missing PDFs
+  app.post("/api/invoices/regenerate-all-missing", isAuthenticated, async (req, res) => {
+    try {
+      const { invoices, orders, orderItems, customers } = await import('../shared/schema');
+      const { eq, isNull } = await import('drizzle-orm');
+      const { db } = await import('./db');
+      const { generateInvoicePdf } = await import('./services/pdfGenerator');
+      const { uploadPdfToDrive, createFolderIfNotExists } = await import('./services/googleDrive');
+      
+      // Find all invoices without Google Drive links
+      const missingPdfInvoices = await db
+        .select()
+        .from(invoices)
+        .where(isNull(invoices.googleDriveFileId));
+      
+      if (missingPdfInvoices.length === 0) {
+        res.json({ 
+          message: "All invoices already have PDFs",
+          processed: 0,
+          total: 0
+        });
+        return;
+      }
+      
+      const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+      
+      const results: Array<{ invoiceNumber: string; status: string; error?: string }> = [];
+      
+      for (const invoice of missingPdfInvoices) {
+        try {
+          // Get order and customer details
+          let orderData = null;
+          let customerData = null;
+          let itemsData: any[] = [];
+          
+          if (invoice.orderId) {
+            const orderResult = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
+            if (orderResult.length > 0) {
+              orderData = orderResult[0];
+              itemsData = await db.select().from(orderItems).where(eq(orderItems.orderId, invoice.orderId));
+            }
+          }
+          
+          if (invoice.customerId) {
+            const customerResult = await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1);
+            if (customerResult.length > 0) {
+              customerData = customerResult[0];
+            }
+          }
+          
+          // Generate PDF
+          const pdfBuffer = await generateInvoicePdf({
+            invoiceNumber: invoice.invoiceNumber,
+            createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
+            dueDate: invoice.dueDate || '',
+            customerName: customerData?.name,
+            customerEmail: customerData?.email || undefined,
+            customerPhone: customerData?.phone || undefined,
+            items: itemsData.length > 0 ? itemsData.map((item: any) => ({
+              name: item.productName || 'Unknown Product',
+              quantity: item.quantity,
+              unitPrice: parseFloat(item.unitPrice || '0'),
+              total: parseFloat(item.totalPrice || '0'),
+            })) : [{
+              name: 'Order Total',
+              quantity: 1,
+              unitPrice: parseFloat(invoice.total || '0'),
+              total: parseFloat(invoice.total || '0'),
+            }],
+            subtotal: parseFloat(invoice.subtotal || '0'),
+            tax: parseFloat(invoice.tax || '0'),
+            total: parseFloat(invoice.total || '0'),
+            status: invoice.status || 'sent',
+            paymentMethod: orderData?.paymentMethod || undefined,
+          });
+          
+          // Upload to Google Drive
+          const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoice.invoiceNumber}.pdf`, folderId);
+          
+          // Update invoice with Google Drive info
+          await db
+            .update(invoices)
+            .set({
+              googleDriveFileId: uploadResult.fileId,
+              googleDriveLink: uploadResult.webViewLink,
+            })
+            .where(eq(invoices.id, invoice.id));
+          
+          results.push({ invoiceNumber: invoice.invoiceNumber, status: 'success' });
+        } catch (invoiceError: any) {
+          results.push({ 
+            invoiceNumber: invoice.invoiceNumber, 
+            status: 'failed', 
+            error: invoiceError.message 
+          });
+        }
+      }
+      
+      const successful = results.filter(r => r.status === 'success').length;
+      const failed = results.filter(r => r.status === 'failed').length;
+      
+      res.json({
+        message: `Processed ${successful} invoices successfully, ${failed} failed`,
+        processed: successful,
+        failed,
+        total: missingPdfInvoices.length,
+        results,
+      });
+    } catch (error) {
+      console.error("Error regenerating missing invoice PDFs:", error);
+      res.status(500).json({ message: "Failed to regenerate missing invoice PDFs" });
+    }
+  });
+
   // Tick Customers endpoints - for Credit/Tick List page
   app.get("/api/tick-customers", isAuthenticated, async (req, res) => {
     try {
