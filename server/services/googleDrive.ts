@@ -75,8 +75,27 @@ export async function uploadPdfToDrive(
     fields: 'id, webViewLink',
   });
 
+  const fileId = response.data.id || '';
+  
+  // Make the file publicly accessible so users can view the invoice PDF
+  if (fileId) {
+    try {
+      await drive.permissions.create({
+        fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone',
+        },
+      });
+      console.log(`[GoogleDrive] Made file ${fileId} publicly accessible`);
+    } catch (permError) {
+      console.error(`[GoogleDrive] Failed to set public permissions:`, permError);
+      // Continue anyway - file is uploaded, just not public
+    }
+  }
+
   return {
-    fileId: response.data.id || '',
+    fileId,
     webViewLink: response.data.webViewLink || '',
   };
 }
