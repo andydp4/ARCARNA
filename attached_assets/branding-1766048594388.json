@@ -1,0 +1,95 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "Clarkson",
+      "count": 5
+    },
+    {
+      "family": "Helvetica Neue",
+      "count": 5
+    },
+    {
+      "family": "Helvetica",
+      "count": 5
+    },
+    {
+      "family": "Arial",
+      "count": 5
+    },
+    {
+      "family": "sans-serif",
+      "count": 5
+    }
+  ],
+  "colors": {
+    "primary": "#000000",
+    "accent": "#000000",
+    "background": "#F6F6F6",
+    "textPrimary": "#3E3E3E",
+    "link": "#000000"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Clarkson",
+      "heading": "Clarkson"
+    },
+    "fontStacks": {
+      "body": [
+        "Clarkson",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ],
+      "heading": [
+        "Clarkson",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Clarkson",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "12px",
+      "h2": "12px",
+      "body": "12px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "0px"
+  },
+  "components": {},
+  "images": {
+    "logo": null,
+    "favicon": null,
+    "ogImage": null
+  },
+  "__framework_hints": [],
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "secondary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "confidence": 0
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}

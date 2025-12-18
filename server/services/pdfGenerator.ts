@@ -1,4 +1,20 @@
 import PDFDocument from 'pdfkit';
+import path from 'path';
+import fs from 'fs';
+
+const COMPANY_INFO = {
+  name: 'Viger Assist Ltd',
+  companyNumber: '16247814',
+  address: '101 Apexlofts 50 Warwick Street',
+  city: 'Birmingham',
+  postcode: 'B12 0BA',
+  email: 'invoices@vigerassist.com',
+  website: 'VigerAssist.com',
+  bankName: 'Viger Assist Ltd',
+  sortCode: '23-08-01',
+  accountNumber: '57623055',
+  paymentLink: 'https://pay.anna.money/p/vigerassistltd/fwv',
+};
 
 interface InvoiceData {
   invoiceNumber: string;
@@ -7,6 +23,7 @@ interface InvoiceData {
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
+  customerAddress?: string;
   items: Array<{
     name: string;
     quantity: number;
@@ -23,96 +40,142 @@ interface InvoiceData {
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      doc.fontSize(24).fillColor('#1E293B').text('INVOICE', { align: 'right' });
-      doc.moveDown(0.5);
-
-      doc.fontSize(10).fillColor('#64748B');
-      doc.text('Midnight EPOS', 50, 50);
-      doc.text('Point of Sale System', 50, 65);
-      doc.moveDown(2);
-
-      const topY = 120;
-      doc.fontSize(10).fillColor('#1E293B');
-      doc.text(`Invoice Number: ${data.invoiceNumber}`, 50, topY);
-      doc.text(`Date: ${new Date(data.createdAt).toLocaleDateString()}`, 50, topY + 15);
-      doc.text(`Due Date: ${data.dueDate}`, 50, topY + 30);
-      doc.text(`Status: ${data.status.toUpperCase()}`, 50, topY + 45);
-
-      if (data.customerName || data.customerEmail) {
-        doc.text('Bill To:', 350, topY, { underline: true });
-        if (data.customerName) doc.text(data.customerName, 350, topY + 15);
-        if (data.customerEmail) doc.text(data.customerEmail, 350, topY + 30);
-        if (data.customerPhone) doc.text(data.customerPhone, 350, topY + 45);
+      const logoPath = path.join(process.cwd(), 'server/assets/viger-logo.png');
+      
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, 50, 40, { width: 80 });
       }
 
-      const tableTop = 220;
-      const col1 = 50;
-      const col2 = 280;
-      const col3 = 350;
-      const col4 = 420;
-      const col5 = 490;
+      doc.fontSize(24).fillColor('#000000').text('INVOICE', 400, 50, { align: 'right' });
 
-      doc.fillColor('#3B82F6').rect(col1, tableTop, 500, 20).fill();
+      doc.fontSize(9).fillColor('#3E3E3E');
+      doc.text(COMPANY_INFO.name, 140, 45);
+      doc.text(COMPANY_INFO.address, 140, 58);
+      doc.text(`${COMPANY_INFO.city}, ${COMPANY_INFO.postcode}`, 140, 71);
+      doc.text(`Company No: ${COMPANY_INFO.companyNumber}`, 140, 84);
+      doc.text(COMPANY_INFO.email, 140, 97);
+      doc.text(COMPANY_INFO.website, 140, 110);
+
+      const detailsY = 140;
+      doc.fontSize(10).fillColor('#000000');
+      doc.text(`Invoice Number:`, 50, detailsY);
+      doc.text(data.invoiceNumber, 150, detailsY);
+      doc.text(`Date:`, 50, detailsY + 15);
+      doc.text(new Date(data.createdAt).toLocaleDateString('en-GB'), 150, detailsY + 15);
+      doc.text(`Due Date:`, 50, detailsY + 30);
+      doc.text(data.dueDate, 150, detailsY + 30);
+      doc.text(`Status:`, 50, detailsY + 45);
+      doc.text(data.status.toUpperCase(), 150, detailsY + 45);
+
+      if (data.customerName || data.customerEmail) {
+        doc.fontSize(10).fillColor('#000000');
+        doc.text('Bill To:', 350, detailsY, { underline: true });
+        let billY = detailsY + 15;
+        if (data.customerName) {
+          doc.text(data.customerName, 350, billY);
+          billY += 12;
+        }
+        if (data.customerEmail) {
+          doc.text(data.customerEmail, 350, billY);
+          billY += 12;
+        }
+        if (data.customerPhone) {
+          doc.text(data.customerPhone, 350, billY);
+          billY += 12;
+        }
+        if (data.customerAddress) {
+          doc.text(data.customerAddress, 350, billY, { width: 180 });
+        }
+      }
+
+      const tableTop = 230;
+      const col1 = 50;
+      const col2 = 300;
+      const col3 = 380;
+      const col4 = 460;
+
+      doc.fillColor('#000000').rect(col1, tableTop, 495, 20).fill();
       doc.fillColor('#FFFFFF').fontSize(10);
-      doc.text('Item', col1 + 5, tableTop + 5);
+      doc.text('Description', col1 + 5, tableTop + 5);
       doc.text('Qty', col2, tableTop + 5);
-      doc.text('Price', col3, tableTop + 5);
-      doc.text('Total', col4, tableTop + 5);
+      doc.text('Unit Price', col3, tableTop + 5);
+      doc.text('Amount', col4, tableTop + 5);
 
       let y = tableTop + 30;
-      doc.fillColor('#1E293B');
+      doc.fillColor('#3E3E3E');
       
       for (const item of data.items) {
-        if (y > 700) {
+        if (y > 680) {
           doc.addPage();
           y = 50;
         }
         
-        doc.text(item.name.substring(0, 40), col1, y);
+        doc.fontSize(9);
+        doc.text(item.name.substring(0, 45), col1, y, { width: 240 });
         doc.text(String(item.quantity), col2, y);
-        doc.text(`$${item.unitPrice.toFixed(2)}`, col3, y);
-        doc.text(`$${item.total.toFixed(2)}`, col4, y);
-        y += 20;
+        doc.text(`£${item.unitPrice.toFixed(2)}`, col3, y);
+        doc.text(`£${item.total.toFixed(2)}`, col4, y);
+        y += 18;
       }
 
-      y += 20;
-      doc.moveTo(350, y).lineTo(550, y).stroke('#E2E8F0');
+      y += 15;
+      doc.moveTo(350, y).lineTo(545, y).stroke('#E2E8F0');
       y += 10;
 
-      doc.fontSize(10);
-      doc.text('Subtotal:', 350, y);
-      doc.text(`$${data.subtotal.toFixed(2)}`, 480, y, { align: 'right', width: 70 });
-      y += 20;
+      doc.fontSize(10).fillColor('#3E3E3E');
+      doc.text('Subtotal:', 380, y);
+      doc.text(`£${data.subtotal.toFixed(2)}`, 480, y, { align: 'right', width: 65 });
+      y += 18;
 
-      doc.text('Tax:', 350, y);
-      doc.text(`$${data.tax.toFixed(2)}`, 480, y, { align: 'right', width: 70 });
-      y += 20;
+      doc.text('VAT (0%):', 380, y);
+      doc.text('£0.00', 480, y, { align: 'right', width: 65 });
+      y += 18;
 
-      doc.moveTo(350, y).lineTo(550, y).stroke('#1E293B');
-      y += 10;
+      doc.moveTo(350, y).lineTo(545, y).stroke('#000000');
+      y += 8;
 
-      doc.fontSize(14).fillColor('#10B981');
-      doc.text('Total:', 350, y);
-      doc.text(`$${data.total.toFixed(2)}`, 480, y, { align: 'right', width: 70 });
+      doc.fontSize(12).fillColor('#000000');
+      doc.text('Total:', 380, y);
+      doc.text(`£${data.total.toFixed(2)}`, 480, y, { align: 'right', width: 65 });
 
-      if (data.paymentMethod) {
-        y += 40;
-        doc.fontSize(10).fillColor('#64748B');
-        doc.text(`Payment Method: ${data.paymentMethod}`, 350, y);
-      }
+      const paymentY = y + 50;
+      doc.fontSize(11).fillColor('#000000');
+      doc.text('Payment Information', 50, paymentY, { underline: true });
+      
+      doc.fontSize(9).fillColor('#3E3E3E');
+      doc.text('Bank Transfer, Card and Mobile Payments Accepted', 50, paymentY + 18);
+      
+      doc.text('Bank Details:', 50, paymentY + 38);
+      doc.text(COMPANY_INFO.bankName, 130, paymentY + 38);
+      doc.text('Sort Code:', 50, paymentY + 52);
+      doc.text(COMPANY_INFO.sortCode, 130, paymentY + 52);
+      doc.text('Account No:', 50, paymentY + 66);
+      doc.text(COMPANY_INFO.accountNumber, 130, paymentY + 66);
+      
+      doc.text('Pay Online:', 50, paymentY + 86);
+      doc.fillColor('#0066CC').text(COMPANY_INFO.paymentLink, 130, paymentY + 86, {
+        link: COMPANY_INFO.paymentLink,
+        underline: true,
+      });
 
       doc.fontSize(8).fillColor('#94A3B8');
       doc.text(
         'Thank you for your business!',
         50,
         doc.page.height - 50,
+        { align: 'center', width: doc.page.width - 100 }
+      );
+      doc.text(
+        `${COMPANY_INFO.name} | ${COMPANY_INFO.email} | ${COMPANY_INFO.website}`,
+        50,
+        doc.page.height - 38,
         { align: 'center', width: doc.page.width - 100 }
       );
 
