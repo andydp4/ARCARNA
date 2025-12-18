@@ -995,15 +995,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/invoices/:id/pdf", isAuthenticated, async (req, res) => {
     try {
-      // For now, return a placeholder response
-      // In production, this would generate a real PDF
-      res.json({ 
-        message: "PDF generation not yet implemented",
-        invoiceId: req.params.id 
+      const invoiceId = req.params.id;
+      
+      // Get invoice from database
+      const { invoices } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const { db } = await import('./db');
+      
+      const invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      
+      if (invoiceResult.length === 0) {
+        res.status(404).json({ message: "Invoice not found" });
+        return;
+      }
+      
+      const invoice = invoiceResult[0];
+      
+      // If invoice has a Google Drive link, redirect to it
+      if (invoice.googleDriveLink) {
+        res.json({ 
+          pdfUrl: invoice.googleDriveLink,
+          invoiceNumber: invoice.invoiceNumber,
+          googleDriveFileId: invoice.googleDriveFileId,
+        });
+        return;
+      }
+      
+      // If no PDF exists yet, return info to regenerate
+      res.status(202).json({ 
+        message: "PDF not yet generated. It will be created when the order is processed.",
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
       });
     } catch (error) {
-      console.error("Error generating invoice PDF:", error);
-      res.status(500).json({ message: "Failed to generate invoice PDF" });
+      console.error("Error fetching invoice PDF:", error);
+      res.status(500).json({ message: "Failed to fetch invoice PDF" });
+    }
+  });
+  
+  // Endpoint to regenerate invoice PDF
+  app.post("/api/invoices/:id/regenerate-pdf", isAuthenticated, async (req, res) => {
+    try {
+      const invoiceId = req.params.id;
+      
+      const { invoices, orders, orderItems, customers } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const { db } = await import('./db');
+      const { generateInvoicePdf } = await import('./services/pdfGenerator');
+      const { uploadPdfToDrive, createFolderIfNotExists } = await import('./services/googleDrive');
+      
+      const invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      
+      if (invoiceResult.length === 0) {
+        res.status(404).json({ message: "Invoice not found" });
+        return;
+      }
+      
+      const invoice = invoiceResult[0];
+      
+      // Get order and customer details
+      let orderData = null;
+      let customerData = null;
+      let itemsData: any[] = [];
+      
+      if (invoice.orderId) {
+        const orderResult = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
+        if (orderResult.length > 0) {
+          orderData = orderResult[0];
+          
+          // Get order items
+          itemsData = await db.select().from(orderItems).where(eq(orderItems.orderId, invoice.orderId));
+        }
+      }
+      
+      if (invoice.customerId) {
+        const customerResult = await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1);
+        if (customerResult.length > 0) {
+          customerData = customerResult[0];
+        }
+      }
+      
+      // Generate PDF
+      const pdfBuffer = await generateInvoicePdf({
+        invoiceNumber: invoice.invoiceNumber,
+        createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
+        dueDate: invoice.dueDate || '',
+        customerName: customerData?.name,
+        customerEmail: customerData?.email || undefined,
+        customerPhone: customerData?.phone || undefined,
+        items: itemsData.length > 0 ? itemsData.map((item: any) => ({
+          name: item.productName || 'Unknown Product',
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unitPrice || '0'),
+          total: parseFloat(item.lineTotal || '0'),
+        })) : [{
+          name: 'Order Total',
+          quantity: 1,
+          unitPrice: parseFloat(invoice.total || '0'),
+          total: parseFloat(invoice.total || '0'),
+        }],
+        subtotal: parseFloat(invoice.subtotal || '0'),
+        tax: parseFloat(invoice.tax || '0'),
+        total: parseFloat(invoice.total || '0'),
+        status: invoice.status || 'sent',
+        paymentMethod: orderData?.paymentMethod || undefined,
+      });
+      
+      // Upload to Google Drive
+      const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+      const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoice.invoiceNumber}.pdf`, folderId);
+      
+      // Update invoice with Google Drive info
+      await db
+        .update(invoices)
+        .set({
+          googleDriveFileId: uploadResult.fileId,
+          googleDriveLink: uploadResult.webViewLink,
+        })
+        .where(eq(invoices.id, invoiceId));
+      
+      res.json({
+        message: "PDF regenerated successfully",
+        invoiceNumber: invoice.invoiceNumber,
+        pdfUrl: uploadResult.webViewLink,
+        googleDriveFileId: uploadResult.fileId,
+      });
+    } catch (error) {
+      console.error("Error regenerating invoice PDF:", error);
+      res.status(500).json({ message: "Failed to regenerate invoice PDF" });
     }
   });
 

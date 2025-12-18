@@ -2,15 +2,17 @@
  * Invoice Worker
  * 
  * Handles invoice generation for orders:
- * - OrderCreated: Generate invoice record in database
+ * - OrderCreated: Generate invoice record in database, create PDF, upload to Google Drive
  * - PaymentCaptured: Trigger invoice generation if not already created
  */
 
 import { db } from "../db";
-import { processedEvents, invoices } from "../../shared/schema";
+import { processedEvents, invoices, customers, orderItems } from "../../shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
+import { generateInvoicePdf } from "../services/pdfGenerator";
+import { uploadPdfToDrive, createFolderIfNotExists } from "../services/googleDrive";
 
 interface OrderPayload {
   order?: {
@@ -177,13 +179,100 @@ export class InvoiceWorker implements IWorker {
 
       console.log(`[InvoiceWorker] Created invoice ${invoiceNumber} for order ${orderId}`);
 
+      // Generate PDF and upload to Google Drive
+      let driveFileId: string | null = null;
+      let driveLink: string | null = null;
+      
+      try {
+        // Get customer details if available
+        let customerData: { name?: string; email?: string; phone?: string } = {};
+        if (customerId) {
+          const customerResult = await db
+            .select()
+            .from(customers)
+            .where(eq(customers.id, customerId))
+            .limit(1);
+          if (customerResult.length > 0) {
+            customerData = {
+              name: customerResult[0].name,
+              email: customerResult[0].email || undefined,
+              phone: customerResult[0].phone || undefined,
+            };
+          }
+        }
+
+        // Get order items for the invoice with product names
+        const { products } = await import('../../shared/schema');
+        const items = await db
+          .select({
+            quantity: orderItems.quantity,
+            unitPrice: orderItems.unitPrice,
+            totalPrice: orderItems.totalPrice,
+            productName: products.name,
+          })
+          .from(orderItems)
+          .leftJoin(products, eq(orderItems.productId, products.id))
+          .where(eq(orderItems.orderId, orderId));
+
+        const invoiceItems = items.map((item) => ({
+          name: item.productName || 'Unknown Product',
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unitPrice || '0'),
+          total: parseFloat(item.totalPrice || '0'),
+        }));
+
+        // Generate PDF
+        const pdfBuffer = await generateInvoicePdf({
+          invoiceNumber,
+          createdAt: now.toISOString(),
+          dueDate,
+          customerName: customerData.name,
+          customerEmail: customerData.email,
+          customerPhone: customerData.phone,
+          items: invoiceItems.length > 0 ? invoiceItems : [{
+            name: 'Order Total',
+            quantity: 1,
+            unitPrice: total || 0,
+            total: total || 0,
+          }],
+          subtotal: subtotal || 0,
+          tax: tax || 0,
+          total: total || 0,
+          status: 'sent',
+          paymentMethod: dbOrder.paymentMethod || undefined,
+        });
+
+        console.log(`[InvoiceWorker] Generated PDF for invoice ${invoiceNumber}, size: ${pdfBuffer.length} bytes`);
+
+        // Upload to Google Drive
+        const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+        const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoiceNumber}.pdf`, folderId);
+        
+        driveFileId = uploadResult.fileId;
+        driveLink = uploadResult.webViewLink;
+
+        console.log(`[InvoiceWorker] Uploaded invoice ${invoiceNumber} to Google Drive: ${driveLink}`);
+
+        // Update invoice with Google Drive info
+        await db
+          .update(invoices)
+          .set({
+            googleDriveFileId: driveFileId,
+            googleDriveLink: driveLink,
+          })
+          .where(eq(invoices.id, newInvoice.id));
+      } catch (pdfError) {
+        // PDF/Drive upload is non-critical - log error but don't fail the worker
+        console.error(`[InvoiceWorker] PDF generation/upload failed for ${invoiceNumber}:`, pdfError);
+      }
+
       return {
         worker: this.name,
         eventId: event.eventId,
         correlationId: event.correlationId,
         status: 'success',
-        summary: `Invoice ${invoiceNumber} created for order ${orderId}`,
-        data: { orderId, invoiceId: newInvoice.id, invoiceNumber },
+        summary: `Invoice ${invoiceNumber} created for order ${orderId}${driveLink ? ' (PDF uploaded to Drive)' : ''}`,
+        data: { orderId, invoiceId: newInvoice.id, invoiceNumber, driveFileId, driveLink },
       };
     } catch (error) {
       console.error('[InvoiceWorker] Error:', error);
