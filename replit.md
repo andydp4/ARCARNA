@@ -32,8 +32,17 @@ The system is designed for offline-first operation. A service worker caches asse
 ### Database Schema
 Utilizes Drizzle ORM with PostgreSQL. Core tables include `customers`, `products`, `orders`, `order_items`, `invoices`, and `audit_logs`. Analytics tables (`analytics_daily`, `analytics_weekly`, `analytics_monthly`, `customer_metrics`) store aggregated data. `domain_outbox` supports event sourcing, and `sessions` and `users` tables are used for authentication.
 
-### PDF Invoice Generation
-Server-side PDF generation is handled by Puppeteer, which renders HTML templates populated with order data into PDF documents.
+### PDF Invoice Generation & Google Drive Storage
+Server-side PDF generation uses PDFKit (`server/services/pdfGenerator.ts`) to create professional invoice documents. The InvoiceWorker automatically:
+1. Creates invoice record in database when order is placed
+2. Generates PDF with order details, items, and totals
+3. Uploads PDF to "Midnight EPOS Invoices" folder in Google Drive
+4. Sets public read permissions so customers can access links
+5. Updates invoice record with `googleDriveFileId` and `googleDriveLink`
+
+API endpoints:
+- `GET /api/invoices/:id/pdf` - Returns Google Drive link for the invoice PDF
+- `POST /api/invoices/:id/regenerate-pdf` - Regenerates and re-uploads PDF to Drive
 
 ## External Dependencies
 
@@ -55,7 +64,10 @@ Server-side PDF generation is handled by Puppeteer, which renders HTML templates
 - **Vite**
 
 ### PDF Generation
-- **Puppeteer**
+- **PDFKit** for server-side PDF creation
+
+### Cloud Storage
+- **Google Drive API** via Replit connector for invoice PDF storage
 
 ### Replit-Specific Integrations
 - `@replit/vite-plugin-runtime-error-modal`
