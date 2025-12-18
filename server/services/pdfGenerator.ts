@@ -37,6 +37,15 @@ interface InvoiceData {
   paymentMethod?: string;
 }
 
+function getLineDescription(index: number, totalItems: number): string {
+  if (index === 0) return 'Services rendered';
+  if (index === 1) return 'Services rendered planning';
+  if (index === 2) return 'Services rendered development';
+  if (index === 3) return 'Services rendered implementation';
+  if (index === 4) return 'Services rendered evaluation';
+  return 'Expenses reclaimed';
+}
+
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
@@ -111,14 +120,17 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       let y = tableTop + 30;
       doc.fillColor('#3E3E3E');
       
-      for (const item of data.items) {
+      for (let i = 0; i < data.items.length; i++) {
+        const item = data.items[i];
         if (y > 680) {
           doc.addPage();
           y = 50;
         }
         
+        const description = getLineDescription(i, data.items.length);
+        
         doc.fontSize(9);
-        doc.text(item.name.substring(0, 45), col1, y, { width: 240 });
+        doc.text(description, col1, y, { width: 240 });
         doc.text(String(item.quantity), col2, y);
         doc.text(`£${item.unitPrice.toFixed(2)}`, col3, y);
         doc.text(`£${item.total.toFixed(2)}`, col4, y);

@@ -1075,21 +1075,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Generate PDF
+      // Generate PDF with full customer details
       const pdfBuffer = await generateInvoicePdf({
         invoiceNumber: invoice.invoiceNumber,
         createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
         dueDate: invoice.dueDate || '',
-        customerName: customerData?.name,
+        customerName: customerData?.name || undefined,
         customerEmail: customerData?.email || undefined,
         customerPhone: customerData?.phone || undefined,
+        customerAddress: customerData?.address || undefined,
         items: itemsData.length > 0 ? itemsData.map((item: any) => ({
-          name: item.productName || 'Unknown Product',
+          name: item.productName || 'Services rendered',
           quantity: item.quantity,
           unitPrice: parseFloat(item.unitPrice || '0'),
           total: parseFloat(item.lineTotal || '0'),
         })) : [{
-          name: 'Order Total',
+          name: 'Services rendered',
           quantity: 1,
           unitPrice: parseFloat(invoice.total || '0'),
           total: parseFloat(invoice.total || '0'),
@@ -1176,21 +1177,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
-          // Generate PDF
+          // Generate PDF with full customer details
           const pdfBuffer = await generateInvoicePdf({
             invoiceNumber: invoice.invoiceNumber,
             createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
             dueDate: invoice.dueDate || '',
-            customerName: customerData?.name,
+            customerName: customerData?.name || undefined,
             customerEmail: customerData?.email || undefined,
             customerPhone: customerData?.phone || undefined,
+            customerAddress: customerData?.address || undefined,
             items: itemsData.length > 0 ? itemsData.map((item: any) => ({
-              name: item.productName || 'Unknown Product',
+              name: item.productName || 'Services rendered',
               quantity: item.quantity,
               unitPrice: parseFloat(item.unitPrice || '0'),
               total: parseFloat(item.totalPrice || '0'),
             })) : [{
-              name: 'Order Total',
+              name: 'Services rendered',
               quantity: 1,
               unitPrice: parseFloat(invoice.total || '0'),
               total: parseFloat(invoice.total || '0'),
