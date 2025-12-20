@@ -33,16 +33,42 @@ The system is designed for offline-first operation. A service worker caches asse
 Utilizes Drizzle ORM with PostgreSQL. Core tables include `customers`, `products`, `orders`, `order_items`, `invoices`, and `audit_logs`. Analytics tables (`analytics_daily`, `analytics_weekly`, `analytics_monthly`, `customer_metrics`) store aggregated data. `domain_outbox` supports event sourcing, and `sessions` and `users` tables are used for authentication.
 
 ### PDF Invoice Generation & Google Drive Storage
-Server-side PDF generation uses PDFKit (`server/services/pdfGenerator.ts`) to create professional invoice documents. The InvoiceWorker automatically:
+Server-side PDF generation uses PDFKit (`server/services/pdfGenerator.ts`) to create professional invoice documents with Viger Assist branding. The InvoiceWorker automatically:
 1. Creates invoice record in database when order is placed
 2. Generates PDF with order details, items, and totals
 3. Uploads PDF to "Midnight EPOS Invoices" folder in Google Drive
 4. Sets public read permissions so customers can access links
 5. Updates invoice record with `googleDriveFileId` and `googleDriveLink`
 
+Invoice PDF Features:
+- Viger Assist Ltd branding (Company #16247814)
+- Position-based line descriptions (Services rendered, planning, development, implementation, evaluation, Expenses reclaimed)
+- VAT always 0%, GBP currency
+- Bank transfer and online payment details included
+
 API endpoints:
 - `GET /api/invoices/:id/pdf` - Returns Google Drive link for the invoice PDF
 - `POST /api/invoices/:id/regenerate-pdf` - Regenerates and re-uploads PDF to Drive
+- `POST /api/invoices/regenerate-all-missing` - Batch regenerates PDFs for invoices missing Drive links
+
+### Event-Driven Workers Architecture
+Workers follow day 0 coding principles: clean, modular, well-annotated code with comprehensive JSDoc documentation.
+
+**InventoryWorker** (`server/workers/inventoryWorker.ts`):
+- Handles stock adjustments for OrderCreated, OrderUpdated, RefundIssued, OrderCancelled events
+- SKU-to-UUID resolution: supports both database UUIDs and SKU string identifiers
+- Idempotent processing via eventId tracking in inventory_movements table
+- Low stock warnings for items falling below stockLimit threshold
+
+**InvoiceWorker** (`server/workers/invoiceWorker.ts`):
+- Single-responsibility helper functions: fetchCustomerInfo, fetchOrderItems, createInvoiceRecord, generateAndUploadPdf
+- Concurrent-safe with unique constraint handling
+- Non-blocking PDF/Drive failures (invoice record always created)
+
+**GoogleDrive Service** (`server/services/googleDrive.ts`):
+- Typed connector interfaces (OAuthCredentials, ConnectorSettings, ConnectorResponse)
+- Automatic token refresh via Replit connector
+- PDF upload with public read permissions
 
 ## External Dependencies
 
