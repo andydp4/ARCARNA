@@ -115,36 +115,6 @@ export default function Invoices() {
 
   const [regenerating, setRegenerating] = useState(false)
 
-  const downloadInvoice = async (invoiceId: string, invoiceNumber: string) => {
-    try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pdfUrl) {
-          window.open(data.pdfUrl, '_blank')
-          toast({
-            title: 'Success',
-            description: 'Opening invoice PDF in Google Drive',
-          })
-        } else {
-          toast({
-            title: 'PDF Not Ready',
-            description: data.message || 'PDF is being generated',
-          })
-        }
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to get invoice PDF',
-        variant: 'destructive',
-      })
-    }
-  }
-
   const regenerateAllMissing = async () => {
     setRegenerating(true)
     try {
@@ -168,11 +138,137 @@ export default function Invoices() {
     }
   }
 
-  const sendInvoice = (invoiceId: string, customerEmail: string) => {
-    toast({
-      title: 'Invoice Sent',
-      description: `Invoice emailed to ${customerEmail}`,
-    })
+  const viewInvoicePdf = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.pdfUrl) {
+          window.open(data.pdfUrl, '_blank')
+        } else {
+          toast({
+            title: 'PDF Not Available',
+            description: 'This invoice PDF has not been generated yet. Click "Generate Missing PDFs" to create it.',
+            variant: 'destructive',
+          })
+        }
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Could not retrieve invoice PDF',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to get invoice PDF',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const printInvoice = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.pdfUrl) {
+          const printWindow = window.open(data.pdfUrl, '_blank')
+          if (printWindow) {
+            printWindow.onload = () => {
+              printWindow.print()
+            }
+          }
+          toast({
+            title: 'Print',
+            description: 'Opening PDF for printing...',
+          })
+        } else {
+          toast({
+            title: 'PDF Not Available',
+            description: 'Generate the PDF first before printing',
+            variant: 'destructive',
+          })
+        }
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to print invoice',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const emailInvoice = async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.pdfUrl) {
+          const subject = encodeURIComponent(`Invoice ${invoiceNumber} from Viger Assist Ltd`)
+          const body = encodeURIComponent(`Dear Customer,\n\nPlease find your invoice attached:\n${data.pdfUrl}\n\nThank you for your business.\n\nBest regards,\nViger Assist Ltd`)
+          window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank')
+          toast({
+            title: 'Email Client Opened',
+            description: `Composing email to ${customerEmail}`,
+          })
+        } else {
+          toast({
+            title: 'PDF Not Available',
+            description: 'Generate the PDF first before emailing',
+            variant: 'destructive',
+          })
+        }
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to prepare email',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const copyInvoiceLink = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        credentials: 'include',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.pdfUrl) {
+          await navigator.clipboard.writeText(data.pdfUrl)
+          toast({
+            title: 'Link Copied',
+            description: 'Invoice PDF link copied to clipboard',
+          })
+        } else {
+          toast({
+            title: 'No Link Available',
+            description: 'PDF has not been generated yet',
+            variant: 'destructive',
+          })
+        }
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to copy link',
+        variant: 'destructive',
+      })
+    }
   }
 
   const copyInvoiceNumber = (invoiceNumber: string) => {
@@ -373,16 +469,8 @@ export default function Invoices() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => downloadInvoice(invoice.id, invoice.invoiceNumber)}
-                          title="View PDF in Google Drive"
-                          data-testid={`button-download-${invoice.id}`}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="View Invoice"
+                          onClick={() => viewInvoicePdf(invoice.id, invoice.invoiceNumber)}
+                          title="View PDF"
                           data-testid={`button-view-${invoice.id}`}
                         >
                           <Eye className="h-4 w-4" />
@@ -390,6 +478,7 @@ export default function Invoices() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => printInvoice(invoice.id, invoice.invoiceNumber)}
                           title="Print Invoice"
                           data-testid={`button-print-${invoice.id}`}
                         >
@@ -398,7 +487,16 @@ export default function Invoices() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => sendInvoice(invoice.id, invoice.customerEmail)}
+                          onClick={() => copyInvoiceLink(invoice.id, invoice.invoiceNumber)}
+                          title="Copy PDF Link"
+                          data-testid={`button-link-${invoice.id}`}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => emailInvoice(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
                           title="Email Invoice"
                           data-testid={`button-email-${invoice.id}`}
                         >
