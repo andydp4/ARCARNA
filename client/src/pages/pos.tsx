@@ -332,6 +332,9 @@ export default function POS() {
   // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
   const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
 
+  // Total item count for cart badge (sum of quantities)
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
   // Handle checkout
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -389,6 +392,14 @@ export default function POS() {
 
   // Process payment
   const processPayment = () => {
+    if (cart.length === 0) {
+      toast({
+        title: "Cart Empty",
+        description: "Add items to cart before processing payment",
+        variant: "destructive",
+      });
+      return;
+    }
     if (placeOrderMutation.isPending) {
       toast({
         title: "Processing",
@@ -445,7 +456,7 @@ export default function POS() {
       <div className="mb-4">
         <h2 className="text-xl font-bold flex items-center gap-2">
           <ShoppingCart className="h-5 w-5" />
-          Shopping Cart
+          Shopping Cart{cartItemCount > 0 ? ` (${cartItemCount})` : ""}
         </h2>
       </div>
 
@@ -793,6 +804,8 @@ export default function POS() {
       <Button
         onClick={handleCheckout}
         disabled={cart.length === 0}
+        aria-label={cart.length === 0 ? "Checkout disabled – add items to cart" : "Proceed to checkout"}
+        title={cart.length === 0 ? "Add items to cart" : undefined}
         className="w-full min-h-[48px]"
         size="lg"
         data-testid="button-checkout"
@@ -882,12 +895,13 @@ export default function POS() {
                 size="lg"
                 className="fixed bottom-4 right-4 z-50 rounded-full shadow-lg h-14 w-14 p-0"
                 data-testid="mobile-cart-button"
+                aria-label={cartItemCount > 0 ? `Cart with ${cartItemCount} items` : "Open cart"}
               >
                 <div className="relative">
                   <ShoppingCart className="h-6 w-6" />
-                  {cart.length > 0 && (
+                  {cartItemCount > 0 && (
                     <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                      {cart.length}
+                      {cartItemCount}
                     </Badge>
                   )}
                 </div>
@@ -898,7 +912,7 @@ export default function POS() {
                 <SheetTitle>
                   <div className="flex items-center gap-2">
                     <ShoppingCart className="h-5 w-5" />
-                    Shopping Cart
+                    Shopping Cart{cartItemCount > 0 ? ` (${cartItemCount})` : ""}
                   </div>
                 </SheetTitle>
               </SheetHeader>
@@ -915,7 +929,7 @@ export default function POS() {
                 <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-muted-foreground">{cart.length} items</div>
+                      <div className="text-sm text-muted-foreground">{cartItemCount} items</div>
                       <div className="text-lg font-bold">${total.toFixed(2)}</div>
                     </div>
                     <Button
@@ -1081,7 +1095,13 @@ export default function POS() {
             <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)} className="w-full sm:w-auto min-h-[44px]">
               Cancel
             </Button>
-            <Button onClick={processPayment} disabled={placeOrderMutation.isPending} data-testid="button-confirm-payment" className="w-full sm:w-auto min-h-[44px]">
+            <Button
+              onClick={processPayment}
+              disabled={cart.length === 0 || placeOrderMutation.isPending}
+              aria-label={cart.length === 0 ? "Payment disabled – add items to cart" : "Confirm payment"}
+              data-testid="button-confirm-payment"
+              className="w-full sm:w-auto min-h-[44px]"
+            >
               {placeOrderMutation.isPending ? "Processing..." : "Confirm Payment"}
             </Button>
           </DialogFooter>
