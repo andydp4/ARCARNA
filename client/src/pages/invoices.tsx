@@ -1,521 +1,502 @@
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { apiRequest, queryClient } from '@/lib/queryClient'
+import { useMemo, useState, useCallback } from "react";
+import {
+  endOfDay,
+  isWithinInterval,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+} from "date-fns";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/hooks/use-toast'
-import {
-  FileText,
-  Download,
-  Send,
-  Search,
-  Calendar,
-  DollarSign,
-  User,
-  Eye,
-  Printer,
-  Mail,
-  Copy,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  RefreshCw,
-  ExternalLink,
-} from 'lucide-react'
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { FileText, Search, DollarSign, Clock, AlertCircle } from "lucide-react";
+import { InvoiceRow, type InvoiceListItem } from "@/components/invoice-row";
+import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
+import { AppPageHeader } from "@/components/app-page-header";
+import { ActionLoader } from "@/components/action-loader";
+import { DataTableShell } from "@/components/data-table-shell";
+import { EmptyStatePanel } from "@/components/empty-state-panel";
 
-interface Invoice {
-  id: string
-  invoiceNumber: string
-  orderId: string
-  customerId: string
-  customerName: string
-  customerEmail: string
-  date: string
-  dueDate: string
-  total: number
-  subtotal: number
-  vat: number
-  status: 'paid' | 'pending' | 'overdue' | 'cancelled'
-  paymentMethod: string
+interface Invoice extends InvoiceListItem {
+  orderId: string;
+  customerId: string;
+  subtotal: number;
+  vat: number;
   items: Array<{
-    name: string
-    quantity: number
-    unitPrice: number
-    total: number
-  }>
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
 }
 
 export default function Invoices() {
-  const { toast } = useToast()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all')
-  const [selectedPeriod, setSelectedPeriod] = useState<'all' | 'today' | 'week' | 'month'>('month')
+  const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "pending" | "overdue">("all");
+  const [selectedPeriod, setSelectedPeriod] = useState<"all" | "today" | "week" | "month">("month");
+  const [regenerating, setRegenerating] = useState(false);
 
-  // Fetch invoices from API
-  const { data: invoices = [], isLoading } = useQuery<Invoice[]>({
-    queryKey: ['/api/invoices'],
-  })
+  const {
+    data: invoicesData,
+    isPending: invoicesPending,
+    isFetching: invoicesFetching,
+  } = useQuery<Invoice[]>({
+    queryKey: ["/api/invoices"],
+    staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
+  });
+  const invoices = invoicesData ?? [];
+  const invoicesInitialLoad = invoicesPending && invoicesData === undefined;
 
-  const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = 
-      invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customerEmail.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus
-    
-    return matchesSearch && matchesStatus
-  })
+  const periodInvoices = useMemo(() => {
+    if (selectedPeriod === "all") return invoices;
+    const now = new Date();
+    const interval =
+      selectedPeriod === "today"
+        ? { start: startOfDay(now), end: endOfDay(now) }
+        : selectedPeriod === "week"
+          ? { start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfDay(now) }
+          : { start: startOfMonth(now), end: endOfDay(now) };
+    return invoices.filter((inv) => isWithinInterval(new Date(inv.date), interval));
+  }, [invoices, selectedPeriod]);
 
-  const totalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.status === 'paid' ? inv.total : 0), 0)
-  const pendingRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.status === 'pending' ? inv.total : 0), 0)
-  const overdueRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.status === 'overdue' ? inv.total : 0), 0)
+  const filteredInvoices = useMemo(
+    () =>
+      periodInvoices.filter((invoice) => {
+        const matchesSearch =
+          invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          invoice.customerEmail.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      paid: { color: 'default', icon: CheckCircle },
-      pending: { color: 'secondary', icon: Clock },
-      overdue: { color: 'destructive', icon: AlertCircle },
-      cancelled: { color: 'outline', icon: AlertCircle },
-    } as const
-    
-    const variant = variants[status as keyof typeof variants]
-    const Icon = variant.icon
-    
-    return (
-      <Badge variant={variant.color as any} className="gap-1">
-        <Icon className="h-3 w-3" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
-    )
-  }
+        const matchesStatus = filterStatus === "all" || invoice.status === filterStatus;
 
-  const [regenerating, setRegenerating] = useState(false)
+        return matchesSearch && matchesStatus;
+      }),
+    [periodInvoices, searchTerm, filterStatus]
+  );
 
-  const regenerateAllMissing = async () => {
-    setRegenerating(true)
-    try {
-      const response = await apiRequest('POST', '/api/invoices/regenerate-all-missing')
-      const data = await response.json()
-      
-      toast({
-        title: 'PDFs Generated',
-        description: data.message,
-      })
-      
-      queryClient.invalidateQueries({ queryKey: ['/api/invoices'] })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to regenerate PDFs',
-        variant: 'destructive',
-      })
-    } finally {
-      setRegenerating(false)
+  const { totalRevenue, pendingRevenue, overdueRevenue } = useMemo(() => {
+    let paid = 0;
+    let pending = 0;
+    let overdue = 0;
+    for (const inv of filteredInvoices) {
+      if (inv.status === "paid") paid += inv.total;
+      else if (inv.status === "pending") pending += inv.total;
+      else if (inv.status === "overdue") overdue += inv.total;
     }
-  }
+    return { totalRevenue: paid, pendingRevenue: pending, overdueRevenue: overdue };
+  }, [filteredInvoices]);
 
-  const viewInvoicePdf = async (invoiceId: string, invoiceNumber: string) => {
-    try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pdfUrl) {
-          window.open(data.pdfUrl, '_blank')
-        } else {
-          toast({
-            title: 'PDF Not Available',
-            description: 'This invoice PDF has not been generated yet. Click "Generate Missing PDFs" to create it.',
-            variant: 'destructive',
-          })
-        }
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Could not retrieve invoice PDF',
-          variant: 'destructive',
-        })
-      }
-    } catch (error) {
+  const copyInvoiceNumber = useCallback(
+    (invoiceNumber: string) => {
+      navigator.clipboard.writeText(invoiceNumber);
       toast({
-        title: 'Error',
-        description: 'Failed to get invoice PDF',
-        variant: 'destructive',
-      })
-    }
-  }
+        title: "Copied",
+        description: "Invoice number copied to clipboard",
+      });
+    },
+    [toast]
+  );
 
-  const printInvoice = async (invoiceId: string, invoiceNumber: string) => {
-    try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pdfUrl) {
-          const printWindow = window.open(data.pdfUrl, '_blank')
-          if (printWindow) {
-            printWindow.onload = () => {
-              printWindow.print()
-            }
+  const viewInvoicePdf = useCallback(
+    async (invoiceId: string, invoiceNumber: string) => {
+      try {
+        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pdfUrl) {
+            window.open(data.pdfUrl, "_blank");
+          } else {
+            toast({
+              title: "PDF Not Available",
+              description:
+                "This invoice PDF has not been generated yet. Click \"Generate Missing PDFs\" to create it.",
+              variant: "destructive",
+            });
           }
-          toast({
-            title: 'Print',
-            description: 'Opening PDF for printing...',
-          })
         } else {
           toast({
-            title: 'PDF Not Available',
-            description: 'Generate the PDF first before printing',
-            variant: 'destructive',
-          })
+            title: "Error",
+            description: "Could not retrieve invoice PDF",
+            variant: "destructive",
+          });
         }
+      } catch {
+        toast({
+          title: "Error",
+          description: "Failed to get invoice PDF",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to print invoice',
-        variant: 'destructive',
-      })
-    }
-  }
+    },
+    [toast]
+  );
 
-  const emailInvoice = async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
+  const printInvoice = useCallback(
+    async (invoiceId: string, invoiceNumber: string) => {
+      try {
+        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pdfUrl) {
+            const printWindow = window.open(data.pdfUrl, "_blank");
+            if (printWindow) {
+              printWindow.onload = () => {
+                printWindow.print();
+              };
+            }
+            toast({
+              title: "Print",
+              description: "Opening PDF for printing...",
+            });
+          } else {
+            toast({
+              title: "PDF Not Available",
+              description: "Generate the PDF first before printing",
+              variant: "destructive",
+            });
+          }
+        }
+      } catch {
+        toast({
+          title: "Error",
+          description: "Failed to print invoice",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  const emailInvoice = useCallback(
+    async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
+      try {
+        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pdfUrl) {
+            const subject = encodeURIComponent(`Invoice ${invoiceNumber} from Viger Assist Ltd`);
+            const body = encodeURIComponent(
+              `Dear Customer,\n\nPlease find your invoice attached:\n${data.pdfUrl}\n\nThank you for your business.\n\nBest regards,\nViger Assist Ltd`
+            );
+            window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
+            toast({
+              title: "Email Client Opened",
+              description: `Composing email to ${customerEmail}`,
+            });
+          } else {
+            toast({
+              title: "PDF Not Available",
+              description: "Generate the PDF first before emailing",
+              variant: "destructive",
+            });
+          }
+        }
+      } catch {
+        toast({
+          title: "Error",
+          description: "Failed to prepare email",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  const copyInvoiceLink = useCallback(
+    async (invoiceId: string, invoiceNumber: string) => {
+      try {
+        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pdfUrl) {
+            await navigator.clipboard.writeText(data.pdfUrl);
+            toast({
+              title: "Link Copied",
+              description: "Invoice PDF link copied to clipboard",
+            });
+          } else {
+            toast({
+              title: "No Link Available",
+              description: "PDF has not been generated yet",
+              variant: "destructive",
+            });
+          }
+        }
+      } catch {
+        toast({
+          title: "Error",
+          description: "Failed to copy link",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  const regenerateAllMissing = useCallback(async () => {
+    setRegenerating(true);
     try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pdfUrl) {
-          const subject = encodeURIComponent(`Invoice ${invoiceNumber} from Viger Assist Ltd`)
-          const body = encodeURIComponent(`Dear Customer,\n\nPlease find your invoice attached:\n${data.pdfUrl}\n\nThank you for your business.\n\nBest regards,\nViger Assist Ltd`)
-          window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, '_blank')
-          toast({
-            title: 'Email Client Opened',
-            description: `Composing email to ${customerEmail}`,
-          })
-        } else {
-          toast({
-            title: 'PDF Not Available',
-            description: 'Generate the PDF first before emailing',
-            variant: 'destructive',
-          })
-        }
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to prepare email',
-        variant: 'destructive',
-      })
-    }
-  }
+      const response = await apiRequest("POST", "/api/invoices/regenerate-all-missing");
+      const data = await response.json();
 
-  const copyInvoiceLink = async (invoiceId: string, invoiceNumber: string) => {
-    try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
-        credentials: 'include',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.pdfUrl) {
-          await navigator.clipboard.writeText(data.pdfUrl)
-          toast({
-            title: 'Link Copied',
-            description: 'Invoice PDF link copied to clipboard',
-          })
-        } else {
-          toast({
-            title: 'No Link Available',
-            description: 'PDF has not been generated yet',
-            variant: 'destructive',
-          })
-        }
-      }
-    } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Failed to copy link',
-        variant: 'destructive',
-      })
-    }
-  }
+        title: "PDFs Generated",
+        description: data.message,
+      });
 
-  const copyInvoiceNumber = (invoiceNumber: string) => {
-    navigator.clipboard.writeText(invoiceNumber)
-    toast({
-      title: 'Copied',
-      description: 'Invoice number copied to clipboard',
-    })
+      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to regenerate PDFs",
+        variant: "destructive",
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  }, [toast]);
+
+  if (invoicesInitialLoad) {
+    return <InvoicesPageSkeleton />;
   }
 
   return (
     <div className="w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
-            <FileText className="h-6 sm:h-8 w-6 sm:w-8" />
-            Invoice Management
-          </h1>
-          <p className="text-muted-foreground mt-1">View, download, and manage all invoices</p>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+        <AppPageHeader
+          title="Invoices"
+          description="Totals follow your status, search, and date window. PDF actions need a generated file on the server first."
+          icon={<FileText className="h-7 w-7 shrink-0 text-muted-foreground sm:h-8 sm:w-8" />}
+          trailing={
+            invoicesFetching ? (
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                Refreshing invoices…
+              </p>
+            ) : undefined
+          }
+        />
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-          <Card>
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Paid total</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">£{(isNaN(totalRevenue) ? 0 : totalRevenue).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">
-                Paid invoices
-              </p>
+            <CardContent className="pt-0">
+              <div className="text-2xl font-bold tabular-nums tracking-tight">
+                £{(isNaN(totalRevenue) ? 0 : totalRevenue).toFixed(2)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Paid rows in current filter</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">£{(isNaN(pendingRevenue) ? 0 : pendingRevenue).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">
-                Awaiting payment
-              </p>
+            <CardContent className="pt-0">
+              <div className="text-2xl font-bold tabular-nums tracking-tight">
+                £{(isNaN(pendingRevenue) ? 0 : pendingRevenue).toFixed(2)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Awaiting payment</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Overdue</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Overdue</CardTitle>
               <AlertCircle className="h-4 w-4 text-destructive" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-destructive">£{(isNaN(overdueRevenue) ? 0 : overdueRevenue).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">
-                Past due date
-              </p>
+            <CardContent className="pt-0">
+              <div className="text-2xl font-bold tabular-nums tracking-tight text-destructive">
+                £{(isNaN(overdueRevenue) ? 0 : overdueRevenue).toFixed(2)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Past due date</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Rows shown</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{filteredInvoices.length}</div>
-              <p className="text-xs text-muted-foreground">
-                This period
-              </p>
+            <CardContent className="pt-0">
+              <div className="text-2xl font-bold tabular-nums tracking-tight">{filteredInvoices.length}</div>
+              <p className="mt-1 text-xs text-muted-foreground">After search, status, and date window</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-4">
-          <div className="flex flex-col sm:flex-row gap-2 flex-1">
-            <div className="relative flex-1 sm:max-w-xs">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="Search invoices..."
+                placeholder="Search by #, name, or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 min-h-[44px]"
+                className="min-h-[44px] pl-8"
                 data-testid="input-search-invoices"
               />
             </div>
-            <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-32">
-                <SelectValue />
+            <Select value={filterStatus} onValueChange={(value: "all" | "paid" | "pending" | "overdue") => setFilterStatus(value)}>
+              <SelectTrigger className="min-h-[44px] w-full sm:w-[140px]">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedPeriod} onValueChange={(value: any) => setSelectedPeriod(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-32">
-                <SelectValue />
+            <Select value={selectedPeriod} onValueChange={(value: "all" | "today" | "week" | "month") => setSelectedPeriod(value)}>
+              <SelectTrigger className="min-h-[44px] w-full sm:w-[160px]">
+                <SelectValue placeholder="Date window" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="all">All dates</SelectItem>
                 <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
+                <SelectItem value="week">This week</SelectItem>
+                <SelectItem value="month">This month</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button 
-              variant="outline" 
-              className="gap-2 min-h-[44px] flex-1 sm:flex-none" 
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
+            <Button
+              variant="outline"
+              className="min-h-[44px] gap-2 border-destructive/25 text-destructive hover:bg-destructive/10 sm:flex-none"
               onClick={regenerateAllMissing}
               disabled={regenerating}
               data-testid="button-regenerate-pdfs"
             >
-              <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
-              {regenerating ? 'Generating...' : 'Generate Missing PDFs'}
+              {regenerating ? (
+                <>
+                  <ActionLoader className="text-destructive" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4" />
+                  Generate missing PDFs
+                </>
+              )}
             </Button>
-            <Button className="gap-2 min-h-[44px] flex-1 sm:flex-none" data-testid="button-create-invoice">
+            <Button className="min-h-[44px] gap-2 sm:flex-none" data-testid="button-create-invoice">
               <FileText className="h-4 w-4" />
-              Create Invoice
+              Create invoice
             </Button>
           </div>
         </div>
 
-        {/* Invoices Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoices</CardTitle>
-            <CardDescription>Manage and track all customer invoices</CardDescription>
+        <Card className="border-border/60 shadow-sm">
+          <CardHeader className="space-y-1.5 pb-2">
+            <CardTitle className="text-lg">Invoice list</CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              Status and dates first; amounts use tabular figures. PDF menu: open, print, copy link, or draft an email.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
-                      Loading invoices...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        {invoice.invoiceNumber}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => copyInvoiceNumber(invoice.invoiceNumber)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{invoice.customerName}</div>
-                        <div className="text-muted-foreground">{invoice.customerEmail}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(invoice.date).toLocaleDateString()}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(invoice.dueDate).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-bold">£{invoice.total.toFixed(2)}</span>
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(invoice.status)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{invoice.paymentMethod}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => viewInvoicePdf(invoice.id, invoice.invoiceNumber)}
-                          title="View PDF"
-                          data-testid={`button-view-${invoice.id}`}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => printInvoice(invoice.id, invoice.invoiceNumber)}
-                          title="Print Invoice"
-                          data-testid={`button-print-${invoice.id}`}
-                        >
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => copyInvoiceLink(invoice.id, invoice.invoiceNumber)}
-                          title="Copy PDF Link"
-                          data-testid={`button-link-${invoice.id}`}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => emailInvoice(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
-                          title="Email Invoice"
-                          data-testid={`button-email-${invoice.id}`}
-                        >
-                          <Mail className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {filteredInvoices.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No invoices found
-              </div>
+          <CardContent className="pt-2">
+            {filteredInvoices.length === 0 ? (
+              invoices.length === 0 ? (
+                <EmptyStatePanel
+                  variant="empty"
+                  icon={FileText}
+                  title="No invoices yet"
+                  description="Created invoices will appear here. Use Create invoice when you are ready to bill a customer."
+                />
+              ) : periodInvoices.length === 0 ? (
+                <EmptyStatePanel
+                  variant="filtered"
+                  icon={FileText}
+                  title="Nothing in this date window"
+                  description="Widen the period (for example All dates or This month) to see invoices that fall outside the current range."
+                />
+              ) : searchTerm.trim() ? (
+                <EmptyStatePanel
+                  variant="search"
+                  icon={Search}
+                  title="No invoices match your search"
+                  description="Try another invoice number, customer name, or email—or clear the search field."
+                />
+              ) : (
+                <EmptyStatePanel
+                  variant="filtered"
+                  icon={FileText}
+                  title="No invoices match these filters"
+                  description="Set status to All statuses, choose a wider date window, or clear the search to see more rows."
+                />
+              )
+            ) : (
+              <DataTableShell className="overflow-x-auto">
+                <Table scrollContainerClassName="overflow-visible">
+                  <TableHeader>
+                    <TableRow className="border-b bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="whitespace-nowrap">Invoice #</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead className="whitespace-nowrap">Issued</TableHead>
+                      <TableHead className="whitespace-nowrap">Due</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">Total</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Payment</TableHead>
+                      <TableHead className="whitespace-nowrap text-right">PDF</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredInvoices.map((invoice) => (
+                      <InvoiceRow
+                        key={invoice.id}
+                        invoice={invoice}
+                        onCopyInvoiceNumber={copyInvoiceNumber}
+                        onViewPdf={viewInvoicePdf}
+                        onPrint={printInvoice}
+                        onCopyLink={copyInvoiceLink}
+                        onEmail={emailInvoice}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </DataTableShell>
             )}
           </CardContent>
         </Card>
       </div>
     </div>
-  )
+  );
 }

@@ -30,7 +30,10 @@ export default function MetricCard({
       <h3 className="text-muted-foreground text-sm font-medium mb-1">
         {title}
       </h3>
-      <p className="text-3xl font-bold text-foreground" data-testid={`metric-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+      <p
+        className="text-3xl font-bold tracking-tight text-foreground tabular-nums"
+        data-testid={`metric-${title.toLowerCase().replace(/\s+/g, '-')}`}
+      >
         {value}
       </p>
       <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>

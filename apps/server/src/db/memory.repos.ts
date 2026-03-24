@@ -25,8 +25,8 @@ export const ProductsRepoMemory: ProductsRepo = {
     state.stock.set(p as any, cur + qty)
   },
   async create(product: any) { return product },
-  async update(id: ProductId, product: any) { return product as any },
-  async delete(id: ProductId) {},
+  async update(id: ProductId, product: any, _orgId?: string | null) { return product as any },
+  async delete(id: ProductId, _orgId?: string | null) {},
   async findById(id: ProductId) { return null },
   async findAll() { return [] }
 }
@@ -42,8 +42,8 @@ export const CustomersRepoMemory: CustomersRepo = {
     state.history.set(c as any, arr)
   },
   async create(customer: any) { return customer },
-  async update(id: CustomerId, customer: any) { return customer as any },
-  async delete(id: CustomerId) {},
+  async update(id: CustomerId, customer: any, _orgId?: string | null) { return customer as any },
+  async delete(id: CustomerId, _orgId?: string | null) {},
   async findById(id: CustomerId) { return null },
   async findAll() { return [] },
   async updateMetrics(c: CustomerId) {}

@@ -1,0 +1,114 @@
+# Phase 2G CI - TypeScript, gate, migration sanity
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  check:
+    name: TypeScript check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run check
+
+  migration-sanity:
+    name: Migration sanity (fresh DB)
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midnight_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Push schema
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Migration sanity (post db:push)
+        run: npm run migration:sanity
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+  gate:
+    name: Release gate (Phase 2D)
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midnight_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Push schema
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Release gate
+        run: npm run gate 2>&1 | tee gate-output.log
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Upload gate output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate-output
+          path: gate-output.log

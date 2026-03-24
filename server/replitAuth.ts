@@ -65,7 +65,7 @@ async function upsertUser(
   });
 }
 
-async function checkAndHandleAllowList(claims: any): Promise<{ allowed: boolean; isOwner: boolean; isPending: boolean }> {
+async function checkAndHandleAllowList(claims: any): Promise<{ allowed: boolean; isOwner: boolean; isPending: boolean; role?: string; orgId?: string | null }> {
   const replitUserId = claims["sub"];
   const email = claims["email"];
   const name = `${claims["first_name"] || ''} ${claims["last_name"] || ''}`.trim() || email;
@@ -75,21 +75,30 @@ async function checkAndHandleAllowList(claims: any): Promise<{ allowed: boolean;
   const isAllowed = await storage.isUserAllowed(replitUserId);
   if (isAllowed) {
     const owner = await storage.getOwner();
-    return { allowed: true, isOwner: owner?.replitUserId === replitUserId, isPending: false };
+    const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+    return {
+      allowed: true,
+      isOwner: owner?.replitUserId === replitUserId,
+      isPending: false,
+      role: roleAndOrg?.role ?? (owner?.replitUserId === replitUserId ? 'SUPER_ADMIN' : 'CASHIER'),
+      orgId: roleAndOrg?.orgId ?? null,
+    };
   }
   
   // Check if there's an owner already
   const owner = await storage.getOwner();
   
   if (!owner) {
-    // No owner exists - first user becomes owner automatically
+    // No owner exists - first user becomes SUPER_ADMIN automatically
     await storage.addAllowedUser({
       replitUserId,
       email,
       name,
       isOwner: 1,
+      orgId: null,
+      role: 'SUPER_ADMIN',
     });
-    return { allowed: true, isOwner: true, isPending: false };
+    return { allowed: true, isOwner: true, isPending: false, role: 'SUPER_ADMIN', orgId: null };
   }
   
   // User is not on allow list and not owner - check pending status
@@ -97,22 +106,22 @@ async function checkAndHandleAllowList(claims: any): Promise<{ allowed: boolean;
   
   if (existingRequest) {
     if (existingRequest.status === 'approved') {
-      // User was approved, add to allow list
+      // User was approved, add to allow list (orgId/role set by approver)
       await storage.addAllowedUser({
         replitUserId,
         email,
         name,
         isOwner: 0,
+        orgId: null,
+        role: 'CASHIER',
       });
-      return { allowed: true, isOwner: false, isPending: false };
+      return { allowed: true, isOwner: false, isPending: false, role: 'CASHIER', orgId: null };
     } else if (existingRequest.status === 'rejected') {
       return { allowed: false, isOwner: false, isPending: false };
     }
-    // Status is pending
     return { allowed: false, isOwner: false, isPending: true };
   }
   
-  // Create new pending approval request
   await storage.createApprovalRequest({
     replitUserId,
     email,
@@ -194,10 +203,12 @@ export async function setupAuth(app: Express) {
       const claims = user.claims;
       const allowListStatus = await checkAndHandleAllowList(claims);
       
-      // Store allow list status in user session
+      // Store allow list status and RBAC in user session
       user.isOwner = allowListStatus.isOwner;
       user.isAllowed = allowListStatus.allowed;
       user.isPending = allowListStatus.isPending;
+      user.role = allowListStatus.role ?? (allowListStatus.isOwner ? 'SUPER_ADMIN' : 'CASHIER');
+      user.orgId = allowListStatus.orgId ?? null;
       
       req.logIn(user, (loginErr: any) => {
         if (loginErr) {
@@ -230,9 +241,40 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Phase 2D test-mode impersonation - MUST NEVER be enabled outside test/dev.
+  // Belt + braces: PHASE2D_TEST=1, NODE_ENV !== production, localhost AND X-Test-Secret match.
+  const testUserId = (req.headers['x-test-replit-user-id'] as string) || null;
+  const isTestMode = process.env.PHASE2D_TEST === '1' && process.env.NODE_ENV !== 'production';
+  const clientIp = req.ip || (req as any).socket?.remoteAddress || '';
+  const isLocalhost = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+  const testSecret = process.env.PHASE2D_TEST_SECRET;
+  const secretMatch = !!testSecret && req.headers['x-test-secret'] === testSecret;
+  const allowImpersonation = isTestMode && testUserId && isLocalhost && secretMatch;
+  if (allowImpersonation) {
+    try {
+      const roleAndOrg = await storage.getUserRoleAndOrg(testUserId);
+      if (!roleAndOrg) {
+        return res.status(401).json({ message: 'Test user not found in allowed_users' });
+      }
+      (req as any).user = {
+        id: testUserId,
+        claims: { sub: testUserId },
+        role: roleAndOrg.role,
+        orgId: roleAndOrg.orgId,
+        isOwner: roleAndOrg.role === 'SUPER_ADMIN',
+        isAllowed: true,
+        isPending: false,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      };
+      return next();
+    } catch (err) {
+      console.error('[Auth] Phase2D test user lookup failed:', err);
+      return res.status(500).json({ message: 'Test user lookup failed' });
+    }
+  }
+
   // In development mode, bypass authentication
   if (process.env.NODE_ENV === 'development') {
-    // Set a mock user for development (as owner)
     req.user = req.user || {
       id: 'dev-user',
       username: 'Developer',
@@ -241,6 +283,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       isOwner: true,
       isAllowed: true,
       isPending: false,
+      role: 'SUPER_ADMIN',
+      orgId: null,
       claims: {
         sub: 'dev-user',
         email: 'dev@example.com',
@@ -288,18 +332,70 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 };
 
-// Owner-only middleware for admin routes
+// Owner-only middleware (legacy - maps to SUPER_ADMIN)
 export const isOwner: RequestHandler = async (req, res, next) => {
-  // In development mode, allow access
-  if (process.env.NODE_ENV === 'development') {
-    return next();
-  }
-
+  if (process.env.NODE_ENV === 'development') return next();
   const user = req.user as any;
-  
   if (!user || !user.isOwner) {
     return res.status(403).json({ message: "Access denied. Owner only." });
   }
-  
+  return next();
+};
+
+// Require one of the given roles (SUPER_ADMIN, ADMIN, MANAGER, CASHIER)
+export function requireRole(...allowedRoles: string[]): RequestHandler {
+  return async (req, res, next) => {
+    if (process.env.NODE_ENV === 'development') return next();
+    const user = req.user as any;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    const role = user.role ?? (user.isOwner ? 'SUPER_ADMIN' : 'CASHIER');
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({ message: `Access denied. Requires role: ${allowedRoles.join(' or ')}` });
+    }
+    return next();
+  };
+}
+
+// Alias for isAuthenticated (clearer naming)
+export const requireAuth = isAuthenticated;
+
+// Sets req.orgContext = { orgId, locationId, role }
+// MUST run after isAuthenticated.
+// Contract:
+//   SUPER_ADMIN: has no implicit org; MUST pass X-Org-Id or ?orgId= explicitly.
+//   Non-SUPER (ADMIN/MANAGER/CASHIER): orgId from user record (allowed_users.org_id).
+//     Do NOT require header/query; requests are auto-scoped to their org.
+export const requireOrgContext: RequestHandler = async (req, res, next) => {
+  const user = req.user as any;
+  if (!user) return next();
+  const role = user.role ?? (user.isOwner ? 'SUPER_ADMIN' : 'CASHIER');
+  const userOrgId = user.orgId ?? null;
+  const headerOrg = req.headers['x-org-id'] as string;
+  const queryOrg = req.query?.orgId as string;
+  const orgId = role === 'SUPER_ADMIN'
+    ? (headerOrg || queryOrg || null)
+    : userOrgId;
+  const locationId = (req.headers['x-location-id'] as string) || user.defaultLocationId || null;
+  (req as any).orgContext = {
+    orgId: orgId || null,
+    locationId: locationId || null,
+    role,
+  };
+  return next();
+};
+
+// Call after requireOrgContext. Rejects if orgId is missing.
+// Non-SUPER: orgId comes from user record (no explicit header/query needed).
+// SUPER_ADMIN: must pass X-Org-Id or ?orgId=; no unscoped access.
+export const requireOrgScope: RequestHandler = async (req, res, next) => {
+  const ctx = (req as any).orgContext as { orgId: string | null; role: string } | undefined;
+  if (!ctx) return next();
+  if (!ctx.orgId) {
+    return res.status(403).json({
+      message: ctx.role === 'SUPER_ADMIN'
+        ? 'Organization required. Pass X-Org-Id or ?orgId= to scope.'
+        : 'No organization assigned. Contact an administrator.',
+    });
+  }
   return next();
 };

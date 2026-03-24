@@ -8,7 +8,8 @@
  */
 
 import { db } from "../db";
-import { analyticsDaily, analyticsWeekly, analyticsMonthly, processedEvents } from "../../shared/schema";
+import { assertPhase2dForceFailGuard } from "./phase2dForceFailGuard";
+import { analyticsDaily, analyticsWeekly, analyticsMonthly, processedEvents, orders } from "../../shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
@@ -16,13 +17,13 @@ import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../s
 interface OrderPayload {
   order?: {
     orderId: string;
-    totals?: {
-      total: number;
-    };
+    orgId?: string | null;
+    totals?: { total: number };
     total?: number;
     createdAt?: string;
   };
   orderId?: string;
+  orgId?: string | null;
   total?: number;
   amount?: number;
 }
@@ -44,8 +45,9 @@ export class BusinessInsightsWorker implements IWorker {
   }
 
   async handle(event: EventEnvelope): Promise<WorkerResult> {
-    const payload = event.payload as OrderPayload;
-    
+    const payload = event.payload as OrderPayload & { _phase2dForceFail?: boolean };
+    assertPhase2dForceFailGuard(payload);
+
     try {
       // Idempotency check - verify we haven't processed this event for this worker
       const alreadyProcessed = await db
@@ -70,6 +72,22 @@ export class BusinessInsightsWorker implements IWorker {
       }
 
       const total = payload.order?.totals?.total || payload.order?.total || payload.total || payload.amount || 0;
+      const orderId = payload.order?.orderId || payload.orderId;
+      let orgId = payload.order?.orgId ?? payload.orgId ?? null;
+      if (!orgId && orderId) {
+        const [ord] = await db.select({ orgId: orders.orgId }).from(orders).where(eq(orders.id, orderId)).limit(1);
+        orgId = ord?.orgId ?? null;
+      }
+      if (!orgId) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'skipped',
+          summary: 'Order has no orgId; skipping analytics (multi-tenant)',
+        };
+      }
+
       const eventDate = new Date(event.occurredAt);
       const dateStr = eventDate.toISOString().split('T')[0];
       const year = eventDate.getFullYear();
@@ -78,41 +96,34 @@ export class BusinessInsightsWorker implements IWorker {
 
       let revenueChange = 0;
       let orderCountChange = 0;
-
       if (event.eventType === 'OrderCreated') {
         revenueChange = total;
         orderCountChange = 1;
       } else if (event.eventType === 'RefundIssued' || event.eventType === 'OrderCancelled') {
         revenueChange = -total;
-        // Don't decrease order count for refunds
       }
 
       if (revenueChange !== 0 || orderCountChange !== 0) {
-        // Update daily analytics
         await db.execute(sql`
-          INSERT INTO analytics_daily (date, total_orders, total_revenue)
-          VALUES (${dateStr}, ${orderCountChange}, ${revenueChange})
-          ON CONFLICT (date) 
+          INSERT INTO analytics_daily (org_id, date, total_orders, total_revenue)
+          VALUES (${orgId}, ${dateStr}, ${orderCountChange}, ${revenueChange})
+          ON CONFLICT (org_id, date) 
           DO UPDATE SET 
             total_orders = analytics_daily.total_orders + ${orderCountChange},
             total_revenue = analytics_daily.total_revenue + ${revenueChange}
         `);
-
-        // Update weekly analytics
         await db.execute(sql`
-          INSERT INTO analytics_weekly (year, week, total_orders, total_revenue)
-          VALUES (${year}, ${week}, ${orderCountChange}, ${revenueChange})
-          ON CONFLICT (year, week) 
+          INSERT INTO analytics_weekly (org_id, year, week, total_orders, total_revenue)
+          VALUES (${orgId}, ${year}, ${week}, ${orderCountChange}, ${revenueChange})
+          ON CONFLICT (org_id, year, week) 
           DO UPDATE SET 
             total_orders = analytics_weekly.total_orders + ${orderCountChange},
             total_revenue = analytics_weekly.total_revenue + ${revenueChange}
         `);
-
-        // Update monthly analytics
         await db.execute(sql`
-          INSERT INTO analytics_monthly (year, month, total_orders, total_revenue)
-          VALUES (${year}, ${month}, ${orderCountChange}, ${revenueChange})
-          ON CONFLICT (year, month) 
+          INSERT INTO analytics_monthly (org_id, year, month, total_orders, total_revenue)
+          VALUES (${orgId}, ${year}, ${month}, ${orderCountChange}, ${revenueChange})
+          ON CONFLICT (org_id, year, month) 
           DO UPDATE SET 
             total_orders = analytics_monthly.total_orders + ${orderCountChange},
             total_revenue = analytics_monthly.total_revenue + ${revenueChange}

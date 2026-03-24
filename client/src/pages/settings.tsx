@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import {
   Tabs,
   TabsContent,
@@ -200,10 +201,13 @@ export default function Settings() {
             System Settings
           </h1>
           <p className="text-muted-foreground mt-1">Configure your EPOS system settings and preferences</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            General, payment, invoice, and system options below save to this browser unless your environment syncs them server-side.
+          </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
@@ -212,9 +216,7 @@ export default function Settings() {
           </TabsList>
 
           {/* General Settings */}
-          <TabsContent value="general">
-            <div className="space-y-6">
-              {/* Business Information */}
+          <TabsContent value="general" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -293,7 +295,8 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
-              {/* Tax Settings */}
+              <Separator />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Tax Settings</CardTitle>
@@ -340,7 +343,8 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
-              {/* Theme Settings */}
+              <Separator />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Appearance</CardTitle>
@@ -363,13 +367,10 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
           </TabsContent>
 
           {/* Payment Settings */}
-          <TabsContent value="payment">
-            <div className="space-y-6">
-              {/* Payment Methods */}
+          <TabsContent value="payment" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -416,11 +417,12 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
-              {/* Bank Details */}
+              <Separator />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Bank Details</CardTitle>
-                  <CardDescription>Bank account information for transfers and card payments</CardDescription>
+                  <CardDescription>Shown on invoices and receipts when customers pay by transfer</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -430,6 +432,7 @@ export default function Settings() {
                         id="bankName"
                         value={settings.bankName}
                         onChange={(e) => handleSettingChange('payment', 'bankName', e.target.value)}
+                        className="min-h-[44px]"
                       />
                     </div>
                     <div className="space-y-2">
@@ -438,6 +441,7 @@ export default function Settings() {
                         id="accountName"
                         value={settings.accountName}
                         onChange={(e) => handleSettingChange('payment', 'accountName', e.target.value)}
+                        className="min-h-[44px]"
                       />
                     </div>
                     <div className="space-y-2">
@@ -514,11 +518,12 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
-              {/* Collection/Delivery Settings */}
+              <Separator />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Collection & Delivery</CardTitle>
-                  <CardDescription>Configure collection and delivery options</CardDescription>
+                  <CardDescription>Pickup and delivery options shown to staff and on customer-facing flows</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-4">
@@ -602,12 +607,10 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
           </TabsContent>
 
           {/* Invoice Settings */}
-          <TabsContent value="invoice">
-            <div className="space-y-6">
+          <TabsContent value="invoice" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -670,12 +673,10 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
           </TabsContent>
 
           {/* System Settings */}
-          <TabsContent value="system">
-            <div className="space-y-6">
+          <TabsContent value="system" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Stock Management</CardTitle>
@@ -705,6 +706,8 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
+              <Separator />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Backup Settings</CardTitle>
@@ -729,7 +732,7 @@ export default function Settings() {
                         value={settings.backupFrequency}
                         onValueChange={(value) => handleSettingChange('system', 'backupFrequency', value)}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="min-h-[44px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -743,6 +746,8 @@ export default function Settings() {
                   )}
                 </CardContent>
               </Card>
+
+              <Separator />
 
               <Card>
                 <CardHeader>
@@ -763,7 +768,6 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
           </TabsContent>
 
           {/* Users Management */}
@@ -774,7 +778,9 @@ export default function Settings() {
                   <Users className="h-5 w-5" />
                   User Management
                 </CardTitle>
-                <CardDescription>Manage system users and permissions</CardDescription>
+                <CardDescription>
+                  Demo list for UI only — use <strong>User Access</strong> in the nav for real approvals and org access.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="mb-4">
@@ -799,7 +805,9 @@ export default function Settings() {
                         <TableCell className="font-medium">{user.name}</TableCell>
                         <TableCell>{user.email}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{user.role}</Badge>
+                          <Badge variant="secondary" className="font-mono text-xs uppercase">
+                            {user.role}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
@@ -807,33 +815,41 @@ export default function Settings() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                             {user.status === 'pending' && (
                               <Button
-                                variant="ghost"
-                                size="icon"
+                                variant="secondary"
+                                size="sm"
+                                className="min-h-[40px] w-full sm:w-auto"
                                 onClick={() => handleUserAction(user.id, 'approve')}
                                 data-testid={`button-approve-${user.id}`}
                               >
-                                <UserCheck className="h-4 w-4 text-green-600" />
+                                <UserCheck className="mr-2 h-4 w-4 text-green-600" />
+                                Approve
                               </Button>
                             )}
                             <Button
-                              variant="ghost"
-                              size="icon"
+                              variant="outline"
+                              size="sm"
+                              className="min-h-[40px] w-full border-amber-600/40 text-amber-800 hover:bg-amber-50 dark:text-amber-200 sm:w-auto"
                               onClick={() => handleUserAction(user.id, 'suspend')}
                               data-testid={`button-suspend-${user.id}`}
                             >
-                              <UserX className="h-4 w-4 text-orange-600" />
+                              <UserX className="mr-2 h-4 w-4" />
+                              Suspend
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleUserAction(user.id, 'delete')}
-                              data-testid={`button-delete-user-${user.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            <div className="border-t border-destructive/20 pt-2 sm:border-0 sm:pt-0 sm:pl-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="min-h-[40px] w-full border-destructive/40 text-destructive hover:bg-destructive/10 sm:w-auto"
+                                onClick={() => handleUserAction(user.id, 'delete')}
+                                data-testid={`button-delete-user-${user.id}`}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remove
+                              </Button>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -845,10 +861,9 @@ export default function Settings() {
           </TabsContent>
         </Tabs>
 
-        {/* Save Button */}
-        <div className="mt-6 flex justify-end">
-          <Button onClick={saveSettings} size="lg" data-testid="button-save-settings">
-            Save All Settings
+        <div className="sticky bottom-0 z-10 mt-8 flex justify-end border-t bg-background/95 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <Button onClick={saveSettings} size="lg" className="min-h-[48px] w-full sm:w-auto" data-testid="button-save-settings">
+            Save settings
           </Button>
         </div>
       </div>

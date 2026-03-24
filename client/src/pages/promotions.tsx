@@ -16,7 +16,7 @@ import { Gift, Plus, Edit2, Trash2, Calendar, Percent, DollarSign, Tag, Clock, U
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { insertPromotionSchema } from "@shared/schema";
+import { insertPromotionSchema, type Promotion } from "@shared/schema";
 
 // Extend the shared schema with form-specific validation
 const promoFormSchema = insertPromotionSchema.extend({
@@ -41,9 +41,10 @@ export default function PromotionsPage() {
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "expired">("all");
 
   // Fetch promotions
-  const { data: promotions = [], isLoading } = useQuery({
+  const { data: promotionsData, isLoading } = useQuery<Promotion[]>({
     queryKey: ["/api/promotions"],
   });
+  const promotions = promotionsData ?? [];
 
   // Create/Update promotion
   const promoMutation = useMutation({
@@ -102,8 +103,8 @@ export default function PromotionsPage() {
       name: "",
       code: "",
       type: "percentage",
-      value: 0,
-      minPurchase: 0,
+      value: "0",
+      minPurchase: undefined,
       maxDiscount: undefined,
       startDate: new Date().toISOString().split("T")[0],
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
@@ -112,15 +113,16 @@ export default function PromotionsPage() {
     },
   });
 
-  const openPromoDialog = (promo?: any) => {
+  const promoType = ['percentage', 'fixed', 'bogo', 'points'] as const
+  const openPromoDialog = (promo?: Promotion) => {
     if (promo) {
       promoForm.reset({
         name: promo.name,
-        code: promo.code,
-        type: promo.type,
-        value: parseFloat(promo.value),
-        minPurchase: promo.minPurchase ? parseFloat(promo.minPurchase) : undefined,
-        maxDiscount: promo.maxDiscount ? parseFloat(promo.maxDiscount) : undefined,
+        code: promo.code ?? '',
+        type: promoType.includes(promo.type as typeof promoType[number]) ? (promo.type as typeof promoType[number]) : 'percentage',
+        value: String(promo.value ?? 0),
+        minPurchase: (promo.minPurchase != null && promo.minPurchase !== '') ? String(promo.minPurchase) : undefined,
+        maxDiscount: (promo.maxDiscount != null && promo.maxDiscount !== '') ? String(promo.maxDiscount) : undefined,
         startDate: new Date(promo.startDate).toISOString().split("T")[0],
         endDate: new Date(promo.endDate).toISOString().split("T")[0],
         usageLimit: promo.usageLimit || undefined,
@@ -135,7 +137,7 @@ export default function PromotionsPage() {
   };
 
   // Filter promotions
-  const filteredPromotions = promotions.filter((promo: any) => {
+  const filteredPromotions = promotions.filter((promo: Promotion) => {
     const now = new Date();
     const endDate = new Date(promo.endDate);
     
@@ -148,13 +150,13 @@ export default function PromotionsPage() {
   });
 
   // Calculate stats
-  const activeCount = promotions.filter((p: any) => {
+  const activeCount = promotions.filter((p: Promotion) => {
     const now = new Date();
     const endDate = new Date(p.endDate);
     return p.isActive === 1 && endDate >= now;
   }).length;
 
-  const totalUsage = promotions.reduce((sum: number, p: any) => sum + (p.usageCount || 0), 0);
+  const totalUsage = promotions.reduce((sum: number, p: Promotion) => sum + (p.usageCount ?? 0), 0);
 
   const getPromoTypeIcon = (type: string) => {
     switch (type) {
@@ -171,7 +173,7 @@ export default function PromotionsPage() {
     }
   };
 
-  const getPromoStatus = (promo: any) => {
+  const getPromoStatus = (promo: Promotion) => {
     const now = new Date();
     const startDate = new Date(promo.startDate);
     const endDate = new Date(promo.endDate);
@@ -182,7 +184,7 @@ export default function PromotionsPage() {
       return { label: "Scheduled", color: "warning" };
     } else if (now > endDate) {
       return { label: "Expired", color: "destructive" };
-    } else if (promo.usageLimit && promo.usageCount >= promo.usageLimit) {
+    } else if (promo.usageLimit != null && (promo.usageCount ?? 0) >= promo.usageLimit) {
       return { label: "Exhausted", color: "destructive" };
     } else {
       return { label: "Active", color: "success" };
@@ -260,7 +262,7 @@ export default function PromotionsPage() {
         <div>Loading promotions...</div>
       ) : (
         <div className="grid gap-4">
-          {filteredPromotions.map((promo: any) => {
+          {filteredPromotions.map((promo: Promotion) => {
             const status = getPromoStatus(promo);
             
             return (

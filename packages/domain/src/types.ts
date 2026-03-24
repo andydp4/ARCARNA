@@ -38,5 +38,5 @@ export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];
   subtotal: MoneyGBP; vat: MoneyGBP; total: MoneyGBP;
   paymentMethod: 'cash'|'card'|'transfer'|'tick';
-  status: 'pending'|'processing'|'completed'|'cancelled'; createdAt: Date;
+  status: 'pending'|'processing'|'completed'|'cancelled'|'on-hold'; createdAt: Date;
 }

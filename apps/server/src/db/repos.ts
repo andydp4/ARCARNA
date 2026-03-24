@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { db } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer } from '@midnight/domain'
@@ -13,7 +13,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       await db.update(s.orders)
         .set({
           customer_id: o.customerId as any,
-          total: o.total,
+          total: String(o.total),
           payment_method: o.paymentMethod,
           status: o.status,
         })
@@ -21,38 +21,43 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       
       // Delete existing line items and re-insert
       await db.delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
+      const orgId = (o as any).orgId ?? existing[0]?.org_id;
       for (const l of o.lines) {
         await db.insert(s.order_items).values({
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
-          unit_price: l.unitPrice,
-          total_price: l.lineTotal,
-        })
+          unit_price: String(l.unitPrice),
+          total_price: String(l.lineTotal),
+          org_id: orgId,
+        } as typeof s.order_items.$inferInsert)
       }
     } else {
-      // Insert new order
+      const orderWithOrg = o as any
       await db.insert(s.orders).values({
         id: o.id as any,
+        org_id: orderWithOrg.orgId ?? null,
+        location_id: orderWithOrg.locationId ?? null,
         customer_id: o.customerId as any,
-        total: o.total,
+        total: String(o.total),
         payment_method: o.paymentMethod,
         status: o.status,
       })
+      const orgId = orderWithOrg.orgId;
       for (const l of o.lines) {
         await db.insert(s.order_items).values({
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
-          unit_price: l.unitPrice,
-          total_price: l.lineTotal,
-        })
+          unit_price: String(l.unitPrice),
+          total_price: String(l.lineTotal),
+          org_id: orgId,
+        } as typeof s.order_items.$inferInsert)
       }
       
-      // Write to domain outbox for analytics worker (only for new orders)
       await db.insert(s.domain_outbox).values({
         type: 'OrderPlaced',
-        payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt },
+        payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt, orgId: orderWithOrg.orgId ?? null },
         created_at: new Date(),
       })
     }
@@ -98,8 +103,10 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     await db.execute(sql`UPDATE products SET stock = stock + ${qty} WHERE id = ${p as any}`)
   },
   async create(product: Product): Promise<Product> {
+    const p = product as any
     const [created] = await db.insert(s.products).values({
       id: product.id as any,
+      org_id: p.orgId ?? undefined,
       product_id: product.productCode,
       name: product.name,
       barcode: product.barcode,
@@ -115,7 +122,10 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       id: created.id as ProductId,
     }
   },
-  async update(id: ProductId, updates: Partial<Product>): Promise<Product> {
+  async update(id: ProductId, updates: Partial<Product>, orgId?: string | null): Promise<Product> {
+    const whereCond = orgId
+      ? and(eq(s.products.id, id as any), eq(s.products.org_id, orgId))
+      : eq(s.products.id, id as any)
     const [updated] = await db.update(s.products)
       .set({
         product_id: updates.productCode,
@@ -127,8 +137,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
         stock_limit: updates.stockLimit,
         updated_at: updates.updatedAt,
       })
-      .where(eq(s.products.id, id as any))
+      .where(whereCond)
       .returning()
+    if (!updated) throw new Error('Product not found')
     return {
       id: updated.id as ProductId,
       productCode: updated.product_id,
@@ -143,8 +154,12 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       updatedAt: updated.updated_at,
     } as Product
   },
-  async delete(id: ProductId): Promise<void> {
-    await db.delete(s.products).where(eq(s.products.id, id as any))
+  async delete(id: ProductId, orgId?: string | null): Promise<void> {
+    const whereCond = orgId
+      ? and(eq(s.products.id, id as any), eq(s.products.org_id, orgId))
+      : eq(s.products.id, id as any)
+    const [deleted] = await db.delete(s.products).where(whereCond).returning({ id: s.products.id })
+    if (orgId && !deleted) throw new Error('Product not found')
   },
   async findById(id: ProductId): Promise<Product | null> {
     const [product] = await db.select().from(s.products).where(eq(s.products.id, id as any))
@@ -204,8 +219,10 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     await db.insert(s.audit_logs).values({ user_id: 'system', action: 'OrderHistory', entity_type: 'customer', entity_id: c as any, new_values: { orderId } })
   },
   async create(customer: Customer): Promise<Customer> {
+    const c = customer as any
     const [created] = await db.insert(s.customers).values({
       id: customer.id as any,
+      org_id: c.orgId ?? undefined,
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
@@ -220,7 +237,10 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       id: created.id as CustomerId,
     }
   },
-  async update(id: CustomerId, updates: Partial<Customer>): Promise<Customer> {
+  async update(id: CustomerId, updates: Partial<Customer>, orgId?: string | null): Promise<Customer> {
+    const whereCond = orgId
+      ? and(eq(s.customers.id, id as any), eq(s.customers.org_id, orgId))
+      : eq(s.customers.id, id as any)
     const [updated] = await db.update(s.customers)
       .set({
         name: updates.name,
@@ -231,8 +251,9 @@ export const CustomersRepoDrizzle: CustomersRepo = {
         loyalty_points: updates.loyaltyPoints,
         updated_at: updates.updatedAt,
       })
-      .where(eq(s.customers.id, id as any))
+      .where(whereCond)
       .returning()
+    if (!updated) throw new Error('Customer not found')
     
     // Get metrics if they exist
     const [metrics] = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, id as any))
@@ -240,20 +261,24 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     return {
       id: updated.id as CustomerId,
       name: updated.name,
-      phone: updated.phone,
-      email: updated.email,
-      address: updated.address,
-      category: updated.category,
-      loyaltyPoints: updated.loyalty_points,
-      totalSpent: metrics?.total_spent || 0,
-      rfmScore: metrics?.rfm_score,
-      clv: metrics?.clv,
-      createdAt: updated.created_at,
-      updatedAt: updated.updated_at,
-    } as Customer
+      phone: updated.phone ?? undefined,
+      email: updated.email ?? undefined,
+      address: updated.address ?? undefined,
+      category: (updated.category ?? 'Bronze') as Customer['category'],
+      loyaltyPoints: updated.loyalty_points ?? 0,
+      totalSpent: parseFloat(String(metrics?.total_spent ?? 0)),
+      rfmScore: metrics?.rfm_score ?? undefined,
+      clv: metrics?.clv != null ? parseFloat(String(metrics.clv)) : undefined,
+      createdAt: updated.created_at!,
+      updatedAt: updated.updated_at!,
+    }
   },
-  async delete(id: CustomerId): Promise<void> {
-    await db.delete(s.customers).where(eq(s.customers.id, id as any))
+  async delete(id: CustomerId, orgId?: string | null): Promise<void> {
+    const whereCond = orgId
+      ? and(eq(s.customers.id, id as any), eq(s.customers.org_id, orgId))
+      : eq(s.customers.id, id as any)
+    const [deleted] = await db.delete(s.customers).where(whereCond).returning({ id: s.customers.id })
+    if (orgId && !deleted) throw new Error('Customer not found')
   },
   async findById(id: CustomerId): Promise<Customer | null> {
     const [customer] = await db.select().from(s.customers).where(eq(s.customers.id, id as any))
@@ -265,17 +290,17 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     return {
       id: customer.id as CustomerId,
       name: customer.name,
-      phone: customer.phone,
-      email: customer.email,
-      address: customer.address,
-      category: customer.category,
-      loyaltyPoints: customer.loyalty_points,
-      totalSpent: metrics?.total_spent || 0,
-      rfmScore: metrics?.rfm_score,
-      clv: metrics?.clv,
-      createdAt: customer.created_at,
-      updatedAt: customer.updated_at,
-    } as Customer
+      phone: customer.phone ?? undefined,
+      email: customer.email ?? undefined,
+      address: customer.address ?? undefined,
+      category: (customer.category ?? 'Bronze') as Customer['category'],
+      loyaltyPoints: customer.loyalty_points ?? 0,
+      totalSpent: parseFloat(String(metrics?.total_spent ?? 0)),
+      rfmScore: metrics?.rfm_score ?? undefined,
+      clv: metrics?.clv != null ? parseFloat(String(metrics.clv)) : undefined,
+      createdAt: customer.created_at!,
+      updatedAt: customer.updated_at!,
+    }
   },
   async findAll(): Promise<Customer[]> {
     const customers = await db.select().from(s.customers)
@@ -352,11 +377,19 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     `
     
     const rfmQueryWithId = rfmQuery.replace('$1', `'${customerId}'`)
-    const rfmResults = await db.execute(sql.raw(rfmQueryWithId))
-    if (!rfmResults || !rfmResults[0]) return
-    const rfmResult = rfmResults[0]
+    const rfmRaw = await db.execute(sql.raw(rfmQueryWithId))
+    const rows = 'rows' in rfmRaw && Array.isArray((rfmRaw as { rows: unknown[] }).rows)
+      ? (rfmRaw as { rows: Record<string, unknown>[] }).rows
+      : Array.isArray(rfmRaw)
+        ? rfmRaw as Record<string, unknown>[]
+        : []
+    const rfmResult = rows[0]
+    if (!rfmResult) return
     
-    const { rfm_score, total_spent, order_count, recency_days } = rfmResult as any
+    const rfm_score = Number(rfmResult.rfm_score) || 0
+    const total_spent = Number(rfmResult.total_spent) || 0
+    const order_count = Number(rfmResult.order_count) || 0
+    const recency_days = Number(rfmResult.recency_days) || 0
     
     // Calculate CLV (simplified: average order value * expected orders per year * customer lifespan)
     const avgOrderValue = order_count > 0 ? total_spent / order_count : 0
@@ -367,26 +400,28 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     // Update or insert customer metrics using Drizzle ORM
     const existingMetric = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, customerId as any)).limit(1)
     
+    const lastOrderDateStr = new Date().toISOString().split('T')[0]
+    const clvStr = String(clv)
+    const totalSpentStr = String(total_spent)
+
     if (existingMetric.length > 0) {
       await db.update(s.customer_metrics)
         .set({
-          total_spent: total_spent,
+          total_spent: totalSpentStr,
           order_count: order_count,
-          last_order_date: new Date(),
+          last_order_date: lastOrderDateStr,
           rfm_score: rfm_score,
-          clv: clv,
-          updated_at: new Date()
+          clv: clvStr,
         })
         .where(eq(s.customer_metrics.customer_id, customerId as any))
     } else {
       await db.insert(s.customer_metrics).values({
         customer_id: customerId as any,
-        total_spent: total_spent,
+        total_spent: totalSpentStr,
         order_count: order_count,
-        last_order_date: new Date(),
+        last_order_date: lastOrderDateStr,
         rfm_score: rfm_score,
-        clv: clv,
-        updated_at: new Date()
+        clv: clvStr,
       })
     }
   }

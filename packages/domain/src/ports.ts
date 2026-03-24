@@ -1,4 +1,5 @@
 import type { Order, Product, Customer, ProductId, CustomerId, OrderId } from './types'
+export type { OrderId }
 export interface OrdersRepo { 
   save(o: Order): Promise<void>
   findById(id: OrderId): Promise<Order|null> 
@@ -8,8 +9,8 @@ export interface ProductsRepo {
   reserveStock(p: ProductId, qty: number): Promise<void>
   releaseStock(p: ProductId, qty: number): Promise<void>
   create(product: Product): Promise<Product>
-  update(id: ProductId, product: Partial<Product>): Promise<Product>
-  delete(id: ProductId): Promise<void>
+  update(id: ProductId, product: Partial<Product>, orgId?: string | null): Promise<Product>
+  delete(id: ProductId, orgId?: string | null): Promise<void>
   findById(id: ProductId): Promise<Product|null>
   findAll(): Promise<Product[]>
 }
@@ -17,8 +18,8 @@ export interface CustomersRepo {
   addTickDebt(c: CustomerId, amount: number): Promise<void>
   addOrderHistory(c: CustomerId, orderId: OrderId): Promise<void>
   create(customer: Customer): Promise<Customer>
-  update(id: CustomerId, customer: Partial<Customer>): Promise<Customer>
-  delete(id: CustomerId): Promise<void>
+  update(id: CustomerId, customer: Partial<Customer>, orgId?: string | null): Promise<Customer>
+  delete(id: CustomerId, orgId?: string | null): Promise<void>
   findById(id: CustomerId): Promise<Customer|null>
   findAll(): Promise<Customer[]>
   updateMetrics(c: CustomerId): Promise<void>

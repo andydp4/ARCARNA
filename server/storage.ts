@@ -116,19 +116,19 @@ export interface IStorage {
   // Product operations
   createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
   updateProduct(id: string, data: any): Promise<Product>;
-  deleteProduct(id: string): Promise<void>;
-  getProduct(id: string): Promise<Product | null>;
-  importProducts(products: any[]): Promise<{ imported: number; failed: number; errors: string[] }>;
+  deleteProduct(id: string, orgId?: string | null): Promise<void>;
+  getProduct(id: string, orgId?: string | null): Promise<Product | null>;
+  importProducts(products: any[], orgId?: string | null): Promise<{ imported: number; failed: number; errors: string[] }>;
 
   // Customer operations
   createCustomer(data: any): Promise<Customer>;
   updateCustomer(id: string, data: any): Promise<Customer>;
-  deleteCustomer(id: string): Promise<void>;
-  getCustomer(id: string): Promise<Customer | null>;
+  deleteCustomer(id: string, orgId?: string | null): Promise<void>;
+  getCustomer(id: string, orgId?: string | null): Promise<Customer | null>;
 
   // Inventory operations
   getProductsWithStock(): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string): Promise<Product>;
+  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId?: string | null): Promise<Product>;
 
   // Reports operations
   getReportData(fromDate: Date, toDate: Date): Promise<any>;
@@ -136,49 +136,50 @@ export interface IStorage {
   generatePDFReport(data: any, type: string): Promise<Buffer>;
 
   // Locations operations
-  getLocations(): Promise<Location[]>;
+  getLocations(orgId?: string | null): Promise<Location[]>;
   createLocation(data: any): Promise<Location>;
-  updateLocation(id: string, data: any): Promise<Location>;
-  deleteLocation(id: string): Promise<void>;
-  setDefaultLocation(id: string): Promise<Location>;
+  updateLocation(id: string, data: any, orgId?: string | null): Promise<Location>;
+  deleteLocation(id: string, orgId?: string | null): Promise<void>;
+  setDefaultLocation(id: string, orgId?: string | null): Promise<Location>;
 
   // Loyalty operations
-  getLoyaltyTiers(): Promise<LoyaltyTier[]>;
+  getLoyaltyTiers(orgId?: string | null): Promise<LoyaltyTier[]>;
   createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier>;
-  updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>): Promise<LoyaltyTier>;
-  deleteLoyaltyTier(id: string): Promise<void>;
+  updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId?: string | null): Promise<LoyaltyTier>;
+  deleteLoyaltyTier(id: string, orgId?: string | null): Promise<void>;
   updateCustomerTier(customerId: string): Promise<Customer>;
 
   // Promotions operations
-  getPromotions(active?: boolean): Promise<Promotion[]>;
+  getPromotions(active?: boolean, orgId?: string | null): Promise<Promotion[]>;
   createPromotion(data: InsertPromotion): Promise<Promotion>;
-  updatePromotion(id: string, data: Partial<InsertPromotion>): Promise<Promotion>;
-  deletePromotion(id: string): Promise<void>;
-  validatePromoCode(code: string): Promise<Promotion | null>;
+  updatePromotion(id: string, data: Partial<InsertPromotion>, orgId?: string | null): Promise<Promotion>;
+  deletePromotion(id: string, orgId?: string | null): Promise<void>;
+  validatePromoCode(code: string, orgId?: string | null): Promise<Promotion | null>;
   applyPromotion(orderId: string, promoCode: string): Promise<number>;
 
   // Expense operations
-  getOverheadExpenses(): Promise<OverheadExpense[]>;
+  getOverheadExpenses(orgId?: string | null): Promise<OverheadExpense[]>;
   createOverheadExpense(data: InsertOverheadExpense): Promise<OverheadExpense>;
-  updateOverheadExpense(id: string, data: Partial<InsertOverheadExpense>): Promise<OverheadExpense>;
-  deleteOverheadExpense(id: string): Promise<void>;
-  getOrderExpenses(orderId: string): Promise<OrderExpense[]>;
-  createOrderExpenses(orderId: string, expenses: InsertOrderExpense[]): Promise<void>;
-  getExpenseAnalytics(startDate: Date, endDate: Date): Promise<{
+  updateOverheadExpense(id: string, data: Partial<InsertOverheadExpense>, orgId?: string | null): Promise<OverheadExpense>;
+  deleteOverheadExpense(id: string, orgId?: string | null): Promise<void>;
+  getOrderExpenses(orderId: string, orgId?: string | null): Promise<OrderExpense[]>;
+  createOrderExpenses(orderId: string, expenses: InsertOrderExpense[], orgId?: string | null): Promise<void>;
+  getExpenseAnalytics(startDate: Date, endDate: Date, orgId?: string | null): Promise<{
     overheadTotal: number;
     orderExpenseTotal: number;
     totalExpenses: number;
     dailyOverhead: number;
     overheadBreakdown: any[];
   }>;
-  getExpenseReport(startDate: Date, endDate: Date): Promise<any>;
-  getProfitAnalysis(startDate: Date, endDate: Date): Promise<any>;
+  getExpenseReport(startDate: Date, endDate: Date, orgId?: string | null): Promise<any>;
+  getProfitAnalysis(startDate: Date, endDate: Date, orgId?: string | null): Promise<any>;
 
   // Invoice operations
-  getInvoicesWithDetails(): Promise<any[]>;
+  getInvoicesWithDetails(orgId?: string | null): Promise<any[]>;
 
   // Allow list operations
   isUserAllowed(replitUserId: string): Promise<boolean>;
+  getUserRoleAndOrg(replitUserId: string): Promise<{ role: string; orgId: string | null } | null>;
   getAllowedUsers(): Promise<AllowedUser[]>;
   addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser>;
   removeAllowedUser(replitUserId: string): Promise<void>;
@@ -199,13 +200,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    const replitUserId = userData.id ?? (userData as any).replitUserId;
     const [user] = await db
       .insert(users)
-      .values(userData)
+      .values({
+        ...userData,
+        id: replitUserId,
+        replitUserId: replitUserId,
+      } as any)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...userData,
+          email: userData.email,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          profileImageUrl: userData.profileImageUrl,
           updatedAt: new Date(),
         },
       })
@@ -213,13 +222,13 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getTopCustomers(limit: number = 10): Promise<
+  async getTopCustomers(limit: number = 10, orgId?: string | null): Promise<
     Array<{
       customer: Customer;
       metrics: CustomerMetric | null;
     }>
   > {
-    const results = await db
+    const base = db
       .select({
         customer: customers,
         metrics: customerMetrics,
@@ -228,30 +237,29 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(
         customerMetrics,
         eq(customers.id, customerMetrics.customerId)
-      )
-      .orderBy(desc(customerMetrics.clv))
-      .limit(limit);
-
+      );
+    const results = orgId
+      ? await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit)
+      : await base.orderBy(desc(customerMetrics.clv)).limit(limit);
     return results;
   }
 
-  async getDailyRevenue(days: number = 30): Promise<
+  async getDailyRevenue(days: number = 30, orgId?: string | null): Promise<
     Array<{
       date: string;
       totalOrders: number;
       totalRevenue: string;
     }>
   > {
-    const results = await db
+    let q = db
       .select({
         date: analyticsDaily.date,
         totalOrders: analyticsDaily.totalOrders,
         totalRevenue: analyticsDaily.totalRevenue,
       })
-      .from(analyticsDaily)
-      .orderBy(desc(analyticsDaily.date))
-      .limit(days);
-
+      .from(analyticsDaily);
+    if (orgId) q = q.where(eq(analyticsDaily.orgId, orgId)) as any;
+    const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
     return results.reverse().map((r) => ({
       date: r.date || "",
       totalOrders: r.totalOrders || 0,
@@ -259,7 +267,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getMonthlySummary(months: number = 12): Promise<
+  async getMonthlySummary(months: number = 12, orgId?: string | null): Promise<
     Array<{
       year: number;
       month: number;
@@ -267,20 +275,16 @@ export class DatabaseStorage implements IStorage {
       totalRevenue: string;
     }>
   > {
-    const results = await db
+    let q = db
       .select({
         year: analyticsMonthly.year,
         month: analyticsMonthly.month,
         totalOrders: analyticsMonthly.totalOrders,
         totalRevenue: analyticsMonthly.totalRevenue,
       })
-      .from(analyticsMonthly)
-      .orderBy(
-        desc(analyticsMonthly.year),
-        desc(analyticsMonthly.month)
-      )
-      .limit(months);
-
+      .from(analyticsMonthly);
+    if (orgId) q = q.where(eq(analyticsMonthly.orgId, orgId)) as any;
+    const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
     return results.reverse().map((r) => ({
       year: r.year || 0,
       month: r.month || 0,
@@ -289,7 +293,10 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getProducts(): Promise<Product[]> {
+  async getProducts(orgId?: string | null): Promise<Product[]> {
+    if (orgId) {
+      return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
+    }
     return await db.select().from(products).orderBy(products.name);
   }
 
@@ -310,30 +317,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProduct(id: string, data: any): Promise<Product> {
-    const [product] = await db
-      .update(products)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(products.id, id))
-      .returning();
-    return product;
+    const [product] = await db.update(products).set({ ...data, updatedAt: new Date() }).where(eq(products.id, id)).returning();
+    return product!;
   }
 
-  async deleteProduct(id: string): Promise<void> {
-    await db.delete(products).where(eq(products.id, id));
+  async deleteProduct(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(products.id, id), eq(products.orgId, orgId)) : eq(products.id, id);
+    const [deleted] = await db.delete(products).where(cond).returning();
+    if (orgId && !deleted) throw new Error('Product not found');
   }
 
-  async getProduct(id: string): Promise<Product | null> {
-    const [product] = await db
-      .select()
-      .from(products)
-      .where(eq(products.id, id));
+  async getProduct(id: string, orgId?: string | null): Promise<Product | null> {
+    const conditions = orgId ? and(eq(products.id, id), eq(products.orgId, orgId)) : eq(products.id, id);
+    const [product] = await db.select().from(products).where(conditions);
     return product || null;
   }
 
-  async importProducts(productList: any[]): Promise<{ imported: number; failed: number; errors: string[] }> {
+  async importProducts(productList: any[], orgId?: string | null): Promise<{ imported: number; failed: number; errors: string[] }> {
     let imported = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -347,13 +347,10 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
-        // Check if product with same productId or barcode exists
         let existingProduct = null;
         if (productData.productId) {
-          [existingProduct] = await db
-            .select()
-            .from(products)
-            .where(eq(products.productId, productData.productId));
+          const existCond = orgId ? and(eq(products.productId, productData.productId), eq(products.orgId, orgId)) : eq(products.productId, productData.productId);
+          [existingProduct] = await db.select().from(products).where(existCond);
         }
 
         if (existingProduct) {
@@ -372,21 +369,19 @@ export class DatabaseStorage implements IStorage {
             })
             .where(eq(products.id, existingProduct.id));
         } else {
-          // Create new product
-          await db
-            .insert(products)
-            .values({
-              productId: productData.productId || `PRD-${Date.now()}-${imported}`,
-              name: productData.name,
-              barcode: productData.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-              costPrice: productData.costPrice ?? productData.tax ?? 0,
-              stock: productData.stock ?? 0,
-              stockLimit: productData.stockLimit ?? 100,
-              locationId: productData.locationId,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
+          await db.insert(products).values({
+            productId: productData.productId || `PRD-${Date.now()}-${imported}`,
+            name: productData.name,
+            barcode: productData.barcode,
+            defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
+            costPrice: productData.costPrice ?? productData.tax ?? 0,
+            stock: productData.stock ?? 0,
+            stockLimit: productData.stockLimit ?? 100,
+            locationId: productData.locationId,
+            orgId: orgId ?? undefined,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
         }
         imported++;
       } catch (error: any) {
@@ -398,7 +393,10 @@ export class DatabaseStorage implements IStorage {
     return { imported, failed, errors };
   }
 
-  async getCustomers(): Promise<Customer[]> {
+  async getCustomers(orgId?: string | null): Promise<Customer[]> {
+    if (orgId) {
+      return await db.select().from(customers).where(eq(customers.orgId, orgId)).orderBy(customers.name);
+    }
     return await db.select().from(customers).orderBy(customers.name);
   }
 
@@ -415,35 +413,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCustomer(id: string, data: any): Promise<Customer> {
-    const [customer] = await db
-      .update(customers)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(customers.id, id))
-      .returning();
-    return customer;
+    const [customer] = await db.update(customers).set({ ...data, updatedAt: new Date() }).where(eq(customers.id, id)).returning();
+    return customer!;
   }
 
-  async deleteCustomer(id: string): Promise<void> {
-    await db.delete(customers).where(eq(customers.id, id));
+  async deleteCustomer(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(customers.id, id), eq(customers.orgId, orgId)) : eq(customers.id, id);
+    const [deleted] = await db.delete(customers).where(cond).returning();
+    if (orgId && !deleted) throw new Error('Customer not found');
   }
 
-  async getCustomer(id: string): Promise<Customer | null> {
-    const [customer] = await db
-      .select()
-      .from(customers)
-      .where(eq(customers.id, id));
+  async getCustomer(id: string, orgId?: string | null): Promise<Customer | null> {
+    const conditions = orgId ? and(eq(customers.id, id), eq(customers.orgId, orgId)) : eq(customers.id, id);
+    const [customer] = await db.select().from(customers).where(conditions);
     return customer || null;
   }
 
   async createOrder(orderData: any): Promise<Order> {
     return await db.transaction(async (tx) => {
       // Create order
+      const orgId = orderData.orgId ?? orderData.org_id ?? null;
       const [order] = await tx
         .insert(orders)
         .values({
+          orgId,
           customerId: orderData.customerId ?? orderData.customer_id,
           locationId: orderData.locationId ?? orderData.location_id,
           total: orderData.total,
@@ -452,10 +445,11 @@ export class DatabaseStorage implements IStorage {
         })
         .returning();
 
-      // Create order items
+      // Create order items (orgId from order)
       if (orderData.items && orderData.items.length > 0) {
         await tx.insert(orderItems).values(
           orderData.items.map((item: any) => ({
+            orgId,
             orderId: order.id,
             productId: item.productId ?? item.product_id,
             quantity: item.quantity,
@@ -464,10 +458,11 @@ export class DatabaseStorage implements IStorage {
           }))
         );
 
-        // Create order expenses if provided
+        // Create order expenses if provided (orgId from order)
         if (orderData.expenses && orderData.expenses.length > 0) {
           await tx.insert(orderExpenses).values(
             orderData.expenses.map((expense: any) => ({
+              orgId,
               orderId: order.id,
               category: expense.category,
               description: expense.description,
@@ -502,7 +497,10 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getProductsWithStock(): Promise<Product[]> {
+  async getProductsWithStock(orgId?: string | null): Promise<Product[]> {
+    if (orgId) {
+      return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
+    }
     return await db.select().from(products).orderBy(products.name);
   }
 
@@ -510,18 +508,14 @@ export class DatabaseStorage implements IStorage {
     productId: string, 
     adjustment: number, 
     type: 'add' | 'set',
-    userId: string
+    userId: string,
+    orgId?: string | null
   ): Promise<Product> {
     return await db.transaction(async (tx) => {
-      // Get current product
-      const [currentProduct] = await tx
-        .select()
-        .from(products)
-        .where(eq(products.id, productId));
+      const cond = orgId ? and(eq(products.id, productId), eq(products.orgId, orgId)) : eq(products.id, productId);
+      const [currentProduct] = await tx.select().from(products).where(cond);
 
-      if (!currentProduct) {
-        throw new Error('Product not found');
-      }
+      if (!currentProduct) throw new Error('Product not found');
 
       // Calculate new stock
       const newStock = type === 'set' 
@@ -533,14 +527,10 @@ export class DatabaseStorage implements IStorage {
         throw new Error('Stock cannot be negative');
       }
 
-      // Update stock
       const [updatedProduct] = await tx
         .update(products)
-        .set({
-          stock: newStock,
-          updatedAt: new Date(),
-        })
-        .where(eq(products.id, productId))
+        .set({ stock: newStock, updatedAt: new Date() })
+        .where(cond)
         .returning();
 
       // Log audit entry (optional - you can add audit logging here)
@@ -557,17 +547,17 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getReportData(fromDate: Date, toDate: Date): Promise<any> {
+  async getReportData(fromDate: Date, toDate: Date, orgId?: string | null): Promise<any> {
     const [
       revenueData,
       orderData, 
       customerData,
       inventoryData
     ] = await Promise.all([
-      this.getRevenueReports(fromDate, toDate),
-      this.getOrderReports(fromDate, toDate),
-      this.getCustomerReports(fromDate, toDate),
-      this.getInventoryReports(fromDate, toDate)
+      this.getRevenueReports(fromDate, toDate, orgId),
+      this.getOrderReports(fromDate, toDate, orgId),
+      this.getCustomerReports(fromDate, toDate, orgId),
+      this.getInventoryReports(fromDate, toDate, orgId)
     ]);
 
     return {
@@ -578,18 +568,16 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getRevenueReports(fromDate: Date, toDate: Date) {
-    // Get total revenue
+  private async getRevenueReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+    const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
+    const whereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
     const totalRevenue = await db
       .select({
         total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
       })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      );
+      .where(whereCond);
 
-    // Get daily revenue
     const dailyRevenue = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`.as('date'),
@@ -597,13 +585,10 @@ export class DatabaseStorage implements IStorage {
         orders: sql<number>`COUNT(*)`.as('orders')
       })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      )
+      .where(whereCond)
       .groupBy(sql`DATE(${orders.createdAt})`)
       .orderBy(sql`DATE(${orders.createdAt})`);
 
-    // Get revenue by payment method
     const byPaymentMethod = await db
       .select({
         method: orders.paymentMethod,
@@ -611,9 +596,7 @@ export class DatabaseStorage implements IStorage {
         revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue')
       })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      )
+      .where(whereCond)
       .groupBy(orders.paymentMethod);
 
     return {
@@ -624,28 +607,17 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getOrderReports(fromDate: Date, toDate: Date) {
-    // Get total orders
+  private async getOrderReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+    const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
+    const whereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
     const totalOrders = await db
-      .select({
-        total: sql<number>`COUNT(*)`
-      })
+      .select({ total: sql<number>`COUNT(*)` })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      );
-
-    // Get average order value
+      .where(whereCond);
     const avgOrder = await db
-      .select({
-        average: sql<number>`AVG(CAST(${orders.total} AS DECIMAL))`
-      })
+      .select({ average: sql<number>`AVG(CAST(${orders.total} AS DECIMAL))` })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      );
-
-    // Get top products
+      .where(whereCond);
     const topProducts = await db
       .select({
         name: products.name,
@@ -655,23 +627,18 @@ export class DatabaseStorage implements IStorage {
       .from(orderItems)
       .innerJoin(products, eq(orderItems.productId, products.id))
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      )
+      .where(whereCond)
       .groupBy(products.name)
       .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
       .limit(10);
 
-    // Get hourly distribution
     const hourlyDistribution = await db
       .select({
         hour: sql<number>`EXTRACT(HOUR FROM ${orders.createdAt})`.as('hour'),
         count: sql<number>`COUNT(*)`.as('count')
       })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      )
+      .where(whereCond)
       .groupBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`)
       .orderBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`);
 
@@ -683,28 +650,19 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getCustomerReports(fromDate: Date, toDate: Date) {
-    // Get total active customers
+  private async getCustomerReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+    const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
+    const orderWhereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
+    const custDateCond = sql`${customers.createdAt} >= ${fromDate} AND ${customers.createdAt} <= ${toDate}`;
+    const custWhereCond = orgId ? and(custDateCond, eq(customers.orgId, orgId)) : custDateCond;
     const totalCustomers = await db
-      .select({
-        total: sql<number>`COUNT(DISTINCT ${orders.customerId})`
-      })
+      .select({ total: sql<number>`COUNT(DISTINCT ${orders.customerId})` })
       .from(orders)
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      );
-
-    // Get new vs returning customers
+      .where(orderWhereCond);
     const newCustomers = await db
-      .select({
-        count: sql<number>`COUNT(DISTINCT ${customers.id})`
-      })
+      .select({ count: sql<number>`COUNT(DISTINCT ${customers.id})` })
       .from(customers)
-      .where(
-        sql`${customers.createdAt} >= ${fromDate} AND ${customers.createdAt} <= ${toDate}`
-      );
-
-    // Get top customers
+      .where(custWhereCond);
     const topCustomers = await db
       .select({
         name: customers.name,
@@ -714,9 +672,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orders)
       .innerJoin(customers, eq(orders.customerId, customers.id))
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`
-      )
+      .where(orderWhereCond)
       .groupBy(customers.id, customers.name, customers.loyaltyPoints)
       .orderBy(sql`SUM(CAST(${orders.total} AS DECIMAL)) DESC`)
       .limit(10);
@@ -733,33 +689,20 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getInventoryReports(fromDate: Date, toDate: Date) {
-    // Get total stock value
-    const stockValue = await db
-      .select({
-        total: sql<number>`SUM(${products.stock} * CAST(${products.costPrice} AS DECIMAL))`
-      })
-      .from(products);
+  private async getInventoryReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+    let prodQ = db.select({
+      total: sql<number>`SUM(${products.stock} * CAST(${products.costPrice} AS DECIMAL))`
+    }).from(products);
+    if (orgId) prodQ = prodQ.where(eq(products.orgId, orgId)) as any;
+    const stockValue = await prodQ;
+    const lowStockCond = sql`${products.stock} <= ${products.stockLimit} * 0.2 AND ${products.stock} > 0`;
+    const lowStockWhere = orgId ? and(lowStockCond, eq(products.orgId, orgId)) : lowStockCond;
+    const lowStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(lowStockWhere);
+    const outStockWhere = orgId ? and(eq(products.stock, 0), eq(products.orgId, orgId)) : eq(products.stock, 0);
+    const outOfStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(outStockWhere);
 
-    // Get low stock count
-    const lowStock = await db
-      .select({
-        count: sql<number>`COUNT(*)`
-      })
-      .from(products)
-      .where(
-        sql`${products.stock} <= ${products.stockLimit} * 0.2 AND ${products.stock} > 0`
-      );
-
-    // Get out of stock count
-    const outOfStock = await db
-      .select({
-        count: sql<number>`COUNT(*)`
-      })
-      .from(products)
-      .where(eq(products.stock, 0));
-
-    // Get top moving products
+    const topMovingCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`;
+    const topMovingWhere = orgId ? and(topMovingCond, eq(products.orgId, orgId)) : topMovingCond;
     const topMoving = await db
       .select({
         product: products.name,
@@ -769,9 +712,7 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .leftJoin(orderItems, eq(products.id, orderItems.productId))
       .leftJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(
-        sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`
-      )
+      .where(topMovingWhere)
       .groupBy(products.id, products.name, products.stock)
       .orderBy(sql`COALESCE(SUM(${orderItems.quantity}), 0) DESC`)
       .limit(10);
@@ -841,12 +782,11 @@ export class DatabaseStorage implements IStorage {
     return Buffer.from(csvContent);
   }
 
-  async getLocations(): Promise<Location[]> {
-    // Fetch locations with stats
-    const locs = await db
-      .select()
-      .from(locations)
-      .orderBy(desc(locations.isDefault), locations.name);
+  async getLocations(orgId?: string | null): Promise<Location[]> {
+    const cond = orgId ? eq(locations.orgId, orgId) : undefined;
+    const locs = cond
+      ? await db.select().from(locations).where(cond).orderBy(desc(locations.isDefault), locations.name)
+      : await db.select().from(locations).orderBy(desc(locations.isDefault), locations.name);
 
     // For each location, calculate stats
     const locationsWithStats = await Promise.all(
@@ -903,63 +843,43 @@ export class DatabaseStorage implements IStorage {
     return location;
   }
 
-  async updateLocation(id: string, data: any): Promise<Location> {
+  async updateLocation(id: string, data: any, orgId?: string | null): Promise<Location> {
+    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
     const [location] = await db
       .update(locations)
-      .set({
-        ...data,
-        isActive: data.isActive ? 1 : 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(locations.id, id))
+      .set({ ...data, isActive: data.isActive ? 1 : 0, updatedAt: new Date() })
+      .where(cond)
       .returning();
-
-    return location;
+    if (orgId && !location) throw new Error('Location not found');
+    return location!;
   }
 
-  async deleteLocation(id: string): Promise<void> {
-    // Check if it's the default location
-    const [location] = await db
-      .select()
-      .from(locations)
-      .where(eq(locations.id, id));
-
-    if (location?.isDefault === 1) {
-      throw new Error("Cannot delete default location");
-    }
-
-    await db.delete(locations).where(eq(locations.id, id));
+  async deleteLocation(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
+    const [location] = await db.select().from(locations).where(cond);
+    if (!location) { if (orgId) throw new Error('Location not found'); return; }
+    if (location.isDefault === 1) throw new Error("Cannot delete default location");
+    await db.delete(locations).where(cond);
   }
 
-  async setDefaultLocation(id: string): Promise<Location> {
+  async setDefaultLocation(id: string, orgId?: string | null): Promise<Location> {
+    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
+    const [loc] = await db.select().from(locations).where(cond);
+    if (!loc) throw new Error('Location not found');
     await db.transaction(async (tx) => {
-      // Remove default from all locations
-      await tx
-        .update(locations)
-        .set({ isDefault: 0 })
-        .where(eq(locations.isDefault, 1));
-
-      // Set new default
-      await tx
-        .update(locations)
-        .set({ isDefault: 1 })
-        .where(eq(locations.id, id));
+      const unsetCond = orgId ? and(eq(locations.isDefault, 1), eq(locations.orgId, orgId)) : eq(locations.isDefault, 1);
+      await tx.update(locations).set({ isDefault: 0 }).where(unsetCond);
+      await tx.update(locations).set({ isDefault: 1 }).where(cond);
     });
-
-    const [location] = await db
-      .select()
-      .from(locations)
-      .where(eq(locations.id, id));
-
-    return location;
+    const [location] = await db.select().from(locations).where(cond);
+    return location!;
   }
 
-  // Loyalty tier methods
-  async getLoyaltyTiers(): Promise<LoyaltyTier[]> {
-    return await db
-      .select()
-      .from(loyaltyTiers)
-      .orderBy(loyaltyTiers.pointsRequired);
+  async getLoyaltyTiers(orgId?: string | null): Promise<LoyaltyTier[]> {
+    const cond = orgId ? eq(loyaltyTiers.orgId, orgId) : undefined;
+    return cond
+      ? await db.select().from(loyaltyTiers).where(cond).orderBy(loyaltyTiers.pointsRequired)
+      : await db.select().from(loyaltyTiers).orderBy(loyaltyTiers.pointsRequired);
   }
 
   async createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier> {
@@ -970,20 +890,17 @@ export class DatabaseStorage implements IStorage {
     return tier;
   }
 
-  async updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>): Promise<LoyaltyTier> {
-    const [tier] = await db
-      .update(loyaltyTiers)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(loyaltyTiers.id, id))
-      .returning();
-    return tier;
+  async updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId?: string | null): Promise<LoyaltyTier> {
+    const cond = orgId ? and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId)) : eq(loyaltyTiers.id, id);
+    const [tier] = await db.update(loyaltyTiers).set({ ...data, updatedAt: new Date() }).where(cond).returning();
+    if (orgId && !tier) throw new Error('Loyalty tier not found');
+    return tier!;
   }
 
-  async deleteLoyaltyTier(id: string): Promise<void> {
-    await db.delete(loyaltyTiers).where(eq(loyaltyTiers.id, id));
+  async deleteLoyaltyTier(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId)) : eq(loyaltyTiers.id, id);
+    const [d] = await db.delete(loyaltyTiers).where(cond).returning();
+    if (orgId && !d) throw new Error('Loyalty tier not found');
   }
 
   async updateCustomerTier(customerId: string): Promise<Customer> {
@@ -1025,9 +942,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expense methods
-  async getOverheadExpenses(): Promise<any[]> {
-    const result = await db.select().from(overheadExpenses).orderBy(overheadExpenses.createdAt);
-    return result;
+  async getOverheadExpenses(orgId?: string | null): Promise<any[]> {
+    const cond = orgId ? eq(overheadExpenses.orgId, orgId) : undefined;
+    return cond
+      ? await db.select().from(overheadExpenses).where(cond).orderBy(overheadExpenses.createdAt)
+      : await db.select().from(overheadExpenses).orderBy(overheadExpenses.createdAt);
   }
 
   async createOverheadExpense(data: any): Promise<any> {
@@ -1035,43 +954,51 @@ export class DatabaseStorage implements IStorage {
     return expense;
   }
 
-  async updateOverheadExpense(id: string, data: any): Promise<any> {
-    const [expense] = await db
-      .update(overheadExpenses)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(overheadExpenses.id, id))
-      .returning();
-    return expense;
+  async updateOverheadExpense(id: string, data: any, orgId?: string | null): Promise<any> {
+    const cond = orgId ? and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId)) : eq(overheadExpenses.id, id);
+    const [expense] = await db.update(overheadExpenses).set({ ...data, updatedAt: new Date() }).where(cond).returning();
+    if (orgId && !expense) throw new Error('Overhead expense not found');
+    return expense!;
   }
 
-  async deleteOverheadExpense(id: string): Promise<void> {
-    await db.delete(overheadExpenses).where(eq(overheadExpenses.id, id));
+  async deleteOverheadExpense(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId)) : eq(overheadExpenses.id, id);
+    const [d] = await db.delete(overheadExpenses).where(cond).returning();
+    if (orgId && !d) throw new Error('Overhead expense not found');
   }
 
-  async getOrderExpenses(orderId: string): Promise<any[]> {
-    const result = await db
-      .select()
-      .from(orderExpenses)
-      .where(eq(orderExpenses.orderId, orderId));
-    return result;
+  async getOrderExpenses(orderId: string, orgId?: string | null): Promise<any[]> {
+    if (orgId) {
+      const [order] = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)));
+      if (!order) return [];
+    }
+    return await db.select().from(orderExpenses).where(eq(orderExpenses.orderId, orderId));
   }
 
-  async createOrderExpenses(orderId: string, expenses: any[]): Promise<void> {
+  async createOrderExpenses(orderId: string, expenses: any[], orgId?: string | null): Promise<void> {
     if (expenses && expenses.length > 0) {
-      const expensesWithOrderId = expenses.map(exp => ({
+      let resolvedOrgId = orgId ?? null;
+      if (resolvedOrgId == null) {
+        const [ord] = await db.select({ orgId: orders.orgId }).from(orders).where(eq(orders.id, orderId)).limit(1);
+        resolvedOrgId = ord?.orgId ?? null;
+      }
+      const values = expenses.map(exp => ({
         ...exp,
-        orderId
+        orderId,
+        orgId: resolvedOrgId,
       }));
-      await db.insert(orderExpenses).values(expensesWithOrderId);
+      await db.insert(orderExpenses).values(values);
     }
   }
 
-  async getExpenseReport(startDate: Date, endDate: Date): Promise<any> {
-    // Get expense analytics first
-    const analytics = await this.getExpenseAnalytics(startDate, endDate);
+  async getExpenseReport(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+    const analytics = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
     // Get detailed overhead expenses by category
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const overheadCond = orgId
+      ? and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)), eq(overheadExpenses.orgId, orgId))
+      : and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)));
     const overheadByCategory = await db
       .select({
         category: overheadExpenses.category,
@@ -1085,19 +1012,10 @@ export class DatabaseStorage implements IStorage {
         count: sql<number>`COUNT(*)`,
       })
       .from(overheadExpenses)
-      .where(
-        and(
-          lte(overheadExpenses.startDate, endDate),
-          eq(overheadExpenses.isActive, 1),
-          or(
-            isNull(overheadExpenses.endDate),
-            gte(overheadExpenses.endDate, startDate)
-          )
-        )
-      )
+      .where(overheadCond)
       .groupBy(overheadExpenses.category);
 
-    // Get order expenses by category
+    const orderDateCond = orgId ? and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId)) : between(orders.createdAt, startDate, endDate);
     const orderExpensesByCategory = await db
       .select({
         category: orderExpenses.category,
@@ -1106,10 +1024,9 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orderExpenses)
       .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
-      .where(between(orders.createdAt, startDate, endDate))
+      .where(orderDateCond)
       .groupBy(orderExpenses.category);
 
-    // Get daily expense trends
     const dailyTrends = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`,
@@ -1117,7 +1034,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orders)
       .leftJoin(orderExpenses, eq(orderExpenses.orderId, orders.id))
-      .where(between(orders.createdAt, startDate, endDate))
+      .where(orderDateCond)
       .groupBy(sql`DATE(${orders.createdAt})`);
 
     // Add daily overhead to trends  
@@ -1146,25 +1063,24 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getProfitAnalysis(startDate: Date, endDate: Date): Promise<any> {
-    // Get revenue data
+  async getProfitAnalysis(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+    const revCond = orgId
+      ? and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'), eq(orders.orgId, orgId))
+      : and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'));
     const revenueData = await db
       .select({
         totalRevenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
         orderCount: sql<number>`COUNT(*)`,
       })
       .from(orders)
-      .where(
-        and(
-          between(orders.createdAt, startDate, endDate),
-          eq(orders.status, 'completed')
-        )
-      );
+      .where(revCond);
 
     const totalRevenue = revenueData[0]?.totalRevenue || 0;
     const orderCount = revenueData[0]?.orderCount || 0;
 
-    // Get COGS (Cost of Goods Sold)
+    const cogsCond = orgId
+      ? and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'), eq(orders.orgId, orgId))
+      : and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'));
     const cogsData = await db
       .select({
         totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS INTEGER) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
@@ -1172,17 +1088,11 @@ export class DatabaseStorage implements IStorage {
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(
-        and(
-          between(orders.createdAt, startDate, endDate),
-          eq(orders.status, 'completed')
-        )
-      );
+      .where(cogsCond);
 
     const totalCOGS = cogsData[0]?.totalCOGS || 0;
 
-    // Get expenses
-    const expenses = await this.getExpenseAnalytics(startDate, endDate);
+    const expenses = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
     // Calculate profit margins
     const grossProfit = totalRevenue - totalCOGS;
@@ -1194,7 +1104,6 @@ export class DatabaseStorage implements IStorage {
     const netProfit = operatingProfit; // Could subtract taxes here if tracked
     const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    // Get daily profit trends
     const dailyProfits = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`,
@@ -1202,15 +1111,9 @@ export class DatabaseStorage implements IStorage {
         orderCount: sql<number>`COUNT(*)`,
       })
       .from(orders)
-      .where(
-        and(
-          between(orders.createdAt, startDate, endDate),
-          eq(orders.status, 'completed')
-        )
-      )
+      .where(revCond)
       .groupBy(sql`DATE(${orders.createdAt})`);
 
-    // Get daily COGS for the profit trends
     const dailyCOGS = await db
       .select({
         date: sql<string>`DATE(${orders.createdAt})`,
@@ -1219,12 +1122,7 @@ export class DatabaseStorage implements IStorage {
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(
-        and(
-          between(orders.createdAt, startDate, endDate),
-          eq(orders.status, 'completed')
-        )
-      )
+      .where(cogsCond)
       .groupBy(sql`DATE(${orders.createdAt})`);
 
     // Combine daily data
@@ -1279,8 +1177,10 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getExpenseAnalytics(startDate: Date, endDate: Date): Promise<any> {
-    // Get overhead expenses for the period
+  async getExpenseAnalytics(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+    const overheadCond = orgId
+      ? and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)), eq(overheadExpenses.orgId, orgId))
+      : and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)));
     const overheads = await db
       .select({
         name: overheadExpenses.name,
@@ -1289,16 +1189,7 @@ export class DatabaseStorage implements IStorage {
         frequency: overheadExpenses.frequency,
       })
       .from(overheadExpenses)
-      .where(
-        and(
-          lte(overheadExpenses.startDate, endDate),
-          eq(overheadExpenses.isActive, 1),
-          or(
-            isNull(overheadExpenses.endDate),
-            gte(overheadExpenses.endDate, startDate)
-          )
-        )
-      );
+      .where(overheadCond);
 
     // Calculate total daily overhead
     let totalDailyOverhead = 0;
@@ -1316,14 +1207,14 @@ export class DatabaseStorage implements IStorage {
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const totalOverhead = totalDailyOverhead * daysDiff;
 
-    // Get order expenses
+    const orderCond = orgId ? and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId)) : between(orders.createdAt, startDate, endDate);
     const orderExpenseResult = await db
       .select({
         total: sql<number>`COALESCE(SUM(CAST(${orderExpenses.amount} AS DECIMAL)), 0)`,
       })
       .from(orderExpenses)
       .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
-      .where(between(orders.createdAt, startDate, endDate));
+      .where(orderCond);
 
     const orderExpenseTotal = orderExpenseResult[0]?.total || 0;
 
@@ -1337,16 +1228,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Promotions methods
-  async getPromotions(active?: boolean): Promise<Promotion[]> {
-    if (active !== undefined) {
-      return await db
-        .select()
-        .from(promotions)
-        .where(eq(promotions.isActive, active ? 1 : 0))
-        .orderBy(desc(promotions.createdAt));
-    }
-
-    return await db.select().from(promotions).orderBy(desc(promotions.createdAt));
+  async getPromotions(active?: boolean, orgId?: string | null): Promise<Promotion[]> {
+    const conds = [];
+    if (active !== undefined) conds.push(eq(promotions.isActive, active ? 1 : 0));
+    if (orgId) conds.push(eq(promotions.orgId, orgId));
+    const cond = conds.length ? and(...conds) : undefined;
+    return cond
+      ? await db.select().from(promotions).where(cond).orderBy(desc(promotions.createdAt))
+      : await db.select().from(promotions).orderBy(desc(promotions.createdAt));
   }
 
   async createPromotion(data: InsertPromotion): Promise<Promotion> {
@@ -1360,36 +1249,24 @@ export class DatabaseStorage implements IStorage {
     return promo;
   }
 
-  async updatePromotion(id: string, data: Partial<InsertPromotion>): Promise<Promotion> {
-    const [promo] = await db
-      .update(promotions)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(promotions.id, id))
-      .returning();
-    return promo;
+  async updatePromotion(id: string, data: Partial<InsertPromotion>, orgId?: string | null): Promise<Promotion> {
+    const cond = orgId ? and(eq(promotions.id, id), eq(promotions.orgId, orgId)) : eq(promotions.id, id);
+    const [promo] = await db.update(promotions).set({ ...data, updatedAt: new Date() }).where(cond).returning();
+    if (orgId && !promo) throw new Error('Promotion not found');
+    return promo!;
   }
 
-  async deletePromotion(id: string): Promise<void> {
-    await db.delete(promotions).where(eq(promotions.id, id));
+  async deletePromotion(id: string, orgId?: string | null): Promise<void> {
+    const cond = orgId ? and(eq(promotions.id, id), eq(promotions.orgId, orgId)) : eq(promotions.id, id);
+    const [d] = await db.delete(promotions).where(cond).returning();
+    if (orgId && !d) throw new Error('Promotion not found');
   }
 
-  async validatePromoCode(code: string): Promise<Promotion | null> {
+  async validatePromoCode(code: string, orgId?: string | null): Promise<Promotion | null> {
     const now = new Date();
-
-    const [promo] = await db
-      .select()
-      .from(promotions)
-      .where(
-        sql`${promotions.code} = ${code} 
-        AND ${promotions.isActive} = 1
-        AND ${promotions.startDate} <= ${now}
-        AND ${promotions.endDate} >= ${now}
-        AND (${promotions.usageLimit} IS NULL OR ${promotions.usageCount} < ${promotions.usageLimit})`
-      );
-
+    const baseCond = sql`${promotions.code} = ${code} AND ${promotions.isActive} = 1 AND ${promotions.startDate} <= ${now} AND ${promotions.endDate} >= ${now} AND (${promotions.usageLimit} IS NULL OR ${promotions.usageCount} < ${promotions.usageLimit})`;
+    const cond = orgId ? and(baseCond, eq(promotions.orgId, orgId)) : baseCond;
+    const [promo] = await db.select().from(promotions).where(cond);
     return promo || null;
   }
 
@@ -1441,16 +1318,11 @@ export class DatabaseStorage implements IStorage {
     return discount;
   }
 
-  async getInvoicesWithDetails(): Promise<any[]> {
-    // Fetch all orders with customer and item details
-    const ordersData = await db
-      .select({
-        order: orders,
-        customer: customers,
-      })
-      .from(orders)
-      .leftJoin(customers, eq(orders.customerId, customers.id))
-      .orderBy(desc(orders.createdAt));
+  async getInvoicesWithDetails(orgId?: string | null): Promise<any[]> {
+    const cond = orgId ? eq(orders.orgId, orgId) : undefined;
+    const ordersData = cond
+      ? await db.select({ order: orders, customer: customers }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id)).where(cond).orderBy(desc(orders.createdAt))
+      : await db.select({ order: orders, customer: customers }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id)).orderBy(desc(orders.createdAt));
 
     // For each order, fetch order items with product details
     const invoices = await Promise.all(
@@ -1464,11 +1336,12 @@ export class DatabaseStorage implements IStorage {
           .leftJoin(products, eq(orderItems.productId, products.id))
           .where(eq(orderItems.orderId, order.id));
 
-        const invoiceNumber = `INV-${new Date(order.createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
+        const createdAt = order.createdAt ?? new Date();
+        const invoiceNumber = `INV-${new Date(createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
         const orderTotal = parseFloat(order.total);
         const subtotal = orderTotal / 1.2; // Assuming 20% VAT
         const vat = orderTotal - subtotal;
-        const dueDate = new Date(order.createdAt);
+        const dueDate = new Date(createdAt);
         dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
 
         // Determine invoice status
@@ -1488,7 +1361,7 @@ export class DatabaseStorage implements IStorage {
           customerId: order.customerId,
           customerName: customer?.name || 'Walk-in Customer',
           customerEmail: customer?.email || '',
-          date: order.createdAt.toISOString(),
+          date: (order.createdAt ?? new Date()).toISOString(),
           dueDate: dueDate.toISOString(),
           total: orderTotal,
           subtotal,
@@ -1517,6 +1390,16 @@ export class DatabaseStorage implements IStorage {
     return !!user;
   }
 
+  async getUserRoleAndOrg(replitUserId: string): Promise<{ role: string; orgId: string | null } | null> {
+    const [user] = await db
+      .select({ role: allowedUsers.role, orgId: allowedUsers.orgId, isOwner: allowedUsers.isOwner })
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId));
+    if (!user) return null;
+    const role = user.isOwner ? 'SUPER_ADMIN' : (user.role || 'CASHIER');
+    return { role, orgId: user.orgId ?? null };
+  }
+
   async getAllowedUsers(): Promise<AllowedUser[]> {
     return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
   }
@@ -1531,6 +1414,8 @@ export class DatabaseStorage implements IStorage {
           email: data.email,
           name: data.name,
           isOwner: data.isOwner,
+          orgId: data.orgId ?? undefined,
+          role: data.role ?? undefined,
         },
       })
       .returning();
@@ -1600,17 +1485,20 @@ export class DatabaseStorage implements IStorage {
       .from(userApprovalRequests)
       .where(eq(userApprovalRequests.replitUserId, replitUserId));
 
-    // Add to allowed users
+    // Add to allowed users - use approver's org and default role CASHIER
     if (request) {
-      await db
-        .insert(allowedUsers)
-        .values({
-          replitUserId: request.replitUserId,
-          email: request.email,
-          name: request.name,
-          isOwner: 0,
-        })
-        .onConflictDoNothing();
+      const [approver] = await db
+        .select({ orgId: allowedUsers.orgId })
+        .from(allowedUsers)
+        .where(eq(allowedUsers.replitUserId, approvedBy));
+      await this.addAllowedUser({
+        replitUserId: request.replitUserId,
+        email: request.email,
+        name: request.name,
+        isOwner: 0,
+        orgId: approver?.orgId ?? null,
+        role: 'CASHIER',
+      });
     }
   }
 

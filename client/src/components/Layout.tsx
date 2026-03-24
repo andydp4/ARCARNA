@@ -71,7 +71,16 @@ export function Layout({ children }: LayoutProps) {
                 <SheetContent side="left" className="w-64 p-0">
                   <div className="flex flex-col h-full">
                     <div className="p-4 border-b border-border">
-                      <h2 className="text-lg font-semibold">Midnight EPOS</h2>
+                      <Link href="/" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
+                        <img
+                          src="/logo.png"
+                          alt=""
+                          width={36}
+                          height={36}
+                          className="h-9 w-9 shrink-0 rounded-lg object-contain"
+                        />
+                        <h2 className="text-lg font-semibold">Midnight EPOS</h2>
+                      </Link>
                     </div>
                     <div className="flex-1 overflow-y-auto">
                       <NavLinks />
@@ -96,7 +105,16 @@ export function Layout({ children }: LayoutProps) {
                 {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </Button>
             )}
-            <h1 className="text-xl font-semibold">Midnight EPOS</h1>
+            <Link href="/" className="flex items-center gap-2 min-w-0">
+              <img
+                src="/logo.png"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-md object-contain"
+              />
+              <span className="text-xl font-semibold truncate">Midnight EPOS</span>
+            </Link>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">Welcome back!</span>

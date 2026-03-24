@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
@@ -8,14 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, TrendingDown, DollarSign, Calendar, FileText } from "lucide-react";
+import { Plus, TrendingDown, DollarSign, Calendar, FileText } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertOverheadExpenseSchema, type InsertOverheadExpense, type OverheadExpense } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { ExpenseRow } from "@/components/expense-row";
+import { ExpensesPageSkeleton } from "@/components/reporting-skeletons";
 
 type ExpenseFormData = {
   name: string;
@@ -44,19 +46,33 @@ export function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<OverheadExpense | null>(null);
   const { toast } = useToast();
 
-  const { data: expenses = [], isLoading } = useQuery<OverheadExpense[]>({
+  const {
+    data: expensesData,
+    isPending: expensesPending,
+    isFetching: expensesFetching,
+  } = useQuery<OverheadExpense[]>({
     queryKey: ["/api/overhead-expenses"],
+    staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
   });
+  const expenses = expensesData ?? [];
+  const expensesInitialLoad = expensesPending && expensesData === undefined;
 
-  const { data: analytics } = useQuery({
+  const { data: analytics, isFetching: analyticsFetching } = useQuery({
     queryKey: ["/api/expense-analytics"],
     queryFn: async () => {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const response = await apiRequest("GET", `/api/expense-analytics?startDate=${startOfMonth.toISOString()}&endDate=${endOfMonth.toISOString()}`, null);
+      const response = await apiRequest(
+        "GET",
+        `/api/expense-analytics?startDate=${startOfMonth.toISOString()}&endDate=${endOfMonth.toISOString()}`,
+        null
+      );
       return response.json();
     },
+    staleTime: 30_000,
+    placeholderData: (previousData) => previousData,
   });
 
   const createMutation = useMutation({
@@ -174,20 +190,23 @@ export function ExpensesPage() {
     }
   };
 
-  const openEditDialog = (expense: OverheadExpense) => {
-    setEditingExpense(expense);
-    form.reset({
-      name: expense.name,
-      category: expense.category,
-      amount: parseFloat(expense.amount),
-      frequency: expense.frequency,
-      startDate: new Date(expense.startDate).toISOString().split('T')[0],
-      endDate: expense.endDate ? new Date(expense.endDate).toISOString().split('T')[0] : "",
-      isActive: expense.isActive,
-      description: expense.description || "",
-    });
-    setIsDialogOpen(true);
-  };
+  const openEditDialog = useCallback(
+    (expense: OverheadExpense) => {
+      setEditingExpense(expense);
+      form.reset({
+        name: expense.name,
+        category: expense.category,
+        amount: parseFloat(expense.amount),
+        frequency: expense.frequency,
+        startDate: new Date(expense.startDate).toISOString().split("T")[0],
+        endDate: expense.endDate ? new Date(expense.endDate).toISOString().split("T")[0] : "",
+        isActive: expense.isActive,
+        description: expense.description || "",
+      });
+      setIsDialogOpen(true);
+    },
+    [form.reset]
+  );
 
   const openCreateDialog = () => {
     setEditingExpense(null);
@@ -212,25 +231,26 @@ export function ExpensesPage() {
     }).format(numAmount);
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'rent': return '🏢';
-      case 'utilities': return '⚡';
-      case 'salaries': return '💰';
-      case 'insurance': return '🛡️';
-      case 'marketing': return '📢';
-      case 'maintenance': return '🔧';
-      case 'supplies': return '📦';
-      case 'taxes': return '📋';
-      default: return '💵';
-    }
-  };
+  const handleDeleteExpense = useCallback((id: string) => {
+    deleteMutation.mutate(id);
+  }, [deleteMutation.mutate]);
+
+  if (expensesInitialLoad) {
+    return <ExpensesPageSkeleton />;
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold">Expense Management</h1>
-        <div className="flex gap-2 w-full sm:w-auto">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Expense Management</h1>
+          {(expensesFetching || analyticsFetching) && (
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Refreshing…
+            </p>
+          )}
+        </div>
+        <div className="flex w-full gap-2 sm:w-auto">
           <a href="/expense-reports" className="flex-1 sm:flex-initial">
             <Button variant="outline" className="min-h-[44px] w-full" data-testid="button-view-reports">
               <FileText className="mr-2 h-4 w-4" />
@@ -300,9 +320,7 @@ export function ExpensesPage() {
           <CardTitle>Overhead Expenses</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="text-center py-4">Loading expenses...</div>
-          ) : expenses.length === 0 ? (
+          {expenses.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No overhead expenses yet. Add your first expense to get started.
             </div>
@@ -321,56 +339,13 @@ export function ExpensesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {expenses.map((expense: OverheadExpense) => (
-                  <TableRow key={expense.id}>
-                    <TableCell>
-                      <span className="mr-2">{getCategoryIcon(expense.category)}</span>
-                      {expense.category}
-                    </TableCell>
-                    <TableCell className="font-medium" data-testid={`text-expense-name-${expense.id}`}>
-                      {expense.name}
-                      {expense.description && (
-                        <div className="text-sm text-muted-foreground">{expense.description}</div>
-                      )}
-                    </TableCell>
-                    <TableCell data-testid={`text-expense-amount-${expense.id}`}>
-                      {formatCurrency(expense.amount)}
-                    </TableCell>
-                    <TableCell className="capitalize">{expense.frequency}</TableCell>
-                    <TableCell>{new Date(expense.startDate).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {expense.endDate ? new Date(expense.endDate).toLocaleDateString() : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        expense.isActive === 1
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {expense.isActive === 1 ? 'Active' : 'Inactive'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openEditDialog(expense)}
-                          data-testid={`button-edit-expense-${expense.id}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => deleteMutation.mutate(expense.id)}
-                          data-testid={`button-delete-expense-${expense.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {expenses.map((expense) => (
+                  <ExpenseRow
+                    key={expense.id}
+                    expense={expense}
+                    onEdit={openEditDialog}
+                    onDelete={handleDeleteExpense}
+                  />
                 ))}
               </TableBody>
             </Table>

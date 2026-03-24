@@ -1,7 +1,4 @@
 import { Router } from 'express'
-import fs from 'fs'
-import os from 'os'
-import path from 'path'
 import { generateInvoicePDF } from '../pdf/generateInvoice'
 
 const router = Router()
@@ -19,9 +16,8 @@ router.get('/:id/pdf', async (req, res) => {
     ],
     company: { name: 'Midnight Standard', address: 'Birmingham, UK', vatNumber: 'GBXXXXXXXX' }
   }
-  const tmp = path.join(os.tmpdir(), `${data.invoiceNumber}.pdf`)
-  await generateInvoicePDF(data as any, tmp)
+  const pdf = await generateInvoicePDF(data as any)
   res.setHeader('Content-Type', 'application/pdf')
-  res.send(fs.readFileSync(tmp))
+  res.send(pdf)
 })
 export default router
