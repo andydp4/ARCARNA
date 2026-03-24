@@ -1,33 +1,42 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, PackageCheck, AlertCircle, Truck, CheckCircle2, MoreVertical, Eye, User, CreditCard, Calendar, Trash2, Edit2, Minus, Copy, Check, Building, MapPin } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Clock,
+  PackageCheck,
+  AlertCircle,
+  CheckCircle2,
+  Minus,
+  Copy,
+  Check,
+  Building,
+  MapPin,
+  Search,
+} from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
+import {
+  OrdersRow,
+  StatusBadge,
+  STATUS_CONFIG,
+  formatPaymentLabel,
+  type OrdersListOrder,
+} from "@/components/orders-row";
+import { OrdersPageSkeleton } from "@/components/orders-skeleton";
+import { AppPageHeader } from "@/components/app-page-header";
+import { ActionLoader } from "@/components/action-loader";
+import { EmptyStatePanel } from "@/components/empty-state-panel";
 
-interface Order {
-  id: string;
-  customerId?: string;
-  customerName?: string;
-  total: string;
-  paymentMethod: string;
-  status: string;
-  createdAt: string;
-}
+type Order = OrdersListOrder;
 
 interface OrderDetail extends Order {
   items: Array<{
@@ -40,13 +49,7 @@ interface OrderDetail extends Order {
   }>;
 }
 
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; icon: any }> = {
-  pending: { label: "Pending", color: "bg-yellow-500", icon: Clock },
-  "on-hold": { label: "On Hold", color: "bg-orange-500", icon: AlertCircle },
-  "awaiting-customer": { label: "Awaiting Customer", color: "bg-blue-500", icon: Truck },
-  urgent: { label: "Urgent", color: "bg-red-500", icon: AlertCircle },
-  completed: { label: "Completed", color: "bg-green-500", icon: CheckCircle2 },
-};
+const STATUS_GROUP_ORDER = ["urgent", "on-hold", "awaiting-customer", "pending", "completed"] as const;
 
 export default function Orders() {
   const { toast } = useToast();
@@ -62,6 +65,8 @@ export default function Orders() {
   const [newStatus, setNewStatus] = useState("");
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -73,11 +78,17 @@ export default function Orders() {
     });
   };
 
-  // Fetch orders
-  const { data: orders = [], isLoading } = useQuery<Order[]>({
+  const {
+    data: ordersData,
+    isPending: ordersPending,
+    isFetching: ordersFetching,
+  } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 10000,
+    placeholderData: (previousData) => previousData,
   });
+  const orders = ordersData ?? [];
+  const ordersInitialLoad = ordersPending && ordersData === undefined;
 
   // Fetch order details
   const { data: orderDetails, isLoading: isLoadingDetails } = useQuery<OrderDetail>({
@@ -222,79 +233,86 @@ export default function Orders() {
     },
   });
 
-  // Filter orders based on status
-  const filteredOrders = orders.filter((order) => {
-    if (filterStatus === "active") {
-      return order.status !== "completed";
-    } else if (filterStatus === "completed") {
-      return order.status === "completed";
-    } else if (filterStatus === "all") {
-      return true;
-    }
-    return order.status === filterStatus;
-  });
+  const sortedGroupEntries = useMemo(() => {
+    const statusFiltered = orders.filter((order) => {
+      if (filterStatus === "active") return order.status !== "completed";
+      if (filterStatus === "completed") return order.status === "completed";
+      if (filterStatus === "all") return true;
+      return order.status === filterStatus;
+    });
 
-  // Group orders by status
-  const groupedOrders = filteredOrders.reduce((acc, order) => {
-    const status = order.status || "pending";
-    if (!acc[status]) {
-      acc[status] = [];
-    }
-    acc[status].push(order);
-    return acc;
-  }, {} as Record<string, Order[]>);
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = statusFiltered.filter((order) => {
+      if (!q) return true;
+      const customer = (order.customerName || "").toLowerCase();
+      return (
+        customer.includes(q) ||
+        order.id.toLowerCase().includes(q) ||
+        (order.paymentMethod || "").toLowerCase().includes(q)
+      );
+    });
 
-  const getStatusBadge = (status: string) => {
-    const config = STATUS_CONFIG[status as OrderStatus] || {
-      label: status,
-      color: "bg-gray-500",
-      icon: Clock,
-    };
-    return (
-      <Badge className={`${config.color} text-white`} data-testid={`badge-status-${status}`}>
-        {config.label}
-      </Badge>
+    const grouped = filtered.reduce(
+      (acc, order) => {
+        const status = order.status || "pending";
+        if (!acc[status]) acc[status] = [];
+        acc[status].push(order);
+        return acc;
+      },
+      {} as Record<string, Order[]>
     );
-  };
 
-  const openStatusDialog = (order: Order) => {
+    return Object.entries(grouped).sort(([a], [b]) => {
+      const ia = STATUS_GROUP_ORDER.indexOf(a as OrderStatus);
+      const ib = STATUS_GROUP_ORDER.indexOf(b as OrderStatus);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }, [orders, filterStatus, searchQuery]);
+
+  const openStatusDialog = useCallback((order: Order) => {
     setSelectedOrder(order);
     setNewStatus(order.status || "pending");
     setStatusDialogOpen(true);
-  };
+  }, []);
 
-  const openDetailsDialog = (orderId: string) => {
+  const openDetailsDialog = useCallback((orderId: string) => {
     setOrderDetailsId(orderId);
     setDetailsDialogOpen(true);
-  };
+  }, []);
 
-  const closeDetailsDialog = () => {
+  const closeDetailsDialog = useCallback(() => {
     setDetailsDialogOpen(false);
     setOrderDetailsId(null);
-  };
+  }, []);
 
-  const openDeleteDialog = (order: Order) => {
+  const openDeleteDialog = useCallback((order: Order) => {
     setOrderToDelete(order);
+    setDeleteAcknowledged(false);
     setDeleteDialogOpen(true);
-  };
+  }, []);
+
+  const openEditDialog = useCallback(async (orderId: string) => {
+    setOrderDetailsId(orderId);
+    const response = await fetch(`/api/orders/${orderId}`, { credentials: "include" });
+    const orderData = await response.json();
+    setOrderToEdit(orderData);
+    setEditLines(
+      orderData.items.map((item: any) => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: parseFloat(item.unitPrice),
+      }))
+    );
+    setEditDialogOpen(true);
+  }, []);
 
   const handleDelete = () => {
     if (!orderToDelete || deleteOrderMutation.isPending) return;
     deleteOrderMutation.mutate(orderToDelete.id);
-  };
-
-  const openEditDialog = async (orderId: string) => {
-    setOrderDetailsId(orderId);
-    const response = await fetch(`/api/orders/${orderId}`, { credentials: 'include' });
-    const orderData = await response.json();
-    setOrderToEdit(orderData);
-    setEditLines(orderData.items.map((item: any) => ({
-      productId: item.productId,
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: parseFloat(item.unitPrice),
-    })));
-    setEditDialogOpen(true);
   };
 
   const handleEditLineChange = (index: number, field: 'quantity' | 'unitPrice', value: number) => {
@@ -327,175 +345,182 @@ export default function Orders() {
     });
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  const stats = useMemo(
+    () => ({
+      total: orders.length,
+      active: orders.filter((o) => o.status !== "completed").length,
+      urgent: orders.filter((o) => o.status === "urgent").length,
+      completed: orders.filter((o) => o.status === "completed").length,
+    }),
+    [orders]
+  );
 
-  // Stats
-  const stats = {
-    total: orders.length,
-    active: orders.filter((o) => o.status !== "completed").length,
-    urgent: orders.filter((o) => o.status === "urgent").length,
-    completed: orders.filter((o) => o.status === "completed").length,
-  };
+  if (ordersInitialLoad) {
+    return <OrdersPageSkeleton />;
+  }
 
   return (
     <div className="w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Orders Management</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Track and manage all orders from creation to completion
-          </p>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+        <AppPageHeader
+          title="Orders"
+          description="Track and manage orders from creation through completion. Filter by status or search by customer, ID, or payment."
+          trailing={
+            ordersFetching ? (
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                Refreshing orders…
+              </p>
+            ) : undefined
+          }
+        />
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-xs sm:text-sm font-medium">Total Orders</CardTitle>
+        <div className="mb-8 grid grid-cols-2 gap-4 sm:gap-4 lg:grid-cols-4">
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Total orders</CardTitle>
               <PackageCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold" data-testid="stat-total-orders">{stats.total}</div>
+              <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-total-orders">
+                {stats.total}
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-xs sm:text-sm font-medium">Active</CardTitle>
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Active</CardTitle>
               <Clock className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold" data-testid="stat-active-orders">{stats.active}</div>
+              <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-active-orders">
+                {stats.active}
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-xs sm:text-sm font-medium">Urgent</CardTitle>
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Urgent</CardTitle>
               <AlertCircle className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold" data-testid="stat-urgent-orders">{stats.urgent}</div>
+              <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-urgent-orders">
+                {stats.urgent}
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-xs sm:text-sm font-medium">Completed</CardTitle>
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Completed</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold" data-testid="stat-completed-orders">{stats.completed}</div>
+              <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-completed-orders">
+                {stats.completed}
+              </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="mb-6">
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-full sm:w-[200px]" data-testid="select-filter-status">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Orders</SelectItem>
-              <SelectItem value="active">Active Orders</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="urgent">Urgent</SelectItem>
-              <SelectItem value="on-hold">On Hold</SelectItem>
-              <SelectItem value="awaiting-customer">Awaiting Customer</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Filters & search */}
+        <Card className="mb-8 border-border/60 shadow-sm">
+          <CardContent className="p-4 sm:p-5 sm:pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="flex-1 min-w-[min(100%,14rem)] space-y-2">
+                <Label htmlFor="order-status-filter" className="text-muted-foreground">
+                  Status
+                </Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger id="order-status-filter" className="min-h-[44px] w-full" data-testid="select-filter-status">
+                    <SelectValue placeholder="Choose which orders to show" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All orders</SelectItem>
+                    <SelectItem value="active">Active (not completed)</SelectItem>
+                    <SelectItem value="completed">Completed only</SelectItem>
+                    <SelectItem value="urgent">Urgent only</SelectItem>
+                    <SelectItem value="on-hold">On hold</SelectItem>
+                    <SelectItem value="awaiting-customer">Awaiting customer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[min(100%,14rem)] space-y-2">
+                <Label htmlFor="order-search" className="text-muted-foreground">
+                  Search
+                </Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="order-search"
+                    placeholder="Customer, order ID, or payment…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="min-h-[44px] pl-9"
+                    data-testid="input-order-search"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Orders List */}
-        {filteredOrders.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <PackageCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No orders found</p>
+        {sortedGroupEntries.length === 0 ? (
+          <Card className="border-border/60 shadow-sm">
+            <CardContent className="p-6 sm:p-8">
+              {orders.length === 0 ? (
+                <EmptyStatePanel
+                  variant="empty"
+                  icon={PackageCheck}
+                  title="No orders yet"
+                  description="New orders from POS and other channels will show up here when they are created."
+                />
+              ) : searchQuery.trim() ? (
+                <EmptyStatePanel
+                  variant="search"
+                  icon={Search}
+                  title="No orders match your search"
+                  description="Try another customer name, order ID fragment, or payment keyword—or clear the search field."
+                />
+              ) : (
+                <EmptyStatePanel
+                  variant="filtered"
+                  icon={PackageCheck}
+                  title="Nothing in this view"
+                  description="Change the status filter or choose “All orders” to see more rows."
+                />
+              )}
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {Object.entries(groupedOrders).map(([status, statusOrders]) => (
-              <Card key={status}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      {getStatusBadge(status)}
-                      <span className="text-sm text-muted-foreground">
-                        ({statusOrders.length} {statusOrders.length === 1 ? "order" : "orders"})
-                      </span>
-                    </CardTitle>
+          <div className="space-y-5">
+            {sortedGroupEntries.map(([status, statusOrders]) => (
+              <Card key={status} className="border-border/60 shadow-sm">
+                <CardHeader className="space-y-0 pb-4 pt-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1">
+                    <StatusBadge status={status} />
+                    <span
+                      className="text-xs font-medium uppercase tracking-wider text-muted-foreground sm:border-l sm:border-border/60 sm:pl-3"
+                      aria-label={`${statusOrders.length} orders in this group`}
+                    >
+                      <span className="tabular-nums">{statusOrders.length}</span>{" "}
+                      {statusOrders.length === 1 ? "order" : "orders"}
+                    </span>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
+                <CardContent className="pb-6 pt-0">
+                  <ul className="space-y-3 sm:space-y-2.5" role="list">
                     {statusOrders.map((order) => (
-                      <div
+                      <OrdersRow
                         key={order.id}
-                        className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
-                        data-testid={`order-${order.id}`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            <p className="font-medium text-sm truncate">
-                              Order #{order.id.slice(0, 8)}
-                            </p>
-                            <Badge variant="outline" className="text-xs">
-                              {order.paymentMethod}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-muted-foreground">
-                            <span className="font-bold text-foreground">
-                              ${parseFloat(order.total).toFixed(2)}
-                            </span>
-                            <span className="hidden sm:inline">•</span>
-                            <span>{new Date(order.createdAt).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="min-h-[44px] min-w-[44px]"
-                                data-testid={`button-order-actions-${order.id}`}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openDetailsDialog(order.id)} data-testid="menu-view-details">
-                                <Eye className="mr-2 h-4 w-4" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(order.id)} data-testid="menu-edit-order">
-                                <Edit2 className="mr-2 h-4 w-4" />
-                                Edit Order
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openStatusDialog(order)} data-testid="menu-update-status">
-                                Update Status
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => openDeleteDialog(order)} 
-                                data-testid="menu-delete-order"
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Order
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
+                        order={order}
+                        onView={openDetailsDialog}
+                        onEdit={openEditDialog}
+                        onUpdateStatus={openStatusDialog}
+                        onDelete={openDeleteDialog}
+                      />
                     ))}
-                  </div>
+                  </ul>
                 </CardContent>
               </Card>
             ))}
@@ -503,82 +528,77 @@ export default function Orders() {
         )}
 
         {/* Order Details Dialog */}
-        <Dialog open={detailsDialogOpen} onOpenChange={closeDetailsDialog}>
-          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <Dialog
+          open={detailsDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) closeDetailsDialog();
+          }}
+        >
+          <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Order Details</DialogTitle>
-              <DialogDescription>
-                Complete information for order #{orderDetails?.id.slice(0, 8) || '...'}
-              </DialogDescription>
+              <DialogTitle>Order #{orderDetails?.id.slice(0, 8) || "…"}</DialogTitle>
+              <DialogDescription className="sr-only">Order details and line items</DialogDescription>
             </DialogHeader>
             {isLoadingDetails ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
+                <ActionLoader className="size-8 text-primary" />
+                <p className="text-sm">Loading order details…</p>
               </div>
             ) : orderDetails && (
-              <div className="space-y-4">
-                {/* Order Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <User className="h-4 w-4" />
-                      <span>Customer</span>
+              <div className="space-y-5">
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-3">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Customer</p>
+                        <p className="text-lg font-semibold">{orderDetails.customerName?.trim() || "Walk-in"}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Placed</p>
+                          <p className="font-medium">{new Date(orderDetails.createdAt).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Payment</p>
+                          <p className="font-medium capitalize">{formatPaymentLabel(orderDetails.paymentMethod)}</p>
+                        </div>
+                      </div>
                     </div>
-                    <p className="font-medium">{orderDetails.customerName}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CreditCard className="h-4 w-4" />
-                      <span>Payment</span>
+                    <div className="flex flex-col items-start gap-2 sm:items-end">
+                      <div>
+                        <p className="text-xs text-muted-foreground sm:text-right">Status</p>
+                        <div className="mt-1">
+                          <StatusBadge status={orderDetails.status} />
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="text-2xl font-bold tabular-nums text-primary">
+                          ${parseFloat(orderDetails.total || "0").toFixed(2)}
+                        </p>
+                      </div>
                     </div>
-                    <p className="font-medium capitalize">{orderDetails.paymentMethod}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>Date</span>
-                    </div>
-                    <p className="font-medium">{new Date(orderDetails.createdAt).toLocaleString()}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <PackageCheck className="h-4 w-4" />
-                      <span>Status</span>
-                    </div>
-                    <div>{getStatusBadge(orderDetails.status)}</div>
                   </div>
                 </div>
 
-                <Separator />
-
-                {/* Order Items */}
                 <div>
-                  <h4 className="font-semibold mb-3">Order Items</h4>
-                  <div className="space-y-2">
+                  <h4 className="mb-2 text-sm font-medium text-muted-foreground">Line items</h4>
+                  <div className="divide-y rounded-lg border">
                     {orderDetails.items?.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium">{item.productName || 'Unknown Product'}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {item.quantity} × ${typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice).toFixed(2) : item.unitPrice.toFixed(2)}
+                      <div
+                        key={item.id}
+                        className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">{item.productName || "Unknown product"}</p>
+                          <p className="text-sm text-muted-foreground tabular-nums">
+                            {item.quantity} × ${Number(item?.unitPrice ?? 0).toFixed(2)}
                           </p>
                         </div>
-                        <div className="font-semibold">
-                          ${typeof item.total === 'string' ? parseFloat(item.total).toFixed(2) : item.total.toFixed(2)}
-                        </div>
+                        <p className="font-semibold tabular-nums sm:text-right">${Number(item?.total ?? 0).toFixed(2)}</p>
                       </div>
                     ))}
                   </div>
-                </div>
-
-                <Separator />
-
-                {/* Order Total */}
-                <div className="flex justify-between items-center text-lg font-bold">
-                  <span>Total</span>
-                  <span className="text-2xl text-primary">
-                    ${parseFloat(orderDetails.total).toFixed(2)}
-                  </span>
                 </div>
 
                 {/* Bank Details Section */}
@@ -688,9 +708,10 @@ export default function Orders() {
                 Change the status of order #{selectedOrder?.id.slice(0, 8)}
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
+            <div className="space-y-2 py-4">
+              <Label htmlFor="new-order-status">New status</Label>
               <Select value={newStatus} onValueChange={setNewStatus}>
-                <SelectTrigger data-testid="select-new-status">
+                <SelectTrigger id="new-order-status" className="min-h-[44px]" data-testid="select-new-status">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -723,33 +744,52 @@ export default function Orders() {
         </Dialog>
 
         {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+        <Dialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            setDeleteDialogOpen(open);
+            if (!open) {
+              setDeleteAcknowledged(false);
+              setOrderToDelete(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[440px] border-destructive/20">
             <DialogHeader>
-              <DialogTitle>Delete Order</DialogTitle>
+              <DialogTitle className="text-destructive">Delete this order?</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete order #{orderToDelete?.id.slice(0, 8)}?
+                Order #{orderToDelete?.id.slice(0, 8)} — this cannot be undone.
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
+            <div className="space-y-4 py-2">
               <p className="text-sm text-muted-foreground">
-                This action cannot be undone. The order will be permanently deleted and any reserved stock will be released back to inventory.
+                Stock reserved for this order will be released. Customer and payment records elsewhere are not affected.
               </p>
-              <div className="mt-4 p-3 bg-muted rounded-lg">
-                <p className="text-sm font-medium">Order Details:</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Total: ${orderToDelete?.total ? parseFloat(orderToDelete.total).toFixed(2) : '0.00'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Payment: {orderToDelete?.paymentMethod}
+              <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+                <p className="font-medium">{orderToDelete?.customerName?.trim() || "Walk-in"}</p>
+                <p className="mt-1 text-muted-foreground tabular-nums">
+                  Total ${orderToDelete?.total ? parseFloat(orderToDelete.total).toFixed(2) : "0.00"} ·{" "}
+                  {formatPaymentLabel(orderToDelete?.paymentMethod || "")}
                 </p>
               </div>
+              <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                <Checkbox
+                  id="delete-ack"
+                  checked={deleteAcknowledged}
+                  onCheckedChange={(c) => setDeleteAcknowledged(c === true)}
+                  data-testid="checkbox-delete-ack"
+                  className="mt-0.5"
+                />
+                <Label htmlFor="delete-ack" className="cursor-pointer text-sm font-normal leading-snug">
+                  I understand this order will be permanently deleted.
+                </Label>
+              </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between sm:gap-0">
               <Button
                 variant="outline"
                 onClick={() => setDeleteDialogOpen(false)}
-                className="min-h-[44px]"
+                className="min-h-[44px] w-full sm:w-auto"
                 data-testid="button-cancel-delete"
               >
                 Cancel
@@ -757,11 +797,11 @@ export default function Orders() {
               <Button
                 variant="destructive"
                 onClick={handleDelete}
-                disabled={deleteOrderMutation.isPending}
-                className="min-h-[44px]"
+                disabled={deleteOrderMutation.isPending || !deleteAcknowledged}
+                className="min-h-[44px] w-full sm:w-auto"
                 data-testid="button-confirm-delete"
               >
-                {deleteOrderMutation.isPending ? "Deleting..." : "Delete Order"}
+                {deleteOrderMutation.isPending ? "Deleting…" : "Delete permanently"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -769,56 +809,66 @@ export default function Orders() {
 
         {/* Edit Order Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Edit Order</DialogTitle>
-              <DialogDescription>
-                Modify line items, quantities, and prices for order #{orderToEdit?.id.slice(0, 8)}
-              </DialogDescription>
+              <DialogTitle>Edit order #{orderToEdit?.id.slice(0, 8)}</DialogTitle>
+              <DialogDescription>Change quantities and prices. Remove a line only if you intend to drop that item.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               {editLines.map((line, index) => (
-                <div key={index} className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                  <div className="flex-1 space-y-2">
-                    <p className="text-sm font-medium">{line.productName}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-muted-foreground">Quantity</label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={line.quantity}
-                          onChange={(e) => handleEditLineChange(index, 'quantity', parseInt(e.target.value) || 1)}
-                          className="min-h-[44px]"
-                          data-testid={`input-edit-quantity-${index}`}
-                        />
+                <div key={index} className="rounded-lg border p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="font-medium">{line.productName}</p>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label htmlFor={`edit-qty-${index}`} className="text-xs text-muted-foreground">
+                            Quantity
+                          </Label>
+                          <Input
+                            id={`edit-qty-${index}`}
+                            type="number"
+                            min="1"
+                            value={line.quantity}
+                            onChange={(e) => handleEditLineChange(index, "quantity", parseInt(e.target.value) || 1)}
+                            className="min-h-[44px]"
+                            data-testid={`input-edit-quantity-${index}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`edit-price-${index}`} className="text-xs text-muted-foreground">
+                            Unit price
+                          </Label>
+                          <Input
+                            id={`edit-price-${index}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.unitPrice}
+                            onChange={(e) => handleEditLineChange(index, "unitPrice", parseFloat(e.target.value) || 0)}
+                            className="min-h-[44px]"
+                            data-testid={`input-edit-price-${index}`}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">Price</label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={line.unitPrice}
-                          onChange={(e) => handleEditLineChange(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="min-h-[44px]"
-                          data-testid={`input-edit-price-${index}`}
-                        />
-                      </div>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        Line total: ${(line.quantity * line.unitPrice).toFixed(2)}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Subtotal: ${(line.quantity * line.unitPrice).toFixed(2)}
-                    </p>
+                    <div className="flex justify-end border-t pt-3 sm:border-t-0 sm:border-l sm:pl-3 sm:pt-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRemoveLine(index)}
+                        className="min-h-[44px] border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        data-testid={`button-remove-line-${index}`}
+                        aria-label={`Remove ${line.productName} from order`}
+                      >
+                        <Minus className="mr-2 h-4 w-4" />
+                        Remove line
+                      </Button>
+                    </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveLine(index)}
-                    className="min-h-[44px] min-w-[44px]"
-                    data-testid={`button-remove-line-${index}`}
-                  >
-                    <Minus className="h-4 w-4 text-destructive" />
-                  </Button>
                 </div>
               ))}
               

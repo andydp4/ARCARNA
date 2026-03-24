@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -26,17 +26,17 @@ export default function MonthlyOrdersChart() {
             <h3 className="text-lg font-semibold text-foreground">
               Monthly Orders
             </h3>
-            <p className="text-sm text-muted-foreground">
-              Last 12 months volume
-            </p>
+            <CardDescription>
+              Order count per month from the monthly summary API.
+            </CardDescription>
           </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 text-xs font-medium text-secondary bg-secondary/10 rounded-lg" data-testid="button-orders-12m">
+          <div className="flex shrink-0 gap-2" aria-hidden="true">
+            <span className="rounded-lg bg-secondary/10 px-3 py-1 text-xs font-medium text-secondary" data-testid="button-orders-12m">
               12M
-            </button>
-            <button className="px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted rounded-lg" data-testid="button-orders-6m">
+            </span>
+            <span className="rounded-lg px-3 py-1 text-xs font-medium text-muted-foreground" data-testid="button-orders-6m">
               6M
-            </button>
+            </span>
           </div>
         </div>
       </CardHeader>
@@ -44,7 +44,7 @@ export default function MonthlyOrdersChart() {
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <div className="h-64">
+          <div className="h-56 w-full min-h-[220px] sm:h-64 sm:min-h-[256px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" />

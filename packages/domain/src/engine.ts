@@ -36,11 +36,13 @@ export class DomainEngine {
       // Determine order status based on stock availability
       const orderStatus = stockWarnings.length > 0 ? 'on-hold' : 'pending'
 
-      const order: Order = {
+      const order: Order & { orgId?: string; locationId?: string } = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
         lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
         subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, createdAt: new Date(),
+        orgId: (dto as any).orgId,
+        locationId: (dto as any).locationId,
       }
       await this.orders.save(order)
       
@@ -108,7 +110,7 @@ export class DomainEngine {
     return product
   }
 
-  async updateProduct(id: string, input: unknown): Promise<Product> {
+  async updateProduct(id: string, input: unknown, orgId?: string | null): Promise<Product> {
     const product = await this.withTransaction(async () => {
       const productId = id as ProductId
       const existing = await this.products.findById(productId)
@@ -117,7 +119,7 @@ export class DomainEngine {
       const updated = await this.products.update(productId, {
         ...(input as any),
         updatedAt: new Date(),
-      })
+      }, orgId)
       await this.audit.log('ProductUpdated', { productId: updated.id, changes: input })
       await this.bus.publish({ type: 'ProductUpdated', productId: updated.id })
       return updated
@@ -125,13 +127,13 @@ export class DomainEngine {
     return product
   }
 
-  async deleteProduct(id: string): Promise<void> {
+  async deleteProduct(id: string, orgId?: string | null): Promise<void> {
     await this.withTransaction(async () => {
       const productId = id as ProductId
       const existing = await this.products.findById(productId)
       if (!existing) throw new Error('Product not found')
       
-      await this.products.delete(productId)
+      await this.products.delete(productId, orgId)
       await this.audit.log('ProductDeleted', { productId })
       await this.bus.publish({ type: 'ProductDeleted', productId })
     })
@@ -162,13 +164,13 @@ export class DomainEngine {
       }
       const created = await this.customers.create(newCustomer)
       await this.audit.log('CustomerCreated', { customerId: created.id, name: created.name })
-      await this.bus.publish({ type: 'CustomerCreated', customerId: created.id })
+      await this.bus.publish({ type: 'CustomerCreated', customerId: created.id, name: created.name })
       return created
     })
     return customer
   }
 
-  async updateCustomer(id: string, input: unknown): Promise<Customer> {
+  async updateCustomer(id: string, input: unknown, orgId?: string | null): Promise<Customer> {
     const customer = await this.withTransaction(async () => {
       const customerId = id as CustomerId
       const existing = await this.customers.findById(customerId)
@@ -178,7 +180,7 @@ export class DomainEngine {
       const updated = await this.customers.update(customerId, {
         ...(input as any),
         updatedAt: new Date(),
-      })
+      }, orgId)
       
       // If category changed, trigger loyalty tier update
       if (previousCategory !== updated.category) {
@@ -193,13 +195,13 @@ export class DomainEngine {
     return customer
   }
 
-  async deleteCustomer(id: string): Promise<void> {
+  async deleteCustomer(id: string, orgId?: string | null): Promise<void> {
     await this.withTransaction(async () => {
       const customerId = id as CustomerId
       const existing = await this.customers.findById(customerId)
       if (!existing) throw new Error('Customer not found')
       
-      await this.customers.delete(customerId)
+      await this.customers.delete(customerId, orgId)
       await this.audit.log('CustomerDeleted', { customerId })
       await this.bus.publish({ type: 'CustomerDeleted', customerId })
     })

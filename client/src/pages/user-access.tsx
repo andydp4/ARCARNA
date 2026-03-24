@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +49,7 @@ interface ApprovalRequest {
 export default function UserAccess() {
   const { toast } = useToast();
   const [confirmRemove, setConfirmRemove] = useState<AllowedUser | null>(null);
+  const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
 
   const { data: allowedUsers = [], isLoading: loadingUsers } = useQuery<AllowedUser[]>({
@@ -144,7 +148,10 @@ export default function UserAccess() {
                   <Shield className="h-5 w-5 text-blue-500" />
                   User Access Control
                 </h1>
-                <p className="text-sm text-muted-foreground">Manage who can access the system</p>
+                <p className="text-sm text-muted-foreground">Manage who can access this organization</p>
+                <Badge variant="outline" className="mt-2 font-normal">
+                  Scope: this workspace / org
+                </Badge>
               </div>
             </div>
             {pendingApprovals.length > 0 && (
@@ -181,7 +188,7 @@ export default function UserAccess() {
                   Pending Approval Requests
                 </CardTitle>
                 <CardDescription>
-                  Users waiting for access to the system
+                  New sign-ins appear here until an owner or admin approves them for this organization.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -199,49 +206,46 @@ export default function UserAccess() {
                   <div className="space-y-4">
                     {pendingApprovals.map((request) => (
                       <Card key={request.id} className="border-yellow-200 bg-yellow-50/30 dark:bg-yellow-900/10" data-testid={`pending-user-${request.replitUserId}`}>
-                        <CardContent className="pt-4">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              {request.profileImageUrl ? (
-                                <img 
-                                  src={request.profileImageUrl} 
-                                  alt={request.name || 'User'} 
-                                  className="h-12 w-12 rounded-full"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                  <Users className="h-6 w-6 text-muted-foreground" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-medium">{request.name || 'Unknown User'}</p>
-                                <p className="text-sm text-muted-foreground">{request.email || 'No email'}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Requested: {formatDate(request.requestedAt)}
-                                </p>
+                        <CardContent className="space-y-4 pt-4">
+                          <div className="flex items-center gap-3">
+                            {request.profileImageUrl ? (
+                              <img
+                                src={request.profileImageUrl}
+                                alt={request.name || "User"}
+                                className="h-12 w-12 shrink-0 rounded-full"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted">
+                                <Users className="h-6 w-6 text-muted-foreground" />
                               </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-semibold">{request.name || "Unknown user"}</p>
+                              <p className="text-sm text-muted-foreground">{request.email || "No email on file"}</p>
+                              <p className="text-xs text-muted-foreground">Requested {formatDate(request.requestedAt)}</p>
                             </div>
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={() => approveMutation.mutate(request.replitUserId)}
-                                disabled={approveMutation.isPending}
-                                className="min-h-[44px] bg-green-600 hover:bg-green-700"
-                                data-testid={`button-approve-${request.replitUserId}`}
-                              >
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Approve
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                onClick={() => rejectMutation.mutate(request.replitUserId)}
-                                disabled={rejectMutation.isPending}
-                                className="min-h-[44px]"
-                                data-testid={`button-reject-${request.replitUserId}`}
-                              >
-                                <XCircle className="mr-2 h-4 w-4" />
-                                Reject
-                              </Button>
-                            </div>
+                          </div>
+                          <Separator />
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                            <Button
+                              onClick={() => approveMutation.mutate(request.replitUserId)}
+                              disabled={approveMutation.isPending}
+                              className="min-h-[44px] w-full bg-green-600 hover:bg-green-700 sm:w-auto sm:flex-1"
+                              data-testid={`button-approve-${request.replitUserId}`}
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              Approve access
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="min-h-[44px] w-full border-destructive/50 text-destructive hover:bg-destructive/10 sm:w-auto sm:flex-1"
+                              onClick={() => rejectMutation.mutate(request.replitUserId)}
+                              disabled={rejectMutation.isPending}
+                              data-testid={`button-reject-${request.replitUserId}`}
+                            >
+                              <XCircle className="mr-2 h-4 w-4" />
+                              Deny request
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
@@ -260,7 +264,7 @@ export default function UserAccess() {
                   Allowed Users
                 </CardTitle>
                 <CardDescription>
-                  Users who have access to the system
+                  Everyone listed below can sign in to this organization. Owner has full admin rights.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -301,9 +305,14 @@ export default function UserAccess() {
                           </TableCell>
                           <TableCell>
                             {user.isOwner === 1 ? (
-                              <Badge className="bg-yellow-500">Owner</Badge>
+                              <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500">
+                                <Crown className="h-3 w-3" />
+                                Owner
+                              </Badge>
                             ) : (
-                              <Badge variant="secondary">User</Badge>
+                              <Badge variant="secondary" className="font-normal">
+                                Member
+                              </Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
@@ -314,11 +323,15 @@ export default function UserAccess() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-red-600 min-h-[44px]"
-                                onClick={() => setConfirmRemove(user)}
+                                className="min-h-[44px] border-destructive/40 text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  setConfirmRemove(user);
+                                  setRemoveAcknowledged(false);
+                                }}
                                 data-testid={`button-remove-${user.replitUserId}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remove…
                               </Button>
                             )}
                           </TableCell>
@@ -333,27 +346,47 @@ export default function UserAccess() {
         </Tabs>
       </main>
 
-      <Dialog open={!!confirmRemove} onOpenChange={() => setConfirmRemove(null)}>
-        <DialogContent>
+      <Dialog
+        open={!!confirmRemove}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmRemove(null);
+            setRemoveAcknowledged(false);
+          }
+        }}
+      >
+        <DialogContent className="border-destructive/20 sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Remove User Access</DialogTitle>
+            <DialogTitle className="text-destructive">Remove access?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove <strong>{confirmRemove?.name || confirmRemove?.email}</strong> from the allowed users list? 
-              They will need to request access again to use the system.
+              <strong>{confirmRemove?.name || confirmRemove?.email}</strong> will no longer be able to sign in to this organization until
+              approved again.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmRemove(null)} className="min-h-[44px]">
+          <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <Checkbox
+              id="remove-access-ack"
+              checked={removeAcknowledged}
+              onCheckedChange={(c) => setRemoveAcknowledged(c === true)}
+              data-testid="checkbox-remove-access-ack"
+              className="mt-0.5"
+            />
+            <Label htmlFor="remove-access-ack" className="cursor-pointer text-sm font-normal leading-snug">
+              I understand this user will lose access immediately.
+            </Label>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button variant="outline" onClick={() => setConfirmRemove(null)} className="min-h-[44px] w-full sm:w-auto">
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={() => confirmRemove && removeMutation.mutate(confirmRemove.replitUserId)}
-              disabled={removeMutation.isPending}
-              className="min-h-[44px]"
+              disabled={removeMutation.isPending || !removeAcknowledged}
+              className="min-h-[44px] w-full sm:w-auto"
               data-testid="button-confirm-remove"
             >
-              {removeMutation.isPending ? "Removing..." : "Remove Access"}
+              {removeMutation.isPending ? "Removing…" : "Remove access"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -22,11 +22,12 @@ import {
   Home,
   CheckCircle,
   XCircle,
-  Eye,
   AlertTriangle,
   PackageX
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import { Link } from "wouter";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
@@ -92,6 +93,7 @@ export default function Locations() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
   const [stockLocationId, setStockLocationId] = useState<string | null>(null);
@@ -366,7 +368,9 @@ export default function Locations() {
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle>Store Locations</CardTitle>
-                <CardDescription>Manage your store locations and their settings</CardDescription>
+                <CardDescription>
+                  Default store is used when none is selected. Inactive locations are hidden from normal selection.
+                </CardDescription>
               </div>
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild>
@@ -389,8 +393,12 @@ export default function Locations() {
                   </DialogHeader>
                   
                   <Form {...form}>
-                    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Contact</p>
+                        <Separator className="my-3" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <FormField
                           control={form.control}
                           name="name"
@@ -425,6 +433,11 @@ export default function Locations() {
                         />
                       </div>
 
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Address</p>
+                        <Separator className="my-3" />
+                      </div>
+
                       <FormField
                         control={form.control}
                         name="address"
@@ -439,7 +452,7 @@ export default function Locations() {
                         )}
                       />
 
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <FormField
                           control={form.control}
                           name="city"
@@ -518,17 +531,18 @@ export default function Locations() {
                         control={form.control}
                         name="isActive"
                         render={({ field }) => (
-                          <FormItem className="flex items-center gap-2">
+                          <FormItem className="flex flex-row items-start gap-3 rounded-lg border p-3">
                             <FormControl>
-                              <input
-                                type="checkbox"
+                              <Checkbox
                                 checked={field.value}
-                                onChange={field.onChange}
-                                className="h-4 w-4"
+                                onCheckedChange={(c) => field.onChange(c === true)}
                                 data-testid="checkbox-location-active"
                               />
                             </FormControl>
-                            <FormLabel className="!mt-0">Active Location</FormLabel>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel className="!mt-0 cursor-pointer">Active location</FormLabel>
+                              <p className="text-xs text-muted-foreground">Inactive stores are hidden from normal selection.</p>
+                            </div>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -562,27 +576,29 @@ export default function Locations() {
                   <Card key={location.id} data-testid={`location-card-${location.id}`}>
                     <CardContent className="pt-6">
                       <div className="space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="font-medium flex items-center gap-2">
-                              {location.name}
-                              {location.isDefault && (
-                                <Badge variant="secondary" className="text-xs">Default</Badge>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-semibold">{location.name}</div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {location.isDefault ? (
+                                <Badge className="bg-amber-500/90 text-white">Default store</Badge>
+                              ) : (
+                                <Badge variant="outline">Not default</Badge>
+                              )}
+                              {location.isActive ? (
+                                <Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
+                                  <CheckCircle className="mr-1 h-3 w-3" />
+                                  Active
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-red-600/40 text-red-700 dark:text-red-400">
+                                  <XCircle className="mr-1 h-3 w-3" />
+                                  Inactive
+                                </Badge>
                               )}
                             </div>
-                            <div className="text-sm text-muted-foreground">{location.email}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">{location.email}</div>
                           </div>
-                          {location.isActive ? (
-                            <Badge variant="outline" className="text-green-600">
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              Active
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-red-600">
-                              <XCircle className="mr-1 h-3 w-3" />
-                              Inactive
-                            </Badge>
-                          )}
                         </div>
                         <div className="text-sm space-y-1">
                           <div>{location.address}</div>
@@ -608,12 +624,12 @@ export default function Locations() {
                             <div className="font-medium">{location.stats?.totalOrders || 0}</div>
                           </div>
                         </div>
-                        <div className="flex gap-2 pt-2">
+                        <div className="flex flex-wrap gap-2 pt-2">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => openStockDialog(location)}
-                            className="flex-1 min-h-[44px]"
+                            className="min-h-[44px] flex-1 min-w-[calc(50%-0.25rem)]"
                             data-testid={`button-view-stock-${location.id}`}
                           >
                             <Package className="mr-2 h-3 w-3" />
@@ -623,24 +639,40 @@ export default function Locations() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleEdit(location)}
-                            className="flex-1 min-h-[44px]"
+                            className="min-h-[44px] flex-1 min-w-[calc(50%-0.25rem)]"
                             data-testid={`button-edit-${location.id}`}
                           >
                             <Edit className="mr-2 h-3 w-3" />
                             Edit
                           </Button>
-                          {!location.isDefault && (
+                        </div>
+                        {!location.isDefault && (
+                          <div className="space-y-2 border-t border-destructive/15 pt-3">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="min-h-[44px] w-full"
+                              onClick={() => setDefaultMutation.mutate(location.id)}
+                              disabled={setDefaultMutation.isPending}
+                              data-testid={`button-set-default-mobile-${location.id}`}
+                            >
+                              Set as default store
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-red-600 min-h-[44px]"
-                              onClick={() => setDeletingId(location.id)}
+                              className="min-h-[44px] w-full border-destructive/40 text-destructive hover:bg-destructive/10"
+                              onClick={() => {
+                                setDeletingId(location.id);
+                                setDeleteAcknowledged(false);
+                              }}
                               data-testid={`button-delete-${location.id}`}
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete location…
                             </Button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -659,7 +691,7 @@ export default function Locations() {
                     <TableHead>Revenue</TableHead>
                     <TableHead>Orders</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="min-w-[220px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -678,13 +710,13 @@ export default function Locations() {
                       <TableRow key={location.id} data-testid={`location-row-${location.id}`}>
                         <TableCell>
                           <div>
-                            <div className="font-medium flex items-center gap-2">
-                              {location.name}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold">{location.name}</span>
                               {location.isDefault && (
-                                <Badge variant="secondary" className="text-xs">Default</Badge>
+                                <Badge className="text-xs bg-amber-500/90 text-white">Default store</Badge>
                               )}
                             </div>
-                            <div className="text-xs text-muted-foreground">{location.email}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{location.email}</div>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -707,59 +739,70 @@ export default function Locations() {
                         <TableCell>{location.stats?.totalOrders || 0}</TableCell>
                         <TableCell>
                           {location.isActive ? (
-                            <Badge variant="outline" className="text-green-600">
+                            <Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
                               <CheckCircle className="mr-1 h-3 w-3" />
                               Active
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-red-600">
+                            <Badge variant="outline" className="border-red-600/40 text-red-700 dark:text-red-400">
                               <XCircle className="mr-1 h-3 w-3" />
                               Inactive
                             </Badge>
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openStockDialog(location)}
-                              className="min-h-[44px]"
-                              data-testid={`button-view-stock-${location.id}`}
-                            >
-                              <Package className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(location)}
-                              className="min-h-[44px]"
-                              data-testid={`button-edit-${location.id}`}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            {!location.isDefault && (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap gap-1">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => setDefaultMutation.mutate(location.id)}
-                                disabled={setDefaultMutation.isPending}
-                                className="min-h-[44px]"
-                                data-testid={`button-set-default-${location.id}`}
+                                onClick={() => openStockDialog(location)}
+                                className="min-h-[40px]"
+                                data-testid={`button-view-stock-${location.id}`}
+                                title="Stock"
                               >
-                                Set Default
+                                <Package className="h-3 w-3 sm:mr-1" />
+                                <span className="hidden sm:inline">Stock</span>
                               </Button>
-                            )}
-                            {!location.isDefault && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-red-600 min-h-[44px]"
-                                onClick={() => setDeletingId(location.id)}
-                                data-testid={`button-delete-${location.id}`}
+                                onClick={() => handleEdit(location)}
+                                className="min-h-[40px]"
+                                data-testid={`button-edit-${location.id}`}
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Edit className="h-3 w-3 sm:mr-1" />
+                                <span className="hidden sm:inline">Edit</span>
                               </Button>
+                              {!location.isDefault && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setDefaultMutation.mutate(location.id)}
+                                  disabled={setDefaultMutation.isPending}
+                                  className="min-h-[40px]"
+                                  data-testid={`button-set-default-${location.id}`}
+                                >
+                                  Set default
+                                </Button>
+                              )}
+                            </div>
+                            {!location.isDefault && (
+                              <div className="border-t border-destructive/20 pt-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="min-h-[40px] w-full border-destructive/40 text-destructive hover:bg-destructive/10 sm:w-auto"
+                                  onClick={() => {
+                                    setDeletingId(location.id);
+                                    setDeleteAcknowledged(false);
+                                  }}
+                                  data-testid={`button-delete-${location.id}`}
+                                >
+                                  <Trash2 className="mr-2 h-3 w-3" />
+                                  Delete…
+                                </Button>
+                              </div>
                             )}
                           </div>
                         </TableCell>
@@ -774,27 +817,60 @@ export default function Locations() {
       </main>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}>
-        <DialogContent>
+      <Dialog
+        open={!!deletingId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletingId(null);
+            setDeleteAcknowledged(false);
+          }
+        }}
+      >
+        <DialogContent className="border-destructive/20 sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Delete Location</DialogTitle>
+            <DialogTitle className="text-destructive">Delete this location?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this location? This action cannot be undone.
-              All data associated with this location will be permanently removed.
+              {deletingId && (
+                <>
+                  <strong>{locations.find((l) => l.id === deletingId)?.name}</strong> — this cannot be undone.
+                  Associated data for this store will be removed.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeletingId(null)} className="min-h-[44px]">
+          <div className="space-y-4 py-1">
+            <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <Checkbox
+                id="loc-delete-ack"
+                checked={deleteAcknowledged}
+                onCheckedChange={(c) => setDeleteAcknowledged(c === true)}
+                data-testid="checkbox-delete-location-ack"
+                className="mt-0.5"
+              />
+              <Label htmlFor="loc-delete-ack" className="cursor-pointer text-sm font-normal leading-snug">
+                I understand this location will be permanently deleted.
+              </Label>
+            </div>
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeletingId(null);
+                setDeleteAcknowledged(false);
+              }}
+              className="min-h-[44px] w-full sm:w-auto"
+            >
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={() => deletingId && deleteMutation.mutate(deletingId)}
-              disabled={deleteMutation.isPending}
-              className="min-h-[44px]"
+              disabled={deleteMutation.isPending || !deleteAcknowledged}
+              className="min-h-[44px] w-full sm:w-auto"
               data-testid="button-confirm-delete"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? "Deleting…" : "Delete permanently"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -901,7 +977,7 @@ export default function Locations() {
                             )}
                           </TableCell>
                           <TableCell className="text-right font-medium">
-                            £{typeof product.salePrice === 'string' ? parseFloat(product.salePrice).toFixed(2) : (product.salePrice || 0).toFixed(2)}
+                            £{Number(product?.salePrice ?? 0).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))

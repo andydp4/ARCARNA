@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import MetricCard from "./metric-card";
 import DailyRevenueChart from "./daily-revenue-chart";
 import MonthlyOrdersChart from "./monthly-orders-chart";
 import TopCustomersTable from "./top-customers-table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 
 export default function AnalyticsDashboard() {
   const { data: monthlySummary = [], isLoading: isLoadingMonthly } = useQuery<any[]>({
@@ -32,10 +34,17 @@ export default function AnalyticsDashboard() {
         <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
           Analytics Dashboard
         </h2>
-        <p className="text-sm sm:text-base text-muted-foreground">
-          Real-time insights into your business performance
+        <p className="max-w-3xl text-sm sm:text-base text-muted-foreground">
+          Revenue, orders, and averages below come from your analytics APIs. For a
+          chosen date range, charts, and CSV/PDF exports, open{" "}
+          <Link href="/insights" className="font-medium text-primary underline-offset-4 hover:underline">
+            Business Insights
+          </Link>
+          .
         </p>
       </div>
+
+      <Separator className="mb-6 sm:mb-8" />
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
@@ -85,7 +94,7 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 mb-6 sm:mb-8">
         <DailyRevenueChart />
         <MonthlyOrdersChart />
       </div>

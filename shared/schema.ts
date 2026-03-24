@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   jsonb,
+  pgEnum,
   pgTable,
   timestamp,
   varchar,
@@ -15,9 +16,29 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-// Locations table
+// ==================== ORGANIZATION & ROLES ====================
+// Locations are treated as stores (one org can have many locations/stores).
+// See ARCHITECTURE.md and RBAC.md for scoping rules.
+
+export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'] as const;
+export type Role = typeof ROLES[number];
+
+export const roleEnum = pgEnum('app_role', ROLES);
+
+export const organizations = pgTable("organizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Organization = typeof organizations.$inferSelect;
+export type InsertOrganization = typeof organizations.$inferInsert;
+
+// Locations table (stores - one per org)
 export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull(),
   address: varchar("address", { length: 500 }).notNull(),
   city: varchar("city", { length: 100 }).notNull(),
@@ -29,7 +50,7 @@ export const locations = pgTable("locations", {
   isDefault: integer("is_default").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [index("locations_org_id_idx").on(table.orgId)]);
 
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = typeof locations.$inferInsert;
@@ -46,15 +67,23 @@ export const sessions = pgTable(
 );
 
 // User storage table (mandatory for Replit Auth)
+// id = Replit OIDC sub (varchar, PK). replitUserId = same, for explicit naming.
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey(), // Replit sub
+  replitUserId: varchar("replit_user_id", { length: 255 }).unique(), // Same as id, explicit
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  orgId: uuid("org_id").references(() => organizations.id),
+  role: roleEnum("role").default("CASHIER"),
+  defaultLocationId: uuid("default_location_id").references(() => locations.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("users_org_id_idx").on(table.orgId),
+  index("users_replit_user_id_idx").on(table.replitUserId),
+]);
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -62,7 +91,8 @@ export type User = typeof users.$inferSelect;
 // Loyalty tiers table
 export const loyaltyTiers = pgTable("loyalty_tiers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  name: varchar("name", { length: 50 }).notNull().unique(),
+  orgId: uuid("org_id").references(() => organizations.id),
+  name: varchar("name", { length: 50 }).notNull(),
   pointsRequired: integer("points_required").notNull(),
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
   pointsMultiplier: numeric("points_multiplier", { precision: 3, scale: 2 }).default("1.00"),
@@ -84,8 +114,9 @@ export type InsertLoyaltyTierData = z.infer<typeof insertLoyaltyTierSchema>;
 // Promotions/campaigns table
 export const promotions = pgTable("promotions", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull(),
-  code: varchar("code", { length: 50 }).unique(),
+  code: varchar("code", { length: 50 }),
   type: varchar("type", { length: 20 }).notNull(), // percentage, fixed, bogo, points
   value: numeric("value", { precision: 10, scale: 2 }).notNull(),
   minPurchase: numeric("min_purchase", { precision: 10, scale: 2 }),
@@ -110,9 +141,10 @@ export const insertPromotionSchema = createInsertSchema(promotions).omit({
 });
 export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 
-// Customers table
+// Customers table (orgId required for new rows; nullable for legacy backfill)
 export const customers = pgTable("customers", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
@@ -136,11 +168,12 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 });
 export type InsertCustomerData = z.infer<typeof insertCustomerSchema>;
 
-// Products table
+// Products table (orgId required for new rows; nullable for legacy backfill)
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull(),
-  productId: varchar("product_id", { length: 100 }).notNull().unique(),
+  productId: varchar("product_id", { length: 100 }).notNull(),
   locationId: uuid("location_id").references(() => locations.id),
   costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
   defaultSalePrice: numeric("default_sale_price", {
@@ -152,7 +185,10 @@ export const products = pgTable("products", {
   barcode: varchar("barcode", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("products_org_id_idx").on(table.orgId),
+  index("products_org_product_id_idx").on(table.orgId, table.productId),
+]);
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = typeof products.$inferInsert;
@@ -168,9 +204,10 @@ export type InsertProductData = z.infer<typeof insertProductSchema>;
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
-// Orders table
+// Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   customerId: uuid("customer_id").references(() => customers.id),
   locationId: uuid("location_id").references(() => locations.id),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
@@ -178,7 +215,7 @@ export const orders = pgTable("orders", {
   status: varchar("status", { length: 20 }).default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [index("orders_org_id_idx").on(table.orgId)]);
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
@@ -199,6 +236,7 @@ export type UpdateOrderStatus = z.infer<typeof updateOrderStatusSchema>;
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // rent, utilities, insurance, salaries, etc.
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
@@ -223,9 +261,10 @@ export const insertOverheadExpenseSchema = createInsertSchema(overheadExpenses).
 });
 export type InsertOverheadExpenseData = z.infer<typeof insertOverheadExpenseSchema>;
 
-// Order expenses table (order-specific costs)
+// Order expenses table (orgId from order; nullable for legacy backfill)
 export const orderExpenses = pgTable("order_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   orderId: uuid("order_id").references(() => orders.id).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // travel, shipping, packaging, other
   description: varchar("description", { length: 500 }),
@@ -241,9 +280,10 @@ export const insertOrderExpenseSchema = createInsertSchema(orderExpenses).omit({
 });
 export type InsertOrderExpenseData = z.infer<typeof insertOrderExpenseSchema>;
 
-// Order items table
+// Order items table (orgId from order; nullable for legacy backfill)
 export const orderItems = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   orderId: uuid("order_id").references(() => orders.id),
   productId: uuid("product_id").references(() => products.id),
   quantity: integer("quantity").notNull(),
@@ -255,12 +295,13 @@ export const orderItems = pgTable("order_items", {
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
 
-// Invoices table
+// Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id),
   orderId: uuid("order_id").references(() => orders.id),
   customerId: uuid("customer_id").references(() => customers.id),
-  invoiceNumber: varchar("invoice_number", { length: 50 }).notNull().unique(),
+  invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(),
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
   tax: numeric("tax", { precision: 10, scale: 2 }).default("0"),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
@@ -281,18 +322,20 @@ export const insertInvoiceSchema = createInsertSchema(invoices).omit({
 });
 export type InsertInvoiceData = z.infer<typeof insertInvoiceSchema>;
 
-// Analytics tables
+// Analytics tables (org-scoped; PK includes orgId for multi-tenant)
 export const analyticsDaily = pgTable('analytics_daily', {
-  date: date('date').primaryKey(),
+  orgId: uuid('org_id').references(() => organizations.id).notNull(),
+  date: date('date').notNull(),
   totalOrders: integer('total_orders').default(0),
   totalRevenue: numeric('total_revenue', { precision: 12, scale: 2 }).default('0'),
 }, (table) => ({
-  dateIdx: index('analytics_daily_date_idx').on(table.date),
+  pk: primaryKey({ columns: [table.orgId, table.date] }),
 }));
 
 export const analyticsWeekly = pgTable(
   "analytics_weekly",
   {
+    orgId: uuid("org_id").references(() => organizations.id).notNull(),
     year: integer("year").notNull(),
     week: integer("week").notNull(),
     totalOrders: integer("total_orders").default(0),
@@ -300,12 +343,13 @@ export const analyticsWeekly = pgTable(
       "0"
     ),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.year, t.week] }) })
+  (t) => ({ pk: primaryKey({ columns: [t.orgId, t.year, t.week] }) })
 );
 
 export const analyticsMonthly = pgTable(
   "analytics_monthly",
   {
+    orgId: uuid("org_id").references(() => organizations.id).notNull(),
     year: integer("year").notNull(),
     month: integer("month").notNull(),
     totalOrders: integer("total_orders").default(0),
@@ -313,7 +357,7 @@ export const analyticsMonthly = pgTable(
       "0"
     ),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.year, t.month] }) })
+  (t) => ({ pk: primaryKey({ columns: [t.orgId, t.year, t.month] }) })
 );
 
 export const customerMetrics = pgTable('customer_metrics', {
@@ -363,14 +407,17 @@ export const customerMetricsRelations = relations(customerMetrics, ({ one }) => 
 }));
 
 // Allowed users table - users who can access the system
+// isOwner (legacy): 1 => SUPER_ADMIN. role takes precedence when set.
 export const allowedUsers = pgTable("allowed_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   replitUserId: varchar("replit_user_id", { length: 255 }).notNull().unique(),
   email: varchar("email", { length: 255 }),
   name: varchar("name", { length: 255 }),
-  isOwner: integer("is_owner").default(0).notNull(),
+  isOwner: integer("is_owner").default(0).notNull(), // legacy; 1 => SUPER_ADMIN
+  orgId: uuid("org_id").references(() => organizations.id),
+  role: roleEnum("role").default("CASHIER"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [index("allowed_users_org_id_idx").on(table.orgId)]);
 
 export type AllowedUser = typeof allowedUsers.$inferSelect;
 export type InsertAllowedUser = typeof allowedUsers.$inferInsert;
@@ -436,7 +483,7 @@ export const JOB_STATUSES = ['queued', 'running', 'success', 'failed', 'dead_let
 export type JobStatus = typeof JOB_STATUSES[number];
 
 // Worker result statuses
-export const WORKER_RESULT_STATUSES = ['success', 'failed', 'already_processed', 'retrying'] as const;
+export const WORKER_RESULT_STATUSES = ['success', 'failed', 'already_processed', 'retrying', 'skipped'] as const;
 export type WorkerResultStatus = typeof WORKER_RESULT_STATUSES[number];
 
 // Event Outbox - stores events before dispatch
@@ -538,6 +585,7 @@ export type InsertDeadLetter = typeof deadLetters.$inferInsert;
 // Inventory Movements - audit trail for stock changes
 export const inventoryMovements = pgTable("inventory_movements", {
   movementId: varchar("movement_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => organizations.id),
   sku: varchar("sku", { length: 100 }).notNull(),
   productId: uuid("product_id").references(() => products.id),
   delta: integer("delta").notNull(), // negative for sale, positive for return
@@ -559,6 +607,7 @@ export type InsertInventoryMovement = typeof inventoryMovements.$inferInsert;
 // Loyalty Ledger - audit trail for points changes
 export const loyaltyLedger = pgTable("loyalty_ledger", {
   ledgerId: varchar("ledger_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => organizations.id),
   customerId: uuid("customer_id").notNull().references(() => customers.id),
   orderId: uuid("order_id").references(() => orders.id),
   eventId: varchar("event_id", { length: 36 }).notNull(),

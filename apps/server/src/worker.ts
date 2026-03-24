@@ -18,7 +18,8 @@ async function processOnce(){
   for (const row of rows){
     console.log('[Worker] Processing', row.type, row.payload)
     if (row.type === 'OrderAggregatesRequested'){
-      const { orderId } = row.payload
+      const payload = row.payload as { orderId: string }
+      const { orderId } = payload
       const orders = await db.select().from(s.orders).where(eq(s.orders.id, orderId)).limit(1)
       if (orders.length===0) continue
       const order = orders[0] as any

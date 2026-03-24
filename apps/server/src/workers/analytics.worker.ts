@@ -17,7 +17,8 @@ interface OrderPlacedEvent {
   customerId: string
   total: number
   orderDate: string
-  items: Array<{
+  orgId?: string | null
+  items?: Array<{
     productId: string
     quantity: number
     unitPrice: number
@@ -113,23 +114,20 @@ export class AnalyticsWorker {
   }
 
   private async handleOrderPlacedEvent(payload: OrderPlacedEvent) {
-    // Use orderDate from payload, or fall back to current date if missing (for old events)
     const orderDate = payload.orderDate ? new Date(payload.orderDate) : new Date()
-    
-    // Skip if invalid date
     if (isNaN(orderDate.getTime())) {
       console.warn(`[AnalyticsWorker] Skipping event with invalid orderDate:`, payload)
       return
     }
+    const orgId = payload.orgId ?? null
+    if (!orgId) {
+      console.warn(`[AnalyticsWorker] Skipping event without orgId (multi-tenant required):`, payload.orderId)
+      return
+    }
 
-    // Update daily analytics
-    await this.updateDailyAnalytics(orderDate, payload.total)
-
-    // Update weekly analytics
-    await this.updateWeeklyAnalytics(orderDate, payload.total)
-
-    // Update monthly analytics
-    await this.updateMonthlyAnalytics(orderDate, payload.total)
+    await this.updateDailyAnalytics(orderDate, payload.total, orgId)
+    await this.updateWeeklyAnalytics(orderDate, payload.total, orgId)
+    await this.updateMonthlyAnalytics(orderDate, payload.total, orgId)
 
     // Update customer metrics
     if (payload.customerId) {
@@ -137,14 +135,12 @@ export class AnalyticsWorker {
     }
   }
 
-  private async updateDailyAnalytics(date: Date, revenue: number) {
+  private async updateDailyAnalytics(date: Date, revenue: number, orgId: string) {
     const dateStr = date.toISOString().split('T')[0]
-
-    // Try to update existing record
     const existing = await db
       .select()
       .from(analyticsDaily)
-      .where(eq(analyticsDaily.date, dateStr))
+      .where(and(eq(analyticsDaily.orgId, orgId), eq(analyticsDaily.date, dateStr)))
       .limit(1)
 
     if (existing.length > 0) {
@@ -154,17 +150,18 @@ export class AnalyticsWorker {
           totalOrders: sql`${analyticsDaily.totalOrders} + 1`,
           totalRevenue: sql`${analyticsDaily.totalRevenue} + ${revenue}`,
         })
-        .where(eq(analyticsDaily.date, dateStr))
+        .where(and(eq(analyticsDaily.orgId, orgId), eq(analyticsDaily.date, dateStr)))
     } else {
       await db
         .insert(analyticsDaily)
         .values({
+          orgId,
           date: dateStr,
           totalOrders: 1,
           totalRevenue: revenue.toString(),
         })
         .onConflictDoUpdate({
-          target: analyticsDaily.date,
+          target: [analyticsDaily.orgId, analyticsDaily.date],
           set: {
             totalOrders: sql`${analyticsDaily.totalOrders} + 1`,
             totalRevenue: sql`${analyticsDaily.totalRevenue} + ${revenue}`,
@@ -173,15 +170,14 @@ export class AnalyticsWorker {
     }
   }
 
-  private async updateWeeklyAnalytics(date: Date, revenue: number) {
+  private async updateWeeklyAnalytics(date: Date, revenue: number, orgId: string) {
     const year = date.getFullYear()
     const week = this.getISOWeek(date)
-
-    // Try to update existing record
     const existing = await db
       .select()
       .from(analyticsWeekly)
       .where(and(
+        eq(analyticsWeekly.orgId, orgId),
         eq(analyticsWeekly.year, year),
         eq(analyticsWeekly.week, week)
       ))
@@ -195,6 +191,7 @@ export class AnalyticsWorker {
           totalRevenue: sql`${analyticsWeekly.totalRevenue} + ${revenue}`,
         })
         .where(and(
+          eq(analyticsWeekly.orgId, orgId),
           eq(analyticsWeekly.year, year),
           eq(analyticsWeekly.week, week)
         ))
@@ -202,6 +199,7 @@ export class AnalyticsWorker {
       await db
         .insert(analyticsWeekly)
         .values({
+          orgId,
           year,
           week,
           totalOrders: 1,
@@ -210,15 +208,14 @@ export class AnalyticsWorker {
     }
   }
 
-  private async updateMonthlyAnalytics(date: Date, revenue: number) {
+  private async updateMonthlyAnalytics(date: Date, revenue: number, orgId: string) {
     const year = date.getFullYear()
-    const month = date.getMonth() + 1 // JavaScript months are 0-indexed
-
-    // Try to update existing record
+    const month = date.getMonth() + 1
     const existing = await db
       .select()
       .from(analyticsMonthly)
       .where(and(
+        eq(analyticsMonthly.orgId, orgId),
         eq(analyticsMonthly.year, year),
         eq(analyticsMonthly.month, month)
       ))
@@ -232,6 +229,7 @@ export class AnalyticsWorker {
           totalRevenue: sql`${analyticsMonthly.totalRevenue} + ${revenue}`,
         })
         .where(and(
+          eq(analyticsMonthly.orgId, orgId),
           eq(analyticsMonthly.year, year),
           eq(analyticsMonthly.month, month)
         ))
@@ -239,6 +237,7 @@ export class AnalyticsWorker {
       await db
         .insert(analyticsMonthly)
         .values({
+          orgId,
           year,
           month,
           totalOrders: 1,

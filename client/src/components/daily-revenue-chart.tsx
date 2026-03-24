@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -24,17 +24,17 @@ export default function DailyRevenueChart() {
             <h3 className="text-lg font-semibold text-foreground">
               Daily Revenue
             </h3>
-            <p className="text-sm text-muted-foreground">
-              Last 30 days performance
-            </p>
+            <CardDescription>
+              One line per day; totals match the daily revenue endpoint (not a custom range).
+            </CardDescription>
           </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 text-xs font-medium text-secondary bg-secondary/10 rounded-lg" data-testid="button-revenue-30d">
+          <div className="flex shrink-0 gap-2" aria-hidden="true">
+            <span className="rounded-lg bg-secondary/10 px-3 py-1 text-xs font-medium text-secondary" data-testid="button-revenue-30d">
               30D
-            </button>
-            <button className="px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted rounded-lg" data-testid="button-revenue-7d">
+            </span>
+            <span className="rounded-lg px-3 py-1 text-xs font-medium text-muted-foreground" data-testid="button-revenue-7d">
               7D
-            </button>
+            </span>
           </div>
         </div>
       </CardHeader>
@@ -42,7 +42,7 @@ export default function DailyRevenueChart() {
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <div className="h-64">
+          <div className="h-56 w-full min-h-[220px] sm:h-64 sm:min-h-[256px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" />

@@ -200,7 +200,7 @@ export async function generateInvoicePDF(invoiceData: InvoiceData): Promise<Buff
 
     await browser.close();
     
-    return pdf;
+    return Buffer.from(pdf);
   } catch (error) {
     console.error('Error generating PDF:', error);
     throw new Error('Failed to generate invoice PDF');

@@ -40,16 +40,16 @@ export default function TopCustomersTable() {
   return (
     <Card className="shadow-sm overflow-hidden">
       <CardHeader className="border-b border-border">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-foreground">
               Top Customers
             </h3>
             <p className="text-sm text-muted-foreground">
-              Ranked by Customer Lifetime Value (CLV)
+              Ranked by lifetime value (CLV); RFM score summarizes recency, frequency, and spend.
             </p>
           </div>
-          <button className="px-4 py-2 text-sm font-medium text-secondary hover:bg-secondary/10 rounded-lg transition-colors" data-testid="button-viewallcustomers">
+          <button className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-secondary transition-colors hover:bg-secondary/10" data-testid="button-viewallcustomers">
             View All
             <i className="fas fa-arrow-right ml-2"></i>
           </button>
@@ -121,12 +121,12 @@ export default function TopCustomersTable() {
                             </p>
                           </TableCell>
                           <TableCell>
-                            <p className="text-sm font-medium text-foreground" data-testid={`text-ordercount-${customer.id}`}>
+                            <p className="text-sm font-medium tabular-nums text-foreground" data-testid={`text-ordercount-${customer.id}`}>
                               {customer.orderCount}
                             </p>
                           </TableCell>
                           <TableCell>
-                            <p className="text-sm font-semibold text-foreground" data-testid={`text-totalspent-${customer.id}`}>
+                            <p className="text-sm font-semibold tabular-nums text-foreground" data-testid={`text-totalspent-${customer.id}`}>
                               ${parseFloat(customer.totalSpent).toLocaleString()}
                             </p>
                           </TableCell>
@@ -142,13 +142,13 @@ export default function TopCustomersTable() {
                                   ></div>
                                 ))}
                               </div>
-                              <span className="text-sm font-semibold text-foreground" data-testid={`text-rfmscore-${customer.id}`}>
+                              <span className="text-sm font-semibold tabular-nums text-foreground" data-testid={`text-rfmscore-${customer.id}`}>
                                 {customer.rfmScore}/15
                               </span>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <p className="text-sm font-bold text-accent" data-testid={`text-clv-${customer.id}`}>
+                            <p className="text-sm font-bold tabular-nums text-accent" data-testid={`text-clv-${customer.id}`}>
                               ${parseFloat(customer.clv).toLocaleString()}
                             </p>
                           </TableCell>

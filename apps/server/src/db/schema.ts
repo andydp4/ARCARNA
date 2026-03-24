@@ -1,8 +1,16 @@
-/** Drizzle schema (simplified) */
+/** Drizzle schema (simplified) - must stay in sync with shared/schema for org-scoped columns */
 import { pgTable, uuid, varchar, integer, timestamp, numeric, jsonb, boolean, date } from 'drizzle-orm/pg-core'
+
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow(),
+})
 
 export const customers = pgTable('customers', {
   id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id),
   name: varchar('name',{length:255}).notNull(),
   phone: varchar('phone',{length:20}),
   email: varchar('email',{length:255}),
@@ -15,6 +23,7 @@ export const customers = pgTable('customers', {
 
 export const products = pgTable('products', {
   id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id),
   name: varchar('name',{length:255}).notNull(),
   product_id: varchar('product_id',{length:100}).notNull().unique(), // SKU
   cost_price: numeric('cost_price', { precision: 10, scale: 2 }),
@@ -28,6 +37,8 @@ export const products = pgTable('products', {
 
 export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id),
+  location_id: uuid('location_id'),
   customer_id: uuid('customer_id').references(()=>customers.id),
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),
@@ -38,6 +49,7 @@ export const orders = pgTable('orders', {
 
 export const order_items = pgTable('order_items', {
   id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id),
   order_id: uuid('order_id').references(()=>orders.id),
   product_id: uuid('product_id').references(()=>products.id),
   quantity: integer('quantity').notNull(),

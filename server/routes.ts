@@ -29,7 +29,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isOwner } from "./replitAuth";
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./replitAuth";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -47,20 +47,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      const replitUserId = req.user.claims?.sub;
+      const user = await storage.getUser(replitUserId);
+      const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      res.json({
+        ...user,
+        role: req.user.role ?? roleAndOrg?.role ?? (req.user.isOwner ? 'SUPER_ADMIN' : 'CASHIER'),
+        orgId: req.user.orgId ?? roleAndOrg?.orgId ?? null,
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
 
+  const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+
   // Analytics routes
-  app.get("/api/analytics/top-customers", isAuthenticated, async (req, res) => {
+  app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const limit = parseInt(req.query.limit as string) || 10;
-      const topCustomers = await storage.getTopCustomers(limit);
+      const topCustomers = await storage.getTopCustomers(limit, ctx?.orgId ?? undefined);
       
       const formattedCustomers = topCustomers.map(({ customer, metrics }) => ({
         id: customer.id,
@@ -81,10 +89,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/analytics/daily-revenue", isAuthenticated, async (req, res) => {
+  app.get("/api/analytics/daily-revenue", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const days = parseInt(req.query.days as string) || 30;
-      const dailyRevenue = await storage.getDailyRevenue(days);
+      const dailyRevenue = await storage.getDailyRevenue(days, ctx?.orgId ?? undefined);
       res.json(dailyRevenue);
     } catch (error) {
       console.error("Error fetching daily revenue:", error);
@@ -92,10 +101,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/analytics/monthly-summary", isAuthenticated, async (req, res) => {
+  app.get("/api/analytics/monthly-summary", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const months = parseInt(req.query.months as string) || 12;
-      const monthlySummary = await storage.getMonthlySummary(months);
+      const monthlySummary = await storage.getMonthlySummary(months, ctx?.orgId ?? undefined);
       res.json(monthlySummary);
     } catch (error) {
       console.error("Error fetching monthly summary:", error);
@@ -104,19 +114,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Products routes
-  app.get("/api/products", isAuthenticated, async (req, res) => {
+  app.get("/api/products", ...scoped, async (req: any, res) => {
     try {
-      const products = await storage.getProducts();
-      res.json(products);
+      const ctx = req.orgContext as { orgId: string | null };
+      const list = await storage.getProducts(ctx?.orgId ?? undefined);
+      res.json(list);
     } catch (error) {
       console.error("Error fetching products:", error);
       res.status(500).json({ message: "Failed to fetch products" });
     }
   });
 
-  app.get("/api/products/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
-      const product = await storage.getProduct(req.params.id);
+      const ctx = req.orgContext as { orgId: string | null };
+      const product = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -127,11 +139,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/products", isAuthenticated, async (req, res) => {
+  app.post("/api/products", ...scoped, async (req: any, res) => {
     try {
-      // Import domain engine (will be wired properly in apps/server)
+      const ctx = req.orgContext as { orgId: string | null };
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const product = await engine.createProduct(req.body);
+      const product = await engine.createProduct({ ...req.body, orgId: ctx?.orgId ?? undefined });
       res.json(product);
     } catch (error: any) {
       console.error("Error creating product:", error);
@@ -153,15 +165,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/products/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      const existing = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
+      if (!existing) return res.status(404).json({ message: "Product not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const product = await engine.updateProduct(req.params.id, req.body);
+      const product = await engine.updateProduct(req.params.id, req.body, ctx?.orgId ?? undefined);
       res.json(product);
     } catch (error: any) {
       console.error("Error updating product:", error);
-      
-      // Check for duplicate product code error
+      if (error?.message === 'Product not found') return res.status(404).json({ message: "Product not found" });
       if (error.message?.includes('duplicate key') || error.message?.includes('unique constraint') || error.code === '23505') {
         return res.status(400).json({ 
           message: `Product code "${req.body.productCode}" already exists. Please use a different code.` 
@@ -178,24 +192,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/products/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      const existing = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
+      if (!existing) return res.status(404).json({ message: "Product not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      await engine.deleteProduct(req.params.id);
+      await engine.deleteProduct(req.params.id, ctx?.orgId ?? undefined);
       res.json({ message: "Product deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting product:", error);
+      if (error?.message === 'Product not found') return res.status(404).json({ message: "Product not found" });
       res.status(500).json({ message: "Failed to delete product" });
     }
   });
 
-  app.post("/api/products/import", isAuthenticated, async (req, res) => {
+  app.post("/api/products/import", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { products } = req.body;
       if (!Array.isArray(products)) {
         return res.status(400).json({ message: "Invalid data format. Expected array of products" });
       }
-      const result = await storage.importProducts(products);
+      const result = await storage.importProducts(products, ctx?.orgId ?? undefined);
       res.json(result);
     } catch (error) {
       console.error("Error importing products:", error);
@@ -204,19 +223,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Customers routes
-  app.get("/api/customers", isAuthenticated, async (req, res) => {
+  app.get("/api/customers", ...scoped, async (req: any, res) => {
     try {
-      const customers = await storage.getCustomers();
-      res.json(customers);
+      const ctx = req.orgContext as { orgId: string | null };
+      const list = await storage.getCustomers(ctx?.orgId ?? undefined);
+      res.json(list);
     } catch (error) {
       console.error("Error fetching customers:", error);
       res.status(500).json({ message: "Failed to fetch customers" });
     }
   });
 
-  app.get("/api/customers/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
-      const customer = await storage.getCustomer(req.params.id);
+      const ctx = req.orgContext as { orgId: string | null };
+      const customer = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
       if (!customer) {
         return res.status(404).json({ message: "Customer not found" });
       }
@@ -227,10 +248,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/customers", isAuthenticated, async (req, res) => {
+  app.post("/api/customers", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const customer = await engine.createCustomer(req.body);
+      const customer = await engine.createCustomer({ ...req.body, orgId: ctx?.orgId ?? undefined });
       res.json(customer);
     } catch (error) {
       console.error("Error creating customer:", error);
@@ -238,39 +260,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/customers/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      const existing = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
+      if (!existing) return res.status(404).json({ message: "Customer not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const customer = await engine.updateCustomer(req.params.id, req.body);
+      const customer = await engine.updateCustomer(req.params.id, req.body, ctx?.orgId ?? undefined);
       res.json(customer);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating customer:", error);
+      if (error?.message === 'Customer not found') return res.status(404).json({ message: "Customer not found" });
       res.status(500).json({ message: "Failed to update customer" });
     }
   });
 
-  app.delete("/api/customers/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      const existing = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
+      if (!existing) return res.status(404).json({ message: "Customer not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      await engine.deleteCustomer(req.params.id);
+      await engine.deleteCustomer(req.params.id, ctx?.orgId ?? undefined);
       res.json({ message: "Customer deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting customer:", error);
+      if (error?.message === 'Customer not found') return res.status(404).json({ message: "Customer not found" });
       res.status(500).json({ message: "Failed to delete customer" });
     }
   });
 
   // Orders routes using domain engine with transactional outbox
-  app.post("/api/orders", isAuthenticated, async (req, res) => {
+  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null; locationId: string | null; role: string };
+      if (!ctx?.orgId) {
+        return res.status(400).json({ message: 'Order creation requires org context. Pass X-Org-Id or ?orgId= for SUPER_ADMIN.' });
+      }
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
       const { publishEvent } = await import('./eventBus');
       const { engine } = await import('../apps/server/src/engine.wiring');
-      
-      // Create order via engine (handles its own validation/logic)
-      const result = await engine.placeOrder(req.body);
+      const body = { ...req.body, orgId: ctx.orgId ?? undefined, locationId: ctx.locationId ?? undefined };
+      const result = await engine.placeOrder(body);
       
       // Fetch the complete order and items
       const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
@@ -315,18 +348,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders", isAuthenticated, async (req, res) => {
+  app.get("/api/orders", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
-      const allOrders = await db.select({
+      const { eq } = await import('drizzle-orm');
+      const baseQuery = db.select({
         id: orders.id,
         customerId: orders.customer_id,
         total: orders.total,
         paymentMethod: orders.payment_method,
         status: orders.status,
         createdAt: orders.created_at,
-      }).from(orders).orderBy(orders.created_at);
+      }).from(orders);
+      const allOrders = ctx?.orgId
+        ? await baseQuery.where(eq(orders.org_id, ctx.orgId)).orderBy(orders.created_at)
+        : await baseQuery.orderBy(orders.created_at);
       res.json(allOrders);
     } catch (error) {
       console.error("Error fetching orders:", error);
@@ -334,13 +372,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items, products, customers } = await import('../apps/server/src/db/schema');
-      const { eq } = await import('drizzle-orm');
-      
-      const [order] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+      const { eq, and } = await import('drizzle-orm');
+      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
+      const [order] = await db.select().from(orders).where(orderCond);
       if (!order) {
         return res.status(404).json({ message: 'Order not found' });
       }
@@ -385,15 +424,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/orders/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
-      const { eq } = await import('drizzle-orm');
+      const { eq, and } = await import('drizzle-orm');
       const { updateOrderStatusSchema } = await import('../shared/schema');
       const { publishEvent } = await import('./eventBus');
+      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       
-      // Validate status
       const validation = updateOrderStatusSchema.safeParse(req.body);
       if (!validation.success) {
         return res.status(400).json({ 
@@ -402,13 +442,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Get current status before update
-      const [currentOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
+      const [currentOrder] = await db.select().from(orders).where(orderCond);
       const previousStatus = currentOrder?.status;
       
       const [updated] = await db.update(orders)
         .set({ status: validation.data.status, updated_at: new Date() })
-        .where(eq(orders.id, req.params.id))
+        .where(orderCond)
         .returning();
         
       if (!updated) {
@@ -432,14 +471,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/orders/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
-      const { engine } = await import('../apps/server/src/engine.wiring');
-      const { publishEvent } = await import('./eventBus');
+      const ctx = req.orgContext as { orgId: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items } = await import('../apps/server/src/db/schema');
-      const { eq } = await import('drizzle-orm');
+      const { eq, and } = await import('drizzle-orm');
+      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
+      const [existing] = await db.select().from(orders).where(orderCond);
+      if (!existing) return res.status(404).json({ message: 'Order not found' });
       
+      const { engine } = await import('../apps/server/src/engine.wiring');
+      const { publishEvent } = await import('./eventBus');
       const result = await engine.updateOrder(req.params.id, req.body);
       
       // Fetch updated order details
@@ -474,15 +517,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/orders/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items, products } = await import('../apps/server/src/db/schema');
-      const { eq, sql } = await import('drizzle-orm');
+      const { eq, and, sql } = await import('drizzle-orm');
+      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       
-      // Begin transaction to delete order and its items, and release stock
       await db.transaction(async (tx) => {
-        // Get order items to release stock
+        const [order] = await tx.select().from(orders).where(orderCond);
+        if (!order) throw new Error('Order not found');
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, req.params.id));
         
         // Release stock for each item
@@ -494,15 +539,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Delete order items
         await tx.delete(order_items).where(eq(order_items.order_id, req.params.id));
-        
-        // Delete order
-        const [deleted] = await tx.delete(orders).where(eq(orders.id, req.params.id)).returning();
-        
-        if (!deleted) {
-          throw new Error('Order not found');
-        }
+        const [deleted] = await tx.delete(orders).where(orderCond).returning();
+        if (!deleted) throw new Error('Order not found');
       });
       
       res.json({ message: "Order deleted successfully" });
@@ -515,23 +554,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Inventory routes
-  app.get("/api/inventory", isAuthenticated, async (req, res) => {
+  app.get("/api/inventory", ...scoped, async (req: any, res) => {
     try {
-      const products = await storage.getProductsWithStock();
-      res.json(products);
+      const ctx = req.orgContext as { orgId: string | null };
+      const list = await storage.getProductsWithStock(ctx?.orgId ?? undefined);
+      res.json(list);
     } catch (error) {
       console.error("Error fetching inventory:", error);
       res.status(500).json({ message: "Failed to fetch inventory" });
     }
   });
 
-  app.patch("/api/inventory/:productId", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/inventory/:productId", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { productId } = req.params;
       const { adjustment, type } = req.body;
       const userId = req.user.claims.sub;
-      
-      const product = await storage.updateProductStock(productId, adjustment, type, userId);
+      const product = await storage.updateProductStock(productId, adjustment, type, userId, ctx?.orgId ?? undefined);
       res.json(product);
     } catch (error) {
       console.error("Error updating inventory:", error);
@@ -540,9 +580,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Low stock alerts endpoint
-  app.get("/api/inventory/alerts", isAuthenticated, async (req, res) => {
+  app.get("/api/inventory/alerts", ...scoped, async (req: any, res) => {
     try {
-      const products = await storage.getProductsWithStock();
+      const ctx = req.orgContext as { orgId: string | null };
+      const products = await storage.getProductsWithStock(ctx?.orgId ?? undefined);
       const alerts = products
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;
@@ -574,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reports routes
-  app.get("/api/reports", isAuthenticated, async (req: any, res) => {
+  app.get("/api/reports", ...scoped, async (req: any, res) => {
     try {
       const { from, to } = req.query;
       
@@ -595,7 +636,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "From date must be before to date" });
       }
       
-      const reportData = await storage.getReportData(fromDate, toDate);
+      const ctx = req.orgContext as { orgId: string | null };
+      const reportData = await storage.getReportData(fromDate, toDate, ctx?.orgId ?? undefined);
       res.json(reportData);
     } catch (error) {
       console.error("Error fetching report data:", error);
@@ -603,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/reports/export", isAuthenticated, async (req: any, res) => {
+  app.get("/api/reports/export", ...scoped, async (req: any, res) => {
     try {
       const { from, to, format, type } = req.query;
       
@@ -630,7 +672,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid report type" });
       }
       
-      const reportData = await storage.getReportData(fromDate, toDate);
+      const ctx = req.orgContext as { orgId: string | null };
+      const reportData = await storage.getReportData(fromDate, toDate, ctx?.orgId ?? undefined);
       
       if (format === 'csv') {
         // Generate CSV
@@ -651,10 +694,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Locations routes
-  app.get("/api/locations", isAuthenticated, async (req, res) => {
+  // Locations routes - ADMIN+ only
+  app.get("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const locations = await storage.getLocations();
+      const ctx = req.orgContext as { orgId: string | null };
+      const locations = await storage.getLocations(ctx?.orgId ?? undefined);
       res.json(locations);
     } catch (error) {
       console.error("Error fetching locations:", error);
@@ -662,9 +706,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/locations", isAuthenticated, async (req: any, res) => {
+  app.post("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const locationData = req.body;
+      const ctx = req.orgContext as { orgId: string | null };
+      const locationData = { ...req.body, orgId: ctx?.orgId ?? undefined };
       const location = await storage.createLocation(locationData);
       res.json(location);
     } catch (error) {
@@ -673,11 +718,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/locations/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/locations/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      const locationData = req.body;
-      const location = await storage.updateLocation(id, locationData);
+      const location = await storage.updateLocation(id, req.body, ctx?.orgId ?? undefined);
       res.json(location);
     } catch (error) {
       console.error("Error updating location:", error);
@@ -685,10 +730,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/locations/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/locations/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      await storage.deleteLocation(id);
+      await storage.deleteLocation(id, ctx?.orgId ?? undefined);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting location:", error);
@@ -696,10 +742,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/locations/:id/set-default", isAuthenticated, async (req: any, res) => {
+  app.post("/api/locations/:id/set-default", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      const location = await storage.setDefaultLocation(id);
+      const location = await storage.setDefaultLocation(id, ctx?.orgId ?? undefined);
       res.json(location);
     } catch (error) {
       console.error("Error setting default location:", error);
@@ -707,22 +754,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/locations/:id/stock", isAuthenticated, async (req: any, res) => {
+  app.get("/api/locations/:id/stock", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const { db } = await import('../apps/server/src/db');
-      const { products } = await import('../apps/server/src/db/schema');
-      const { eq, desc } = await import('drizzle-orm');
-      
-      // For now, return all products with their stock levels
-      // In a multi-location system, this would filter by location_id
-      const allProducts = await db.select({
-        id: products.id,
-        name: products.name,
-        productCode: products.product_id,
-        stock: products.stock,
-        salePrice: products.default_sale_price,
-        costPrice: products.cost_price,
-      }).from(products).orderBy(desc(products.stock));
+      const ctx = req.orgContext as { orgId: string | null };
+      const { db } = await import('./db');
+      const { products, locations } = await import('@shared/schema');
+      const { eq, and, desc } = await import('drizzle-orm');
+      if (ctx?.orgId) {
+        const [loc] = await db.select().from(locations).where(and(eq(locations.id, req.params.id), eq(locations.orgId, ctx.orgId)));
+        if (!loc) return res.status(404).json({ message: 'Location not found' });
+      }
+      const prodCond = ctx?.orgId ? eq(products.orgId, ctx.orgId) : undefined;
+      const allProducts = prodCond
+        ? await db.select({ id: products.id, name: products.name, productCode: products.productId, stock: products.stock, salePrice: products.defaultSalePrice, costPrice: products.costPrice }).from(products).where(prodCond).orderBy(desc(products.stock))
+        : await db.select({ id: products.id, name: products.name, productCode: products.productId, stock: products.stock, salePrice: products.defaultSalePrice, costPrice: products.costPrice }).from(products).orderBy(desc(products.stock));
       
       const stockSummary = {
         totalProducts: allProducts.length,
@@ -744,9 +789,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Loyalty tier routes
-  app.get("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
+  app.get("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
     try {
-      const tiers = await storage.getLoyaltyTiers();
+      const ctx = req.orgContext as { orgId: string | null };
+      const tiers = await storage.getLoyaltyTiers(ctx?.orgId ?? undefined);
       res.json(tiers);
     } catch (error) {
       console.error("Error fetching loyalty tiers:", error);
@@ -754,9 +800,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/loyalty-tiers", isAuthenticated, async (req: any, res) => {
+  app.post("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
     try {
-      const validatedData = insertLoyaltyTierSchema.parse(req.body);
+      const ctx = req.orgContext as { orgId: string | null };
+      const validatedData = insertLoyaltyTierSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
       const tier = await storage.createLoyaltyTier(validatedData);
       res.json(tier);
     } catch (error: any) {
@@ -769,12 +816,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/loyalty-tiers/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      // Partial validation - only validate provided fields
       const validatedData = insertLoyaltyTierSchema.partial().parse(req.body);
-      const tier = await storage.updateLoyaltyTier(id, validatedData);
+      const tier = await storage.updateLoyaltyTier(id, validatedData, ctx?.orgId ?? undefined);
       res.json(tier);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -786,10 +833,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/loyalty-tiers/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      await storage.deleteLoyaltyTier(id);
+      await storage.deleteLoyaltyTier(id, ctx?.orgId ?? undefined);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting loyalty tier:", error);
@@ -798,10 +846,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Promotions routes
-  app.get("/api/promotions", isAuthenticated, async (req: any, res) => {
+  app.get("/api/promotions", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const activeOnly = req.query.active === 'true';
-      const promotions = await storage.getPromotions(activeOnly);
+      const promotions = await storage.getPromotions(activeOnly, ctx?.orgId ?? undefined);
       res.json(promotions);
     } catch (error) {
       console.error("Error fetching promotions:", error);
@@ -809,9 +858,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/promotions", isAuthenticated, async (req: any, res) => {
+  app.post("/api/promotions", ...scoped, async (req: any, res) => {
     try {
-      const validatedData = insertPromotionSchema.parse(req.body);
+      const ctx = req.orgContext as { orgId: string | null };
+      const validatedData = insertPromotionSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
       const promo = await storage.createPromotion(validatedData);
       res.json(promo);
     } catch (error: any) {
@@ -824,12 +874,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/promotions/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/promotions/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      // Partial validation - only validate provided fields
       const validatedData = insertPromotionSchema.partial().parse(req.body);
-      const promo = await storage.updatePromotion(id, validatedData);
+      const promo = await storage.updatePromotion(id, validatedData, ctx?.orgId ?? undefined);
       res.json(promo);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -841,10 +891,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/promotions/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/promotions/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { id } = req.params;
-      await storage.deletePromotion(id);
+      await storage.deletePromotion(id, ctx?.orgId ?? undefined);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting promotion:", error);
@@ -852,10 +903,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/promotions/validate", isAuthenticated, async (req: any, res) => {
+  app.post("/api/promotions/validate", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { code } = req.body;
-      const promo = await storage.validatePromoCode(code);
+      const promo = await storage.validatePromoCode(code, ctx?.orgId ?? undefined);
       if (promo) {
         res.json(promo);
       } else {
@@ -868,9 +920,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Expense routes
-  app.get("/api/overhead-expenses", isAuthenticated, async (req, res) => {
+  app.get("/api/overhead-expenses", ...scoped, async (req: any, res) => {
     try {
-      const expenses = await storage.getOverheadExpenses();
+      const ctx = req.orgContext as { orgId: string | null };
+      const expenses = await storage.getOverheadExpenses(ctx?.orgId ?? undefined);
       res.json(expenses);
     } catch (error) {
       console.error("Error fetching overhead expenses:", error);
@@ -878,9 +931,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/overhead-expenses", isAuthenticated, async (req: any, res) => {
+  app.post("/api/overhead-expenses", ...scoped, async (req: any, res) => {
     try {
-      const parsedBody = insertOverheadExpenseSchema.parse(req.body);
+      const ctx = req.orgContext as { orgId: string | null };
+      const parsedBody = insertOverheadExpenseSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
       const expense = await storage.createOverheadExpense(parsedBody);
       res.json(expense);
     } catch (error: any) {
@@ -893,10 +947,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/overhead-expenses/:id", isAuthenticated, async (req: any, res) => {
+  app.put("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const parsedBody = insertOverheadExpenseSchema.partial().parse(req.body);
-      const expense = await storage.updateOverheadExpense(req.params.id, parsedBody);
+      const expense = await storage.updateOverheadExpense(req.params.id, parsedBody, ctx?.orgId ?? undefined);
       res.json(expense);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -908,9 +963,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/overhead-expenses/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
     try {
-      await storage.deleteOverheadExpense(req.params.id);
+      const ctx = req.orgContext as { orgId: string | null };
+      await storage.deleteOverheadExpense(req.params.id, ctx?.orgId ?? undefined);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting overhead expense:", error);
@@ -918,9 +974,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/orders/:orderId/expenses", isAuthenticated, async (req, res) => {
+  app.get("/api/orders/:orderId/expenses", ...scoped, async (req: any, res) => {
     try {
-      const expenses = await storage.getOrderExpenses(req.params.orderId);
+      const ctx = req.orgContext as { orgId: string | null };
+      const expenses = await storage.getOrderExpenses(req.params.orderId, ctx?.orgId ?? undefined);
       res.json(expenses);
     } catch (error) {
       console.error("Error fetching order expenses:", error);
@@ -928,8 +985,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/expense-analytics", isAuthenticated, async (req, res) => {
+  app.get("/api/expense-analytics", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -938,7 +996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const analytics = await storage.getExpenseAnalytics(startDate, endDate);
+      const analytics = await storage.getExpenseAnalytics(startDate, endDate, ctx?.orgId ?? undefined);
       res.json(analytics);
     } catch (error) {
       console.error("Error fetching expense analytics:", error);
@@ -946,8 +1004,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/expense-report", isAuthenticated, async (req, res) => {
+  app.get("/api/expense-report", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -956,7 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const report = await storage.getExpenseReport(startDate, endDate);
+      const report = await storage.getExpenseReport(startDate, endDate, ctx?.orgId ?? undefined);
       res.json(report);
     } catch (error) {
       console.error("Error fetching expense report:", error);
@@ -964,8 +1023,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/profit-analysis", isAuthenticated, async (req, res) => {
+  app.get("/api/profit-analysis", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -974,7 +1034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const analysis = await storage.getProfitAnalysis(startDate, endDate);
+      const analysis = await storage.getProfitAnalysis(startDate, endDate, ctx?.orgId ?? undefined);
       res.json(analysis);
     } catch (error) {
       console.error("Error fetching profit analysis:", error);
@@ -983,9 +1043,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Invoices endpoints - for Invoice Management page
-  app.get("/api/invoices", isAuthenticated, async (req, res) => {
+  app.get("/api/invoices", ...scoped, async (req: any, res) => {
     try {
-      const invoices = await storage.getInvoicesWithDetails();
+      const ctx = req.orgContext as { orgId: string | null };
+      const invoices = await storage.getInvoicesWithDetails(ctx?.orgId ?? undefined);
       res.json(invoices);
     } catch (error) {
       console.error("Error fetching invoices:", error);
@@ -993,16 +1054,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/invoices/:id/pdf", isAuthenticated, async (req, res) => {
+  app.get("/api/invoices/:id/pdf", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const invoiceId = req.params.id;
-      
-      // Get invoice from database
-      const { invoices } = await import('../shared/schema');
-      const { eq } = await import('drizzle-orm');
+      const { invoices, orders } = await import('../shared/schema');
+      const { eq, and } = await import('drizzle-orm');
       const { db } = await import('./db');
-      
-      const invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      let invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      if (ctx?.orgId && invoiceResult[0]) {
+        const [order] = await db.select().from(orders).where(eq(orders.id, invoiceResult[0].orderId!)).limit(1);
+        if (!order || order.orgId !== ctx.orgId) {
+          invoiceResult = [];
+        }
+      }
       
       if (invoiceResult.length === 0) {
         res.status(404).json({ message: "Invoice not found" });
@@ -1034,17 +1099,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Endpoint to regenerate invoice PDF
-  app.post("/api/invoices/:id/regenerate-pdf", isAuthenticated, async (req, res) => {
+  app.post("/api/invoices/:id/regenerate-pdf", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const invoiceId = req.params.id;
-      
       const { invoices, orders, orderItems, customers } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
       const { db } = await import('./db');
       const { generateInvoicePdf } = await import('./services/pdfGenerator');
       const { uploadPdfToDrive, createFolderIfNotExists } = await import('./services/googleDrive');
-      
-      const invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      let invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+      if (ctx?.orgId && invoiceResult[0]) {
+        const [order] = await db.select().from(orders).where(eq(orders.id, invoiceResult[0].orderId!)).limit(1);
+        if (!order || order.orgId !== ctx.orgId) invoiceResult = [];
+      }
       
       if (invoiceResult.length === 0) {
         res.status(404).json({ message: "Invoice not found" });
@@ -1128,19 +1196,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Batch regenerate all invoices missing PDFs
-  app.post("/api/invoices/regenerate-all-missing", isAuthenticated, async (req, res) => {
+  app.post("/api/invoices/regenerate-all-missing", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
       const { invoices, orders, orderItems, customers } = await import('../shared/schema');
-      const { eq, isNull } = await import('drizzle-orm');
+      const { eq, and, isNull } = await import('drizzle-orm');
       const { db } = await import('./db');
       const { generateInvoicePdf } = await import('./services/pdfGenerator');
       const { uploadPdfToDrive, createFolderIfNotExists } = await import('./services/googleDrive');
-      
-      // Find all invoices without Google Drive links
-      const missingPdfInvoices = await db
-        .select()
-        .from(invoices)
-        .where(isNull(invoices.googleDriveFileId));
+      let missingPdfInvoices = await db.select().from(invoices).where(isNull(invoices.googleDriveFileId));
+      if (ctx?.orgId) {
+        const orgOrderIds = (await db.select({ id: orders.id }).from(orders).where(eq(orders.orgId, ctx.orgId))).map(r => r.id);
+        missingPdfInvoices = missingPdfInvoices.filter(inv => inv.orderId && orgOrderIds.includes(inv.orderId));
+      }
       
       if (missingPdfInvoices.length === 0) {
         res.json({ 
@@ -1243,16 +1311,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Tick Customers endpoints - for Credit/Tick List page
-  app.get("/api/tick-customers", isAuthenticated, async (req, res) => {
+  app.get("/api/tick-customers", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const { db } = await import('../apps/server/src/db');
-      const { customers, orders } = await import('../apps/server/src/db/schema');
+      const { orders } = await import('../apps/server/src/db/schema');
       const { eq, and, sql } = await import('drizzle-orm');
       
-      // Get customers with tick orders
-      const allCustomers = await storage.getCustomers();
-      
-      // Get tick payment orders grouped by customer
+      const allCustomers = await storage.getCustomers(ctx.orgId);
+      const fullCond = and(
+        eq(orders.payment_method, 'tick'),
+        sql`${orders.status} != 'completed'`,
+        eq(orders.org_id, ctx.orgId)
+      );
       const tickOrders = await db
         .select({
           customerId: orders.customer_id,
@@ -1261,12 +1333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orderCount: sql<number>`COUNT(*)`,
         })
         .from(orders)
-        .where(
-          and(
-            eq(orders.payment_method, 'tick'),
-            sql`${orders.status} != 'completed'`
-          )
-        )
+        .where(fullCond)
         .groupBy(orders.customer_id);
       
       // Merge customer data with tick orders
@@ -1292,21 +1359,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/tick-customers/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/tick-customers/:id", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
+      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+      if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
-      
-      // Mark all tick orders for this customer as completed (paid)
+      const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
       await db.update(orders)
         .set({ status: 'completed', updated_at: new Date() })
-        .where(
-          and(
-            eq(orders.customer_id, req.params.id),
-            eq(orders.payment_method, 'tick')
-          )
-        );
+        .where(whereCond);
       
       res.json({ message: "Customer removed from tick list" });
     } catch (error) {
@@ -1315,21 +1380,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/tick-customers/:id/mark-paid", isAuthenticated, async (req, res) => {
+  app.post("/api/tick-customers/:id/mark-paid", ...scoped, async (req: any, res) => {
     try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
+      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+      if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
-      
-      // Mark all tick orders for this customer as completed
+      const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
       await db.update(orders)
         .set({ status: 'completed', updated_at: new Date() })
-        .where(
-          and(
-            eq(orders.customer_id, req.params.id),
-            eq(orders.payment_method, 'tick')
-          )
-        );
+        .where(whereCond);
       
       res.json({ message: "Customer debt marked as paid" });
     } catch (error) {
@@ -1379,7 +1442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== ADMIN ROUTES - User Access Management =====
   
   // Get allowed users list (owner only)
-  app.get("/api/admin/allowed-users", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/allowed-users", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const users = await storage.getAllowedUsers();
       res.json(users);
@@ -1390,7 +1453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Remove allowed user (owner only)
-  app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+  app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       
@@ -1409,7 +1472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get pending approval requests (owner only)
-  app.get("/api/admin/pending-approvals", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/pending-approvals", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const requests = await storage.getPendingApprovals();
       res.json(requests);
@@ -1420,7 +1483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Approve user (owner only)
-  app.post("/api/admin/approve/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+  app.post("/api/admin/approve/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       const approvedBy = req.user.claims?.sub || 'owner';
@@ -1434,7 +1497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reject user (owner only)
-  app.post("/api/admin/reject/:replitUserId", isAuthenticated, isOwner, async (req: any, res) => {
+  app.post("/api/admin/reject/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       const rejectedBy = req.user.claims?.sub || 'owner';
@@ -1480,7 +1543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== WORKER RUN LOGS ROUTES (Owner only) =====
   
   // Get worker run logs with filters
-  app.get("/api/admin/worker-logs", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/worker-logs", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { getWorkerRunLogs } = await import('./eventBus');
       const logs = await getWorkerRunLogs({
@@ -1499,7 +1562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get dead letters
-  app.get("/api/admin/dead-letters", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/dead-letters", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { getDeadLetters } = await import('./eventBus');
       const deadLetters = await getDeadLetters({
@@ -1516,7 +1579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get job queue stats
-  app.get("/api/admin/worker-stats", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/worker-stats", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { getJobQueueStats } = await import('./eventBus');
       const stats = await getJobQueueStats();
@@ -1528,7 +1591,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Retry a dead letter
-  app.post("/api/admin/dead-letters/:id/retry", isAuthenticated, isOwner, async (req: any, res) => {
+  app.post("/api/admin/dead-letters/:id/retry", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { retryDeadLetter } = await import('./eventBus');
       const success = await retryDeadLetter(req.params.id);
@@ -1544,7 +1607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get event details
-  app.get("/api/admin/events/:eventId", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/events/:eventId", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { getEvent, getWorkerRunLogs } = await import('./eventBus');
       const event = await getEvent(req.params.eventId);
@@ -1565,7 +1628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get job queue with detailed info (run_at, locked_at, last_error)
-  app.get("/api/admin/job-queue", isAuthenticated, isOwner, async (req: any, res) => {
+  app.get("/api/admin/job-queue", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { db } = await import('../apps/server/src/db');
       const { jobQueue } = await import('../shared/schema');
@@ -1601,7 +1664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Test endpoint to verify event-driven system end-to-end
-  app.post("/api/admin/test-event", isAuthenticated, isOwner, async (req: any, res) => {
+  app.post("/api/admin/test-event", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
     try {
       const { publishEvent, dispatchPendingEvents } = await import('./eventBus');
       const { randomUUID } = await import('crypto');
