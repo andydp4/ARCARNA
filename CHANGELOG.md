@@ -23,7 +23,7 @@ All notable changes to the Midnight EPOS project will be documented in this file
   - Security assessment: GDPR 100% compliant (6/6 checks)
   - Database purge: 67 test records successfully removed
   - System status: Production ready with documented security enhancements
-  - Reports generated in `/reports/` and `/download_package/`
+- Reports generated in `/reports/` and `/docs/artifacts/download_package/`
 
 ## Production Readiness Status
 
