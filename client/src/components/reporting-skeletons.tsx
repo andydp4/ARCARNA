@@ -70,7 +70,7 @@ export function InvoicesPageSkeleton() {
   return (
     <div className="w-full">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
-        <div className="mb-8 space-y-2 border-b border-border/60 pb-6">
+        <div className="mb-10 space-y-2 border-b border-border/60 pb-7">
           <Skeleton className="h-9 w-64 max-w-full" />
           <Skeleton className="h-4 w-full max-w-2xl" />
         </div>
@@ -90,17 +90,19 @@ export function InvoicesPageSkeleton() {
           ))}
         </div>
 
-        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end">
-          <div className="flex min-w-0 flex-1 flex-wrap gap-3">
-            <Skeleton className="h-11 min-w-[200px] flex-1 sm:max-w-xs" />
-            <Skeleton className="h-11 w-full sm:w-[140px]" />
-            <Skeleton className="h-11 w-full sm:w-[160px]" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-11 w-40" />
-            <Skeleton className="h-11 w-36" />
-          </div>
-        </div>
+        <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
+          <CardContent className="flex flex-col gap-4 p-4 sm:p-5 sm:pt-6 lg:flex-row lg:items-end">
+            <div className="flex min-w-0 flex-1 flex-wrap gap-3">
+              <Skeleton className="h-11 min-w-[200px] flex-1 sm:max-w-xs" />
+              <Skeleton className="h-11 w-full sm:w-[140px]" />
+              <Skeleton className="h-11 w-full sm:w-[160px]" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-11 w-40" />
+              <Skeleton className="h-11 w-36" />
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="pb-2">
@@ -108,7 +110,7 @@ export function InvoicesPageSkeleton() {
             <Skeleton className="mt-2 h-4 w-full max-w-xl" />
           </CardHeader>
           <CardContent className="pt-2">
-            <div className="overflow-x-auto rounded-lg border border-border/80">
+            <div className="overflow-hidden rounded-lg border border-border/80">
               <Table>
                 <TableHeader>
                   <TableRow>

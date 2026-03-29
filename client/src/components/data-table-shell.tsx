@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function DataTableShell({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-lg border border-border/80 bg-card shadow-sm", className)}
+      className={cn("overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm", className)}
       {...props}
     />
   );

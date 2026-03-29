@@ -2,6 +2,10 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
+import {
+  invalidateAfterOrderMutation,
+  invalidateAfterOrderStatusChange,
+} from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,8 +128,42 @@ export default function Orders() {
       });
       return response.json();
     },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+    onMutate: async ({ orderId, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/orders", orderId] });
+
+      const previousOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
+      const previousOrderDetail = queryClient.getQueryData<OrderDetail>(["/api/orders", orderId]);
+
+      queryClient.setQueryData<Order[]>(["/api/orders"], (current = []) =>
+        current.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                status,
+              }
+            : order
+        )
+      );
+
+      if (previousOrderDetail) {
+        queryClient.setQueryData<OrderDetail>(["/api/orders", orderId], {
+          ...previousOrderDetail,
+          status,
+        });
+      }
+
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder({
+          ...selectedOrder,
+          status,
+        });
+      }
+
+      return { previousOrders, previousOrderDetail, orderId };
+    },
+    onSuccess: async (data: any) => {
+      await invalidateAfterOrderStatusChange(queryClient);
       if (data?.offline) {
         toast({
           title: "Update Queued",
@@ -140,7 +178,17 @@ export default function Orders() {
       setStatusDialogOpen(false);
       setSelectedOrder(null);
     },
-    onError: (error: any) => {
+    onError: (error: any, _vars, context) => {
+      if (context?.previousOrders) {
+        queryClient.setQueryData(["/api/orders"], context.previousOrders);
+        if (selectedOrder?.id) {
+          const restored = context.previousOrders.find((order) => order.id === selectedOrder.id);
+          if (restored) setSelectedOrder(restored);
+        }
+      }
+      if (context?.previousOrderDetail && context?.orderId) {
+        queryClient.setQueryData(["/api/orders", context.orderId], context.previousOrderDetail);
+      }
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update order status",
@@ -164,11 +212,8 @@ export default function Orders() {
       const response = await apiRequest("DELETE", `/api/orders/${orderId}`);
       return response.json();
     },
-    onSuccess: (data, orderId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      queryClient.invalidateQueries({ queryKey: ["order-details", orderId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+    onSuccess: async (data) => {
+      await invalidateAfterOrderMutation(queryClient);
       
       if (data.offline) {
         toast({
@@ -201,11 +246,8 @@ export default function Orders() {
       });
       return response.json();
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      queryClient.invalidateQueries({ queryKey: ["order-details", orderToEdit?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+    onSuccess: async (data) => {
+      await invalidateAfterOrderMutation(queryClient);
       
       if (data?.warnings && data.warnings.length > 0) {
         toast({
@@ -385,6 +427,7 @@ export default function Orders() {
               <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-total-orders">
                 {stats.total}
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">All statuses</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -396,6 +439,7 @@ export default function Orders() {
               <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-active-orders">
                 {stats.active}
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">Excludes completed</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -407,6 +451,7 @@ export default function Orders() {
               <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-urgent-orders">
                 {stats.urgent}
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">Highest-priority queue</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -418,12 +463,13 @@ export default function Orders() {
               <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-completed-orders">
                 {stats.completed}
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">Ready to archive</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Filters & search */}
-        <Card className="mb-8 border-border/60 shadow-sm">
+        <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
           <CardContent className="p-4 sm:p-5 sm:pt-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
               <div className="flex-1 min-w-[min(100%,14rem)] space-y-2">
@@ -496,7 +542,7 @@ export default function Orders() {
           <div className="space-y-5">
             {sortedGroupEntries.map(([status, statusOrders]) => (
               <Card key={status} className="border-border/60 shadow-sm">
-                <CardHeader className="space-y-0 pb-4 pt-6">
+                <CardHeader className="space-y-0 border-b border-border/60 bg-muted/[0.04] pb-4 pt-5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1">
                     <StatusBadge status={status} />
                     <span
@@ -734,10 +780,17 @@ export default function Orders() {
               <Button
                 onClick={handleStatusUpdate}
                 disabled={updateStatusMutation.isPending}
-                className="min-h-[44px]"
+                className="min-h-[44px] gap-2"
                 data-testid="button-confirm-status-update"
               >
-                {updateStatusMutation.isPending ? "Updating..." : "Update Status"}
+                {updateStatusMutation.isPending ? (
+                  <>
+                    <ActionLoader className="text-primary-foreground" />
+                    Updating…
+                  </>
+                ) : (
+                  "Update status"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -798,10 +851,17 @@ export default function Orders() {
                 variant="destructive"
                 onClick={handleDelete}
                 disabled={deleteOrderMutation.isPending || !deleteAcknowledged}
-                className="min-h-[44px] w-full sm:w-auto"
+                className="min-h-[44px] w-full gap-2 sm:w-auto"
                 data-testid="button-confirm-delete"
               >
-                {deleteOrderMutation.isPending ? "Deleting…" : "Delete permanently"}
+                {deleteOrderMutation.isPending ? (
+                  <>
+                    <ActionLoader className="text-destructive-foreground" />
+                    Deleting…
+                  </>
+                ) : (
+                  "Delete permanently"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -899,10 +959,17 @@ export default function Orders() {
               <Button
                 onClick={handleSaveEdit}
                 disabled={editOrderMutation.isPending || editLines.length === 0}
-                className="min-h-[44px]"
+                className="min-h-[44px] gap-2"
                 data-testid="button-save-edit"
               >
-                {editOrderMutation.isPending ? "Saving..." : "Save Changes"}
+                {editOrderMutation.isPending ? (
+                  <>
+                    <ActionLoader className="text-primary-foreground" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save changes"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

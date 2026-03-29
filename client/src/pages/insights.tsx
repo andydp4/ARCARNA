@@ -293,7 +293,7 @@ export default function Insights() {
         ) : (
           <>
         {/* Date Range Controls */}
-        <Card className="mb-8 border-border/60 shadow-sm">
+        <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
           <CardHeader className="space-y-0 pb-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -390,7 +390,7 @@ export default function Insights() {
                   <Button
                     onClick={() => handleExport("full")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full gap-2 sm:w-auto"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[10.5rem] sm:w-auto"
                     data-testid="button-export-full"
                   >
                     {isExporting ? (
@@ -470,7 +470,7 @@ export default function Insights() {
 
         {/* Detailed Reports Tabs */}
         <Tabs defaultValue="revenue" className="space-y-8">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-1.5 rounded-xl bg-muted/45 p-1.5 lg:grid-cols-4">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1.5 rounded-xl border border-border/60 bg-muted/45 p-1.5 lg:grid-cols-4">
             <TabsTrigger value="revenue" className="min-h-[44px] rounded-lg data-[state=active]:shadow-sm">
               Revenue
             </TabsTrigger>
@@ -501,7 +501,7 @@ export default function Insights() {
                     variant="outline"
                     onClick={() => handleExport("revenue")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full gap-2 sm:w-auto sm:shrink-0"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
                     data-testid="button-export-revenue"
                   >
                     {isExporting ? (
@@ -619,7 +619,7 @@ export default function Insights() {
                     variant="outline"
                     onClick={() => handleExport("orders")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full gap-2 sm:w-auto sm:shrink-0"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
                     data-testid="button-export-orders"
                   >
                     {isExporting ? (
@@ -711,7 +711,7 @@ export default function Insights() {
                     variant="outline"
                     onClick={() => handleExport("customers")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full gap-2 sm:w-auto sm:shrink-0"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
                     data-testid="button-export-customers"
                   >
                     {isExporting ? (
@@ -839,7 +839,7 @@ export default function Insights() {
                     variant="outline"
                     onClick={() => handleExport("inventory")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full gap-2 sm:w-auto sm:shrink-0"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
                     data-testid="button-export-inventory"
                   >
                     {isExporting ? (

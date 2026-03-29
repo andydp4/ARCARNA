@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
+import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt } from "lucide-react";
 import { Link } from "wouter";
-import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PosProductCard } from "@/components/pos-product-card";
 import type { PosProduct } from "@/components/pos-product-card";
@@ -213,7 +213,7 @@ export default function POS() {
         throw error;
       }
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       if (data?.offline) {
         toast({
           title: "Order Saved Offline",
@@ -239,8 +239,7 @@ export default function POS() {
       setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/analytics"] });
+      await invalidateAfterPosCheckout(queryClient);
     },
     onError: (error: any) => {
       toast({
@@ -252,6 +251,7 @@ export default function POS() {
   });
 
   const addToCart = useCallback((product: Product) => {
+    if (placeOrderMutation.isPending) return;
     const price =
       typeof product.defaultSalePrice === "string"
         ? parseFloat(product.defaultSalePrice)
@@ -284,10 +284,11 @@ export default function POS() {
       title: "Added to Cart",
       description: `${product.name} added to cart`,
     });
-  }, [toast]);
+  }, [placeOrderMutation.isPending, toast]);
 
   // Update cart quantity
   const updateQuantity = (productId: string, delta: number) => {
+    if (placeOrderMutation.isPending) return;
     setCart((prev) =>
       prev
         .map((item) => {
@@ -307,6 +308,7 @@ export default function POS() {
   
   // Remove from cart
   const removeFromCart = (productId: string) => {
+    if (placeOrderMutation.isPending) return;
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
@@ -348,6 +350,7 @@ export default function POS() {
 
   // Handle checkout
   const handleCheckout = useCallback(() => {
+    if (placeOrderMutation.isPending) return;
     if (cart.length === 0) {
       toast({
         title: "Cart Empty",
@@ -357,7 +360,7 @@ export default function POS() {
       return;
     }
     setCheckoutDialogOpen(true);
-  }, [cart.length, toast]);
+  }, [cart.length, placeOrderMutation.isPending, toast]);
 
   // Add expense to order
   const addExpense = () => {
@@ -451,6 +454,15 @@ export default function POS() {
   const formatPrice = (p: Product) =>
     `$${(typeof p.defaultSalePrice === "string" ? parseFloat(p.defaultSalePrice) || 0 : p.defaultSalePrice || 0).toFixed(2)}`;
 
+  const safeAreaBottom = "env(safe-area-inset-bottom, 0px)";
+  const mobileGridPaddingBottom = isMobile
+    ? `calc(${safeAreaBottom} + ${cart.length > 0 ? "8.25rem" : "5rem"})`
+    : undefined;
+  const mobileFabBottom = cart.length > 0
+    ? `calc(${safeAreaBottom} + 6rem)`
+    : `max(1rem, ${safeAreaBottom})`;
+  const mobileQuickBarBottom = `max(1rem, ${safeAreaBottom})`;
+
   const cartPanelProps = {
     cart,
     setCart,
@@ -482,7 +494,10 @@ export default function POS() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-background">
+    <div
+      className="flex h-screen flex-col bg-background lg:flex-row"
+      style={{ paddingBottom: isMobile ? safeAreaBottom : undefined }}
+    >
       {/* Products Panel - Step 1: Add items */}
       <div className="flex-1 overflow-hidden p-4 sm:p-6">
         <div className="mb-6 border-b border-border/60 pb-6">
@@ -514,7 +529,10 @@ export default function POS() {
         </div>
 
         <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-140px)]">
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 p-1 pb-24 lg:pb-4">
+          <div
+            className="grid grid-cols-2 gap-3 p-1 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-2 lg:pb-4 xl:grid-cols-3 2xl:grid-cols-4"
+            style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
+          >
             {productsLoading ? (
               <PosProductGridSkeleton />
             ) : filteredProducts.length === 0 ? (
@@ -525,7 +543,12 @@ export default function POS() {
               </div>
             ) : (
               filteredProducts.map((product) => (
-                <PosProductCard key={product.id} product={product} onAdd={addToCart} />
+                <PosProductCard
+                  key={product.id}
+                  product={product}
+                  onAdd={addToCart}
+                  disabled={placeOrderMutation.isPending}
+                />
               ))
             )}
           </div>
@@ -546,12 +569,8 @@ export default function POS() {
             <SheetTrigger asChild>
               <Button
                 size="lg"
-                className={cn(
-                  "fixed right-4 z-50 h-14 w-14 min-h-[48px] min-w-[48px] rounded-full p-0 shadow-lg",
-                  cart.length > 0
-                    ? "bottom-[calc(6rem+env(safe-area-inset-bottom,0px))]"
-                    : "bottom-[max(1rem,env(safe-area-inset-bottom,0px))]"
-                )}
+                className="fixed right-4 z-50 h-14 w-14 min-h-[48px] min-w-[48px] rounded-full p-0 shadow-lg"
+                style={{ bottom: mobileFabBottom }}
                 data-testid="mobile-cart-button"
                 aria-label={cartItemCount > 0 ? `Cart: ${cartItemCount} items` : "Open cart"}
               >
@@ -587,7 +606,7 @@ export default function POS() {
 
           {/* Mobile quick bar - visible when cart has items, above FAB */}
           {cart.length > 0 && (
-            <div className="fixed left-4 right-16 z-40 bottom-[max(1rem,env(safe-area-inset-bottom,0px))] lg:hidden">
+            <div className="fixed bottom-0 left-4 right-16 z-40 lg:hidden" style={{ bottom: mobileQuickBarBottom }}>
               <Card className="border-border/60 shadow-lg">
                 <CardContent className="flex items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
@@ -600,6 +619,7 @@ export default function POS() {
                       onClick={() => setCartOpen(true)}
                       size="sm"
                       className="min-h-[44px]"
+                      disabled={placeOrderMutation.isPending}
                       data-testid="view-cart-button"
                     >
                       Review

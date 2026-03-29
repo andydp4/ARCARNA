@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
+import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -75,12 +76,15 @@ export default function ProductManagement() {
     queryKey: ['/api/products'],
   })
 
+  const refreshAfterProductMutation = async () => {
+    await invalidateAfterCatalogMutation(queryClient)
+  }
+
   // Create product mutation
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest('POST', '/api/products', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
+    onSuccess: async () => {
+      await refreshAfterProductMutation()
       setShowAddDialog(false)
       resetForm()
       toast({
@@ -101,9 +105,8 @@ export default function ProductManagement() {
   // Update product mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: any) => apiRequest('PUT', `/api/products/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
+    onSuccess: async () => {
+      await refreshAfterProductMutation()
       setEditingProduct(null)
       resetForm()
       toast({
@@ -124,9 +127,8 @@ export default function ProductManagement() {
   // Delete product mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest('DELETE', `/api/products/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
+    onSuccess: async () => {
+      await refreshAfterProductMutation()
       toast({
         title: 'Success',
         description: 'Product deleted successfully',
@@ -145,9 +147,8 @@ export default function ProductManagement() {
   // Import products mutation
   const importMutation = useMutation({
     mutationFn: (products: any[]) => apiRequest('POST', '/api/products/import', { products }),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/products'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] })
+    onSuccess: async (data: any) => {
+      await refreshAfterProductMutation()
       setImportResults(data)
       setCsvContent('')
       toast({

@@ -24,7 +24,7 @@ export function AppPageHeader({
   return (
     <div
       className={cn(
-        "mb-8 flex flex-col gap-3 border-b border-border/60 pb-6 sm:flex-row sm:items-end sm:justify-between",
+        "mb-10 flex flex-col gap-3 border-b border-border/60 pb-7 sm:flex-row sm:items-end sm:justify-between",
         className
       )}
     >
@@ -32,15 +32,15 @@ export function AppPageHeader({
         {eyebrow ? (
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{eyebrow}</p>
         ) : null}
-        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
           {icon}
           {title}
         </h1>
         {description ? (
-          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground/95">{description}</p>
         ) : null}
       </div>
-      {trailing ? <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">{trailing}</div> : null}
+      {trailing ? <div className="flex shrink-0 flex-col items-start gap-2.5 sm:items-end">{trailing}</div> : null}
     </div>
   );
 }

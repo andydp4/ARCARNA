@@ -136,6 +136,7 @@ export function PosCartPanel({
 
       <div className="mb-4">
         <Select
+          disabled={orderSubmitting}
           value={selectedCustomer?.id || "walk-in"}
           onValueChange={(value) => {
             if (value === "walk-in") {
@@ -158,6 +159,7 @@ export function PosCartPanel({
                 value={customerSearch}
                 onChange={(e) => setCustomerSearch(e.target.value)}
                 className="mb-2"
+                disabled={orderSubmitting}
                 data-testid="search-customer"
               />
             </div>
@@ -205,6 +207,7 @@ export function PosCartPanel({
               onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
               data-testid="input-promo-code"
               className="min-h-[44px]"
+              disabled={orderSubmitting}
             />
             <Button
               variant="outline"
@@ -213,7 +216,7 @@ export function PosCartPanel({
                   validatePromoMutation.mutate(promoCode);
                 }
               }}
-              disabled={!promoCode || validatePromoMutation.isPending}
+              disabled={orderSubmitting || !promoCode || validatePromoMutation.isPending}
               data-testid="button-apply-promo"
               className="min-h-[44px] min-w-[44px]"
             >
@@ -232,6 +235,7 @@ export function PosCartPanel({
                 }}
                 data-testid="button-remove-promo"
                 className="min-h-[44px] min-w-[44px]"
+                disabled={orderSubmitting}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -272,6 +276,7 @@ export function PosCartPanel({
                       onClick={() => removeFromCart(item.product.id)}
                       data-testid={`remove-item-${item.product.id}`}
                       aria-label={`Remove ${item.product.name}`}
+                      disabled={orderSubmitting}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -329,6 +334,7 @@ export function PosCartPanel({
                         }}
                         className="h-10 min-h-[44px] w-24"
                         data-testid={`price-input-${item.product.id}`}
+                        disabled={orderSubmitting}
                       />
                     </div>
                   </div>
@@ -342,6 +348,7 @@ export function PosCartPanel({
                         onClick={() => updateQuantity(item.product.id, -1)}
                         data-testid={`decrease-qty-${item.product.id}`}
                         aria-label="Decrease quantity"
+                        disabled={orderSubmitting}
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
@@ -406,6 +413,7 @@ export function PosCartPanel({
                         }}
                         className="h-9 min-h-[40px] w-14 border-0 bg-transparent text-center font-medium focus-visible:ring-0"
                         data-testid={`qty-input-${item.product.id}`}
+                        disabled={orderSubmitting}
                       />
                       <Button
                         variant="ghost"
@@ -414,6 +422,7 @@ export function PosCartPanel({
                         onClick={() => updateQuantity(item.product.id, 1)}
                         data-testid={`increase-qty-${item.product.id}`}
                         aria-label="Increase quantity"
+                        disabled={orderSubmitting}
                       >
                         <Plus className="h-4 w-4" />
                       </Button>

@@ -30,7 +30,9 @@ export function EmptyStatePanel({ icon: Icon, title, description, variant = "emp
       )}
       role="status"
     >
-      <Icon className="mx-auto mb-4 h-12 w-12 text-muted-foreground/75" aria-hidden />
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 ring-1 ring-border/60">
+        <Icon className="h-8 w-8 text-muted-foreground/75" aria-hidden />
+      </div>
       <p className="text-base font-semibold text-foreground">{title}</p>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
     </div>

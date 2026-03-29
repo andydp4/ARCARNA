@@ -8,6 +8,7 @@ import {
 } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { invalidateAfterInvoiceRegeneration } from "@/lib/query-invalidation";
 import {
   Card,
   CardContent,
@@ -281,7 +282,7 @@ export default function Invoices() {
         description: data.message,
       });
 
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      await invalidateAfterInvoiceRegeneration(queryClient);
     } catch {
       toast({
         title: "Error",
@@ -362,8 +363,9 @@ export default function Invoices() {
           </Card>
         </div>
 
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
+          <CardContent className="flex flex-col gap-4 p-4 sm:p-5 sm:pt-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
             <div className="relative min-w-0 flex-1 sm:max-w-xs">
               <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -397,8 +399,8 @@ export default function Invoices() {
                 <SelectItem value="month">This month</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
             <Button
               variant="outline"
               className="min-h-[44px] gap-2 border-destructive/25 text-destructive hover:bg-destructive/10 sm:flex-none"
@@ -422,11 +424,12 @@ export default function Invoices() {
               <FileText className="h-4 w-4" />
               Create invoice
             </Button>
-          </div>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-border/60 shadow-sm">
-          <CardHeader className="space-y-1.5 pb-2">
+          <CardHeader className="space-y-2 pb-3">
             <CardTitle className="text-lg">Invoice list</CardTitle>
             <CardDescription className="text-sm leading-relaxed">
               Status and dates first; amounts use tabular figures. PDF menu: open, print, copy link, or draft an email.

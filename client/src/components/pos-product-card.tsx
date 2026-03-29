@@ -53,19 +53,21 @@ function stockBadge(product: PosProduct) {
 export type PosProductCardProps = {
   product: PosProduct;
   onAdd: (product: PosProduct) => void;
+  disabled?: boolean;
 };
 
-function PosProductCardInner({ product, onAdd }: PosProductCardProps) {
+function PosProductCardInner({ product, onAdd, disabled = false }: PosProductCardProps) {
   const inStock = product.stock > 0;
+  const canAdd = inStock && !disabled;
   return (
     <Card
       className={cn(
         "transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        inStock
+        canAdd
           ? "cursor-pointer hover:shadow-md hover:border-primary/30 active:scale-[0.98]"
           : "cursor-not-allowed opacity-75"
       )}
-      onClick={() => inStock && onAdd(product)}
+      onClick={() => canAdd && onAdd(product)}
       data-testid={`product-card-${product.id}`}
     >
       <CardHeader className="px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
@@ -79,16 +81,20 @@ function PosProductCardInner({ product, onAdd }: PosProductCardProps) {
           {formatProductPrice(product)}
         </div>
         <div className="mb-2">{stockBadge(product)}</div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          {inStock ? "Use Add to include this item in the cart" : "Unavailable until stock is replenished"}
+        </p>
         <Button
           size="sm"
           type="button"
           className={cn(
             "min-h-[44px] w-full font-medium",
-            inStock ? "bg-primary hover:bg-primary/90" : "pointer-events-none opacity-50"
+            canAdd ? "bg-primary hover:bg-primary/90" : "pointer-events-none opacity-50"
           )}
+          disabled={!canAdd}
           onClick={(e) => {
             e.stopPropagation();
-            if (inStock) onAdd(product);
+            if (canAdd) onAdd(product);
           }}
           data-testid={`add-product-${product.id}`}
           aria-label={`Add ${product.name} to cart`}
@@ -106,5 +112,6 @@ export const PosProductCard = memo(
   PosProductCardInner,
   (prev, next) =>
     prev.product === next.product &&
-    prev.onAdd === next.onAdd
+    prev.onAdd === next.onAdd &&
+    prev.disabled === next.disabled
 );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
+import { invalidateAfterInventoryAdjustment } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -107,7 +108,7 @@ export default function Inventory() {
         variant: "destructive",
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       if (data?.offline) {
         toast({
           title: "Update Queued",
@@ -122,7 +123,7 @@ export default function Inventory() {
       setAdjustmentDialogOpen(false);
       setSelectedProduct(null);
       setAdjustmentValue("");
-      refetch();
+      await invalidateAfterInventoryAdjustment(queryClient);
     },
   });
 
