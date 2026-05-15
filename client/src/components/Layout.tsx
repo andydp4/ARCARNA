@@ -10,6 +10,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { OrgSwitcher } from './OrgSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
+import { NotificationCenter } from '@/components/NotificationCenter'
 
 interface LayoutProps {
   children: ReactNode
@@ -128,6 +129,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
           <div className="flex items-center gap-3">
             <OrgSwitcher />
+            <NotificationCenter />
             {devAuthBypass && (
               <Badge variant="secondary" className="hidden sm:inline-flex text-xs" data-testid="dev-auth-badge">
                 Dev bypass

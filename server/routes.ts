@@ -34,6 +34,7 @@ import { getAuthRuntimeSnapshot } from "./authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
+import { registerOperationalRoutes } from "./routes/operational";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -357,6 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   registerSetupAndImportRoutes(app);
+  registerOperationalRoutes(app);
 
   // Customers routes
   app.get("/api/customers", ...scoped, async (req: any, res) => {

@@ -14,6 +14,9 @@ import { AlertTriangle, Package, Plus, Minus, Search, TrendingDown, AlertCircle,
 import { Link } from "wouter";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SmartStockTab } from "@/components/inventory/SmartStockTab";
+import { Sparkles } from "lucide-react";
 
 interface Product {
   id: string;
@@ -197,6 +200,18 @@ export default function Inventory() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <Tabs defaultValue="stock" className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6 min-h-[48px]">
+            <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
+            <TabsTrigger value="smart" data-testid="tab-smart-stock" className="gap-1">
+              <Sparkles className="h-4 w-4" />
+              Smart Stock
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="smart">
+            <SmartStockTab />
+          </TabsContent>
+          <TabsContent value="stock">
         {/* Alerts Section */}
         {(lowStockProducts.length > 0 || outOfStockProducts.length > 0) && (
           <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
@@ -472,6 +487,8 @@ export default function Inventory() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Stock Adjustment Dialog */}

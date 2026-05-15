@@ -3,6 +3,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { Link } from "wouter";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
+import { BusinessHealthSection } from "@/components/BusinessHealthSection";
+import { ActivityTimeline } from "@/components/activity-timeline";
 
 export default function Home() {
   const { toast } = useToast();
@@ -38,6 +40,8 @@ export default function Home() {
     <div className="w-full">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <BusinessHealthSection />
+
         {/* Quick Actions Grid */}
         <div className="mb-6 sm:mb-8">
           <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4 sm:mb-6">Quick Actions</h2>
@@ -192,6 +196,11 @@ export default function Home() {
               </div>
             </Link>
           </div>
+        </div>
+
+        <div className="mt-12 mb-8">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Recent activity</h2>
+          <ActivityTimeline limit={15} />
         </div>
 
         {/* Analytics Dashboard */}
