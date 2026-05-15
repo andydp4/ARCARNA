@@ -36,7 +36,10 @@ import {
   allowedUsers,
   userApprovalRequests,
   organizations,
+  importHistory,
   type Organization,
+  type ImportHistory,
+  type InsertImportHistory,
   type User,
   type UpsertUser,
   type Customer,
@@ -122,7 +125,21 @@ export interface IStorage {
   updateProduct(id: string, data: any): Promise<Product>;
   deleteProduct(id: string, orgId?: string | null): Promise<void>;
   getProduct(id: string, orgId?: string | null): Promise<Product | null>;
-  importProducts(products: any[], orgId?: string | null): Promise<{ imported: number; failed: number; errors: string[] }>;
+  importProducts(
+    products: any[],
+    orgId?: string | null,
+    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+  ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }>;
+  importCustomers(
+    customers: any[],
+    orgId: string,
+    options?: { duplicateMode?: "skip" | "merge" | "overwrite"; confirmed?: boolean },
+  ): Promise<{ imported: number; skipped: number; merged: number; failed: number; errors: string[] }>;
+  getOrgProfile(orgId: string): Promise<Organization | null>;
+  updateOrgProfile(orgId: string, patch: Record<string, unknown>): Promise<Organization>;
+  completeOrgSetup(orgId: string): Promise<Organization>;
+  getImportHistory(orgId: string, limit?: number): Promise<ImportHistory[]>;
+  recordImportHistory(data: InsertImportHistory): Promise<ImportHistory>;
 
   // Customer operations
   createCustomer(data: any): Promise<Customer>;
@@ -353,28 +370,42 @@ export class DatabaseStorage implements IStorage {
     return product || null;
   }
 
-  async importProducts(productList: any[], orgId?: string | null): Promise<{ imported: number; failed: number; errors: string[] }> {
+  async importProducts(
+    productList: any[],
+    orgId?: string | null,
+    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+  ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }> {
+    if (!options?.confirmed) {
+      throw new Error("Import requires confirmed preview (confirmed: true)");
+    }
+    const duplicateMode = options.duplicateMode ?? "skip";
     let imported = 0;
+    let skipped = 0;
     let failed = 0;
     const errors: string[] = [];
 
     for (const productData of productList) {
       try {
-        // Validate required fields (accept both old 'price' and new 'salePrice' field names)
         if (!productData.name || (!productData.price && !productData.defaultSalePrice && !productData.salePrice)) {
-          errors.push(`Row ${failed + imported + 1}: Missing required fields (name or sale price)`);
+          errors.push(`Row ${failed + imported + skipped + 1}: Missing required fields (name or sale price)`);
           failed++;
           continue;
         }
 
         let existingProduct = null;
-        if (productData.productId) {
-          const existCond = orgId ? and(eq(products.productId, productData.productId), eq(products.orgId, orgId)) : eq(products.productId, productData.productId);
+        const sku = productData.productId?.trim();
+        if (sku) {
+          const existCond = orgId
+            ? and(eq(products.productId, sku), eq(products.orgId, orgId))
+            : eq(products.productId, sku);
           [existingProduct] = await db.select().from(products).where(existCond);
         }
 
         if (existingProduct) {
-          // Update existing product
+          if (duplicateMode !== "overwrite") {
+            skipped++;
+            continue;
+          }
           await db
             .update(products)
             .set({
@@ -388,9 +419,10 @@ export class DatabaseStorage implements IStorage {
               updatedAt: new Date(),
             })
             .where(eq(products.id, existingProduct.id));
+          imported++;
         } else {
           await db.insert(products).values({
-            productId: productData.productId || `PRD-${Date.now()}-${imported}`,
+            productId: sku || `PRD-${Date.now()}-${imported}`,
             name: productData.name,
             barcode: productData.barcode,
             defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
@@ -402,15 +434,147 @@ export class DatabaseStorage implements IStorage {
             createdAt: new Date(),
             updatedAt: new Date(),
           });
+          imported++;
         }
-        imported++;
       } catch (error: any) {
-        errors.push(`Row ${failed + imported + 1}: ${error.message}`);
+        errors.push(`Row ${failed + imported + skipped + 1}: ${error.message}`);
         failed++;
       }
     }
 
-    return { imported, failed, errors };
+    return { imported, skipped, failed, errors };
+  }
+
+  async importCustomers(
+    customerList: any[],
+    orgId: string,
+    options?: { duplicateMode?: "skip" | "merge" | "overwrite"; confirmed?: boolean },
+  ): Promise<{ imported: number; skipped: number; merged: number; failed: number; errors: string[] }> {
+    if (!options?.confirmed) {
+      throw new Error("Import requires confirmed preview (confirmed: true)");
+    }
+    const duplicateMode = options.duplicateMode ?? "skip";
+    const existing = await this.getCustomers(orgId);
+    let imported = 0;
+    let skipped = 0;
+    let merged = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    const { findCustomerDuplicate } = await import("./import/customerImport");
+
+    for (const row of customerList) {
+      try {
+        if (!row.name) {
+          errors.push(`Row ${failed + imported + skipped + merged + 1}: Name is required`);
+          failed++;
+          continue;
+        }
+        const dup = findCustomerDuplicate(row, existing);
+        if (dup) {
+          if (duplicateMode === "skip") {
+            skipped++;
+            continue;
+          }
+          if (duplicateMode === "merge") {
+            await db
+              .update(customers)
+              .set({
+                name: row.name || dup.name,
+                email: row.email ?? dup.email,
+                phone: row.phone ?? dup.phone,
+                address: row.address ?? dup.address,
+                category: row.category ?? dup.category,
+                updatedAt: new Date(),
+              })
+              .where(and(eq(customers.id, dup.id), eq(customers.orgId, orgId)));
+            merged++;
+            continue;
+          }
+          await db
+            .update(customers)
+            .set({
+              name: row.name,
+              email: row.email ?? null,
+              phone: row.phone ?? null,
+              address: row.address ?? null,
+              category: row.category ?? dup.category,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(customers.id, dup.id), eq(customers.orgId, orgId)));
+          imported++;
+          continue;
+        }
+        const [created] = await db
+          .insert(customers)
+          .values({
+            orgId,
+            name: row.name,
+            email: row.email ?? null,
+            phone: row.phone ?? null,
+            address: row.address ?? null,
+            category: row.category ?? "Bronze",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        existing.push(created);
+        imported++;
+      } catch (error: any) {
+        errors.push(`Row ${failed + imported + skipped + merged + 1}: ${error.message}`);
+        failed++;
+      }
+    }
+
+    return { imported, skipped, merged, failed, errors };
+  }
+
+  async getOrgProfile(orgId: string): Promise<Organization | null> {
+    return this.getOrganization(orgId);
+  }
+
+  async updateOrgProfile(orgId: string, patch: Record<string, unknown>): Promise<Organization> {
+    const allowed: Record<string, unknown> = {};
+    const keys = [
+      "name", "tradingName", "email", "phone", "address", "vatNumber", "companyNumber",
+      "currency", "timezone", "businessType", "logoUrl", "invoiceTemplate", "invoicePrefix",
+      "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
+      "accentStyle", "businessColors", "setupWizardState",
+    ];
+    for (const k of keys) {
+      if (patch[k] !== undefined) allowed[k] = patch[k];
+    }
+    const [org] = await db
+      .update(organizations)
+      .set({ ...allowed, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId))
+      .returning();
+    if (!org) throw new Error("Organization not found");
+    return org;
+  }
+
+  async completeOrgSetup(orgId: string): Promise<Organization> {
+    const [org] = await db
+      .update(organizations)
+      .set({ setupComplete: 1, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId))
+      .returning();
+    if (!org) throw new Error("Organization not found");
+    return org;
+  }
+
+  async getImportHistory(orgId: string, limit = 50): Promise<ImportHistory[]> {
+    return db
+      .select()
+      .from(importHistory)
+      .where(eq(importHistory.orgId, orgId))
+      .orderBy(desc(importHistory.createdAt))
+      .limit(limit);
+  }
+
+  async recordImportHistory(data: InsertImportHistory): Promise<ImportHistory> {
+    const [row] = await db.insert(importHistory).values(data).returning();
+    return row;
   }
 
   async getCustomers(orgId?: string | null): Promise<Customer[]> {

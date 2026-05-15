@@ -28,6 +28,8 @@ import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
 import NoAccess from "@/pages/no-access";
+import SetupWizard from "@/pages/setup-wizard";
+import SetupBlocked from "@/pages/setup-blocked";
 import WorkerLogs from "@/pages/worker-logs";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -39,6 +41,8 @@ function Router() {
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/no-access" component={NoAccess} />
+      <Route path="/setup-wizard" component={SetupWizard} />
+      <Route path="/setup-blocked" component={SetupBlocked} />
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (

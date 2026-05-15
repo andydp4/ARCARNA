@@ -47,6 +47,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
+import { ImportsHub } from '@/components/settings/ImportsHub'
 import {
   Settings2,
   Store,
@@ -208,13 +209,18 @@ export default function Settings() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 min-h-[48px]">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="imports">Imports</TabsTrigger>
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="imports" className="space-y-6">
+            <ImportsHub />
+          </TabsContent>
 
           {/* General Settings */}
           <TabsContent value="general" className="space-y-6">

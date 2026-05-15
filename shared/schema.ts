@@ -25,15 +25,56 @@ export type Role = typeof ROLES[number];
 
 export const roleEnum = pgEnum('app_role', ROLES);
 
+export const BUSINESS_TYPES = ['retail', 'hospitality', 'services', 'wholesale', 'other'] as const;
+export type BusinessType = typeof BUSINESS_TYPES[number];
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
+  setupComplete: integer("setup_complete").default(0).notNull(),
+  setupWizardState: jsonb("setup_wizard_state"),
+  tradingName: varchar("trading_name", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: varchar("address", { length: 1024 }),
+  vatNumber: varchar("vat_number", { length: 50 }),
+  companyNumber: varchar("company_number", { length: 50 }),
+  currency: varchar("currency", { length: 10 }).default("GBP"),
+  timezone: varchar("timezone", { length: 64 }).default("Europe/London"),
+  businessType: varchar("business_type", { length: 32 }),
+  logoUrl: varchar("logo_url", { length: 2048 }),
+  invoiceTemplate: varchar("invoice_template", { length: 64 }).default("standard"),
+  invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
+  invoiceStartNumber: integer("invoice_start_number").default(1000),
+  paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
+  defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("20.00"),
+  receiptFooter: varchar("receipt_footer", { length: 1024 }),
+  receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
+  accentStyle: varchar("accent_style", { length: 32 }).default("midnight"),
+  businessColors: jsonb("business_colors"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = typeof organizations.$inferInsert;
+
+export const importHistory = pgTable("import_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
+  importType: varchar("import_type", { length: 32 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }),
+  duplicateMode: varchar("duplicate_mode", { length: 32 }),
+  importedCount: integer("imported_count").default(0),
+  skippedCount: integer("skipped_count").default(0),
+  failedCount: integer("failed_count").default(0),
+  failedRows: jsonb("failed_rows"),
+  createdBy: varchar("created_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [index("import_history_org_id_idx").on(table.orgId)]);
+
+export type ImportHistory = typeof importHistory.$inferSelect;
+export type InsertImportHistory = typeof importHistory.$inferInsert;
 
 // Locations table (stores - one per org)
 export const locations = pgTable("locations", {

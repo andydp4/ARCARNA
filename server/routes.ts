@@ -33,6 +33,7 @@ import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, re
 import { getAuthRuntimeSnapshot } from "./authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
+import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -63,9 +64,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       const orgId = req.user.orgId ?? roleAndOrg?.orgId ?? null;
       let orgName: string | null = null;
-      if (orgId) {
-        const org = await storage.getOrganization(orgId);
-        orgName = org?.name ?? null;
+      const headerOrg = req.headers["x-org-id"] as string | undefined;
+      const setupOrgId =
+        role === "SUPER_ADMIN" ? headerOrg || orgId || null : orgId;
+      let setupComplete = true;
+      if (setupOrgId) {
+        const org = await storage.getOrganization(setupOrgId);
+        orgName = org?.name ?? orgName;
+        setupComplete = org?.setupComplete === 1;
       }
       const orgCount = await storage.countOrganizations();
       let accessState: "ok" | "pending" | "no_org" | "no_access" = "ok";
@@ -85,6 +91,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isPending: !!req.user.isPending,
         accessState,
         needsOnboarding: role === "SUPER_ADMIN" && orgCount === 0,
+        setupComplete,
+        needsSetupWizard: !!setupOrgId && !setupComplete,
         runtime: getAuthRuntimeSnapshot(),
       });
     } catch (error) {
@@ -324,20 +332,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/products/import", ...scoped, async (req: any, res) => {
+  app.post("/api/products/import", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null };
-      const { products } = req.body;
-      if (!Array.isArray(products)) {
+      const { rows, products: legacyProducts, duplicateMode = "skip", confirmed } = req.body;
+      const list = rows ?? legacyProducts;
+      if (!Array.isArray(list)) {
         return res.status(400).json({ message: "Invalid data format. Expected array of products" });
       }
-      const result = await storage.importProducts(products, ctx?.orgId ?? undefined);
+      if (!confirmed) {
+        return res.status(400).json({
+          message: "Preview required. Use POST /api/products/import/preview then commit with confirmed: true",
+        });
+      }
+      const result = await storage.importProducts(list, ctx?.orgId ?? undefined, {
+        duplicateMode,
+        confirmed: true,
+      });
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error importing products:", error);
-      res.status(500).json({ message: "Failed to import products" });
+      res.status(400).json({ message: error.message || "Failed to import products" });
     }
   });
+
+  registerSetupAndImportRoutes(app);
 
   // Customers routes
   app.get("/api/customers", ...scoped, async (req: any, res) => {

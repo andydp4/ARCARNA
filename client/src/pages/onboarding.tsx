@@ -25,7 +25,7 @@ export default function Onboarding() {
       setSelectedOrgId(org.id);
       queryClient.invalidateQueries({ queryKey: ["/api/orgs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      setLocation("/");
+      setLocation("/setup-wizard");
     },
   });
 

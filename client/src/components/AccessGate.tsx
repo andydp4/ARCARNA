@@ -2,14 +2,22 @@ import { ReactNode, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 
-const PUBLIC_PATHS = new Set(["/pending-approval", "/no-access", "/onboarding"]);
+const PUBLIC_PATHS = new Set([
+  "/pending-approval",
+  "/no-access",
+  "/onboarding",
+  "/setup-wizard",
+  "/setup-blocked",
+]);
+
+const SETUP_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
 
 function LoadingSpinner() {
   return <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />;
 }
 
 export function AccessGate({ children }: { children: ReactNode }) {
-  const { user, isLoading, isAuthenticated, accessState, needsOnboarding } = useAuth();
+  const { user, isLoading, isAuthenticated, accessState, needsOnboarding, needsSetupWizard } = useAuth();
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -26,8 +34,25 @@ export function AccessGate({ children }: { children: ReactNode }) {
       } else {
         setLocation("/no-access");
       }
+      return;
     }
-  }, [isLoading, isAuthenticated, accessState, needsOnboarding, location, setLocation, user?.role]);
+    if (needsSetupWizard) {
+      if (user?.role && SETUP_ROLES.has(user.role)) {
+        setLocation("/setup-wizard");
+      } else {
+        setLocation("/setup-blocked");
+      }
+    }
+  }, [
+    isLoading,
+    isAuthenticated,
+    accessState,
+    needsOnboarding,
+    needsSetupWizard,
+    location,
+    setLocation,
+    user?.role,
+  ]);
 
   if (isLoading) {
     return (

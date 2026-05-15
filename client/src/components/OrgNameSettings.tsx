@@ -32,6 +32,7 @@ export function OrgNameSettings() {
       toast({ title: "Organization updated", description: "Business name saved." });
       queryClient.invalidateQueries({ queryKey: ["/api/orgs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/org/setup"] });
     },
     onError: (e: Error) => {
       toast({ title: "Error", description: e.message, variant: "destructive" });

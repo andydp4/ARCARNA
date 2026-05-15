@@ -67,6 +67,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setSelectedOrgIdState(orgId);
       setSelectedOrgId(orgId);
       queryClient.invalidateQueries();
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/org/setup"] });
     },
     [queryClient],
   );

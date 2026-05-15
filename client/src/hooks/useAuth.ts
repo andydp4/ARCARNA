@@ -14,6 +14,8 @@ export interface AuthUser {
   isPending?: boolean;
   accessState?: AccessState;
   needsOnboarding?: boolean;
+  setupComplete?: boolean;
+  needsSetupWizard?: boolean;
   runtime?: {
     devAuthBypass: boolean;
     nodeEnv: string;
@@ -33,6 +35,8 @@ export function useAuth() {
     isAuthenticated: !!user,
     accessState: user?.accessState ?? "ok",
     needsOnboarding: !!user?.needsOnboarding,
+    needsSetupWizard: !!user?.needsSetupWizard,
+    setupComplete: user?.setupComplete !== false,
     devAuthBypass: !!user?.runtime?.devAuthBypass,
   };
 }
