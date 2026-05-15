@@ -11,6 +11,7 @@ import {
   numeric,
   date,
   primaryKey,
+  text,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -190,7 +191,8 @@ export const customers = pgTable("customers", {
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
   address: varchar("address", { length: 1024 }),
-  category: varchar("category", { length: 20 }).default("Bronze"),
+  category: varchar("category", { length: 64 }).default("Bronze"),
+  manualOverrideProtected: integer("manual_override_protected").default(0).notNull(),
   loyaltyPoints: integer("loyalty_points").default(0),
   tierId: uuid("tier_id").references(() => loyaltyTiers.id),
   totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
@@ -205,7 +207,8 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
   createdAt: true, 
   updatedAt: true,
   loyaltyPoints: true,
-  totalSpent: true
+  totalSpent: true,
+  manualOverrideProtected: true,
 });
 export type InsertCustomerData = z.infer<typeof insertCustomerSchema>;
 
@@ -491,6 +494,102 @@ export const insertUserApprovalRequestSchema = createInsertSchema(userApprovalRe
 });
 export type InsertUserApprovalRequestData = z.infer<typeof insertUserApprovalRequestSchema>;
 
+// ==================== PHASE 10 AUTOMATION ====================
+
+export const automationRules = pgTable(
+  "automation_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    triggerEventType: varchar("trigger_event_type", { length: 50 }).notNull(),
+    conditionJson: jsonb("condition_json").notNull().default({}),
+    actionJson: jsonb("action_json").notNull().default({}),
+    priority: integer("priority").notNull().default(100),
+    isEnabled: integer("is_enabled").notNull().default(0),
+    lastTriggeredAt: timestamp("last_triggered_at"),
+    executionCount: integer("execution_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("automation_rules_org_enabled_idx").on(table.orgId, table.isEnabled),
+    index("automation_rules_org_trigger_idx").on(table.orgId, table.triggerEventType),
+  ],
+);
+
+export type AutomationRule = typeof automationRules.$inferSelect;
+export type InsertAutomationRule = typeof automationRules.$inferInsert;
+
+export const scheduledReports = pgTable(
+  "scheduled_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    reportType: varchar("report_type", { length: 64 }).notNull(),
+    frequency: varchar("frequency", { length: 20 }).notNull(),
+    deliveryMethods: jsonb("delivery_methods").notNull().default(["notification_center"]),
+    isEnabled: integer("is_enabled").notNull().default(0),
+    nextRunAt: timestamp("next_run_at"),
+    lastRunAt: timestamp("last_run_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("scheduled_reports_org_next_idx").on(table.orgId, table.isEnabled, table.nextRunAt)],
+);
+
+export type ScheduledReport = typeof scheduledReports.$inferSelect;
+export type InsertScheduledReport = typeof scheduledReports.$inferInsert;
+
+export const scheduledReportRuns = pgTable(
+  "scheduled_report_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reportId: uuid("report_id")
+      .references(() => scheduledReports.id, { onDelete: "cascade" })
+      .notNull(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    executionKey: varchar("execution_key", { length: 512 }).notNull().unique(),
+    status: varchar("status", { length: 32 }).notNull().default("completed"),
+    snapshotJson: jsonb("snapshot_json"),
+    errorMessage: varchar("error_message", { length: 2000 }),
+    startedAt: timestamp("started_at").defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [index("scheduled_report_runs_report_idx").on(table.reportId, table.completedAt)],
+);
+
+export type ScheduledReportRun = typeof scheduledReportRuns.$inferSelect;
+export type InsertScheduledReportRun = typeof scheduledReportRuns.$inferInsert;
+
+export const orgNotifications = pgTable(
+  "org_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    message: text("message").notNull(),
+    severity: varchar("severity", { length: 20 }).notNull().default("info"),
+    source: varchar("source", { length: 64 }).notNull(),
+    metadata: jsonb("metadata"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("org_notifications_org_created_idx").on(table.orgId, table.createdAt)],
+);
+
+export type OrgNotification = typeof orgNotifications.$inferSelect;
+export type InsertOrgNotification = typeof orgNotifications.$inferInsert;
+
 // ==================== EVENT-DRIVEN SYNC SYSTEM ====================
 
 // Event types for the system
@@ -515,7 +614,8 @@ export const WORKER_NAMES = [
   'LoyaltyWorker',
   'BusinessInsightsWorker',
   'FinanceWorker',
-  'ExpensesWorker'
+  'ExpensesWorker',
+  'AutomationWorker',
 ] as const;
 export type WorkerName = typeof WORKER_NAMES[number];
 
@@ -690,10 +790,10 @@ export type WorkerResult = {
 
 // Required workers per event type configuration
 export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
-  OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
   OrderUpdated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
-  OrderStatusChanged: ['CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
-  PaymentCaptured: ['InvoiceWorker', 'FinanceWorker'],
+  OrderStatusChanged: ['CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
+  PaymentCaptured: ['InvoiceWorker', 'FinanceWorker', 'AutomationWorker'],
   RefundIssued: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
   OrderCancelled: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
   ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],

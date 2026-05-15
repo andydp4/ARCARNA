@@ -8,14 +8,16 @@ import {
   Gift,
   MapPin,
   FileText,
-  BarChart3,
   Home,
   Award,
   Boxes,
   Settings,
   CreditCard,
   PackageCheck,
-  Shield
+  Shield,
+  Workflow,
+  CalendarClock,
+  Activity,
 } from 'lucide-react'
 
 export const navItems = [
@@ -116,6 +118,27 @@ export const navItems = [
     href: '/tick-list',
     icon: CreditCard,
     testId: 'nav-tick-list'
+  },
+  {
+    key: 'worker-logs',
+    label: 'Worker logs',
+    href: '/worker-logs',
+    icon: Activity,
+    testId: 'nav-worker-logs'
+  },
+  {
+    key: 'rules',
+    label: 'Automation rules',
+    href: '/rules',
+    icon: Workflow,
+    testId: 'nav-rules'
+  },
+  {
+    key: 'scheduled-reports',
+    label: 'Scheduled reports',
+    href: '/scheduled-reports',
+    icon: CalendarClock,
+    testId: 'nav-scheduled-reports'
   },
   {
     key: 'user-access',

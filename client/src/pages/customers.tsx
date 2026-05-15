@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
 import { offlineStorage } from '@/lib/offline-storage'
@@ -51,6 +51,18 @@ export default function Customers() {
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ['/api/customers'],
   })
+
+  const { data: intelResp } = useQuery<{ items: any[] }>({
+    queryKey: ['/api/customers/intelligence'],
+  })
+
+  const intelById = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const row of intelResp?.items ?? []) {
+      m.set(row.customerId, row)
+    }
+    return m
+  }, [intelResp])
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -623,6 +635,7 @@ export default function Customers() {
                         <TableHead>Contact</TableHead>
                         <TableHead>Address</TableHead>
                         <TableHead>Category</TableHead>
+                        <TableHead>Intelligence</TableHead>
                         <TableHead>Loyalty Points</TableHead>
                         <TableHead>Total Spent</TableHead>
                         <TableHead>Actions</TableHead>
@@ -660,6 +673,42 @@ export default function Customers() {
                             <Badge className={getCategoryColor(customer.category)}>
                               {customer.category}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px]">
+                            {(() => {
+                              const intel = intelById.get(customer.id)
+                              if (!intel) return <span className="text-xs text-muted-foreground">—</span>
+                              return (
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex flex-wrap gap-1">
+                                    <Badge variant="outline">{intel.segment}</Badge>
+                                    <Badge
+                                      variant={
+                                        intel.inactivityRisk === 'high'
+                                          ? 'destructive'
+                                          : intel.inactivityRisk === 'medium'
+                                            ? 'secondary'
+                                            : 'outline'
+                                      }
+                                    >
+                                      {intel.inactivityRisk} risk
+                                    </Badge>
+                                    {intel.manualOverrideProtected && (
+                                      <Badge variant="secondary">Manual</Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-muted-foreground">
+                                    LTV £{intel.lifetimeValue?.toFixed?.(2)} · AOV £{intel.averageOrderValue?.toFixed?.(2)} ·{' '}
+                                    {intel.orderCount} orders
+                                  </p>
+                                  {intel.lastOrderAt && (
+                                    <p className="text-muted-foreground">
+                                      Last: {new Date(intel.lastOrderAt).toLocaleDateString()}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </TableCell>
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
                           <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
 
 type NotificationItem = {
   id: string;
@@ -17,6 +18,8 @@ type NotificationItem = {
   message: string;
   severity: "info" | "warning" | "error";
   createdAt: string;
+  persisted?: boolean;
+  readAt?: string | null;
 };
 
 const STORAGE_KEY = "midnight.notifications.dismissed";
@@ -36,6 +39,7 @@ function saveDismissed(ids: Set<string>) {
 }
 
 export function NotificationCenter() {
+  const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed());
   const [read, setRead] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
@@ -49,9 +53,21 @@ export function NotificationCenter() {
     return (data?.items ?? []).filter((n) => !dismissed.has(n.id));
   }, [data?.items, dismissed]);
 
-  const unreadCount = visible.filter((n) => !read.has(n.id)).length;
+  const unreadCount = visible.filter((n) => {
+    if (n.readAt) return false;
+    if (n.persisted && read.has(n.id)) return false;
+    return !read.has(n.id);
+  }).length;
 
-  const dismiss = (id: string) => {
+  const dismiss = async (id: string, n?: NotificationItem) => {
+    if (n?.persisted) {
+      try {
+        await apiRequest("PATCH", `/api/org-notifications/${id}/read`);
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      } catch {
+        /* ignore */
+      }
+    }
     const next = new Set(dismissed);
     next.add(id);
     setDismissed(next);
@@ -100,7 +116,7 @@ export function NotificationCenter() {
                   key={n.id}
                   className={cn(
                     "p-3 text-sm",
-                    !read.has(n.id) && "bg-muted/40",
+                    !read.has(n.id) && !n.readAt && "bg-muted/40",
                   )}
                 >
                   <div className="flex justify-between gap-2">
@@ -112,7 +128,7 @@ export function NotificationCenter() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 shrink-0"
-                      onClick={() => dismiss(n.id)}
+                      onClick={() => dismiss(n.id, n)}
                       aria-label="Dismiss"
                     >
                       <X className="h-4 w-4" />

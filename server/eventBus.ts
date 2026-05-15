@@ -208,7 +208,8 @@ export async function completeJob(
   workerName: string,
   summary: string,
   correlationId: string,
-  eventType: string
+  eventType: string,
+  logData?: Record<string, unknown> | null,
 ): Promise<void> {
   const now = new Date();
 
@@ -243,8 +244,38 @@ export async function completeJob(
       status: 'success',
       attempt: 1,
       summary,
+      data: logData ?? null,
       createdAt: now,
     });
+  });
+}
+
+/**
+ * Append a worker run log row without completing a job (used for per-rule automation traces).
+ */
+export async function insertWorkerRunLog(entry: {
+  eventId: string;
+  correlationId: string;
+  eventType: string;
+  workerName: string;
+  status: string;
+  attempt?: number;
+  summary?: string | null;
+  data?: Record<string, unknown> | null;
+  error?: string | null;
+}): Promise<void> {
+  const now = new Date();
+  await db.insert(workerRunLogs).values({
+    eventId: entry.eventId,
+    correlationId: entry.correlationId,
+    eventType: entry.eventType,
+    workerName: entry.workerName,
+    status: entry.status,
+    attempt: entry.attempt ?? 1,
+    summary: entry.summary ?? null,
+    data: entry.data ?? null,
+    error: entry.error ?? null,
+    createdAt: now,
   });
 }
 

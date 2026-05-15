@@ -6,6 +6,9 @@ import {
   getNotifications,
   getBusinessHealth,
 } from "../services/operationalIntelligence";
+import { db } from "../db";
+import { orgNotifications } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 
@@ -59,6 +62,22 @@ export function registerOperationalRoutes(app: Express) {
     } catch (error) {
       console.error("Error fetching business health:", error);
       res.status(500).json({ message: "Failed to fetch business health" });
+    }
+  });
+
+  app.patch("/api/org-notifications/:id/read", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const [updated] = await db
+        .update(orgNotifications)
+        .set({ readAt: new Date() })
+        .where(and(eq(orgNotifications.id, req.params.id), eq(orgNotifications.orgId, ctx.orgId)))
+        .returning({ id: orgNotifications.id });
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error marking notification read:", error);
+      res.status(500).json({ message: "Failed to update notification" });
     }
   });
 }

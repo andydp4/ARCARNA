@@ -25,6 +25,7 @@ import { InvoiceWorker } from "./invoiceWorker";
 import { BusinessInsightsWorker } from "./businessInsightsWorker";
 import { FinanceWorker } from "./financeWorker";
 import { ExpensesWorker } from "./expensesWorker";
+import { AutomationWorker } from "./automationWorker";
 
 // Worker interface that all workers must implement
 export interface IWorker {
@@ -43,6 +44,7 @@ const WORKER_FACTORIES: Record<WorkerName, () => IWorker> = {
   BusinessInsightsWorker: () => new BusinessInsightsWorker(),
   FinanceWorker: () => new FinanceWorker(),
   ExpensesWorker: () => new ExpensesWorker(),
+  AutomationWorker: () => new AutomationWorker(),
 };
 
 // Worker registry
@@ -168,7 +170,8 @@ async function processJob(workerId: string): Promise<boolean> {
         job.workerName,
         result.summary,
         event.correlationId,
-        event.eventType
+        event.eventType,
+        result.data ?? null,
       );
       console.log(`[WorkerRunner] ${job.workerName} completed: ${result.summary}`);
     } else {
@@ -206,6 +209,7 @@ async function processJob(workerId: string): Promise<boolean> {
 let isRunning = false;
 let dispatchInterval: NodeJS.Timeout | null = null;
 let processInterval: NodeJS.Timeout | null = null;
+let scheduledReportInterval: NodeJS.Timeout | null = null;
 
 // Start the worker runner
 export function startWorkerRunner(options?: {
@@ -252,6 +256,15 @@ export function startWorkerRunner(options?: {
     }
   }, processIntervalMs);
 
+  scheduledReportInterval = setInterval(async () => {
+    try {
+      const { processScheduledReports } = await import("../services/scheduledReportsRunner");
+      await processScheduledReports();
+    } catch (error) {
+      console.error("[WorkerRunner] Scheduled reports tick failed:", error);
+    }
+  }, 60_000);
+
   console.log('[WorkerRunner] Started successfully');
 }
 
@@ -269,6 +282,11 @@ export function stopWorkerRunner(): void {
   if (processInterval) {
     clearInterval(processInterval);
     processInterval = null;
+  }
+
+  if (scheduledReportInterval) {
+    clearInterval(scheduledReportInterval);
+    scheduledReportInterval = null;
   }
 
   isRunning = false;

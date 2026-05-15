@@ -14,6 +14,7 @@ import {
   deadLetters,
   userApprovalRequests,
   analyticsDaily,
+  orgNotifications,
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { getJobQueueStats } from "../eventBus";
@@ -307,6 +308,8 @@ export type NotificationItem = {
   createdAt: string;
   entityType?: string;
   entityId?: string;
+  persisted?: boolean;
+  readAt?: string | null;
 };
 
 export async function getNotifications(orgId: string): Promise<NotificationItem[]> {
@@ -387,6 +390,30 @@ export async function getNotifications(orgId: string): Promise<NotificationItem[
         createdAt: d.failedAt?.toISOString() ?? now,
         entityType: "worker",
         entityId: d.eventId,
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const orgNs = await db
+      .select()
+      .from(orgNotifications)
+      .where(eq(orgNotifications.orgId, orgId))
+      .orderBy(desc(orgNotifications.createdAt))
+      .limit(40);
+    for (const n of orgNs) {
+      notes.push({
+        id: n.id,
+        type: "system",
+        title: n.title,
+        message: n.message,
+        severity: (n.severity as "info" | "warning" | "error") || "info",
+        createdAt: n.createdAt?.toISOString() ?? now,
+        entityType: n.source,
+        persisted: true,
+        readAt: n.readAt?.toISOString() ?? null,
       });
     }
   } catch {

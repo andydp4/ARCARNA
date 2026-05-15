@@ -31,6 +31,8 @@ import NoAccess from "@/pages/no-access";
 import SetupWizard from "@/pages/setup-wizard";
 import SetupBlocked from "@/pages/setup-blocked";
 import WorkerLogs from "@/pages/worker-logs";
+import RulesPage from "@/pages/rules";
+import ScheduledReportsPage from "@/pages/scheduled-reports";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -67,6 +69,8 @@ function Router() {
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />
+          <Route path="/rules" component={RulesPage} />
+          <Route path="/scheduled-reports" component={ScheduledReportsPage} />
         </Layout>
         </AccessGate>
       )}

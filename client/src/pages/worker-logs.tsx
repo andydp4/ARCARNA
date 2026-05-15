@@ -68,6 +68,10 @@ const statusColors: Record<string, string> = {
   already_processed: 'bg-blue-500',
   queued: 'bg-gray-500',
   running: 'bg-blue-400',
+  matched_action_success: 'bg-emerald-500',
+  matched_action_failed: 'bg-orange-600',
+  not_matched: 'bg-slate-400',
+  skipped: 'bg-amber-500',
 };
 
 const statusIcons: Record<string, JSX.Element> = {
@@ -78,6 +82,10 @@ const statusIcons: Record<string, JSX.Element> = {
   already_processed: <CheckCircle className="h-4 w-4" />,
   queued: <Clock className="h-4 w-4" />,
   running: <Activity className="h-4 w-4" />,
+  matched_action_success: <CheckCircle className="h-4 w-4" />,
+  matched_action_failed: <AlertTriangle className="h-4 w-4" />,
+  not_matched: <Clock className="h-4 w-4" />,
+  skipped: <Clock className="h-4 w-4" />,
 };
 
 export default function WorkerLogsPage() {

@@ -250,6 +250,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
         category: updates.category,
         loyalty_points: updates.loyaltyPoints,
         updated_at: updates.updatedAt,
+        ...(updates.category !== undefined ? { manual_override_protected: 1 } : {}),
       })
       .where(whereCond)
       .returning()

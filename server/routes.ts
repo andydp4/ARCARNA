@@ -35,6 +35,8 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { registerOperationalRoutes } from "./routes/operational";
+import { registerAutomationRoutes } from "./routes/automation";
+import { registerScheduledReportRoutes } from "./routes/scheduledReports";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -359,8 +361,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   registerSetupAndImportRoutes(app);
   registerOperationalRoutes(app);
+  registerAutomationRoutes(app);
+  registerScheduledReportRoutes(app);
 
   // Customers routes
+  app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) {
+        return res.status(400).json({ message: "Org context required for customer intelligence" });
+      }
+      const { listCustomerIntelligence } = await import("./services/customerIntelligence");
+      const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 200);
+      const items = await listCustomerIntelligence(ctx.orgId, limit);
+      res.json({ items });
+    } catch (error) {
+      console.error("Error listing customer intelligence:", error);
+      res.status(500).json({ message: "Failed to list customer intelligence" });
+    }
+  });
+
   app.get("/api/customers", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null };
@@ -383,6 +403,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching customer:", error);
       res.status(500).json({ message: "Failed to fetch customer" });
+    }
+  });
+
+  app.get("/api/customers/:id/intelligence", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) {
+        return res.status(400).json({ message: "Org context required for customer intelligence" });
+      }
+      const { computeCustomerIntelligence } = await import("./services/customerIntelligence");
+      const intel = await computeCustomerIntelligence(ctx.orgId, req.params.id);
+      if (!intel) return res.status(404).json({ message: "Customer not found" });
+      res.json(intel);
+    } catch (error) {
+      console.error("Error fetching customer intelligence:", error);
+      res.status(500).json({ message: "Failed to fetch customer intelligence" });
     }
   });
 
