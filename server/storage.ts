@@ -35,6 +35,8 @@ import {
   orderExpenses,
   allowedUsers,
   userApprovalRequests,
+  organizations,
+  type Organization,
   type User,
   type UpsertUser,
   type Customer,
@@ -59,6 +61,8 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
+import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
+import type { Role } from "@shared/schema";
 
 // --- Utility Functions ---
 function safeParseFloat(value: string | number | null | undefined, defaultValue: number = 0): number {
@@ -180,16 +184,32 @@ export interface IStorage {
   // Allow list operations
   isUserAllowed(replitUserId: string): Promise<boolean>;
   getUserRoleAndOrg(replitUserId: string): Promise<{ role: string; orgId: string | null } | null>;
-  getAllowedUsers(): Promise<AllowedUser[]>;
+  getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]>;
   addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser>;
   removeAllowedUser(replitUserId: string): Promise<void>;
   getOwner(): Promise<AllowedUser | null>;
+  updateAllowedUserAccess(
+    replitUserId: string,
+    updates: { role?: string; orgId?: string | null },
+    actor: { role: string; orgId: string | null; replitUserId: string },
+  ): Promise<AllowedUser>;
+
+  // Organization operations
+  listOrganizations(): Promise<Organization[]>;
+  getOrganization(id: string): Promise<Organization | null>;
+  createOrganization(name: string): Promise<Organization>;
+  updateOrganizationName(id: string, name: string): Promise<Organization>;
+  countOrganizations(): Promise<number>;
 
   // Approval request operations
   getPendingApprovals(): Promise<UserApprovalRequest[]>;
   getApprovalRequest(replitUserId: string): Promise<UserApprovalRequest | null>;
   createApprovalRequest(data: InsertUserApprovalRequest): Promise<UserApprovalRequest>;
-  approveUser(replitUserId: string, approvedBy: string): Promise<void>;
+  approveUser(
+    replitUserId: string,
+    approvedBy: string,
+    options?: { role?: string; orgId?: string | null },
+  ): Promise<void>;
   rejectUser(replitUserId: string, rejectedBy: string): Promise<void>;
 }
 
@@ -1400,7 +1420,14 @@ export class DatabaseStorage implements IStorage {
     return { role, orgId: user.orgId ?? null };
   }
 
-  async getAllowedUsers(): Promise<AllowedUser[]> {
+  async getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]> {
+    if (orgId) {
+      return db
+        .select()
+        .from(allowedUsers)
+        .where(eq(allowedUsers.orgId, orgId))
+        .orderBy(desc(allowedUsers.createdAt));
+    }
     return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
   }
 
@@ -1432,6 +1459,90 @@ export class DatabaseStorage implements IStorage {
       .from(allowedUsers)
       .where(eq(allowedUsers.isOwner, 1));
     return owner || null;
+  }
+
+  async updateAllowedUserAccess(
+    replitUserId: string,
+    updates: { role?: string; orgId?: string | null },
+    actor: { role: string; orgId: string | null; replitUserId: string },
+  ): Promise<AllowedUser> {
+    const [target] = await db
+      .select()
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId));
+    if (!target) throw new Error("User not found");
+
+    const actorRole = actor.role as Role;
+    const targetRole = (updates.role ?? target.role ?? "CASHIER") as Role;
+
+    if (updates.role && !isRole(updates.role)) {
+      throw new Error("Invalid role");
+    }
+    if (updates.role && !canAssignRole(actorRole, targetRole)) {
+      throw new Error("You cannot assign this role");
+    }
+    const effectiveTargetOrg = updates.orgId !== undefined ? updates.orgId : target.orgId;
+    if (!canManageUser(actorRole, actor.orgId, effectiveTargetOrg)) {
+      throw new Error("You cannot manage users outside your organization");
+    }
+    if (target.isOwner === 1 && updates.role && updates.role !== "SUPER_ADMIN") {
+      throw new Error("Cannot change platform owner role");
+    }
+    if (targetRole === "SUPER_ADMIN" && updates.orgId) {
+      throw new Error("SUPER_ADMIN cannot be assigned to an organization");
+    }
+    if (actor.replitUserId === replitUserId && updates.role) {
+      throw new Error("You cannot change your own role");
+    }
+
+    const patch: Partial<typeof allowedUsers.$inferInsert> = {};
+    if (updates.role) {
+      patch.role = targetRole;
+      patch.isOwner = targetRole === "SUPER_ADMIN" ? 1 : 0;
+    }
+    if (updates.orgId !== undefined) {
+      patch.orgId = targetRole === "SUPER_ADMIN" ? null : updates.orgId;
+    }
+
+    const [updated] = await db
+      .update(allowedUsers)
+      .set(patch)
+      .where(eq(allowedUsers.replitUserId, replitUserId))
+      .returning();
+    return updated;
+  }
+
+  async listOrganizations(): Promise<Organization[]> {
+    return db.select().from(organizations).orderBy(organizations.name);
+  }
+
+  async getOrganization(id: string): Promise<Organization | null> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
+    return org ?? null;
+  }
+
+  async createOrganization(name: string): Promise<Organization> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Organization name is required");
+    const [org] = await db.insert(organizations).values({ name: trimmed }).returning();
+    return org;
+  }
+
+  async updateOrganizationName(id: string, name: string): Promise<Organization> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Organization name is required");
+    const [org] = await db
+      .update(organizations)
+      .set({ name: trimmed, updatedAt: new Date() })
+      .where(eq(organizations.id, id))
+      .returning();
+    if (!org) throw new Error("Organization not found");
+    return org;
+  }
+
+  async countOrganizations(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(organizations);
+    return row?.count ?? 0;
   }
 
   // Approval request operations
@@ -1468,36 +1579,50 @@ export class DatabaseStorage implements IStorage {
     return request;
   }
 
-  async approveUser(replitUserId: string, approvedBy: string): Promise<void> {
-    // Update the approval request status
+  async approveUser(
+    replitUserId: string,
+    approvedBy: string,
+    options?: { role?: string; orgId?: string | null },
+  ): Promise<void> {
     await db
       .update(userApprovalRequests)
       .set({
-        status: 'approved',
+        status: "approved",
         reviewedAt: new Date(),
         reviewedBy: approvedBy,
       })
       .where(eq(userApprovalRequests.replitUserId, replitUserId));
 
-    // Get the request details
     const [request] = await db
       .select()
       .from(userApprovalRequests)
       .where(eq(userApprovalRequests.replitUserId, replitUserId));
 
-    // Add to allowed users - use approver's org and default role CASHIER
     if (request) {
       const [approver] = await db
-        .select({ orgId: allowedUsers.orgId })
+        .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
+      const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
+      const role = options?.role ?? "CASHIER";
+      const orgId =
+        options?.orgId !== undefined
+          ? options.orgId
+          : approverRole === "SUPER_ADMIN"
+            ? options?.orgId ?? null
+            : approver?.orgId ?? null;
+
+      if (role === "SUPER_ADMIN") {
+        throw new Error("Cannot approve new users as SUPER_ADMIN");
+      }
+
       await this.addAllowedUser({
         replitUserId: request.replitUserId,
         email: request.email,
         name: request.name,
         isOwner: 0,
-        orgId: approver?.orgId ?? null,
-        role: 'CASHIER',
+        orgId: role === "SUPER_ADMIN" ? null : orgId,
+        role: role as Role,
       });
     }
   }

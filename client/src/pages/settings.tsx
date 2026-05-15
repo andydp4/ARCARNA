@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { OrgNameSettings } from '@/components/OrgNameSettings'
 import {
   Settings2,
   Store,
@@ -217,6 +218,7 @@ export default function Settings() {
 
           {/* General Settings */}
           <TabsContent value="general" className="space-y-6">
+              <OrgNameSettings />
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

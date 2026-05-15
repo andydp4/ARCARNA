@@ -7,6 +7,7 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { isDevAuthBypassEnabled } from "./authRuntime";
 
 // REPLIT_DOMAINS may not be available in production deployments
 // We'll create strategies dynamically based on request hostname
@@ -273,24 +274,36 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     }
   }
 
-  // In development mode, bypass authentication
-  if (process.env.NODE_ENV === 'development') {
+  // Explicit dev bypass only when DEV_AUTH_BYPASS=1 and not production
+  if (isDevAuthBypassEnabled()) {
+    const devUserId = process.env.DEV_AUTH_USER_ID || "dev-user";
+    let role = "SUPER_ADMIN";
+    let orgId: string | null = null;
+    try {
+      const roleAndOrg = await storage.getUserRoleAndOrg(devUserId);
+      if (roleAndOrg) {
+        role = roleAndOrg.role;
+        orgId = roleAndOrg.orgId;
+      }
+    } catch {
+      // fall through to SUPER_ADMIN defaults
+    }
     req.user = req.user || {
-      id: 'dev-user',
-      username: 'Developer',
-      email: 'dev@example.com',
+      id: devUserId,
+      username: "Developer",
+      email: "dev@example.com",
       isAnonymous: false,
-      isOwner: true,
+      isOwner: role === "SUPER_ADMIN",
       isAllowed: true,
       isPending: false,
-      role: 'SUPER_ADMIN',
-      orgId: null,
+      role,
+      orgId,
       claims: {
-        sub: 'dev-user',
-        email: 'dev@example.com',
-        name: 'Developer'
+        sub: devUserId,
+        email: "dev@example.com",
+        name: "Developer",
       },
-      expires_at: Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
     };
     return next();
   }
@@ -334,7 +347,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
 // Owner-only middleware (legacy - maps to SUPER_ADMIN)
 export const isOwner: RequestHandler = async (req, res, next) => {
-  if (process.env.NODE_ENV === 'development') return next();
+  if (isDevAuthBypassEnabled()) return next();
   const user = req.user as any;
   if (!user || !user.isOwner) {
     return res.status(403).json({ message: "Access denied. Owner only." });
@@ -345,7 +358,7 @@ export const isOwner: RequestHandler = async (req, res, next) => {
 // Require one of the given roles (SUPER_ADMIN, ADMIN, MANAGER, CASHIER)
 export function requireRole(...allowedRoles: string[]): RequestHandler {
   return async (req, res, next) => {
-    if (process.env.NODE_ENV === 'development') return next();
+    if (isDevAuthBypassEnabled()) return next();
     const user = req.user as any;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     const role = user.role ?? (user.isOwner ? 'SUPER_ADMIN' : 'CASHIER');

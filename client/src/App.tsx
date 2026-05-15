@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NavigationProvider } from "@/contexts/NavigationContext";
+import { OrgProvider } from "@/contexts/OrgContext";
+import { AccessGate } from "@/components/AccessGate";
 import { Layout } from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
@@ -24,6 +26,8 @@ import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
+import Onboarding from "@/pages/onboarding";
+import NoAccess from "@/pages/no-access";
 import WorkerLogs from "@/pages/worker-logs";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -33,9 +37,12 @@ function Router() {
   return (
     <Switch>
       <Route path="/pending-approval" component={PendingApproval} />
+      <Route path="/onboarding" component={Onboarding} />
+      <Route path="/no-access" component={NoAccess} />
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
+        <AccessGate>
         <Layout>
           <Route path="/" component={Home} />
           <Route path="/pos" component={POS} />
@@ -57,6 +64,7 @@ function Router() {
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />
         </Layout>
+        </AccessGate>
       )}
       <Route component={NotFound} />
     </Switch>
@@ -71,11 +79,13 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <NavigationProvider>
+          <OrgProvider>
           <TooltipProvider>
             <Toaster />
             <OfflineIndicator />
             <Router />
           </TooltipProvider>
+          </OrgProvider>
         </NavigationProvider>
       </QueryClientProvider>
     </ErrorBoundary>

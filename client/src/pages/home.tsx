@@ -57,6 +57,21 @@ export default function Home() {
               </div>
             </Link>
 
+            {/* Add product */}
+            <Link
+              href="/products"
+              className="group"
+              data-testid="quick-action-add-product"
+            >
+              <div className="bg-card hover:bg-accent/10 border border-border hover:border-accent rounded-lg p-4 sm:p-6 transition-all duration-200 transform hover:scale-105 min-h-[140px] flex flex-col justify-center">
+                <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-violet-500/10 rounded-lg mb-3 sm:mb-4">
+                  <i className="fas fa-plus-circle text-xl sm:text-2xl text-violet-500"></i>
+                </div>
+                <h3 className="text-base sm:text-lg font-semibold text-foreground mb-1 sm:mb-2">Add Product</h3>
+                <p className="text-xs sm:text-sm text-muted-foreground">Create a new catalog item</p>
+              </div>
+            </Link>
+
             {/* Inventory */}
             <Link 
               href="/inventory"

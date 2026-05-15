@@ -29,7 +29,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./replitAuth";
+import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./replitAuth";
+import { getAuthRuntimeSnapshot } from "./authRuntime";
+import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
+import type { Role } from "@shared/schema";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -44,20 +47,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
+  app.get("/api/auth/runtime", (_req, res) => {
+    res.json(getAuthRuntimeSnapshot());
+  });
+
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const replitUserId = req.user.claims?.sub;
+      const replitUserId = req.user.claims?.sub ?? req.user.id;
       const user = await storage.getUser(replitUserId);
       const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      const role =
+        req.user.role ??
+        roleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      const orgId = req.user.orgId ?? roleAndOrg?.orgId ?? null;
+      let orgName: string | null = null;
+      if (orgId) {
+        const org = await storage.getOrganization(orgId);
+        orgName = org?.name ?? null;
+      }
+      const orgCount = await storage.countOrganizations();
+      let accessState: "ok" | "pending" | "no_org" | "no_access" = "ok";
+      if (req.user.isPending || req.user.isAllowed === false) {
+        accessState = "pending";
+      } else if (role !== "SUPER_ADMIN" && !orgId) {
+        accessState = "no_org";
+      } else if (role === "SUPER_ADMIN" && orgCount === 0) {
+        accessState = "no_org";
+      }
       res.json({
         ...user,
-        role: req.user.role ?? roleAndOrg?.role ?? (req.user.isOwner ? 'SUPER_ADMIN' : 'CASHIER'),
-        orgId: req.user.orgId ?? roleAndOrg?.orgId ?? null,
+        role,
+        orgId,
+        orgName,
+        isAllowed: req.user.isAllowed !== false,
+        isPending: !!req.user.isPending,
+        accessState,
+        needsOnboarding: role === "SUPER_ADMIN" && orgCount === 0,
+        runtime: getAuthRuntimeSnapshot(),
       });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  app.get("/api/auth/bootstrap", isAuthenticated, async (req: any, res) => {
+    try {
+      const replitUserId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      const role =
+        req.user.role ??
+        roleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      const orgCount = await storage.countOrganizations();
+      const orgs = role === "SUPER_ADMIN" ? await storage.listOrganizations() : [];
+      res.json({
+        role,
+        orgId: roleAndOrg?.orgId ?? null,
+        orgCount,
+        needsOnboarding: role === "SUPER_ADMIN" && orgCount === 0,
+        organizations: orgs,
+      });
+    } catch (error) {
+      console.error("Error fetching bootstrap:", error);
+      res.status(500).json({ message: "Failed to fetch bootstrap state" });
+    }
+  });
+
+  // Organization management
+  app.get("/api/orgs", isAuthenticated, async (req: any, res) => {
+    try {
+      const replitUserId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      const role =
+        req.user.role ??
+        roleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      if (role === "SUPER_ADMIN") {
+        return res.json(await storage.listOrganizations());
+      }
+      const orgId = roleAndOrg?.orgId;
+      if (!orgId) return res.json([]);
+      const org = await storage.getOrganization(orgId);
+      res.json(org ? [org] : []);
+    } catch (error) {
+      console.error("Error listing organizations:", error);
+      res.status(500).json({ message: "Failed to list organizations" });
+    }
+  });
+
+  app.post("/api/orgs", isAuthenticated, requireRole("SUPER_ADMIN"), async (req: any, res) => {
+    try {
+      const name = String(req.body?.name ?? "").trim();
+      if (!name) return res.status(400).json({ message: "Organization name is required" });
+      const org = await storage.createOrganization(name);
+      res.status(201).json(org);
+    } catch (error: any) {
+      console.error("Error creating organization:", error);
+      res.status(500).json({ message: error.message || "Failed to create organization" });
+    }
+  });
+
+  app.patch("/api/orgs/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const name = String(req.body?.name ?? "").trim();
+      if (!name) return res.status(400).json({ message: "Organization name is required" });
+      const replitUserId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      const role =
+        req.user.role ??
+        roleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      if (role === "SUPER_ADMIN") {
+        const org = await storage.updateOrganizationName(id, name);
+        return res.json(org);
+      }
+      if (role === "ADMIN" && roleAndOrg?.orgId === id) {
+        const org = await storage.updateOrganizationName(id, name);
+        return res.json(org);
+      }
+      return res.status(403).json({ message: "Access denied" });
+    } catch (error: any) {
+      console.error("Error updating organization:", error);
+      res.status(error.message === "Organization not found" ? 404 : 500).json({
+        message: error.message || "Failed to update organization",
+      });
     }
   });
 
@@ -1444,7 +1561,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get allowed users list (owner only)
   app.get("/api/admin/allowed-users", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const users = await storage.getAllowedUsers();
+      const replitUserId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(replitUserId);
+      const role =
+        req.user.role ??
+        roleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      const scopeOrgId = role === "SUPER_ADMIN" ? undefined : roleAndOrg?.orgId ?? undefined;
+      const users = await storage.getAllowedUsers(scopeOrgId);
       res.json(users);
     } catch (error) {
       console.error("Error fetching allowed users:", error);
@@ -1482,17 +1606,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
+    try {
+      const { replitUserId } = req.params;
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(actorId);
+      const actorRole =
+        (req.user.role ?? roleAndOrg?.role ?? "CASHIER") as Role;
+      const { role, orgId } = req.body ?? {};
+      if (role && !isRole(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      if (role && !canAssignRole(actorRole, role)) {
+        return res.status(403).json({ message: "You cannot assign this role" });
+      }
+      const allInScope = await storage.getAllowedUsers(
+        actorRole === "SUPER_ADMIN" ? undefined : roleAndOrg?.orgId ?? undefined,
+      );
+      const targetUser = allInScope.find((u) => u.replitUserId === replitUserId);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+      if (!canManageUser(actorRole, roleAndOrg?.orgId ?? null, targetUser.orgId ?? null)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateAllowedUserAccess(
+        replitUserId,
+        { role, orgId },
+        { role: actorRole, orgId: roleAndOrg?.orgId ?? null, replitUserId: actorId },
+      );
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating allowed user:", error);
+      res.status(400).json({ message: error.message || "Failed to update user" });
+    }
+  });
+
   // Approve user (owner only)
   app.post("/api/admin/approve/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
-      const approvedBy = req.user.claims?.sub || 'owner';
-      
-      await storage.approveUser(replitUserId, approvedBy);
+      const approvedBy = req.user.claims?.sub ?? req.user.id;
+      const { role, orgId } = req.body ?? {};
+      if (role && !isRole(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      const actorRoleAndOrg = await storage.getUserRoleAndOrg(approvedBy);
+      const actorRole = (actorRoleAndOrg?.role ?? "CASHIER") as Role;
+      if (role && !canAssignRole(actorRole, role)) {
+        return res.status(403).json({ message: "You cannot assign this role" });
+      }
+      const effectiveOrgId =
+        orgId !== undefined ? orgId : actorRole === "SUPER_ADMIN" ? orgId : actorRoleAndOrg?.orgId ?? null;
+      if (actorRole === "ADMIN" && effectiveOrgId !== actorRoleAndOrg?.orgId) {
+        return res.status(403).json({ message: "Cannot assign users outside your organization" });
+      }
+      await storage.approveUser(replitUserId, approvedBy, { role: role ?? "CASHIER", orgId: effectiveOrgId });
       res.json({ message: "User approved successfully" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error approving user:", error);
-      res.status(500).json({ message: "Failed to approve user" });
+      res.status(400).json({ message: error.message || "Failed to approve user" });
     }
   });
 

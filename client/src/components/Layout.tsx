@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { navItems } from './nav-items'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { OrgSwitcher } from './OrgSwitcher'
+import { useAuth } from '@/hooks/useAuth'
+import { Badge } from '@/components/ui/badge'
 
 interface LayoutProps {
   children: ReactNode
@@ -16,6 +19,13 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation()
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useNavigation()
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const { user, devAuthBypass } = useAuth()
+  const visibleNav = navItems.filter((item) => {
+    if (item.key === 'user-access') {
+      return user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+    }
+    return true
+  })
 
   useEffect(() => {
     if (isMobile) {
@@ -25,7 +35,7 @@ export function Layout({ children }: LayoutProps) {
 
   const NavLinks = () => (
     <nav className="space-y-2 px-3 py-4">
-      {navItems.map((item) => {
+      {visibleNav.map((item) => {
         const Icon = item.icon
         const isActive = location === item.href
         return (
@@ -116,8 +126,16 @@ export function Layout({ children }: LayoutProps) {
               <span className="text-xl font-semibold truncate">Midnight EPOS</span>
             </Link>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">Welcome back!</span>
+          <div className="flex items-center gap-3">
+            <OrgSwitcher />
+            {devAuthBypass && (
+              <Badge variant="secondary" className="hidden sm:inline-flex text-xs" data-testid="dev-auth-badge">
+                Dev bypass
+              </Badge>
+            )}
+            <span className="hidden md:inline text-sm text-muted-foreground truncate max-w-[120px]">
+              {user?.firstName || user?.email || "Welcome"}
+            </span>
             {!isMobile && (
               <a href="/api/logout" className="text-sm hover:underline" data-testid="header-logout">
                 Sign Out

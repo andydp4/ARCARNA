@@ -267,6 +267,20 @@ export default function Inventory() {
           </Card>
         </div>
 
+        <Alert className="mb-4">
+          <Package className="h-4 w-4" />
+          <AlertTitle>Need a new product?</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            Stock lives here; create catalog entries in Product Management.
+            <Link href="/products">
+              <Button size="sm" variant="secondary" className="min-h-[36px]" data-testid="link-create-product">
+                <Plus className="mr-1 h-4 w-4" />
+                Add product
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+
         {/* Search and Actions */}
         <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">

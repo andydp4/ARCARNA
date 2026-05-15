@@ -5,6 +5,7 @@
  * Exit 1 if any hook incorrectly activates.
  */
 import { assertPhase2dForceFailGuard } from "../server/workers/phase2dForceFailGuard";
+import { isDevAuthBypassEnabled } from "../server/authRuntime";
 
 async function main() {
   const nodeEnv = process.env.NODE_ENV;
@@ -43,6 +44,14 @@ async function main() {
       err instanceof Error ? err.message : String(err)
     );
     failed = true;
+  }
+
+  // 3. DEV_AUTH_BYPASS must never be active in production
+  if (isDevAuthBypassEnabled()) {
+    console.error("FAIL: DEV_AUTH_BYPASS is active in production");
+    failed = true;
+  } else {
+    console.log("OK: DEV_AUTH_BYPASS inactive in production");
   }
 
   if (failed) {

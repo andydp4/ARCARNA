@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { offlineStorage } from "./offline-storage";
+import { orgScopeHeaders } from "./orgScope";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -15,7 +16,10 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...orgScopeHeaders(),
+      ...(data ? { "Content-Type": "application/json" } : {}),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -35,6 +39,7 @@ export const getQueryFn: <T>(options: {
     try {
       const res = await fetch(endpoint, {
         credentials: "include",
+        headers: orgScopeHeaders(),
       });
 
       if (unauthorizedBehavior === "returnNull" && res.status === 401) {

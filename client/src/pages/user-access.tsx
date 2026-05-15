@@ -14,7 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Users, 
   UserCheck, 
-  UserX, 
   Shield, 
   Clock, 
   Trash2,
@@ -24,6 +23,17 @@ import {
   Crown
 } from "lucide-react";
 import { Link } from "wouter";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth";
+import { useOrg, type Organization } from "@/contexts/OrgContext";
+
+const ASSIGNABLE_ROLES = ["ADMIN", "MANAGER", "CASHIER"] as const;
 
 interface AllowedUser {
   id: string;
@@ -31,6 +41,8 @@ interface AllowedUser {
   email: string | null;
   name: string | null;
   isOwner: number;
+  role?: string | null;
+  orgId?: string | null;
   createdAt: string;
 }
 
@@ -48,9 +60,14 @@ interface ApprovalRequest {
 
 export default function UserAccess() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  const { organizations } = useOrg();
   const [confirmRemove, setConfirmRemove] = useState<AllowedUser | null>(null);
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
+  const [approveTarget, setApproveTarget] = useState<ApprovalRequest | null>(null);
+  const [approveRole, setApproveRole] = useState<string>("CASHIER");
+  const [approveOrgId, setApproveOrgId] = useState<string>("");
 
   const { data: allowedUsers = [], isLoading: loadingUsers } = useQuery<AllowedUser[]>({
     queryKey: ["/api/admin/allowed-users"],
@@ -60,9 +77,25 @@ export default function UserAccess() {
     queryKey: ["/api/admin/pending-approvals"],
   });
 
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ replitUserId, role }: { replitUserId: string; role: string }) => {
+      return apiRequest("PATCH", `/api/admin/allowed-users/${replitUserId}`, { role });
+    },
+    onSuccess: () => {
+      toast({ title: "Role updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const approveMutation = useMutation({
-    mutationFn: async (replitUserId: string) => {
-      return apiRequest("POST", `/api/admin/approve/${replitUserId}`);
+    mutationFn: async (payload: { replitUserId: string; role: string; orgId?: string }) => {
+      return apiRequest("POST", `/api/admin/approve/${payload.replitUserId}`, {
+        role: payload.role,
+        orgId: payload.orgId || undefined,
+      });
     },
     onSuccess: () => {
       toast({
@@ -71,6 +104,7 @@ export default function UserAccess() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+      setApproveTarget(null);
     },
     onError: (error: any) => {
       toast({
@@ -228,7 +262,15 @@ export default function UserAccess() {
                           <Separator />
                           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                             <Button
-                              onClick={() => approveMutation.mutate(request.replitUserId)}
+                              onClick={() => {
+                                setApproveTarget(request);
+                                setApproveRole("CASHIER");
+                                setApproveOrgId(
+                                  currentUser?.role === "SUPER_ADMIN"
+                                    ? organizations[0]?.id ?? ""
+                                    : currentUser?.orgId ?? "",
+                                );
+                              }}
                               disabled={approveMutation.isPending}
                               className="min-h-[44px] w-full bg-green-600 hover:bg-green-700 sm:w-auto sm:flex-1"
                               data-testid={`button-approve-${request.replitUserId}`}
@@ -307,12 +349,25 @@ export default function UserAccess() {
                             {user.isOwner === 1 ? (
                               <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500">
                                 <Crown className="h-3 w-3" />
-                                Owner
+                                SUPER_ADMIN
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="font-normal">
-                                Member
-                              </Badge>
+                              <Select
+                                value={user.role ?? "CASHIER"}
+                                onValueChange={(role) =>
+                                  updateRoleMutation.mutate({ replitUserId: user.replitUserId, role })
+                                }
+                                disabled={updateRoleMutation.isPending}
+                              >
+                                <SelectTrigger className="h-9 w-[130px]" data-testid={`role-select-${user.replitUserId}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ASSIGNABLE_ROLES.map((r) => (
+                                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
@@ -345,6 +400,68 @@ export default function UserAccess() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <Dialog open={!!approveTarget} onOpenChange={(open) => !open && setApproveTarget(null)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Approve access</DialogTitle>
+            <DialogDescription>
+              Assign a role{currentUser?.role === "SUPER_ADMIN" ? " and organization" : ""} for{" "}
+              <strong>{approveTarget?.name || approveTarget?.email}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={approveRole} onValueChange={setApproveRole}>
+                <SelectTrigger data-testid="approve-role-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSIGNABLE_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {currentUser?.role === "SUPER_ADMIN" && (
+              <div className="space-y-2">
+                <Label>Organization</Label>
+                <Select value={approveOrgId} onValueChange={setApproveOrgId}>
+                  <SelectTrigger data-testid="approve-org-select">
+                    <SelectValue placeholder="Select organization" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations.map((org: Organization) => (
+                      <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApproveTarget(null)}>Cancel</Button>
+            <Button
+              onClick={() =>
+                approveTarget &&
+                approveMutation.mutate({
+                  replitUserId: approveTarget.replitUserId,
+                  role: approveRole,
+                  orgId: currentUser?.role === "SUPER_ADMIN" ? approveOrgId : undefined,
+                })
+              }
+              disabled={
+                approveMutation.isPending ||
+                (currentUser?.role === "SUPER_ADMIN" && !approveOrgId)
+              }
+              data-testid="button-confirm-approve"
+            >
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!confirmRemove}
