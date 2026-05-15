@@ -25,7 +25,14 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { apiRequest } from "@/lib/queryClient";
 import { SpreadsheetImport } from "@/components/import/SpreadsheetImport";
-import { BUSINESS_TYPES, SETUP_WIZARD_STEPS } from "@shared/setup";
+import {
+  BUSINESS_TYPES,
+  SETUP_WIZARD_STEPS,
+  type BusinessType,
+  type OrgSetup,
+  type SetupWizardState,
+  type SetupWizardStep,
+} from "@shared/setup";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -45,7 +52,7 @@ export default function SetupWizard() {
   const { user } = useAuth();
   const [stepIndex, setStepIndex] = useState(0);
 
-  const { data: org, isLoading } = useQuery({
+  const { data: org, isLoading } = useQuery<OrgSetup>({
     queryKey: ["/api/org/setup"],
   });
 
@@ -59,7 +66,7 @@ export default function SetupWizard() {
     companyNumber: "",
     currency: "GBP",
     timezone: "Europe/London",
-    businessType: "retail",
+    businessType: "retail" as BusinessType,
     logoUrl: "",
     invoiceTemplate: "standard",
     invoicePrefix: "INV",
@@ -85,7 +92,7 @@ export default function SetupWizard() {
       companyNumber: org.companyNumber ?? f.companyNumber,
       currency: org.currency ?? f.currency,
       timezone: org.timezone ?? f.timezone,
-      businessType: org.businessType ?? f.businessType,
+      businessType: (org.businessType as BusinessType | null) ?? f.businessType,
       logoUrl: org.logoUrl ?? f.logoUrl,
       invoiceTemplate: org.invoiceTemplate ?? f.invoiceTemplate,
       invoicePrefix: org.invoicePrefix ?? f.invoicePrefix,
@@ -95,11 +102,13 @@ export default function SetupWizard() {
       receiptFooter: org.receiptFooter ?? f.receiptFooter,
       receiptStyle: org.receiptStyle ?? f.receiptStyle,
       accentStyle: org.accentStyle ?? f.accentStyle,
-      businessColors: (org.businessColors as typeof f.businessColors) ?? f.businessColors,
+      businessColors:
+        (org.businessColors as { primary: string; accent: string } | null) ?? f.businessColors,
     }));
-    const state = org.setupWizardState as { currentStep?: string } | null;
+    const state = org.setupWizardState as SetupWizardState | null;
     if (state?.currentStep) {
-      const idx = SETUP_WIZARD_STEPS.indexOf(state.currentStep as any);
+      const step = state.currentStep as SetupWizardStep;
+      const idx = SETUP_WIZARD_STEPS.indexOf(step);
       if (idx >= 0) setStepIndex(idx);
     }
   }, [org]);
@@ -214,12 +223,15 @@ export default function SetupWizard() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Business type</Label>
-                  <Select value={form.businessType} onValueChange={(v) => setForm({ ...form, businessType: v })}>
+                  <Select
+                    value={form.businessType}
+                    onValueChange={(v) => setForm({ ...form, businessType: v as BusinessType })}
+                  >
                     <SelectTrigger className="min-h-[44px]" data-testid="wizard-business-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {BUSINESS_TYPES.map((t) => (
+                      {BUSINESS_TYPES.map((t: BusinessType) => (
                         <SelectItem key={t} value={t}>{t}</SelectItem>
                       ))}
                     </SelectContent>

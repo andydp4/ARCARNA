@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { BUSINESS_TYPES } from "./schema";
+import { BUSINESS_TYPES, type Organization } from "./schema";
+
+export { BUSINESS_TYPES, type BusinessType } from "./schema";
+export type { Organization };
+
+/** Org profile + setup fields returned by GET/PATCH /api/org/setup */
+export type OrgSetup = Organization;
 
 export const SETUP_WIZARD_STEPS = [
   "business",
@@ -17,6 +23,8 @@ export const setupWizardStateSchema = z.object({
   completedSteps: z.array(z.string()).optional(),
   draft: z.record(z.unknown()).optional(),
 });
+
+export type SetupWizardState = z.infer<typeof setupWizardStateSchema>;
 
 export const orgProfilePatchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
