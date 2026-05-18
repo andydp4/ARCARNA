@@ -23,7 +23,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Trash2, PackageCheck } from "lucide-react";
+import { Link } from "wouter";
+import { Label } from "@/components/ui/label";
+import { DialogDescription } from "@/components/ui/dialog";
 
 type DraftListItem = {
   id: string;
@@ -42,6 +45,7 @@ type DraftDetail = DraftListItem & {
     productName: string;
     sku: string;
     quantity: number;
+    quantityReceived?: number;
     estimatedCost?: string | null;
     supplierSku?: string | null;
   }[];
@@ -51,6 +55,8 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "o
   draft: "secondary",
   reviewed: "outline",
   approved: "default",
+  partially_received: "outline",
+  fully_received: "default",
   cancelled: "destructive",
 };
 
@@ -69,6 +75,8 @@ export default function PurchaseDraftsPage() {
 
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editQty, setEditQty] = useState<Record<string, string>>({});
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
 
   const { data: drafts = [], isLoading } = useQuery<DraftListItem[]>({
     queryKey: ["/api/purchase-drafts"],
@@ -77,6 +85,56 @@ export default function PurchaseDraftsPage() {
   const { data: detail } = useQuery<DraftDetail>({
     queryKey: detailId ? [`/api/purchase-drafts/${detailId}`] : ["skip"],
     enabled: !!detailId,
+  });
+
+  const { data: receiving } = useQuery<{
+    items: {
+      id: string;
+      productId: string;
+      productName: string;
+      sku: string;
+      quantity: number;
+      alreadyReceived: number;
+      remaining: number;
+    }[];
+    receipts: { id: string; status: string; createdAt?: string }[];
+  }>({
+    queryKey: detailId ? [`/api/purchase-drafts/${detailId}/receiving`] : ["skip"],
+    enabled: !!detailId,
+  });
+
+  const createReceipt = useMutation({
+    mutationFn: async () => {
+      if (!detailId) return;
+      const items = (receiving?.items ?? [])
+        .map((item) => {
+          const q = receiveQty[item.id];
+          const received = parseInt(q?.received ?? "0", 10);
+          const damaged = parseInt(q?.damaged ?? "0", 10);
+          if (received <= 0) return null;
+          return {
+            purchaseDraftItemId: item.id,
+            productId: item.productId,
+            quantityReceived: received,
+            quantityDamaged: damaged || 0,
+          };
+        })
+        .filter(Boolean);
+      return apiRequest("POST", "/api/goods-receipts", {
+        purchaseDraftId: detailId,
+        items,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/goods-receipts"] });
+      if (detailId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}/receiving`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}`] });
+      }
+      setReceiveOpen(false);
+      toast({ title: "Pending receipt created — complete it in Receiving" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const statusMutation = useMutation({
@@ -130,7 +188,7 @@ export default function PurchaseDraftsPage() {
         <div>
           <h1 className="text-2xl font-bold">Purchase drafts</h1>
           <p className="text-muted-foreground text-sm">
-            Internal workflow only — not sent to suppliers, no payment, no stock receipt.
+            Internal workflow only — not sent to suppliers or paid. Stock increases only when a goods receipt is completed.
           </p>
         </div>
 
@@ -203,7 +261,17 @@ export default function PurchaseDraftsPage() {
                     <Download className="h-4 w-4 mr-1" />
                     CSV
                   </Button>
-                  {canMutate && detail.status !== "cancelled" && (
+                  {canMutate &&
+                    (detail.status === "approved" || detail.status === "partially_received") && (
+                      <Button size="sm" onClick={() => setReceiveOpen(true)}>
+                        <PackageCheck className="h-4 w-4 mr-1" />
+                        Receive goods
+                      </Button>
+                    )}
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href="/inventory">Receiving tab</Link>
+                  </Button>
+                  {canMutate && detail.status !== "cancelled" && detail.status !== "fully_received" && (
                     <Button
                       size="sm"
                       variant="destructive"
@@ -213,59 +281,141 @@ export default function PurchaseDraftsPage() {
                     </Button>
                   )}
                 </div>
+                {receiving && (
+                  <p className="text-sm text-muted-foreground">
+                    {receiving.receipts.filter((r) => r.status === "pending").length} pending receipt(s)
+                    ·{" "}
+                    {receiving.items.reduce((s, i) => s + i.alreadyReceived, 0)} /{" "}
+                    {receiving.items.reduce((s, i) => s + i.quantity, 0)} units received
+                  </p>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
                       <TableHead>SKU</TableHead>
-                      <TableHead>Qty</TableHead>
+                      <TableHead>Ordered</TableHead>
+                      <TableHead>Received</TableHead>
+                      <TableHead>Remaining</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {detail.items.map((line) => (
-                      <TableRow key={line.id}>
-                        <TableCell>{line.productName}</TableCell>
-                        <TableCell>{line.sku}</TableCell>
-                        <TableCell>
-                          {canMutate && detail.status === "draft" ? (
-                            <div className="flex gap-2 items-center">
-                              <Input
-                                className="w-20"
-                                value={editQty[line.id] ?? String(line.quantity)}
-                                onChange={(e) =>
-                                  setEditQty({ ...editQty, [line.id]: e.target.value })
-                                }
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  updateLine.mutate({
-                                    draftId: detail.id,
-                                    itemId: line.id,
-                                    quantity: parseInt(editQty[line.id] ?? String(line.quantity), 10),
-                                  })
-                                }
-                              >
-                                Save
-                              </Button>
-                            </div>
-                          ) : (
-                            line.quantity
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {detail.items.map((line) => {
+                      const rec = receiving?.items.find((i) => i.id === line.id);
+                      return (
+                        <TableRow key={line.id}>
+                          <TableCell>{line.productName}</TableCell>
+                          <TableCell>{line.sku}</TableCell>
+                          <TableCell>
+                            {canMutate && detail.status === "draft" ? (
+                              <div className="flex gap-2 items-center">
+                                <Input
+                                  className="w-20"
+                                  value={editQty[line.id] ?? String(line.quantity)}
+                                  onChange={(e) =>
+                                    setEditQty({ ...editQty, [line.id]: e.target.value })
+                                  }
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    updateLine.mutate({
+                                      draftId: detail.id,
+                                      itemId: line.id,
+                                      quantity: parseInt(
+                                        editQty[line.id] ?? String(line.quantity),
+                                        10,
+                                      ),
+                                    })
+                                  }
+                                >
+                                  Save
+                                </Button>
+                              </div>
+                            ) : (
+                              line.quantity
+                            )}
+                          </TableCell>
+                          <TableCell>{line.quantityReceived ?? rec?.alreadyReceived ?? 0}</TableCell>
+                          <TableCell>
+                            {rec?.remaining ?? line.quantity - (line.quantityReceived ?? 0)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
                 <p className="text-xs text-muted-foreground">
-                  Approving this draft does not send an order to the supplier or book stock in.
+                  Approving does not send to supplier. Complete a goods receipt to increase stock.
                 </p>
               </div>
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setDetailId(null)}>
                 Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Receive goods</DialogTitle>
+              <DialogDescription>
+                Creates a pending receipt. Stock increases only when the receipt is completed.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              {receiving?.items.map((item) => (
+                <div key={item.id} className="border rounded p-3 space-y-2">
+                  <p className="font-medium text-sm">
+                    {item.productName} — remaining {item.remaining}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Qty received</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={item.remaining}
+                        value={receiveQty[item.id]?.received ?? ""}
+                        onChange={(e) =>
+                          setReceiveQty({
+                            ...receiveQty,
+                            [item.id]: {
+                              received: e.target.value,
+                              damaged: receiveQty[item.id]?.damaged ?? "0",
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Damaged</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={receiveQty[item.id]?.damaged ?? "0"}
+                        onChange={(e) =>
+                          setReceiveQty({
+                            ...receiveQty,
+                            [item.id]: {
+                              received: receiveQty[item.id]?.received ?? "",
+                              damaged: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button onClick={() => createReceipt.mutate()} disabled={createReceipt.isPending}>
+                Create pending receipt
               </Button>
             </DialogFooter>
           </DialogContent>

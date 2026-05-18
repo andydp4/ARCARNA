@@ -18,7 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SmartStockTab } from "@/components/inventory/SmartStockTab";
 import { TransfersTab } from "@/components/inventory/TransfersTab";
 import { ReplenishmentTab } from "@/components/inventory/ReplenishmentTab";
-import { Sparkles, ArrowRightLeft, PackageSearch } from "lucide-react";
+import { ReceivingTab } from "@/components/inventory/ReceivingTab";
+import { Sparkles, ArrowRightLeft, PackageSearch, PackageCheck } from "lucide-react";
 
 interface Product {
   id: string;
@@ -203,7 +204,7 @@ export default function Inventory() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <Tabs defaultValue="stock" className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-2 sm:grid-cols-4 mb-6 min-h-[48px]">
+          <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-5 mb-6 min-h-[48px]">
             <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
             <TabsTrigger value="smart" data-testid="tab-smart-stock" className="gap-1">
               <Sparkles className="h-4 w-4" />
@@ -212,6 +213,10 @@ export default function Inventory() {
             <TabsTrigger value="replenishment" data-testid="tab-replenishment" className="gap-1">
               <PackageSearch className="h-4 w-4" />
               Replenishment
+            </TabsTrigger>
+            <TabsTrigger value="receiving" data-testid="tab-receiving" className="gap-1">
+              <PackageCheck className="h-4 w-4" />
+              Receiving
             </TabsTrigger>
             <TabsTrigger value="transfers" data-testid="tab-inventory-transfers" className="gap-1">
               <ArrowRightLeft className="h-4 w-4" />
@@ -228,6 +233,9 @@ export default function Inventory() {
               </Button>
             </div>
             <ReplenishmentTab />
+          </TabsContent>
+          <TabsContent value="receiving">
+            <ReceivingTab />
           </TabsContent>
           <TabsContent value="transfers">
             <TransfersTab />

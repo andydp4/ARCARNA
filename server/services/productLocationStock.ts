@@ -29,6 +29,9 @@ export type MovementMeta = {
   transferId?: string;
   fromLocationId?: string;
   toLocationId?: string;
+  goodsReceiptId?: string;
+  purchaseDraftId?: string;
+  supplierId?: string;
 };
 
 export class StockError extends Error {
@@ -270,6 +273,9 @@ export async function adjustProductLocationStock(
         transferId: args.movement.transferId,
         fromLocationId: args.movement.fromLocationId,
         toLocationId: args.movement.toLocationId,
+        goodsReceiptId: args.movement.goodsReceiptId,
+        purchaseDraftId: args.movement.purchaseDraftId,
+        supplierId: args.movement.supplierId,
       });
     }
 

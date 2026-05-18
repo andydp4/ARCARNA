@@ -41,6 +41,7 @@ import { registerInventoryTransferRoutes } from "./routes/inventoryTransfers";
 import { registerSupplierRoutes } from "./routes/suppliers";
 import { registerReplenishmentRoutes } from "./routes/replenishment";
 import { registerPurchaseDraftRoutes } from "./routes/purchaseDrafts";
+import { registerGoodsReceiptRoutes } from "./routes/goodsReceipts";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -371,6 +372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerSupplierRoutes(app);
   registerReplenishmentRoutes(app);
   registerPurchaseDraftRoutes(app);
+  registerGoodsReceiptRoutes(app);
 
   // Customers routes
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {

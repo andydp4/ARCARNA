@@ -31,6 +31,8 @@ const STATUS_FLOW: Record<PurchaseDraftStatus, PurchaseDraftStatus[]> = {
   draft: ["reviewed", "cancelled"],
   reviewed: ["approved", "cancelled", "draft"],
   approved: ["cancelled"],
+  partially_received: ["cancelled"],
+  fully_received: [],
   cancelled: [],
 };
 
@@ -62,6 +64,7 @@ async function loadDraftWithItems(orgId: string, id: string) {
       id: purchaseDraftItems.id,
       productId: purchaseDraftItems.productId,
       quantity: purchaseDraftItems.quantity,
+      quantityReceived: purchaseDraftItems.quantityReceived,
       estimatedCost: purchaseDraftItems.estimatedCost,
       supplierSku: purchaseDraftItems.supplierSku,
       productName: products.name,
@@ -179,8 +182,8 @@ export async function updatePurchaseDraft(
 ) {
   const existing = await loadDraftWithItems(orgId, id);
   if (!existing) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (existing.status === "cancelled") {
-    throw new PurchaseDraftError("INVALID_STATUS", "Cannot edit cancelled draft");
+  if (existing.status === "cancelled" || existing.status === "fully_received") {
+    throw new PurchaseDraftError("INVALID_STATUS", "Cannot edit purchase draft in this status");
   }
 
   await db
@@ -237,7 +240,12 @@ export async function addPurchaseDraftItem(
 ) {
   const draft = await loadDraftWithItems(orgId, draftId);
   if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (draft.status === "cancelled" || draft.status === "approved") {
+  if (
+    draft.status === "cancelled" ||
+    draft.status === "approved" ||
+    draft.status === "partially_received" ||
+    draft.status === "fully_received"
+  ) {
     throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
   }
 
@@ -273,7 +281,12 @@ export async function updatePurchaseDraftItem(
 ) {
   const draft = await loadDraftWithItems(orgId, draftId);
   if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (draft.status === "cancelled" || draft.status === "approved") {
+  if (
+    draft.status === "cancelled" ||
+    draft.status === "approved" ||
+    draft.status === "partially_received" ||
+    draft.status === "fully_received"
+  ) {
     throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
   }
 
@@ -311,7 +324,12 @@ export async function updatePurchaseDraftItem(
 export async function deletePurchaseDraftItem(orgId: string, draftId: string, itemId: string) {
   const draft = await loadDraftWithItems(orgId, draftId);
   if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (draft.status === "cancelled" || draft.status === "approved") {
+  if (
+    draft.status === "cancelled" ||
+    draft.status === "approved" ||
+    draft.status === "partially_received" ||
+    draft.status === "fully_received"
+  ) {
     throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
   }
 

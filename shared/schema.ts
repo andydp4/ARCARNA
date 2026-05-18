@@ -391,7 +391,14 @@ export const productSuppliers = pgTable(
 export type ProductSupplier = typeof productSuppliers.$inferSelect;
 export type InsertProductSupplier = typeof productSuppliers.$inferInsert;
 
-export const PURCHASE_DRAFT_STATUSES = ["draft", "reviewed", "approved", "cancelled"] as const;
+export const PURCHASE_DRAFT_STATUSES = [
+  "draft",
+  "reviewed",
+  "approved",
+  "partially_received",
+  "fully_received",
+  "cancelled",
+] as const;
 export type PurchaseDraftStatus = (typeof PURCHASE_DRAFT_STATUSES)[number];
 
 export const purchaseDrafts = pgTable(
@@ -433,6 +440,7 @@ export const purchaseDraftItems = pgTable(
       .references(() => products.id)
       .notNull(),
     quantity: integer("quantity").notNull(),
+    quantityReceived: integer("quantity_received").notNull().default(0),
     estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
     supplierSku: varchar("supplier_sku", { length: 100 }),
     createdAt: timestamp("created_at").defaultNow(),
@@ -442,6 +450,67 @@ export const purchaseDraftItems = pgTable(
 
 export type PurchaseDraftItem = typeof purchaseDraftItems.$inferSelect;
 export type InsertPurchaseDraftItem = typeof purchaseDraftItems.$inferInsert;
+
+export const GOODS_RECEIPT_STATUSES = ["pending", "completed", "voided"] as const;
+export type GoodsReceiptStatus = (typeof GOODS_RECEIPT_STATUSES)[number];
+
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    purchaseDraftId: uuid("purchase_draft_id")
+      .references(() => purchaseDrafts.id)
+      .notNull(),
+    locationId: uuid("location_id")
+      .references(() => locations.id)
+      .notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
+    supplierReference: varchar("supplier_reference", { length: 255 }),
+    deliveryNote: varchar("delivery_note", { length: 500 }),
+    receivedBy: varchar("received_by", { length: 255 }),
+    receivedAt: timestamp("received_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("goods_receipts_org_draft_idx").on(table.orgId, table.purchaseDraftId),
+    index("goods_receipts_org_status_idx").on(table.orgId, table.status),
+    index("goods_receipts_org_created_idx").on(table.orgId, table.createdAt),
+  ],
+);
+
+export type GoodsReceipt = typeof goodsReceipts.$inferSelect;
+export type InsertGoodsReceipt = typeof goodsReceipts.$inferInsert;
+
+export const goodsReceiptItems = pgTable(
+  "goods_receipt_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    goodsReceiptId: uuid("goods_receipt_id")
+      .references(() => goodsReceipts.id, { onDelete: "cascade" })
+      .notNull(),
+    purchaseDraftItemId: uuid("purchase_draft_item_id")
+      .references(() => purchaseDraftItems.id)
+      .notNull(),
+    productId: uuid("product_id")
+      .references(() => products.id)
+      .notNull(),
+    quantityReceived: integer("quantity_received").notNull(),
+    quantityDamaged: integer("quantity_damaged").notNull().default(0),
+    notes: varchar("notes", { length: 500 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("goods_receipt_items_receipt_idx").on(table.goodsReceiptId),
+    index("goods_receipt_items_draft_item_idx").on(table.purchaseDraftItemId),
+  ],
+);
+
+export type GoodsReceiptItem = typeof goodsReceiptItems.$inferSelect;
+export type InsertGoodsReceiptItem = typeof goodsReceiptItems.$inferInsert;
 
 export const REPLENISHMENT_ACTION_TYPES = [
   "NO_ACTION",
@@ -946,6 +1015,9 @@ export const inventoryMovements = pgTable("inventory_movements", {
   transferId: uuid("transfer_id"),
   fromLocationId: uuid("from_location_id").references(() => locations.id),
   toLocationId: uuid("to_location_id").references(() => locations.id),
+  goodsReceiptId: uuid("goods_receipt_id"),
+  purchaseDraftId: uuid("purchase_draft_id"),
+  supplierId: uuid("supplier_id"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("inventory_movements_sku_idx").on(table.sku),
