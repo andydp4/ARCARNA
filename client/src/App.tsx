@@ -33,6 +33,7 @@ import SetupBlocked from "@/pages/setup-blocked";
 import WorkerLogs from "@/pages/worker-logs";
 import RulesPage from "@/pages/rules";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
+import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -71,6 +72,7 @@ function Router() {
           <Route path="/worker-logs" component={WorkerLogs} />
           <Route path="/rules" component={RulesPage} />
           <Route path="/scheduled-reports" component={ScheduledReportsPage} />
+          <Route path="/purchase-drafts" component={PurchaseDraftsPage} />
         </Layout>
         </AccessGate>
       )}

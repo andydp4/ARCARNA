@@ -334,6 +334,123 @@ export const inventoryTransferItems = pgTable(
 export type InventoryTransferItem = typeof inventoryTransferItems.$inferSelect;
 export type InsertInventoryTransferItem = typeof inventoryTransferItems.$inferInsert;
 
+// Phase 11B: suppliers & replenishment
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    contactName: varchar("contact_name", { length: 255 }),
+    email: varchar("email", { length: 255 }),
+    phone: varchar("phone", { length: 50 }),
+    leadTimeDays: integer("lead_time_days").notNull().default(0),
+    minOrderValue: numeric("min_order_value", { precision: 12, scale: 2 }).default("0"),
+    minOrderQuantity: integer("min_order_quantity").default(0),
+    isActive: integer("is_active").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("suppliers_org_active_idx").on(table.orgId, table.isActive)],
+);
+
+export type Supplier = typeof suppliers.$inferSelect;
+export type InsertSupplier = typeof suppliers.$inferInsert;
+
+export const productSuppliers = pgTable(
+  "product_suppliers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    productId: uuid("product_id")
+      .references(() => products.id, { onDelete: "cascade" })
+      .notNull(),
+    supplierId: uuid("supplier_id")
+      .references(() => suppliers.id, { onDelete: "cascade" })
+      .notNull(),
+    supplierSku: varchar("supplier_sku", { length: 100 }),
+    costPrice: numeric("cost_price", { precision: 12, scale: 2 }),
+    packSize: integer("pack_size").notNull().default(1),
+    minOrderQty: integer("min_order_qty").default(1),
+    leadTimeOverrideDays: integer("lead_time_override_days"),
+    isPreferred: integer("is_preferred").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    unique("product_suppliers_org_product_supplier_uq").on(table.orgId, table.productId, table.supplierId),
+    index("product_suppliers_org_product_idx").on(table.orgId, table.productId),
+    index("product_suppliers_org_supplier_idx").on(table.orgId, table.supplierId),
+  ],
+);
+
+export type ProductSupplier = typeof productSuppliers.$inferSelect;
+export type InsertProductSupplier = typeof productSuppliers.$inferInsert;
+
+export const PURCHASE_DRAFT_STATUSES = ["draft", "reviewed", "approved", "cancelled"] as const;
+export type PurchaseDraftStatus = (typeof PURCHASE_DRAFT_STATUSES)[number];
+
+export const purchaseDrafts = pgTable(
+  "purchase_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    supplierId: uuid("supplier_id")
+      .references(() => suppliers.id)
+      .notNull(),
+    locationId: uuid("location_id")
+      .references(() => locations.id)
+      .notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("draft"),
+    sourceRecommendationJson: jsonb("source_recommendation_json"),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("purchase_drafts_org_status_idx").on(table.orgId, table.status)],
+);
+
+export type PurchaseDraft = typeof purchaseDrafts.$inferSelect;
+export type InsertPurchaseDraft = typeof purchaseDrafts.$inferInsert;
+
+export const purchaseDraftItems = pgTable(
+  "purchase_draft_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseDraftId: uuid("purchase_draft_id")
+      .references(() => purchaseDrafts.id, { onDelete: "cascade" })
+      .notNull(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    productId: uuid("product_id")
+      .references(() => products.id)
+      .notNull(),
+    quantity: integer("quantity").notNull(),
+    estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
+    supplierSku: varchar("supplier_sku", { length: 100 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("purchase_draft_items_draft_idx").on(table.purchaseDraftId)],
+);
+
+export type PurchaseDraftItem = typeof purchaseDraftItems.$inferSelect;
+export type InsertPurchaseDraftItem = typeof purchaseDraftItems.$inferInsert;
+
+export const REPLENISHMENT_ACTION_TYPES = [
+  "NO_ACTION",
+  "TRANSFER",
+  "BUY",
+  "TRANSFER_PLUS_BUY",
+] as const;
+export type ReplenishmentActionType = (typeof REPLENISHMENT_ACTION_TYPES)[number];
+
 // Order status enum
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];

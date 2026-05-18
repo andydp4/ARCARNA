@@ -48,6 +48,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
 import { ImportsHub } from '@/components/settings/ImportsHub'
+import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import {
   Settings2,
   Store,
@@ -212,6 +213,7 @@ export default function Settings() {
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="imports">Imports</TabsTrigger>
+            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -220,6 +222,10 @@ export default function Settings() {
 
           <TabsContent value="imports" className="space-y-6">
             <ImportsHub />
+          </TabsContent>
+
+          <TabsContent value="suppliers" className="space-y-6">
+            <SuppliersHub />
           </TabsContent>
 
           {/* General Settings */}

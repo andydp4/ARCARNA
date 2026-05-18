@@ -38,6 +38,9 @@ import { registerOperationalRoutes } from "./routes/operational";
 import { registerAutomationRoutes } from "./routes/automation";
 import { registerScheduledReportRoutes } from "./routes/scheduledReports";
 import { registerInventoryTransferRoutes } from "./routes/inventoryTransfers";
+import { registerSupplierRoutes } from "./routes/suppliers";
+import { registerReplenishmentRoutes } from "./routes/replenishment";
+import { registerPurchaseDraftRoutes } from "./routes/purchaseDrafts";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -365,6 +368,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAutomationRoutes(app);
   registerScheduledReportRoutes(app);
   registerInventoryTransferRoutes(app);
+  registerSupplierRoutes(app);
+  registerReplenishmentRoutes(app);
+  registerPurchaseDraftRoutes(app);
 
   // Customers routes
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
