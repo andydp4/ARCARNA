@@ -20,8 +20,12 @@
  */
 
 import { db } from "../db";
-import { products, inventoryMovements } from "../../shared/schema";
-import { eq, or } from "drizzle-orm";
+import { products, inventoryMovements, orders } from "../../shared/schema";
+import { eq } from "drizzle-orm";
+import {
+  adjustProductLocationStock,
+  resolveStockLocationId,
+} from "../services/productLocationStock";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -196,6 +200,25 @@ function extractQuantity(item: { qty?: number; quantity?: number }): number {
 export class InventoryWorker implements IWorker {
   name: WorkerName = 'InventoryWorker';
 
+  private async resolveOrderStockContext(
+    correlationId: string,
+    payload?: OrderPayload,
+  ): Promise<{ orgId: string; locationId: string } | null> {
+    const [order] = await db.select().from(orders).where(eq(orders.id, correlationId)).limit(1);
+    const orgId =
+      order?.orgId ??
+      (typeof (payload as { orgId?: string })?.orgId === "string"
+        ? (payload as { orgId: string }).orgId
+        : null);
+    if (!orgId) return null;
+    const locationId = await resolveStockLocationId({
+      orgId,
+      locationId: order?.locationId ?? null,
+      orderId: correlationId,
+    });
+    return { orgId, locationId };
+  }
+
   /**
    * Determines if this worker should process the given event type.
    * 
@@ -264,6 +287,16 @@ export class InventoryWorker implements IWorker {
   private async handleOrderCreated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
+    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
+    if (!stockCtx) {
+      return {
+        worker: this.name,
+        eventId: event.eventId,
+        correlationId: event.correlationId,
+        status: 'skipped',
+        summary: 'No org/location context for stock adjustment',
+      };
+    }
     
     // Idempotency check - prevent duplicate stock deductions
     const existingMovements = await db
@@ -296,35 +329,23 @@ export class InventoryWorker implements IWorker {
       const product = await resolveProduct(identifier);
       if (!product) continue;
 
-      // Calculate new stock level
-      const previousStock = product.stock;
-      const newStock = Math.max(0, previousStock - qty);
-
-      // Atomic stock update
-      await db
-        .update(products)
-        .set({ 
-          stock: newStock,
-          updatedAt: new Date() 
-        })
-        .where(eq(products.id, product.id));
-
-      // Record movement for audit trail
-      await db.insert(inventoryMovements).values({
-        sku: product.productId,
+      const result = await adjustProductLocationStock({
+        orgId: stockCtx.orgId,
         productId: product.id,
+        locationId: stockCtx.locationId,
         delta: -qty,
-        reason: 'sale',
-        correlationId: orderId,
-        eventId: event.eventId,
-        previousStock,
-        newStock,
+        allowNegative: false,
+        movement: {
+          reason: "sale",
+          correlationId: orderId,
+          eventId: event.eventId,
+          sku: product.productId,
+        },
       });
 
       updatedProducts++;
 
-      // Track low stock warnings
-      if (newStock <= product.stockLimit) {
+      if (result.newStock <= product.stockLimit) {
         lowStockWarnings.push(product.name);
       }
     }
@@ -351,6 +372,16 @@ export class InventoryWorker implements IWorker {
   private async handleOrderUpdated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
+    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
+    if (!stockCtx) {
+      return {
+        worker: this.name,
+        eventId: event.eventId,
+        correlationId: event.correlationId,
+        status: 'skipped',
+        summary: 'No org/location context for stock adjustment',
+      };
+    }
     
     let adjustedProducts = 0;
 
@@ -376,28 +407,18 @@ export class InventoryWorker implements IWorker {
       const delta = previousQty - qty;
       if (delta === 0) continue;
 
-      const previousStock = product.stock;
-      const newStock = Math.max(0, previousStock + delta);
-
-      // Apply stock adjustment
-      await db
-        .update(products)
-        .set({ 
-          stock: newStock,
-          updatedAt: new Date() 
-        })
-        .where(eq(products.id, product.id));
-
-      // Record adjustment movement
-      await db.insert(inventoryMovements).values({
-        sku: product.productId,
+      await adjustProductLocationStock({
+        orgId: stockCtx.orgId,
         productId: product.id,
+        locationId: stockCtx.locationId,
         delta,
-        reason: 'order_update',
-        correlationId: orderId,
-        eventId: event.eventId,
-        previousStock,
-        newStock,
+        allowNegative: false,
+        movement: {
+          reason: "order_update",
+          correlationId: orderId,
+          eventId: event.eventId,
+          sku: product.productId,
+        },
       });
 
       adjustedProducts++;
@@ -422,6 +443,16 @@ export class InventoryWorker implements IWorker {
   private async handleStockReturn(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const lines = payload.lines || [];
     const orderId = payload.orderId || event.correlationId;
+    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
+    if (!stockCtx) {
+      return {
+        worker: this.name,
+        eventId: event.eventId,
+        correlationId: event.correlationId,
+        status: 'skipped',
+        summary: 'No org/location context for stock return',
+      };
+    }
     
     // Idempotency check
     const existingMovements = await db
@@ -450,28 +481,17 @@ export class InventoryWorker implements IWorker {
       const product = await resolveProduct(identifier);
       if (!product) continue;
 
-      const previousStock = product.stock;
-      const newStock = previousStock + qty;
-
-      // Return stock to inventory
-      await db
-        .update(products)
-        .set({ 
-          stock: newStock,
-          updatedAt: new Date() 
-        })
-        .where(eq(products.id, product.id));
-
-      // Record return movement
-      await db.insert(inventoryMovements).values({
-        sku: product.productId,
+      await adjustProductLocationStock({
+        orgId: stockCtx.orgId,
         productId: product.id,
+        locationId: stockCtx.locationId,
         delta: qty,
-        reason: event.eventType === 'RefundIssued' ? 'refund' : 'cancellation',
-        correlationId: orderId,
-        eventId: event.eventId,
-        previousStock,
-        newStock,
+        movement: {
+          reason: event.eventType === "RefundIssued" ? "refund" : "cancellation",
+          correlationId: orderId,
+          eventId: event.eventId,
+          sku: product.productId,
+        },
       });
 
       returnedProducts++;

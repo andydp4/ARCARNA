@@ -5,6 +5,7 @@
 import { db } from "../db";
 import {
   products,
+  productLocationStock,
   orders,
   orderItems,
   customers,
@@ -86,6 +87,16 @@ export async function getSmartStock(
 
   const orgProducts = await db.select().from(products).where(eq(products.orgId, orgId));
 
+  const stockTotals = await db
+    .select({
+      productId: productLocationStock.productId,
+      total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+    })
+    .from(productLocationStock)
+    .where(eq(productLocationStock.orgId, orgId))
+    .groupBy(productLocationStock.productId);
+  const stockMap = new Map(stockTotals.map((r) => [r.productId, Number(r.total) || 0]));
+
   const salesRows = await db
     .select({
       productUuid: orderItems.productId,
@@ -106,7 +117,7 @@ export async function getSmartStock(
   const soldMap = new Map(salesRows.map((r) => [r.productUuid, Number(r.unitsSold) || 0]));
 
   const items: SmartStockItem[] = orgProducts.map((p) => {
-    const stock = p.stock ?? 0;
+    const stock = stockMap.get(p.id) ?? 0;
     const stockLimit = p.stockLimit ?? 10;
     const unitsSoldWindow = soldMap.get(p.id) ?? 0;
     const velocityPerDay = windowDays > 0 ? unitsSoldWindow / windowDays : 0;

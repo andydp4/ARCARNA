@@ -12,6 +12,7 @@ import {
   date,
   primaryKey,
   text,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -243,6 +244,95 @@ export const insertProductSchema = createInsertSchema(products).omit({
   stock: true
 });
 export type InsertProductData = z.infer<typeof insertProductSchema>;
+
+// Per-location stock (authoritative for inventory math)
+export const productLocationStock = pgTable(
+  "product_location_stock",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    productId: uuid("product_id")
+      .references(() => products.id, { onDelete: "cascade" })
+      .notNull(),
+    locationId: uuid("location_id")
+      .references(() => locations.id, { onDelete: "cascade" })
+      .notNull(),
+    stock: integer("stock").notNull().default(0),
+    stockLimit: integer("stock_limit").notNull().default(10),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    unique("product_location_stock_org_product_location_uq").on(
+      table.orgId,
+      table.productId,
+      table.locationId,
+    ),
+    index("product_location_stock_org_location_idx").on(table.orgId, table.locationId),
+    index("product_location_stock_product_idx").on(table.productId),
+  ],
+);
+
+export type ProductLocationStock = typeof productLocationStock.$inferSelect;
+export type InsertProductLocationStock = typeof productLocationStock.$inferInsert;
+
+export const TRANSFER_STATUSES = [
+  "draft",
+  "requested",
+  "in_transit",
+  "completed",
+  "cancelled",
+] as const;
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
+
+export const inventoryTransfers = pgTable(
+  "inventory_transfers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    fromLocationId: uuid("from_location_id")
+      .references(() => locations.id)
+      .notNull(),
+    toLocationId: uuid("to_location_id")
+      .references(() => locations.id)
+      .notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("draft"),
+    notes: varchar("notes", { length: 2000 }),
+    correlationId: varchar("correlation_id", { length: 100 }),
+    requestedBy: varchar("requested_by", { length: 255 }),
+    completedAt: timestamp("completed_at"),
+    cancelledAt: timestamp("cancelled_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("inventory_transfers_org_status_idx").on(table.orgId, table.status)],
+);
+
+export type InventoryTransfer = typeof inventoryTransfers.$inferSelect;
+export type InsertInventoryTransfer = typeof inventoryTransfers.$inferInsert;
+
+export const inventoryTransferItems = pgTable(
+  "inventory_transfer_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    transferId: uuid("transfer_id")
+      .references(() => inventoryTransfers.id, { onDelete: "cascade" })
+      .notNull(),
+    productId: uuid("product_id")
+      .references(() => products.id)
+      .notNull(),
+    quantity: integer("quantity").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("inventory_transfer_items_transfer_idx").on(table.transferId)],
+);
+
+export type InventoryTransferItem = typeof inventoryTransferItems.$inferSelect;
+export type InsertInventoryTransferItem = typeof inventoryTransferItems.$inferInsert;
 
 // Order status enum
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
@@ -735,6 +825,10 @@ export const inventoryMovements = pgTable("inventory_movements", {
   eventId: varchar("event_id", { length: 36 }).notNull(),
   previousStock: integer("previous_stock"),
   newStock: integer("new_stock"),
+  locationId: uuid("location_id").references(() => locations.id),
+  transferId: uuid("transfer_id"),
+  fromLocationId: uuid("from_location_id").references(() => locations.id),
+  toLocationId: uuid("to_location_id").references(() => locations.id),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("inventory_movements_sku_idx").on(table.sku),

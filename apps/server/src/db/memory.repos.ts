@@ -1,4 +1,4 @@
-import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId } from '@midnight/domain'
+import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, StockContext } from '@midnight/domain'
 
 const state = {
   orders: new Map<string, Order>(),
@@ -13,14 +13,14 @@ export const OrdersRepoMemory: OrdersRepo = {
 }
 
 export const ProductsRepoMemory: ProductsRepo = {
-  async checkStock(p: ProductId): Promise<number> {
+  async checkStock(p: ProductId, _ctx?: StockContext): Promise<number> {
     return state.stock.get(p as any) ?? 100
   },
-  async reserveStock(p: ProductId, qty: number){
+  async reserveStock(p: ProductId, qty: number, _ctx: StockContext){
     const cur = state.stock.get(p as any) ?? 100
     state.stock.set(p as any, cur - qty)
   },
-  async releaseStock(p: ProductId, qty: number){
+  async releaseStock(p: ProductId, qty: number, _ctx: StockContext){
     const cur = state.stock.get(p as any) ?? 100
     state.stock.set(p as any, cur + qty)
   },

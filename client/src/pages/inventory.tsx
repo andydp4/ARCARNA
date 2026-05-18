@@ -16,7 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SmartStockTab } from "@/components/inventory/SmartStockTab";
-import { Sparkles } from "lucide-react";
+import { TransfersTab } from "@/components/inventory/TransfersTab";
+import { Sparkles, ArrowRightLeft } from "lucide-react";
 
 interface Product {
   id: string;
@@ -201,15 +202,22 @@ export default function Inventory() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <Tabs defaultValue="stock" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6 min-h-[48px]">
+          <TabsList className="grid w-full max-w-lg grid-cols-3 mb-6 min-h-[48px]">
             <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
             <TabsTrigger value="smart" data-testid="tab-smart-stock" className="gap-1">
               <Sparkles className="h-4 w-4" />
               Smart Stock
             </TabsTrigger>
+            <TabsTrigger value="transfers" data-testid="tab-inventory-transfers" className="gap-1">
+              <ArrowRightLeft className="h-4 w-4" />
+              Transfers
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="smart">
             <SmartStockTab />
+          </TabsContent>
+          <TabsContent value="transfers">
+            <TransfersTab />
           </TabsContent>
           <TabsContent value="stock">
         {/* Alerts Section */}

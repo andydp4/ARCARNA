@@ -26,6 +26,7 @@ import {
   analyticsDaily,
   analyticsMonthly,
   products,
+  productLocationStock,
   orders,
   orderItems,
   locations,
@@ -349,8 +350,28 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Stock cannot be negative');
     }
 
-    const [product] = await db.insert(products).values(data).returning()
-    return product
+    const [product] = await db.insert(products).values(data).returning();
+    if (product.orgId) {
+      const { ensureProductLocationStockRow, syncLegacyProductStockPlaceholder, resolveProductLocationForBackfill } =
+        await import("./services/productLocationStock");
+      const resolved = await resolveProductLocationForBackfill(product.orgId, {
+        id: product.id,
+        locationId: product.locationId,
+        stock: product.stock,
+        stockLimit: product.stockLimit,
+      });
+      if (!("skip" in resolved)) {
+        await ensureProductLocationStockRow(
+          product.orgId,
+          product.id,
+          resolved.locationId,
+          product.stock ?? 0,
+          product.stockLimit ?? 10,
+        );
+        await syncLegacyProductStockPlaceholder(product.id);
+      }
+    }
+    return product;
   }
 
   async updateProduct(id: string, data: any): Promise<Product> {
@@ -406,34 +427,97 @@ export class DatabaseStorage implements IStorage {
             skipped++;
             continue;
           }
-          await db
+          const updatedRows = await db
             .update(products)
             .set({
               name: productData.name,
               barcode: productData.barcode ?? existingProduct.barcode,
               defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
               costPrice: productData.costPrice ?? productData.tax ?? existingProduct.costPrice,
-              stock: productData.stock ?? existingProduct.stock,
+              stock: 0,
               stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
               locationId: productData.locationId ?? existingProduct.locationId,
               updatedAt: new Date(),
             })
-            .where(eq(products.id, existingProduct.id));
+            .where(eq(products.id, existingProduct.id))
+            .returning();
+          const updatedProduct = updatedRows[0];
+          if (orgId && updatedProduct) {
+            const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
+              await import("./services/productLocationStock");
+            const resolved = await resolveProductLocationForBackfill(orgId, {
+              id: updatedProduct.id,
+              locationId: updatedProduct.locationId,
+              stock: productData.stock ?? existingProduct.stock,
+              stockLimit: updatedProduct.stockLimit,
+            });
+            if (!("skip" in resolved)) {
+              await ensureProductLocationStockRow(orgId, updatedProduct.id, resolved.locationId, 0, updatedProduct.stockLimit ?? 10);
+              if (productData.stock !== undefined) {
+                await adjustProductLocationStock({
+                  orgId,
+                  productId: updatedProduct.id,
+                  locationId: resolved.locationId,
+                  setStock: Number(productData.stock),
+                  movement: {
+                    reason: "adjustment",
+                    correlationId: `import-${updatedProduct.id}`,
+                    eventId: `import-${Date.now()}`,
+                    sku: updatedProduct.productId,
+                  },
+                });
+              }
+            }
+          }
           imported++;
         } else {
-          await db.insert(products).values({
-            productId: sku || `PRD-${Date.now()}-${imported}`,
-            name: productData.name,
-            barcode: productData.barcode,
-            defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-            costPrice: productData.costPrice ?? productData.tax ?? 0,
-            stock: productData.stock ?? 0,
-            stockLimit: productData.stockLimit ?? 100,
-            locationId: productData.locationId,
-            orgId: orgId ?? undefined,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
+          const [created] = await db
+            .insert(products)
+            .values({
+              productId: sku || `PRD-${Date.now()}-${imported}`,
+              name: productData.name,
+              barcode: productData.barcode,
+              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
+              costPrice: productData.costPrice ?? productData.tax ?? 0,
+              stock: 0,
+              stockLimit: productData.stockLimit ?? 100,
+              locationId: productData.locationId,
+              orgId: orgId ?? undefined,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+          if (orgId && created) {
+            const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
+              await import("./services/productLocationStock");
+            const resolved = await resolveProductLocationForBackfill(orgId, {
+              id: created.id,
+              locationId: created.locationId,
+              stock: productData.stock ?? 0,
+              stockLimit: created.stockLimit,
+            });
+            if (!("skip" in resolved)) {
+              await ensureProductLocationStockRow(
+                orgId,
+                created.id,
+                resolved.locationId,
+                Number(productData.stock ?? 0),
+                created.stockLimit ?? 10,
+              );
+              await adjustProductLocationStock({
+                orgId,
+                productId: created.id,
+                locationId: resolved.locationId,
+                setStock: Number(productData.stock ?? 0),
+                movement: {
+                  reason: "adjustment",
+                  correlationId: `import-${created.id}`,
+                  eventId: `import-${Date.now()}`,
+                  sku: created.productId,
+                },
+              });
+            }
+          }
           imported++;
         }
       } catch (error: any) {
@@ -655,15 +739,7 @@ export class DatabaseStorage implements IStorage {
           );
         }
 
-        // Update product stock
-        for (const item of orderData.items) {
-          await tx
-            .update(products)
-            .set({
-              stock: sql`stock - ${item.quantity}`,
-            })
-            .where(eq(products.id, item.product_id));
-        }
+        // Stock: event-driven InventoryWorker (product_location_stock authoritative)
       }
 
       // Update customer loyalty points if applicable
@@ -682,10 +758,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProductsWithStock(orgId?: string | null): Promise<Product[]> {
-    if (orgId) {
-      return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
-    }
-    return await db.select().from(products).orderBy(products.name);
+    const { productLocationStock } = await import("@shared/schema");
+    const base = orgId
+      ? await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name)
+      : await db.select().from(products).orderBy(products.name);
+
+    if (!orgId) return base;
+
+    const totals = await db
+      .select({
+        productId: productLocationStock.productId,
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+      })
+      .from(productLocationStock)
+      .where(eq(productLocationStock.orgId, orgId))
+      .groupBy(productLocationStock.productId);
+
+    const stockMap = new Map(totals.map((t) => [t.productId, Number(t.total) || 0]));
+
+    return base.map((p) => ({
+      ...p,
+      stock: stockMap.has(p.id) ? stockMap.get(p.id)! : 0,
+    }));
   }
 
   async updateProductStock(
@@ -693,42 +787,65 @@ export class DatabaseStorage implements IStorage {
     adjustment: number, 
     type: 'add' | 'set',
     userId: string,
-    orgId?: string | null
+    orgId?: string | null,
+    locationId?: string | null,
   ): Promise<Product> {
-    return await db.transaction(async (tx) => {
-      const cond = orgId ? and(eq(products.id, productId), eq(products.orgId, orgId)) : eq(products.id, productId);
-      const [currentProduct] = await tx.select().from(products).where(cond);
+    const { adjustProductLocationStock, resolveStockLocationId } = await import(
+      "./services/productLocationStock",
+    );
 
-      if (!currentProduct) throw new Error('Product not found');
+    if (!orgId) throw new Error("Org context required for stock adjustment");
 
-      // Calculate new stock
-      const newStock = type === 'set' 
-        ? adjustment 
-        : (currentProduct.stock ?? 0) + adjustment;
+    const locId = locationId
+      ? locationId
+      : await resolveStockLocationId({ orgId, userId });
 
-      // Validate stock
-      if (newStock < 0) {
-        throw new Error('Stock cannot be negative');
-      }
+    const cond = and(eq(products.id, productId), eq(products.orgId, orgId));
+    const [currentProduct] = await db.select().from(products).where(cond);
+    if (!currentProduct) throw new Error("Product not found");
 
-      const [updatedProduct] = await tx
-        .update(products)
-        .set({ stock: newStock, updatedAt: new Date() })
-        .where(cond)
-        .returning();
+    const [row] = await db
+      .select()
+      .from(productLocationStock)
+      .where(
+        and(
+          eq(productLocationStock.orgId, orgId),
+          eq(productLocationStock.productId, productId),
+          eq(productLocationStock.locationId, locId),
+        ),
+      )
+      .limit(1);
 
-      // Log audit entry (optional - you can add audit logging here)
-      // await tx.insert(auditLogs).values({
-      //   userId,
-      //   action: 'UPDATE_STOCK',
-      //   entityType: 'product',
-      //   entityId: productId,
-      //   oldValues: { stock: currentProduct.stock },
-      //   newValues: { stock: newStock },
-      // });
+    const current = row?.stock ?? 0;
+    const target = type === "set" ? adjustment : current + adjustment;
 
-      return updatedProduct;
+    await adjustProductLocationStock({
+      orgId,
+      productId,
+      locationId: locId,
+      setStock: type === "set" ? target : undefined,
+      delta: type === "add" ? adjustment : target - current,
+      allowNegative: false,
+      movement: {
+        reason: "adjustment",
+        correlationId: `manual-${productId}`,
+        eventId: `manual-${Date.now()}`,
+        sku: currentProduct.productId,
+      },
     });
+
+    const [updatedProduct] = await db.select().from(products).where(cond);
+    const totals = await db
+      .select({
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+      })
+      .from(productLocationStock)
+      .where(and(eq(productLocationStock.orgId, orgId), eq(productLocationStock.productId, productId)));
+
+    return {
+      ...updatedProduct!,
+      stock: Number(totals[0]?.total) || 0,
+    };
   }
 
   async getReportData(fromDate: Date, toDate: Date, orgId?: string | null): Promise<any> {

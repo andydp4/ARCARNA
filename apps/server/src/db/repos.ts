@@ -1,7 +1,7 @@
 import { eq, and, sql } from 'drizzle-orm'
 import { db } from './index'
 import * as s from './schema'
-import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer } from '@midnight/domain'
+import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
 
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
@@ -89,18 +89,74 @@ export const OrdersRepoDrizzle: OrdersRepo = {
   }
 }
 
+async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgId: string; locationId: string }> {
+  const { resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
+  let orgId = ctx?.orgId
+  if (!orgId && ctx?.orderId) {
+    const [order] = await db.select({ org_id: s.orders.org_id, location_id: s.orders.location_id }).from(s.orders).where(eq(s.orders.id, ctx.orderId as any)).limit(1)
+    orgId = order?.org_id ?? undefined
+    if (!ctx?.locationId && order?.location_id) ctx = { ...ctx!, locationId: order.location_id }
+  }
+  if (!orgId) {
+    const [product] = await db.select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    orgId = product?.org_id ?? undefined
+  }
+  if (!orgId) throw new Error('Stock context requires orgId')
+  const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
+  return { orgId, locationId }
+}
+
 export const ProductsRepoDrizzle: ProductsRepo = {
-  async checkStock(p: ProductId): Promise<number> {
-    const [product] = await db.select({ stock: s.products.stock }).from(s.products).where(eq(s.products.id, p as any))
-    return product?.stock || 0
+  async checkStock(p: ProductId, ctx?: StockContext): Promise<number> {
+    const { getProductStockTotal, getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
+    let orgId = ctx?.orgId
+    if (!orgId) {
+      const [product] = await db.select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+      orgId = product?.org_id ?? undefined
+    }
+    if (!orgId) return 0
+    try {
+      const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
+      const row = await getProductLocationStock(orgId, p as string, locationId)
+      if (row) return row.stock ?? 0
+    } catch {
+      // fall through to total
+    }
+    return getProductStockTotal(orgId, p as string)
   },
-  async reserveStock(p: ProductId, qty: number) {
-    // Decrement stock atomically
-    await db.execute(sql`UPDATE products SET stock = stock - ${qty} WHERE id = ${p as any}`)
+  async reserveStock(p: ProductId, qty: number, ctx: StockContext) {
+    const { adjustProductLocationStock } = await import('../../../../server/services/productLocationStock')
+    const { orgId, locationId } = await resolveStockCtx(p, ctx)
+    const [product] = await db.select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    await adjustProductLocationStock({
+      orgId,
+      productId: p as string,
+      locationId,
+      delta: -qty,
+      movement: {
+        reason: 'sale',
+        correlationId: ctx.orderId || p as string,
+        eventId: `reserve-${Date.now()}`,
+        sku: product?.product_id || p as string,
+      },
+    })
   },
-  async releaseStock(p: ProductId, qty: number) {
-    // Increment stock atomically (restore stock)
-    await db.execute(sql`UPDATE products SET stock = stock + ${qty} WHERE id = ${p as any}`)
+  async releaseStock(p: ProductId, qty: number, ctx: StockContext) {
+    const { adjustProductLocationStock } = await import('../../../../server/services/productLocationStock')
+    const { orgId, locationId } = await resolveStockCtx(p, ctx)
+    const [product] = await db.select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    await adjustProductLocationStock({
+      orgId,
+      productId: p as string,
+      locationId,
+      delta: qty,
+      movement: {
+        reason: 'adjustment',
+        correlationId: ctx.orderId || p as string,
+        eventId: `release-${Date.now()}`,
+        sku: product?.product_id || p as string,
+      },
+    })
   },
   async create(product: Product): Promise<Product> {
     const p = product as any

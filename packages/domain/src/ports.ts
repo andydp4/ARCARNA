@@ -4,10 +4,17 @@ export interface OrdersRepo {
   save(o: Order): Promise<void>
   findById(id: OrderId): Promise<Order|null> 
 }
+export type StockContext = {
+  orgId: string
+  locationId?: string | null
+  orderId?: string | null
+  userId?: string | null
+}
+
 export interface ProductsRepo { 
-  checkStock(p: ProductId): Promise<number>
-  reserveStock(p: ProductId, qty: number): Promise<void>
-  releaseStock(p: ProductId, qty: number): Promise<void>
+  checkStock(p: ProductId, ctx?: StockContext): Promise<number>
+  reserveStock(p: ProductId, qty: number, ctx: StockContext): Promise<void>
+  releaseStock(p: ProductId, qty: number, ctx: StockContext): Promise<void>
   create(product: Product): Promise<Product>
   update(id: ProductId, product: Partial<Product>, orgId?: string | null): Promise<Product>
   delete(id: ProductId, orgId?: string | null): Promise<void>

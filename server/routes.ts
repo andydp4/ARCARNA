@@ -37,6 +37,7 @@ import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { registerOperationalRoutes } from "./routes/operational";
 import { registerAutomationRoutes } from "./routes/automation";
 import { registerScheduledReportRoutes } from "./routes/scheduledReports";
+import { registerInventoryTransferRoutes } from "./routes/inventoryTransfers";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -363,6 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerOperationalRoutes(app);
   registerAutomationRoutes(app);
   registerScheduledReportRoutes(app);
+  registerInventoryTransferRoutes(app);
 
   // Customers routes
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
@@ -647,7 +649,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items } = await import('../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
@@ -657,7 +659,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { engine } = await import('../apps/server/src/engine.wiring');
       const { publishEvent } = await import('./eventBus');
-      const result = await engine.updateOrder(req.params.id, req.body);
+      const result = await engine.updateOrder(req.params.id, {
+        ...req.body,
+        orgId: ctx?.orgId ?? undefined,
+        locationId: ctx?.locationId ?? req.body.locationId,
+      });
       
       // Fetch updated order details
       const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
@@ -693,30 +699,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items, products } = await import('../apps/server/src/db/schema');
-      const { eq, and, sql } = await import('drizzle-orm');
+      const { eq, and } = await import('drizzle-orm');
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       
+      const [order] = await db.select().from(orders).where(orderCond);
+      if (!order) throw new Error('Order not found');
+      const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
+
       await db.transaction(async (tx) => {
-        const [order] = await tx.select().from(orders).where(orderCond);
-        if (!order) throw new Error('Order not found');
-        const items = await tx.select().from(order_items).where(eq(order_items.order_id, req.params.id));
-        
-        // Release stock for each item
-        for (const item of items) {
-          if (item.product_id) {
-            await tx.update(products)
-              .set({ stock: sql`stock + ${item.quantity}` })
-              .where(eq(products.id, item.product_id));
-          }
-        }
-        
         await tx.delete(order_items).where(eq(order_items.order_id, req.params.id));
         const [deleted] = await tx.delete(orders).where(orderCond).returning();
         if (!deleted) throw new Error('Order not found');
       });
+
+      if (order.org_id && items.length > 0) {
+        const { adjustProductLocationStock, resolveStockLocationId } = await import(
+          "./services/productLocationStock",
+        );
+        const locationId = await resolveStockLocationId({
+          orgId: order.org_id,
+          locationId: order.location_id,
+          orderId: req.params.id,
+        });
+        for (const item of items) {
+          if (!item.product_id) continue;
+          const [p] = await db
+            .select({ productId: products.product_id })
+            .from(products)
+            .where(eq(products.id, item.product_id))
+            .limit(1);
+          await adjustProductLocationStock({
+            orgId: order.org_id,
+            productId: item.product_id,
+            locationId,
+            delta: item.quantity,
+            movement: {
+              reason: "cancellation",
+              correlationId: req.params.id,
+              eventId: `delete-order-${req.params.id}`,
+              sku: p?.productId || item.product_id,
+            },
+          });
+        }
+      }
       
       res.json({ message: "Order deleted successfully" });
     } catch (error: any) {
@@ -741,11 +769,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/inventory/:productId", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { productId } = req.params;
-      const { adjustment, type } = req.body;
+      const { adjustment, type, locationId } = req.body;
       const userId = req.user.claims.sub;
-      const product = await storage.updateProductStock(productId, adjustment, type, userId, ctx?.orgId ?? undefined);
+      const product = await storage.updateProductStock(
+        productId,
+        adjustment,
+        type,
+        userId,
+        ctx?.orgId ?? undefined,
+        locationId ?? ctx?.locationId ?? undefined,
+      );
       res.json(product);
     } catch (error) {
       console.error("Error updating inventory:", error);

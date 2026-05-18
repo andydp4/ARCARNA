@@ -23,9 +23,14 @@ export class DomainEngine {
 
     const result = await this.withTransaction(async () => {
       // Check stock availability for all line items
+      const stockCtx = {
+        orgId: (dto as any).orgId as string,
+        locationId: (dto as any).locationId as string | undefined,
+        orderId: undefined as string | undefined,
+      }
       const stockWarnings: string[] = []
       for (const line of dto.lines) {
-        const availableStock = await this.products.checkStock(line.productId as any)
+        const availableStock = await this.products.checkStock(line.productId as any, stockCtx)
         if (availableStock < line.quantity) {
           const product = await this.products.findById(line.productId as any)
           const productName = product?.name || line.productId
@@ -45,11 +50,7 @@ export class DomainEngine {
         locationId: (dto as any).locationId,
       }
       await this.orders.save(order)
-      
-      // Only reserve stock if order is not on hold (sufficient stock available)
-      if (orderStatus !== 'on-hold') {
-        for (const l of order.lines) await this.products.reserveStock(l.productId as any, l.quantity)
-      }
+      // Stock mutations: InventoryWorker on OrderCreated (event-driven, per-location)
       
       if (order.paymentMethod === 'tick' && order.customerId) await this.customers.addTickDebt(order.customerId as any, order.total)
       
@@ -233,42 +234,23 @@ export class DomainEngine {
       const existingOrder = await this.orders.findById(orderId)
       if (!existingOrder) throw new Error('Order not found')
 
-      // Build stock delta map: productId -> quantity change
-      const stockDeltas = new Map<string, number>()
-      
-      // Calculate current stock usage by existing order (only if not on-hold)
-      if (existingOrder.status !== 'on-hold') {
-        for (const line of existingOrder.lines) {
-          const current = stockDeltas.get(line.productId) || 0
-          stockDeltas.set(line.productId, current + line.quantity)
-        }
+      const stockCtx = {
+        orgId: (existingOrder as any).orgId as string,
+        locationId: (existingOrder as any).locationId as string | undefined,
+        orderId: orderId as string,
       }
-      
-      // Subtract new stock requirements
-      for (const line of dto.lines) {
-        const current = stockDeltas.get(line.productId) || 0
-        stockDeltas.set(line.productId, current - line.quantity)
-      }
-
-      // Apply stock deltas and check availability
       const stockWarnings: string[] = []
-      for (const [productId, delta] of stockDeltas.entries()) {
-        if (delta > 0) {
-          // Positive delta means releasing stock
-          await this.products.releaseStock(productId as any, delta)
-        } else if (delta < 0) {
-          // Negative delta means reserving more stock
-          const requiredIncrease = Math.abs(delta)
-          const availableStock = await this.products.checkStock(productId as any)
-          if (availableStock < requiredIncrease) {
-            const product = await this.products.findById(productId as any)
-            const productName = product?.name || productId
-            stockWarnings.push(`Insufficient stock for ${productName}: need ${requiredIncrease} more, only ${availableStock} available`)
-          } else {
-            await this.products.reserveStock(productId as any, requiredIncrease)
-          }
+      for (const line of dto.lines) {
+        const availableStock = await this.products.checkStock(line.productId as any, stockCtx)
+        if (availableStock < line.quantity && existingOrder.status !== 'on-hold') {
+          const product = await this.products.findById(line.productId as any)
+          const productName = product?.name || line.productId
+          stockWarnings.push(
+            `Insufficient stock for ${productName}: requested ${line.quantity}, available ${availableStock}`,
+          )
         }
       }
+      // Stock deltas: InventoryWorker on OrderUpdated
 
       // Calculate new totals
       const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
