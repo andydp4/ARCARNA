@@ -1,134 +1,333 @@
-# Hostinger VPS deployment (Docker)
+# Deploy MidnightEPOS on Hostinger VPS
 
-Deploy MidnightEPOS on a Hostinger VPS (or any Linux host with Docker).
+**One guide. Copy and paste. No DevOps experience needed.**
 
-## Prerequisites
+This guide is written for **Andy** (or any owner). You do **not** need to understand Docker, Linux, or nginx.
 
-- Ubuntu 22.04+ (or similar)
-- Docker Engine + Docker Compose plugin
-- Domain pointing to VPS (for HTTPS — configure reverse proxy separately)
-- Replit OIDC app configured for your production domain
+---
 
-## 1. SSH into the server
+## Which method we use (and why)
+
+| Method | Good for owners? | Verdict |
+|--------|------------------|---------|
+| **A. Docker Compose** (this guide) | Yes — one install script starts the app **and** the database together | **Recommended** |
+| B. Node + PM2 | No — you must install Node, Postgres, PM2, and wire them yourself | Not recommended |
+
+**We use Option A only.** Follow this page top to bottom.
+
+---
+
+## What you need before starting
+
+| Item | Where to get it |
+|------|----------------|
+| Hostinger **VPS** plan (not shared web hosting) | [hostinger.com](https://www.hostinger.com) — product name usually **VPS** |
+| **Ubuntu 22.04** on the VPS | Selected when creating the VPS |
+| **Root password** or SSH key | Hostinger → VPS → Manage → SSH access |
+| Your VPS **IP address** | Hostinger → VPS → overview (e.g. `123.45.67.89`) |
+| A **domain** (optional for first test) | Hostinger → Domains — you can use `http://IP:5000` first |
+| **Replit login** settings for production | Replit developer settings (`REPL_ID`, domain) — ask whoever set up auth |
+
+**Assumptions in this guide**
+
+- VPS OS: **Ubuntu 22.04**
+- You can open a **terminal** on the server (Hostinger browser terminal **or** Mac Terminal)
+- App runs on port **5000** until you add a custom domain later
+- All commands below marked **ON SERVER** are pasted into that server terminal
+
+---
+
+## Overview (4 parts)
+
+1. **On your Mac** — open a terminal to connect to the server  
+2. **On the server** — install Docker (one paste)  
+3. **On the server** — download the app and fill in a password file  
+4. **On the server** — run the install script → open the app in your browser  
+
+---
+
+## Part 1 — Connect to your Hostinger VPS
+
+**Where:** On your **Mac**, open **Terminal** (Applications → Utilities → Terminal).
+
+**Paste** (replace with your real IP and root password when asked):
 
 ```bash
-ssh user@your-vps-ip
+ssh root@YOUR-VPS-IP
 ```
 
-## 2. Install Docker
+Example:
+
+```bash
+ssh root@123.45.67.89
+```
+
+**Success looks like:** A prompt like `root@ubuntu:~#`
+
+**If it fails**
+
+- “Connection refused” → Check IP in Hostinger panel; VPS must be **Running**
+- “Permission denied” → Reset root password in Hostinger → VPS → SSH access
+- Prefer Hostinger’s **Browser terminal** (VPS → Manage → Browser terminal) — same commands, no Mac SSH setup
+
+**From here on, every command is ON THE SERVER** unless we say otherwise.
+
+---
+
+## Part 2 — Install Docker (one-time)
+
+**Where:** **ON THE SERVER** (you should see `root@...#`).
+
+**Paste this whole block** (wait until it finishes — may take 2–5 minutes):
 
 ```bash
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# log out and back in
+```
+
+**Then paste:**
+
+```bash
 docker compose version
 ```
 
-## 3. Clone the repository
+**Success looks like:** A version number, e.g. `Docker Compose version v2.x.x`
+
+**If it fails**
+
+- “curl: command not found” → Run: `apt update && apt install -y curl` then try again
+- Still stuck → Use Hostinger live chat and say: “Please help install Docker on my Ubuntu VPS”
+
+---
+
+## Part 3 — Download MidnightEPOS
+
+**Where:** **ON THE SERVER**
+
+**Paste:**
 
 ```bash
+cd /root
 git clone https://github.com/andydp4/MidnightEPOS.git
 cd MidnightEPOS
-git checkout main   # or recovery-stable-r7 / launch branch
+git checkout main
 ```
 
-## 4. Create production env file
+**Success looks like:** No red “fatal” errors; folder exists:
+
+```bash
+ls
+```
+
+You should see folders like `client`, `server`, `docs`, `scripts`.
+
+---
+
+## Part 4 — Create your password file
+
+**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
+
+**Paste:**
 
 ```bash
 cp .env.production.example .env.production
 nano .env.production
 ```
 
-Set at minimum:
+**What to change in nano** (use arrow keys; edit these lines):
 
-- `POSTGRES_PASSWORD` — strong password
-- `SESSION_SECRET` — 32+ random characters
-- `REPL_ID`, `REPLIT_DOMAINS` — your OIDC settings
-- `SESSION_COOKIE_SECURE=1` once HTTPS is enabled on the proxy
+| Line | What to put |
+|------|-------------|
+| `POSTGRES_PASSWORD=` | A long random password (e.g. 20+ letters/numbers) — **write this down** |
+| `SESSION_SECRET=` | Another long random string (at least 32 characters) |
+| `REPL_ID=` | From Replit (leave blank only for testing — login may not work) |
+| `REPLIT_DOMAINS=` | Your website domain, e.g. `epos.yourshop.co.uk` (or leave blank for IP-only test) |
 
-## 5. Build and start
+Leave these as-is for first test:
 
-```bash
-docker compose --env-file .env.production up -d --build
-docker compose ps
-docker compose logs -f app
-```
+- `SESSION_COOKIE_SECURE=0` (use until you have HTTPS)
+- `DEV_AUTH_BYPASS=0`
+- `APP_PORT=5000`
 
-App listens on `APP_PORT` (default **5000**).
+**Save in nano:** Press `Ctrl+O`, Enter, then `Ctrl+X`.
 
-## 6. Run database migrations
+**Success looks like:** Back at the `root@...#` prompt with no error.
 
-Apply SQL in order against the Postgres instance (only migrations not already applied):
+---
 
-```bash
-# From host, with psql client, or via docker exec:
-for f in migrations/001_analytics_org_pk_with_org.sql \
-         migrations/002_org_not_null.sql \
-         migrations/003_org_setup_phase8.sql \
-         migrations/004_phase10_automation.sql \
-         migrations/005_phase11a_location_stock_transfers.sql \
-         migrations/006_phase11b_suppliers_replenishment.sql \
-         migrations/007_phase11c_goods_receiving.sql; do
-  echo "Applying $f"
-  docker compose exec -T postgres psql -U midnight -d midnight_epos < "$f"
-done
-```
+## Part 5 — Open port 5000 on Hostinger (important)
 
-Skip any file already applied in your environment.
+**Where:** **Hostinger website** (in your browser, not terminal)
 
-## 7. Backfill per-location stock
+1. Log in to Hostinger  
+2. Go to **VPS** → your server → **Firewall** or **Security**  
+3. Add rule: **allow TCP port 5000** from anywhere (or “all”)  
 
-After migration `005`:
+**Success looks like:** Port 5000 listed as allowed.
 
-```bash
-docker compose exec app npx tsx scripts/backfill-product-location-stock.ts
-```
+**If you skip this:** Browser will not load `http://YOUR-IP:5000` even if the app is running.
 
-## 8. Verify health
+---
+
+## Part 6 — Run the install script
+
+**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
+
+**Paste:**
 
 ```bash
-curl -s http://127.0.0.1:5000/api/health
-# {"ok":true,"nodeEnv":"production","dbDriver":"node-postgres"}
+chmod +x scripts/hostinger-deploy.sh
+./scripts/hostinger-deploy.sh install
 ```
 
-## 9. Reverse proxy + SSL (recommended)
+**This step takes 5–15 minutes the first time** (downloads and builds).
 
-Use **nginx** or **Caddy** on the host (not included in `docker-compose.yml`):
-
-- Proxy `https://your-domain` → `http://127.0.0.1:5000`
-- Terminate TLS at the proxy
-- Set `SESSION_COOKIE_SECURE=1` in `.env.production`
-- Restart app: `docker compose --env-file .env.production up -d app`
-
-Example Caddy snippet:
+**Success looks like:** At the end you see:
 
 ```text
-your-domain.example.com {
-  reverse_proxy localhost:5000
-}
+OK: App is responding.
+SUCCESS: Install finished.
+Open in your browser: http://YOUR-SERVER-IP:5000
 ```
 
-## 10. Updates
+**Test on your Mac browser:** Open `http://123.45.67.89:5000` (your real IP).
+
+You should see the MidnightEPOS login / landing page.
+
+**If it fails**
+
+| Message | What to do |
+|---------|------------|
+| `Missing .env.production` | Repeat Part 4 (`cp` and `nano`) |
+| `NOT READY YET` | Wait 2 minutes, run: `./scripts/hostinger-deploy.sh status` |
+| Still not ready | Run: `./scripts/hostinger-deploy.sh logs` — screenshot last 20 lines for support |
+| Browser timeout | Check Part 5 (firewall port 5000) |
+| Login redirect errors | Fill in `REPL_ID` and `REPLIT_DOMAINS` in `.env.production`, then run `./scripts/hostinger-deploy.sh update` |
+
+---
+
+## Part 7 — Check the app is healthy (optional)
+
+**Where:** **ON THE SERVER**
 
 ```bash
-git pull origin main
-docker compose --env-file .env.production up -d --build
-# re-run any new migrations only
+./scripts/hostinger-deploy.sh status
 ```
 
-## Troubleshooting
+**Success looks like:** `OK: App is responding.` and JSON with `"ok":true`.
 
-| Issue | Check |
-|-------|--------|
-| App exits on start | `docker compose logs app` — missing `SESSION_SECRET` or `DEV_AUTH_BYPASS=1` |
-| DB connection failed | `DATABASE_URL`, postgres health, `DB_DRIVER=node-postgres` |
-| Auth redirect errors | `REPLIT_DOMAINS`, HTTPS cookie settings |
-| No stock on replenishment | Run migration `005` + backfill script |
+---
 
-## Persistent data
+## Updating the app later (after code changes)
 
-Postgres data is stored in Docker volume `pgdata`. Back up with:
+**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
 
 ```bash
-docker compose exec postgres pg_dump -U midnight midnight_epos > backup.sql
+./scripts/hostinger-deploy.sh update
 ```
+
+**Success looks like:** `Update finished. Refresh your browser.`
+
+---
+
+## Stopping the app (keeps your data)
+
+**Where:** **ON THE SERVER**
+
+```bash
+./scripts/hostinger-deploy.sh stop
+```
+
+Your database is **not** deleted. Start again with:
+
+```bash
+./scripts/hostinger-deploy.sh install
+```
+
+---
+
+## Rollback (go back if something breaks)
+
+### A. Stop everything (safe)
+
+**ON THE SERVER:**
+
+```bash
+cd /root/MidnightEPOS
+./scripts/hostinger-deploy.sh stop
+```
+
+### B. Go back to the last known good code version
+
+**ON THE SERVER:**
+
+```bash
+cd /root/MidnightEPOS
+git fetch origin
+git checkout recovery-stable-r7
+./scripts/hostinger-deploy.sh install
+```
+
+`recovery-stable-r7` is the tagged stable recovery release.
+
+### C. Restore database backup (only if you made one)
+
+If you ran a backup before changing:
+
+```bash
+cd /root/MidnightEPOS
+docker compose --env-file .env.production exec -T postgres pg_dump -U midnight midnight_epos > backup.sql
+```
+
+To restore (destructive — overwrites current data):
+
+```bash
+./scripts/hostinger-deploy.sh stop
+docker compose --env-file .env.production up -d postgres
+sleep 10
+docker compose --env-file .env.production exec -T postgres psql -U midnight -d midnight_epos < backup.sql
+./scripts/hostinger-deploy.sh install
+```
+
+---
+
+## Custom domain (later — optional)
+
+For now, `http://YOUR-IP:5000` is enough to go live internally.
+
+Adding `https://your-domain.com` needs:
+
+1. DNS A-record → your VPS IP (Hostinger → Domains → DNS)  
+2. HTTPS setup (Hostinger support or a technician)  
+3. Set `SESSION_COOKIE_SECURE=1` in `.env.production`  
+4. Run `./scripts/hostinger-deploy.sh update`  
+
+Ask Hostinger: “Point my domain to my VPS and enable HTTPS for port 5000.”
+
+---
+
+## What you should **not** do in production
+
+- Do **not** set `DEV_AUTH_BYPASS=1`  
+- Do **not** share `SESSION_SECRET` or database passwords  
+- Do **not** delete the Docker volume `pgdata` unless you intend to wipe all data  
+
+---
+
+## Quick reference card
+
+| I want to… | ON SERVER, in `/root/MidnightEPOS` |
+|------------|-------------------------------------|
+| First install | `./scripts/hostinger-deploy.sh install` |
+| Check if running | `./scripts/hostinger-deploy.sh status` |
+| View errors | `./scripts/hostinger-deploy.sh logs` |
+| Update app | `./scripts/hostinger-deploy.sh update` |
+| Stop app | `./scripts/hostinger-deploy.sh stop` |
+| Open app | Browser → `http://YOUR-VPS-IP:5000` |
+
+---
+
+## More detail for technicians
+
+- Environment variables: `docs/PRODUCTION_ENV.md`  
+- Launch testing checklist: `docs/LAUNCH_CHECKLIST.md`  
+- Purchase/receiving workflow: `docs/WORKFLOW_PURCHASE_RECEIVING.md`  

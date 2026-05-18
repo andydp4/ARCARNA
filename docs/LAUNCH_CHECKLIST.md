@@ -1,6 +1,6 @@
 # Launch smoke test checklist
 
-Run after deploy and migrations. Mark each item pass/fail.
+Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md). Mark each item pass/fail.
 
 ## Access & org
 

@@ -1,6 +1,4 @@
-# Hostinger VPS / self-hosted production stack
-# Usage: copy .env.production.example to .env.production, then:
-#   docker compose --env-file .env.production up -d --build
+# Hostinger VPS — use docs/DEPLOYMENT_HOSTINGER_VPS.md and scripts/hostinger-deploy.sh
 
 services:
   postgres:
