@@ -60,6 +60,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(getAuthRuntimeSnapshot());
   });
 
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      ok: true,
+      nodeEnv: process.env.NODE_ENV ?? "development",
+    });
+  });
+
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {

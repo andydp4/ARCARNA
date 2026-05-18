@@ -64,7 +64,18 @@ const NEXT_STATUS: Record<string, string[]> = {
   draft: ["reviewed", "cancelled"],
   reviewed: ["approved", "cancelled"],
   approved: ["cancelled"],
+  partially_received: ["cancelled"],
+  fully_received: [],
   cancelled: [],
+};
+
+const STATUS_HELP: Record<string, string> = {
+  draft: "Internal only — not sent to supplier.",
+  reviewed: "Ready for manager approval.",
+  approved: "Approved internally — stock increases only via goods receiving.",
+  partially_received: "Some lines received — complete remaining receipts.",
+  fully_received: "All ordered quantity received — read-only.",
+  cancelled: "Cancelled — cannot receive against this draft.",
 };
 
 export default function PurchaseDraftsPage() {
@@ -281,13 +292,37 @@ export default function PurchaseDraftsPage() {
                     </Button>
                   )}
                 </div>
+                <p className="text-sm text-muted-foreground">{STATUS_HELP[detail.status]}</p>
                 {receiving && (
-                  <p className="text-sm text-muted-foreground">
-                    {receiving.receipts.filter((r) => r.status === "pending").length} pending receipt(s)
-                    ·{" "}
-                    {receiving.items.reduce((s, i) => s + i.alreadyReceived, 0)} /{" "}
-                    {receiving.items.reduce((s, i) => s + i.quantity, 0)} units received
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      {receiving.receipts.filter((r) => r.status === "pending").length} pending receipt(s)
+                      ·{" "}
+                      {receiving.items.reduce((s, i) => s + i.alreadyReceived, 0)} /{" "}
+                      {receiving.items.reduce((s, i) => s + i.quantity, 0)} units received
+                    </p>
+                    {receiving.receipts.length > 0 && (
+                      <ul className="text-sm space-y-1 border rounded p-2">
+                        <li className="font-medium text-xs uppercase text-muted-foreground">
+                          Receiving history
+                        </li>
+                        {receiving.receipts.map((r) => (
+                          <li key={r.id} className="flex justify-between gap-2">
+                            <span>
+                              {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                            </span>
+                            <Link
+                              href="/inventory"
+                              className="text-primary underline text-xs"
+                              title="Open Inventory → Receiving tab and view receipt detail"
+                            >
+                              Receipt {r.id.slice(0, 8)}…
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
                 <Table>
                   <TableHeader>

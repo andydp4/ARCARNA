@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 import { PackageCheck, Eye } from "lucide-react";
 
 type ReceiptListItem = {
@@ -37,6 +38,7 @@ type ReceiptListItem = {
 };
 
 type ReceiptDetail = ReceiptListItem & {
+  purchaseDraftId: string;
   supplierName: string;
   deliveryNote?: string | null;
   items: {
@@ -238,9 +240,19 @@ export function ReceivingTab() {
               </CardDescription>
             )}
           </DialogHeader>
-          {detail && (
+            {detail && (
             <div className="space-y-4 text-sm">
               <Badge variant={statusVariant[detail.status] ?? "outline"}>{detail.status}</Badge>
+              <p>
+                Purchase draft:{" "}
+                <Link href="/purchase-drafts" className="text-primary underline">
+                  {detail.purchaseDraftId.slice(0, 8)}… (view drafts)
+                </Link>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Stock increases only when this receipt is completed. Approval does not send orders or
+                payment.
+              </p>
               {detail.receivedAt && (
                 <p>
                   Received {new Date(detail.receivedAt).toLocaleString()}

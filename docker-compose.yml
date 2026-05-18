@@ -1,0 +1,44 @@
+# Hostinger VPS / self-hosted production stack
+# Usage: copy .env.production.example to .env.production, then:
+#   docker compose --env-file .env.production up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-midnight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-midnight_epos}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-midnight} -d ${POSTGRES_DB:-midnight_epos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_DRIVER: node-postgres
+      DATABASE_URL: postgresql://${POSTGRES_USER:-midnight}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-midnight_epos}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      # Replit OIDC (set for your deployment domain)
+      REPL_ID: ${REPL_ID:-}
+      ISSUER_URL: ${ISSUER_URL:-https://replit.com/oidc}
+      REPLIT_DOMAINS: ${REPLIT_DOMAINS:-}
+      # Must be unset or 0 in production
+      DEV_AUTH_BYPASS: "0"
+
+volumes:
+  pgdata:

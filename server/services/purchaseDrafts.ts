@@ -6,6 +6,7 @@ import {
   locations,
   products,
   PURCHASE_DRAFT_STATUSES,
+  goodsReceipts,
   type PurchaseDraftStatus,
 } from "@shared/schema";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
@@ -182,8 +183,16 @@ export async function updatePurchaseDraft(
 ) {
   const existing = await loadDraftWithItems(orgId, id);
   if (!existing) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (existing.status === "cancelled" || existing.status === "fully_received") {
-    throw new PurchaseDraftError("INVALID_STATUS", "Cannot edit purchase draft in this status");
+  if (
+    existing.status === "cancelled" ||
+    existing.status === "fully_received" ||
+    existing.status === "approved" ||
+    existing.status === "partially_received"
+  ) {
+    throw new PurchaseDraftError(
+      "INVALID_STATUS",
+      "Cannot edit supplier/location after approval — cancel only if no pending receipts",
+    );
   }
 
   await db
@@ -204,6 +213,33 @@ export async function setPurchaseDraftStatus(orgId: string, id: string, status: 
 
   const current = existing.status as PurchaseDraftStatus;
   if (current === status) return existing;
+
+  if (status === "partially_received" || status === "fully_received") {
+    throw new PurchaseDraftError(
+      "INVALID_TRANSITION",
+      "Receiving status is set automatically when goods receipts are completed",
+    );
+  }
+
+  if (status === "cancelled" && (current === "approved" || current === "partially_received")) {
+    const [pending] = await db
+      .select({ count: sql<number>`COUNT(*)::int`.as("count") })
+      .from(goodsReceipts)
+      .where(
+        and(
+          eq(goodsReceipts.purchaseDraftId, id),
+          eq(goodsReceipts.orgId, orgId),
+          eq(goodsReceipts.status, "pending"),
+        ),
+      );
+    if ((pending?.count ?? 0) > 0) {
+      throw new PurchaseDraftError(
+        "PENDING_RECEIPTS",
+        "Void or complete pending goods receipts before cancelling this draft",
+      );
+    }
+  }
+
   if (!STATUS_FLOW[current]?.includes(status)) {
     throw new PurchaseDraftError(
       "INVALID_TRANSITION",
@@ -220,6 +256,15 @@ export async function setPurchaseDraftStatus(orgId: string, id: string, status: 
 }
 
 export async function deletePurchaseDraft(orgId: string, id: string) {
+  const existing = await loadDraftWithItems(orgId, id);
+  if (!existing) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
+  if (!["draft", "reviewed"].includes(existing.status)) {
+    throw new PurchaseDraftError(
+      "INVALID_STATUS",
+      "Only draft or reviewed purchase drafts can be deleted",
+    );
+  }
+
   const [row] = await db
     .delete(purchaseDrafts)
     .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)))

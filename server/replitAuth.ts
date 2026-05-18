@@ -31,6 +31,11 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  const isProd = process.env.NODE_ENV === "production";
+  const cookieSecure =
+    process.env.SESSION_COOKIE_SECURE === "1" ||
+    (isProd && process.env.SESSION_COOKIE_SECURE !== "0");
+
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -38,8 +43,9 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: cookieSecure,
       maxAge: sessionTtl,
+      sameSite: "lax",
     },
   });
 }
