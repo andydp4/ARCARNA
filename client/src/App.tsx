@@ -35,12 +35,15 @@ import RulesPage from "@/pages/rules";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
 import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
+import { AuthProviders } from "@/components/AuthProviders";
+import SignInPage from "@/pages/sign-in";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
     <Switch>
+      <Route path="/sign-in" component={SignInPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/no-access" component={NoAccess} />
@@ -88,6 +91,7 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <AuthProviders>
         <NavigationProvider>
           <OrgProvider>
           <TooltipProvider>
@@ -97,6 +101,7 @@ function App() {
           </TooltipProvider>
           </OrgProvider>
         </NavigationProvider>
+        </AuthProviders>
       </QueryClientProvider>
     </ErrorBoundary>
   );

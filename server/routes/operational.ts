@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { isAuthenticated, requireOrgContext, requireOrgScope } from "../replitAuth";
+import { isAuthenticated, requireOrgContext, requireOrgScope } from "../auth";
 import {
   getSmartStock,
   getActivityFeed,

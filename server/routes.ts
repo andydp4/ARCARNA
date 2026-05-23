@@ -29,7 +29,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./replitAuth";
+import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./auth";
 import { getAuthRuntimeSnapshot } from "./authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";

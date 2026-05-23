@@ -112,8 +112,10 @@ export const sessions = pgTable(
 // User storage table (mandatory for Replit Auth)
 // id = Replit OIDC sub (varchar, PK). replitUserId = same, for explicit naming.
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey(), // Replit sub
-  replitUserId: varchar("replit_user_id", { length: 255 }).unique(), // Same as id, explicit
+  id: varchar("id").primaryKey(), // Auth subject (Replit sub or Clerk user id)
+  replitUserId: varchar("replit_user_id", { length: 255 }).unique(), // Legacy; may match id
+  authProvider: varchar("auth_provider", { length: 32 }).notNull().default("replit"),
+  authUserId: varchar("auth_user_id", { length: 255 }),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -731,13 +733,18 @@ export const customerMetricsRelations = relations(customerMetrics, ({ one }) => 
 export const allowedUsers = pgTable("allowed_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   replitUserId: varchar("replit_user_id", { length: 255 }).notNull().unique(),
+  authProvider: varchar("auth_provider", { length: 32 }).notNull().default("replit"),
+  authUserId: varchar("auth_user_id", { length: 255 }),
   email: varchar("email", { length: 255 }),
   name: varchar("name", { length: 255 }),
   isOwner: integer("is_owner").default(0).notNull(), // legacy; 1 => SUPER_ADMIN
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
   createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [index("allowed_users_org_id_idx").on(table.orgId)]);
+}, (table) => [
+  index("allowed_users_org_id_idx").on(table.orgId),
+  index("allowed_users_email_idx").on(table.email),
+]);
 
 export type AllowedUser = typeof allowedUsers.$inferSelect;
 export type InsertAllowedUser = typeof allowedUsers.$inferInsert;
@@ -751,6 +758,8 @@ export type InsertAllowedUserData = z.infer<typeof insertAllowedUserSchema>;
 export const userApprovalRequests = pgTable("user_approval_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
   replitUserId: varchar("replit_user_id", { length: 255 }).notNull().unique(),
+  authProvider: varchar("auth_provider", { length: 32 }).notNull().default("replit"),
+  authUserId: varchar("auth_user_id", { length: 255 }),
   email: varchar("email", { length: 255 }),
   name: varchar("name", { length: 255 }),
   profileImageUrl: varchar("profile_image_url", { length: 500 }),

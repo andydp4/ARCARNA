@@ -13,7 +13,7 @@ import {
   purchaseDraftErrorPayload,
 } from "../services/purchaseDrafts";
 import { PURCHASE_DRAFT_STATUSES } from "@shared/schema";
-import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../replitAuth";
+import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");

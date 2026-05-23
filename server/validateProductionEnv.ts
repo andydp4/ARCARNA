@@ -1,4 +1,4 @@
-import { isDevAuthBypassEnabled } from "./authRuntime";
+import { getAuthProvider, isDevAuthBypassEnabled } from "./authRuntime";
 
 /**
  * Fail fast on missing or unsafe production configuration.
@@ -26,6 +26,18 @@ export function validateProductionEnv(): void {
     }
     if (process.env.PHASE2D_TEST === "1") {
       console.warn("[production] PHASE2D_TEST=1 is set — test hooks must remain disabled in production");
+    }
+
+    const provider = getAuthProvider();
+    if (provider === "clerk") {
+      if (!process.env.CLERK_SECRET_KEY?.trim()) {
+        throw new Error("CLERK_SECRET_KEY is required when AUTH_PROVIDER=clerk in production");
+      }
+      if (!process.env.CLERK_PUBLISHABLE_KEY?.trim()) {
+        throw new Error("CLERK_PUBLISHABLE_KEY is required when AUTH_PROVIDER=clerk in production");
+      }
+    } else if (!process.env.REPL_ID?.trim()) {
+      throw new Error("REPL_ID is required when AUTH_PROVIDER=replit in production");
     }
   }
 }

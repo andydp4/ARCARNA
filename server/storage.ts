@@ -200,8 +200,14 @@ export interface IStorage {
   getInvoicesWithDetails(orgId?: string | null): Promise<any[]>;
 
   // Allow list operations
-  isUserAllowed(replitUserId: string): Promise<boolean>;
-  getUserRoleAndOrg(replitUserId: string): Promise<{ role: string; orgId: string | null } | null>;
+  isUserAllowed(authSubjectId: string): Promise<boolean>;
+  getUserRoleAndOrg(authSubjectId: string): Promise<{ role: string; orgId: string | null } | null>;
+  findAllowedUserByAuthSubject(authSubjectId: string): Promise<AllowedUser | null>;
+  tryLinkAuthUserByEmail(params: {
+    email: string;
+    newAuthUserId: string;
+    authProvider: string;
+  }): Promise<{ linked: boolean; reason?: string }>;
   getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]>;
   addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser>;
   removeAllowedUser(replitUserId: string): Promise<void>;
@@ -238,14 +244,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const replitUserId = userData.id ?? (userData as any).replitUserId;
+    const subjectId = userData.id ?? (userData as { replitUserId?: string }).replitUserId;
+    if (!subjectId) throw new Error("upsertUser requires id");
+    const authProvider =
+      (userData as { authProvider?: string }).authProvider ?? "replit";
+    const authUserId =
+      (userData as { authUserId?: string }).authUserId ?? subjectId;
     const [user] = await db
       .insert(users)
       .values({
         ...userData,
-        id: replitUserId,
-        replitUserId: replitUserId,
-      } as any)
+        id: subjectId,
+        replitUserId: (userData as { replitUserId?: string }).replitUserId ?? subjectId,
+        authProvider,
+        authUserId,
+      } as typeof users.$inferInsert)
       .onConflictDoUpdate({
         target: users.id,
         set: {
@@ -1683,22 +1696,102 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Allow list operations
-  async isUserAllowed(replitUserId: string): Promise<boolean> {
+  private allowedUserSubjectWhere(subjectId: string) {
+    return or(
+      eq(allowedUsers.authUserId, subjectId),
+      eq(allowedUsers.replitUserId, subjectId),
+    );
+  }
+
+  private approvalSubjectWhere(subjectId: string) {
+    return or(
+      eq(userApprovalRequests.authUserId, subjectId),
+      eq(userApprovalRequests.replitUserId, subjectId),
+    );
+  }
+
+  async isUserAllowed(authSubjectId: string): Promise<boolean> {
     const [user] = await db
       .select()
       .from(allowedUsers)
-      .where(eq(allowedUsers.replitUserId, replitUserId));
+      .where(this.allowedUserSubjectWhere(authSubjectId));
     return !!user;
   }
 
-  async getUserRoleAndOrg(replitUserId: string): Promise<{ role: string; orgId: string | null } | null> {
+  async getUserRoleAndOrg(authSubjectId: string): Promise<{ role: string; orgId: string | null } | null> {
     const [user] = await db
       .select({ role: allowedUsers.role, orgId: allowedUsers.orgId, isOwner: allowedUsers.isOwner })
       .from(allowedUsers)
-      .where(eq(allowedUsers.replitUserId, replitUserId));
+      .where(this.allowedUserSubjectWhere(authSubjectId));
     if (!user) return null;
-    const role = user.isOwner ? 'SUPER_ADMIN' : (user.role || 'CASHIER');
+    const role = user.isOwner ? "SUPER_ADMIN" : (user.role || "CASHIER");
     return { role, orgId: user.orgId ?? null };
+  }
+
+  async findAllowedUserByAuthSubject(authSubjectId: string): Promise<AllowedUser | null> {
+    const [user] = await db
+      .select()
+      .from(allowedUsers)
+      .where(this.allowedUserSubjectWhere(authSubjectId));
+    return user ?? null;
+  }
+
+  async tryLinkAuthUserByEmail(params: {
+    email: string;
+    newAuthUserId: string;
+    authProvider: string;
+  }): Promise<{ linked: boolean; reason?: string }> {
+    const normalized = params.email.trim().toLowerCase();
+    if (!normalized) return { linked: false, reason: "empty_email" };
+
+    const rows = await db
+      .select()
+      .from(allowedUsers)
+      .where(sql`lower(trim(${allowedUsers.email})) = ${normalized}`);
+
+    if (rows.length === 0) return { linked: false, reason: "not_found" };
+    if (rows.length > 1) {
+      const orgKeys = new Set(rows.map((r) => r.orgId ?? "__none__"));
+      if (orgKeys.size > 1) {
+        return { linked: false, reason: "multiple_orgs_same_email" };
+      }
+    }
+
+    const row = rows[0]!;
+    if (row.authUserId === params.newAuthUserId && row.authProvider === params.authProvider) {
+      return { linked: true };
+    }
+    if (
+      row.authProvider === "clerk" &&
+      row.authUserId &&
+      row.authUserId !== params.newAuthUserId
+    ) {
+      return { linked: false, reason: "already_linked_other_subject" };
+    }
+
+    await db
+      .update(allowedUsers)
+      .set({
+        authUserId: params.newAuthUserId,
+        authProvider: params.authProvider,
+      })
+      .where(eq(allowedUsers.id, row.id));
+
+    await db
+      .update(users)
+      .set({
+        authUserId: params.newAuthUserId,
+        authProvider: params.authProvider,
+      })
+      .where(
+        or(
+          eq(users.replitUserId, row.replitUserId),
+          eq(users.id, row.replitUserId),
+          sql`lower(trim(${users.email})) = ${normalized}`,
+        ),
+      );
+
+    return { linked: true };
   }
 
   async getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]> {
@@ -1713,9 +1806,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser> {
+    const authUserId = data.authUserId ?? data.replitUserId;
+    const authProvider = data.authProvider ?? "replit";
     const [user] = await db
       .insert(allowedUsers)
-      .values(data)
+      .values({
+        ...data,
+        authUserId,
+        authProvider,
+      })
       .onConflictDoUpdate({
         target: allowedUsers.replitUserId,
         set: {
@@ -1724,6 +1823,8 @@ export class DatabaseStorage implements IStorage {
           isOwner: data.isOwner,
           orgId: data.orgId ?? undefined,
           role: data.role ?? undefined,
+          authUserId,
+          authProvider,
         },
       })
       .returning();
@@ -1835,25 +1936,33 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(userApprovalRequests.requestedAt));
   }
 
-  async getApprovalRequest(replitUserId: string): Promise<UserApprovalRequest | null> {
+  async getApprovalRequest(authSubjectId: string): Promise<UserApprovalRequest | null> {
     const [request] = await db
       .select()
       .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+      .where(this.approvalSubjectWhere(authSubjectId));
     return request || null;
   }
 
   async createApprovalRequest(data: InsertUserApprovalRequest): Promise<UserApprovalRequest> {
+    const authUserId = data.authUserId ?? data.replitUserId;
+    const authProvider = data.authProvider ?? "replit";
     const [request] = await db
       .insert(userApprovalRequests)
-      .values(data)
+      .values({
+        ...data,
+        authUserId,
+        authProvider,
+      })
       .onConflictDoUpdate({
         target: userApprovalRequests.replitUserId,
         set: {
           email: data.email,
           name: data.name,
           profileImageUrl: data.profileImageUrl,
-          status: 'pending',
+          status: "pending",
+          authUserId,
+          authProvider,
         },
       })
       .returning();
@@ -1899,6 +2008,8 @@ export class DatabaseStorage implements IStorage {
 
       await this.addAllowedUser({
         replitUserId: request.replitUserId,
+        authUserId: request.authUserId ?? request.replitUserId,
+        authProvider: request.authProvider ?? "replit",
         email: request.email,
         name: request.name,
         isOwner: 0,

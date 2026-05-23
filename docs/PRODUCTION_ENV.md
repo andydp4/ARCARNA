@@ -21,7 +21,19 @@ Copy `.env.production.example` → `.env.production` on the server. The install 
 |----------|--------|
 | `DEV_AUTH_BYPASS` | `0` or unset — app refuses to start if `1` |
 
-## Auth (Replit OIDC)
+## Auth (Clerk — production default)
+
+| Variable | Purpose |
+|----------|---------|
+| `AUTH_PROVIDER` | `clerk` (default) or `replit` for rollback |
+| `CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_live_...`) |
+| `CLERK_SECRET_KEY` | Clerk backend secret (`sk_live_...`) — never log or commit |
+
+Owner setup: [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md)
+
+## Auth (Replit OIDC — legacy fallback)
+
+Only when `AUTH_PROVIDER=replit`:
 
 | Variable | Purpose |
 |----------|---------|
@@ -46,7 +58,7 @@ Copy `.env.production.example` → `.env.production` on the server. The install 
 
 ## Migrations (first install)
 
-Handled by `./scripts/hostinger-deploy.sh install` — applies `migrations/001` through `007` in order.
+Handled by `./scripts/hostinger-deploy.sh install` — applies `migrations/001` through `008` in order.
 
 ## Backfill
 

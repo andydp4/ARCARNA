@@ -26,7 +26,7 @@ This guide is written for **Andy** (or any owner). You do **not** need to unders
 | **Root password** or SSH key | Hostinger → VPS → Manage → SSH access |
 | Your VPS **IP address** | Hostinger → VPS → overview (e.g. `123.45.67.89`) |
 | A **domain** (optional for first test) | Hostinger → Domains — you can use `http://IP:5000` first |
-| **Replit login** settings for production | Replit developer settings (`REPL_ID`, domain) — ask whoever set up auth |
+| **Clerk login** keys for production | [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md) — free Clerk account, copy `pk_` / `sk_` keys |
 
 **Assumptions in this guide**
 
@@ -139,8 +139,12 @@ nano .env.production
 |------|-------------|
 | `POSTGRES_PASSWORD=` | A long random password (e.g. 20+ letters/numbers) — **write this down** |
 | `SESSION_SECRET=` | Another long random string (at least 32 characters) |
-| `REPL_ID=` | From Replit (leave blank only for testing — login may not work) |
-| `REPLIT_DOMAINS=` | Your website domain, e.g. `epos.yourshop.co.uk` (or leave blank for IP-only test) |
+| `AUTH_PROVIDER=` | `clerk` (recommended) |
+| `CLERK_PUBLISHABLE_KEY=` | From Clerk dashboard → API Keys |
+| `CLERK_SECRET_KEY=` | From Clerk dashboard → API Keys (keep private) |
+| `REPL_ID=` / `REPLIT_DOMAINS=` | Only if using `AUTH_PROVIDER=replit` rollback |
+
+See **[AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md)** for redirect URLs and screenshots guidance.
 
 Leave these as-is for first test:
 
@@ -201,7 +205,7 @@ You should see the MidnightEPOS login / landing page.
 | `NOT READY YET` | Wait 2 minutes, run: `./scripts/hostinger-deploy.sh status` |
 | Still not ready | Run: `./scripts/hostinger-deploy.sh logs` — screenshot last 20 lines for support |
 | Browser timeout | Check Part 5 (firewall port 5000) |
-| Login redirect errors | Fill in `REPL_ID` and `REPLIT_DOMAINS` in `.env.production`, then run `./scripts/hostinger-deploy.sh update` |
+| Login redirect errors | Check Clerk redirect URLs in [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md), then `./scripts/hostinger-deploy.sh update` |
 
 ---
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { automationRules, workerRunLogs } from "@shared/schema";
-import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../replitAuth";
+import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 import { buildEvalContext, evaluateConditionJson } from "../services/automationEngine";
 import type { EventEnvelope, EventType } from "@shared/schema";
 import { randomUUID } from "crypto";

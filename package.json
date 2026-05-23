@@ -13,11 +13,14 @@
     "backfill": "tsx scripts/backfill-org.ts",
     "phase2d:seed": "tsx scripts/phase2d-seed.ts",
     "phase2d:test": "tsx scripts/phase2d-test.ts",
+    "auth:link-clerk": "tsx scripts/link-clerk-auth-by-email.ts",
     "gate": "tsx scripts/release-gate.ts",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
     "release:preflight": "npm run migration:sanity && npm run gate"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.3",
+    "@clerk/express": "^2.1.21",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db";
 import { scheduledReports } from "@shared/schema";
-import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../replitAuth";
+import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 import { listReportRuns } from "../services/scheduledReportsRunner";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];

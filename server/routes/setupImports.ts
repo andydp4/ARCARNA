@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../replitAuth";
+import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 import { orgProfilePatchSchema } from "@shared/setup";
 import { parseSpreadsheet, applyColumnMapping } from "../import/spreadsheet";
 import { previewProductImport } from "../import/productImport";

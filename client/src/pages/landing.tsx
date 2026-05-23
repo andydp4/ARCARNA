@@ -1,15 +1,32 @@
+import { useQuery } from "@tanstack/react-query";
+import { SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useLocation } from "wouter";
 
 export default function Landing() {
-  const handleLogin = () => {
+  const [, setLocation] = useLocation();
+  const { data: runtime } = useQuery({
+    queryKey: ["/api/auth/runtime"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/runtime", { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const isClerk = runtime?.authProvider === "clerk";
+
+  const handleReplitLogin = () => {
     window.location.href = "/api/login";
+  };
+
+  const handleClerkLogin = () => {
+    setLocation("/sign-in");
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
       <div className="w-full max-w-md">
-        {/* Logo & Branding */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-4 rounded-2xl shadow-lg ring-2 ring-white/10">
             <img
@@ -26,7 +43,6 @@ export default function Landing() {
           </p>
         </div>
 
-        {/* Login Card */}
         <Card className="shadow-2xl border-slate-700">
           <CardContent className="p-6 sm:p-8">
             <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">
@@ -36,35 +52,61 @@ export default function Landing() {
               Sign in to access your dashboard
             </p>
 
-            <Button
-              onClick={handleLogin}
-              className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
-              data-testid="button-login"
-            >
-              <i className="fab fa-codepen text-xl"></i>
-              <span>Login with Replit</span>
-            </Button>
+            {isClerk ? (
+              <>
+                <SignedOut>
+                  <SignInButton mode="redirect" forceRedirectUrl="/sign-in">
+                    <Button
+                      className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 shadow-lg hover:shadow-xl"
+                      data-testid="button-login"
+                      onClick={handleClerkLogin}
+                    >
+                      Sign in
+                    </Button>
+                  </SignInButton>
+                </SignedOut>
+                <SignedIn>
+                  <Button
+                    className="w-full min-h-[44px]"
+                    onClick={() => setLocation("/")}
+                    data-testid="button-continue"
+                  >
+                    Continue to dashboard
+                  </Button>
+                </SignedIn>
+              </>
+            ) : (
+              <Button
+                onClick={handleReplitLogin}
+                className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
+                data-testid="button-login"
+              >
+                <i className="fab fa-codepen text-xl"></i>
+                <span>Login with Replit</span>
+              </Button>
+            )}
 
             <div className="mt-6 pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                Secure authentication powered by Replit Auth
+                {isClerk
+                  ? "Secure authentication powered by Clerk"
+                  : "Secure authentication powered by Replit Auth"}
               </p>
             </div>
 
-            {/* Development Mode Notice */}
-            <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
-              <div className="flex items-start gap-2">
-                <i className="fas fa-info-circle text-accent mt-0.5"></i>
-                <div className="text-sm text-foreground">
-                  <strong>Dev Mode:</strong> In development, this bypasses OAuth
-                  and creates a test session.
+            {runtime?.devAuthBypass && (
+              <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <i className="fas fa-info-circle text-accent mt-0.5"></i>
+                  <div className="text-sm text-foreground">
+                    <strong>Dev Mode:</strong> Auth bypass is active for local development.
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Footer */}
         <div className="text-center mt-8 text-slate-400 text-sm">
           <p>© 2024 Midnight EPOS. All rights reserved.</p>
         </div>
