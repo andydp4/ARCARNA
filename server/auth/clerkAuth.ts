@@ -29,6 +29,7 @@ async function clerkClaimsForUser(userId: string): Promise<AllowListClaims> {
   }
 }
 
+/** Registers Clerk middleware; /api/login and /api/logout redirect to /sign-in. */
 export async function setupClerkAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(clerkMiddleware());

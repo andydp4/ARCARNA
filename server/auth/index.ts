@@ -9,6 +9,11 @@ import {
   requireRole,
 } from "./commonAuth";
 
+/** Picked once at process start from AUTH_PROVIDER (clerk default). */
+function selectIsAuthenticated(): RequestHandler {
+  return getAuthProvider() === "clerk" ? clerkIsAuthenticated : replitIsAuthenticated;
+}
+
 export async function setupAuth(app: Express) {
   if (getAuthProvider() === "clerk") {
     await setupClerkAuth(app);
@@ -17,10 +22,7 @@ export async function setupAuth(app: Express) {
   }
 }
 
-const providerIsAuthenticated: RequestHandler =
-  getAuthProvider() === "clerk" ? clerkIsAuthenticated : replitIsAuthenticated;
-
-export const isAuthenticated = providerIsAuthenticated;
+export const isAuthenticated = selectIsAuthenticated();
 export const requireAuth = isAuthenticated;
 
 export { isOwner, requireRole, requireOrgContext, requireOrgScope };

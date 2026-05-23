@@ -1736,6 +1736,10 @@ export class DatabaseStorage implements IStorage {
     return user ?? null;
   }
 
+  /**
+   * Phased Clerk migration: match allowed_users by email and set auth_user_id.
+   * Refuses when the same email appears in multiple orgs (no silent cross-org merge).
+   */
   async tryLinkAuthUserByEmail(params: {
     email: string;
     newAuthUserId: string;

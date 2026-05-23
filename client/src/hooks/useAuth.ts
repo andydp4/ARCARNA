@@ -22,9 +22,43 @@ export interface AuthUser {
   };
 }
 
+async function fetchAuthUser(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/user", {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+
+  if (res.status === 401) return null;
+
+  if (res.status === 403) {
+    const body = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      isPending?: boolean;
+    };
+    if (body.code === "PENDING_APPROVAL" || body.isPending) {
+      return {
+        id: "pending",
+        role: "CASHIER",
+        orgId: null,
+        accessState: "pending",
+        isPending: true,
+        isAllowed: false,
+      };
+    }
+    return null;
+  }
+
+  if (!res.ok) {
+    throw new Error(`${res.status}: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
 export function useAuth() {
   const { data: user, isLoading, error } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
+    queryFn: fetchAuthUser,
     retry: false,
   });
 

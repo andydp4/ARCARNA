@@ -20,10 +20,6 @@ export default function Landing() {
     window.location.href = "/api/login";
   };
 
-  const handleClerkLogin = () => {
-    setLocation("/sign-in");
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
       <div className="w-full max-w-md">
@@ -55,11 +51,10 @@ export default function Landing() {
             {isClerk ? (
               <>
                 <SignedOut>
-                  <SignInButton mode="redirect" forceRedirectUrl="/sign-in">
+                  <SignInButton mode="redirect" forceRedirectUrl="/">
                     <Button
                       className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 shadow-lg hover:shadow-xl"
                       data-testid="button-login"
-                      onClick={handleClerkLogin}
                     >
                       Sign in
                     </Button>

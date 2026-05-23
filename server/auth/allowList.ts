@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { getAuthProvider } from "../authRuntime";
 
+/** OIDC / Clerk token claims used for allow-list and approval decisions. */
 export type AllowListClaims = {
   sub: string;
   email?: string | null;
@@ -17,6 +18,10 @@ export type AllowListStatus = {
   orgId?: string | null;
 };
 
+/**
+ * Enforces allowed_users / user_approval_requests for a signed-in subject.
+ * First platform user becomes SUPER_ADMIN; others require approval unless email-linked.
+ */
 export async function checkAndHandleAllowList(claims: AllowListClaims): Promise<AllowListStatus> {
   const authUserId = claims.sub;
   const email = claims.email ?? undefined;
@@ -28,7 +33,6 @@ export async function checkAndHandleAllowList(claims: AllowListClaims): Promise<
   const existing = await storage.getUserRoleAndOrg(authUserId);
   if (existing) {
     const owner = await storage.getOwner();
-    const row = await storage.findAllowedUserByAuthSubject(authUserId);
     return {
       allowed: true,
       isOwner: owner?.authUserId === authUserId || owner?.replitUserId === authUserId,
@@ -110,6 +114,7 @@ export async function checkAndHandleAllowList(claims: AllowListClaims): Promise<
   return { allowed: false, isOwner: false, isPending: true };
 }
 
+/** Shape stored on req.user for RBAC middleware and /api/auth/user. */
 export function buildSessionUser(
   authUserId: string,
   claims: AllowListClaims,

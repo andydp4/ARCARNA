@@ -2,6 +2,7 @@ import type { RequestHandler, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { isDevAuthBypassEnabled } from "../authRuntime";
 
+/** Localhost-only test impersonation (PHASE2D_TEST); never active in production. */
 export async function tryPhase2dTestAuth(
   req: Request,
   res: Response,
@@ -43,6 +44,7 @@ export async function tryPhase2dTestAuth(
   }
 }
 
+/** DEV_AUTH_BYPASS=1 and NODE_ENV !== production — skips OAuth for local dev. */
 export async function tryDevAuthBypass(
   req: Request,
   res: Response,

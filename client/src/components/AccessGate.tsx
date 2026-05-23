@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 
 const PUBLIC_PATHS = new Set([
+  "/sign-in",
   "/pending-approval",
   "/no-access",
   "/onboarding",

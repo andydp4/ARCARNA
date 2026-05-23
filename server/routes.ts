@@ -1788,29 +1788,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check current user's approval status (for pending approval page)
+  // Pending approval page — identity only (no allow-list gate; Clerk has no passport session)
   app.get("/api/auth/approval-status", async (req: any, res) => {
     try {
-      const user = req.user;
-      if (!user) {
+      const { resolveRequestIdentity } = await import("./auth/identity");
+      const identity = await resolveRequestIdentity(req);
+      if (!identity) {
         return res.status(401).json({ authenticated: false });
       }
-      
-      const replitUserId = user.claims?.sub;
-      if (!replitUserId) {
-        return res.status(401).json({ authenticated: false });
-      }
-      
-      const isAllowed = await storage.isUserAllowed(replitUserId);
-      const approvalRequest = await storage.getApprovalRequest(replitUserId);
-      
+
+      const { subjectId } = identity;
+      const isAllowed = await storage.isUserAllowed(subjectId);
+      const approvalRequest = await storage.getApprovalRequest(subjectId);
+
       res.json({
         authenticated: true,
         isAllowed,
-        isPending: approvalRequest?.status === 'pending',
-        isRejected: approvalRequest?.status === 'rejected',
-        name: user.claims?.name || user.claims?.first_name || 'User',
-        email: user.claims?.email,
+        isPending: approvalRequest?.status === "pending",
+        isRejected: approvalRequest?.status === "rejected",
+        name: identity.name || "User",
+        email: identity.email ?? null,
       });
     } catch (error) {
       console.error("Error checking approval status:", error);
