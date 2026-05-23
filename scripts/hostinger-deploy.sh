@@ -42,7 +42,8 @@ apply_migrations() {
            migrations/005_phase11a_location_stock_transfers.sql \
            migrations/006_phase11b_suppliers_replenishment.sql \
            migrations/007_phase11c_goods_receiving.sql \
-           migrations/008_auth_subject.sql; do
+           migrations/008_auth_subject.sql \
+           migrations/009_domain_outbox_and_workers.sql; do
     if [[ -f "$f" ]]; then
       echo "  Applying $(basename "$f")..."
       $COMPOSE exec -T postgres psql -U "$user" -d "$db" < "$f" || {

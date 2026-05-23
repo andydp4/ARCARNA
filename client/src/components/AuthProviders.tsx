@@ -7,6 +7,10 @@ type AuthRuntime = {
   clerkPublishableKey?: string | null;
 };
 
+/**
+ * Wraps the app in ClerkProvider when AUTH_PROVIDER=clerk.
+ * Publishable key: runtime API first, then VITE_CLERK_PUBLISHABLE_KEY from build.
+ */
 export function AuthProviders({ children }: { children: ReactNode }) {
   const { data } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
@@ -18,9 +22,18 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
-  if (data?.authProvider === "clerk" && data.clerkPublishableKey) {
+  const publishableKey =
+    data?.clerkPublishableKey ??
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ??
+    null;
+
+  const useClerk =
+    data?.authProvider === "clerk" ||
+    (!data?.authProvider && import.meta.env.VITE_AUTH_PROVIDER !== "replit");
+
+  if (useClerk && publishableKey) {
     return (
-      <ClerkProvider publishableKey={data.clerkPublishableKey} afterSignOutUrl="/">
+      <ClerkProvider publishableKey={publishableKey} afterSignOutUrl="/">
         {children}
       </ClerkProvider>
     );

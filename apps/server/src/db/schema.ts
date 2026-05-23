@@ -96,7 +96,12 @@ export const audit_logs = pgTable('audit_logs', {
 
 export const domain_outbox = pgTable('domain_outbox', {
   id: uuid('id').primaryKey().defaultRandom(),
-  type: varchar('type', {length:128}).notNull(),
+  org_id: uuid('org_id'),
+  type: varchar('type', { length: 128 }).notNull(),
+  data: jsonb('data'),
+  event_type: varchar('event_type', { length: 128 }),
+  aggregate_type: varchar('aggregate_type', { length: 128 }),
+  aggregate_id: varchar('aggregate_id', { length: 255 }),
   payload: jsonb('payload').notNull(),
   created_at: timestamp('created_at').defaultNow(),
   processed_at: timestamp('processed_at'),

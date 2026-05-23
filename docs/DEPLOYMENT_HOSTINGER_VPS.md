@@ -1,4 +1,6 @@
-# Deploy MidnightEPOS on Hostinger VPS
+# Deploy MidnightEPOS on Hostinger VPS (Docker Compose)
+
+> **Live VPS (viger.cloud) uses Node + PM2 + Nginx.** See **[DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md)** for that setup.
 
 **One guide. Copy and paste. No DevOps experience needed.**
 
@@ -109,10 +111,8 @@ docker compose version
 cd /root
 git clone https://github.com/andydp4/MidnightEPOS.git
 cd MidnightEPOS
-git checkout launch/phase12a-clerk-auth
+git checkout main
 ```
-
-> **Note:** Use branch `launch/phase12a-clerk-auth` until it is merged into `main`. After merge, `git checkout main` is fine.
 
 **Success looks like:** No red “fatal” errors; folder exists:
 

@@ -4,9 +4,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useLocation } from "wouter";
 
+type AuthRuntime = {
+  authProvider?: "clerk" | "replit";
+  devAuthBypass?: boolean;
+};
+
+/** Production default is Clerk; Replit login only when server reports AUTH_PROVIDER=replit. */
+function resolveAuthProvider(runtime: AuthRuntime | undefined, isLoading: boolean): "clerk" | "replit" | "loading" {
+  if (isLoading && !runtime) return "loading";
+  if (runtime?.authProvider === "replit") return "replit";
+  const viteProvider = import.meta.env.VITE_AUTH_PROVIDER as string | undefined;
+  if (!runtime && viteProvider === "replit") return "replit";
+  return "clerk";
+}
+
 export default function Landing() {
   const [, setLocation] = useLocation();
-  const { data: runtime } = useQuery({
+  const { data: runtime, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
       const res = await fetch("/api/auth/runtime", { credentials: "include" });
@@ -14,11 +28,8 @@ export default function Landing() {
     },
   });
 
-  const isClerk = runtime?.authProvider === "clerk";
-
-  const handleReplitLogin = () => {
-    window.location.href = "/api/login";
-  };
+  const provider = resolveAuthProvider(runtime, isLoading);
+  const showDevNotice = runtime?.devAuthBypass === true;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
@@ -48,7 +59,11 @@ export default function Landing() {
               Sign in to access your dashboard
             </p>
 
-            {isClerk ? (
+            {provider === "loading" ? (
+              <Button disabled className="w-full min-h-[44px]">
+                Loading sign-in…
+              </Button>
+            ) : provider === "clerk" ? (
               <>
                 <SignedOut>
                   <SignInButton mode="redirect" forceRedirectUrl="/">
@@ -72,29 +87,29 @@ export default function Landing() {
               </>
             ) : (
               <Button
-                onClick={handleReplitLogin}
+                onClick={() => { window.location.href = "/api/login"; }}
                 className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
-                data-testid="button-login"
+                data-testid="button-login-replit-dev"
               >
                 <i className="fab fa-codepen text-xl"></i>
-                <span>Login with Replit</span>
+                <span>Login with Replit (dev rollback)</span>
               </Button>
             )}
 
             <div className="mt-6 pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                {isClerk
-                  ? "Secure authentication powered by Clerk"
-                  : "Secure authentication powered by Replit Auth"}
+                {provider === "clerk"
+                  ? "Secure sign-in powered by Clerk"
+                  : "Replit Auth (development rollback only)"}
               </p>
             </div>
 
-            {runtime?.devAuthBypass && (
+            {showDevNotice && (
               <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
                 <div className="flex items-start gap-2">
                   <i className="fas fa-info-circle text-accent mt-0.5"></i>
                   <div className="text-sm text-foreground">
-                    <strong>Dev Mode:</strong> Auth bypass is active for local development.
+                    Local development: auth bypass is active (not shown in production).
                   </div>
                 </div>
               </div>

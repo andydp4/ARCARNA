@@ -33,8 +33,13 @@ export function validateProductionEnv(): void {
       if (!process.env.CLERK_SECRET_KEY?.trim()) {
         throw new Error("CLERK_SECRET_KEY is required when AUTH_PROVIDER=clerk in production");
       }
-      if (!process.env.CLERK_PUBLISHABLE_KEY?.trim()) {
-        throw new Error("CLERK_PUBLISHABLE_KEY is required when AUTH_PROVIDER=clerk in production");
+      const publishableKey =
+        process.env.CLERK_PUBLISHABLE_KEY?.trim() ||
+        process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
+      if (!publishableKey) {
+        throw new Error(
+          "CLERK_PUBLISHABLE_KEY or VITE_CLERK_PUBLISHABLE_KEY is required when AUTH_PROVIDER=clerk in production",
+        );
       }
     } else if (!process.env.REPL_ID?.trim()) {
       throw new Error("REPL_ID is required when AUTH_PROVIDER=replit in production");

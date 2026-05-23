@@ -26,7 +26,9 @@ Copy `.env.production.example` → `.env.production` on the server. The install 
 | Variable | Purpose |
 |----------|---------|
 | `AUTH_PROVIDER` | `clerk` (default) or `replit` for rollback |
-| `CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_live_...`) |
+| `CLERK_PUBLISHABLE_KEY` | Clerk frontend key (`pk_live_...`) — also used by `/api/auth/runtime` |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Same key; embedded at `npm run build` for Clerk React |
+| `VITE_AUTH_PROVIDER` | `clerk` (default) — prevents Replit login UI when runtime API is slow |
 | `CLERK_SECRET_KEY` | Clerk backend secret (`sk_live_...`) — never log or commit |
 
 Owner setup: [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md)
@@ -58,7 +60,9 @@ Only when `AUTH_PROVIDER=replit`:
 
 ## Migrations (first install)
 
-Handled by `./scripts/hostinger-deploy.sh install` — applies `migrations/001` through `008` in order.
+Handled by deploy scripts or `psql` — applies `migrations/001` through `009` in order.
+
+PM2 deploy: [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md)
 
 ## Backfill
 

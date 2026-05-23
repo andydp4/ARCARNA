@@ -1,18 +1,50 @@
 #!/usr/bin/env npx tsx
 /**
  * Migration sanity check for existing DBs.
- * Detects analytics table PK shape and org count; prints migration instructions.
- * Optional in CI, mandatory for release notes.
- * Run: DATABASE_URL=... npx tsx scripts/migration-sanity-check.ts
+ * Loads .env then .env.production (if present) before connecting.
+ *
+ * Run: npm run migration:sanity
+ * Or:  DATABASE_URL=... npm run migration:sanity
  */
+import { config as loadEnv } from "dotenv";
+import { existsSync } from "fs";
+import { resolve } from "path";
 import { sql } from "drizzle-orm";
+
+loadEnv({ path: resolve(process.cwd(), ".env") });
+if (existsSync(resolve(process.cwd(), ".env.production"))) {
+  loadEnv({ path: resolve(process.cwd(), ".env.production"), override: true });
+}
 
 interface PkInfo {
   tableName: string;
   columns: string[];
 }
 
-async function getAnalyticsPk(db: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }): Promise<PkInfo[] | null> {
+const REQUIRED_TABLES = [
+  "organizations",
+  "analytics_daily",
+  "domain_outbox",
+  "event_outbox",
+  "job_queue",
+] as const;
+
+const DOMAIN_OUTBOX_COLUMNS = [
+  "id",
+  "org_id",
+  "type",
+  "data",
+  "event_type",
+  "aggregate_type",
+  "aggregate_id",
+  "payload",
+  "processed_at",
+  "created_at",
+];
+
+async function getAnalyticsPk(db: {
+  execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
+}): Promise<PkInfo[] | null> {
   const result = await db.execute(sql`
     SELECT
       tc.table_name,
@@ -27,7 +59,10 @@ async function getAnalyticsPk(db: { execute: (q: ReturnType<typeof sql>) => Prom
     GROUP BY tc.table_name
   `);
   const raw = result as { rows?: unknown[] };
-  const rows = (raw?.rows ?? (Array.isArray(result) ? result : [result])) as { table_name: string; columns: unknown }[];
+  const rows = (raw?.rows ?? (Array.isArray(result) ? result : [result])) as {
+    table_name: string;
+    columns: unknown;
+  }[];
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return rows.map((r) => {
     const cols = r.columns;
@@ -36,7 +71,10 @@ async function getAnalyticsPk(db: { execute: (q: ReturnType<typeof sql>) => Prom
   });
 }
 
-async function tableExists(db: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }, name: string): Promise<boolean> {
+async function tableExists(
+  db: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> },
+  name: string,
+): Promise<boolean> {
   const r = await db.execute(sql`
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = ${name}
@@ -47,7 +85,24 @@ async function tableExists(db: { execute: (q: ReturnType<typeof sql>) => Promise
   return Array.isArray(rows) && rows.length > 0;
 }
 
-async function getOrgCount(db: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }): Promise<number> {
+async function columnExists(
+  db: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> },
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const r = await db.execute(sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = ${table} AND column_name = ${column}
+    LIMIT 1
+  `);
+  const raw = r as { rows?: unknown[] };
+  const rows = raw?.rows ?? (Array.isArray(r) ? r : [r]);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function getOrgCount(db: {
+  execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
+}): Promise<number> {
   const r = await db.execute(sql`SELECT COUNT(*)::int as c FROM organizations`);
   const raw = r as { rows?: { c: number }[] };
   const rows = raw?.rows ?? (Array.isArray(r) ? r : []);
@@ -55,75 +110,77 @@ async function getOrgCount(db: { execute: (q: ReturnType<typeof sql>) => Promise
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL) {
-    console.error("DATABASE_URL required");
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error("DATABASE_URL required (set in .env or .env.production)");
     process.exit(1);
   }
 
   const { db } = await import("../server/db");
-  const hasAnalyticsDaily = await tableExists(db, "analytics_daily");
+  let failed = false;
+
+  console.log("\n=== Migration Sanity Check ===\n");
+
+  for (const table of REQUIRED_TABLES) {
+    const ok = await tableExists(db, table);
+    console.log(`${ok ? "OK" : "MISSING"}: table ${table}`);
+    if (!ok) failed = true;
+  }
+
+  const hasDomainOutbox = await tableExists(db, "domain_outbox");
+  if (hasDomainOutbox) {
+    for (const col of DOMAIN_OUTBOX_COLUMNS) {
+      const ok = await columnExists(db, "domain_outbox", col);
+      console.log(`${ok ? "OK" : "MISSING"}: domain_outbox.${col}`);
+      if (!ok) failed = true;
+    }
+  }
+
   const pkInfo = await getAnalyticsPk(db);
+  const hasAnalyticsDaily = await tableExists(db, "analytics_daily");
   let orgCount = 0;
   try {
     orgCount = await getOrgCount(db);
   } catch {
-    // organizations table may not exist yet
+    // organizations may not exist on empty DB
   }
 
+  console.log("\n--- Analytics PK ---");
   const dailyPk = pkInfo?.find((p) => p.tableName === "analytics_daily");
-  const hasOldPk =
-    dailyPk &&
-    dailyPk.columns.length === 1 &&
-    dailyPk.columns[0] === "date";
-  const hasNewPk =
-    dailyPk &&
-    dailyPk.columns.includes("org_id") &&
-    dailyPk.columns.includes("date");
-
-  console.log("\n=== Migration Sanity Check ===\n");
   console.log("analytics_daily exists:", hasAnalyticsDaily);
   console.log("analytics PK shape:", dailyPk ? dailyPk.columns.join(", ") : "N/A");
   console.log("organizations count:", orgCount);
 
-  if (!hasAnalyticsDaily) {
-    console.log("\nNo analytics tables. Use: npm run db:push");
-    process.exit(0);
-  }
+  if (hasAnalyticsDaily && dailyPk) {
+    const hasOldPk =
+      dailyPk.columns.length === 1 && dailyPk.columns[0] === "date";
+    const hasNewPk =
+      dailyPk.columns.includes("org_id") && dailyPk.columns.includes("date");
 
-  if (hasNewPk) {
-    console.log("\nAnalytics tables already have org-scoped PK. No migration needed.");
-    process.exit(0);
-  }
-
-  if (hasOldPk) {
-    console.log("\n>>> ANALYTICS TABLES HAVE OLD PK (date-only). MIGRATION REQUIRED. <<<\n");
-    if (orgCount > 1) {
-      console.log(
-        "Multiple orgs exist. Do NOT use 001_analytics_org_pk.sql."
-      );
-      console.log(
-        "Use 001_analytics_org_pk_with_org.sql with -v org_id per org:\n"
-      );
-      console.log(
-        "  psql $DATABASE_URL -v org_id=YOUR_ORG_UUID -f migrations/001_analytics_org_pk_with_org.sql"
-      );
-      console.log(
-        "\nRun once per org, or consolidate to single org first."
-      );
-    } else {
-      console.log(
-        "Single org (or none). Use 001_analytics_org_pk.sql:\n"
-      );
-      console.log(
-        "  psql $DATABASE_URL -f migrations/001_analytics_org_pk.sql"
-      );
+    if (hasOldPk) {
+      failed = true;
+      console.log("\n>>> ANALYTICS TABLES HAVE OLD PK (date-only). MIGRATION REQUIRED. <<<\n");
+      if (orgCount > 1) {
+        console.log("Use migrations/001_analytics_org_pk_with_org.sql per org.");
+      } else {
+        console.log("Use migrations/001_analytics_org_pk.sql");
+      }
+    } else if (hasNewPk) {
+      console.log("\nAnalytics tables have org-scoped PK.");
     }
+  } else if (!hasAnalyticsDaily) {
+    console.log("\nNo analytics_daily — run migrations or: npm run db:push");
   }
+
+  if (failed) {
+    console.error("\nSanity check FAILED. Apply migrations/009_domain_outbox_and_workers.sql and earlier files.");
+    process.exit(1);
+  }
+
+  console.log("\nSanity check PASSED.\n");
+  process.exit(0);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

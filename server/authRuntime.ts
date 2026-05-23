@@ -26,6 +26,10 @@ export function getAuthRuntimeSnapshot() {
     devAuthBypassRequested: process.env.DEV_AUTH_BYPASS === "1",
     phase2dTest: process.env.PHASE2D_TEST === "1",
     clerkPublishableKey:
-      provider === "clerk" ? process.env.CLERK_PUBLISHABLE_KEY ?? null : null,
+      provider === "clerk"
+        ? process.env.CLERK_PUBLISHABLE_KEY ??
+          process.env.VITE_CLERK_PUBLISHABLE_KEY ??
+          null
+        : null,
   };
 }
