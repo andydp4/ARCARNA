@@ -1,12 +1,17 @@
 # Launch smoke test checklist
 
-Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md). Mark each item pass/fail.
+Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md) and [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md). Mark each item pass/fail.
 
-## Access & org
+## Access & auth (Clerk)
 
-- [ ] Login via production OIDC
+- [ ] Landing page shows **Sign in** (not Replit) when `AUTH_PROVIDER=clerk`
+- [ ] Clerk sign-in completes (`/sign-in` → dashboard)
+- [ ] **First user** becomes SUPER_ADMIN automatically (no prior owner)
+- [ ] Second user without approval lands on **pending approval** (`/pending-approval`)
+- [ ] SUPER_ADMIN approves user in **User access**
+- [ ] Approved user can sign in and reach dashboard
 - [ ] Org setup wizard completes (`/setup-wizard`)
-- [ ] SUPER_ADMIN can switch org (`OrgSwitcher`)
+- [ ] SUPER_ADMIN can switch org (`OrgSwitcher` + `X-Org-Id` scope)
 - [ ] CASHIER cannot access admin mutations (rules, user access, draft create)
 
 ## Catalog & customers
@@ -23,7 +28,7 @@ Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.
 ## Inventory intelligence
 
 - [ ] Smart Stock tab loads (`/inventory` → Smart Stock)
-- [ ] Stock levels reflect `product_location_stock` (after backfill)
+- [ ] Stock levels reflect `product_location_stock` (after install backfill)
 
 ## Suppliers & replenishment
 
@@ -58,6 +63,12 @@ Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.
 
 ## Production safety
 
-- [ ] `DEV_AUTH_BYPASS` not set (or `0`) in production env
+- [ ] `DEV_AUTH_BYPASS=0` in `.env.production` (app refuses `1`)
+- [ ] `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` set when using Clerk
 - [ ] `SESSION_SECRET` set (32+ chars)
 - [ ] `npm run gate` passed in CI/staging with `DATABASE_URL` when possible
+
+## Existing Replit users (phased migration)
+
+- [ ] Staff email on `allowed_users` before first Clerk login
+- [ ] After Clerk login, access preserved (or run `npm run auth:link-clerk` manually)

@@ -13,8 +13,9 @@ MidnightEPOS Hostinger helper
 Run these ON THE SERVER (after SSH), inside the MidnightEPOS folder:
 
   ./scripts/hostinger-deploy.sh install   First-time setup (start app + database setup)
-  ./scripts/hostinger-deploy.sh update    After git pull — rebuild and restart app
+  ./scripts/hostinger-deploy.sh update    After git pull — rebuild, migrate, restart
   ./scripts/hostinger-deploy.sh status    Check if app is running
+  ./scripts/hostinger-deploy.sh logs      Tail app logs (Ctrl+C to exit)
   ./scripts/hostinger-deploy.sh stop      Stop the app (data is kept)
 EOF
 }
@@ -28,15 +29,8 @@ require_env() {
   fi
 }
 
-cmd_install() {
-  require_env
-  echo "=== Step 1/4: Building and starting MidnightEPOS (5–15 minutes first time) ==="
-  $COMPOSE up -d --build
-
-  echo "=== Step 2/4: Waiting for database to be ready ==="
-  sleep 25
-
-  echo "=== Step 3/4: Applying database setup files ==="
+apply_migrations() {
+  echo "=== Applying database migrations ==="
   local user db
   user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' || echo midnight)
   db=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' || echo midnight_epos)
@@ -54,11 +48,36 @@ cmd_install() {
       $COMPOSE exec -T postgres psql -U "$user" -d "$db" < "$f" || {
         echo "  (note: some messages about 'already exists' are OK on re-run)"
       }
+    else
+      echo "  WARNING: missing $f — skip"
     fi
   done
+}
 
-  echo "=== Step 4/4: Stock location setup ==="
-  $COMPOSE exec -T app npx tsx scripts/backfill-product-location-stock.ts || true
+run_stock_backfill() {
+  echo "=== Stock location backfill (product_location_stock) ==="
+  if $COMPOSE exec -T app npx tsx scripts/backfill-product-location-stock.ts; then
+    echo "  Backfill finished."
+  else
+    echo "  WARNING: Backfill failed. Smart Stock may be empty until this succeeds."
+    echo "  Retry: docker compose --env-file .env.production exec app npx tsx scripts/backfill-product-location-stock.ts"
+    return 1
+  fi
+}
+
+cmd_install() {
+  require_env
+  echo "=== Step 1/5: Building and starting MidnightEPOS (5–15 minutes first time) ==="
+  $COMPOSE up -d --build
+
+  echo "=== Step 2/5: Waiting for database to be ready ==="
+  sleep 25
+
+  echo "=== Step 3/5: Applying database migrations ==="
+  apply_migrations
+
+  echo "=== Step 4/5: Stock location backfill ==="
+  run_stock_backfill || true
 
   cmd_status
   echo ""
@@ -70,9 +89,14 @@ cmd_install() {
 cmd_update() {
   require_env
   echo "=== Updating MidnightEPOS ==="
-  git pull origin main
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+  echo "Pulling origin/${branch}..."
+  git pull origin "$branch"
   $COMPOSE up -d --build
-  sleep 10
+  sleep 15
+  apply_migrations
+  run_stock_backfill || true
   cmd_status
   echo "Update finished. Refresh your browser."
 }

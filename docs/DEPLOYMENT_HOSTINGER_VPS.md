@@ -109,8 +109,10 @@ docker compose version
 cd /root
 git clone https://github.com/andydp4/MidnightEPOS.git
 cd MidnightEPOS
-git checkout main
+git checkout launch/phase12a-clerk-auth
 ```
+
+> **Note:** Use branch `launch/phase12a-clerk-auth` until it is merged into `main`. After merge, `git checkout main` is fine.
 
 **Success looks like:** No red “fatal” errors; folder exists:
 

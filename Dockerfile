@@ -32,6 +32,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/migrations ./migrations
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/shared ./shared
+COPY --from=build /app/server ./server
+RUN npm install tsx --no-save
 
 EXPOSE 5000
 
