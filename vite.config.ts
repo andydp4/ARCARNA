@@ -35,11 +35,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          // Do not split recharts/d3 — separate vendor-charts chunk breaks load order in Safari.
-          if (id.includes("@clerk")) return "vendor-clerk";
+          // Safari: keep React, Clerk, and Recharts in the main bundle (no separate vendor chunks).
           if (id.includes("@radix-ui")) return "vendor-radix";
           if (id.includes("@tanstack/react-query")) return "vendor-query";
-          if (id.includes("react-dom") || id.includes("/react/")) return "vendor-react";
         },
       },
     },
