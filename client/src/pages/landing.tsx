@@ -1,25 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useLocation } from "wouter";
-
-type AuthRuntime = {
-  authProvider?: "clerk" | "replit";
-  devAuthBypass?: boolean;
-};
-
-/** Production default is Clerk; Replit login only when server reports AUTH_PROVIDER=replit. */
-function resolveAuthProvider(runtime: AuthRuntime | undefined, isLoading: boolean): "clerk" | "replit" | "loading" {
-  if (isLoading && !runtime) return "loading";
-  if (runtime?.authProvider === "replit") return "replit";
-  const viteProvider = import.meta.env.VITE_AUTH_PROVIDER as string | undefined;
-  if (!runtime && viteProvider === "replit") return "replit";
-  return "clerk";
-}
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useAuthConfig } from "@/components/AuthProviders";
+import { ClerkSignInPanel } from "@/components/ClerkSignInPanel";
+import {
+  type AuthRuntime,
+  isClerkMode,
+} from "@/lib/authConfig";
 
 export default function Landing() {
-  const [, setLocation] = useLocation();
+  const { clerkReady, publishableKey, runtimeLoaded } = useAuthConfig();
   const { data: runtime, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
@@ -28,8 +19,8 @@ export default function Landing() {
     },
   });
 
-  const provider = resolveAuthProvider(runtime, isLoading);
-  const showDevNotice = runtime?.devAuthBypass === true;
+  const clerk = isClerkMode(runtime);
+  const waitingRuntime = isLoading && !runtimeLoaded;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
@@ -59,52 +50,49 @@ export default function Landing() {
               Sign in to access your dashboard
             </p>
 
-            {provider === "loading" ? (
+            {waitingRuntime && clerk ? (
               <Button disabled className="w-full min-h-[44px]">
                 Loading sign-in…
               </Button>
-            ) : provider === "clerk" ? (
-              <>
-                <SignedOut>
-                  <SignInButton mode="redirect" forceRedirectUrl="/">
-                    <Button
-                      className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 shadow-lg hover:shadow-xl"
-                      data-testid="button-login"
-                    >
-                      Sign in
-                    </Button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <Button
-                    className="w-full min-h-[44px]"
-                    onClick={() => setLocation("/")}
-                    data-testid="button-continue"
-                  >
-                    Continue to dashboard
-                  </Button>
-                </SignedIn>
-              </>
+            ) : clerk && !publishableKey ? (
+              <Alert variant="destructive" data-testid="alert-clerk-missing-key">
+                <AlertTitle>Sign-in unavailable</AlertTitle>
+                <AlertDescription>
+                  Clerk publishable key is missing. Set{" "}
+                  <code className="text-xs">VITE_CLERK_PUBLISHABLE_KEY</code> before{" "}
+                  <code className="text-xs">npm run build</code>, and{" "}
+                  <code className="text-xs">CLERK_PUBLISHABLE_KEY</code> in server{" "}
+                  <code className="text-xs">.env</code>, then redeploy.
+                </AlertDescription>
+              </Alert>
+            ) : clerk && clerkReady ? (
+              <ClerkSignInPanel routing="hash" />
+            ) : clerk ? (
+              <Button disabled className="w-full min-h-[44px]">
+                Preparing sign-in…
+              </Button>
             ) : (
               <Button
-                onClick={() => { window.location.href = "/api/login"; }}
+                onClick={() => {
+                  window.location.href = "/api/login";
+                }}
                 className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
-                data-testid="button-login-replit-dev"
+                data-testid="button-login-replit"
               >
                 <i className="fab fa-codepen text-xl"></i>
-                <span>Login with Replit (dev rollback)</span>
+                <span>Login with Replit</span>
               </Button>
             )}
 
             <div className="mt-6 pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                {provider === "clerk"
+                {clerk
                   ? "Secure sign-in powered by Clerk"
-                  : "Replit Auth (development rollback only)"}
+                  : "Replit Auth (legacy)"}
               </p>
             </div>
 
-            {showDevNotice && (
+            {runtime?.devAuthBypass === true && (
               <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
                 <div className="flex items-start gap-2">
                   <i className="fas fa-info-circle text-accent mt-0.5"></i>

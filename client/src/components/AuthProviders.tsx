@@ -1,18 +1,37 @@
 import { ClerkProvider } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  type AuthRuntime,
+  resolveAuthProvider,
+  resolveClerkPublishableKey,
+} from "@/lib/authConfig";
 
-type AuthRuntime = {
-  authProvider?: "clerk" | "replit";
-  clerkPublishableKey?: string | null;
+export type AuthConfig = {
+  provider: "clerk" | "replit";
+  publishableKey: string | null;
+  /** True when children are wrapped in ClerkProvider. */
+  clerkReady: boolean;
+  runtimeLoaded: boolean;
 };
 
+const AuthConfigContext = createContext<AuthConfig>({
+  provider: "clerk",
+  publishableKey: null,
+  clerkReady: false,
+  runtimeLoaded: false,
+});
+
+export function useAuthConfig(): AuthConfig {
+  return useContext(AuthConfigContext);
+}
+
 /**
- * Wraps the app in ClerkProvider when AUTH_PROVIDER=clerk.
- * Publishable key: runtime API first, then VITE_CLERK_PUBLISHABLE_KEY from build.
+ * Wraps the app in ClerkProvider when AUTH_PROVIDER=clerk and a publishable key exists.
+ * Vite env is used immediately so Clerk mounts before /api/auth/runtime returns.
  */
 export function AuthProviders({ children }: { children: ReactNode }) {
-  const { data } = useQuery<AuthRuntime>({
+  const { data, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
       const res = await fetch("/api/auth/runtime", { credentials: "include" });
@@ -22,22 +41,34 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
-  const publishableKey =
-    data?.clerkPublishableKey ??
-    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ??
-    null;
+  const config = useMemo<AuthConfig>(() => {
+    const provider = resolveAuthProvider(data);
+    const publishableKey = resolveClerkPublishableKey(data);
+    const clerkReady = provider === "clerk" && !!publishableKey;
+    return {
+      provider,
+      publishableKey,
+      clerkReady,
+      runtimeLoaded: !isLoading,
+    };
+  }, [data, isLoading]);
 
-  const useClerk =
-    data?.authProvider === "clerk" ||
-    (!data?.authProvider && import.meta.env.VITE_AUTH_PROVIDER !== "replit");
+  const content = (
+    <AuthConfigContext.Provider value={config}>{children}</AuthConfigContext.Provider>
+  );
 
-  if (useClerk && publishableKey) {
+  if (config.clerkReady && config.publishableKey) {
     return (
-      <ClerkProvider publishableKey={publishableKey} afterSignOutUrl="/">
-        {children}
+      <ClerkProvider
+        publishableKey={config.publishableKey}
+        afterSignOutUrl="/"
+        signInUrl="/sign-in"
+        signUpUrl="/sign-in"
+      >
+        {content}
       </ClerkProvider>
     );
   }
 
-  return <>{children}</>;
+  return content;
 }
