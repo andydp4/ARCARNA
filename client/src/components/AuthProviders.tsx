@@ -5,6 +5,7 @@ import {
   type AuthRuntime,
   resolveAuthProvider,
   resolveClerkPublishableKey,
+  appUrl,
 } from "@/lib/authConfig";
 
 export type AuthConfig = {
@@ -61,9 +62,11 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     return (
       <ClerkProvider
         publishableKey={config.publishableKey}
-        afterSignOutUrl="/"
-        signInUrl="/sign-in"
-        signUpUrl="/sign-in"
+        afterSignOutUrl={appUrl("/")}
+        signInUrl={appUrl("/sign-in")}
+        signUpUrl={appUrl("/sign-in")}
+        signInFallbackRedirectUrl={appUrl("/")}
+        signUpFallbackRedirectUrl={appUrl("/")}
       >
         {content}
       </ClerkProvider>

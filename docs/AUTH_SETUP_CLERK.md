@@ -73,6 +73,22 @@ Also add these under **Allowed redirect URLs** / **Authorized origins** if Clerk
 
 **Failure:** Browser shows Clerk error “redirect url mismatch” → add the exact URL from the address bar to Clerk settings.
 
+### `accounts.yourdomain.com` (Account Portal)
+
+In **production**, Clerk may use a separate hostname such as `https://accounts.viger.cloud/sign-up`. That is **Clerk’s Account Portal**, not your Nginx site. It only works if you add the DNS records Clerk shows under **Configure → Domains**.
+
+For Midnight EPOS we use **embedded sign-in on `https://viger.cloud/sign-in`** instead. In Clerk Dashboard set:
+
+| Setting | Value |
+|---------|--------|
+| Sign-in URL | `https://viger.cloud/sign-in` |
+| Sign-up URL | `https://viger.cloud/sign-in` (or disable public sign-up) |
+| Home URL | `https://viger.cloud/` |
+
+Optional: disable **Allow sign ups** under **User & authentication** if staff are invite-only.
+
+You do **not** need `accounts.viger.cloud` unless you intentionally want Clerk’s hosted portal.
+
 ---
 
 ## Step 4 — Deploy and run database migration

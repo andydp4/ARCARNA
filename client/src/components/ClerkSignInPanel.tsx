@@ -1,6 +1,7 @@
 import { SignIn, useUser } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
+import { appUrl } from "@/lib/authConfig";
 
 const clerkAppearance = {
   elements: {
@@ -8,6 +9,8 @@ const clerkAppearance = {
     card: "shadow-none border-0 p-0 w-full",
     headerTitle: "hidden",
     headerSubtitle: "hidden",
+    footerAction: "hidden",
+    footerActionLink: "hidden",
   },
 };
 
@@ -37,9 +40,10 @@ export function ClerkSignInPanel({ routing = "hash" }: { routing?: "hash" | "pat
   }
 
   const signInProps = {
-    signUpUrl: "/sign-in",
-    fallbackRedirectUrl: "/",
-    forceRedirectUrl: "/",
+    signUpUrl: appUrl("/sign-in"),
+    signInUrl: appUrl("/sign-in"),
+    fallbackRedirectUrl: appUrl("/"),
+    forceRedirectUrl: appUrl("/"),
     appearance: clerkAppearance,
   };
 

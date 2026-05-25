@@ -22,3 +22,18 @@ export function resolveAuthProvider(runtime?: AuthRuntime | null): "clerk" | "re
 export function isClerkMode(runtime?: AuthRuntime | null): boolean {
   return resolveAuthProvider(runtime) === "clerk";
 }
+
+/** App origin for Clerk URLs — avoids accounts.{domain} Account Portal redirects. */
+export function getAppOrigin(): string {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  const configured = (import.meta.env.VITE_APP_URL as string | undefined)?.trim();
+  return configured?.replace(/\/$/, "") ?? "";
+}
+
+export function appUrl(path: string): string {
+  const origin = getAppOrigin();
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return origin ? `${origin}${normalized}` : normalized;
+}
