@@ -9,6 +9,26 @@ import {
 } from "./allowList";
 import { tryDevAuthBypass, tryPhase2dTestAuth } from "./commonAuth";
 
+/** Paths that must not pass Clerk session validation (no publishable key check). */
+const CLERK_PUBLIC_PATHS = new Set(["/api/health", "/api/auth/runtime"]);
+
+function clerkPublishableKey(): string | undefined {
+  const key =
+    process.env.CLERK_PUBLISHABLE_KEY?.trim() ||
+    process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
+  return key || undefined;
+}
+
+function createClerkRequestMiddleware(): RequestHandler {
+  const key = clerkPublishableKey();
+  if (!key) {
+    return (_req, _res, next) => next();
+  }
+  return clerkMiddleware({ publishableKey: key });
+}
+
+const clerkRequestMiddleware = createClerkRequestMiddleware();
+
 async function clerkClaimsForUser(userId: string): Promise<AllowListClaims> {
   try {
     const user = await clerkClient.users.getUser(userId);
@@ -29,10 +49,23 @@ async function clerkClaimsForUser(userId: string): Promise<AllowListClaims> {
   }
 }
 
-/** Registers Clerk middleware; /api/login and /api/logout redirect to /sign-in. */
+/**
+ * Clerk session middleware for AUTH_PROVIDER=clerk only.
+ * Skips public health/runtime routes to avoid publishable-key errors on probes.
+ */
 export async function setupClerkAuth(app: Express) {
+  if (getAuthProvider() !== "clerk") {
+    return;
+  }
+
   app.set("trust proxy", 1);
-  app.use(clerkMiddleware());
+
+  app.use((req, res, next) => {
+    if (CLERK_PUBLIC_PATHS.has(req.path)) {
+      return next();
+    }
+    return clerkRequestMiddleware(req, res, next);
+  });
 
   app.get("/api/login", (_req, res) => {
     res.redirect("/sign-in");
@@ -57,7 +90,7 @@ export const clerkIsAuthenticated: RequestHandler = async (req, res, next) => {
     id: userId,
     replitUserId: userId,
     authUserId: userId,
-    authProvider: getAuthProvider(),
+    authProvider: "clerk",
     email: claims.email ?? undefined,
     firstName: claims.first_name ?? undefined,
     lastName: claims.last_name ?? undefined,

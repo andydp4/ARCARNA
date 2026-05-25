@@ -152,15 +152,25 @@ npx drizzle-kit push
 
 ## 5. PM2 — start / restart
 
+Production uses `ecosystem.config.cjs` (`NODE_ENV=production`, `.env`, logs under `logs/`).
+
+**First start:**
+
 ```bash
+npm run deploy:build
 npm run deploy:start
-# or first time:
-# NODE_ENV=production pm2 start dist/index.js --name midnight-epos
-# pm2 save
-# pm2 startup
+pm2 save
+pm2 startup
 ```
 
-**Restart after updates:**
+**Full deploy (pull, install, build, restart):**
+
+```bash
+npm run deploy
+# or: bash scripts/deploy-production.sh
+```
+
+**Restart after `.env` changes only:**
 
 ```bash
 npm run deploy:restart
@@ -170,6 +180,7 @@ npm run deploy:restart
 
 ```bash
 pm2 logs midnight-epos --lines 100
+# or: tail -f logs/pm2-out.log logs/pm2-error.log
 ```
 
 **Health:**
@@ -178,7 +189,7 @@ pm2 logs midnight-epos --lines 100
 curl -s http://127.0.0.1:5000/api/health
 ```
 
-Success: `{"ok":true,...}`
+Success: `{"ok":true,...}` — must not return Clerk publishable-key errors (health is unauthenticated).
 
 ---
 

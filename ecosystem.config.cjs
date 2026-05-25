@@ -1,0 +1,32 @@
+/**
+ * PM2 production config for MidnightEPOS (Hostinger VPS).
+ * Usage:
+ *   pm2 start ecosystem.config.cjs
+ *   pm2 restart ecosystem.config.cjs --update-env
+ *   pm2 save
+ */
+const path = require("path");
+
+module.exports = {
+  apps: [
+    {
+      name: "midnight-epos",
+      cwd: __dirname,
+      script: path.join(__dirname, "dist", "index.js"),
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_memory_restart: "500M",
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+      },
+      env_file: path.join(__dirname, ".env"),
+      out_file: path.join(__dirname, "logs", "pm2-out.log"),
+      error_file: path.join(__dirname, "logs", "pm2-error.log"),
+      merge_logs: true,
+      time: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+    },
+  ],
+};

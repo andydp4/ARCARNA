@@ -41,6 +41,11 @@ export function validateProductionEnv(): void {
           "CLERK_PUBLISHABLE_KEY or VITE_CLERK_PUBLISHABLE_KEY is required when AUTH_PROVIDER=clerk in production",
         );
       }
+      if (!publishableKey.startsWith("pk_")) {
+        throw new Error(
+          "Clerk publishable key must start with pk_ (check CLERK_PUBLISHABLE_KEY / VITE_CLERK_PUBLISHABLE_KEY)",
+        );
+      }
     } else if (!process.env.REPL_ID?.trim()) {
       throw new Error("REPL_ID is required when AUTH_PROVIDER=replit in production");
     }

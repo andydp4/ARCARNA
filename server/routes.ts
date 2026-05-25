@@ -53,19 +53,20 @@ import {
 } from "../shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
-  await setupAuth(app);
+  // Public probes — registered before auth middleware
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      ok: true,
+      nodeEnv: process.env.NODE_ENV ?? "development",
+      authProvider: process.env.AUTH_PROVIDER ?? "clerk",
+    });
+  });
 
   app.get("/api/auth/runtime", (_req, res) => {
     res.json(getAuthRuntimeSnapshot());
   });
 
-  app.get("/api/health", (_req, res) => {
-    res.json({
-      ok: true,
-      nodeEnv: process.env.NODE_ENV ?? "development",
-    });
-  });
+  await setupAuth(app);
 
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
