@@ -49,15 +49,26 @@ app.use((req, res, next) => {
   next();
 });
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled promise rejection:", reason);
+});
+
 (async () => {
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? Number((err as { status?: number }).status) || 500
+        : typeof err === "object" && err !== null && "statusCode" in err
+          ? Number((err as { statusCode?: number }).statusCode) || 500
+          : 500;
+    const message =
+      err instanceof Error ? err.message : "Internal Server Error";
+    console.error("[express] Request error:", err);
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 
   const isProduction = process.env.NODE_ENV === "production";

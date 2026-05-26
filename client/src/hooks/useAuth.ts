@@ -48,6 +48,11 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
     return null;
   }
 
+  if (res.status >= 500) {
+    console.error(`[auth] /api/auth/user unavailable: ${res.status} ${res.statusText}`);
+    throw new Error(`Auth service unavailable (${res.status})`);
+  }
+
   if (!res.ok) {
     throw new Error(`${res.status}: ${res.statusText}`);
   }

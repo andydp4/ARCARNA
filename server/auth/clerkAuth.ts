@@ -77,39 +77,44 @@ export async function setupClerkAuth(app: Express) {
 }
 
 export const clerkIsAuthenticated: RequestHandler = async (req, res, next) => {
-  if (await tryPhase2dTestAuth(req, res, next)) return;
-  if (await tryDevAuthBypass(req, res, next)) return;
+  try {
+    if (await tryPhase2dTestAuth(req, res, next)) return;
+    if (await tryDevAuthBypass(req, res, next)) return;
 
-  const { userId } = getAuth(req);
-  if (!userId) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  const claims = await clerkClaimsForUser(userId);
-  await storage.upsertUser({
-    id: userId,
-    replitUserId: userId,
-    authUserId: userId,
-    authProvider: "clerk",
-    email: claims.email ?? undefined,
-    firstName: claims.first_name ?? undefined,
-    lastName: claims.last_name ?? undefined,
-    profileImageUrl: claims.profile_image_url ?? undefined,
-  } as Parameters<typeof storage.upsertUser>[0]);
-
-  const allowListStatus = await checkAndHandleAllowList(claims);
-
-  if (!allowListStatus.allowed) {
-    if (allowListStatus.isPending) {
-      return res.status(403).json({
-        message: "Access pending approval",
-        isPending: true,
-        code: "PENDING_APPROVAL",
-      });
+    const { userId } = getAuth(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
-    return res.status(403).json({ message: "Access denied", code: "NO_ACCESS" });
-  }
 
-  req.user = buildSessionUser(userId, claims, allowListStatus);
-  return next();
+    const claims = await clerkClaimsForUser(userId);
+    await storage.upsertUser({
+      id: userId,
+      replitUserId: userId,
+      authUserId: userId,
+      authProvider: "clerk",
+      email: claims.email ?? undefined,
+      firstName: claims.first_name ?? undefined,
+      lastName: claims.last_name ?? undefined,
+      profileImageUrl: claims.profile_image_url ?? undefined,
+    } as Parameters<typeof storage.upsertUser>[0]);
+
+    const allowListStatus = await checkAndHandleAllowList(claims);
+
+    if (!allowListStatus.allowed) {
+      if (allowListStatus.isPending) {
+        return res.status(403).json({
+          message: "Access pending approval",
+          isPending: true,
+          code: "PENDING_APPROVAL",
+        });
+      }
+      return res.status(403).json({ message: "Access denied", code: "NO_ACCESS" });
+    }
+
+    req.user = buildSessionUser(userId, claims, allowListStatus);
+    return next();
+  } catch (err) {
+    console.error("[Auth] clerkIsAuthenticated failed:", err);
+    return next(err);
+  }
 };
