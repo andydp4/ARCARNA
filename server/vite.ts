@@ -88,10 +88,19 @@ export function serveStatic(app: Express) {
     express.static(distPath, {
       index: false,
       maxAge: "1d",
+      setHeaders(res, filePath) {
+        if (filePath.endsWith("sw.js")) {
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+          res.setHeader("Service-Worker-Allowed", "/");
+        }
+      },
     }),
   );
 
-  app.use("*", (_req, res) => {
+  app.use("*", (req, res, next) => {
+    if (req.path === "/sw.js" || req.path === "/manifest.json") {
+      return res.status(404).type("text/plain").send("Not found — run npm run build");
+    }
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
