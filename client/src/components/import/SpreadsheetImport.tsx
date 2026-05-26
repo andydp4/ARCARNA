@@ -23,6 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { fileToBase64 } from "@/lib/fileImport";
 import { useToast } from "@/hooks/use-toast";
+import { matchProductImportHeader } from "@shared/productImport";
 
 type ImportKind = "products" | "customers";
 
@@ -130,8 +131,11 @@ export function SpreadsheetImport({
       setHeaders(data.headers ?? []);
       const auto: Record<string, string> = {};
       fieldOptions.forEach((field) => {
-        const match = (data.headers as string[]).find(
-          (h) => h.toLowerCase() === field.key.toLowerCase() || h.toLowerCase().includes(field.key.toLowerCase()),
+        const match = (data.headers as string[]).find((h) =>
+          kind === "products"
+            ? matchProductImportHeader(h, field.key)
+            : h.toLowerCase() === field.key.toLowerCase() ||
+              h.toLowerCase().replace(/[\s_]+/g, "").includes(field.key.toLowerCase()),
         );
         if (match) auto[field.key] = match;
       });

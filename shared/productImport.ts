@@ -21,7 +21,7 @@ export type ProductImportPreview = {
 
 const FIELD_LABELS: Record<string, string> = {
   name: "name",
-  productId: "productId",
+  productId: "product ID",
   barcode: "barcode",
   defaultSalePrice: "sale price",
   costPrice: "cost price",
@@ -29,21 +29,72 @@ const FIELD_LABELS: Record<string, string> = {
   stockLimit: "stock limit",
 };
 
+/** Normalize spreadsheet header labels to canonical import field keys. */
+function canonicalProductFieldKey(header: string): string | null {
+  const k = header.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const map: Record<string, string> = {
+    name: "name",
+    productname: "name",
+    product: "name",
+    barcode: "barcode",
+    ean: "barcode",
+    upc: "barcode",
+    costprice: "costPrice",
+    cost: "costPrice",
+    unitcost: "costPrice",
+    saleprice: "defaultSalePrice",
+    defaultsaleprice: "defaultSalePrice",
+    price: "defaultSalePrice",
+    sellprice: "defaultSalePrice",
+    retailprice: "defaultSalePrice",
+    productid: "productId",
+    sku: "productId",
+    id: "productId",
+    stock: "stock",
+    initialstock: "stock",
+    openingstock: "stock",
+    qty: "stock",
+    quantity: "stock",
+    stocklimit: "stockLimit",
+    maxstock: "stockLimit",
+    reorderlevel: "stockLimit",
+    minstock: "stockLimit",
+  };
+  return map[k] ?? null;
+}
+
+export function matchProductImportHeader(header: string, fieldKey: string): boolean {
+  return canonicalProductFieldKey(header) === fieldKey;
+}
+
+/** Flatten row keys like "Sale Price" / "Product ID" into canonical camelCase fields. */
+export function flattenProductImportRow(raw: Record<string, string>): Record<string, string> {
+  const flat: Record<string, string> = { ...raw };
+  for (const [header, value] of Object.entries(raw)) {
+    const canon = canonicalProductFieldKey(header);
+    if (canon && value !== undefined && value !== "") {
+      flat[canon] = value;
+    }
+  }
+  return flat;
+}
+
 export function normalizeProductRow(raw: Record<string, string>): Record<string, unknown> {
+  const row = flattenProductImportRow(raw);
   return {
-    name: raw.name ?? raw.Name ?? raw.product_name ?? "",
-    productId: raw.productId ?? raw.product_id ?? raw.sku ?? raw.SKU ?? "",
-    barcode: raw.barcode ?? raw.Barcode ?? null,
+    name: row.name ?? row.Name ?? row.product_name ?? "",
+    productId: row.productId ?? row.product_id ?? row.sku ?? row.SKU ?? "",
+    barcode: row.barcode ?? row.Barcode ?? null,
     defaultSalePrice:
-      raw.defaultSalePrice ??
-      raw.sale_price ??
-      raw.salePrice ??
-      raw.price ??
-      raw.Price ??
+      row.defaultSalePrice ??
+      row.sale_price ??
+      row.salePrice ??
+      row.price ??
+      row.Price ??
       "",
-    costPrice: raw.costPrice ?? raw.cost_price ?? raw.cost ?? raw.tax ?? "",
-    stock: raw.stock ?? raw.Stock ?? "0",
-    stockLimit: raw.stockLimit ?? raw.stock_limit ?? "100",
+    costPrice: row.costPrice ?? row.cost_price ?? row.cost ?? row.tax ?? "",
+    stock: row.stock ?? row.Stock ?? row.initialStock ?? "0",
+    stockLimit: row.stockLimit ?? row.stock_limit ?? "100",
   };
 }
 
