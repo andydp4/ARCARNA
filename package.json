@@ -19,6 +19,7 @@
     "phase2d:test": "tsx scripts/phase2d-test.ts",
     "auth:link-clerk": "tsx scripts/link-clerk-auth-by-email.ts",
     "gate": "tsx scripts/release-gate.ts",
+    "db:migrate": "bash scripts/apply-migrations-pm2.sh",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
     "release:preflight": "npm run migration:sanity && npm run gate"
   },

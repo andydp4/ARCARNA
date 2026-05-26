@@ -116,22 +116,18 @@ npm install
 npm run build
 ```
 
-Apply SQL migrations (order matters):
+Apply SQL migrations (required for Clerk — includes `008_auth_subject.sql`):
 
 ```bash
-export $(grep -v '^#' .env | xargs)
-for f in migrations/001_analytics_org_pk_with_org.sql \
-         migrations/002_org_not_null.sql \
-         migrations/003_org_setup_phase8.sql \
-         migrations/004_phase10_automation.sql \
-         migrations/005_phase11a_location_stock_transfers.sql \
-         migrations/006_phase11b_suppliers_replenishment.sql \
-         migrations/007_phase11c_goods_receiving.sql \
-         migrations/008_auth_subject.sql \
-         migrations/009_domain_outbox_and_workers.sql; do
-  echo "Applying $f..."
-  psql "$DATABASE_URL" -f "$f" || echo "(some 'already exists' messages are OK)"
-done
+sudo apt install -y postgresql-client   # once, if psql is missing
+npm run db:migrate
+```
+
+Or apply only the Clerk migration:
+
+```bash
+source .env
+psql "$DATABASE_URL" -f migrations/008_auth_subject.sql
 ```
 
 Sanity check:
