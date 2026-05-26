@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Upload,
@@ -27,6 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseContactsFileToRows } from "@/lib/contactsFileParse";
 import { IMPORT_MAX_UPLOAD_BYTES } from "@shared/importLimits";
@@ -50,6 +52,12 @@ interface ContactsImportProps {
   onImported?: () => void;
 }
 
+function isImportableRow(row: PreviewRow): boolean {
+  return (
+    row.errors.length === 0 && ["insert", "overwrite", "merge"].includes(row.action)
+  );
+}
+
 export function ContactsImport({ compact, onImported }: ContactsImportProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +71,55 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
     summary: { total: number; valid: number; invalid: number; duplicates: number };
     source?: string;
   } | null>(null);
+  const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const importableRows = useMemo(
+    () => (preview?.rows ?? []).filter(isImportableRow),
+    [preview],
+  );
+
+  const filteredRows = useMemo(() => {
+    if (!preview) return [];
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return preview.rows;
+    return preview.rows.filter((row) => {
+      const name = (row.data.name ?? "").toLowerCase();
+      const phone = (row.data.phone ?? "").toLowerCase();
+      const email = (row.data.email ?? "").toLowerCase();
+      return name.includes(q) || phone.includes(q) || email.includes(q);
+    });
+  }, [preview, searchTerm]);
+
+  const selectedImportableCount = useMemo(
+    () => importableRows.filter((r) => selectedRowIndexes.has(r.rowIndex)).length,
+    [importableRows, selectedRowIndexes],
+  );
+
+  useEffect(() => {
+    if (!preview) {
+      setSelectedRowIndexes(new Set());
+      setSearchTerm("");
+      return;
+    }
+    const defaultSelected = preview.rows
+      .filter((r) => isImportableRow(r) && r.action === "insert")
+      .map((r) => r.rowIndex);
+    setSelectedRowIndexes(new Set(defaultSelected));
+  }, [preview]);
+
+  const toggleRow = (rowIndex: number, checked: boolean) => {
+    setSelectedRowIndexes((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(rowIndex);
+      else next.delete(rowIndex);
+      return next;
+    });
+  };
+
+  const selectRowIndexes = (indexes: number[]) => {
+    setSelectedRowIndexes(new Set(indexes));
+  };
 
   const acceptFiles = (f: File | null) => {
     if (!f) return;
@@ -85,6 +142,8 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
     }
     setFile(f);
     setPreview(null);
+    setSelectedRowIndexes(new Set());
+    setSearchTerm("");
   };
 
   const previewMutation = useMutation({
@@ -119,12 +178,11 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
     mutationFn: async () => {
       if (!preview?.rows) throw new Error("Run preview first");
       const validRows = preview.rows
-        .filter(
-          (r) =>
-            r.errors.length === 0 &&
-            ["insert", "overwrite", "merge"].includes(r.action),
-        )
+        .filter((r) => isImportableRow(r) && selectedRowIndexes.has(r.rowIndex))
         .map((r) => r.data);
+      if (validRows.length === 0) {
+        throw new Error("Select at least one contact to import.");
+      }
       const res = await apiRequest("POST", "/api/customers/import", {
         rows: validRows,
         duplicateMode,
@@ -168,7 +226,7 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
           </CardTitle>
           <CardDescription>
             Import Apple Contacts (.vcf) or CSV up to 32MB (photo data in the file is ignored).
-            Parsed on your device — only names, phones, and emails are sent to the server.
+            Parsed on your device — choose which contacts to import before confirming.
           </CardDescription>
         </CardHeader>
       )}
@@ -279,12 +337,12 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
           </Button>
           <Button
             onClick={() => commitMutation.mutate()}
-            disabled={!preview?.summary?.valid || commitMutation.isPending}
+            disabled={selectedImportableCount === 0 || commitMutation.isPending}
             className="min-h-[44px]"
             data-testid="button-commit-contacts"
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
-            Confirm import
+            Import selected ({selectedImportableCount})
           </Button>
         </div>
 
@@ -304,10 +362,99 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
                 </AlertDescription>
               </Alert>
             )}
-            <div className="max-h-72 overflow-auto border rounded-md">
+            {preview.summary.valid > 0 && (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                  <p className="text-sm font-medium">
+                    {selectedImportableCount} of {importableRows.length} importable selected
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[36px]"
+                      onClick={() =>
+                        selectRowIndexes(importableRows.map((r) => r.rowIndex))
+                      }
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[36px]"
+                      onClick={() =>
+                        selectRowIndexes(
+                          importableRows.filter((r) => r.action === "insert").map((r) => r.rowIndex),
+                        )
+                      }
+                    >
+                      New only
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[36px]"
+                      onClick={() => setSelectedRowIndexes(new Set())}
+                    >
+                      Clear
+                    </Button>
+                    {searchTerm.trim() && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[36px]"
+                        onClick={() => {
+                          setSelectedRowIndexes((prev) => {
+                            const next = new Set(prev);
+                            filteredRows.filter(isImportableRow).forEach((r) => next.add(r.rowIndex));
+                            return next;
+                          });
+                        }}
+                      >
+                        Select shown
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <Input
+                  placeholder="Search name, phone, or email…"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="min-h-[44px]"
+                  data-testid="contacts-import-search"
+                />
+              </div>
+            )}
+            <div className="max-h-[min(24rem,50vh)] overflow-auto border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={
+                          importableRows.length > 0 &&
+                          importableRows.every((r) => selectedRowIndexes.has(r.rowIndex))
+                            ? true
+                            : importableRows.some((r) => selectedRowIndexes.has(r.rowIndex))
+                              ? "indeterminate"
+                              : false
+                        }
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            selectRowIndexes(importableRows.map((r) => r.rowIndex));
+                          } else {
+                            setSelectedRowIndexes(new Set());
+                          }
+                        }}
+                        aria-label="Select all importable contacts"
+                        data-testid="contacts-select-all"
+                      />
+                    </TableHead>
                     <TableHead>#</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
@@ -317,34 +464,63 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preview.rows.slice(0, 100).map((row) => (
-                    <TableRow key={row.rowIndex}>
-                      <TableCell>{row.rowIndex}</TableCell>
-                      <TableCell className="max-w-[120px] truncate">
-                        {row.data.name ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">{row.data.phone ?? "—"}</TableCell>
-                      <TableCell className="text-xs max-w-[140px] truncate">
-                        {row.data.email ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {row.duplicateOf
-                          ? `${row.action} (dup: ${row.duplicateOf.name})`
-                          : row.action}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "text-xs",
-                          row.errors.length ? "text-destructive" : "text-muted-foreground",
-                        )}
-                      >
-                        {row.errors.length ? row.errors.join("; ") : "OK"}
+                  {filteredRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-6">
+                        No contacts match your search.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    filteredRows.map((row) => {
+                      const canImport = isImportableRow(row);
+                      const checked = selectedRowIndexes.has(row.rowIndex);
+                      return (
+                        <TableRow
+                          key={row.rowIndex}
+                          className={cn(!canImport && "opacity-60", checked && canImport && "bg-muted/40")}
+                        >
+                          <TableCell>
+                            <Checkbox
+                              checked={canImport && checked}
+                              disabled={!canImport}
+                              onCheckedChange={(v) => toggleRow(row.rowIndex, v === true)}
+                              aria-label={`Select ${row.data.name ?? "contact"}`}
+                            />
+                          </TableCell>
+                          <TableCell>{row.rowIndex}</TableCell>
+                          <TableCell className="max-w-[120px] truncate">
+                            {row.data.name ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs">{row.data.phone ?? "—"}</TableCell>
+                          <TableCell className="text-xs max-w-[140px] truncate">
+                            {row.data.email ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {row.duplicateOf
+                              ? `${row.action} (dup: ${row.duplicateOf.name})`
+                              : row.action}
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "text-xs",
+                              row.errors.length ? "text-destructive" : "text-muted-foreground",
+                            )}
+                          >
+                            {row.errors.length ? row.errors.join("; ") : "OK"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
+            {searchTerm && filteredRows.length < preview.rows.length && (
+              <p className="text-xs text-muted-foreground">
+                Showing {filteredRows.length} of {preview.rows.length} contacts. Selection applies to
+                all selected rows, including those not visible in search.
+              </p>
+            )}
           </div>
         )}
       </CardContent>
