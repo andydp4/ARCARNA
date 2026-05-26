@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, LogOut, XCircle, RefreshCw } from "lucide-react";
@@ -16,7 +17,7 @@ export default function PendingApproval() {
   const { data: status, isLoading, refetch } = useQuery<ApprovalStatus>({
     queryKey: ["/api/auth/approval-status"],
     queryFn: async () => {
-      const response = await fetch("/api/auth/approval-status", { credentials: 'include' });
+      const response = await apiFetch("/api/auth/approval-status", { credentials: 'include' });
       return response.json();
     },
     refetchInterval: 30000,

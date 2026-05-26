@@ -11,6 +11,7 @@ import { OrgSwitcher } from './OrgSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
+import { resolveApiUrl } from '@/lib/appPaths'
 
 interface LayoutProps {
   children: ReactNode
@@ -97,7 +98,7 @@ export function Layout({ children }: LayoutProps) {
                       <NavLinks />
                     </div>
                     <div className="p-4 border-t border-border">
-                      <a href="/api/logout" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors" data-testid="nav-logout">
+                      <a href={resolveApiUrl("/api/logout")} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors" data-testid="nav-logout">
                         <LogOut className="h-4 w-4" />
                         <span className="text-sm font-medium">Sign Out</span>
                       </a>
@@ -139,7 +140,7 @@ export function Layout({ children }: LayoutProps) {
               {user?.firstName || user?.email || "Welcome"}
             </span>
             {!isMobile && (
-              <a href="/api/logout" className="text-sm hover:underline" data-testid="header-logout">
+              <a href={resolveApiUrl("/api/logout")} className="text-sm hover:underline" data-testid="header-logout">
                 Sign Out
               </a>
             )}
@@ -162,7 +163,7 @@ export function Layout({ children }: LayoutProps) {
               </div>
               <div className="p-4 border-t border-border">
                 <a
-                  href="/api/logout"
+                  href={resolveApiUrl("/api/logout")}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors',
                     !sidebarOpen && 'justify-center px-0'

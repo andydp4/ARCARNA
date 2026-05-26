@@ -60,9 +60,9 @@ In Clerk → **Configure** → **Paths** (or **Domains / URLs** depending on Cle
 |---------|------------------------|
 | Sign-in URL | `https://accounts.viger.cloud/sign-in` |
 | Sign-up URL | `https://accounts.viger.cloud/sign-up` |
-| After sign-in (fallback) | `https://viger.cloud/` |
+| After sign-in (fallback) | `https://viger.cloud/midnight/` |
 | After sign-out | `https://viger.cloud/` |
-| Home URL | `https://viger.cloud/` |
+| Home URL | `https://viger.cloud/midnight/` |
 
 For **IP-only testing** before a domain:
 
@@ -88,10 +88,12 @@ Add to server `.env` and rebuild:
 ```env
 CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
 VITE_CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
-VITE_APP_URL=https://viger.cloud
+VITE_APP_URL=https://viger.cloud/midnight
+VITE_BASE_PATH=/midnight
+APP_BASE_PATH=/midnight
 ```
 
-The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/`.
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/`.
 
 `/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 

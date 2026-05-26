@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ export default function Reports() {
         from: dateRange.from.toISOString(),
         to: dateRange.to.toISOString(),
       });
-      const response = await fetch(`/api/reports?${params}`, {
+      const response = await apiFetch(`/api/reports?${params}`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch report data");

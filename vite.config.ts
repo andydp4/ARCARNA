@@ -3,8 +3,10 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 const isProduction = process.env.NODE_ENV === "production";
+const appBase = (process.env.VITE_BASE_PATH || "/midnight").replace(/\/?$/, "/");
 
 export default defineConfig({
+  base: appBase,
   plugins: [
     react(),
     ...(isProduction

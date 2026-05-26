@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ export default function RulesPage() {
     queryKey: ["/api/rules", historyRule?.id, "executions"],
     enabled: !!historyRule,
     queryFn: async () => {
-      const res = await fetch(`/api/rules/${historyRule!.id}/executions`, { credentials: "include" });
+      const res = await apiFetch(`/api/rules/${historyRule!.id}/executions`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load executions");
       return res.json();
     },

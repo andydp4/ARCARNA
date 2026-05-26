@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/clerk-react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ClerkSessionSync } from "@/components/ClerkSessionSync";
@@ -34,7 +35,7 @@ export function AuthProviders({ children }: { children: ReactNode }) {
   const { data, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/runtime", { credentials: "include" });
+      const res = await apiFetch("/api/auth/runtime", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load auth runtime");
       return res.json();
     },

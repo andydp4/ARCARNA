@@ -1,6 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { offlineStorage } from "./offline-storage";
 import { orgScopeHeaders } from "./orgScope";
+import { resolveApiUrl } from "./appPaths";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -19,7 +20,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const res = await fetch(resolveApiUrl(url), {
     method,
     headers: {
       ...orgScopeHeaders(),
@@ -40,9 +41,10 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const endpoint = queryKey.join("/") as string;
-    
+    const url = resolveApiUrl(endpoint);
+
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(url, {
         credentials: "include",
         headers: orgScopeHeaders(),
       });
@@ -54,11 +56,11 @@ export const getQueryFn: <T>(options: {
       await throwIfResNotOk(res);
       const data = await res.json();
       
-      if (endpoint.startsWith('/api/products') && Array.isArray(data)) {
+      if (url.includes("/api/products") && Array.isArray(data)) {
         offlineStorage.cacheProducts(data).catch(err => 
           console.warn('[QueryClient] Failed to cache products:', err)
         );
-      } else if (endpoint.startsWith('/api/customers') && Array.isArray(data)) {
+      } else if (url.includes("/api/customers") && Array.isArray(data)) {
         offlineStorage.cacheCustomers(data).catch(err => 
           console.warn('[QueryClient] Failed to cache customers:', err)
         );
@@ -67,10 +69,10 @@ export const getQueryFn: <T>(options: {
       return data;
     } catch (error) {
       if (!navigator.onLine || (error as Error).message.includes('Failed to fetch')) {
-        if (endpoint.startsWith('/api/products')) {
+        if (url.includes("/api/products")) {
           console.log('[QueryClient] Offline: Loading products from cache');
           return await offlineStorage.getCachedProducts();
-        } else if (endpoint.startsWith('/api/customers')) {
+        } else if (url.includes("/api/customers")) {
           console.log('[QueryClient] Offline: Loading customers from cache');
           return await offlineStorage.getCachedCustomers();
         }

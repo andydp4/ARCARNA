@@ -1,18 +1,26 @@
 import type { AuthUser } from "@/hooks/useAuth";
+import { APP_BASE, resolveAppPath } from "@/lib/appPaths";
 
 const SETUP_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
 
 /** First protected route after sign-in (home dashboard is `/`). */
 export function resolveAppEntryPath(user: AuthUser | null): string {
-  if (!user) return "/";
-  if (user.accessState === "pending" || user.isPending) return "/pending-approval";
+  if (!user) return resolveAppPath("/");
+  if (user.accessState === "pending" || user.isPending) return resolveAppPath("/pending-approval");
   if (user.needsOnboarding || user.accessState === "no_org") {
-    return user.role === "SUPER_ADMIN" ? "/onboarding" : "/no-access";
+    return user.role === "SUPER_ADMIN" ? resolveAppPath("/onboarding") : resolveAppPath("/no-access");
   }
   if (user.needsSetupWizard) {
-    return user.role && SETUP_ROLES.has(user.role) ? "/setup-wizard" : "/setup-blocked";
+    return user.role && SETUP_ROLES.has(user.role)
+      ? resolveAppPath("/setup-wizard")
+      : resolveAppPath("/setup-blocked");
   }
-  return "/";
+  return resolveAppPath("/");
+}
+
+export function isMidnightAppPath(pathname: string): boolean {
+  if (!APP_BASE) return true;
+  return pathname === APP_BASE || pathname.startsWith(`${APP_BASE}/`);
 }
 
 export function navigateToAppEntry(user: AuthUser | null, source = "auth"): boolean {

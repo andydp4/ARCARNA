@@ -2,12 +2,14 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { syncService } from "./lib/sync-service";
+import { APP_BASE } from "./lib/appPaths";
 
 async function registerServiceWorker(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
 
   try {
-    const probe = await fetch("/sw.js", { method: "HEAD", credentials: "same-origin" });
+    const swPath = `${APP_BASE}/sw.js`.replace(/\/{2,}/g, "/");
+    const probe = await fetch(swPath, { method: "HEAD", credentials: "same-origin" });
     const contentType = probe.headers.get("content-type") ?? "";
     if (!probe.ok || contentType.includes("text/html")) {
       console.warn(
@@ -17,7 +19,8 @@ async function registerServiceWorker(): Promise<void> {
       return;
     }
 
-    const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const scope = APP_BASE ? `${APP_BASE}/` : "/";
+    const registration = await navigator.serviceWorker.register(swPath, { scope });
     console.log("[PWA] Service Worker registered:", registration.scope);
 
     registration.addEventListener("updatefound", () => {

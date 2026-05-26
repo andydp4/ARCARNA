@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SpreadsheetImport } from "@/components/import/SpreadsheetImport";
+import { resolveApiUrl } from "@/lib/appPaths";
 import { ContactsImport } from "@/components/import/ContactsImport";
 
 export function ImportsHub() {
@@ -90,7 +91,7 @@ export function ImportsHub() {
                     <TableCell>
                       {h.failedCount > 0 && (
                         <Button variant="outline" size="sm" asChild>
-                          <a href={`/api/imports/failed/${h.id}`} download>
+                          <a href={resolveApiUrl(`/api/imports/failed/${h.id}`)} download>
                             <Download className="h-3 w-3 mr-1" />
                             Errors
                           </a>

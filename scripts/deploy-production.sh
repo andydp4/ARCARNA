@@ -36,8 +36,9 @@ pm2 save
 
 echo "=== health check ==="
 sleep 4
-if curl -sf "http://127.0.0.1:5000/api/health" >/dev/null; then
-  curl -s "http://127.0.0.1:5000/api/health"
+HEALTH_PATH="${APP_BASE_PATH:-/midnight}/api/health"
+if curl -sf "http://127.0.0.1:5000${HEALTH_PATH}" >/dev/null; then
+  curl -s "http://127.0.0.1:5000${HEALTH_PATH}"
   echo ""
   echo "OK: App is responding."
 else

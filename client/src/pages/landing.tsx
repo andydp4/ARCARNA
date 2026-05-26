@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,7 +15,7 @@ export default function Landing() {
   const { data: runtime, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/runtime", { credentials: "include" });
+      const res = await apiFetch("/api/auth/runtime", { credentials: "include" });
       return res.json();
     },
   });

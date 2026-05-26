@@ -27,7 +27,6 @@
  * - Settings: /api/settings/* - System configuration
  */
 import type { Express } from "express";
-import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./auth";
 import { getAuthRuntimeSnapshot } from "./authRuntime";
@@ -52,7 +51,7 @@ import {
   insertOrderExpenseSchema
 } from "../shared/schema";
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   // Public probes — registered before auth middleware
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -1991,6 +1990,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
 }

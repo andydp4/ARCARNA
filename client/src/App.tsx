@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { APP_BASE } from "@/lib/appPaths";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -42,6 +43,7 @@ function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
+    <WouterRouter base={APP_BASE}>
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/pending-approval" component={PendingApproval} />
@@ -81,6 +83,7 @@ function Router() {
       )}
       <Route component={NotFound} />
     </Switch>
+    </WouterRouter>
   );
 }
 

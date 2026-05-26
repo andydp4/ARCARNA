@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
@@ -185,7 +186,7 @@ export default function POS() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
-        const response = await fetch('/api/orders', {
+        const response = await apiFetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderData),

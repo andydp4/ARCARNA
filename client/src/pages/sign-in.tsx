@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/appPaths";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthConfig } from "@/components/AuthProviders";
@@ -11,7 +12,7 @@ export default function SignInPage() {
   const { data: runtime } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/runtime", { credentials: "include" });
+      const res = await apiFetch("/api/auth/runtime", { credentials: "include" });
       return res.json();
     },
   });

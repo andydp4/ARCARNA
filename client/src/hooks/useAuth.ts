@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/appPaths";
 
 export type AccessState = "ok" | "pending" | "no_org" | "no_access";
 
@@ -23,7 +24,7 @@ export interface AuthUser {
 }
 
 export async function fetchAuthUser(): Promise<AuthUser | null> {
-  const res = await fetch("/api/auth/user", {
+  const res = await apiFetch("/api/auth/user", {
     credentials: "include",
     headers: { Accept: "application/json" },
   });

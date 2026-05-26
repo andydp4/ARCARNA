@@ -1,8 +1,13 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { validateProductionEnv } from "./validateProductionEnv";
 import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
+import { APP_BASE_PATH } from "./appBase";
+import { registerPortalRoutes } from "./portal";
+import { registerLegacyEposRedirects } from "./legacyRedirects";
+import { withAppBase } from "@shared/appPaths";
 
 validateProductionEnv();
 
@@ -58,7 +63,21 @@ process.on("unhandledRejection", (reason) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  registerPortalRoutes(app);
+  registerLegacyEposRedirects(app, APP_BASE_PATH);
+
+  const midnight = express();
+  await registerRoutes(midnight);
+
+  const mount = APP_BASE_PATH || "/";
+  if (APP_BASE_PATH) {
+    app.get(APP_BASE_PATH, (_req, res) => {
+      res.redirect(301, `${APP_BASE_PATH}/`);
+    });
+  }
+  app.use(mount, midnight);
+
+  const server = createServer(app);
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const status =
@@ -77,10 +96,12 @@ process.on("unhandledRejection", (reason) => {
 
   const isProduction = process.env.NODE_ENV === "production";
 
+  const swScope = APP_BASE_PATH ? withAppBase(APP_BASE_PATH, "/") : "/";
+
   if (isProduction) {
-    serveStatic(app);
+    serveStatic(midnight, swScope);
   } else {
-    await setupVite(app, server);
+    await setupVite(midnight, server);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -95,7 +116,7 @@ process.on("unhandledRejection", (reason) => {
     host: "0.0.0.0",
     reusePort: true,
   }, async () => {
-    log(`serving on port ${port}`);
+    log(`serving on port ${port} (portal at /, Midnight EPOS at ${mount || "/"})`);
     
     // Start analytics worker if database is available (non-blocking)
     if (process.env.DATABASE_URL) {

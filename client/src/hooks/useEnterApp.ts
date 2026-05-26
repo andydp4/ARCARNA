@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchAuthUser } from "@/hooks/useAuth";
-import { navigateToAppEntry } from "@/lib/authNavigation";
+import { isMidnightAppPath, navigateToAppEntry } from "@/lib/authNavigation";
+import { resolveAppPath } from "@/lib/appPaths";
 import { useAuth } from "@/hooks/useAuth";
 
 /**
@@ -56,7 +57,9 @@ export function useEnterApp(options?: { autoRedirect?: boolean }) {
     if (isAuthenticated && user) {
       autoAttempted.current = true;
       const path = window.location.pathname;
-      if (path === "/" || path === "/sign-in") {
+      const entry = resolveAppPath("/");
+      const signIn = resolveAppPath("/sign-in");
+      if (path === entry || path === signIn || !isMidnightAppPath(path)) {
         navigateToAppEntry(user, "auth-auto");
       }
       return;

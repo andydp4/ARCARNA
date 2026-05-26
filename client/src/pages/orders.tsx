@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
@@ -98,7 +99,7 @@ export default function Orders() {
   const { data: orderDetails, isLoading: isLoadingDetails } = useQuery<OrderDetail>({
     queryKey: ["/api/orders", orderDetailsId],
     queryFn: async () => {
-      const response = await fetch(`/api/orders/${orderDetailsId}`, { credentials: 'include' });
+      const response = await apiFetch(`/api/orders/${orderDetailsId}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch order details');
       return response.json();
     },
@@ -338,7 +339,7 @@ export default function Orders() {
 
   const openEditDialog = useCallback(async (orderId: string) => {
     setOrderDetailsId(orderId);
-    const response = await fetch(`/api/orders/${orderId}`, { credentials: "include" });
+    const response = await apiFetch(`/api/orders/${orderId}`, { credentials: "include" });
     const orderData = await response.json();
     setOrderToEdit(orderData);
     setEditLines(

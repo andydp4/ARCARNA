@@ -31,6 +31,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseContactsFileToRows } from "@/lib/contactsFileParse";
+import { resolveApiUrl } from "@/lib/appPaths";
 import { IMPORT_MAX_UPLOAD_BYTES } from "@shared/importLimits";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -276,7 +277,7 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
 
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" className="min-h-[44px]" asChild>
-            <a href="/api/imports/templates/customers" download data-testid="download-customers-csv">
+            <a href={resolveApiUrl("/api/imports/templates/customers")} download data-testid="download-customers-csv">
               <Download className="mr-2 h-4 w-4" />
               CSV template
             </a>

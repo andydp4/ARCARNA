@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ export default function Locations() {
   const { data: stockData, isLoading: isLoadingStock } = useQuery<StockData>({
     queryKey: ["/api/locations", stockLocationId, "stock"],
     queryFn: async () => {
-      const response = await fetch(`/api/locations/${stockLocationId}/stock`, { credentials: 'include' });
+      const response = await apiFetch(`/api/locations/${stockLocationId}/stock`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch stock');
       return response.json();
     },

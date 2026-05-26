@@ -1,5 +1,7 @@
-# Example Nginx site for viger.cloud — copy to /etc/nginx/sites-available/viger.cloud
-# Required for large contact (.vcf) and spreadsheet imports (default limit is 1MB → HTTP 413).
+# Example Nginx site for viger.cloud
+# - /           → Viger Cloud portal (static, served by Node from dist/portal)
+# - /midnight   → Midnight EPOS (Node on :5000)
+# - /files, /backups → portal placeholder pages
 
 server {
     listen 80;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ export default function ScheduledReportsPage() {
     queryKey: ["/api/scheduled-reports", historyId, "runs"],
     enabled: !!historyId,
     queryFn: async () => {
-      const res = await fetch(`/api/scheduled-reports/${historyId}/runs`, { credentials: "include" });
+      const res = await apiFetch(`/api/scheduled-reports/${historyId}/runs`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },

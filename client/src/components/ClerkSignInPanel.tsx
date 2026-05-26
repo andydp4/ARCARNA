@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useUser } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ export function ClerkSignInPanel({
   const { data: runtime } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/runtime", { credentials: "include" });
+      const res = await apiFetch("/api/auth/runtime", { credentials: "include" });
       return res.json();
     },
   });

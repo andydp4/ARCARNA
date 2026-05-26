@@ -1,6 +1,6 @@
 # Deploy MidnightEPOS on Hostinger VPS (Node 20 + PM2 + Nginx)
 
-Production site: **https://viger.cloud**
+Production site: **https://viger.cloud** (portal) · **https://viger.cloud/midnight** (Midnight EPOS)
 
 This guide matches the **current VPS layout** (Node/PM2/Nginx). For Docker Compose instead, see [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md).
 
@@ -94,14 +94,16 @@ nano .env
 | `VITE_CLERK_PUBLISHABLE_KEY` | same as publishable key |
 | `CLERK_ACCOUNTS_URL` | `https://accounts.viger.cloud` |
 | `VITE_CLERK_ACCOUNTS_URL` | same (baked in at build) |
-| `VITE_APP_URL` | `https://viger.cloud` |
+| `VITE_APP_URL` | `https://viger.cloud/midnight` |
+| `VITE_BASE_PATH` | `/midnight` |
+| `APP_BASE_PATH` | `/midnight` |
 | `DEV_AUTH_BYPASS` | `0` or unset |
 
 **Clerk dashboard** → Paths / Account Portal:
 
 - Sign-in: `https://accounts.viger.cloud/sign-in`
 - Sign-up: `https://accounts.viger.cloud/sign-up`
-- After sign-in / home: `https://viger.cloud/`
+- After sign-in / home: `https://viger.cloud/midnight/`
 - DNS: `accounts.viger.cloud` records from Clerk → Domains
 
 See [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md).
@@ -263,7 +265,7 @@ npm run migration:sanity
 npm run deploy:restart
 ```
 
-Open https://viger.cloud — you should see **Sign in** (Clerk), not “Login with Replit”.
+Open https://viger.cloud — you should see the **Viger Cloud** portal. Open **Midnight EPOS** or go to https://viger.cloud/midnight for **Sign in** (Clerk).
 
 ---
 

@@ -24,6 +24,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { fileToBase64 } from "@/lib/fileImport";
 import { useToast } from "@/hooks/use-toast";
 import { matchProductImportHeader } from "@shared/productImport";
+import { resolveApiUrl } from "@/lib/appPaths";
 
 type ImportKind = "products" | "customers";
 
@@ -154,7 +155,7 @@ export function SpreadsheetImport({
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <Button variant="outline" className="min-h-[44px]" asChild>
-            <a href={`/api/imports/templates/${kind}`} download data-testid={`download-template-${kind}`}>
+            <a href={resolveApiUrl(`/api/imports/templates/${kind}`)} download data-testid={`download-template-${kind}`}>
               <Download className="mr-2 h-4 w-4" />
               Download template
             </a>

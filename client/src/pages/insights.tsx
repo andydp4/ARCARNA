@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -103,7 +104,7 @@ export default function Insights() {
     queryKey: ["/api/reports", fromIso, toIso],
     queryFn: async () => {
       const params = new URLSearchParams({ from: fromIso, to: toIso });
-      const response = await fetch(`/api/reports?${params}`, {
+      const response = await apiFetch(`/api/reports?${params}`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch report data");

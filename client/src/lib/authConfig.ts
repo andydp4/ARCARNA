@@ -36,6 +36,8 @@ export function isClerkMode(runtime?: AuthRuntime | null): boolean {
   return resolveAuthProvider(runtime) === "clerk";
 }
 
+import { APP_BASE, resolveAppPath } from "./appPaths";
+
 export function getAppOrigin(): string {
   if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin;
@@ -46,9 +48,11 @@ export function getAppOrigin(): string {
 
 export function appUrl(path: string): string {
   const origin = getAppOrigin();
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  return origin ? `${origin}${normalized}` : normalized;
+  const appPath = resolveAppPath(path);
+  return origin ? `${origin}${appPath}` : appPath;
 }
+
+export { APP_BASE };
 
 /** Account Portal link with redirect back to this app after auth. */
 export function clerkAccountPortalUrl(

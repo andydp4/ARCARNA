@@ -2,20 +2,21 @@
   "name": "Midnight EPOS",
   "short_name": "EPOS",
   "description": "Enterprise Point of Sale System with offline support",
-  "start_url": "/",
+  "start_url": "/midnight/",
+  "scope": "/midnight/",
   "display": "standalone",
   "background_color": "#1E293B",
   "theme_color": "#1E293B",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/midnight/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/midnight/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

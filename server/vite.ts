@@ -62,9 +62,15 @@ export async function setupVite(app: Express, server: Server) {
       );
 
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      const base = (viteConfig as { base?: string }).base ?? "/";
+      const scriptSrc = `${base}src/main.tsx`.replace(/\/+/g, "/");
+      template = template.replace(
+        `src="${base}src/main.tsx"`,
+        `src="${scriptSrc}?v=${nanoid()}"`,
+      );
       template = template.replace(
         `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`,
+        `src="${scriptSrc}?v=${nanoid()}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
@@ -75,7 +81,7 @@ export async function setupVite(app: Express, server: Server) {
   });
 }
 
-export function serveStatic(app: Express) {
+export function serveStatic(app: Express, serviceWorkerScope = "/") {
   const distPath = getDistPublicPath();
 
   if (!fs.existsSync(distPath)) {
@@ -84,6 +90,10 @@ export function serveStatic(app: Express) {
     );
   }
 
+  const swScope = serviceWorkerScope.endsWith("/")
+    ? serviceWorkerScope
+    : `${serviceWorkerScope}/`;
+
   app.use(
     express.static(distPath, {
       index: false,
@@ -91,7 +101,7 @@ export function serveStatic(app: Express) {
       setHeaders(res, filePath) {
         if (filePath.endsWith("sw.js")) {
           res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-          res.setHeader("Service-Worker-Allowed", "/");
+          res.setHeader("Service-Worker-Allowed", swScope);
         }
       },
     }),

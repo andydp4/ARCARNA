@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
+import { apiFetch } from "@/lib/appPaths";
 import {
   endOfDay,
   isWithinInterval,
@@ -126,7 +127,7 @@ export default function Invoices() {
   const viewInvoicePdf = useCallback(
     async (invoiceId: string, invoiceNumber: string) => {
       try {
-        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
           credentials: "include",
         });
 
@@ -163,7 +164,7 @@ export default function Invoices() {
   const printInvoice = useCallback(
     async (invoiceId: string, invoiceNumber: string) => {
       try {
-        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
           credentials: "include",
         });
 
@@ -202,7 +203,7 @@ export default function Invoices() {
   const emailInvoice = useCallback(
     async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
       try {
-        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
           credentials: "include",
         });
 
@@ -240,7 +241,7 @@ export default function Invoices() {
   const copyInvoiceLink = useCallback(
     async (invoiceId: string, invoiceNumber: string) => {
       try {
-        const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
           credentials: "include",
         });
 
