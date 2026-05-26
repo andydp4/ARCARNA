@@ -35,12 +35,30 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp } from 'lucide-react'
 import { ContactsImport } from '@/components/import/ContactsImport'
+import { UnsavedChangesAlert } from '@/components/UnsavedChangesAlert'
 
 export default function Customers() {
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showContactsImport, setShowContactsImport] = useState(false)
+  const [contactsImportDirty, setContactsImportDirty] = useState(false)
+  const [confirmCloseContactsImport, setConfirmCloseContactsImport] = useState(false)
+  const [contactsImportResetKey, setContactsImportResetKey] = useState(0)
+
+  const closeContactsImportDialog = () => {
+    setShowContactsImport(false)
+    setContactsImportDirty(false)
+    setContactsImportResetKey((k) => k + 1)
+  }
+
+  const requestCloseContactsImport = () => {
+    if (contactsImportDirty) {
+      setConfirmCloseContactsImport(true)
+      return
+    }
+    closeContactsImportDialog()
+  }
   const [editingCustomer, setEditingCustomer] = useState<any>(null)
   const [formData, setFormData] = useState({
     name: '',
@@ -432,8 +450,28 @@ export default function Customers() {
           </div>
         </div>
 
-        <Dialog open={showContactsImport} onOpenChange={setShowContactsImport}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <Dialog
+          open={showContactsImport}
+          onOpenChange={(open) => {
+            if (open) setShowContactsImport(true)
+            else requestCloseContactsImport()
+          }}
+        >
+          <DialogContent
+            className="max-w-2xl max-h-[90vh] overflow-y-auto"
+            onPointerDownOutside={(e) => {
+              if (contactsImportDirty) {
+                e.preventDefault()
+                setConfirmCloseContactsImport(true)
+              }
+            }}
+            onEscapeKeyDown={(e) => {
+              if (contactsImportDirty) {
+                e.preventDefault()
+                setConfirmCloseContactsImport(true)
+              }
+            }}
+          >
             <DialogHeader>
               <DialogTitle>Import from Contacts</DialogTitle>
               <DialogDescription>
@@ -442,10 +480,26 @@ export default function Customers() {
             </DialogHeader>
             <ContactsImport
               compact
-              onImported={() => setShowContactsImport(false)}
+              resetKey={contactsImportResetKey}
+              onDirtyChange={setContactsImportDirty}
+              onImported={closeContactsImportDialog}
             />
           </DialogContent>
         </Dialog>
+
+        <UnsavedChangesAlert
+          open={confirmCloseContactsImport}
+          onOpenChange={setConfirmCloseContactsImport}
+          onStay={() => setConfirmCloseContactsImport(false)}
+          onLeave={() => {
+            setConfirmCloseContactsImport(false)
+            closeContactsImportDialog()
+          }}
+          title="Leave contact import?"
+          description="You have a file loaded or a preview in progress. Leaving will discard your selections."
+          stayLabel="Stay and continue"
+          leaveLabel="Leave and discard"
+        />
 
         <div className="grid gap-4 sm:gap-6 grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
           <Card>

@@ -51,6 +51,9 @@ interface ContactsImportProps {
   /** Compact layout for dialogs (e.g. Customers page). */
   compact?: boolean;
   onImported?: () => void;
+  /** Bump when the parent dialog closes to clear file/preview state. */
+  resetKey?: number;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function isImportableRow(row: PreviewRow): boolean {
@@ -59,7 +62,12 @@ function isImportableRow(row: PreviewRow): boolean {
   );
 }
 
-export function ContactsImport({ compact, onImported }: ContactsImportProps) {
+export function ContactsImport({
+  compact,
+  onImported,
+  resetKey = 0,
+  onDirtyChange,
+}: ContactsImportProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -204,6 +212,31 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
     },
   });
+
+  const isDirty = useMemo(
+    () =>
+      !!(
+        file ||
+        preview ||
+        parsing ||
+        previewMutation.isPending ||
+        commitMutation.isPending
+      ),
+    [file, preview, parsing, previewMutation.isPending, commitMutation.isPending],
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!resetKey) return;
+    setFile(null);
+    setPreview(null);
+    setSelectedRowIndexes(new Set());
+    setSearchTerm("");
+    setDragOver(false);
+  }, [resetKey]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
