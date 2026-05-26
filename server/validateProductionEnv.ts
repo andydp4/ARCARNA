@@ -46,6 +46,11 @@ export function validateProductionEnv(): void {
           "Clerk publishable key must start with pk_ (check CLERK_PUBLISHABLE_KEY / VITE_CLERK_PUBLISHABLE_KEY)",
         );
       }
+      if (!process.env.CLERK_ACCOUNTS_URL?.trim()) {
+        throw new Error(
+          "CLERK_ACCOUNTS_URL is required in production (e.g. https://accounts.viger.cloud)",
+        );
+      }
     } else if (!process.env.REPL_ID?.trim()) {
       throw new Error("REPL_ID is required when AUTH_PROVIDER=replit in production");
     }

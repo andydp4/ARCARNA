@@ -5,13 +5,14 @@ import {
   type AuthRuntime,
   resolveAuthProvider,
   resolveClerkPublishableKey,
+  resolveClerkAccountsUrl,
   appUrl,
 } from "@/lib/authConfig";
 
 export type AuthConfig = {
   provider: "clerk" | "replit";
   publishableKey: string | null;
-  /** True when children are wrapped in ClerkProvider. */
+  accountsUrl: string | null;
   clerkReady: boolean;
   runtimeLoaded: boolean;
 };
@@ -19,6 +20,7 @@ export type AuthConfig = {
 const AuthConfigContext = createContext<AuthConfig>({
   provider: "clerk",
   publishableKey: null,
+  accountsUrl: null,
   clerkReady: false,
   runtimeLoaded: false,
 });
@@ -27,10 +29,6 @@ export function useAuthConfig(): AuthConfig {
   return useContext(AuthConfigContext);
 }
 
-/**
- * Wraps the app in ClerkProvider when AUTH_PROVIDER=clerk and a publishable key exists.
- * Vite env is used immediately so Clerk mounts before /api/auth/runtime returns.
- */
 export function AuthProviders({ children }: { children: ReactNode }) {
   const { data, isLoading } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
@@ -45,14 +43,20 @@ export function AuthProviders({ children }: { children: ReactNode }) {
   const config = useMemo<AuthConfig>(() => {
     const provider = resolveAuthProvider(data);
     const publishableKey = resolveClerkPublishableKey(data);
+    const accountsUrl = resolveClerkAccountsUrl(data);
     const clerkReady = provider === "clerk" && !!publishableKey;
     return {
       provider,
       publishableKey,
+      accountsUrl,
       clerkReady,
       runtimeLoaded: !isLoading,
     };
   }, [data, isLoading]);
+
+  const accountsBase = config.accountsUrl;
+  const signInUrl = accountsBase ? `${accountsBase}/sign-in` : appUrl("/sign-in");
+  const signUpUrl = accountsBase ? `${accountsBase}/sign-up` : appUrl("/sign-in");
 
   const content = (
     <AuthConfigContext.Provider value={config}>{children}</AuthConfigContext.Provider>
@@ -63,8 +67,8 @@ export function AuthProviders({ children }: { children: ReactNode }) {
       <ClerkProvider
         publishableKey={config.publishableKey}
         afterSignOutUrl={appUrl("/")}
-        signInUrl={appUrl("/sign-in")}
-        signUpUrl={appUrl("/sign-in")}
+        signInUrl={signInUrl}
+        signUpUrl={signUpUrl}
         signInFallbackRedirectUrl={appUrl("/")}
         signUpFallbackRedirectUrl={appUrl("/")}
       >

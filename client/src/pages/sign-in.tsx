@@ -5,6 +5,7 @@ import { useAuthConfig } from "@/components/AuthProviders";
 import { ClerkSignInPanel } from "@/components/ClerkSignInPanel";
 import { type AuthRuntime, isClerkMode } from "@/lib/authConfig";
 
+/** Redirects to Clerk Account Portal (accounts.viger.cloud) when configured. */
 export default function SignInPage() {
   const { clerkReady, publishableKey } = useAuthConfig();
   const { data: runtime } = useQuery<AuthRuntime>({
@@ -53,8 +54,8 @@ export default function SignInPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
-      <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-2xl">
-        <ClerkSignInPanel routing="path" />
+      <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-2xl text-center">
+        <ClerkSignInPanel autoRedirect portalPath="/sign-in" />
       </div>
     </div>
   );

@@ -56,11 +56,13 @@ Also keep:
 
 In Clerk → **Configure** → **Paths** (or **Domains / URLs** depending on Clerk UI version):
 
-| Setting | Example (replace with your domain) |
-|---------|-------------------------------------|
-| Sign-in URL | `https://epos.yourshop.co.uk/sign-in` |
-| After sign-in | `https://epos.yourshop.co.uk/` |
-| After sign-out | `https://epos.yourshop.co.uk/` |
+| Setting | Value for viger.cloud |
+|---------|------------------------|
+| Sign-in URL | `https://accounts.viger.cloud/sign-in` |
+| Sign-up URL | `https://accounts.viger.cloud/sign-up` |
+| After sign-in (fallback) | `https://viger.cloud/` |
+| After sign-out | `https://viger.cloud/` |
+| Home URL | `https://viger.cloud/` |
 
 For **IP-only testing** before a domain:
 
@@ -73,21 +75,25 @@ Also add these under **Allowed redirect URLs** / **Authorized origins** if Clerk
 
 **Failure:** Browser shows Clerk error “redirect url mismatch” → add the exact URL from the address bar to Clerk settings.
 
-### `accounts.yourdomain.com` (Account Portal)
+### Account Portal DNS (`accounts.viger.cloud`)
 
-In **production**, Clerk may use a separate hostname such as `https://accounts.viger.cloud/sign-up`. That is **Clerk’s Account Portal**, not your Nginx site. It only works if you add the DNS records Clerk shows under **Configure → Domains**.
+Production uses **Clerk Account Portal** on `https://accounts.viger.cloud` (not embedded forms on `viger.cloud`).
 
-For Midnight EPOS we use **embedded sign-in on `https://viger.cloud/sign-in`** instead. In Clerk Dashboard set:
+1. Clerk Dashboard → **Configure → Domains** → copy DNS records for `accounts.viger.cloud`.
+2. Add those records in Hostinger (DNS only — do not proxy through Cloudflare orange-cloud).
+3. Wait until Clerk shows the domain as verified.
 
-| Setting | Value |
-|---------|--------|
-| Sign-in URL | `https://viger.cloud/sign-in` |
-| Sign-up URL | `https://viger.cloud/sign-in` (or disable public sign-up) |
-| Home URL | `https://viger.cloud/` |
+Add to server `.env` and rebuild:
 
-Optional: disable **Allow sign ups** under **User & authentication** if staff are invite-only.
+```env
+CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
+VITE_CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
+VITE_APP_URL=https://viger.cloud
+```
 
-You do **not** need `accounts.viger.cloud` unless you intentionally want Clerk’s hosted portal.
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/`.
+
+`/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 
 ---
 

@@ -31,5 +31,11 @@ export function getAuthRuntimeSnapshot() {
           process.env.VITE_CLERK_PUBLISHABLE_KEY ??
           null
         : null,
+    clerkAccountsUrl:
+      provider === "clerk"
+        ? process.env.CLERK_ACCOUNTS_URL ??
+          process.env.VITE_CLERK_ACCOUNTS_URL ??
+          null
+        : null,
   };
 }

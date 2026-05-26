@@ -92,13 +92,17 @@ nano .env
 | `CLERK_PUBLISHABLE_KEY` | `pk_live_...` |
 | `VITE_AUTH_PROVIDER` | `clerk` |
 | `VITE_CLERK_PUBLISHABLE_KEY` | same as publishable key |
+| `CLERK_ACCOUNTS_URL` | `https://accounts.viger.cloud` |
+| `VITE_CLERK_ACCOUNTS_URL` | same (baked in at build) |
+| `VITE_APP_URL` | `https://viger.cloud` |
 | `DEV_AUTH_BYPASS` | `0` or unset |
 
-**Clerk dashboard** → Paths / redirect URLs:
+**Clerk dashboard** → Paths / Account Portal:
 
-- Sign-in: `https://viger.cloud/sign-in`
-- After sign-in: `https://viger.cloud/`
-- After sign-out: `https://viger.cloud/`
+- Sign-in: `https://accounts.viger.cloud/sign-in`
+- Sign-up: `https://accounts.viger.cloud/sign-up`
+- After sign-in / home: `https://viger.cloud/`
+- DNS: `accounts.viger.cloud` records from Clerk → Domains
 
 See [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md).
 
