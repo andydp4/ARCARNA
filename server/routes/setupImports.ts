@@ -9,6 +9,7 @@ import {
 import { parseSpreadsheet, applyColumnMapping } from "../import/spreadsheet";
 import { previewProductImport } from "../import/productImport";
 import { previewCustomerImport, previewVcardCustomerImport } from "../import/customerImport";
+import { readBase64FromBody, readVcardTextFromBody } from "../import/importBody";
 import { products } from "@shared/schema";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
@@ -146,19 +147,20 @@ export function registerSetupAndImportRoutes(app: Express) {
       const ctx = req.orgContext as { orgId: string };
       const {
         contentBase64,
+        contentText,
         fileName,
         mapping,
         duplicateMode = "skip",
         defaultCategory = "Bronze",
       } = req.body;
-      if (!contentBase64 || !fileName) {
-        return res.status(400).json({ message: "contentBase64 and fileName are required" });
+      if (!fileName) {
+        return res.status(400).json({ message: "fileName is required" });
       }
       const existing = await storage.getCustomers(ctx.orgId);
       const isVcard = /\.vcf$/i.test(fileName);
 
       if (isVcard) {
-        const text = Buffer.from(contentBase64, "base64").toString("utf-8");
+        const text = readVcardTextFromBody({ contentText, contentBase64 });
         const preview = previewVcardCustomerImport(
           text,
           existing,
@@ -168,12 +170,14 @@ export function registerSetupAndImportRoutes(app: Express) {
         return res.json({ headers: [], ...preview });
       }
 
-      const sheet = await parseSpreadsheet(contentBase64, fileName);
+      const b64 = readBase64FromBody({ contentBase64 });
+      const sheet = await parseSpreadsheet(b64, fileName);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
       const preview = previewCustomerImport(mapped, existing, duplicateMode, defaultCategory);
       res.json({ headers: sheet.headers, ...preview });
     } catch (error: any) {
-      res.status(400).json({ message: error.message || "Preview failed" });
+      const status = error.message?.includes("exceeds") ? 413 : 400;
+      res.status(status).json({ message: error.message || "Preview failed" });
     }
   });
 

@@ -5,6 +5,11 @@ import { orgScopeHeaders } from "./orgScope";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
+    if (res.status === 413) {
+      throw new Error(
+        "Upload too large for the server (HTTP 413). Ask your admin to set Nginx client_max_body_size to 25m and redeploy the app.",
+      );
+    }
     throw new Error(`${res.status}: ${text}`);
   }
 }

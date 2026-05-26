@@ -202,6 +202,9 @@ server {
     listen 80;
     server_name viger.cloud www.viger.cloud;
 
+    # Required for .vcf / CSV / XLSX imports (default 1m → HTTP 413)
+    client_max_body_size 25m;
+
     location / {
         proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
@@ -267,6 +270,35 @@ Open https://viger.cloud — you should see **Sign in** (Clerk), not “Login wi
 ## 9. Smoke test
 
 Use [LAUNCH_CHECKLIST.md](./LAUNCH_CHECKLIST.md).
+
+---
+
+## 10. Import upload fails with HTTP 413
+
+Large Apple Contacts `.vcf` exports need a higher upload limit on **Nginx** (default 1MB) and in the **Node** app (now 25MB on `main`).
+
+On the VPS:
+
+```bash
+sudo nano /etc/nginx/sites-available/viger.cloud
+```
+
+Inside the `server { ... }` block, add:
+
+```nginx
+client_max_body_size 25m;
+```
+
+Then:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+cd ~/MidnightEPOS   # or your app path
+git pull origin main
+npm install && npm run deploy
+```
+
+See also `deploy/nginx-viger.cloud.conf.example` in the repo.
 
 ---
 

@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { validateProductionEnv } from "./validateProductionEnv";
+import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
 
 validateProductionEnv();
 
@@ -12,12 +13,15 @@ declare module 'http' {
     rawBody: unknown
   }
 }
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use(express.urlencoded({ extended: false }));
+app.use(
+  express.json({
+    limit: IMPORT_JSON_BODY_LIMIT,
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+app.use(express.urlencoded({ extended: false, limit: IMPORT_JSON_BODY_LIMIT }));
 
 app.use((req, res, next) => {
   const start = Date.now();

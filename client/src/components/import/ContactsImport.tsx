@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { fileToBase64 } from "@/lib/fileImport";
+import { buildCustomerImportPreviewBody } from "@/lib/fileImport";
+import { IMPORT_MAX_UPLOAD_BYTES } from "@shared/importLimits";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +74,14 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
       });
       return;
     }
+    if (f.size > IMPORT_MAX_UPLOAD_BYTES) {
+      toast({
+        title: "File too large",
+        description: `Maximum size is ${IMPORT_MAX_UPLOAD_BYTES / (1024 * 1024)} MB. Try exporting fewer contacts.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setFile(f);
     setPreview(null);
   };
@@ -80,13 +89,11 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
   const previewMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Choose a file first");
-      const contentBase64 = await fileToBase64(file);
-      const res = await apiRequest("POST", "/api/customers/import/preview", {
-        contentBase64,
-        fileName: file.name,
+      const body = await buildCustomerImportPreviewBody(file, {
         duplicateMode,
         defaultCategory,
       });
+      const res = await apiRequest("POST", "/api/customers/import/preview", body);
       return res.json();
     },
     onSuccess: (data) => {
