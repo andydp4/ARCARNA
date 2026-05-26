@@ -35,13 +35,21 @@ fi
 pm2 save
 
 echo "=== health check ==="
-sleep 2
+sleep 4
 if curl -sf "http://127.0.0.1:5000/api/health" >/dev/null; then
   curl -s "http://127.0.0.1:5000/api/health"
   echo ""
   echo "OK: App is responding."
 else
-  echo "NOT READY: /api/health failed — check: pm2 logs midnight-epos --lines 40"
+  echo "NOT READY: /api/health failed"
+  echo "--- pm2 status ---"
+  pm2 status midnight-epos || true
+  echo "--- last 30 log lines ---"
+  pm2 logs midnight-epos --lines 30 --nostream || true
+  echo ""
+  echo "Common fixes:"
+  echo "  1. Add to .env: CLERK_ACCOUNTS_URL=https://accounts.viger.cloud"
+  echo "  2. pm2 restart ecosystem.config.cjs --update-env"
   exit 1
 fi
 
