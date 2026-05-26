@@ -8,7 +8,12 @@ import {
 } from "@shared/setup";
 import { parseSpreadsheet, applyColumnMapping } from "../import/spreadsheet";
 import { previewProductImport } from "../import/productImport";
-import { previewCustomerImport, previewVcardCustomerImport } from "../import/customerImport";
+import {
+  previewCustomerImport,
+  previewCustomerImportFromRows,
+  previewVcardCustomerImport,
+} from "../import/customerImport";
+import { IMPORT_MAX_ROWS } from "@shared/importLimits";
 import { readBase64FromBody, readVcardTextFromBody } from "../import/importBody";
 import { products } from "@shared/schema";
 import { db } from "../db";
@@ -139,6 +144,32 @@ export function registerSetupAndImportRoutes(app: Express) {
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Import failed" });
+    }
+  });
+
+  /** Preview parsed contact rows (file parsed in browser — avoids large upload / Nginx 413). */
+  app.post("/api/customers/import/preview-rows", ...importScoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const { rows, duplicateMode = "skip", source } = req.body;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ message: "rows array is required" });
+      }
+      if (rows.length > IMPORT_MAX_ROWS) {
+        return res.status(400).json({
+          message: `Too many contacts (max ${IMPORT_MAX_ROWS}). Split the export.`,
+        });
+      }
+      const existing = await storage.getCustomers(ctx.orgId);
+      const preview = previewCustomerImportFromRows(
+        rows,
+        existing,
+        duplicateMode,
+        source === "csv" ? "csv" : "vcard",
+      );
+      res.json({ headers: [], ...preview });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Preview failed" });
     }
   });
 

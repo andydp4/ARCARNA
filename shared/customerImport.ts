@@ -229,3 +229,33 @@ export function previewVcardCustomerImport(
   const importRows = cards.map((c) => vcardToCustomerRow(c, defaultCategory));
   return previewCustomerImportFromRows(importRows, existing, duplicateMode, "vcard");
 }
+
+/** Parse comma-separated customer CSV (header row required). */
+export function parseCustomerCsvText(content: string): Record<string, string>[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const rows: Record<string, string>[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(",").map((v) => v.trim());
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? "";
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+export function customerRowsFromVcardText(content: string, defaultCategory = "Bronze") {
+  return parseVcardFile(content).map((c) => vcardToCustomerRow(c, defaultCategory));
+}
+
+export function customerRowsFromCsvText(content: string, defaultCategory = "Bronze") {
+  return parseCustomerCsvText(content).map((raw) =>
+    normalizeCustomerRow(raw, defaultCategory),
+  ) as Record<string, unknown>[];
+}

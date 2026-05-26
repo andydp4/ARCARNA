@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { buildCustomerImportPreviewBody } from "@/lib/fileImport";
+import { parseContactsFileToRows } from "@/lib/contactsFileParse";
 import { IMPORT_MAX_UPLOAD_BYTES } from "@shared/importLimits";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -89,11 +89,13 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
   const previewMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Choose a file first");
-      const body = await buildCustomerImportPreviewBody(file, {
+      const { rows, source } = await parseContactsFileToRows(file, defaultCategory);
+      const res = await apiRequest("POST", "/api/customers/import/preview-rows", {
+        rows,
         duplicateMode,
-        defaultCategory,
+        source,
+        fileName: file.name,
       });
-      const res = await apiRequest("POST", "/api/customers/import/preview", body);
       return res.json();
     },
     onSuccess: (data) => {
@@ -157,8 +159,8 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
             Import from Contacts
           </CardTitle>
           <CardDescription>
-            Import Apple Contacts (.vcf) or CSV. Duplicates are detected by phone or email.
-            Preview is required before import.
+            Import Apple Contacts (.vcf) or CSV. Files are parsed on your device; only contact
+            fields are sent to the server. Duplicates match by phone or email.
           </CardDescription>
         </CardHeader>
       )}

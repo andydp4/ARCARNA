@@ -4,6 +4,8 @@ export {
   previewCustomerImport,
   previewVcardCustomerImport,
   previewCustomerImportFromRows,
+  customerRowsFromVcardText,
+  customerRowsFromCsvText,
   vcardToCustomerRow,
   normalizePhoneForMatch,
   type CustomerImportPreview,
