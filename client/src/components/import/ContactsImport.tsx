@@ -353,6 +353,13 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
               {preview.summary.duplicates} duplicates · {preview.summary.total} contacts
               {preview.source === "vcard" ? " (vCard)" : preview.source ? ` (${preview.source})` : ""}
             </p>
+            <p
+              className="text-sm font-medium text-foreground"
+              data-testid="contacts-preview-list-count"
+            >
+              Showing all {filteredRows.length.toLocaleString()} contacts — scroll the table to browse
+              every row.
+            </p>
             {preview.summary.valid === 0 && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
@@ -430,9 +437,9 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
                 />
               </div>
             )}
-            <div className="max-h-[min(24rem,50vh)] overflow-auto border rounded-md">
+            <div className="max-h-[min(70vh,42rem)] overflow-auto border rounded-md">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
                   <TableRow>
                     <TableHead className="w-10">
                       <Checkbox
@@ -517,8 +524,9 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
             </div>
             {searchTerm && filteredRows.length < preview.rows.length && (
               <p className="text-xs text-muted-foreground">
-                Showing {filteredRows.length} of {preview.rows.length} contacts. Selection applies to
-                all selected rows, including those not visible in search.
+                Search matches {filteredRows.length.toLocaleString()} of{" "}
+                {preview.rows.length.toLocaleString()} contacts. Selection is kept for contacts not
+                shown in the filtered list.
               </p>
             )}
           </div>
