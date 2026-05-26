@@ -66,7 +66,7 @@ export default function Landing() {
                 </AlertDescription>
               </Alert>
             ) : clerk && clerkReady ? (
-              <ClerkSignInPanel />
+              <ClerkSignInPanel autoRedirect />
             ) : clerk ? (
               <Button disabled className="w-full min-h-[44px]">
                 Preparing sign-in…

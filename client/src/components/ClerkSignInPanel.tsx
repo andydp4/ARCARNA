@@ -3,7 +3,7 @@ import { useUser } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useLocation } from "wouter";
+import { useEnterApp } from "@/hooks/useEnterApp";
 import {
   type AuthRuntime,
   clerkAccountPortalUrl,
@@ -11,20 +11,14 @@ import {
 } from "@/lib/authConfig";
 
 type ClerkSignInPanelProps = {
-  /** Immediately redirect to Clerk Account Portal when not signed in. */
   autoRedirect?: boolean;
   portalPath?: "/sign-in" | "/sign-up";
 };
 
-/**
- * Sends users to Clerk Account Portal (accounts.{domain}) when configured.
- * Session is established on return to viger.cloud via redirect_url.
- */
 export function ClerkSignInPanel({
   autoRedirect = false,
   portalPath = "/sign-in",
 }: ClerkSignInPanelProps) {
-  const [, setLocation] = useLocation();
   const { data: runtime } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
@@ -34,6 +28,7 @@ export function ClerkSignInPanel({
   });
 
   const { isSignedIn, isLoaded } = useUser();
+  const { enterApp, syncing, syncError, clerkSignedIn } = useEnterApp({ autoRedirect });
   const portalUrl = clerkAccountPortalUrl(portalPath, "/", runtime);
   const accountPortal = usesClerkAccountPortal(runtime);
 
@@ -51,15 +46,27 @@ export function ClerkSignInPanel({
     );
   }
 
-  if (isSignedIn) {
+  if (clerkSignedIn) {
     return (
-      <Button
-        className="w-full min-h-[44px]"
-        onClick={() => setLocation("/")}
-        data-testid="button-continue"
-      >
-        Continue to dashboard
-      </Button>
+      <div className="space-y-3">
+        <Button
+          type="button"
+          className="w-full min-h-[44px]"
+          disabled={syncing}
+          onClick={() => {
+            void enterApp();
+          }}
+          data-testid="button-continue"
+        >
+          {syncing ? "Opening dashboard…" : "Continue to dashboard"}
+        </Button>
+        {syncError && (
+          <Alert variant="destructive">
+            <AlertTitle>Could not open dashboard</AlertTitle>
+            <AlertDescription>{syncError}</AlertDescription>
+          </Alert>
+        )}
+      </div>
     );
   }
 
@@ -87,6 +94,7 @@ export function ClerkSignInPanel({
 
   return (
     <Button
+      type="button"
       className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium"
       onClick={() => {
         window.location.href = portalUrl;

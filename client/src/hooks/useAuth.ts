@@ -22,7 +22,7 @@ export interface AuthUser {
   };
 }
 
-async function fetchAuthUser(): Promise<AuthUser | null> {
+export async function fetchAuthUser(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/user", {
     credentials: "include",
     headers: { Accept: "application/json" },

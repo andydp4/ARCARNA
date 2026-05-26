@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { ClerkSessionSync } from "@/components/ClerkSessionSync";
 import {
   type AuthRuntime,
   resolveAuthProvider,
@@ -72,6 +73,7 @@ export function AuthProviders({ children }: { children: ReactNode }) {
         signInFallbackRedirectUrl={appUrl("/")}
         signUpFallbackRedirectUrl={appUrl("/")}
       >
+        <ClerkSessionSync />
         {content}
       </ClerkProvider>
     );
