@@ -102,10 +102,7 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
       setSearchTerm("");
       return;
     }
-    const defaultSelected = preview.rows
-      .filter((r) => isImportableRow(r) && r.action === "insert")
-      .map((r) => r.rowIndex);
-    setSelectedRowIndexes(new Set(defaultSelected));
+    setSelectedRowIndexes(new Set());
   }, [preview]);
 
   const toggleRow = (rowIndex: number, checked: boolean) => {
