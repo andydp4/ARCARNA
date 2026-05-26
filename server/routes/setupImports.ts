@@ -1,10 +1,14 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
-import { orgProfilePatchSchema, PRODUCT_IMPORT_CSV_SAMPLE } from "@shared/setup";
+import {
+  orgProfilePatchSchema,
+  PRODUCT_IMPORT_CSV_SAMPLE,
+  CUSTOMER_IMPORT_CSV_SAMPLE,
+} from "@shared/setup";
 import { parseSpreadsheet, applyColumnMapping } from "../import/spreadsheet";
 import { previewProductImport } from "../import/productImport";
-import { previewCustomerImport } from "../import/customerImport";
+import { previewCustomerImport, previewVcardCustomerImport } from "../import/customerImport";
 import { products } from "@shared/schema";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
@@ -30,8 +34,7 @@ const TEMPLATES: Record<string, { filename: string; content: string }> = {
   },
   customers: {
     filename: "customers-template.csv",
-    content:
-      "name,email,phone,address,category\nJane Smith,jane@example.com,07700900123,1 High Street,Bronze\n",
+    content: CUSTOMER_IMPORT_CSV_SAMPLE,
   },
 };
 
@@ -141,14 +144,33 @@ export function registerSetupAndImportRoutes(app: Express) {
   app.post("/api/customers/import/preview", ...importScoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const { contentBase64, fileName, mapping, duplicateMode = "skip" } = req.body;
+      const {
+        contentBase64,
+        fileName,
+        mapping,
+        duplicateMode = "skip",
+        defaultCategory = "Bronze",
+      } = req.body;
       if (!contentBase64 || !fileName) {
         return res.status(400).json({ message: "contentBase64 and fileName are required" });
       }
+      const existing = await storage.getCustomers(ctx.orgId);
+      const isVcard = /\.vcf$/i.test(fileName);
+
+      if (isVcard) {
+        const text = Buffer.from(contentBase64, "base64").toString("utf-8");
+        const preview = previewVcardCustomerImport(
+          text,
+          existing,
+          duplicateMode,
+          defaultCategory,
+        );
+        return res.json({ headers: [], ...preview });
+      }
+
       const sheet = await parseSpreadsheet(contentBase64, fileName);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
-      const existing = await storage.getCustomers(ctx.orgId);
-      const preview = previewCustomerImport(mapped, existing, duplicateMode);
+      const preview = previewCustomerImport(mapped, existing, duplicateMode, defaultCategory);
       res.json({ headers: sheet.headers, ...preview });
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Preview failed" });

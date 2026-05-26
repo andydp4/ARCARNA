@@ -33,12 +33,14 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact } from 'lucide-react'
+import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp } from 'lucide-react'
+import { ContactsImport } from '@/components/import/ContactsImport'
 
 export default function Customers() {
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showContactsImport, setShowContactsImport] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<any>(null)
   const [formData, setFormData] = useState({
     name: '',
@@ -291,7 +293,17 @@ export default function Customers() {
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Customer Database</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">Manage your customer records and information</p>
           </div>
-          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              className="gap-2 min-h-[44px] w-full sm:w-auto"
+              onClick={() => setShowContactsImport(true)}
+              data-testid="button-bulk-import-contacts"
+            >
+              <FileUp className="h-4 w-4" />
+              Import from Contacts
+            </Button>
+            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
               <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
                 <UserPlus className="h-4 w-4" />
@@ -305,7 +317,7 @@ export default function Customers() {
                   Enter customer information to create a new record
                 </DialogDescription>
               </DialogHeader>
-              <div className="py-3 border-b">
+              <div className="py-3 border-b grid gap-2 sm:grid-cols-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -314,7 +326,19 @@ export default function Customers() {
                   data-testid="button-import-contact"
                 >
                   <Contact className="h-4 w-4" />
-                  Import from Contacts
+                  Pick from device
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowAddDialog(false)
+                    setShowContactsImport(true)
+                  }}
+                  className="w-full gap-2 min-h-[44px]"
+                >
+                  <FileUp className="h-4 w-4" />
+                  Import .vcf / CSV
                 </Button>
               </div>
               <div className="grid gap-4 py-4">
@@ -405,7 +429,23 @@ export default function Customers() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
+
+        <Dialog open={showContactsImport} onOpenChange={setShowContactsImport}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Import from Contacts</DialogTitle>
+              <DialogDescription>
+                Upload a .vcf export from Apple Contacts or a CSV file. Review the preview before confirming.
+              </DialogDescription>
+            </DialogHeader>
+            <ContactsImport
+              compact
+              onImported={() => setShowContactsImport(false)}
+            />
+          </DialogContent>
+        </Dialog>
 
         <div className="grid gap-4 sm:gap-6 grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
           <Card>

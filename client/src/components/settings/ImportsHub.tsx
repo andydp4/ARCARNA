@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SpreadsheetImport } from "@/components/import/SpreadsheetImport";
+import { ContactsImport } from "@/components/import/ContactsImport";
 
 export function ImportsHub() {
   const { data: history = [] } = useQuery<any[]>({
@@ -35,10 +36,12 @@ export function ImportsHub() {
         ]}
       />
 
+      <ContactsImport />
+
       <SpreadsheetImport
         kind="customers"
-        title="Customer import"
-        description="CSV or XLSX. Duplicates matched by email or phone."
+        title="Customer spreadsheet import"
+        description="CSV or XLSX with column mapping. For Apple Contacts, use Import from Contacts above."
         duplicateModes={["skip", "merge", "overwrite"]}
         defaultDuplicateMode="skip"
         fieldOptions={[

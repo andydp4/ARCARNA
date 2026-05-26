@@ -91,13 +91,39 @@ export const PRODUCT_IMPORT_CSV_HEADERS =
 export const PRODUCT_IMPORT_CSV_SAMPLE =
   `${PRODUCT_IMPORT_CSV_HEADERS}\nExample Product,SKU-001,1234567890123,9.99,5.00,10,100\n`;
 
-export const customerImportRowSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  address: z.string().optional().nullable(),
-  category: z.string().optional().nullable(),
-});
+const zImportEmail = z.preprocess((v) => {
+  if (v === null || v === undefined || v === "") return null;
+  return String(v).trim();
+}, z.string().email("Invalid email address").nullable().optional());
+
+const zImportPhone = z.preprocess((v) => {
+  if (v === null || v === undefined || v === "") return null;
+  return String(v).trim();
+}, z.string().min(3, "Invalid phone number").nullable().optional());
+
+export const customerImportRowSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: zImportEmail,
+    phone: zImportPhone,
+    address: z.string().optional().nullable(),
+    category: z.string().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.phone && !data.email) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Phone or email is required",
+        path: ["phone"],
+      });
+    }
+  });
+
+/** CSV header row for customer / contacts fallback import */
+export const CUSTOMER_IMPORT_CSV_HEADERS = "name,email,phone,address,category";
+
+export const CUSTOMER_IMPORT_CSV_SAMPLE =
+  `${CUSTOMER_IMPORT_CSV_HEADERS}\nJane Smith,jane@example.com,07700900123,1 High Street,Bronze\n`;
 
 export const DUPLICATE_MODES_PRODUCT = ["skip", "overwrite"] as const;
 export const DUPLICATE_MODES_CUSTOMER = ["skip", "merge", "overwrite"] as const;
