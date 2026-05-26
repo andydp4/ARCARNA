@@ -57,6 +57,7 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
   const [dragOver, setDragOver] = useState(false);
   const [duplicateMode, setDuplicateMode] = useState<string>("skip");
   const [defaultCategory, setDefaultCategory] = useState<string>("Bronze");
+  const [parsing, setParsing] = useState(false);
   const [preview, setPreview] = useState<{
     rows: PreviewRow[];
     summary: { total: number; valid: number; invalid: number; duplicates: number };
@@ -89,7 +90,14 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
   const previewMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Choose a file first");
-      const { rows, source } = await parseContactsFileToRows(file, defaultCategory);
+      setParsing(true);
+      let rows: Record<string, unknown>[];
+      let source: "vcard" | "csv";
+      try {
+        ({ rows, source } = await parseContactsFileToRows(file, defaultCategory));
+      } finally {
+        setParsing(false);
+      }
       const res = await apiRequest("POST", "/api/customers/import/preview-rows", {
         rows,
         duplicateMode,
@@ -159,8 +167,8 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
             Import from Contacts
           </CardTitle>
           <CardDescription>
-            Import Apple Contacts (.vcf) or CSV. Files are parsed on your device; only contact
-            fields are sent to the server. Duplicates match by phone or email.
+            Import Apple Contacts (.vcf) or CSV up to 32MB (photo data in the file is ignored).
+            Parsed on your device — only names, phones, and emails are sent to the server.
           </CardDescription>
         </CardHeader>
       )}
@@ -262,12 +270,12 @@ export function ContactsImport({ compact, onImported }: ContactsImportProps) {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => previewMutation.mutate()}
-            disabled={!file || previewMutation.isPending}
+            disabled={!file || previewMutation.isPending || parsing}
             className="min-h-[44px]"
             data-testid="button-preview-contacts"
           >
             <Upload className="mr-2 h-4 w-4" />
-            Preview import
+            {parsing ? "Parsing contacts…" : "Preview import"}
           </Button>
           <Button
             onClick={() => commitMutation.mutate()}

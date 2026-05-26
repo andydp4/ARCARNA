@@ -9,26 +9,23 @@ export type ParsedVCard = {
   notes: string;
 };
 
-function unfoldVcardLines(content: string): string[] {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const raw = normalized.split("\n");
-  const lines: string[] = [];
-  for (const line of raw) {
-    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length > 0) {
-      lines[lines.length - 1] += line.slice(1);
-    } else if (line.trim()) {
-      lines.push(line);
-    }
-  }
-  return lines;
-}
+const SKIP_PROPERTY_KEYS = new Set([
+  "PHOTO",
+  "LOGO",
+  "SOUND",
+  "KEY",
+  "ANNIVERSARY",
+  "BDAY",
+  "X-ABSHOWMAP",
+  "X-ABCARDIMAGE",
+  "X-ABTHUMBNAILIMAGE",
+]);
 
 function decodeVcardValue(value: string): string {
   let v = value.trim();
   if (v.startsWith('"') && v.endsWith('"')) {
     v = v.slice(1, -1);
   }
-  // Quoted-printable (common in Apple exports)
   if (/=[0-9A-F]{2}/i.test(v)) {
     v = v
       .replace(/=\r?\n/g, "")
@@ -81,9 +78,17 @@ function finalizeCard(card: {
   };
 }
 
-/** Parse one or more VCARD records from file text (3.0 / 4.0). */
+function isFoldContinuation(line: string): boolean {
+  return line.startsWith(" ") || line.startsWith("\t");
+}
+
+/**
+ * Parse vCards without loading embedded PHOTO blobs into memory (Apple exports
+ * can be 10MB+ mostly JPEG data for ~1k contacts).
+ */
 export function parseVcardFile(content: string): ParsedVCard[] {
-  const lines = unfoldVcardLines(content);
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const raw = normalized.split("\n");
   const results: ParsedVCard[] = [];
   let card: {
     firstName: string;
@@ -105,10 +110,18 @@ export function parseVcardFile(content: string): ParsedVCard[] {
     notes: "",
   });
 
-  for (const line of lines) {
+  let i = 0;
+  while (i < raw.length) {
+    const line = raw[i];
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+
     const upper = line.toUpperCase();
     if (upper === "BEGIN:VCARD") {
       card = emptyCard();
+      i++;
       continue;
     }
     if (upper === "END:VCARD") {
@@ -117,17 +130,41 @@ export function parseVcardFile(content: string): ParsedVCard[] {
         if (finalized) results.push(finalized);
       }
       card = null;
+      i++;
       continue;
     }
-    if (!card) continue;
+
+    if (!card) {
+      i++;
+      continue;
+    }
 
     const prop = propertyKey(line);
-    if (!prop) continue;
+    if (!prop) {
+      i++;
+      continue;
+    }
 
-    const value = decodeVcardValue(prop.value);
+    if (SKIP_PROPERTY_KEYS.has(prop.key)) {
+      i++;
+      while (i < raw.length && isFoldContinuation(raw[i])) i++;
+      continue;
+    }
+
+    let fullLine = line;
+    i++;
+    while (i < raw.length && isFoldContinuation(raw[i])) {
+      fullLine += raw[i].slice(1);
+      i++;
+    }
+
+    const merged = propertyKey(fullLine);
+    if (!merged) continue;
+
+    const value = decodeVcardValue(merged.value);
     if (!value) continue;
 
-    switch (prop.key) {
+    switch (merged.key) {
       case "FN":
         card.fn = value;
         break;
