@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BUSINESS_TYPES, type Organization } from "./schema";
+import { parseImportInteger, parseImportNumber } from "./importValues";
 
 export { BUSINESS_TYPES, type BusinessType } from "./schema";
 export type { Organization };
@@ -52,15 +53,43 @@ export const orgProfilePatchSchema = z.object({
 
 export type OrgProfilePatch = z.infer<typeof orgProfilePatchSchema>;
 
+const zImportPriceRequired = z.preprocess(
+  (v) => parseImportNumber(v),
+  z
+    .number({ required_error: "Sale price is required", invalid_type_error: "Invalid sale price" })
+    .min(0, "Sale price cannot be negative"),
+);
+
+const zImportPriceOptional = z.preprocess(
+  (v) => parseImportNumber(v),
+  z.number({ invalid_type_error: "Invalid cost price" }).min(0, "Cost price cannot be negative").optional(),
+);
+
+const zImportIntOptional = z.preprocess(
+  (v) => parseImportInteger(v),
+  z
+    .number({ invalid_type_error: "Invalid whole number" })
+    .int("Must be a whole number")
+    .min(0)
+    .optional(),
+);
+
 export const productImportRowSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1, "Name is required"),
   productId: z.string().optional(),
   barcode: z.string().optional().nullable(),
-  defaultSalePrice: z.union([z.string(), z.number()]),
-  costPrice: z.union([z.string(), z.number()]).optional(),
-  stock: z.union([z.string(), z.number()]).optional(),
-  stockLimit: z.union([z.string(), z.number()]).optional(),
+  defaultSalePrice: zImportPriceRequired,
+  costPrice: zImportPriceOptional,
+  stock: zImportIntOptional,
+  stockLimit: zImportIntOptional,
 });
+
+/** CSV header row — keep identical to TEMPLATES.products in setupImports.ts */
+export const PRODUCT_IMPORT_CSV_HEADERS =
+  "name,productId,barcode,defaultSalePrice,costPrice,stock,stockLimit";
+
+export const PRODUCT_IMPORT_CSV_SAMPLE =
+  `${PRODUCT_IMPORT_CSV_HEADERS}\nExample Product,SKU-001,1234567890123,9.99,5.00,10,100\n`;
 
 export const customerImportRowSchema = z.object({
   name: z.string().min(1),

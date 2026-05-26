@@ -69,18 +69,14 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 
 // --- Utility Functions ---
+import { parseImportInteger, parseImportNumber } from "@shared/importValues";
+
 function safeParseFloat(value: string | number | null | undefined, defaultValue: number = 0): number {
-  if (value === null || value === undefined) return defaultValue;
-  if (typeof value === 'number') return isNaN(value) ? defaultValue : value;
-  const parsed = parseFloat(value);
-  return isNaN(parsed) ? defaultValue : parsed;
+  return parseImportNumber(value) ?? defaultValue;
 }
 
 function safeParseInt(value: string | number | null | undefined, defaultValue: number = 0): number {
-  if (value === null || value === undefined) return defaultValue;
-  if (typeof value === 'number') return isNaN(value) ? defaultValue : Math.floor(value);
-  const parsed = parseInt(value, 10);
-  return isNaN(parsed) ? defaultValue : parsed;
+  return parseImportInteger(value) ?? defaultValue;
 }
 
 // --- CRITICAL NOTE: Storage <-> API Field Mapping ---
@@ -420,11 +416,32 @@ export class DatabaseStorage implements IStorage {
 
     for (const productData of productList) {
       try {
-        if (!productData.name || (!productData.price && !productData.defaultSalePrice && !productData.salePrice)) {
-          errors.push(`Row ${failed + imported + skipped + 1}: Missing required fields (name or sale price)`);
+        const salePrice =
+          parseImportNumber(
+            productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
+          );
+        const costPrice = parseImportNumber(
+          productData.costPrice ?? productData.tax,
+        );
+        const stock =
+          productData.stock !== undefined ? parseImportInteger(productData.stock) : undefined;
+        const stockLimit =
+          productData.stockLimit !== undefined
+            ? parseImportInteger(productData.stockLimit)
+            : undefined;
+
+        if (!productData.name?.trim() || salePrice === undefined) {
+          errors.push(
+            `Row ${failed + imported + skipped + 1}: Missing name or invalid sale price (use numbers only, e.g. 9.99)`,
+          );
           failed++;
           continue;
         }
+
+        productData.defaultSalePrice = salePrice;
+        productData.costPrice = costPrice ?? 0;
+        if (stock !== undefined) productData.stock = stock;
+        if (stockLimit !== undefined) productData.stockLimit = stockLimit;
 
         let existingProduct = null;
         const sku = productData.productId?.trim();

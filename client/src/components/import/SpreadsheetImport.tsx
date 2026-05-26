@@ -225,7 +225,7 @@ export function SpreadsheetImport({
           <Button
             variant="default"
             onClick={() => commitMutation.mutate()}
-            disabled={!preview || commitMutation.isPending}
+            disabled={!preview || !preview.summary?.valid || commitMutation.isPending}
             className="min-h-[44px]"
             data-testid={`button-commit-${kind}`}
           >
@@ -237,8 +237,19 @@ export function SpreadsheetImport({
         {preview && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              {preview.summary.valid} valid · {preview.summary.invalid} invalid · {preview.summary.duplicates} duplicates
+              {preview.summary.valid} valid · {preview.summary.invalid} invalid ·{" "}
+              {preview.summary.duplicates} duplicates · {preview.summary.total} rows
             </p>
+            {preview.summary.valid === 0 && preview.summary.invalid > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>No valid rows to import</AlertTitle>
+                <AlertDescription>
+                  Check sale price and cost price columns use plain numbers (e.g. 4.00), not £
+                  symbols. Re-download the template if needed.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="max-h-64 overflow-auto border rounded-md">
               <Table>
                 <TableHeader>
@@ -253,8 +264,12 @@ export function SpreadsheetImport({
                     <TableRow key={row.rowIndex}>
                       <TableCell>{row.rowIndex}</TableCell>
                       <TableCell>{row.action}</TableCell>
-                      <TableCell className="text-xs text-destructive">
-                        {row.errors.join(", ") || "—"}
+                      <TableCell
+                        className={
+                          row.errors.length ? "text-xs text-destructive" : "text-xs text-muted-foreground"
+                        }
+                      >
+                        {row.errors.length ? row.errors.join("; ") : "OK"}
                       </TableCell>
                     </TableRow>
                   ))}

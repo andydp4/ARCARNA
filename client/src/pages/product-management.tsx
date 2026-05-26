@@ -50,6 +50,13 @@ import {
   CheckCircle,
   X
 } from 'lucide-react'
+import { PRODUCT_IMPORT_CSV_SAMPLE } from '@shared/setup'
+import {
+  parseProductCsvText,
+  previewProductImportFromMappedRows,
+  type ProductImportPreview,
+} from '@shared/productImport'
+import { downloadBlob } from '@/lib/fileImport'
 
 export default function ProductManagement() {
   const { toast } = useToast()
@@ -59,6 +66,7 @@ export default function ProductManagement() {
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [csvContent, setCsvContent] = useState('')
+  const [csvPreview, setCsvPreview] = useState<ProductImportPreview | null>(null)
   const [importResults, setImportResults] = useState<any>(null)
   const [formData, setFormData] = useState({
     productCode: '',
@@ -146,7 +154,12 @@ export default function ProductManagement() {
 
   // Import products mutation
   const importMutation = useMutation({
-    mutationFn: (products: any[]) => apiRequest('POST', '/api/products/import', { products }),
+    mutationFn: (rows: Record<string, unknown>[]) =>
+      apiRequest('POST', '/api/products/import', {
+        rows,
+        confirmed: true,
+        duplicateMode: 'skip',
+      }),
     onSuccess: async (data: any) => {
       await refreshAfterProductMutation()
       setImportResults(data)
@@ -261,86 +274,44 @@ export default function ProductManagement() {
       reader.onload = (e) => {
         const content = e.target?.result as string
         setCsvContent(content)
+        refreshCsvPreview(content)
         setShowImportDialog(true)
       }
       reader.readAsText(file)
     }
   }
 
-  const parseCsvContent = (content: string): any[] => {
-    const lines = content.split('\n').filter(line => line.trim())
-    if (lines.length === 0) return []
-
-    const headers = lines[0].split(',').map(h => h.trim())
-    const products = []
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim())
-      const product: any = {}
-
-      headers.forEach((header, index) => {
-        const value = values[index]
-        switch (header.toLowerCase()) {
-          case 'productid':
-          case 'product_id':
-            product.productId = value
-            break
-          case 'name':
-            product.name = value
-            break
-          case 'barcode':
-            product.barcode = value
-            break
-          case 'price':
-            product.price = parseFloat(value) || 0
-            break
-          case 'tax':
-            product.tax = parseFloat(value) || 0
-            break
-          case 'stock':
-            product.stock = parseInt(value) || 0
-            break
-          case 'stocklimit':
-          case 'stock_limit':
-            product.stockLimit = parseInt(value) || 100
-            break
-          case 'category':
-          case 'categoryid':
-          case 'category_id':
-            product.categoryId = value
-            break
-        }
-      })
-
-      if (product.name && product.price !== undefined) {
-        products.push(product)
-      }
-    }
-
-    return products
+  const refreshCsvPreview = (content: string) => {
+    const mapped = parseProductCsvText(content)
+    setCsvPreview(previewProductImportFromMappedRows(mapped))
   }
 
   const handleImport = () => {
-    const products = parseCsvContent(csvContent)
-    if (products.length === 0) {
+    const preview = csvPreview ?? previewProductImportFromMappedRows(parseProductCsvText(csvContent))
+    const validRows = preview.rows
+      .filter((r) => r.errors.length === 0)
+      .map((r) => r.data)
+
+    if (validRows.length === 0) {
+      const firstErrors = preview.rows
+        .filter((r) => r.errors.length > 0)
+        .slice(0, 3)
+        .map((r) => `Row ${r.rowIndex}: ${r.errors.join('; ')}`)
+        .join(' ')
       toast({
-        title: 'Error',
-        description: 'No valid products found in CSV',
+        title: 'No valid products',
+        description:
+          firstErrors ||
+          'Fix sale price (use 9.99 not £9.99), name, and other fields. See row errors below.',
         variant: 'destructive',
       })
       return
     }
-    importMutation.mutate(products)
+    importMutation.mutate(validRows)
   }
 
   const downloadTemplate = () => {
-    const template = 'productId,name,barcode,price,tax,stock,stockLimit,category\nPRD001,Sample Product,123456789,9.99,0.15,100,500,Electronics\nPRD002,Another Product,987654321,19.99,0.15,50,200,Clothing'
-    const blob = new Blob([template], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'product_import_template.csv'
-    a.click()
+    downloadBlob(PRODUCT_IMPORT_CSV_SAMPLE, 'products-template.csv')
   }
 
   const filteredProducts = products.filter((product: any) => 
@@ -593,13 +564,43 @@ export default function ProductManagement() {
                   <Label>CSV Content Preview</Label>
                   <Textarea
                     value={csvContent}
-                    onChange={(e) => setCsvContent(e.target.value)}
+                    onChange={(e) => {
+                      setCsvContent(e.target.value)
+                      refreshCsvPreview(e.target.value)
+                    }}
                     rows={10}
                     className="font-mono text-sm"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    {parseCsvContent(csvContent).length} valid products found
-                  </p>
+                  {csvPreview && (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        {csvPreview.summary.valid} valid · {csvPreview.summary.invalid} invalid ·{' '}
+                        {csvPreview.summary.total} rows
+                      </p>
+                      {csvPreview.summary.invalid > 0 && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>Fix invalid rows</AlertTitle>
+                          <AlertDescription>
+                            <ul className="list-disc pl-5 mt-2 space-y-1 text-sm">
+                              {csvPreview.rows
+                                .filter((r) => r.errors.length > 0)
+                                .slice(0, 15)
+                                .map((r) => (
+                                  <li key={r.rowIndex}>
+                                    Row {r.rowIndex}: {r.errors.join('; ')}
+                                  </li>
+                                ))}
+                            </ul>
+                            <p className="mt-2 text-xs">
+                              Prices must be numbers only (e.g. 4.00). Remove £ symbols or use the
+                              download template.
+                            </p>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </>
+                  )}
                 </div>
                 <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => {
@@ -610,7 +611,7 @@ export default function ProductManagement() {
                   </Button>
                   <Button 
                     onClick={handleImport} 
-                    disabled={importMutation.isPending}
+                    disabled={importMutation.isPending || !csvPreview?.summary.valid}
                     className="min-h-[44px]"
                     data-testid="button-import-confirm"
                   >

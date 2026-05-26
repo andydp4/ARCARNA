@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
-import { orgProfilePatchSchema } from "@shared/setup";
+import { orgProfilePatchSchema, PRODUCT_IMPORT_CSV_SAMPLE } from "@shared/setup";
 import { parseSpreadsheet, applyColumnMapping } from "../import/spreadsheet";
 import { previewProductImport } from "../import/productImport";
 import { previewCustomerImport } from "../import/customerImport";
@@ -26,8 +26,7 @@ const importScoped = [
 const TEMPLATES: Record<string, { filename: string; content: string }> = {
   products: {
     filename: "products-template.csv",
-    content:
-      "name,productId,barcode,defaultSalePrice,costPrice,stock,stockLimit\nExample Product,SKU-001,1234567890123,9.99,5.00,10,100\n",
+    content: PRODUCT_IMPORT_CSV_SAMPLE,
   },
   customers: {
     filename: "customers-template.csv",
