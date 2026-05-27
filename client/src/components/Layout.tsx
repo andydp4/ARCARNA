@@ -26,6 +26,9 @@ export function Layout({ children }: LayoutProps) {
     if (item.key === 'user-access') {
       return user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
     }
+    if (item.key === 'worker-logs' || item.key === 'audit-logs') {
+      return user?.role === 'SUPER_ADMIN'
+    }
     return true
   })
 
