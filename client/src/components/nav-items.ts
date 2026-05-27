@@ -120,6 +120,13 @@ export const navItems = [
     testId: 'nav-tick-list'
   },
   {
+    key: 'audit-logs',
+    label: 'Audit log',
+    href: '/audit-logs',
+    icon: Shield,
+    testId: 'nav-audit-logs'
+  },
+  {
     key: 'worker-logs',
     label: 'Worker logs',
     href: '/worker-logs',

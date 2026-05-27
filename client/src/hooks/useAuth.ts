@@ -20,7 +20,9 @@ export interface AuthUser {
   runtime?: {
     devAuthBypass: boolean;
     nodeEnv: string;
+    authProvider?: string;
   };
+  clerkTwoFactorEnabled?: boolean | null;
 }
 
 export async function fetchAuthUser(): Promise<AuthUser | null> {
