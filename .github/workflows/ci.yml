@@ -61,6 +61,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
 
+      - name: Apply SQL migrations (raw)
+        run: |
+          shopt -s nullglob
+          for f in migrations/*.sql; do
+            echo "→ $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d midnight_test \
+              -v ON_ERROR_STOP=0 -f "$f"
+          done
+
       - name: Migration sanity (post db:push)
         run: npm run migration:sanity
         env:
@@ -100,6 +109,15 @@ jobs:
         run: npm run db:push
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Apply SQL migrations (raw)
+        run: |
+          shopt -s nullglob
+          for f in migrations/*.sql; do
+            echo "→ $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d midnight_test \
+              -v ON_ERROR_STOP=0 -f "$f"
+          done
 
       - name: Release gate
         run: npm run gate 2>&1 | tee gate-output.log
