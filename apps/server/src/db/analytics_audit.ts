@@ -1,4 +1,4 @@
-import { db } from './index'
+import { getDb } from './index'
 import * as s from './schema'
 import type { AnalyticsSink, AuditPort, OrderId } from '@midnight/domain'
 import { eq } from 'drizzle-orm'
@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 export const AnalyticsSinkDrizzle: AnalyticsSink = {
   async recordOrder(orderId: OrderId){
     // Get order details for the outbox event
-    const order = await db
+    const order = await getDb()
       .select()
       .from(s.orders)
       .where(eq(s.orders.id, orderId))
@@ -14,13 +14,13 @@ export const AnalyticsSinkDrizzle: AnalyticsSink = {
     
     if (order.length === 0) return
     
-    const orderItems = await db
+    const orderItems = await getDb()
       .select()
       .from(s.order_items)
       .where(eq(s.order_items.order_id, orderId))
     
     // Write to outbox with complete order data for analytics worker
-    await db.insert(s.domain_outbox).values({
+    await getDb().insert(s.domain_outbox).values({
       type: 'OrderPlaced',
       payload: {
         orderId,
@@ -44,7 +44,7 @@ export const AnalyticsSinkDrizzle: AnalyticsSink = {
 
 export const AuditPortDrizzle: AuditPort = {
   async log(event: string, payload: unknown){
-    await db.insert(s.audit_logs).values({
+    await getDb().insert(s.audit_logs).values({
       user_id: 'system', action: event, entity_type: 'order', new_values: payload as any
     })
   }

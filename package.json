@@ -22,7 +22,9 @@
     "gate": "tsx scripts/release-gate.ts",
     "db:migrate": "bash scripts/apply-migrations-pm2.sh",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
-    "release:preflight": "npm run migration:sanity && npm run gate"
+    "release:preflight": "npm run migration:sanity && npm run gate",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.3",
@@ -146,7 +148,8 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.6",
     "typescript": "5.6.3",
-    "vite": "^5.4.20"
+    "vite": "^5.4.20",
+    "vitest": "^2.1.9"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"

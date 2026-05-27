@@ -31,7 +31,8 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
          migrations/006_phase11b_suppliers_replenishment.sql \
          migrations/007_phase11c_goods_receiving.sql \
          migrations/008_auth_subject.sql \
-         migrations/009_domain_outbox_and_workers.sql; do
+         migrations/009_domain_outbox_and_workers.sql \
+         migrations/010_domain_outbox_deprecated.sql; do
   if [[ ! -f "$f" ]]; then
     echo "  SKIP missing $f"
     continue

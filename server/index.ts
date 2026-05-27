@@ -109,7 +109,6 @@ process.on("unhandledRejection", (reason) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  let workerInstance: any = null;
   
   server.listen({
     port,
@@ -118,17 +117,8 @@ process.on("unhandledRejection", (reason) => {
   }, async () => {
     log(`serving on port ${port} (portal at /, Midnight EPOS at ${mount || "/"})`);
     
-    // Start analytics worker if database is available (non-blocking)
     if (process.env.DATABASE_URL) {
-      try {
-        const workerModule = await import('../apps/server/src/workers/analytics.worker');
-        workerInstance = workerModule.analyticsWorker;
-        await workerInstance.start();
-        log('Analytics worker started');
-      } catch (error) {
-        // Worker is optional - app works without it
-        log('Analytics worker not available (non-critical)');
-      }
+      // domain_outbox / analytics.worker deprecated — use event_outbox + server/workers/*
       
       // Start event-driven worker runner
       try {
@@ -157,13 +147,6 @@ process.on("unhandledRejection", (reason) => {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     log('SIGTERM received, shutting down gracefully...');
-    if (workerInstance) {
-      try {
-        workerInstance.stop();
-      } catch (error) {
-        // Ignore shutdown errors
-      }
-    }
     // Stop event-driven worker runner
     try {
       const { stopWorkerRunner } = await import('./workers');

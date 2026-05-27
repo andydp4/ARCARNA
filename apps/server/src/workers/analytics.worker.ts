@@ -1,3 +1,6 @@
+/**
+ * @deprecated Superseded by event_outbox + server/workers/*. Not started in production.
+ */
 import { db } from '../db'
 import {
   analyticsDaily,
