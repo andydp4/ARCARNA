@@ -1,0 +1,12 @@
+---
+description: Architectural rules for MidnightEPOS server, schema, and workers
+globs:
+  - server/**
+  - shared/**
+  - migrations/**
+  - client/src/lib/**
+---
+
+Before changing server routes, storage, schema, or workers, read `docs/ARCHITECTURAL_PRINCIPLES.md`.
+
+In the PR description, cite which principle(s) the change honours. If a principle must be waived, add a `## Principle Exception` section with justification and approval.

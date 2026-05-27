@@ -2,6 +2,10 @@
 
 Point-of-sale and business management system. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [RBAC.md](./RBAC.md) for design details.
 
+### Docs
+
+- **[docs/ARCHITECTURAL_PRINCIPLES.md](docs/ARCHITECTURAL_PRINCIPLES.md)** — Architectural principles (repo constitution)
+
 ---
 
 ## Release
