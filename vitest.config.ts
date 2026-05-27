@@ -4,7 +4,10 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["server/__tests__/**/*.test.ts"],
+    include: [
+      "server/__tests__/**/*.test.ts",
+      "client/src/**/__tests__/**/*.test.ts",
+    ],
     exclude: process.env.DATABASE_URL
       ? []
       : ["server/__tests__/orderOutboxAtomicity.test.ts"],

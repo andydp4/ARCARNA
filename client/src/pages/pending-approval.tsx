@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, LogOut, XCircle, RefreshCw } from "lucide-react";
+import { navigateToLogout } from "@/lib/orgCacheWipe";
 
 interface ApprovalStatus {
   authenticated: boolean;
@@ -24,7 +25,7 @@ export default function PendingApproval() {
   });
 
   const handleLogout = () => {
-    window.location.href = '/api/logout';
+    navigateToLogout();
   };
 
   const handleRefresh = () => {

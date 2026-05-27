@@ -1,13 +1,34 @@
 const SW_BASE = self.location.pathname.replace(/\/sw\.js$/i, "") || "";
 const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
 
-const CACHE_NAME = "midnight-epos-v2";
+const CACHE_NAME = "midnight-epos-v3";
 const PRECACHE_ASSETS = [
   SW_BASE ? `${SW_BASE}/` : "/",
   SW_BASE ? `${SW_BASE}/index.html` : "/index.html",
 ];
 
-const API_CACHE_NAME = "midnight-epos-api-v2";
+const API_CACHE_NAME = "midnight-epos-api-v3";
+const ORG_CACHE_PARAM = "__midnight_org";
+
+function orgIdFromRequest(request) {
+  return request.headers.get("X-Org-Id") || "_no_org";
+}
+
+/** Cache key isolates API responses per tenant (X-Org-Id). */
+function cacheRequestForOrg(request) {
+  const url = new URL(request.url);
+  url.searchParams.set(ORG_CACHE_PARAM, orgIdFromRequest(request));
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: request.headers,
+    mode: request.mode,
+    credentials: request.credentials,
+    cache: request.cache,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    integrity: request.integrity,
+  });
+}
 
 self.addEventListener("install", (event) => {
   console.log("[Service Worker] Installing…", { base: SW_BASE });
@@ -34,6 +55,30 @@ self.addEventListener("activate", (event) => {
   return self.clients.claim();
 });
 
+self.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || typeof data.type !== "string") return;
+
+  if (data.type === "CLEAR_ORG_CACHE" && data.orgId) {
+    event.waitUntil(clearOrgApiCache(String(data.orgId)));
+  } else if (data.type === "CLEAR_ALL_CACHES") {
+    event.waitUntil(
+      Promise.all([caches.delete(CACHE_NAME), caches.delete(API_CACHE_NAME)]),
+    );
+  }
+});
+
+async function clearOrgApiCache(orgId) {
+  const cache = await caches.open(API_CACHE_NAME);
+  const keys = await cache.keys();
+  const prefix = `${ORG_CACHE_PARAM}=${encodeURIComponent(orgId)}`;
+  await Promise.all(
+    keys
+      .filter((req) => req.url.includes(prefix))
+      .map((req) => cache.delete(req)),
+  );
+}
+
 function isApiRequest(pathname) {
   return pathname.startsWith(API_PREFIX) || pathname.startsWith("/api/");
 }
@@ -47,19 +92,20 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isApiRequest(url.pathname)) {
+    const cacheKey = cacheRequestForOrg(request);
     event.respondWith(
       fetch(request)
         .then((response) => {
           if (response.ok) {
             const responseClone = response.clone();
             caches.open(API_CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
+              cache.put(cacheKey, responseClone);
             });
           }
           return response;
         })
         .catch(() =>
-          caches.match(request).then(
+          caches.match(cacheKey).then(
             (cachedResponse) =>
               cachedResponse ??
               new Response(JSON.stringify({ error: "Offline", cached: false }), {
@@ -97,39 +143,5 @@ self.addEventListener("sync", (event) => {
 });
 
 async function syncOfflineOrders() {
-  const db = await openDB();
-  const tx = db.transaction("offline-orders", "readonly");
-  const store = tx.objectStore("offline-orders");
-  const orders = await store.getAll();
-
-  for (const order of orders) {
-    try {
-      const response = await fetch(`${API_PREFIX}/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(order.data),
-      });
-
-      if (response.ok) {
-        const deleteTx = db.transaction("offline-orders", "readwrite");
-        await deleteTx.objectStore("offline-orders").delete(order.id);
-      }
-    } catch (error) {
-      console.error("[Service Worker] Failed to sync order:", error);
-    }
-  }
-}
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("midnight-epos-db", 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains("offline-orders")) {
-        db.createObjectStore("offline-orders", { keyPath: "id", autoIncrement: true });
-      }
-    };
-  });
+  console.warn("[Service Worker] sync-orders uses client IndexedDB; no-op in SW");
 }

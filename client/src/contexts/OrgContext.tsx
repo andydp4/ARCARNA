@@ -4,12 +4,22 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSelectedOrgId, setSelectedOrgId } from "@/lib/orgScope";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
+import {
+  LEGACY_OFFLINE_DB_NAME,
+  offlineStorage,
+} from "@/lib/offline-storage";
+import {
+  deleteIndexedDb,
+  wipeAllOfflineData,
+  wipeOrgOfflineData,
+} from "@/lib/orgCacheWipe";
 
 export interface Organization {
   id: string;
@@ -50,17 +60,35 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   });
 
   const [selectedOrgId, setSelectedOrgIdState] = useState<string | null>(null);
+  const prevOrgIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setSelectedOrgIdState(null);
+      prevOrgIdRef.current = null;
+      offlineStorage.setActiveOrg(null);
+      void wipeAllOfflineData();
       return;
     }
+    void deleteIndexedDb(LEGACY_OFFLINE_DB_NAME);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
     const next = resolveSelectedOrg(user, orgs);
     setSelectedOrgIdState(next);
     if (user.role === "SUPER_ADMIN" && next) setSelectedOrgId(next);
     else if (user.role !== "SUPER_ADMIN" && user.orgId) setSelectedOrgId(user.orgId);
   }, [user, orgs]);
+
+  useEffect(() => {
+    const prev = prevOrgIdRef.current;
+    if (prev && selectedOrgId && prev !== selectedOrgId) {
+      void wipeOrgOfflineData(prev);
+    }
+    prevOrgIdRef.current = selectedOrgId;
+    offlineStorage.setActiveOrg(selectedOrgId);
+  }, [selectedOrgId]);
 
   const setSelectedOrgIdHandler = useCallback(
     (orgId: string | null) => {
