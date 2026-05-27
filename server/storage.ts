@@ -65,9 +65,15 @@ import {
   type InsertUserApprovalRequest,
   type AdminAuditLog,
   type InsertAdminAuditLog,
+  apiKeys,
+  outboundWebhooks,
+  type ApiKey,
+  type OutboundWebhook,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import bcrypt from "bcrypt";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 
@@ -237,6 +243,23 @@ export interface IStorage {
 
   insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void>;
   listAdminAuditLogs(opts: { limit: number; offset: number }): Promise<AdminAuditLog[]>;
+
+  createApiKeyForOrg(
+    orgId: string,
+    name: string,
+    scopes?: string[],
+  ): Promise<{ id: string; name: string; keyLookup: string; plainKey: string; createdAt: Date | null }>;
+  listApiKeysForOrg(orgId: string): Promise<ApiKey[]>;
+  revokeApiKey(id: string, orgId: string): Promise<void>;
+  verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null>;
+  getProductsForOrgPublic(orgId: string): Promise<Product[]>;
+
+  createOutboundWebhook(
+    orgId: string,
+    input: { url: string; secret: string; eventTypes?: string[] },
+  ): Promise<OutboundWebhook>;
+  listOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
+  listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -745,7 +768,8 @@ export class DatabaseStorage implements IStorage {
           locationId: orderData.locationId ?? orderData.location_id,
           total: orderData.total,
           paymentMethod: orderData.paymentMethod ?? orderData.payment_method,
-          status: 'completed',
+          status: "completed",
+          channel: orderData.channel ?? orderData.channel_id ?? "pos",
         })
         .returning();
 
@@ -2068,6 +2092,106 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(adminAuditLogs.createdAt))
       .limit(opts.limit)
       .offset(opts.offset);
+  }
+
+  async createApiKeyForOrg(
+    orgId: string,
+    name: string,
+    scopes?: string[],
+  ): Promise<{ id: string; name: string; keyLookup: string; plainKey: string; createdAt: Date | null }> {
+    const lookup = randomBytes(12).toString("hex").toLowerCase();
+    const secretPart = randomBytes(24).toString("hex").toLowerCase();
+    const plain = `mk_live_${lookup}_${secretPart}`;
+    const secretHash = await bcrypt.hash(plain, 10);
+    const [row] = await db
+      .insert(apiKeys)
+      .values({
+        orgId,
+        name: name?.trim() || "API key",
+        keyLookup: lookup,
+        secretHash,
+        scopes: scopes?.length ? scopes : ["products:read"],
+      })
+      .returning();
+    return {
+      id: row.id,
+      name: row.name,
+      keyLookup: row.keyLookup,
+      plainKey: plain,
+      createdAt: row.createdAt ?? null,
+    };
+  }
+
+  async listApiKeysForOrg(orgId: string): Promise<ApiKey[]> {
+    return db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.orgId, orgId))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+
+  async revokeApiKey(id: string, orgId: string): Promise<void> {
+    await db
+      .update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.orgId, orgId)));
+  }
+
+  async verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null> {
+    const m = plainToken.match(/^mk_live_([a-f0-9]{24})_([a-f0-9]{48})$/i);
+    if (!m) return null;
+    const lookup = m[1].toLowerCase();
+    const rows = await db
+      .select()
+      .from(apiKeys)
+      .where(and(eq(apiKeys.keyLookup, lookup), isNull(apiKeys.revokedAt)));
+    for (const row of rows) {
+      if (await bcrypt.compare(plainToken, row.secretHash)) {
+        return { orgId: row.orgId, scopes: (row.scopes as string[]) ?? [] };
+      }
+    }
+    return null;
+  }
+
+  async getProductsForOrgPublic(orgId: string): Promise<Product[]> {
+    return db
+      .select()
+      .from(products)
+      .where(eq(products.orgId, orgId))
+      .orderBy(products.name)
+      .limit(500);
+  }
+
+  async createOutboundWebhook(
+    orgId: string,
+    input: { url: string; secret: string; eventTypes?: string[] },
+  ): Promise<OutboundWebhook> {
+    const [row] = await db
+      .insert(outboundWebhooks)
+      .values({
+        orgId,
+        url: input.url,
+        secret: input.secret,
+        eventTypes: input.eventTypes?.length ? input.eventTypes : ["OrderCreated"],
+        isActive: 1,
+      })
+      .returning();
+    return row;
+  }
+
+  async listOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]> {
+    return db
+      .select()
+      .from(outboundWebhooks)
+      .where(eq(outboundWebhooks.orgId, orgId))
+      .orderBy(desc(outboundWebhooks.createdAt));
+  }
+
+  async listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]> {
+    return db
+      .select()
+      .from(outboundWebhooks)
+      .where(and(eq(outboundWebhooks.orgId, orgId), eq(outboundWebhooks.isActive, 1)));
   }
 }
 

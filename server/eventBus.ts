@@ -131,6 +131,17 @@ export async function dispatchPendingEvents(): Promise<number> {
           .set({ status: 'dispatched' })
           .where(eq(eventOutbox.eventId, event.eventId));
         jobsCreated += eventJobsCreated;
+
+        try {
+          const { notifyOutboundWebhooksForEvent } = await import("./webhooks/outboundNotify");
+          void notifyOutboundWebhooksForEvent({
+            eventId: event.eventId,
+            eventType: event.eventType,
+            payload: event.payload,
+          });
+        } catch {
+          // non-fatal
+        }
       }
     } catch (error) {
       console.error(`[EventBus] Error dispatching event ${event.eventId}:`, error);

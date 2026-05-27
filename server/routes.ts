@@ -42,6 +42,10 @@ import { registerReplenishmentRoutes } from "./routes/replenishment";
 import { registerPurchaseDraftRoutes } from "./routes/purchaseDrafts";
 import { registerGoodsReceiptRoutes } from "./routes/goodsReceipts";
 import { recordAdminAudit } from "./adminAudit";
+import {
+  registerChannelPublicRoutes,
+  registerChannelAuthenticatedRoutes,
+} from "./routes/channels";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -104,6 +108,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/auth/runtime", (_req, res) => {
     res.json(getAuthRuntimeSnapshot());
   });
+
+  registerChannelPublicRoutes(app);
 
   await setupAuth(app);
 
@@ -271,6 +277,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+
+  registerChannelAuthenticatedRoutes(app, scoped);
 
   // Analytics routes
   app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
