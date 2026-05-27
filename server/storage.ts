@@ -90,20 +90,20 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
 
   // Analytics operations
-  getTopCustomers(limit: number): Promise<
+  getTopCustomers(limit: number, orgId: string): Promise<
     Array<{
       customer: Customer;
       metrics: CustomerMetric | null;
     }>
   >;
-  getDailyRevenue(days: number): Promise<
+  getDailyRevenue(days: number, orgId: string): Promise<
     Array<{
       date: string;
       totalOrders: number;
       totalRevenue: string;
     }>
   >;
-  getMonthlySummary(months: number): Promise<
+  getMonthlySummary(months: number, orgId: string): Promise<
     Array<{
       year: number;
       month: number;
@@ -113,18 +113,18 @@ export interface IStorage {
   >;
 
   // POS operations
-  getProducts(): Promise<Product[]>;
-  getCustomers(): Promise<Customer[]>;
+  getProducts(orgId: string): Promise<Product[]>;
+  getCustomers(orgId: string): Promise<Customer[]>;
   createOrder(orderData: any): Promise<Order>;
 
   // Product operations
   createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
   updateProduct(id: string, data: any): Promise<Product>;
-  deleteProduct(id: string, orgId?: string | null): Promise<void>;
-  getProduct(id: string, orgId?: string | null): Promise<Product | null>;
+  deleteProduct(id: string, orgId: string): Promise<void>;
+  getProduct(id: string, orgId: string): Promise<Product | null>;
   importProducts(
     products: any[],
-    orgId?: string | null,
+    orgId: string,
     options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }>;
   importCustomers(
@@ -141,59 +141,59 @@ export interface IStorage {
   // Customer operations
   createCustomer(data: any): Promise<Customer>;
   updateCustomer(id: string, data: any): Promise<Customer>;
-  deleteCustomer(id: string, orgId?: string | null): Promise<void>;
-  getCustomer(id: string, orgId?: string | null): Promise<Customer | null>;
+  deleteCustomer(id: string, orgId: string): Promise<void>;
+  getCustomer(id: string, orgId: string): Promise<Customer | null>;
 
   // Inventory operations
-  getProductsWithStock(): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId?: string | null): Promise<Product>;
+  getProductsWithStock(orgId: string): Promise<Product[]>;
+  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
 
   // Reports operations
-  getReportData(fromDate: Date, toDate: Date): Promise<any>;
+  getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
   generateCSVReport(data: any, type: string): Promise<string>;
   generatePDFReport(data: any, type: string): Promise<Buffer>;
 
   // Locations operations
-  getLocations(orgId?: string | null): Promise<Location[]>;
+  getLocations(orgId: string): Promise<Location[]>;
   createLocation(data: any): Promise<Location>;
-  updateLocation(id: string, data: any, orgId?: string | null): Promise<Location>;
-  deleteLocation(id: string, orgId?: string | null): Promise<void>;
-  setDefaultLocation(id: string, orgId?: string | null): Promise<Location>;
+  updateLocation(id: string, data: any, orgId: string): Promise<Location>;
+  deleteLocation(id: string, orgId: string): Promise<void>;
+  setDefaultLocation(id: string, orgId: string): Promise<Location>;
 
   // Loyalty operations
-  getLoyaltyTiers(orgId?: string | null): Promise<LoyaltyTier[]>;
+  getLoyaltyTiers(orgId: string): Promise<LoyaltyTier[]>;
   createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier>;
-  updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId?: string | null): Promise<LoyaltyTier>;
-  deleteLoyaltyTier(id: string, orgId?: string | null): Promise<void>;
+  updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId: string): Promise<LoyaltyTier>;
+  deleteLoyaltyTier(id: string, orgId: string): Promise<void>;
   updateCustomerTier(customerId: string): Promise<Customer>;
 
   // Promotions operations
-  getPromotions(active?: boolean, orgId?: string | null): Promise<Promotion[]>;
+  getPromotions(orgId: string, active?: boolean): Promise<Promotion[]>;
   createPromotion(data: InsertPromotion): Promise<Promotion>;
-  updatePromotion(id: string, data: Partial<InsertPromotion>, orgId?: string | null): Promise<Promotion>;
-  deletePromotion(id: string, orgId?: string | null): Promise<void>;
-  validatePromoCode(code: string, orgId?: string | null): Promise<Promotion | null>;
+  updatePromotion(id: string, data: Partial<InsertPromotion>, orgId: string): Promise<Promotion>;
+  deletePromotion(id: string, orgId: string): Promise<void>;
+  validatePromoCode(code: string, orgId: string): Promise<Promotion | null>;
   applyPromotion(orderId: string, promoCode: string): Promise<number>;
 
   // Expense operations
-  getOverheadExpenses(orgId?: string | null): Promise<OverheadExpense[]>;
+  getOverheadExpenses(orgId: string): Promise<OverheadExpense[]>;
   createOverheadExpense(data: InsertOverheadExpense): Promise<OverheadExpense>;
-  updateOverheadExpense(id: string, data: Partial<InsertOverheadExpense>, orgId?: string | null): Promise<OverheadExpense>;
-  deleteOverheadExpense(id: string, orgId?: string | null): Promise<void>;
-  getOrderExpenses(orderId: string, orgId?: string | null): Promise<OrderExpense[]>;
-  createOrderExpenses(orderId: string, expenses: InsertOrderExpense[], orgId?: string | null): Promise<void>;
-  getExpenseAnalytics(startDate: Date, endDate: Date, orgId?: string | null): Promise<{
+  updateOverheadExpense(id: string, data: Partial<InsertOverheadExpense>, orgId: string): Promise<OverheadExpense>;
+  deleteOverheadExpense(id: string, orgId: string): Promise<void>;
+  getOrderExpenses(orderId: string, orgId: string): Promise<OrderExpense[]>;
+  createOrderExpenses(orderId: string, expenses: InsertOrderExpense[], orgId: string): Promise<void>;
+  getExpenseAnalytics(startDate: Date, endDate: Date, orgId: string): Promise<{
     overheadTotal: number;
     orderExpenseTotal: number;
     totalExpenses: number;
     dailyOverhead: number;
     overheadBreakdown: any[];
   }>;
-  getExpenseReport(startDate: Date, endDate: Date, orgId?: string | null): Promise<any>;
-  getProfitAnalysis(startDate: Date, endDate: Date, orgId?: string | null): Promise<any>;
+  getExpenseReport(startDate: Date, endDate: Date, orgId: string): Promise<any>;
+  getProfitAnalysis(startDate: Date, endDate: Date, orgId: string): Promise<any>;
 
   // Invoice operations
-  getInvoicesWithDetails(orgId?: string | null): Promise<any[]>;
+  getInvoicesWithDetails(orgId: string): Promise<any[]>;
 
   // Allow list operations
   isUserAllowed(authSubjectId: string): Promise<boolean>;
@@ -204,7 +204,9 @@ export interface IStorage {
     newAuthUserId: string;
     authProvider: string;
   }): Promise<{ linked: boolean; reason?: string }>;
-  getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]>;
+  getAllowedUsers(orgId: string): Promise<AllowedUser[]>;
+  /** SUPER_ADMIN cross-tenant reads only. */
+  adminGetAllAllowedUsers(): Promise<AllowedUser[]>;
   addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser>;
   removeAllowedUser(replitUserId: string): Promise<void>;
   getOwner(): Promise<AllowedUser | null>;
@@ -269,7 +271,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getTopCustomers(limit: number = 10, orgId?: string | null): Promise<
+  async getTopCustomers(limit: number = 10, orgId: string): Promise<
     Array<{
       customer: Customer;
       metrics: CustomerMetric | null;
@@ -285,13 +287,11 @@ export class DatabaseStorage implements IStorage {
         customerMetrics,
         eq(customers.id, customerMetrics.customerId)
       );
-    const results = orgId
-      ? await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit)
-      : await base.orderBy(desc(customerMetrics.clv)).limit(limit);
+    const results = await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit);
     return results;
   }
 
-  async getDailyRevenue(days: number = 30, orgId?: string | null): Promise<
+  async getDailyRevenue(days: number = 30, orgId: string): Promise<
     Array<{
       date: string;
       totalOrders: number;
@@ -305,7 +305,7 @@ export class DatabaseStorage implements IStorage {
         totalRevenue: analyticsDaily.totalRevenue,
       })
       .from(analyticsDaily);
-    if (orgId) q = q.where(eq(analyticsDaily.orgId, orgId)) as any;
+    q = q.where(eq(analyticsDaily.orgId, orgId)) as typeof q;
     const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
     return results.reverse().map((r) => ({
       date: r.date || "",
@@ -314,7 +314,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getMonthlySummary(months: number = 12, orgId?: string | null): Promise<
+  async getMonthlySummary(months: number = 12, orgId: string): Promise<
     Array<{
       year: number;
       month: number;
@@ -330,7 +330,7 @@ export class DatabaseStorage implements IStorage {
         totalRevenue: analyticsMonthly.totalRevenue,
       })
       .from(analyticsMonthly);
-    if (orgId) q = q.where(eq(analyticsMonthly.orgId, orgId)) as any;
+    q = q.where(eq(analyticsMonthly.orgId, orgId)) as typeof q;
     const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
     return results.reverse().map((r) => ({
       year: r.year || 0,
@@ -340,11 +340,8 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getProducts(orgId?: string | null): Promise<Product[]> {
-    if (orgId) {
-      return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
-    }
-    return await db.select().from(products).orderBy(products.name);
+  async getProducts(orgId: string): Promise<Product[]> {
+    return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
   }
 
   async createProduct(data: InsertProduct): Promise<Product> {
@@ -388,21 +385,19 @@ export class DatabaseStorage implements IStorage {
     return product!;
   }
 
-  async deleteProduct(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(products.id, id), eq(products.orgId, orgId)) : eq(products.id, id);
-    const [deleted] = await db.delete(products).where(cond).returning();
-    if (orgId && !deleted) throw new Error('Product not found');
+  async deleteProduct(id: string, orgId: string): Promise<void> {
+    const [deleted] = await db.delete(products).where(and(eq(products.id, id), eq(products.orgId, orgId))).returning();
+    if (!deleted) throw new Error('Product not found');
   }
 
-  async getProduct(id: string, orgId?: string | null): Promise<Product | null> {
-    const conditions = orgId ? and(eq(products.id, id), eq(products.orgId, orgId)) : eq(products.id, id);
-    const [product] = await db.select().from(products).where(conditions);
+  async getProduct(id: string, orgId: string): Promise<Product | null> {
+    const [product] = await db.select().from(products).where(and(eq(products.id, id), eq(products.orgId, orgId)));
     return product || null;
   }
 
   async importProducts(
     productList: any[],
-    orgId?: string | null,
+    orgId: string,
     options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }> {
     if (!options?.confirmed) {
@@ -691,11 +686,8 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getCustomers(orgId?: string | null): Promise<Customer[]> {
-    if (orgId) {
-      return await db.select().from(customers).where(eq(customers.orgId, orgId)).orderBy(customers.name);
-    }
-    return await db.select().from(customers).orderBy(customers.name);
+  async getCustomers(orgId: string): Promise<Customer[]> {
+    return await db.select().from(customers).where(eq(customers.orgId, orgId)).orderBy(customers.name);
   }
 
   async createCustomer(data: any): Promise<Customer> {
@@ -715,15 +707,13 @@ export class DatabaseStorage implements IStorage {
     return customer!;
   }
 
-  async deleteCustomer(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(customers.id, id), eq(customers.orgId, orgId)) : eq(customers.id, id);
-    const [deleted] = await db.delete(customers).where(cond).returning();
-    if (orgId && !deleted) throw new Error('Customer not found');
+  async deleteCustomer(id: string, orgId: string): Promise<void> {
+    const [deleted] = await db.delete(customers).where(and(eq(customers.id, id), eq(customers.orgId, orgId))).returning();
+    if (!deleted) throw new Error('Customer not found');
   }
 
-  async getCustomer(id: string, orgId?: string | null): Promise<Customer | null> {
-    const conditions = orgId ? and(eq(customers.id, id), eq(customers.orgId, orgId)) : eq(customers.id, id);
-    const [customer] = await db.select().from(customers).where(conditions);
+  async getCustomer(id: string, orgId: string): Promise<Customer | null> {
+    const [customer] = await db.select().from(customers).where(and(eq(customers.id, id), eq(customers.orgId, orgId)));
     return customer || null;
   }
 
@@ -787,13 +777,9 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getProductsWithStock(orgId?: string | null): Promise<Product[]> {
+  async getProductsWithStock(orgId: string): Promise<Product[]> {
     const { productLocationStock } = await import("@shared/schema");
-    const base = orgId
-      ? await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name)
-      : await db.select().from(products).orderBy(products.name);
-
-    if (!orgId) return base;
+    const base = await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
 
     const totals = await db
       .select({
@@ -817,14 +803,12 @@ export class DatabaseStorage implements IStorage {
     adjustment: number, 
     type: 'add' | 'set',
     userId: string,
-    orgId?: string | null,
+    orgId: string,
     locationId?: string | null,
   ): Promise<Product> {
     const { adjustProductLocationStock, resolveStockLocationId } = await import(
       "./services/productLocationStock",
     );
-
-    if (!orgId) throw new Error("Org context required for stock adjustment");
 
     const locId = locationId
       ? locationId
@@ -878,7 +862,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getReportData(fromDate: Date, toDate: Date, orgId?: string | null): Promise<any> {
+  async getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any> {
     const [
       revenueData,
       orderData, 
@@ -899,9 +883,9 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getRevenueReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+  private async getRevenueReports(fromDate: Date, toDate: Date, orgId: string) {
     const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
-    const whereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
+    const whereCond = and(dateCond, eq(orders.orgId, orgId));
     const totalRevenue = await db
       .select({
         total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
@@ -938,9 +922,9 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getOrderReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+  private async getOrderReports(fromDate: Date, toDate: Date, orgId: string) {
     const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
-    const whereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
+    const whereCond = and(dateCond, eq(orders.orgId, orgId));
     const totalOrders = await db
       .select({ total: sql<number>`COUNT(*)` })
       .from(orders)
@@ -981,11 +965,11 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getCustomerReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+  private async getCustomerReports(fromDate: Date, toDate: Date, orgId: string) {
     const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
-    const orderWhereCond = orgId ? and(dateCond, eq(orders.orgId, orgId)) : dateCond;
+    const orderWhereCond = and(dateCond, eq(orders.orgId, orgId));
     const custDateCond = sql`${customers.createdAt} >= ${fromDate} AND ${customers.createdAt} <= ${toDate}`;
-    const custWhereCond = orgId ? and(custDateCond, eq(customers.orgId, orgId)) : custDateCond;
+    const custWhereCond = and(custDateCond, eq(customers.orgId, orgId));
     const totalCustomers = await db
       .select({ total: sql<number>`COUNT(DISTINCT ${orders.customerId})` })
       .from(orders)
@@ -1020,20 +1004,20 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private async getInventoryReports(fromDate: Date, toDate: Date, orgId?: string | null) {
+  private async getInventoryReports(fromDate: Date, toDate: Date, orgId: string) {
     let prodQ = db.select({
       total: sql<number>`SUM(${products.stock} * CAST(${products.costPrice} AS DECIMAL))`
     }).from(products);
     if (orgId) prodQ = prodQ.where(eq(products.orgId, orgId)) as any;
     const stockValue = await prodQ;
     const lowStockCond = sql`${products.stock} <= ${products.stockLimit} * 0.2 AND ${products.stock} > 0`;
-    const lowStockWhere = orgId ? and(lowStockCond, eq(products.orgId, orgId)) : lowStockCond;
+    const lowStockWhere = and(lowStockCond, eq(products.orgId, orgId));
     const lowStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(lowStockWhere);
-    const outStockWhere = orgId ? and(eq(products.stock, 0), eq(products.orgId, orgId)) : eq(products.stock, 0);
+    const outStockWhere = and(eq(products.stock, 0), eq(products.orgId, orgId));
     const outOfStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(outStockWhere);
 
     const topMovingCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`;
-    const topMovingWhere = orgId ? and(topMovingCond, eq(products.orgId, orgId)) : topMovingCond;
+    const topMovingWhere = and(topMovingCond, eq(products.orgId, orgId));
     const topMoving = await db
       .select({
         product: products.name,
@@ -1113,11 +1097,12 @@ export class DatabaseStorage implements IStorage {
     return Buffer.from(csvContent);
   }
 
-  async getLocations(orgId?: string | null): Promise<Location[]> {
-    const cond = orgId ? eq(locations.orgId, orgId) : undefined;
-    const locs = cond
-      ? await db.select().from(locations).where(cond).orderBy(desc(locations.isDefault), locations.name)
-      : await db.select().from(locations).orderBy(desc(locations.isDefault), locations.name);
+  async getLocations(orgId: string): Promise<Location[]> {
+    const locs = await db
+      .select()
+      .from(locations)
+      .where(eq(locations.orgId, orgId))
+      .orderBy(desc(locations.isDefault), locations.name);
 
     // For each location, calculate stats
     const locationsWithStats = await Promise.all(
@@ -1174,31 +1159,31 @@ export class DatabaseStorage implements IStorage {
     return location;
   }
 
-  async updateLocation(id: string, data: any, orgId?: string | null): Promise<Location> {
-    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
+  async updateLocation(id: string, data: any, orgId: string): Promise<Location> {
+    const cond = and(eq(locations.id, id), eq(locations.orgId, orgId));
     const [location] = await db
       .update(locations)
       .set({ ...data, isActive: data.isActive ? 1 : 0, updatedAt: new Date() })
       .where(cond)
       .returning();
-    if (orgId && !location) throw new Error('Location not found');
+    if (!location) throw new Error('Location not found');
     return location!;
   }
 
-  async deleteLocation(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
+  async deleteLocation(id: string, orgId: string): Promise<void> {
+    const cond = and(eq(locations.id, id), eq(locations.orgId, orgId));
     const [location] = await db.select().from(locations).where(cond);
-    if (!location) { if (orgId) throw new Error('Location not found'); return; }
+    if (!location) throw new Error('Location not found');
     if (location.isDefault === 1) throw new Error("Cannot delete default location");
     await db.delete(locations).where(cond);
   }
 
-  async setDefaultLocation(id: string, orgId?: string | null): Promise<Location> {
-    const cond = orgId ? and(eq(locations.id, id), eq(locations.orgId, orgId)) : eq(locations.id, id);
+  async setDefaultLocation(id: string, orgId: string): Promise<Location> {
+    const cond = and(eq(locations.id, id), eq(locations.orgId, orgId));
     const [loc] = await db.select().from(locations).where(cond);
     if (!loc) throw new Error('Location not found');
     await db.transaction(async (tx) => {
-      const unsetCond = orgId ? and(eq(locations.isDefault, 1), eq(locations.orgId, orgId)) : eq(locations.isDefault, 1);
+      const unsetCond = and(eq(locations.isDefault, 1), eq(locations.orgId, orgId));
       await tx.update(locations).set({ isDefault: 0 }).where(unsetCond);
       await tx.update(locations).set({ isDefault: 1 }).where(cond);
     });
@@ -1206,11 +1191,12 @@ export class DatabaseStorage implements IStorage {
     return location!;
   }
 
-  async getLoyaltyTiers(orgId?: string | null): Promise<LoyaltyTier[]> {
-    const cond = orgId ? eq(loyaltyTiers.orgId, orgId) : undefined;
-    return cond
-      ? await db.select().from(loyaltyTiers).where(cond).orderBy(loyaltyTiers.pointsRequired)
-      : await db.select().from(loyaltyTiers).orderBy(loyaltyTiers.pointsRequired);
+  async getLoyaltyTiers(orgId: string): Promise<LoyaltyTier[]> {
+    return db
+      .select()
+      .from(loyaltyTiers)
+      .where(eq(loyaltyTiers.orgId, orgId))
+      .orderBy(loyaltyTiers.pointsRequired);
   }
 
   async createLoyaltyTier(data: InsertLoyaltyTier): Promise<LoyaltyTier> {
@@ -1221,17 +1207,17 @@ export class DatabaseStorage implements IStorage {
     return tier;
   }
 
-  async updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId?: string | null): Promise<LoyaltyTier> {
-    const cond = orgId ? and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId)) : eq(loyaltyTiers.id, id);
+  async updateLoyaltyTier(id: string, data: Partial<InsertLoyaltyTier>, orgId: string): Promise<LoyaltyTier> {
+    const cond = and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId));
     const [tier] = await db.update(loyaltyTiers).set({ ...data, updatedAt: new Date() }).where(cond).returning();
-    if (orgId && !tier) throw new Error('Loyalty tier not found');
+    if (!tier) throw new Error('Loyalty tier not found');
     return tier!;
   }
 
-  async deleteLoyaltyTier(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId)) : eq(loyaltyTiers.id, id);
+  async deleteLoyaltyTier(id: string, orgId: string): Promise<void> {
+    const cond = and(eq(loyaltyTiers.id, id), eq(loyaltyTiers.orgId, orgId));
     const [d] = await db.delete(loyaltyTiers).where(cond).returning();
-    if (orgId && !d) throw new Error('Loyalty tier not found');
+    if (!d) throw new Error('Loyalty tier not found');
   }
 
   async updateCustomerTier(customerId: string): Promise<Customer> {
@@ -1273,11 +1259,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expense methods
-  async getOverheadExpenses(orgId?: string | null): Promise<any[]> {
-    const cond = orgId ? eq(overheadExpenses.orgId, orgId) : undefined;
-    return cond
-      ? await db.select().from(overheadExpenses).where(cond).orderBy(overheadExpenses.createdAt)
-      : await db.select().from(overheadExpenses).orderBy(overheadExpenses.createdAt);
+  async getOverheadExpenses(orgId: string): Promise<any[]> {
+    return db
+      .select()
+      .from(overheadExpenses)
+      .where(eq(overheadExpenses.orgId, orgId))
+      .orderBy(overheadExpenses.createdAt);
   }
 
   async createOverheadExpense(data: any): Promise<any> {
@@ -1285,44 +1272,43 @@ export class DatabaseStorage implements IStorage {
     return expense;
   }
 
-  async updateOverheadExpense(id: string, data: any, orgId?: string | null): Promise<any> {
-    const cond = orgId ? and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId)) : eq(overheadExpenses.id, id);
+  async updateOverheadExpense(id: string, data: any, orgId: string): Promise<any> {
+    const cond = and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId));
     const [expense] = await db.update(overheadExpenses).set({ ...data, updatedAt: new Date() }).where(cond).returning();
-    if (orgId && !expense) throw new Error('Overhead expense not found');
+    if (!expense) throw new Error('Overhead expense not found');
     return expense!;
   }
 
-  async deleteOverheadExpense(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId)) : eq(overheadExpenses.id, id);
+  async deleteOverheadExpense(id: string, orgId: string): Promise<void> {
+    const cond = and(eq(overheadExpenses.id, id), eq(overheadExpenses.orgId, orgId));
     const [d] = await db.delete(overheadExpenses).where(cond).returning();
-    if (orgId && !d) throw new Error('Overhead expense not found');
+    if (!d) throw new Error('Overhead expense not found');
   }
 
-  async getOrderExpenses(orderId: string, orgId?: string | null): Promise<any[]> {
-    if (orgId) {
-      const [order] = await db.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)));
-      if (!order) return [];
-    }
-    return await db.select().from(orderExpenses).where(eq(orderExpenses.orderId, orderId));
+  async getOrderExpenses(orderId: string, orgId: string): Promise<any[]> {
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)));
+    if (!order) return [];
+    return await db
+      .select()
+      .from(orderExpenses)
+      .where(and(eq(orderExpenses.orderId, orderId), eq(orderExpenses.orgId, orgId)));
   }
 
-  async createOrderExpenses(orderId: string, expenses: any[], orgId?: string | null): Promise<void> {
+  async createOrderExpenses(orderId: string, expenses: any[], orgId: string): Promise<void> {
     if (expenses && expenses.length > 0) {
-      let resolvedOrgId = orgId ?? null;
-      if (resolvedOrgId == null) {
-        const [ord] = await db.select({ orgId: orders.orgId }).from(orders).where(eq(orders.id, orderId)).limit(1);
-        resolvedOrgId = ord?.orgId ?? null;
-      }
       const values = expenses.map(exp => ({
         ...exp,
         orderId,
-        orgId: resolvedOrgId,
+        orgId,
       }));
       await db.insert(orderExpenses).values(values);
     }
   }
 
-  async getExpenseReport(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+  async getExpenseReport(startDate: Date, endDate: Date, orgId: string): Promise<any> {
     const analytics = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
     // Get detailed overhead expenses by category
@@ -1346,7 +1332,7 @@ export class DatabaseStorage implements IStorage {
       .where(overheadCond)
       .groupBy(overheadExpenses.category);
 
-    const orderDateCond = orgId ? and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId)) : between(orders.createdAt, startDate, endDate);
+    const orderDateCond = and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId));
     const orderExpensesByCategory = await db
       .select({
         category: orderExpenses.category,
@@ -1394,7 +1380,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getProfitAnalysis(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+  async getProfitAnalysis(startDate: Date, endDate: Date, orgId: string): Promise<any> {
     const revCond = orgId
       ? and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'), eq(orders.orgId, orgId))
       : and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'));
@@ -1508,7 +1494,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getExpenseAnalytics(startDate: Date, endDate: Date, orgId?: string | null): Promise<any> {
+  async getExpenseAnalytics(startDate: Date, endDate: Date, orgId: string): Promise<any> {
     const overheadCond = orgId
       ? and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)), eq(overheadExpenses.orgId, orgId))
       : and(lte(overheadExpenses.startDate, endDate), eq(overheadExpenses.isActive, 1), or(isNull(overheadExpenses.endDate), gte(overheadExpenses.endDate, startDate)));
@@ -1538,7 +1524,7 @@ export class DatabaseStorage implements IStorage {
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const totalOverhead = totalDailyOverhead * daysDiff;
 
-    const orderCond = orgId ? and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId)) : between(orders.createdAt, startDate, endDate);
+    const orderCond = and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId));
     const orderExpenseResult = await db
       .select({
         total: sql<number>`COALESCE(SUM(CAST(${orderExpenses.amount} AS DECIMAL)), 0)`,
@@ -1559,14 +1545,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Promotions methods
-  async getPromotions(active?: boolean, orgId?: string | null): Promise<Promotion[]> {
-    const conds = [];
+  async getPromotions(orgId: string, active?: boolean): Promise<Promotion[]> {
+    const conds = [eq(promotions.orgId, orgId)];
     if (active !== undefined) conds.push(eq(promotions.isActive, active ? 1 : 0));
-    if (orgId) conds.push(eq(promotions.orgId, orgId));
-    const cond = conds.length ? and(...conds) : undefined;
-    return cond
-      ? await db.select().from(promotions).where(cond).orderBy(desc(promotions.createdAt))
-      : await db.select().from(promotions).orderBy(desc(promotions.createdAt));
+    return db
+      .select()
+      .from(promotions)
+      .where(and(...conds))
+      .orderBy(desc(promotions.createdAt));
   }
 
   async createPromotion(data: InsertPromotion): Promise<Promotion> {
@@ -1580,41 +1566,33 @@ export class DatabaseStorage implements IStorage {
     return promo;
   }
 
-  async updatePromotion(id: string, data: Partial<InsertPromotion>, orgId?: string | null): Promise<Promotion> {
-    const cond = orgId ? and(eq(promotions.id, id), eq(promotions.orgId, orgId)) : eq(promotions.id, id);
+  async updatePromotion(id: string, data: Partial<InsertPromotion>, orgId: string): Promise<Promotion> {
+    const cond = and(eq(promotions.id, id), eq(promotions.orgId, orgId));
     const [promo] = await db.update(promotions).set({ ...data, updatedAt: new Date() }).where(cond).returning();
-    if (orgId && !promo) throw new Error('Promotion not found');
+    if (!promo) throw new Error('Promotion not found');
     return promo!;
   }
 
-  async deletePromotion(id: string, orgId?: string | null): Promise<void> {
-    const cond = orgId ? and(eq(promotions.id, id), eq(promotions.orgId, orgId)) : eq(promotions.id, id);
+  async deletePromotion(id: string, orgId: string): Promise<void> {
+    const cond = and(eq(promotions.id, id), eq(promotions.orgId, orgId));
     const [d] = await db.delete(promotions).where(cond).returning();
-    if (orgId && !d) throw new Error('Promotion not found');
+    if (!d) throw new Error('Promotion not found');
   }
 
-  async validatePromoCode(code: string, orgId?: string | null): Promise<Promotion | null> {
+  async validatePromoCode(code: string, orgId: string): Promise<Promotion | null> {
     const now = new Date();
     const baseCond = sql`${promotions.code} = ${code} AND ${promotions.isActive} = 1 AND ${promotions.startDate} <= ${now} AND ${promotions.endDate} >= ${now} AND (${promotions.usageLimit} IS NULL OR ${promotions.usageCount} < ${promotions.usageLimit})`;
-    const cond = orgId ? and(baseCond, eq(promotions.orgId, orgId)) : baseCond;
+    const cond = and(baseCond, eq(promotions.orgId, orgId));
     const [promo] = await db.select().from(promotions).where(cond);
     return promo || null;
   }
 
   async applyPromotion(orderId: string, promoCode: string): Promise<number> {
-    const promo = await this.validatePromoCode(promoCode);
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+    if (!order?.orgId) throw new Error("Order not found");
+    const promo = await this.validatePromoCode(promoCode, order.orgId);
     if (!promo) {
       throw new Error("Invalid or expired promo code");
-    }
-
-    // Get order details
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId));
-
-    if (!order) {
-      throw new Error("Order not found");
     }
 
     let discount = 0;
@@ -1649,11 +1627,13 @@ export class DatabaseStorage implements IStorage {
     return discount;
   }
 
-  async getInvoicesWithDetails(orgId?: string | null): Promise<any[]> {
-    const cond = orgId ? eq(orders.orgId, orgId) : undefined;
-    const ordersData = cond
-      ? await db.select({ order: orders, customer: customers }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id)).where(cond).orderBy(desc(orders.createdAt))
-      : await db.select({ order: orders, customer: customers }).from(orders).leftJoin(customers, eq(orders.customerId, customers.id)).orderBy(desc(orders.createdAt));
+  async getInvoicesWithDetails(orgId: string): Promise<any[]> {
+    const ordersData = await db
+      .select({ order: orders, customer: customers })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .where(eq(orders.orgId, orgId))
+      .orderBy(desc(orders.createdAt));
 
     // For each order, fetch order items with product details
     const invoices = await Promise.all(
@@ -1815,14 +1795,15 @@ export class DatabaseStorage implements IStorage {
     return { linked: true };
   }
 
-  async getAllowedUsers(orgId?: string | null): Promise<AllowedUser[]> {
-    if (orgId) {
-      return db
-        .select()
-        .from(allowedUsers)
-        .where(eq(allowedUsers.orgId, orgId))
-        .orderBy(desc(allowedUsers.createdAt));
-    }
+  async getAllowedUsers(orgId: string): Promise<AllowedUser[]> {
+    return db
+      .select()
+      .from(allowedUsers)
+      .where(eq(allowedUsers.orgId, orgId))
+      .orderBy(desc(allowedUsers.createdAt));
+  }
+
+  async adminGetAllAllowedUsers(): Promise<AllowedUser[]> {
     return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
   }
 
