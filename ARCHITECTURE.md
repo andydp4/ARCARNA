@@ -306,3 +306,4 @@ DB: orders, order_items, products (stock), invoices, analytics_*, etc.
 - **RBAC and org scope:** See `RBAC.md` and `requireOrgScope` on tenant APIs (`server/routes.ts`).
 - **Super-admin MFA & audit trail:** See `docs/SECURITY_REVIEW.md`, `server/auth/superAdminMfa.ts`, and `admin_audit_logs` in `shared/schema.ts`.
 - **Channel readiness (API keys, webhooks, public read):** See `docs/CHANNEL_INGEST.md` and migrations `011`+`012` in `migrations/`.
+- **Observability (S8):** `X-Request-Id` on all requests; JSON lines for `/api` access in server logs; optional `SENTRY_DSN` for `@sentry/node`; `GET /api/health/metrics` for outbox/job queue gauges when `DATABASE_URL` is set.

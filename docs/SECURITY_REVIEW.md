@@ -25,6 +25,7 @@ This document tracks **high-level security posture** for MidnightEPOS. It comple
 3. Run SQL migrations including `migrations/011_admin_audit_logs.sql` before relying on audit UI.
 4. Review **Audit log** after access changes or incidents.
 5. API keys / channel webhooks (C-phase): rotate keys on compromise; scope keys to minimum (`scopes`); monitor webhook delivery failures (future dashboards).
+6. **Observability:** Ship `SENTRY_DSN` in production for server exceptions; scrape or alert on `GET /api/health/metrics` (`outboxPending`, `jobQueued`).
 
 ## Related files
 
