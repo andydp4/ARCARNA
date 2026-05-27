@@ -27,6 +27,9 @@ jobs:
       - name: TypeScript check
         run: npm run check
 
+      - name: Audit storage orgId usage
+        run: node scripts/audit-storage-orgid.mjs
+
   migration-sanity:
     name: Migration sanity (fresh DB)
     runs-on: ubuntu-latest

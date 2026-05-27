@@ -206,9 +206,9 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Analytics routes
   app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const limit = parseInt(req.query.limit as string) || 10;
-      const topCustomers = await storage.getTopCustomers(limit, ctx?.orgId ?? undefined);
+      const topCustomers = await storage.getTopCustomers(limit, ctx.orgId);
       
       const formattedCustomers = topCustomers.map(({ customer, metrics }) => ({
         id: customer.id,
@@ -231,9 +231,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/analytics/daily-revenue", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const days = parseInt(req.query.days as string) || 30;
-      const dailyRevenue = await storage.getDailyRevenue(days, ctx?.orgId ?? undefined);
+      const dailyRevenue = await storage.getDailyRevenue(days, ctx.orgId);
       res.json(dailyRevenue);
     } catch (error) {
       console.error("Error fetching daily revenue:", error);
@@ -243,9 +243,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/analytics/monthly-summary", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const months = parseInt(req.query.months as string) || 12;
-      const monthlySummary = await storage.getMonthlySummary(months, ctx?.orgId ?? undefined);
+      const monthlySummary = await storage.getMonthlySummary(months, ctx.orgId);
       res.json(monthlySummary);
     } catch (error) {
       console.error("Error fetching monthly summary:", error);
@@ -256,8 +256,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Products routes
   app.get("/api/products", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const list = await storage.getProducts(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const list = await storage.getProducts(ctx.orgId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -267,8 +267,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const product = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const product = await storage.getProduct(req.params.id, ctx.orgId);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -281,9 +281,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/products", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const product = await engine.createProduct({ ...req.body, orgId: ctx?.orgId ?? undefined });
+      const product = await engine.createProduct({ ...req.body, orgId: ctx.orgId });
       res.json(product);
     } catch (error: any) {
       console.error("Error creating product:", error);
@@ -307,11 +307,11 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.put("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const existing = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const existing = await storage.getProduct(req.params.id, ctx.orgId);
       if (!existing) return res.status(404).json({ message: "Product not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const product = await engine.updateProduct(req.params.id, req.body, ctx?.orgId ?? undefined);
+      const product = await engine.updateProduct(req.params.id, req.body, ctx.orgId);
       res.json(product);
     } catch (error: any) {
       console.error("Error updating product:", error);
@@ -334,11 +334,11 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const existing = await storage.getProduct(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const existing = await storage.getProduct(req.params.id, ctx.orgId);
       if (!existing) return res.status(404).json({ message: "Product not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      await engine.deleteProduct(req.params.id, ctx?.orgId ?? undefined);
+      await engine.deleteProduct(req.params.id, ctx.orgId);
       res.json({ message: "Product deleted successfully" });
     } catch (error: any) {
       console.error("Error deleting product:", error);
@@ -349,7 +349,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/products/import", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { rows, products: legacyProducts, duplicateMode = "skip", confirmed } = req.body;
       const list = rows ?? legacyProducts;
       if (!Array.isArray(list)) {
@@ -360,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<void> {
           message: "Preview required. Use POST /api/products/import/preview then commit with confirmed: true",
         });
       }
-      const result = await storage.importProducts(list, ctx?.orgId ?? undefined, {
+      const result = await storage.importProducts(list, ctx.orgId, {
         duplicateMode,
         confirmed: true,
       });
@@ -384,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Customers routes
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) {
         return res.status(400).json({ message: "Org context required for customer intelligence" });
       }
@@ -400,8 +400,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/customers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const list = await storage.getCustomers(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const list = await storage.getCustomers(ctx.orgId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching customers:", error);
@@ -411,8 +411,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const customer = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) {
         return res.status(404).json({ message: "Customer not found" });
       }
@@ -425,7 +425,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/customers/:id/intelligence", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) {
         return res.status(400).json({ message: "Org context required for customer intelligence" });
       }
@@ -441,9 +441,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/customers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const customer = await engine.createCustomer({ ...req.body, orgId: ctx?.orgId ?? undefined });
+      const customer = await engine.createCustomer({ ...req.body, orgId: ctx.orgId });
       res.json(customer);
     } catch (error) {
       console.error("Error creating customer:", error);
@@ -453,11 +453,11 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.put("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const existing = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const existing = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!existing) return res.status(404).json({ message: "Customer not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      const customer = await engine.updateCustomer(req.params.id, req.body, ctx?.orgId ?? undefined);
+      const customer = await engine.updateCustomer(req.params.id, req.body, ctx.orgId);
       res.json(customer);
     } catch (error: any) {
       console.error("Error updating customer:", error);
@@ -468,11 +468,11 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/customers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const existing = await storage.getCustomer(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const existing = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!existing) return res.status(404).json({ message: "Customer not found" });
       const { engine } = await import('../apps/server/src/engine.wiring');
-      await engine.deleteCustomer(req.params.id, ctx?.orgId ?? undefined);
+      await engine.deleteCustomer(req.params.id, ctx.orgId);
       res.json({ message: "Customer deleted successfully" });
     } catch (error: any) {
       console.error("Error deleting customer:", error);
@@ -543,7 +543,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/orders", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
@@ -567,7 +567,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../apps/server/src/db');
       const { orders, order_items, products, customers } = await import('../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
@@ -619,7 +619,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.patch("/api/orders/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
@@ -678,7 +678,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { publishEvent } = await import('./eventBus');
       const result = await engine.updateOrder(req.params.id, {
         ...req.body,
-        orgId: ctx?.orgId ?? undefined,
+        orgId: ctx.orgId,
         locationId: ctx?.locationId ?? req.body.locationId,
       });
       
@@ -775,8 +775,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Inventory routes
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const list = await storage.getProductsWithStock(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const list = await storage.getProductsWithStock(ctx.orgId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching inventory:", error);
@@ -786,7 +786,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.patch("/api/inventory/:productId", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId?: string | null };
       const { productId } = req.params;
       const { adjustment, type, locationId } = req.body;
       const userId = req.user.claims.sub;
@@ -795,8 +795,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         adjustment,
         type,
         userId,
-        ctx?.orgId ?? undefined,
-        locationId ?? ctx?.locationId ?? undefined,
+        ctx.orgId,
+        locationId ?? ctx.locationId ?? undefined,
       );
       res.json(product);
     } catch (error) {
@@ -808,8 +808,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Low stock alerts endpoint
   app.get("/api/inventory/alerts", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const products = await storage.getProductsWithStock(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const products = await storage.getProductsWithStock(ctx.orgId);
       const alerts = products
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;
@@ -862,8 +862,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "From date must be before to date" });
       }
       
-      const ctx = req.orgContext as { orgId: string | null };
-      const reportData = await storage.getReportData(fromDate, toDate, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const reportData = await storage.getReportData(fromDate, toDate, ctx.orgId);
       res.json(reportData);
     } catch (error) {
       console.error("Error fetching report data:", error);
@@ -898,8 +898,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid report type" });
       }
       
-      const ctx = req.orgContext as { orgId: string | null };
-      const reportData = await storage.getReportData(fromDate, toDate, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const reportData = await storage.getReportData(fromDate, toDate, ctx.orgId);
       
       if (format === 'csv') {
         // Generate CSV
@@ -923,8 +923,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Locations routes - ADMIN+ only
   app.get("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const locations = await storage.getLocations(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const locations = await storage.getLocations(ctx.orgId);
       res.json(locations);
     } catch (error) {
       console.error("Error fetching locations:", error);
@@ -934,8 +934,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const locationData = { ...req.body, orgId: ctx?.orgId ?? undefined };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const locationData = { ...req.body, orgId: ctx.orgId };
       const location = await storage.createLocation(locationData);
       res.json(location);
     } catch (error) {
@@ -946,9 +946,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.patch("/api/locations/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
-      const location = await storage.updateLocation(id, req.body, ctx?.orgId ?? undefined);
+      const location = await storage.updateLocation(id, req.body, ctx.orgId);
       res.json(location);
     } catch (error) {
       console.error("Error updating location:", error);
@@ -958,9 +958,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/locations/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
-      await storage.deleteLocation(id, ctx?.orgId ?? undefined);
+      await storage.deleteLocation(id, ctx.orgId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting location:", error);
@@ -970,9 +970,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/locations/:id/set-default", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
-      const location = await storage.setDefaultLocation(id, ctx?.orgId ?? undefined);
+      const location = await storage.setDefaultLocation(id, ctx.orgId);
       res.json(location);
     } catch (error) {
       console.error("Error setting default location:", error);
@@ -982,7 +982,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/locations/:id/stock", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('./db');
       const { products, locations } = await import('@shared/schema');
       const { eq, and, desc } = await import('drizzle-orm');
@@ -1017,8 +1017,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Loyalty tier routes
   app.get("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const tiers = await storage.getLoyaltyTiers(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const tiers = await storage.getLoyaltyTiers(ctx.orgId);
       res.json(tiers);
     } catch (error) {
       console.error("Error fetching loyalty tiers:", error);
@@ -1028,8 +1028,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const validatedData = insertLoyaltyTierSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const validatedData = insertLoyaltyTierSchema.parse({ ...req.body, orgId: ctx.orgId });
       const tier = await storage.createLoyaltyTier(validatedData);
       res.json(tier);
     } catch (error: any) {
@@ -1044,10 +1044,10 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.patch("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
       const validatedData = insertLoyaltyTierSchema.partial().parse(req.body);
-      const tier = await storage.updateLoyaltyTier(id, validatedData, ctx?.orgId ?? undefined);
+      const tier = await storage.updateLoyaltyTier(id, validatedData, ctx.orgId);
       res.json(tier);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -1061,9 +1061,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
-      await storage.deleteLoyaltyTier(id, ctx?.orgId ?? undefined);
+      await storage.deleteLoyaltyTier(id, ctx.orgId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting loyalty tier:", error);
@@ -1074,9 +1074,9 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Promotions routes
   app.get("/api/promotions", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const activeOnly = req.query.active === 'true';
-      const promotions = await storage.getPromotions(activeOnly, ctx?.orgId ?? undefined);
+      const promotions = await storage.getPromotions(ctx.orgId, activeOnly);
       res.json(promotions);
     } catch (error) {
       console.error("Error fetching promotions:", error);
@@ -1086,8 +1086,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/promotions", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const validatedData = insertPromotionSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const validatedData = insertPromotionSchema.parse({ ...req.body, orgId: ctx.orgId });
       const promo = await storage.createPromotion(validatedData);
       res.json(promo);
     } catch (error: any) {
@@ -1102,10 +1102,10 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.patch("/api/promotions/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
       const validatedData = insertPromotionSchema.partial().parse(req.body);
-      const promo = await storage.updatePromotion(id, validatedData, ctx?.orgId ?? undefined);
+      const promo = await storage.updatePromotion(id, validatedData, ctx.orgId);
       res.json(promo);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -1119,9 +1119,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/promotions/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
-      await storage.deletePromotion(id, ctx?.orgId ?? undefined);
+      await storage.deletePromotion(id, ctx.orgId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting promotion:", error);
@@ -1131,9 +1131,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/promotions/validate", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { code } = req.body;
-      const promo = await storage.validatePromoCode(code, ctx?.orgId ?? undefined);
+      const promo = await storage.validatePromoCode(code, ctx.orgId);
       if (promo) {
         res.json(promo);
       } else {
@@ -1148,8 +1148,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Expense routes
   app.get("/api/overhead-expenses", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const expenses = await storage.getOverheadExpenses(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const expenses = await storage.getOverheadExpenses(ctx.orgId);
       res.json(expenses);
     } catch (error) {
       console.error("Error fetching overhead expenses:", error);
@@ -1159,8 +1159,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/overhead-expenses", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const parsedBody = insertOverheadExpenseSchema.parse({ ...req.body, orgId: ctx?.orgId ?? undefined });
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const parsedBody = insertOverheadExpenseSchema.parse({ ...req.body, orgId: ctx.orgId });
       const expense = await storage.createOverheadExpense(parsedBody);
       res.json(expense);
     } catch (error: any) {
@@ -1175,9 +1175,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.put("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const parsedBody = insertOverheadExpenseSchema.partial().parse(req.body);
-      const expense = await storage.updateOverheadExpense(req.params.id, parsedBody, ctx?.orgId ?? undefined);
+      const expense = await storage.updateOverheadExpense(req.params.id, parsedBody, ctx.orgId);
       res.json(expense);
     } catch (error: any) {
       if (error.name === 'ZodError') {
@@ -1191,8 +1191,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      await storage.deleteOverheadExpense(req.params.id, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      await storage.deleteOverheadExpense(req.params.id, ctx.orgId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting overhead expense:", error);
@@ -1202,8 +1202,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/orders/:orderId/expenses", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const expenses = await storage.getOrderExpenses(req.params.orderId, ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const expenses = await storage.getOrderExpenses(req.params.orderId, ctx.orgId);
       res.json(expenses);
     } catch (error) {
       console.error("Error fetching order expenses:", error);
@@ -1213,7 +1213,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/expense-analytics", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -1222,7 +1222,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return;
       }
       
-      const analytics = await storage.getExpenseAnalytics(startDate, endDate, ctx?.orgId ?? undefined);
+      const analytics = await storage.getExpenseAnalytics(startDate, endDate, ctx.orgId);
       res.json(analytics);
     } catch (error) {
       console.error("Error fetching expense analytics:", error);
@@ -1232,7 +1232,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/expense-report", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -1241,7 +1241,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return;
       }
       
-      const report = await storage.getExpenseReport(startDate, endDate, ctx?.orgId ?? undefined);
+      const report = await storage.getExpenseReport(startDate, endDate, ctx.orgId);
       res.json(report);
     } catch (error) {
       console.error("Error fetching expense report:", error);
@@ -1251,7 +1251,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/profit-analysis", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const startDate = new Date(req.query.startDate as string);
       const endDate = new Date(req.query.endDate as string);
       
@@ -1260,7 +1260,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return;
       }
       
-      const analysis = await storage.getProfitAnalysis(startDate, endDate, ctx?.orgId ?? undefined);
+      const analysis = await storage.getProfitAnalysis(startDate, endDate, ctx.orgId);
       res.json(analysis);
     } catch (error) {
       console.error("Error fetching profit analysis:", error);
@@ -1271,8 +1271,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Invoices endpoints - for Invoice Management page
   app.get("/api/invoices", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
-      const invoices = await storage.getInvoicesWithDetails(ctx?.orgId ?? undefined);
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const invoices = await storage.getInvoicesWithDetails(ctx.orgId);
       res.json(invoices);
     } catch (error) {
       console.error("Error fetching invoices:", error);
@@ -1282,7 +1282,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/invoices/:id/pdf", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const invoiceId = req.params.id;
       const { invoices, orders } = await import('../shared/schema');
       const { eq, and } = await import('drizzle-orm');
@@ -1327,7 +1327,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Endpoint to regenerate invoice PDF
   app.post("/api/invoices/:id/regenerate-pdf", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const invoiceId = req.params.id;
       const { invoices, orders, orderItems, customers } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
@@ -1424,7 +1424,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Batch regenerate all invoices missing PDFs
   app.post("/api/invoices/regenerate-all-missing", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { invoices, orders, orderItems, customers } = await import('../shared/schema');
       const { eq, and, isNull } = await import('drizzle-orm');
       const { db } = await import('./db');
@@ -1539,7 +1539,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Tick Customers endpoints - for Credit/Tick List page
   app.get("/api/tick-customers", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const { db } = await import('../apps/server/src/db');
       const { orders } = await import('../apps/server/src/db/schema');
@@ -1587,7 +1587,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.delete("/api/tick-customers/:id", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
@@ -1608,7 +1608,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/tick-customers/:id/mark-paid", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
@@ -1627,19 +1627,24 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Settings endpoints - for Settings page
-  app.get("/api/settings", isAuthenticated, async (req, res) => {
+  // Settings endpoints - per-org profile from organizations table
+  app.get("/api/settings", ...scoped, async (req: any, res) => {
     try {
-      // Return default settings - in production, these would be stored in DB
-      const settings = {
-        businessName: 'Midnight EPOS',
-        businessAddress: '',
-        businessPhone: '',
-        businessEmail: '',
-        businessWebsite: '',
+      const ctx = req.orgContext as { orgId: string };
+      const org = await storage.getOrgProfile(ctx.orgId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      const taxRate = org.defaultTaxRate != null ? parseFloat(String(org.defaultTaxRate)) : 20;
+      res.json({
+        businessName: org.tradingName || org.name,
+        businessAddress: org.address || "",
+        businessPhone: org.phone || "",
+        businessEmail: org.email || "",
+        businessWebsite: "",
         vatEnabled: true,
-        vatRate: 20,
-        vatNumber: '',
+        vatRate: Number.isFinite(taxRate) ? taxRate : 20,
+        vatNumber: org.vatNumber || "",
         cardPaymentEnabled: true,
         cashPaymentEnabled: true,
         tickPaymentEnabled: true,
@@ -1647,18 +1652,32 @@ export async function registerRoutes(app: Express): Promise<void> {
         lowStockThreshold: 20,
         criticalStockThreshold: 5,
         multiLocationEnabled: false,
-      };
-      res.json(settings);
+        currency: org.currency || "GBP",
+        timezone: org.timezone || "Europe/London",
+        receiptFooter: org.receiptFooter || "",
+      });
     } catch (error) {
       console.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });
     }
   });
 
-  app.put("/api/settings", isAuthenticated, async (req, res) => {
+  app.put("/api/settings", ...scoped, async (req: any, res) => {
     try {
-      // In production, this would save to database
-      res.json({ message: "Settings updated successfully", settings: req.body });
+      const ctx = req.orgContext as { orgId: string };
+      const body = req.body ?? {};
+      const org = await storage.updateOrgProfile(ctx.orgId, {
+        tradingName: body.businessName,
+        address: body.businessAddress,
+        phone: body.businessPhone,
+        email: body.businessEmail,
+        vatNumber: body.vatNumber,
+        defaultTaxRate: body.vatRate,
+        receiptFooter: body.receiptFooter,
+        currency: body.currency,
+        timezone: body.timezone,
+      });
+      res.json({ message: "Settings updated successfully", orgId: org.id });
     } catch (error) {
       console.error("Error updating settings:", error);
       res.status(500).json({ message: "Failed to update settings" });
@@ -1676,8 +1695,14 @@ export async function registerRoutes(app: Express): Promise<void> {
         req.user.role ??
         roleAndOrg?.role ??
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
-      const scopeOrgId = role === "SUPER_ADMIN" ? undefined : roleAndOrg?.orgId ?? undefined;
-      const users = await storage.getAllowedUsers(scopeOrgId);
+      const headerOrg = req.headers["x-org-id"] as string | undefined;
+      const queryOrg = req.query?.orgId as string | undefined;
+      const users =
+        role === "SUPER_ADMIN" && !headerOrg && !queryOrg
+          ? await storage.adminGetAllAllowedUsers()
+          : await storage.getAllowedUsers(
+              headerOrg || queryOrg || roleAndOrg?.orgId || "",
+            );
       res.json(users);
     } catch (error) {
       console.error("Error fetching allowed users:", error);
@@ -1729,9 +1754,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (role && !canAssignRole(actorRole, role)) {
         return res.status(403).json({ message: "You cannot assign this role" });
       }
-      const allInScope = await storage.getAllowedUsers(
-        actorRole === "SUPER_ADMIN" ? undefined : roleAndOrg?.orgId ?? undefined,
-      );
+      const headerOrg = req.headers["x-org-id"] as string | undefined;
+      const queryOrg = req.query?.orgId as string | undefined;
+      const allInScope =
+        actorRole === "SUPER_ADMIN" && !headerOrg && !queryOrg
+          ? await storage.adminGetAllAllowedUsers()
+          : await storage.getAllowedUsers(
+              headerOrg || queryOrg || roleAndOrg?.orgId || "",
+            );
       const targetUser = allInScope.find((u) => u.replitUserId === replitUserId);
       if (!targetUser) return res.status(404).json({ message: "User not found" });
       if (!canManageUser(actorRole, roleAndOrg?.orgId ?? null, targetUser.orgId ?? null)) {
