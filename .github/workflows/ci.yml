@@ -5,7 +5,8 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    branches: [main, master]
+    # Run on every PR (including stacked PRs whose base is another feature branch).
+    branches: ["**"]
 
 jobs:
   check:
