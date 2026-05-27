@@ -4,8 +4,10 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: process.env.DATABASE_URL ? ["server/__tests__/**/*.test.ts"] : [],
-    passWithNoTests: true,
+    include: ["server/__tests__/**/*.test.ts"],
+    exclude: process.env.DATABASE_URL
+      ? []
+      : ["server/__tests__/orderOutboxAtomicity.test.ts"],
     testTimeout: 30_000,
   },
   resolve: {
