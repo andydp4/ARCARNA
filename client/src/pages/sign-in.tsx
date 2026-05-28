@@ -1,14 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, resolveApiUrl, resolveAppPath } from "@/lib/appPaths";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthConfig } from "@/components/AuthProviders";
 import { ClerkSignInPanel } from "@/components/ClerkSignInPanel";
 import { type AuthRuntime, isClerkMode } from "@/lib/authConfig";
+import { useEffect, useRef } from "react";
 
 /** Redirects to Clerk Account Portal (accounts.viger.cloud) when configured. */
 export default function SignInPage() {
   const { clerkReady, publishableKey } = useAuthConfig();
+  const { signOut } = useClerk();
+  const { isLoaded: clerkLoaded, isSignedIn } = useUser();
+  const logoutAttempted = useRef(false);
   const { data: runtime } = useQuery<AuthRuntime>({
     queryKey: ["/api/auth/runtime"],
     queryFn: async () => {
@@ -21,6 +26,18 @@ export default function SignInPage() {
     window.location.href = resolveApiUrl("/api/login");
     return null;
   }
+
+  useEffect(() => {
+    if (!clerkLoaded || !isClerkMode(runtime) || logoutAttempted.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("logout") !== "1") return;
+    logoutAttempted.current = true;
+    if (!isSignedIn) {
+      window.location.replace(resolveAppPath("/sign-in"));
+      return;
+    }
+    void signOut({ redirectUrl: resolveAppPath("/sign-in") });
+  }, [clerkLoaded, isSignedIn, runtime, signOut]);
 
   if (!publishableKey) {
     return (
