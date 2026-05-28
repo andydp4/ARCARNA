@@ -1,6 +1,5 @@
-import { apiFetch, resolveApiUrl } from "@/lib/appPaths";
+import { apiFetch, resolveApiUrl, resolveAppPath } from "@/lib/appPaths";
 import {
-  clerkAccountPortalSignOutUrl,
   isClerkMode,
   type AuthRuntime,
 } from "@/lib/authConfig";
@@ -52,7 +51,7 @@ export async function wipeAllOfflineData(): Promise<void> {
   await clearServiceWorkerAllCaches();
 }
 
-/** Sign out from any screen (portal URL for Clerk, /api/logout for Replit). */
+/** Sign out from any screen (Clerk signOut flow or /api/logout fallback). */
 export async function navigateToLogout(): Promise<void> {
   await wipeAllOfflineData();
 
@@ -61,11 +60,8 @@ export async function navigateToLogout(): Promise<void> {
     if (res.ok) {
       const runtime = (await res.json()) as AuthRuntime;
       if (isClerkMode(runtime)) {
-        const portalOut = clerkAccountPortalSignOutUrl("/", runtime);
-        if (portalOut) {
-          window.location.href = portalOut;
-          return;
-        }
+        window.location.href = resolveAppPath("/sign-in?logout=1");
+        return;
       }
     }
   } catch (e) {
