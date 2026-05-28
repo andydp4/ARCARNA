@@ -36,6 +36,7 @@ import {
   orderExpenses,
   allowedUsers,
   userApprovalRequests,
+  adminAuditLogs,
   organizations,
   importHistory,
   type Organization,
@@ -62,6 +63,8 @@ import {
   type InsertAllowedUser,
   type UserApprovalRequest,
   type InsertUserApprovalRequest,
+  type AdminAuditLog,
+  type InsertAdminAuditLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
@@ -233,6 +236,9 @@ export interface IStorage {
     options?: { role?: string; orgId?: string | null },
   ): Promise<void>;
   rejectUser(replitUserId: string, rejectedBy: string): Promise<void>;
+
+  insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void>;
+  listAdminAuditLogs(opts: { limit: number; offset: number }): Promise<AdminAuditLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2030,6 +2036,19 @@ export class DatabaseStorage implements IStorage {
         reviewedBy: rejectedBy,
       })
       .where(eq(userApprovalRequests.replitUserId, replitUserId));
+  }
+
+  async insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void> {
+    await db.insert(adminAuditLogs).values(row);
+  }
+
+  async listAdminAuditLogs(opts: { limit: number; offset: number }): Promise<AdminAuditLog[]> {
+    return db
+      .select()
+      .from(adminAuditLogs)
+      .orderBy(desc(adminAuditLogs.createdAt))
+      .limit(opts.limit)
+      .offset(opts.offset);
   }
 }
 

@@ -28,8 +28,8 @@
  */
 import type { Express } from "express";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope } from "./auth";
-import { getAuthRuntimeSnapshot } from "./authRuntime";
+import { setupAuth, isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "./auth";
+import { getAuthRuntimeSnapshot, getAuthProvider } from "./authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
@@ -41,6 +41,7 @@ import { registerSupplierRoutes } from "./routes/suppliers";
 import { registerReplenishmentRoutes } from "./routes/replenishment";
 import { registerPurchaseDraftRoutes } from "./routes/purchaseDrafts";
 import { registerGoodsReceiptRoutes } from "./routes/goodsReceipts";
+import { recordAdminAudit } from "./adminAudit";
 import { 
   insertLoyaltyTierSchema, 
   insertPromotionSchema,
@@ -97,6 +98,21 @@ export async function registerRoutes(app: Express): Promise<void> {
       } else if (role === "SUPER_ADMIN" && orgCount === 0) {
         accessState = "no_org";
       }
+
+      let clerkTwoFactorEnabled: boolean | null = null;
+      if (role === "SUPER_ADMIN" && getAuthProvider() === "clerk") {
+        try {
+          const { getAuth, clerkClient } = await import("@clerk/express");
+          const { userId } = getAuth(req);
+          if (userId) {
+            const cu = await clerkClient.users.getUser(userId);
+            clerkTwoFactorEnabled = !!cu.twoFactorEnabled;
+          }
+        } catch {
+          clerkTwoFactorEnabled = null;
+        }
+      }
+
       res.json({
         ...user,
         role,
@@ -109,6 +125,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         setupComplete,
         needsSetupWizard: !!setupOrgId && !setupComplete,
         runtime: getAuthRuntimeSnapshot(),
+        clerkTwoFactorEnabled,
       });
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -161,11 +178,24 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/orgs", isAuthenticated, requireRole("SUPER_ADMIN"), async (req: any, res) => {
+  app.post("/api/orgs", isAuthenticated, requireRole("SUPER_ADMIN"), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const name = String(req.body?.name ?? "").trim();
       if (!name) return res.status(400).json({ message: "Organization name is required" });
       const org = await storage.createOrganization(name);
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const roleAndOrg = await storage.getUserRoleAndOrg(actorId);
+      const actorRole =
+        req.user.role ?? roleAndOrg?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      await recordAdminAudit(req, {
+        actorUserId: actorId,
+        actorRole,
+        action: "org.create",
+        targetType: "organization",
+        targetId: org.id,
+        orgId: org.id,
+        metadata: { name },
+      });
       res.status(201).json(org);
     } catch (error: any) {
       console.error("Error creating organization:", error);
@@ -1685,7 +1715,25 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // ===== ADMIN ROUTES - User Access Management =====
-  
+
+  app.get(
+    "/api/admin/audit-logs",
+    isAuthenticated,
+    requireRole("SUPER_ADMIN"),
+    requireSuperAdminMfa,
+    async (req: any, res) => {
+      try {
+        const limit = Math.min(parseInt(String(req.query.limit || "100"), 10) || 100, 500);
+        const offset = parseInt(String(req.query.offset || "0"), 10) || 0;
+        const rows = await storage.listAdminAuditLogs({ limit, offset });
+        res.json(rows);
+      } catch (error) {
+        console.error("Error fetching audit logs:", error);
+        res.status(500).json({ message: "Failed to fetch audit logs" });
+      }
+    },
+  );
+
   // Get allowed users list (owner only)
   app.get("/api/admin/allowed-users", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
@@ -1711,7 +1759,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Remove allowed user (owner only)
-  app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
+  app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       
@@ -1722,6 +1770,18 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       await storage.removeAllowedUser(replitUserId);
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const rob = await storage.getUserRoleAndOrg(actorId);
+      const actorRole =
+        req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      await recordAdminAudit(req, {
+        actorUserId: actorId,
+        actorRole,
+        action: "access.remove_allowed_user",
+        targetType: "allowed_user",
+        targetId: replitUserId,
+        orgId: rob?.orgId ?? null,
+      });
       res.json({ message: "User removed from allowed list" });
     } catch (error) {
       console.error("Error removing allowed user:", error);
@@ -1740,13 +1800,15 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
+  app.patch("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       const actorId = req.user.claims?.sub ?? req.user.id;
       const roleAndOrg = await storage.getUserRoleAndOrg(actorId);
       const actorRole =
-        (req.user.role ?? roleAndOrg?.role ?? "CASHIER") as Role;
+        (req.user.role ??
+          roleAndOrg?.role ??
+          (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
       const { role, orgId } = req.body ?? {};
       if (role && !isRole(role)) {
         return res.status(400).json({ message: "Invalid role" });
@@ -1772,6 +1834,15 @@ export async function registerRoutes(app: Express): Promise<void> {
         { role, orgId },
         { role: actorRole, orgId: roleAndOrg?.orgId ?? null, replitUserId: actorId },
       );
+      await recordAdminAudit(req, {
+        actorUserId: actorId,
+        actorRole,
+        action: "access.update_allowed_user",
+        targetType: "allowed_user",
+        targetId: replitUserId,
+        orgId: roleAndOrg?.orgId ?? null,
+        metadata: { role, orgId },
+      });
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating allowed user:", error);
@@ -1780,7 +1851,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Approve user (owner only)
-  app.post("/api/admin/approve/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
+  app.post("/api/admin/approve/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
       const approvedBy = req.user.claims?.sub ?? req.user.id;
@@ -1789,7 +1860,9 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Invalid role" });
       }
       const actorRoleAndOrg = await storage.getUserRoleAndOrg(approvedBy);
-      const actorRole = (actorRoleAndOrg?.role ?? "CASHIER") as Role;
+      const actorRole = (req.user.role ??
+        actorRoleAndOrg?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
       if (role && !canAssignRole(actorRole, role)) {
         return res.status(403).json({ message: "You cannot assign this role" });
       }
@@ -1799,6 +1872,15 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Cannot assign users outside your organization" });
       }
       await storage.approveUser(replitUserId, approvedBy, { role: role ?? "CASHIER", orgId: effectiveOrgId });
+      await recordAdminAudit(req, {
+        actorUserId: approvedBy,
+        actorRole,
+        action: "access.approve",
+        targetType: "allowed_user",
+        targetId: replitUserId,
+        orgId: effectiveOrgId ?? null,
+        metadata: { role: role ?? "CASHIER" },
+      });
       res.json({ message: "User approved successfully" });
     } catch (error: any) {
       console.error("Error approving user:", error);
@@ -1807,12 +1889,23 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Reject user (owner only)
-  app.post("/api/admin/reject/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
+  app.post("/api/admin/reject/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
-      const rejectedBy = req.user.claims?.sub || 'owner';
-      
+      const rejectedBy = req.user.claims?.sub || req.user.id || "owner";
+      const rob = await storage.getUserRoleAndOrg(rejectedBy);
+      const actorRole =
+        req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+
       await storage.rejectUser(replitUserId, rejectedBy);
+      await recordAdminAudit(req, {
+        actorUserId: rejectedBy,
+        actorRole,
+        action: "access.reject",
+        targetType: "allowed_user",
+        targetId: replitUserId,
+        orgId: rob?.orgId ?? null,
+      });
       res.json({ message: "User rejected" });
     } catch (error) {
       console.error("Error rejecting user:", error);
@@ -1850,7 +1943,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // ===== WORKER RUN LOGS ROUTES (Owner only) =====
   
   // Get worker run logs with filters
-  app.get("/api/admin/worker-logs", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.get("/api/admin/worker-logs", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { getWorkerRunLogs } = await import('./eventBus');
       const logs = await getWorkerRunLogs({
@@ -1869,7 +1962,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Get dead letters
-  app.get("/api/admin/dead-letters", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.get("/api/admin/dead-letters", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { getDeadLetters } = await import('./eventBus');
       const deadLetters = await getDeadLetters({
@@ -1886,7 +1979,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Get job queue stats
-  app.get("/api/admin/worker-stats", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.get("/api/admin/worker-stats", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { getJobQueueStats } = await import('./eventBus');
       const stats = await getJobQueueStats();
@@ -1898,7 +1991,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Retry a dead letter
-  app.post("/api/admin/dead-letters/:id/retry", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.post("/api/admin/dead-letters/:id/retry", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { retryDeadLetter } = await import('./eventBus');
       const success = await retryDeadLetter(req.params.id);
@@ -1914,7 +2007,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Get event details
-  app.get("/api/admin/events/:eventId", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.get("/api/admin/events/:eventId", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { getEvent, getWorkerRunLogs } = await import('./eventBus');
       const event = await getEvent(req.params.eventId);
@@ -1935,7 +2028,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Get job queue with detailed info (run_at, locked_at, last_error)
-  app.get("/api/admin/job-queue", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.get("/api/admin/job-queue", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { db } = await import('../apps/server/src/db');
       const { jobQueue } = await import('../shared/schema');
@@ -1971,7 +2064,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Test endpoint to verify event-driven system end-to-end
-  app.post("/api/admin/test-event", isAuthenticated, requireRole('SUPER_ADMIN'), async (req: any, res) => {
+  app.post("/api/admin/test-event", isAuthenticated, requireRole('SUPER_ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { publishEvent, dispatchPendingEvents } = await import('./eventBus');
       const { randomUUID } = await import('crypto');

@@ -33,6 +33,7 @@ import SetupWizard from "@/pages/setup-wizard";
 import SetupBlocked from "@/pages/setup-blocked";
 import WorkerLogs from "@/pages/worker-logs";
 import RulesPage from "@/pages/rules";
+import AuditLogsPage from "@/pages/audit-logs";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
 import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
@@ -75,6 +76,7 @@ function Router() {
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />
+          <Route path="/audit-logs" component={AuditLogsPage} />
           <Route path="/rules" component={RulesPage} />
           <Route path="/scheduled-reports" component={ScheduledReportsPage} />
           <Route path="/purchase-drafts" component={PurchaseDraftsPage} />

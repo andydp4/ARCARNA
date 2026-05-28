@@ -1008,6 +1008,31 @@ export const deadLetters = pgTable("dead_letters", {
 export type DeadLetter = typeof deadLetters.$inferSelect;
 export type InsertDeadLetter = typeof deadLetters.$inferInsert;
 
+/** Human-facing admin actions (access approvals, destructive admin ops). S7 */
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id),
+    actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
+    actorRole: varchar("actor_role", { length: 32 }),
+    action: varchar("action", { length: 120 }).notNull(),
+    targetType: varchar("target_type", { length: 64 }),
+    targetId: varchar("target_id", { length: 255 }),
+    metadata: jsonb("metadata"),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: varchar("user_agent", { length: 1024 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("admin_audit_logs_created_at_idx").on(table.createdAt),
+    index("admin_audit_logs_actor_idx").on(table.actorUserId),
+  ],
+);
+
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
+
 // Inventory Movements - audit trail for stock changes
 export const inventoryMovements = pgTable("inventory_movements", {
   movementId: varchar("movement_id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
