@@ -526,6 +526,9 @@ export type ReplenishmentActionType = (typeof REPLENISHMENT_ACTION_TYPES)[number
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
+export const ORDER_CHANNELS = ['pos', 'web', 'api', 'whatsapp', 'phone'] as const;
+export type OrderChannel = (typeof ORDER_CHANNELS)[number];
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -535,6 +538,7 @@ export const orders = pgTable("orders", {
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
+  channel: varchar("channel", { length: 32 }).notNull().default("pos"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [index("orders_org_id_idx").on(table.orgId)]);
@@ -1007,6 +1011,50 @@ export const deadLetters = pgTable("dead_letters", {
 
 export type DeadLetter = typeof deadLetters.$inferSelect;
 export type InsertDeadLetter = typeof deadLetters.$inferInsert;
+
+/** Programmatic access for external channels (C1–C3). */
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    keyLookup: varchar("key_lookup", { length: 64 }).notNull(),
+    secretHash: varchar("secret_hash", { length: 255 }).notNull(),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default(["products:read"]),
+    createdAt: timestamp("created_at").defaultNow(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => [
+    index("api_keys_org_idx").on(table.orgId),
+    index("api_keys_lookup_idx").on(table.orgId, table.keyLookup),
+  ],
+);
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = typeof apiKeys.$inferInsert;
+
+/** Outbound webhook subscriptions (C1, C4). */
+export const outboundWebhooks = pgTable(
+  "outbound_webhooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    url: varchar("url", { length: 2048 }).notNull(),
+    secret: varchar("secret", { length: 512 }).notNull(),
+    eventTypes: jsonb("event_types").$type<string[]>().notNull().default(["OrderCreated"]),
+    isActive: integer("is_active").notNull().default(1),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("outbound_webhooks_org_idx").on(table.orgId)],
+);
+
+export type OutboundWebhook = typeof outboundWebhooks.$inferSelect;
+export type InsertOutboundWebhook = typeof outboundWebhooks.$inferInsert;
 
 /** Human-facing admin actions (access approvals, destructive admin ops). S7 */
 export const adminAuditLogs = pgTable(

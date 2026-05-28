@@ -61,7 +61,10 @@ export async function setupClerkAuth(app: Express) {
   app.set("trust proxy", 1);
 
   app.use((req, res, next) => {
-    if (CLERK_PUBLIC_PATHS.has(req.path)) {
+    if (
+      CLERK_PUBLIC_PATHS.has(req.path) ||
+      req.path.startsWith("/v1/")
+    ) {
       return next();
     }
     return clerkRequestMiddleware(req, res, next);
