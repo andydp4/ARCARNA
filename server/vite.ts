@@ -97,6 +97,8 @@ export function serveStatic(app: Express, serviceWorkerScope = "/") {
   app.use(
     express.static(distPath, {
       index: false,
+      // index:false + redirect:true (default) 301s mounted `/` → `/midnight/` forever (ERR_TOO_MANY_REDIRECTS)
+      redirect: false,
       maxAge: "1d",
       setHeaders(res, filePath) {
         if (filePath.endsWith("sw.js")) {
