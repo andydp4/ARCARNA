@@ -2,6 +2,12 @@
 
 This document describes the architecture of the MidnightEPOS monorepo. See **RBAC.md** for role-based access control and org/store scoping.
 
+## See also
+
+- **[docs/ARCHITECTURAL_PRINCIPLES.md](docs/ARCHITECTURAL_PRINCIPLES.md)** — Repo constitution; required reading before changing routes, storage, schema, or workers
+- **[docs/ARCHITECTURE_DOMAIN_MAP.md](docs/ARCHITECTURE_DOMAIN_MAP.md)** — Core vs Supporting vs Experimental domains
+- **[docs/SCHEMA_EVOLUTION.md](docs/SCHEMA_EVOLUTION.md)** — Migration policy, applied migrations, reserved DDL
+
 ---
 
 ## 1. Entry Points
