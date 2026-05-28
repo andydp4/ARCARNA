@@ -65,3 +65,14 @@ export function clerkAccountPortalUrl(
   const redirect = encodeURIComponent(appUrl(redirectPath));
   return `${base}${portalPath}?redirect_url=${redirect}`;
 }
+
+/** Account Portal sign-out (ends Clerk session, then returns to the app). */
+export function clerkAccountPortalSignOutUrl(
+  redirectPath = "/",
+  runtime?: AuthRuntime | null,
+): string | null {
+  const base = resolveClerkAccountsUrl(runtime);
+  if (!base) return null;
+  const redirect = encodeURIComponent(appUrl(redirectPath));
+  return `${base}/sign-out?redirect_url=${redirect}`;
+}
