@@ -71,8 +71,22 @@ process.on("unhandledRejection", (reason) => {
 
   const mount = APP_BASE_PATH || "/";
   if (APP_BASE_PATH) {
-    app.get(APP_BASE_PATH, (_req, res) => {
-      res.redirect(301, `${APP_BASE_PATH}/`);
+    // Redirect ONLY bare `/midnight` (no trailing slash) to `/midnight/`.
+    // Using `req.originalUrl` (not the route pattern) avoids Express's default
+    // "trailing slash insensitive" matching, which previously caused requests
+    // to `/midnight/` to be 301-redirected to themselves → ERR_TOO_MANY_REDIRECTS.
+    // 302 (not 301) so browsers don't cache the redirect aggressively.
+    app.use((req, res, next) => {
+      if (req.method !== "GET" && req.method !== "HEAD") return next();
+      const url = req.originalUrl;
+      if (url === APP_BASE_PATH) {
+        return res.redirect(302, `${APP_BASE_PATH}/`);
+      }
+      const qIdx = url.indexOf("?");
+      if (qIdx === APP_BASE_PATH.length) {
+        return res.redirect(302, `${APP_BASE_PATH}/${url.slice(qIdx)}`);
+      }
+      return next();
     });
   }
   app.use(mount, midnight);
