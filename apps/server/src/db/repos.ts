@@ -1,16 +1,16 @@
 import { eq, and, sql } from 'drizzle-orm'
-import { db } from './index'
+import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
 
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
     // Check if order exists
-    const existing = await db.select().from(s.orders).where(eq(s.orders.id, o.id as any)).limit(1)
+    const existing = await getDb().select().from(s.orders).where(eq(s.orders.id, o.id as any)).limit(1)
     
     if (existing.length > 0) {
       // Update existing order
-      await db.update(s.orders)
+      await getDb().update(s.orders)
         .set({
           customer_id: o.customerId as any,
           total: String(o.total),
@@ -20,10 +20,10 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         .where(eq(s.orders.id, o.id as any))
       
       // Delete existing line items and re-insert
-      await db.delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
+      await getDb().delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
       const orgId = (o as any).orgId ?? existing[0]?.org_id;
       for (const l of o.lines) {
-        await db.insert(s.order_items).values({
+        await getDb().insert(s.order_items).values({
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
@@ -34,7 +34,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       }
     } else {
       const orderWithOrg = o as any
-      await db.insert(s.orders).values({
+      await getDb().insert(s.orders).values({
         id: o.id as any,
         org_id: orderWithOrg.orgId ?? null,
         location_id: orderWithOrg.locationId ?? null,
@@ -45,7 +45,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       })
       const orgId = orderWithOrg.orgId;
       for (const l of o.lines) {
-        await db.insert(s.order_items).values({
+        await getDb().insert(s.order_items).values({
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
@@ -54,20 +54,14 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           org_id: orgId,
         } as typeof s.order_items.$inferInsert)
       }
-      
-      await db.insert(s.domain_outbox).values({
-        type: 'OrderPlaced',
-        payload: { orderId: o.id, customerId: o.customerId, total: o.total, orderDate: o.createdAt, orgId: orderWithOrg.orgId ?? null },
-        created_at: new Date(),
-      })
     }
   },
   async findById(id: OrderId) {
-    const [orderRow] = await db.select().from(s.orders).where(eq(s.orders.id, id as any)).limit(1)
+    const [orderRow] = await getDb().select().from(s.orders).where(eq(s.orders.id, id as any)).limit(1)
     if (!orderRow) return null
     
     // Fetch line items
-    const items = await db.select().from(s.order_items).where(eq(s.order_items.order_id, id as any))
+    const items = await getDb().select().from(s.order_items).where(eq(s.order_items.order_id, id as any))
     
     // Reconstruct full Order object
     return {
@@ -93,12 +87,12 @@ async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgI
   const { resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
   let orgId = ctx?.orgId
   if (!orgId && ctx?.orderId) {
-    const [order] = await db.select({ org_id: s.orders.org_id, location_id: s.orders.location_id }).from(s.orders).where(eq(s.orders.id, ctx.orderId as any)).limit(1)
+    const [order] = await getDb().select({ org_id: s.orders.org_id, location_id: s.orders.location_id }).from(s.orders).where(eq(s.orders.id, ctx.orderId as any)).limit(1)
     orgId = order?.org_id ?? undefined
     if (!ctx?.locationId && order?.location_id) ctx = { ...ctx!, locationId: order.location_id }
   }
   if (!orgId) {
-    const [product] = await db.select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    const [product] = await getDb().select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
     orgId = product?.org_id ?? undefined
   }
   if (!orgId) throw new Error('Stock context requires orgId')
@@ -111,7 +105,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     const { getProductStockTotal, getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
     let orgId = ctx?.orgId
     if (!orgId) {
-      const [product] = await db.select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+      const [product] = await getDb().select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
       orgId = product?.org_id ?? undefined
     }
     if (!orgId) return 0
@@ -127,7 +121,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
   async reserveStock(p: ProductId, qty: number, ctx: StockContext) {
     const { adjustProductLocationStock } = await import('../../../../server/services/productLocationStock')
     const { orgId, locationId } = await resolveStockCtx(p, ctx)
-    const [product] = await db.select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    const [product] = await getDb().select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
     await adjustProductLocationStock({
       orgId,
       productId: p as string,
@@ -144,7 +138,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
   async releaseStock(p: ProductId, qty: number, ctx: StockContext) {
     const { adjustProductLocationStock } = await import('../../../../server/services/productLocationStock')
     const { orgId, locationId } = await resolveStockCtx(p, ctx)
-    const [product] = await db.select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
+    const [product] = await getDb().select({ product_id: s.products.product_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
     await adjustProductLocationStock({
       orgId,
       productId: p as string,
@@ -160,7 +154,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
   },
   async create(product: Product): Promise<Product> {
     const p = product as any
-    const [created] = await db.insert(s.products).values({
+    const [created] = await getDb().insert(s.products).values({
       id: product.id as any,
       org_id: p.orgId ?? undefined,
       product_id: product.productCode,
@@ -182,7 +176,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     const whereCond = orgId
       ? and(eq(s.products.id, id as any), eq(s.products.org_id, orgId))
       : eq(s.products.id, id as any)
-    const [updated] = await db.update(s.products)
+    const [updated] = await getDb().update(s.products)
       .set({
         product_id: updates.productCode,
         name: updates.name,
@@ -214,11 +208,11 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     const whereCond = orgId
       ? and(eq(s.products.id, id as any), eq(s.products.org_id, orgId))
       : eq(s.products.id, id as any)
-    const [deleted] = await db.delete(s.products).where(whereCond).returning({ id: s.products.id })
+    const [deleted] = await getDb().delete(s.products).where(whereCond).returning({ id: s.products.id })
     if (orgId && !deleted) throw new Error('Product not found')
   },
   async findById(id: ProductId): Promise<Product | null> {
-    const [product] = await db.select().from(s.products).where(eq(s.products.id, id as any))
+    const [product] = await getDb().select().from(s.products).where(eq(s.products.id, id as any))
     if (!product) return null
     return {
       id: product.id as ProductId,
@@ -235,7 +229,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     } as Product
   },
   async findAll(): Promise<Product[]> {
-    const products = await db.select().from(s.products).orderBy(s.products.name)
+    const products = await getDb().select().from(s.products).orderBy(s.products.name)
     return products.map(product => ({
       id: product.id as ProductId,
       productCode: product.product_id,
@@ -255,28 +249,28 @@ export const ProductsRepoDrizzle: ProductsRepo = {
 export const CustomersRepoDrizzle: CustomersRepo = {
   async addTickDebt(c: CustomerId, amount: number) {
     // Track tick debt in audit log
-    await db.update(s.customers)
+    await getDb().update(s.customers)
       .set({ 
         updated_at: new Date()
       })
       .where(eq(s.customers.id, c as any))
-    await db.insert(s.audit_logs).values({ user_id: 'system', action: 'TickDebt', entity_type: 'customer', entity_id: c as any, new_values: { amount } })
+    await getDb().insert(s.audit_logs).values({ user_id: 'system', action: 'TickDebt', entity_type: 'customer', entity_id: c as any, new_values: { amount } })
   },
   async addOrderHistory(c: CustomerId, orderId: OrderId) {
     // Track order in audit log and update timestamp
-    const [order] = await db.select().from(s.orders).where(eq(s.orders.id, orderId as any))
+    const [order] = await getDb().select().from(s.orders).where(eq(s.orders.id, orderId as any))
     if (order) {
-      await db.update(s.customers)
+      await getDb().update(s.customers)
         .set({ 
           updated_at: new Date()
         })
         .where(eq(s.customers.id, c as any))
     }
-    await db.insert(s.audit_logs).values({ user_id: 'system', action: 'OrderHistory', entity_type: 'customer', entity_id: c as any, new_values: { orderId } })
+    await getDb().insert(s.audit_logs).values({ user_id: 'system', action: 'OrderHistory', entity_type: 'customer', entity_id: c as any, new_values: { orderId } })
   },
   async create(customer: Customer): Promise<Customer> {
     const c = customer as any
-    const [created] = await db.insert(s.customers).values({
+    const [created] = await getDb().insert(s.customers).values({
       id: customer.id as any,
       org_id: c.orgId ?? undefined,
       name: customer.name,
@@ -297,7 +291,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     const whereCond = orgId
       ? and(eq(s.customers.id, id as any), eq(s.customers.org_id, orgId))
       : eq(s.customers.id, id as any)
-    const [updated] = await db.update(s.customers)
+    const [updated] = await getDb().update(s.customers)
       .set({
         name: updates.name,
         phone: updates.phone,
@@ -313,7 +307,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     if (!updated) throw new Error('Customer not found')
     
     // Get metrics if they exist
-    const [metrics] = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, id as any))
+    const [metrics] = await getDb().select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, id as any))
     
     return {
       id: updated.id as CustomerId,
@@ -334,15 +328,15 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     const whereCond = orgId
       ? and(eq(s.customers.id, id as any), eq(s.customers.org_id, orgId))
       : eq(s.customers.id, id as any)
-    const [deleted] = await db.delete(s.customers).where(whereCond).returning({ id: s.customers.id })
+    const [deleted] = await getDb().delete(s.customers).where(whereCond).returning({ id: s.customers.id })
     if (orgId && !deleted) throw new Error('Customer not found')
   },
   async findById(id: CustomerId): Promise<Customer | null> {
-    const [customer] = await db.select().from(s.customers).where(eq(s.customers.id, id as any))
+    const [customer] = await getDb().select().from(s.customers).where(eq(s.customers.id, id as any))
     if (!customer) return null
     
     // Get metrics if they exist
-    const [metrics] = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, id as any))
+    const [metrics] = await getDb().select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, id as any))
     
     return {
       id: customer.id as CustomerId,
@@ -360,7 +354,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     }
   },
   async findAll(): Promise<Customer[]> {
-    const customers = await db.select().from(s.customers)
+    const customers = await getDb().select().from(s.customers)
       .leftJoin(s.customer_metrics, eq(s.customers.id, s.customer_metrics.customer_id))
       .orderBy(s.customers.name)
     
@@ -434,7 +428,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     `
     
     const rfmQueryWithId = rfmQuery.replace('$1', `'${customerId}'`)
-    const rfmRaw = await db.execute(sql.raw(rfmQueryWithId))
+    const rfmRaw = await getDb().execute(sql.raw(rfmQueryWithId))
     const rows = 'rows' in rfmRaw && Array.isArray((rfmRaw as { rows: unknown[] }).rows)
       ? (rfmRaw as { rows: Record<string, unknown>[] }).rows
       : Array.isArray(rfmRaw)
@@ -455,14 +449,14 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     const clv = avgOrderValue * ordersPerYear * customerLifespan
     
     // Update or insert customer metrics using Drizzle ORM
-    const existingMetric = await db.select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, customerId as any)).limit(1)
+    const existingMetric = await getDb().select().from(s.customer_metrics).where(eq(s.customer_metrics.customer_id, customerId as any)).limit(1)
     
     const lastOrderDateStr = new Date().toISOString().split('T')[0]
     const clvStr = String(clv)
     const totalSpentStr = String(total_spent)
 
     if (existingMetric.length > 0) {
-      await db.update(s.customer_metrics)
+      await getDb().update(s.customer_metrics)
         .set({
           total_spent: totalSpentStr,
           order_count: order_count,
@@ -472,7 +466,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
         })
         .where(eq(s.customer_metrics.customer_id, customerId as any))
     } else {
-      await db.insert(s.customer_metrics).values({
+      await getDb().insert(s.customer_metrics).values({
         customer_id: customerId as any,
         total_spent: totalSpentStr,
         order_count: order_count,

@@ -43,29 +43,63 @@ export async function publishEvent<TPayload>(
     actor?: { type: 'user' | 'system'; id: string };
     source?: string;
   },
-  txClient?: typeof db
+  txClient?: typeof db,
 ): Promise<string> {
   const eventId = generateEventId();
   const now = new Date();
-  
-  // Use transaction client if provided, otherwise use global db
-  const dbClient = txClient || db;
+  const actor = options?.actor || { type: 'system' as const, id: 'engine' };
+  const source = options?.source || 'api';
+  const payloadJson = JSON.stringify(payload as unknown as Record<string, unknown>);
 
-  await dbClient.insert(eventOutbox).values({
-    eventId,
-    eventType,
-    occurredAt: now,
-    correlationId,
-    actor: options?.actor || { type: 'system', id: 'engine' },
-    source: options?.source || 'api',
-    version: 1,
-    payload: payload as unknown as Record<string, unknown>,
-    status: 'pending',
-    createdAt: now,
-  });
+  if (txClient) {
+    // Same Postgres transaction as apps/server order writes (may use a different Drizzle schema).
+    await txClient.execute(sql`
+      INSERT INTO event_outbox (
+        event_id, event_type, occurred_at, correlation_id, actor, source, version, payload, status, created_at
+      ) VALUES (
+        ${eventId},
+        ${eventType},
+        ${now},
+        ${correlationId},
+        ${JSON.stringify(actor)}::jsonb,
+        ${source},
+        1,
+        ${payloadJson}::jsonb,
+        'pending',
+        ${now}
+      )
+    `);
+  } else {
+    await db.insert(eventOutbox).values({
+      eventId,
+      eventType,
+      occurredAt: now,
+      correlationId,
+      actor,
+      source,
+      version: 1,
+      payload: payload as unknown as Record<string, unknown>,
+      status: 'pending',
+      createdAt: now,
+    });
+  }
 
   console.log(`[EventBus] Published event: ${eventType} (${eventId}) for ${correlationId}`);
   return eventId;
+}
+
+/** Publish inside an existing DB transaction (order + outbox atomicity). */
+export async function publishEventTx<TPayload>(
+  tx: typeof db,
+  eventType: EventType,
+  correlationId: string,
+  payload: TPayload,
+  options?: {
+    actor?: { type: 'user' | 'system'; id: string };
+    source?: string;
+  },
+): Promise<string> {
+  return publishEvent(eventType, correlationId, payload, options, tx);
 }
 
 /**

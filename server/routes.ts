@@ -488,35 +488,37 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!ctx?.orgId) {
         return res.status(400).json({ message: 'Order creation requires org context. Pass X-Org-Id or ?orgId= for SUPER_ADMIN.' });
       }
-      const { db } = await import('../apps/server/src/db');
+      const { withTransaction } = await import('../apps/server/src/db');
       const { orders, order_items } = await import('../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
-      const { publishEvent } = await import('./eventBus');
+      const { publishEventTx } = await import('./eventBus');
       const { engine } = await import('../apps/server/src/engine.wiring');
       const body = { ...req.body, orgId: ctx.orgId ?? undefined, locationId: ctx.locationId ?? undefined };
-      const result = await engine.placeOrder(body);
-      
-      // Fetch the complete order and items
-      const [createdOrder] = await db.select().from(orders).where(eq(orders.id, result.orderId));
-      const items = await db.select().from(order_items).where(eq(order_items.order_id, result.orderId));
-      
-      // Publish event - this is critical, failure should be visible
-      // Note: True transactional outbox requires engine refactor to accept tx client
-      const eventId = await publishEvent('OrderCreated', result.orderId, {
-        order: {
-          orderId: result.orderId,
-          status: createdOrder?.status || 'pending',
-          customerId: createdOrder?.customer_id,
-          total: parseFloat(createdOrder?.total || '0'),
-          items: items.map(item => ({
-            lineId: item.id,
-            productId: item.product_id,
-            qty: item.quantity,
-            unitPrice: parseFloat(item.unit_price || '0'),
-            lineTotal: parseFloat(item.total_price || '0'),
-          })),
-        }
-      }, { source: 'api-orders' });
+
+      const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
+        const result = await engine.placeOrder(body);
+
+        const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
+        const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
+
+        const eventId = await publishEventTx(tx, 'OrderCreated', result.orderId, {
+          order: {
+            orderId: result.orderId,
+            status: createdOrder?.status || 'pending',
+            customerId: createdOrder?.customer_id,
+            total: parseFloat(createdOrder?.total || '0'),
+            items: items.map((item: { id: string; product_id: string; quantity: number; unit_price: string | null; total_price: string | null }) => ({
+              lineId: item.id,
+              productId: item.product_id,
+              qty: item.quantity,
+              unitPrice: parseFloat(item.unit_price || '0'),
+              lineTotal: parseFloat(item.total_price || '0'),
+            })),
+          },
+        }, { source: 'api-orders' });
+
+        return { result, eventId, createdOrder, items };
+      });
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
       
