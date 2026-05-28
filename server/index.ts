@@ -112,6 +112,16 @@ process.on("unhandledRejection", (reason) => {
   registerPortalRoutes(app);
   registerLegacyEposRedirects(app, APP_BASE_PATH);
 
+  // Root-level aliases for bookmarks / old links that omit APP_BASE_PATH
+  if (APP_BASE_PATH) {
+    app.get("/api/login", (_req, res) => {
+      res.redirect(302, withAppBase(APP_BASE_PATH, "/sign-in"));
+    });
+    app.get("/api/logout", (_req, res) => {
+      res.redirect(302, withAppBase(APP_BASE_PATH, "/api/logout"));
+    });
+  }
+
   const midnight = express();
 
   const apiLimiter = rateLimit({

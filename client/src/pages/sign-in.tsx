@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/appPaths";
+import { apiFetch, resolveApiUrl, resolveAppPath } from "@/lib/appPaths";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthConfig } from "@/components/AuthProviders";
@@ -18,7 +18,7 @@ export default function SignInPage() {
   });
 
   if (!isClerkMode(runtime)) {
-    window.location.href = "/api/login";
+    window.location.href = resolveApiUrl("/api/login");
     return null;
   }
 
@@ -35,7 +35,7 @@ export default function SignInPage() {
               <code className="text-xs">.env</code>.
             </AlertDescription>
           </Alert>
-          <Button className="mt-4 w-full" variant="outline" onClick={() => { window.location.href = "/"; }}>
+          <Button className="mt-4 w-full" variant="outline" onClick={() => { window.location.href = resolveAppPath("/"); }}>
             Back to home
           </Button>
         </div>

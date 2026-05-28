@@ -2,6 +2,7 @@ import { ShieldOff, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { navigateToLogout } from "@/lib/orgCacheWipe";
 
 export default function NoAccess() {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ export default function NoAccess() {
           <Button
             variant="outline"
             className="w-full min-h-[44px]"
-            onClick={() => { window.location.href = "/api/logout"; }}
+            onClick={() => navigateToLogout()}
             data-testid="button-logout-no-access"
           >
             <LogOut className="mr-2 h-4 w-4" />

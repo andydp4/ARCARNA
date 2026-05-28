@@ -2,25 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-const isProduction = process.env.NODE_ENV === "production";
 const appBase = (process.env.VITE_BASE_PATH || "/midnight").replace(/\/?$/, "/");
 
 export default defineConfig({
   base: appBase,
-  plugins: [
-    react(),
-    ...(isProduction
-      ? []
-      : [
-          (await import("@replit/vite-plugin-runtime-error-modal")).default(),
-          ...(process.env.REPL_ID !== undefined
-            ? [
-                (await import("@replit/vite-plugin-cartographer")).cartographer(),
-                (await import("@replit/vite-plugin-dev-banner")).devBanner(),
-              ]
-            : []),
-        ]),
-  ],
+  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

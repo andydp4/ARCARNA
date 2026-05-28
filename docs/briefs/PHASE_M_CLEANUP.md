@@ -1,6 +1,10 @@
 # Phase M — Maintenance & cleanup
 
+**Prerequisite:** S1–S8 and **C1–C5 merged on `main`** (done). This phase is ready to start.
+
 Four briefs: **M1** dead-code purge (partial — accounts for #11 already retiring `webpack.yml`), **M2** routes split, **M3** feature flags, **M4** backup automation. Execute M1 first; the others can interleave with Phase F.
+
+> UI-facing work in later phases must use official logo assets only (`client/public/brand/*.png`) — see `docs/briefs/README.md` and `docs/ux-concepts/_shared-context.md`.
 
 ---
 

@@ -22,7 +22,14 @@ Every brief must:
 - Run `npm run check` and `npm run build` before opening PR.
 - Never run `npm run db:push` against production.
 - Never commit `.env*` files.
-- Cite the architectural principle being honoured in the PR description if it touches storage, routes, schema, or workers.
+- Cite the architectural principle being honoured in the PR description if it touches storage, schema, or workers.
+- **Logo (mandatory for any UI work):** Use only the official brand files in `client/public/brand/` (`midnight-logo-navy-on-white.png`, `midnight-logo-white-on-navy.png`). Do **not** redraw, approximate, or “improve” the mark in code, CSS, SVG, or AI mockups. Hull shapes (M-profile, etc.) may echo the logo’s geometry as layout inspiration; the rendered logo asset itself is fixed. See `docs/ux-concepts/_shared-context.md` § Brand.
+
+## Stabilise + Channel Readiness status
+
+**S1–S8 and C1–C5 are merged on `main`** (as of May 2026). Channel readiness landed in PR #14 (`feat(channels): C1–C5`). CI on `main`: TypeScript check, migration sanity, release gate.
+
+**Phase M (M1–M4)** — implemented on branch `chore/m1-dead-code-purge` (pending merge). Includes base-path auth redirect fix for `/midnight` deploys. **M4 restore drill** still needs a one-time run on VPS/R2 before calling ops DoD complete.
 
 ## Phase order
 

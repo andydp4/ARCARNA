@@ -8,6 +8,7 @@ import {
   varchar,
   uuid,
   integer,
+  boolean,
   numeric,
   date,
   primaryKey,
@@ -1080,6 +1081,26 @@ export const adminAuditLogs = pgTable(
 
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLogs.$inferInsert;
+
+/** Per-org feature toggles (M3). */
+export const featureFlags = pgTable(
+  "feature_flags",
+  {
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    flag: varchar("flag", { length: 64 }).notNull(),
+    enabled: boolean("enabled").default(false).notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.flag] }),
+    index("feature_flags_org_id_idx").on(table.orgId),
+  ],
+);
+
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+export type InsertFeatureFlag = typeof featureFlags.$inferInsert;
 
 // Inventory Movements - audit trail for stock changes
 export const inventoryMovements = pgTable("inventory_movements", {

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/appPaths";
+import { apiFetch, resolveAppPath } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, LogOut, XCircle, RefreshCw } from "lucide-react";
@@ -41,7 +41,7 @@ export default function PendingApproval() {
   }
 
   if (status?.isAllowed) {
-    window.location.href = '/';
+    window.location.href = resolveAppPath("/");
     return null;
   }
 

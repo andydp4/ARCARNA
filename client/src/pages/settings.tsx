@@ -49,6 +49,8 @@ import { useToast } from '@/hooks/use-toast'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
 import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
+import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
+import { useAuth } from '@/hooks/useAuth'
 import {
   Settings2,
   Store,
@@ -72,6 +74,8 @@ import {
 } from 'lucide-react'
 
 export default function Settings() {
+  const { user } = useAuth()
+  const canManageFlags = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('general')
   const [copiedText, setCopiedText] = useState('')
@@ -218,6 +222,7 @@ export default function Settings() {
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
+            {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="imports" className="space-y-6">
@@ -785,6 +790,12 @@ export default function Settings() {
           </TabsContent>
 
           {/* Users Management */}
+          {canManageFlags && (
+            <TabsContent value="flags" className="space-y-6">
+              <FeatureFlagsSettings />
+            </TabsContent>
+          )}
+
           <TabsContent value="users">
             <Card>
               <CardHeader>

@@ -30,6 +30,9 @@ jobs:
       - name: Audit storage orgId usage
         run: node scripts/audit-storage-orgid.mjs
 
+      - name: Run tests
+        run: npm test
+
   migration-sanity:
     name: Migration sanity (fresh DB)
     runs-on: ubuntu-latest

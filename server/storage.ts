@@ -37,6 +37,7 @@ import {
   allowedUsers,
   userApprovalRequests,
   adminAuditLogs,
+  featureFlags,
   organizations,
   importHistory,
   type Organization,
@@ -65,6 +66,7 @@ import {
   type InsertUserApprovalRequest,
   type AdminAuditLog,
   type InsertAdminAuditLog,
+  type FeatureFlag,
   apiKeys,
   outboundWebhooks,
   type ApiKey,
@@ -245,6 +247,10 @@ export interface IStorage {
 
   insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void>;
   listAdminAuditLogs(opts: { limit: number; offset: number }): Promise<AdminAuditLog[]>;
+
+  getFeatureFlag(orgId: string, flag: string): Promise<FeatureFlag | undefined>;
+  listFeatureFlagsForOrg(orgId: string): Promise<FeatureFlag[]>;
+  upsertFeatureFlag(orgId: string, flag: string, enabled: boolean): Promise<FeatureFlag>;
 
   createApiKeyForOrg(
     orgId: string,
@@ -2073,6 +2079,30 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(adminAuditLogs.createdAt))
       .limit(opts.limit)
       .offset(opts.offset);
+  }
+
+  async getFeatureFlag(orgId: string, flag: string): Promise<FeatureFlag | undefined> {
+    const [row] = await db
+      .select()
+      .from(featureFlags)
+      .where(and(eq(featureFlags.orgId, orgId), eq(featureFlags.flag, flag)));
+    return row;
+  }
+
+  async listFeatureFlagsForOrg(orgId: string): Promise<FeatureFlag[]> {
+    return db.select().from(featureFlags).where(eq(featureFlags.orgId, orgId));
+  }
+
+  async upsertFeatureFlag(orgId: string, flag: string, enabled: boolean): Promise<FeatureFlag> {
+    const [row] = await db
+      .insert(featureFlags)
+      .values({ orgId, flag, enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [featureFlags.orgId, featureFlags.flag],
+        set: { enabled, updatedAt: new Date() },
+      })
+      .returning();
+    return row;
   }
 
   async createApiKeyForOrg(

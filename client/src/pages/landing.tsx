@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/appPaths";
+import { apiFetch, resolveApiUrl } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -75,7 +75,7 @@ export default function Landing() {
             ) : (
               <Button
                 onClick={() => {
-                  window.location.href = "/api/login";
+                  window.location.href = resolveApiUrl("/api/login");
                 }}
                 className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium py-3 px-4 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
                 data-testid="button-login-replit"
