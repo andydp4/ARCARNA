@@ -10,8 +10,25 @@ import { APP_BASE_PATH } from "./appBase";
 import { registerPortalRoutes } from "./portal";
 import { registerLegacyEposRedirects } from "./legacyRedirects";
 import { withAppBase } from "@shared/appPaths";
+import { requestIdMiddleware, type RequestWithId } from "./requestId";
+import { logApiJson } from "./structuredLog";
 
 validateProductionEnv();
+
+if (process.env.SENTRY_DSN?.trim()) {
+  import("@sentry/node")
+    .then((Sentry) => {
+      Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV ?? "development",
+        tracesSampleRate: Math.min(
+          1,
+          Math.max(0, Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0)),
+        ),
+      });
+    })
+    .catch(() => {});
+}
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -35,6 +52,7 @@ declare module 'http' {
     rawBody: unknown
   }
 }
+app.use(requestIdMiddleware);
 app.use(
   express.json({
     limit: IMPORT_JSON_BODY_LIMIT,
@@ -45,7 +63,7 @@ app.use(
 );
 app.use(express.urlencoded({ extended: false, limit: IMPORT_JSON_BODY_LIMIT }));
 
-app.use((req, res, next) => {
+app.use((req: RequestWithId, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
@@ -59,15 +77,26 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      logApiJson({
+        msg: "http_request",
+        requestId: req.requestId,
+        method: req.method,
+        path,
+        status: res.statusCode,
+        durationMs: duration,
+        responseSnippet:
+          capturedJsonResponse !== undefined
+            ? JSON.stringify(capturedJsonResponse).slice(0, 200)
+            : undefined,
+      });
+    } else {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "…";
       }
-
       log(logLine);
     }
   });
@@ -138,6 +167,11 @@ process.on("unhandledRejection", (reason) => {
     const message =
       err instanceof Error ? err.message : "Internal Server Error";
     console.error("[express] Request error:", err);
+    if (process.env.SENTRY_DSN?.trim()) {
+      import("@sentry/node")
+        .then((Sentry) => Sentry.captureException(err))
+        .catch(() => {});
+    }
     if (!res.headersSent) {
       res.status(status).json({ message });
     }

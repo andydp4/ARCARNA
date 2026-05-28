@@ -10,7 +10,7 @@ import {
 import { tryDevAuthBypass, tryPhase2dTestAuth } from "./commonAuth";
 
 /** Paths that must not pass Clerk session validation (no publishable key check). */
-const CLERK_PUBLIC_PATHS = new Set(["/api/health", "/api/auth/runtime"]);
+const CLERK_PUBLIC_PATHS = new Set(["/api/health", "/api/health/metrics", "/api/auth/runtime"]);
 
 function clerkPublishableKey(): string | undefined {
   const key =
