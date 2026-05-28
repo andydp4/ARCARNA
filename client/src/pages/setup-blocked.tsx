@@ -1,4 +1,5 @@
 import { Clock } from "lucide-react";
+import { navigateToLogout } from "@/lib/orgCacheWipe";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,7 +15,7 @@ export default function SetupBlocked() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" className="w-full min-h-[44px]" onClick={() => { window.location.href = "/api/logout"; }}>
+          <Button variant="outline" className="w-full min-h-[44px]" onClick={() => navigateToLogout()}>
             Sign out
           </Button>
         </CardContent>

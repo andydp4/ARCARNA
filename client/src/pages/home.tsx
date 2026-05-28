@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { resolveApiUrl } from "@/lib/appPaths";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { Link } from "wouter";
@@ -19,7 +20,7 @@ export default function Home() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = resolveApiUrl("/api/login");
       }, 500);
       return;
     }

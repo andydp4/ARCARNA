@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { getAuthProvider } from "./authRuntime";
 import { checkAndHandleAllowList } from "./auth/allowList";
 import { tryDevAuthBypass, tryPhase2dTestAuth } from "./auth/commonAuth";
+import { appRedirectPath, redirectToAppPath } from "./appRedirect";
 
 const getOidcConfig = memoize(
   async () => {
@@ -128,10 +129,12 @@ export async function setupReplitAuth(app: Express) {
       async (err: Error | null, user: Express.User | false, _info: unknown) => {
       if (err) {
         console.error("[Auth] Callback error:", err);
-        return res.redirect("/api/login");
+        redirectToAppPath(res, "/sign-in");
+        return;
       }
       if (!user) {
-        return res.redirect("/api/login");
+        redirectToAppPath(res, "/sign-in");
+        return;
       }
 
       const claims = (user as { claims: Record<string, unknown> }).claims;
@@ -160,12 +163,15 @@ export async function setupReplitAuth(app: Express) {
       req.logIn(user, (loginErr) => {
         if (loginErr) {
           console.error("[Auth] Login error:", loginErr);
-          return res.redirect("/api/login");
+          redirectToAppPath(res, "/sign-in");
+          return;
         }
         if (!allowListStatus.allowed) {
-          return res.redirect("/pending-approval");
+          redirectToAppPath(res, "/pending-approval");
+          return;
         }
-        return res.redirect("/");
+        redirectToAppPath(res, "/");
+        return;
       });
     })(req, res, next);
   });
@@ -176,7 +182,7 @@ export async function setupReplitAuth(app: Express) {
       res.redirect(
         client.buildEndSessionUrl(config, {
           client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+          post_logout_redirect_uri: `${req.protocol}://${req.hostname}${appRedirectPath("/")}`,
         }).href,
       );
     });

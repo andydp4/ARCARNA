@@ -8,6 +8,7 @@ import {
   type AllowListClaims,
 } from "./allowList";
 import { tryDevAuthBypass, tryPhase2dTestAuth } from "./commonAuth";
+import { redirectToAppPath } from "../appRedirect";
 
 /** Paths that must not pass Clerk session validation (no publishable key check). */
 const CLERK_PUBLIC_PATHS = new Set(["/api/health", "/api/health/metrics", "/api/auth/runtime"]);
@@ -71,11 +72,11 @@ export async function setupClerkAuth(app: Express) {
   });
 
   app.get("/api/login", (_req, res) => {
-    res.redirect("/sign-in");
+    redirectToAppPath(res, "/sign-in");
   });
 
   app.get("/api/logout", (_req, res) => {
-    res.redirect("/sign-in");
+    redirectToAppPath(res, "/sign-in");
   });
 }
 
