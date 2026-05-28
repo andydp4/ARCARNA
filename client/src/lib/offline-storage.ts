@@ -1,5 +1,9 @@
-const DB_NAME = 'midnight-epos-db';
+export const LEGACY_OFFLINE_DB_NAME = "midnight-epos-db";
 const DB_VERSION = 2;
+
+export function offlineDbNameForOrg(orgId: string): string {
+  return `midnight-epos-db--${orgId}`;
+}
 
 export interface OfflineOrder {
   id?: number;
@@ -20,15 +24,35 @@ export interface QueuedMutation {
 }
 
 class OfflineStorage {
+  private orgId: string | null = null;
   private dbPromise: Promise<IDBDatabase> | null = null;
 
+  setActiveOrg(orgId: string | null): void {
+    if (this.orgId === orgId) return;
+    this.orgId = orgId;
+    this.dbPromise = null;
+  }
+
+  getActiveOrgId(): string | null {
+    return this.orgId;
+  }
+
+  private requireOrgId(): string {
+    if (!this.orgId) {
+      throw new Error("Offline storage requires an active organization");
+    }
+    return this.orgId;
+  }
+
   private openDB(): Promise<IDBDatabase> {
+    const orgId = this.requireOrgId();
     if (this.dbPromise) {
       return this.dbPromise;
     }
 
+    const dbName = offlineDbNameForOrg(orgId);
     this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = indexedDB.open(dbName, DB_VERSION);
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve(request.result);

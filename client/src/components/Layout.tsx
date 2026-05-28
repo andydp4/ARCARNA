@@ -11,7 +11,7 @@ import { OrgSwitcher } from './OrgSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
-import { resolveApiUrl } from '@/lib/appPaths'
+import { navigateToLogout } from '@/lib/orgCacheWipe'
 
 interface LayoutProps {
   children: ReactNode
@@ -98,10 +98,10 @@ export function Layout({ children }: LayoutProps) {
                       <NavLinks />
                     </div>
                     <div className="p-4 border-t border-border">
-                      <a href={resolveApiUrl("/api/logout")} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors" data-testid="nav-logout">
+                      <button type="button" onClick={navigateToLogout} className="flex w-full items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors" data-testid="nav-logout">
                         <LogOut className="h-4 w-4" />
                         <span className="text-sm font-medium">Sign Out</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 </SheetContent>
@@ -140,9 +140,9 @@ export function Layout({ children }: LayoutProps) {
               {user?.firstName || user?.email || "Welcome"}
             </span>
             {!isMobile && (
-              <a href={resolveApiUrl("/api/logout")} className="text-sm hover:underline" data-testid="header-logout">
+              <button type="button" onClick={navigateToLogout} className="text-sm hover:underline" data-testid="header-logout">
                 Sign Out
-              </a>
+              </button>
             )}
           </div>
         </div>
@@ -162,17 +162,18 @@ export function Layout({ children }: LayoutProps) {
                 <NavLinks />
               </div>
               <div className="p-4 border-t border-border">
-                <a
-                  href={resolveApiUrl("/api/logout")}
+                <button
+                  type="button"
+                  onClick={navigateToLogout}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors',
+                    'flex w-full items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors',
                     !sidebarOpen && 'justify-center px-0'
                   )}
                   data-testid="sidebar-logout"
                 >
                   <LogOut className="h-4 w-4" />
                   {sidebarOpen && <span className="text-sm font-medium">Sign Out</span>}
-                </a>
+                </button>
               </div>
             </div>
           </aside>
