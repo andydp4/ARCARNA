@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { validateProductionEnv } from "./validateProductionEnv";
@@ -12,6 +14,21 @@ import { withAppBase } from "@shared/appPaths";
 validateProductionEnv();
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+/** Behind reverse proxies (Nginx, Fly, etc.) so rate limits use client IP. */
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
+if (isProduction) {
+  app.use(
+    helmet({
+      // Default CSP breaks Vite/React inline bootstraps on self-hosted builds.
+      contentSecurityPolicy: false,
+    }),
+  );
+}
 
 declare module 'http' {
   interface IncomingMessage {
@@ -67,6 +84,24 @@ process.on("unhandledRejection", (reason) => {
   registerLegacyEposRedirects(app, APP_BASE_PATH);
 
   const midnight = express();
+
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: isProduction ? 800 : 50_000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) =>
+      req.path === "/api/health" || req.path === "/api/auth/runtime",
+    message: { message: "Too many requests, please try again later." },
+  });
+
+  midnight.use((req, res, next) => {
+    if (!req.path.startsWith("/api")) {
+      return next();
+    }
+    return apiLimiter(req, res, next);
+  });
+
   await registerRoutes(midnight);
 
   const mount = APP_BASE_PATH || "/";
@@ -107,8 +142,6 @@ process.on("unhandledRejection", (reason) => {
       res.status(status).json({ message });
     }
   });
-
-  const isProduction = process.env.NODE_ENV === "production";
 
   const swScope = APP_BASE_PATH ? withAppBase(APP_BASE_PATH, "/") : "/";
 
