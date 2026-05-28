@@ -289,13 +289,7 @@ export class InventoryWorker implements IWorker {
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
     const stockCtx = await this.resolveOrderStockContext(orderId, payload);
     if (!stockCtx) {
-      return {
-        worker: this.name,
-        eventId: event.eventId,
-        correlationId: event.correlationId,
-        status: 'skipped',
-        summary: 'No org/location context for stock adjustment',
-      };
+      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
     }
     
     // Idempotency check - prevent duplicate stock deductions
@@ -374,13 +368,7 @@ export class InventoryWorker implements IWorker {
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
     const stockCtx = await this.resolveOrderStockContext(orderId, payload);
     if (!stockCtx) {
-      return {
-        worker: this.name,
-        eventId: event.eventId,
-        correlationId: event.correlationId,
-        status: 'skipped',
-        summary: 'No org/location context for stock adjustment',
-      };
+      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
     }
     
     let adjustedProducts = 0;
@@ -445,13 +433,7 @@ export class InventoryWorker implements IWorker {
     const orderId = payload.orderId || event.correlationId;
     const stockCtx = await this.resolveOrderStockContext(orderId, payload);
     if (!stockCtx) {
-      return {
-        worker: this.name,
-        eventId: event.eventId,
-        correlationId: event.correlationId,
-        status: 'skipped',
-        summary: 'No org/location context for stock return',
-      };
+      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
     }
     
     // Idempotency check
