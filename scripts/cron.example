@@ -1,0 +1,5 @@
+# Example crontab entries for MidnightEPOS on the production VPS.
+# Install: crontab -e  (adjust paths)
+
+# Nightly Neon backup → R2 (02:15 UTC)
+15 2 * * * /opt/midnight/scripts/backup-neon-to-r2.sh >> /var/log/midnight-backup.log 2>&1

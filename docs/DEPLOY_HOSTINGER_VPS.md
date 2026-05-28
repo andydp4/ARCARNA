@@ -275,6 +275,24 @@ Use [LAUNCH_CHECKLIST.md](./LAUNCH_CHECKLIST.md).
 
 ---
 
+## 9b. Backup cron (Neon → R2)
+
+Nightly logical dumps are optional but recommended. See [DISASTER_RECOVERY.md](./DISASTER_RECOVERY.md).
+
+1. Install AWS CLI on the VPS (`apt install awscli` or pip).
+2. Add `R2_*` variables to `.env` (see [`.env.production.example`](../.env.production.example)).
+3. Ensure `pg_dump` 16+ is available (`postgresql-client-16`).
+4. Install cron from [`scripts/cron.example`](../scripts/cron.example):
+
+```bash
+chmod +x /var/www/midnight-epos/scripts/backup-neon-to-r2.sh
+# crontab -e — add the 02:15 UTC line from scripts/cron.example
+```
+
+Logs: `/var/log/midnight-backup.log`.
+
+---
+
 ## 10. Import upload fails with HTTP 413
 
 Large Apple Contacts `.vcf` exports need a higher upload limit on **Nginx** (default 1MB) and in the **Node** app (now 25MB on `main`).

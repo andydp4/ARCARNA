@@ -28,7 +28,7 @@ This document is the **repo constitution** for MidnightEPOS. Every change to ser
 
 10. **Explicit types** — Prefer explicit TypeScript types over `any` on new code.
 
-11. **Experimental features behind flags** — Do not register workers in `REQUIRED_WORKERS` until a feature is promoted from Experimental to Supporting/Core in [ARCHITECTURE_DOMAIN_MAP.md](./ARCHITECTURE_DOMAIN_MAP.md).
+11. **In-progress features behind flags** — Ship new UX and behaviour behind per-org feature flags (`feature_flags` table, `useFlag` / `isFlagEnabled`). Do not register workers in `REQUIRED_WORKERS` until a feature is promoted from Experimental to Supporting/Core in [ARCHITECTURE_DOMAIN_MAP.md](./ARCHITECTURE_DOMAIN_MAP.md).
 
 12. **Import safety** — Large imports are parsed client-side where practical; the server enforces `IMPORT_MAX_ROWS`, org scope, and preview-before-commit.
 
