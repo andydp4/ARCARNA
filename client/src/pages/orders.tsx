@@ -15,9 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 import {
   Clock,
   PackageCheck,
+  RotateCcw,
   AlertCircle,
   CheckCircle2,
   Minus,
@@ -43,7 +45,18 @@ import { EmptyStatePanel } from "@/components/empty-state-panel";
 
 type Order = OrdersListOrder;
 
+interface OrderRefundEntry {
+  id: string;
+  total: string;
+  reason: string;
+  refundMethod: string;
+  createdAt: string;
+  cashierName?: string;
+}
+
 interface OrderDetail extends Order {
+  refundedTotal?: number;
+  refunds?: OrderRefundEntry[];
   items: Array<{
     id: string;
     productId: string;
@@ -623,10 +636,55 @@ export default function Orders() {
                         <p className="text-2xl font-bold tabular-nums text-primary">
                           ${parseFloat(orderDetails.total || "0").toFixed(2)}
                         </p>
+                        {(orderDetails.refundedTotal ?? 0) > 0 && (
+                          <p className="text-xs text-destructive mt-1">
+                            Refunded ${orderDetails.refundedTotal!.toFixed(2)}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/orders/${orderDetails.id}/refund`}>
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Issue refund
+                    </Link>
+                  </Button>
+                </div>
+
+                {(orderDetails.refunds?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="mb-2 text-sm font-medium text-muted-foreground">Timeline</h4>
+                    <ul className="space-y-2 text-sm border rounded-lg divide-y">
+                      <li className="px-3 py-2 flex justify-between">
+                        <span>Order created</span>
+                        <span className="text-muted-foreground">
+                          {new Date(orderDetails.createdAt).toLocaleString()}
+                        </span>
+                      </li>
+                      {orderDetails.refunds?.map((refund) => (
+                        <li key={refund.id} className="px-3 py-2">
+                          <div className="flex justify-between gap-2">
+                            <span>
+                              Refund · {refund.reason.replace(/_/g, " ")} (
+                              {refund.refundMethod})
+                            </span>
+                            <span className="font-medium tabular-nums shrink-0">
+                              −${parseFloat(refund.total).toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {refund.cashierName ?? "Staff"} ·{" "}
+                            {new Date(refund.createdAt).toLocaleString()}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div>
                   <h4 className="mb-2 text-sm font-medium text-muted-foreground">Line items</h4>

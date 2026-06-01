@@ -18,6 +18,7 @@ import {
   Workflow,
   CalendarClock,
   Activity,
+  Timer,
 } from 'lucide-react'
 
 export const navItems = [
@@ -41,6 +42,13 @@ export const navItems = [
     href: '/orders',
     icon: PackageCheck,
     testId: 'nav-orders'
+  },
+  {
+    key: 'shifts',
+    label: 'Shifts',
+    href: '/shifts',
+    icon: Timer,
+    testId: 'nav-shifts'
   },
   {
     key: 'products',

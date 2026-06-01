@@ -25,6 +25,8 @@ interface OrderPayload {
   customerId?: string;
   total?: number;
   amount?: number;
+  orderTotal?: number;
+  pointsToReverse?: number;
 }
 
 // Points earned per currency unit (e.g., 1 point per £1)
@@ -100,8 +102,18 @@ export class LoyaltyWorker implements IWorker {
         // Earn points: round down the total
         pointsDelta = Math.floor(total * POINTS_PER_UNIT);
         reason = 'earn';
-      } else if (event.eventType === 'RefundIssued' || event.eventType === 'OrderCancelled') {
-        // Reverse points
+      } else if (event.eventType === 'RefundIssued') {
+        if (typeof payload.pointsToReverse === "number") {
+          pointsDelta = -payload.pointsToReverse;
+        } else {
+          const orderTotal = payload.orderTotal ?? 0;
+          pointsDelta =
+            orderTotal > 0
+              ? -Math.floor((total / orderTotal) * Math.floor(orderTotal * POINTS_PER_UNIT))
+              : 0;
+        }
+        reason = 'reverse';
+      } else if (event.eventType === 'OrderCancelled') {
         pointsDelta = -Math.floor(total * POINTS_PER_UNIT);
         reason = 'reverse';
       } else {

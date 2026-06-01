@@ -532,19 +532,59 @@ export type OrderStatus = typeof ORDER_STATUSES[number];
 export const ORDER_CHANNELS = ['pos', 'web', 'api', 'whatsapp', 'phone'] as const;
 export type OrderChannel = (typeof ORDER_CHANNELS)[number];
 
+// Cashier shifts (F2)
+export const SHIFT_STATUSES = ["open", "closed", "reopened"] as const;
+export type ShiftStatus = (typeof SHIFT_STATUSES)[number];
+
+export const shifts = pgTable(
+  "shifts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    locationId: uuid("location_id")
+      .references(() => locations.id)
+      .notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    openedAt: timestamp("opened_at").defaultNow().notNull(),
+    closedAt: timestamp("closed_at"),
+    openingFloat: numeric("opening_float", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    closingCount: numeric("closing_count", { precision: 10, scale: 2 }),
+    expectedCash: numeric("expected_cash", { precision: 10, scale: 2 }),
+    variance: numeric("variance", { precision: 10, scale: 2 }),
+    notes: text("notes"),
+    reopenReason: text("reopen_reason"),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+  },
+  (table) => [
+    index("shifts_org_location_idx").on(table.orgId, table.locationId),
+    index("shifts_user_status_idx").on(table.userId, table.status),
+  ],
+);
+
+export type Shift = typeof shifts.$inferSelect;
+export type InsertShift = typeof shifts.$inferInsert;
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
   orgId: uuid("org_id").references(() => organizations.id),
   customerId: uuid("customer_id").references(() => customers.id),
   locationId: uuid("location_id").references(() => locations.id),
+  shiftId: uuid("shift_id").references(() => shifts.id),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
   channel: varchar("channel", { length: 32 }).notNull().default("pos"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [index("orders_org_id_idx").on(table.orgId)]);
+}, (table) => [
+  index("orders_org_id_idx").on(table.orgId),
+  index("orders_shift_id_idx").on(table.shiftId),
+]);
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
@@ -623,6 +663,69 @@ export const orderItems = pgTable("order_items", {
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+// Refunds (F3)
+export const REFUND_REASONS = [
+  "damaged",
+  "wrong_item",
+  "customer_changed_mind",
+  "defect",
+  "other",
+] as const;
+export type RefundReason = (typeof REFUND_REASONS)[number];
+
+export const REFUND_METHODS = ["original", "cash", "store_credit"] as const;
+export type RefundMethod = (typeof REFUND_METHODS)[number];
+
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: varchar("cashier_id", { length: 255 }).notNull(),
+    shiftId: uuid("shift_id").references(() => shifts.id),
+    reason: varchar("reason", { length: 32 }).notNull(),
+    notes: text("notes"),
+    refundMethod: varchar("refund_method", { length: 16 }).notNull(),
+    total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("refunds_order_id_idx").on(table.orderId),
+    index("refunds_org_id_idx").on(table.orgId),
+    index("refunds_shift_id_idx").on(table.shiftId),
+  ],
+);
+
+export type Refund = typeof refunds.$inferSelect;
+export type InsertRefund = typeof refunds.$inferInsert;
+
+export const refundLines = pgTable(
+  "refund_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    refundId: uuid("refund_id")
+      .references(() => refunds.id, { onDelete: "cascade" })
+      .notNull(),
+    orderLineId: uuid("order_line_id")
+      .references(() => orderItems.id)
+      .notNull(),
+    qty: integer("qty").notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  },
+  (table) => [
+    index("refund_lines_refund_id_idx").on(table.refundId),
+    index("refund_lines_order_line_id_idx").on(table.orderLineId),
+  ],
+);
+
+export type RefundLine = typeof refundLines.$inferSelect;
+export type InsertRefundLine = typeof refundLines.$inferInsert;
 
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
@@ -714,7 +817,29 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.customerId],
     references: [customers.id],
   }),
+  shift: one(shifts, {
+    fields: [orders.shiftId],
+    references: [shifts.id],
+  }),
   items: many(orderItems),
+  refunds: many(refunds),
+}));
+
+export const shiftsRelations = relations(shifts, ({ one, many }) => ({
+  location: one(locations, {
+    fields: [shifts.locationId],
+    references: [locations.id],
+  }),
+  orders: many(orders),
+  refunds: many(refunds),
+}));
+
+export const refundsRelations = relations(refunds, ({ one, many }) => ({
+  order: one(orders, {
+    fields: [refunds.orderId],
+    references: [orders.id],
+  }),
+  lines: many(refundLines),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({

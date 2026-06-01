@@ -5,6 +5,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { requireOpenShift } from "../middleware/requireOpenShift";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -16,7 +17,7 @@ import {
 } from "@shared/schema";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
+  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId: string | null; role: string };
       if (!ctx?.orgId) {
@@ -31,6 +32,14 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
 
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
+
+        const shiftId = req.shift?.id;
+        if (shiftId) {
+          await tx
+            .update(orders)
+            .set({ shift_id: shiftId })
+            .where(eq(orders.id, result.orderId));
+        }
 
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
@@ -108,7 +117,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
       const { orders, order_items, products, customers } = await import('../../apps/server/src/db/schema');
+      const { refunds: refundsTable, refundLines, users } = await import('@shared/schema');
       const { eq, and } = await import('drizzle-orm');
+      const mainDb = (await import('../db')).db;
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       const [order] = await db.select().from(orders).where(orderCond);
       if (!order) {
@@ -132,6 +143,46 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         customer = c;
       }
       
+      const refundRows = await mainDb
+        .select()
+        .from(refundsTable)
+        .where(eq(refundsTable.orderId, req.params.id));
+
+      const refundsWithMeta = await Promise.all(
+        refundRows.map(async (refund) => {
+          const lines = await mainDb
+            .select()
+            .from(refundLines)
+            .where(eq(refundLines.refundId, refund.id));
+          let cashierName = refund.cashierId;
+          const [cashier] = await mainDb
+            .select({ firstName: users.firstName, lastName: users.lastName })
+            .from(users)
+            .where(eq(users.id, refund.cashierId))
+            .limit(1);
+          if (cashier) {
+            cashierName =
+              [cashier.firstName, cashier.lastName].filter(Boolean).join(" ").trim() ||
+              refund.cashierId;
+          }
+          return {
+            id: refund.id,
+            total: refund.total,
+            reason: refund.reason,
+            refundMethod: refund.refundMethod,
+            notes: refund.notes,
+            createdAt: refund.createdAt,
+            cashierName,
+            lines,
+          };
+        }),
+      );
+
+      const refundedTotal = refundsWithMeta.reduce(
+        (sum, r) => sum + parseFloat(String(r.total)),
+        0,
+      );
+
       res.json({
         id: order.id,
         customerId: order.customer_id,
@@ -140,6 +191,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         paymentMethod: order.payment_method,
         status: order.status,
         createdAt: order.created_at,
+        refundedTotal,
+        refunds: refundsWithMeta,
         items: items.map(item => ({
           id: item.id,
           productId: item.productId,

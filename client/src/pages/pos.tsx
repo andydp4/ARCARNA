@@ -14,7 +14,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock } from "lucide-react";
+import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
+import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -94,6 +96,33 @@ export default function POS() {
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [emailReceipt, setEmailReceipt] = useState(false);
+  const [shiftId, setShiftId] = useState<string | null>(() => getStoredShiftId());
+  const [shiftOpenModal, setShiftOpenModal] = useState(false);
+  const [shiftCloseOpen, setShiftCloseOpen] = useState(false);
+
+  const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
+    shift: { id: string; status: string } | null;
+  }>({
+    queryKey: ["/api/shifts/current"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/shifts/current", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load shift");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    const serverShift = currentShiftData?.shift;
+    if (serverShift?.id) {
+      setShiftId(serverShift.id);
+      setStoredShiftId(serverShift.id);
+      setShiftOpenModal(false);
+    } else if (!shiftLoading && currentShiftData && !serverShift) {
+      setShiftId(null);
+      setStoredShiftId(null);
+      setShiftOpenModal(true);
+    }
+  }, [currentShiftData, shiftLoading]);
 
   useEffect(() => {
     if (selectedCustomer?.email && selectedCustomer.receiptEmailOptIn !== false) {
@@ -209,6 +238,9 @@ export default function POS() {
         
         if (!response.ok) {
           const text = await response.text() || response.statusText;
+          if (response.status === 409 && text.includes("SHIFT_REQUIRED")) {
+            setShiftOpenModal(true);
+          }
           throw new Error(`${response.status}: ${text}`);
         }
         
@@ -520,14 +552,26 @@ export default function POS() {
               <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Point of sale</h1>
               <p className="mt-1 max-w-xl text-sm text-muted-foreground">Search products, build the cart, then check out.</p>
             </div>
-            {!isMobile && (
-              <Button asChild variant="outline" className="min-h-[44px] shrink-0" data-testid="link-dashboard">
-                <Link href="/">
-                  <Package className="mr-2 h-4 w-4" />
-                  Dashboard
-                </Link>
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {shiftId && (
+                <Button
+                  variant="outline"
+                  className="min-h-[44px] shrink-0"
+                  onClick={() => setShiftCloseOpen(true)}
+                >
+                  <Clock className="mr-2 h-4 w-4" />
+                  Close shift
+                </Button>
+              )}
+              {!isMobile && (
+                <Button asChild variant="outline" className="min-h-[44px] shrink-0" data-testid="link-dashboard">
+                  <Link href="/">
+                    <Package className="mr-2 h-4 w-4" />
+                    Dashboard
+                  </Link>
+                </Button>
+              )}
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -854,6 +898,26 @@ export default function POS() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ShiftOpenModal
+        open={shiftOpenModal}
+        onShiftOpened={(id) => {
+          setShiftId(id);
+          setShiftOpenModal(false);
+        }}
+      />
+      {shiftId && (
+        <ShiftCloseWizard
+          open={shiftCloseOpen}
+          shiftId={shiftId}
+          onClosed={() => {
+            setShiftCloseOpen(false);
+            setShiftId(null);
+            setShiftOpenModal(true);
+          }}
+          onCancel={() => setShiftCloseOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -40,6 +40,7 @@ export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   org_id: uuid('org_id').references(() => organizations.id),
   location_id: uuid('location_id'),
+  shift_id: uuid('shift_id'),
   customer_id: uuid('customer_id').references(()=>customers.id),
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),

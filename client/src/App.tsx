@@ -26,6 +26,8 @@ import ReceiptSettingsPage from "@/pages/settings/receipts";
 import TickList from "@/pages/tick-list";
 import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
+import OrderRefundPage from "@/pages/orders/refund";
+import ShiftsPage from "@/pages/shifts";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
@@ -61,6 +63,8 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/pos" component={POS} />
           <Route path="/orders" component={Orders} />
+          <Route path="/orders/:id/refund" component={OrderRefundPage} />
+          <Route path="/shifts" component={ShiftsPage} />
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
           <Route path="/insights" component={Insights} />
