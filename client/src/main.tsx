@@ -1,8 +1,11 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { syncService } from "./lib/sync-service";
 import { APP_BASE } from "./lib/appPaths";
+import { initSentry } from "./lib/sentry";
+import { syncService } from "./lib/sync-service";
+
+initSentry();
 
 async function registerServiceWorker(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;

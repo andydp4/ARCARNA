@@ -36,7 +36,7 @@ Credential rotation (Clerk, `DATABASE_URL`, `SESSION_SECRET`, R2, webhooks, API 
 3. Run SQL migrations including `migrations/011_admin_audit_logs.sql` and `migrations/014_admin_audit_retention.sql` before relying on audit UI retention metadata.
 4. Review **Audit log** after access changes or incidents ([ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)).
 5. API keys / channel webhooks (C-phase): rotate keys on compromise; scope keys to minimum (`scopes`); monitor webhook delivery failures (future dashboards). See [SECRET_ROTATION_RUNBOOK.md](./SECRET_ROTATION_RUNBOOK.md).
-6. **Observability:** Ship `SENTRY_DSN` in production for server exceptions; scrape `GET /api/health/metrics` (public — no auth; suitable for uptime monitors). Fields when `DATABASE_URL` is set: `outboxPending`, `outboxDispatched`, `deadLetterCount`, `oldestPendingSeconds`, `jobQueued`. Suggested alert thresholds (tune per environment): `outboxPending` > 100, `oldestPendingSeconds` > 300, `deadLetterCount` increasing, `jobQueued` > 500.
+6. **Observability:** Optional Sentry — no-op when DSN unset. **Server:** `SENTRY_DSN`, optional `SENTRY_TRACES_SAMPLE_RATE` (runtime). **Client:** `VITE_SENTRY_DSN`, optional `VITE_SENTRY_TRACES_SAMPLE_RATE` (baked in at `npm run build`). Scrape `GET /api/health/metrics` (public — no auth; suitable for uptime monitors). Fields when `DATABASE_URL` is set: `outboxPending`, `outboxDispatched`, `deadLetterCount`, `oldestPendingSeconds`, `jobQueued`. Suggested alert thresholds (tune per environment): `outboxPending` > 100, `oldestPendingSeconds` > 300, `deadLetterCount` increasing, `jobQueued` > 500.
 
 ## Related files
 
