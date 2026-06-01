@@ -1,19 +1,21 @@
 import type { Express, RequestHandler } from "express";
+import { format } from "date-fns";
 import { storage } from "../storage";
-import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
-import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
-import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
-import type { Role } from "@shared/schema";
-import { recordAdminAudit } from "../adminAudit";
-import {
-  insertLoyaltyTierSchema,
-  insertPromotionSchema,
-  insertOrderSchema,
-  insertCustomerSchema,
-  insertProductSchema,
-  insertOverheadExpenseSchema,
-  insertOrderExpenseSchema,
-} from "@shared/schema";
+import type { DailyKpiResponse } from "@shared/analytics/kpi";
+import { getDailyKpi } from "../services/dailyKpi";
+
+type KpiCacheEntry = { payload: DailyKpiResponse; expiresAt: number };
+
+const KPI_CACHE_TTL_MS = 60_000;
+const kpiCache = new Map<string, KpiCacheEntry>();
+
+function kpiCacheKey(orgId: string, date: string): string {
+  return `${orgId}:${date}`;
+}
+
+function isValidDateParam(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
 
 export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
@@ -62,6 +64,30 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     } catch (error) {
       console.error("Error fetching monthly summary:", error);
       res.status(500).json({ message: "Failed to fetch monthly summary" });
+    }
+  });
+
+  app.get("/api/analytics/kpi/daily", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const rawDate = typeof req.query.date === "string" ? req.query.date : "";
+      const date = rawDate && isValidDateParam(rawDate)
+        ? rawDate
+        : format(new Date(), "yyyy-MM-dd");
+
+      const cacheKey = kpiCacheKey(ctx.orgId, date);
+      const hit = kpiCache.get(cacheKey);
+      if (hit && hit.expiresAt > Date.now()) {
+        res.json(hit.payload);
+        return;
+      }
+
+      const payload = await getDailyKpi(ctx.orgId, date);
+      kpiCache.set(cacheKey, { payload, expiresAt: Date.now() + KPI_CACHE_TTL_MS });
+      res.json(payload);
+    } catch (error) {
+      console.error("Error fetching daily KPI:", error);
+      res.status(500).json({ message: "Failed to fetch daily KPI" });
     }
   });
 

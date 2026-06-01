@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Link } from "wouter";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
 import { BusinessHealthSection } from "@/components/BusinessHealthSection";
+import { DailyKpiCard } from "@/components/dashboard/DailyKpiCard";
 import { ActivityTimeline } from "@/components/activity-timeline";
 
 export default function Home() {
@@ -41,6 +42,7 @@ export default function Home() {
     <div className="w-full">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <DailyKpiCard />
         <BusinessHealthSection />
 
         {/* Quick Actions Grid */}

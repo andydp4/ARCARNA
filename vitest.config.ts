@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       "server/__tests__/**/*.test.ts",
       "client/src/**/__tests__/**/*.test.ts",
+      "shared/**/*.spec.ts",
     ],
     exclude: process.env.DATABASE_URL
       ? []
