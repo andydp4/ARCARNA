@@ -15,6 +15,8 @@ import { Award, Crown, Star, Plus, Edit2, Trash2, Users, TrendingUp, Gift } from
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLoyaltyTierSchema } from "@shared/schema";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 // Extend the shared schema with form-specific validation
 const tierFormSchema = insertLoyaltyTierSchema.extend({
@@ -210,7 +212,17 @@ export default function LoyaltyPage() {
 
           {/* Tier List */}
           {tiersLoading ? (
-            <div>Loading tiers...</div>
+            <Skeleton count={3} variant="card" />
+          ) : (tiers as any[]).length === 0 ? (
+            <EmptyState
+              icon={Crown}
+              title="No loyalty tiers yet"
+              body="Define tiers with point thresholds and rewards so customers can level up."
+              cta={{
+                label: "Add tier",
+                onClick: () => openTierDialog(),
+              }}
+            />
           ) : (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {tierStats
@@ -284,8 +296,15 @@ export default function LoyaltyPage() {
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
-          {customersLoading ? (
-            <div>Loading customers...</div>
+          {customersLoading || tiersLoading ? (
+            <Skeleton count={6} variant="row" />
+          ) : (customers as any[]).filter((c: any) => c.loyaltyPoints > 0).length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No loyalty members yet"
+              body="Customers earn points when they shop. Members with points will appear here."
+              cta={{ label: "View customers", href: "/customers" }}
+            />
           ) : (
             <div className="rounded-md border">
               <table className="w-full">

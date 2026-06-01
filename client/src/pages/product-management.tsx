@@ -37,6 +37,8 @@ import {
 } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { Skeleton } from '@/components/Skeleton'
+import { EmptyState } from '@/components/EmptyState'
 import {
   Plus,
   Edit,
@@ -330,14 +332,6 @@ export default function ProductManagement() {
       return { status: 'Medium Stock', variant: 'secondary' as const }
     }
     return { status: 'In Stock', variant: 'outline' as const }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
   }
 
   return (
@@ -693,11 +687,31 @@ export default function ProductManagement() {
             <CardDescription className="text-xs sm:text-sm">Manage your complete product inventory</CardDescription>
           </CardHeader>
           <CardContent>
-            {filteredProducts.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">No products found</div>
-            )}
-
-            {filteredProducts.length > 0 && (
+            {isLoading ? (
+              <Skeleton count={6} variant="row" />
+            ) : filteredProducts.length === 0 ? (
+              products.length === 0 ? (
+                <EmptyState
+                  icon={Package}
+                  title="No products yet"
+                  body="Add your first product or import a CSV to populate your catalog."
+                  cta={{
+                    label: "Add product",
+                    onClick: () => setShowAddDialog(true),
+                  }}
+                  secondary={{
+                    label: "Import CSV",
+                    onClick: () => fileInputRef.current?.click(),
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  icon={Search}
+                  title="No products match your search"
+                  body="Try another name, SKU, or barcode—or clear the search field."
+                />
+              )
+            ) : (
               <div>
                 {/* Mobile Card View */}
                 <div className="block lg:hidden space-y-3">

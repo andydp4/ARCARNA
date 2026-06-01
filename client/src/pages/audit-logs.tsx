@@ -4,7 +4,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, ScrollText } from "lucide-react";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { resolveApiUrl } from "@/lib/appPaths";
@@ -82,13 +84,14 @@ export default function AuditLogsPage() {
           <CardDescription>Latest 200 entries (newest first)</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {error && (
             <p className="text-sm text-destructive">
               {(error as Error).message || "Failed to load audit log"}
             </p>
           )}
-          {!isLoading && !error && (
+          {isLoading ? (
+            <Skeleton count={8} variant="row" />
+          ) : !error && (
             <ScrollArea className="h-[min(70vh,640px)] w-full rounded-md border">
               <Table>
                 <TableHeader>
@@ -103,8 +106,12 @@ export default function AuditLogsPage() {
                 <TableBody>
                   {data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground text-sm">
-                        No entries yet. Approve a user or create an organization to generate audit events.
+                      <TableCell colSpan={5} className="py-8">
+                        <EmptyState
+                          icon={ScrollText}
+                          title="No audit events yet"
+                          body="High-privilege actions such as user approvals and org creation will appear here."
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (

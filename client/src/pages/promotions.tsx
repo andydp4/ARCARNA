@@ -17,6 +17,8 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { insertPromotionSchema, type Promotion } from "@shared/schema";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 // Extend the shared schema with form-specific validation
 const promoFormSchema = insertPromotionSchema.extend({
@@ -259,7 +261,7 @@ export default function PromotionsPage() {
 
       {/* Promotions List */}
       {isLoading ? (
-        <div>Loading promotions...</div>
+        <Skeleton count={4} variant="card" />
       ) : (
         <div className="grid gap-4">
           {filteredPromotions.map((promo: Promotion) => {
@@ -346,11 +348,27 @@ export default function PromotionsPage() {
             );
           })}
           {filteredPromotions.length === 0 && (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                No promotional campaigns found
-              </CardContent>
-            </Card>
+            promotions.length === 0 ? (
+              <EmptyState
+                icon={Gift}
+                title="No campaigns yet"
+                body="Create a promotional campaign to offer discounts, BOGO deals, or bonus loyalty points."
+                cta={{
+                  label: "New campaign",
+                  onClick: () => openPromoDialog(),
+                }}
+              />
+            ) : (
+              <EmptyState
+                icon={Tag}
+                title="No campaigns in this view"
+                body="Try another filter tab or create a new campaign."
+                cta={{
+                  label: "New campaign",
+                  onClick: () => openPromoDialog(),
+                }}
+              />
+            )
           )}
         </div>
       )}

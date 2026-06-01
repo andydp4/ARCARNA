@@ -34,6 +34,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Location {
   id: string;
@@ -566,10 +568,24 @@ export default function Locations() {
           <CardContent>
             {/* Mobile Card View */}
             {isLoading ? (
-              <div className="block lg:hidden text-center py-8">Loading locations...</div>
+              <div className="block lg:hidden py-4">
+                <Skeleton count={4} variant="card" />
+              </div>
             ) : locations.length === 0 ? (
-              <div className="block lg:hidden text-center py-8">
-                No locations found. Add your first location to get started.
+              <div className="block lg:hidden py-4">
+                <EmptyState
+                  icon={Store}
+                  title="No locations yet"
+                  body="Add your first store location to track stock and sales by site."
+                  cta={{
+                    label: "Add location",
+                    onClick: () => {
+                      setEditingLocation(null);
+                      form.reset();
+                      setDialogOpen(true);
+                    },
+                  }}
+                />
               </div>
             ) : (
               <div className="block lg:hidden space-y-4">
@@ -698,12 +714,26 @@ export default function Locations() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">Loading locations...</TableCell>
+                      <TableCell colSpan={7} className="py-6">
+                        <Skeleton count={4} variant="row" />
+                      </TableCell>
                     </TableRow>
                   ) : locations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
-                        No locations found. Add your first location to get started.
+                      <TableCell colSpan={7} className="py-6">
+                        <EmptyState
+                          icon={Store}
+                          title="No locations yet"
+                          body="Add your first store location to track stock and sales by site."
+                          cta={{
+                            label: "Add location",
+                            onClick: () => {
+                              setEditingLocation(null);
+                              form.reset();
+                              setDialogOpen(true);
+                            },
+                          }}
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -891,9 +921,7 @@ export default function Locations() {
           </DialogHeader>
           
           {isLoadingStock ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
+            <Skeleton count={5} variant="row" className="py-4" />
           ) : stockData ? (
             <div className="space-y-4">
               {/* Stock Summary */}

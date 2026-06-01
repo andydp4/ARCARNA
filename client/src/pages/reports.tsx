@@ -41,6 +41,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { ReportsPageSkeleton } from "@/components/reporting-skeletons";
 
 interface ReportData {
   revenue: {
@@ -216,6 +217,10 @@ export default function Reports() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isLoading && !reportData ? (
+          <ReportsPageSkeleton />
+        ) : (
+        <>
         {/* Date Range Controls */}
         <Card className="mb-6">
           <CardHeader>
@@ -747,6 +752,8 @@ export default function Reports() {
             </Card>
           </TabsContent>
         </Tabs>
+        </>
+        )}
       </main>
     </div>
   );

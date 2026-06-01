@@ -33,7 +33,9 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp } from 'lucide-react'
+import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp, Users } from 'lucide-react'
+import { Skeleton } from '@/components/Skeleton'
+import { EmptyState } from '@/components/EmptyState'
 import { ContactsImport } from '@/components/import/ContactsImport'
 import { UnsavedChangesAlert } from '@/components/UnsavedChangesAlert'
 
@@ -293,14 +295,6 @@ export default function Customers() {
       case 'Bronze': return 'bg-amber-600'
       default: return 'bg-blue-500'
     }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
   }
 
   return (
@@ -567,11 +561,31 @@ export default function Customers() {
             <CardDescription className="text-xs sm:text-sm">View and manage all customer records</CardDescription>
           </CardHeader>
           <CardContent>
-            {filteredCustomers.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">No customers found</div>
-            )}
-
-            {filteredCustomers.length > 0 && (
+            {isLoading ? (
+              <Skeleton count={6} variant="row" />
+            ) : filteredCustomers.length === 0 ? (
+              customers.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="No customers yet"
+                  body="Import contacts from a file or add customers one at a time to build your database."
+                  cta={{
+                    label: "Import from Contacts",
+                    onClick: () => setShowContactsImport(true),
+                  }}
+                  secondary={{
+                    label: "Add manually",
+                    onClick: () => setShowAddDialog(true),
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  icon={Search}
+                  title="No customers match your search"
+                  body="Try a different name, email, or phone number—or clear the search field."
+                />
+              )
+            ) : (
               <div>
                 <div className="block lg:hidden space-y-3">
                   {filteredCustomers.map((customer: any) => (

@@ -20,6 +20,8 @@ import { TransfersTab } from "@/components/inventory/TransfersTab";
 import { ReplenishmentTab } from "@/components/inventory/ReplenishmentTab";
 import { ReceivingTab } from "@/components/inventory/ReceivingTab";
 import { Sparkles, ArrowRightLeft, PackageSearch, PackageCheck } from "lucide-react";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Product {
   id: string;
@@ -350,9 +352,22 @@ export default function Inventory() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-8">Loading inventory...</div>
+              <Skeleton count={6} variant="row" />
             ) : filteredProducts.length === 0 ? (
-              <div className="text-center py-8">No products found</div>
+              products.length === 0 ? (
+                <EmptyState
+                  icon={Package}
+                  title="No inventory items yet"
+                  body="Products you add in Product Management will appear here for stock tracking."
+                  cta={{ label: "Go to products", href: "/products" }}
+                />
+              ) : (
+                <EmptyState
+                  icon={Search}
+                  title="No products match your search"
+                  body="Try another product name, SKU, or barcode—or clear the search field."
+                />
+              )
             ) : (
               <>
                 {/* Mobile Card View */}

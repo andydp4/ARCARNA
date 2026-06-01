@@ -13,6 +13,8 @@ import { RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle, RotateCcw, Eye, 
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { Skeleton } from '@/components/Skeleton';
+import { EmptyState } from '@/components/EmptyState';
 
 type WorkerLog = {
   logId: string;
@@ -325,13 +327,13 @@ export default function WorkerLogsPage() {
             </CardHeader>
             <CardContent>
               {logsLoading ? (
-                <div className="flex justify-center py-8">
-                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
+                <Skeleton count={6} variant="row" className="py-4" />
               ) : logs.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No logs found. Events will appear here when orders are processed.
-                </div>
+                <EmptyState
+                  icon={Activity}
+                  title="No worker logs yet"
+                  body="Execution logs appear here when orders and background jobs are processed."
+                />
               ) : (
                 <ScrollArea className="h-[500px]">
                   <Table>
@@ -497,13 +499,13 @@ export default function WorkerLogsPage() {
               </div>
 
               {jobsLoading ? (
-                <div className="flex justify-center py-8">
-                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
+                <Skeleton count={6} variant="row" className="py-4" />
               ) : jobs.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>No jobs found matching filters</p>
-                </div>
+                <EmptyState
+                  icon={Clock}
+                  title="No jobs match these filters"
+                  body="Adjust worker or status filters, or refresh to load the latest queue."
+                />
               ) : (
                 <ScrollArea className="h-[500px]">
                   <Table>
@@ -564,14 +566,13 @@ export default function WorkerLogsPage() {
             </CardHeader>
             <CardContent>
               {deadLettersLoading ? (
-                <div className="flex justify-center py-8">
-                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
+                <Skeleton count={5} variant="row" className="py-4" />
               ) : deadLetters.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
-                  <p>No dead letters. All jobs are processing successfully!</p>
-                </div>
+                <EmptyState
+                  icon={CheckCircle}
+                  title="No dead letters"
+                  body="All background jobs are processing successfully—nothing needs manual recovery."
+                />
               ) : (
                 <ScrollArea className="h-[500px]">
                   <Table>
