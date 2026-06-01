@@ -1,0 +1,88 @@
+/**
+ * Liquid Metal Industrial — design tokens (Phase E1).
+ * Scoped via `.liquid-metal` so flag-off pages stay unchanged.
+ * Spec: docs/ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md
+ */
+
+.liquid-metal {
+  /* Base surfaces */
+  --lm-graphite: hsl(220, 10%, 7%);
+  --lm-gunmetal: hsl(215, 12%, 13%);
+  --lm-charcoal: hsl(218, 9%, 17%);
+  --lm-smoke-chrome: hsl(215, 10%, 26%);
+
+  /* Metallic highlights */
+  --lm-brushed: hsl(215, 8%, 38%);
+  --lm-brushed-highlight: hsl(210, 12%, 68%);
+  --lm-titanium: hsl(220, 6%, 52%);
+  --lm-stainless: hsl(210, 10%, 78%);
+
+  /* Text */
+  --lm-warm-white: hsl(210, 18%, 95%);
+  --lm-muted: hsl(215, 10%, 58%);
+
+  /* Status (sparse use) */
+  --lm-amber: hsl(38, 92%, 50%);
+  --lm-emerald: hsl(158, 64%, 42%);
+  --lm-crimson: hsl(0, 72%, 51%);
+  --lm-electric-blue: hsl(210, 78%, 52%);
+
+  /* Machined surface treatment */
+  --lm-surface-gradient: linear-gradient(
+    155deg,
+    hsl(215, 12%, 16%) 0%,
+    hsl(220, 10%, 10%) 48%,
+    hsl(218, 11%, 13%) 100%
+  );
+  --lm-edge-highlight: hsl(210, 15%, 78% / 0.14);
+  --lm-inner-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.05),
+    inset 0 -1px 0 hsl(0, 0% / 0.28);
+  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06),
+    0 8px 32px hsl(0, 0% / 0.45);
+
+  color: var(--lm-warm-white);
+  background-color: var(--lm-graphite);
+}
+
+.liquid-metal .insights-spatial-core :where(.rounded-lg.border) {
+  background: var(--lm-surface-gradient);
+  border-color: var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+  color: var(--lm-warm-white);
+}
+
+.liquid-metal .insights-spatial-core :where(.text-muted-foreground) {
+  color: var(--lm-muted);
+}
+
+.liquid-metal .hull-panel {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-panel-shadow);
+}
+
+.liquid-metal .satellite-panel {
+  background: linear-gradient(
+    160deg,
+    hsl(215, 11%, 15%) 0%,
+    hsl(220, 10%, 11%) 100%
+  );
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .deck-grid-line {
+  stroke: var(--lm-brushed);
+  stroke-opacity: 0.22;
+}
+
+.liquid-metal .deck-node {
+  fill: var(--lm-brushed-highlight);
+  fill-opacity: 0.35;
+}
+
+.liquid-metal .deck-arc {
+  stroke: var(--lm-titanium);
+  stroke-opacity: 0.18;
+  fill: none;
+}

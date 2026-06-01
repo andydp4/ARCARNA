@@ -42,6 +42,8 @@ import {
 import { InsightsPageSkeleton } from "@/components/reporting-skeletons";
 import { ActionLoader } from "@/components/action-loader";
 import { DataTableShell, DataTableScrollRegion } from "@/components/data-table-shell";
+import { SpatialInsightsShell } from "@/components/spatial/SpatialInsightsShell";
+import { useFlag } from "@/hooks/useFlag";
 
 interface ReportData {
   revenue: {
@@ -80,8 +82,17 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function useSpatialInsightsMode(): boolean {
+  const spatialQueryOverride =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("spatial") === "1";
+  const { enabled: spatialFlagEnabled } = useFlag("spatialWorkspace");
+  return spatialFlagEnabled || spatialQueryOverride;
+}
+
 export default function Insights() {
   const { toast } = useToast();
+  const spatialMode = useSpatialInsightsMode();
   const [dateRange, setDateRange] = useState<{
     from: Date;
     to: Date;
@@ -259,40 +270,10 @@ export default function Insights() {
     }
   }, [dateRange, exportFormat, toast]);
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-primary shadow-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-[4.25rem] items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/95 ring-1 ring-white/15">
-                <BarChart3 className="h-5 w-5 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-white sm:text-2xl">Business insights</h1>
-                <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-primary-foreground/70 sm:text-sm sm:line-clamp-1">
-                  Pick a period, explore revenue and operations, then export CSV or PDF when you need to share.
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button asChild variant="ghost" className="min-h-[44px] text-white hover:bg-white/10" data-testid="link-home">
-                <Link href="/">
-                  <Home className="h-4 w-4 sm:mr-2" />
-                  <span className="sr-only sm:not-sr-only">Dashboard</span>
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {reportsInitialLoad ? (
-          <InsightsPageSkeleton />
-        ) : (
-          <>
+  const insightsBody = reportsInitialLoad ? (
+    <InsightsPageSkeleton />
+  ) : (
+    <>
         {/* Date Range Controls */}
         <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
           <CardHeader className="space-y-0 pb-4">
@@ -924,8 +905,52 @@ export default function Insights() {
             </Card>
           </TabsContent>
         </Tabs>
-          </>
-        )}
+    </>
+  );
+
+  if (spatialMode) {
+    return (
+      <SpatialInsightsShell
+        summaryStats={summaryStats}
+        dateFrom={dateRange.from}
+        dateTo={dateRange.to}
+      >
+        {insightsBody}
+      </SpatialInsightsShell>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-primary shadow-md">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-[4.25rem] items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/95 ring-1 ring-white/15">
+                <BarChart3 className="h-5 w-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-white sm:text-2xl">Business insights</h1>
+                <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-primary-foreground/70 sm:text-sm sm:line-clamp-1">
+                  Pick a period, explore revenue and operations, then export CSV or PDF when you need to share.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button asChild variant="ghost" className="min-h-[44px] text-white hover:bg-white/10" data-testid="link-home">
+                <Link href="/">
+                  <Home className="h-4 w-4 sm:mr-2" />
+                  <span className="sr-only sm:not-sr-only">Dashboard</span>
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        {insightsBody}
       </main>
     </div>
   );
