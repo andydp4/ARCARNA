@@ -60,4 +60,5 @@ Pick one primary identity when staffing grows; architecture does not block any o
 
 - [ARCHITECTURAL_PRINCIPLES.md](./ARCHITECTURAL_PRINCIPLES.md)
 - [SCHEMA_EVOLUTION.md](./SCHEMA_EVOLUTION.md)
+- [STORAGE_STRATEGY.md](./STORAGE_STRATEGY.md) — R2/S3 layout, org prefixes, backups vs user uploads (H4)
 - [../ARCHITECTURE.md](../ARCHITECTURE.md)

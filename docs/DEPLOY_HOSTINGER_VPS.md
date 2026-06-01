@@ -314,4 +314,6 @@ See also `deploy/nginx-viger.cloud.conf.example` in the repo.
 | `migration:sanity` fails | Run missing migration files in order |
 | 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos` |
 
+For structured triage (health, PM2, nginx, auth loops, post-incident audit), use **[ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)**.
+
 Send support: `pm2 logs` (last 50 lines), `npm run migration:sanity` output, redacted `.env` variable **names** only.
