@@ -1,11 +1,10 @@
+import "./instrument";
 import { createRoot } from "react-dom/client";
+import { Sentry } from "./instrument";
 import App from "./App";
 import "./index.css";
 import { APP_BASE } from "./lib/appPaths";
-import { initSentry } from "./lib/sentry";
 import { syncService } from "./lib/sync-service";
-
-initSentry();
 
 async function registerServiceWorker(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
@@ -49,4 +48,8 @@ window.addEventListener("load", () => {
   void registerServiceWorker();
 });
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <Sentry.ErrorBoundary fallback={<p className="p-6 text-center text-sm">Something went wrong. Refresh the page.</p>} showDialog>
+    <App />
+  </Sentry.ErrorBoundary>,
+);

@@ -1,16 +1,5 @@
-import * as Sentry from "@sentry/react";
+/** @deprecated Import ../instrument.ts first in main.tsx; re-export for existing imports. */
+export { Sentry } from "../instrument";
 
-/** Initialize browser error reporting when VITE_SENTRY_DSN is set at build time. */
-export function initSentry(): void {
-  const dsn = (import.meta.env.VITE_SENTRY_DSN as string | undefined)?.trim();
-  if (!dsn) return;
-
-  Sentry.init({
-    dsn,
-    environment: import.meta.env.MODE,
-    tracesSampleRate: Math.min(
-      1,
-      Math.max(0, Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0)),
-    ),
-  });
-}
+/** No-op — init runs when instrument.ts is imported. */
+export function initSentry(): void {}

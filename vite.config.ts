@@ -1,12 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import path from "path";
 
 const appBase = (process.env.VITE_BASE_PATH || "/midnight").replace(/\/?$/, "/");
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
 
 export default defineConfig({
   base: appBase,
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(sentryAuthToken
+      ? [
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: sentryAuthToken,
+          }),
+        ]
+      : []),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -18,6 +31,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    sourcemap: sentryAuthToken ? "hidden" : false,
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
