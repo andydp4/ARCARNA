@@ -1,5 +1,7 @@
 # Execution Briefs — Post-Stabilise
 
+**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Next work:** [`WAVE1_NEXT.md`](./WAVE1_NEXT.md)
+
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
 Source plan: [`.cursor/plans/midnightepos_architecture_review_9a006dcf.plan.md`](../../.cursor/plans/midnightepos_architecture_review_9a006dcf.plan.md) — sections 15 and 16. These briefs expand the compact entries in section 16 into the same Goal / Touch / Steps / Out of scope / DoD / Verification / PR-title format used for S1–S8.
