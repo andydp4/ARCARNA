@@ -35,6 +35,7 @@ import { registerTickCustomerRoutes } from "./routes/tickCustomers";
 import { registerSettingsOrgRoutes } from "./routes/settingsOrg";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerWorkerAdminRoutes } from "./routes/workers";
+import { registerReceiptRoutes } from "./routes/receipts";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
@@ -71,6 +72,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerInvoiceRoutes(app, scoped);
   registerTickCustomerRoutes(app, scoped);
   registerSettingsOrgRoutes(app, scoped);
+  registerReceiptRoutes(app, scoped);
   registerFeatureFlagRoutes(app, scoped);
 
   registerAdminRoutes(app);

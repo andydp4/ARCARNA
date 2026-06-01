@@ -35,12 +35,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
 
+        const sendEmailReceipt = body.sendEmailReceipt === true;
         const eventId = await publishEventTx(tx, 'OrderCreated', result.orderId, {
           order: {
             orderId: result.orderId,
             status: createdOrder?.status || 'pending',
             customerId: createdOrder?.customer_id,
             total: parseFloat(createdOrder?.total || '0'),
+            paymentMethod: createdOrder?.payment_method,
+            sendEmailReceipt,
             items: items.map((item: { id: string; product_id: string; quantity: number; unit_price: string | null; total_price: string | null }) => ({
               lineId: item.id,
               productId: item.product_id,
@@ -49,6 +52,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               lineTotal: parseFloat(item.total_price || '0'),
             })),
           },
+          sendEmailReceipt,
         }, { source: 'api-orders' });
 
         return { result, eventId, createdOrder, items };

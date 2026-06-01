@@ -683,6 +683,7 @@ export class DatabaseStorage implements IStorage {
       "name", "tradingName", "email", "phone", "address", "vatNumber", "companyNumber",
       "currency", "timezone", "businessType", "logoUrl", "invoiceTemplate", "invoicePrefix",
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
+      "receiptTemplateHtml",
       "accentStyle", "businessColors", "setupWizardState",
     ];
     for (const k of keys) {

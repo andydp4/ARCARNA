@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PosProductCard } from "@/components/pos-product-card";
@@ -30,6 +31,7 @@ interface Customer {
   name: string;
   phone?: string | null;
   email?: string | null;
+  receiptEmailOptIn?: boolean;
   category: string;
   loyaltyPoints: number;
 }
@@ -91,6 +93,15 @@ export default function POS() {
   const [expenseCategory, setExpenseCategory] = useState("shipping");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
+  const [emailReceipt, setEmailReceipt] = useState(false);
+
+  useEffect(() => {
+    if (selectedCustomer?.email && selectedCustomer.receiptEmailOptIn !== false) {
+      setEmailReceipt(true);
+    } else {
+      setEmailReceipt(false);
+    }
+  }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.receiptEmailOptIn]);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -448,6 +459,7 @@ export default function POS() {
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
     }
+    orderData.sendEmailReceipt = emailReceipt && !!selectedCustomer?.email;
 
     placeOrderMutation.mutate(orderData);
   };
@@ -773,6 +785,30 @@ export default function POS() {
                 )}
               </CardContent>
             </Card>
+
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Checkbox
+                id="email-receipt"
+                checked={emailReceipt}
+                disabled={!selectedCustomer?.email}
+                onCheckedChange={(v) => setEmailReceipt(v === true)}
+                data-testid="checkbox-email-receipt"
+              />
+              <div className="space-y-1">
+                <label
+                  htmlFor="email-receipt"
+                  className="text-sm font-medium leading-none flex items-center gap-2 cursor-pointer"
+                >
+                  <Mail className="h-4 w-4" />
+                  Email receipt
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {selectedCustomer?.email
+                    ? `Send to ${selectedCustomer.email}`
+                    : "Select a customer with an email address"}
+                </p>
+              </div>
+            </div>
 
             <Card>
               <CardContent className="p-4">

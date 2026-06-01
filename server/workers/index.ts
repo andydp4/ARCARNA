@@ -26,6 +26,7 @@ import { BusinessInsightsWorker } from "./businessInsightsWorker";
 import { FinanceWorker } from "./financeWorker";
 import { ExpensesWorker } from "./expensesWorker";
 import { AutomationWorker } from "./automationWorker";
+import { ReceiptEmailWorker } from "./receiptEmailWorker";
 
 // Worker interface that all workers must implement
 export interface IWorker {
@@ -45,6 +46,7 @@ const WORKER_FACTORIES: Record<WorkerName, () => IWorker> = {
   FinanceWorker: () => new FinanceWorker(),
   ExpensesWorker: () => new ExpensesWorker(),
   AutomationWorker: () => new AutomationWorker(),
+  ReceiptEmailWorker: () => new ReceiptEmailWorker(),
 };
 
 // Worker registry

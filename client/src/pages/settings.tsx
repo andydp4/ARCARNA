@@ -51,6 +51,7 @@ import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
+import { Link } from "wouter";
 import {
   Settings2,
   Store,
@@ -630,6 +631,22 @@ export default function Settings() {
 
           {/* Invoice Settings */}
           <TabsContent value="invoice" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email receipts
+                  </CardTitle>
+                  <CardDescription>
+                    Branded HTML receipts sent after POS checkout via Resend.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/settings/receipts">
+                    <Button variant="outline">Open receipt template editor</Button>
+                  </Link>
+                </CardContent>
+              </Card>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

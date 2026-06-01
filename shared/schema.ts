@@ -53,6 +53,7 @@ export const organizations = pgTable("organizations", {
   defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("20.00"),
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
+  receiptTemplateHtml: text("receipt_template_html"),
   accentStyle: varchar("accent_style", { length: 32 }).default("midnight"),
   businessColors: jsonb("business_colors"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -194,6 +195,7 @@ export const customers = pgTable("customers", {
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  receiptEmailOptIn: boolean("receipt_email_opt_in").default(true).notNull(),
   address: varchar("address", { length: 1024 }),
   category: varchar("category", { length: 64 }).default("Bronze"),
   manualOverrideProtected: integer("manual_override_protected").default(0).notNull(),
@@ -906,6 +908,7 @@ export const WORKER_NAMES = [
   'FinanceWorker',
   'ExpensesWorker',
   'AutomationWorker',
+  'ReceiptEmailWorker',
 ] as const;
 export type WorkerName = typeof WORKER_NAMES[number];
 
@@ -1176,7 +1179,7 @@ export type WorkerResult = {
 
 // Required workers per event type configuration
 export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
-  OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
+  OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'ReceiptEmailWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
   OrderUpdated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
   OrderStatusChanged: ['CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
   PaymentCaptured: ['InvoiceWorker', 'FinanceWorker', 'AutomationWorker'],
