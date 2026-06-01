@@ -118,12 +118,15 @@ npm install
 npm run build
 ```
 
-Apply SQL migrations (required for Clerk — includes `008_auth_subject.sql`):
+Apply SQL migrations (runs `001`–`014` in order, including `admin_audit_logs` and `feature_flags`):
 
 ```bash
 sudo apt install -y postgresql-client   # once, if psql is missing
-npm run db:migrate
+source .env
+bash scripts/apply-migrations-pm2.sh
 ```
+
+Or `npm run db:migrate` if you use that path — but **raw SQL under `migrations/` is not always applied by `db:push` alone**. If `014` failed with `relation "admin_audit_logs" does not exist`, run `bash scripts/apply-migrations-pm2.sh` (014 now creates the table if missing).
 
 Or apply only the Clerk migration:
 
