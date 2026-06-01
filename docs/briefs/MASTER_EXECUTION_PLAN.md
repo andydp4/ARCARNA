@@ -282,10 +282,13 @@ When starting any brief:
 | O3 | Not started | pm2 startup (VPS) |
 | E1 | **Done** | `main` — Liquid Metal + spatial Insights |
 | E2–E3 | Not started | |
-| P10a–e | Not started | **Wave 1** |
-| F1–F7 | Not started | **Wave 1–2** |
+| P10a | **Done** | `main` — Sentry browser SDK |
+| P10b–e | Not started | |
+| F1 | **Done** | `main` — email receipts |
+| F2–F7 | Not started | **Wave 2** |
 | U1–U7 | Not started | After E1 — start U1 |
-| A1–A5 | Not started | **Wave 1** — A1 next |
+| A1 | **Done** | `main` — daily KPI card |
+| A2–A5 | Not started | |
 | M4 drill | Not started | Use O2 |
 
 ---
