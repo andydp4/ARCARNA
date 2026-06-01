@@ -31,6 +31,9 @@ export function registerHealthRoutes(app: Express): void {
         ok: true,
         db: false,
         outboxPending: null,
+        outboxDispatched: null,
+        deadLetterCount: null,
+        oldestPendingSeconds: null,
         jobQueued: null,
         nodeEnv: process.env.NODE_ENV ?? "development",
       });
@@ -38,22 +41,27 @@ export function registerHealthRoutes(app: Express): void {
     try {
       const { db } = await import("../db");
       const { sql } = await import("drizzle-orm");
-      const out = await db.execute(
-        sql`SELECT count(*)::int AS c FROM event_outbox WHERE status = 'pending'`,
-      );
-      const jobs = await db.execute(
-        sql`SELECT count(*)::int AS c FROM job_queue WHERE status = 'queued'`,
-      );
-      const pick = (r: unknown) => {
-        const raw = r as { rows?: { c: number }[] };
-        const rows = raw?.rows ?? [];
-        return rows[0]?.c ?? 0;
-      };
+      const metrics = await db.execute(sql`
+        SELECT
+          (SELECT count(*)::int FROM event_outbox WHERE status = 'pending') AS outbox_pending,
+          (SELECT count(*)::int FROM event_outbox WHERE status = 'dispatched') AS outbox_dispatched,
+          (SELECT count(*)::int FROM dead_letters) AS dead_letter_count,
+          COALESCE(
+            (SELECT EXTRACT(EPOCH FROM (now() - min(created_at)))::int
+             FROM event_outbox WHERE status = 'pending'),
+            0
+          ) AS oldest_pending_seconds,
+          (SELECT count(*)::int FROM job_queue WHERE status = 'queued') AS job_queued
+      `);
+      const row = (metrics as { rows?: Record<string, number>[] }).rows?.[0] ?? {};
       res.json({
         ok: true,
         db: true,
-        outboxPending: pick(out),
-        jobQueued: pick(jobs),
+        outboxPending: row.outbox_pending ?? 0,
+        outboxDispatched: row.outbox_dispatched ?? 0,
+        deadLetterCount: row.dead_letter_count ?? 0,
+        oldestPendingSeconds: row.oldest_pending_seconds ?? 0,
+        jobQueued: row.job_queued ?? 0,
         nodeEnv: process.env.NODE_ENV ?? "development",
       });
     } catch (e) {

@@ -243,6 +243,15 @@ Set in `.env` after HTTPS:
 SESSION_COOKIE_SECURE=1
 ```
 
+### HTTP security headers
+
+| Header / policy | Set by | Notes |
+|-----------------|--------|--------|
+| **HSTS** (`Strict-Transport-Security`) | **Nginx** (HTTPS `server` block) | Add after Certbot: `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;` — see `deploy/nginx-viger.cloud.conf.example`. Verify: `curl -sI https://viger.cloud/midnight/api/health` includes the header. |
+| **Helmet defaults** (e.g. `X-Content-Type-Options`, `X-Frame-Options`) | **Node** (`server/security.ts`, production only) | Applied when `NODE_ENV=production`. |
+| **Content-Security-Policy** | **Off in Node** | Helmet CSP is disabled so Vite inline bootstraps and Clerk sign-in (`/midnight/sign-in` → `accounts.viger.cloud`) work without console violations. Optional strict CSP at nginx for static assets only — not required for API/HTML shell. |
+| **Rate limits** | **Node** (`server/security.ts`) | Global `/api/*`: 800 req / 15 min (prod). `/api/auth/*`: 20 / min. `/api/*/import*`: 5 / min. Health probes (`/api/health`, `/api/auth/runtime`) exempt from global limiter. |
+
 Rebuild/restart if you change `VITE_*` keys:
 
 ```bash

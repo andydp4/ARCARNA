@@ -1,8 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
+import { applySecurityMiddleware, mountTieredApiRateLimits } from "./security";
 import { setupVite, serveStatic, log } from "./vite";
 import { validateProductionEnv } from "./validateProductionEnv";
 import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
@@ -38,14 +37,7 @@ if (isProduction) {
   app.set("trust proxy", 1);
 }
 
-if (isProduction) {
-  app.use(
-    helmet({
-      // Default CSP breaks Vite/React inline bootstraps on self-hosted builds.
-      contentSecurityPolicy: false,
-    }),
-  );
-}
+applySecurityMiddleware(app, isProduction);
 
 declare module 'http' {
   interface IncomingMessage {
@@ -124,22 +116,7 @@ process.on("unhandledRejection", (reason) => {
 
   const midnight = express();
 
-  const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: isProduction ? 800 : 50_000,
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: (req) =>
-      req.path === "/api/health" || req.path === "/api/auth/runtime",
-    message: { message: "Too many requests, please try again later." },
-  });
-
-  midnight.use((req, res, next) => {
-    if (!req.path.startsWith("/api")) {
-      return next();
-    }
-    return apiLimiter(req, res, next);
-  });
+  mountTieredApiRateLimits(midnight, isProduction);
 
   await registerRoutes(midnight);
 
