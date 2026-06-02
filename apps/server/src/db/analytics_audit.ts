@@ -1,51 +1,33 @@
-import { getDb } from './index'
-import * as s from './schema'
 import type { AnalyticsSink, AuditPort, OrderId } from '@midnight/domain'
-import { eq } from 'drizzle-orm'
+import { logApiJson } from '../../../../server/structuredLog'
 
+/**
+ * Legacy domain ports.
+ *
+ * Analytics and audit side effects are owned by the canonical transactional
+ * outbox (`event_outbox`) and `server/workers/*`, which consume `OrderCreated`
+ * etc. (see ARCHITECTURAL_PRINCIPLES.md #4 and server/index.ts).
+ *
+ * These adapters previously wrote to the deprecated `domain_outbox` table and a
+ * non-existent `audit_logs` table, which made every engine-backed write
+ * (orders, customers, products) fail with a 500. They are now observability-only
+ * no-ops so the engine no longer depends on parallel/non-canonical tables
+ * (ARCHITECTURAL_PRINCIPLES.md #2).
+ */
 export const AnalyticsSinkDrizzle: AnalyticsSink = {
-  async recordOrder(orderId: OrderId){
-    // Get order details for the outbox event
-    const order = await getDb()
-      .select()
-      .from(s.orders)
-      .where(eq(s.orders.id, orderId))
-      .limit(1)
-    
-    if (order.length === 0) return
-    
-    const orderItems = await getDb()
-      .select()
-      .from(s.order_items)
-      .where(eq(s.order_items.order_id, orderId))
-    
-    // Write to outbox with complete order data for analytics worker
-    await getDb().insert(s.domain_outbox).values({
-      type: 'OrderPlaced',
-      payload: {
-        orderId,
-        customerId: order[0].customer_id,
-        total: parseFloat(order[0].total || '0'),
-        orderDate: order[0].created_at?.toISOString() || new Date().toISOString(),
-        items: orderItems.map(item => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-          unitPrice: parseFloat(item.unit_price || '0'),
-        }))
-      }
-    })
+  async recordOrder(_orderId: OrderId){
+    // No-op: analytics projection is handled by event_outbox workers.
   },
-  
-  async updateCustomerMetrics(customerId: any){
-    // Customer metrics are updated by the analytics worker asynchronously
-    // This is a no-op in the main flow, actual work done by worker
+
+  async updateCustomerMetrics(_customerId: any){
+    // No-op: customer metrics are recomputed by CustomerWorker on order events.
   }
 }
 
 export const AuditPortDrizzle: AuditPort = {
   async log(event: string, payload: unknown){
-    await getDb().insert(s.audit_logs).values({
-      user_id: 'system', action: event, entity_type: 'order', new_values: payload as any
-    })
+    // No DB write: admin audit lives in `admin_audit_logs` (written at the route
+    // layer via recordAdminAudit). Keep a structured log line for traceability.
+    logApiJson({ kind: 'domain_audit', event, payload })
   }
 }

@@ -100,6 +100,7 @@ export class DomainEngine {
         stock: (input as any).stock || 0,
         stockLimit: (input as any).stockLimit || 100,
         categoryId: (input as any).categoryId,
+        orgId: (input as any).orgId,
         createdAt: new Date(),
         updatedAt: new Date(),
       }

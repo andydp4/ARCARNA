@@ -247,26 +247,25 @@ export const ProductsRepoDrizzle: ProductsRepo = {
 }
 
 export const CustomersRepoDrizzle: CustomersRepo = {
-  async addTickDebt(c: CustomerId, amount: number) {
-    // Track tick debt in audit log
+  async addTickDebt(c: CustomerId, _amount: number) {
+    // Touch the customer so downstream metrics see the change. The audit trail
+    // is owned by event_outbox workers / admin_audit_logs (the previous
+    // `audit_logs` insert targeted a non-existent table and broke the write).
     await getDb().update(s.customers)
-      .set({ 
+      .set({
         updated_at: new Date()
       })
       .where(eq(s.customers.id, c as any))
-    await getDb().insert(s.audit_logs).values({ user_id: 'system', action: 'TickDebt', entity_type: 'customer', entity_id: c as any, new_values: { amount } })
   },
   async addOrderHistory(c: CustomerId, orderId: OrderId) {
-    // Track order in audit log and update timestamp
     const [order] = await getDb().select().from(s.orders).where(eq(s.orders.id, orderId as any))
     if (order) {
       await getDb().update(s.customers)
-        .set({ 
+        .set({
           updated_at: new Date()
         })
         .where(eq(s.customers.id, c as any))
     }
-    await getDb().insert(s.audit_logs).values({ user_id: 'system', action: 'OrderHistory', entity_type: 'customer', entity_id: c as any, new_values: { orderId } })
   },
   async create(customer: Customer): Promise<Customer> {
     const c = customer as any
