@@ -90,7 +90,7 @@ export class DomainEngine {
       const providedCode = (input as any).productCode?.trim()
       const productCode = providedCode || `PRD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
       
-      const newProduct: Product = {
+      const newProduct: Product & { orgId?: string } = {
         id: crypto.randomUUID() as ProductId,
         productCode,
         name: (input as any).name,
@@ -100,6 +100,7 @@ export class DomainEngine {
         stock: (input as any).stock || 0,
         stockLimit: (input as any).stockLimit || 100,
         categoryId: (input as any).categoryId,
+        orgId: (input as any).orgId,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
@@ -151,7 +152,7 @@ export class DomainEngine {
   // Customer Management Methods
   async createCustomer(input: unknown): Promise<Customer> {
     const customer = await this.withTransaction(async () => {
-      const newCustomer: Customer = {
+      const newCustomer: Customer & { orgId?: string } = {
         id: crypto.randomUUID() as CustomerId,
         name: (input as any).name,
         phone: (input as any).phone,
@@ -160,6 +161,7 @@ export class DomainEngine {
         category: (input as any).category || 'Bronze',
         loyaltyPoints: 0,
         totalSpent: 0,
+        orgId: (input as any).orgId,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
