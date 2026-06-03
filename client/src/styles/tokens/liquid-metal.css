@@ -1,6 +1,6 @@
 /**
- * Liquid Metal Industrial — design tokens (Phase E1).
- * Scoped via `.liquid-metal` so flag-off pages stay unchanged.
+ * Liquid Metal Industrial — design tokens (Phase E1 + E2).
+ * Scoped via `.liquid-metal` on Layout; shadcn vars remapped inside scope.
  * Spec: docs/ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md
  */
 
@@ -40,9 +40,219 @@
   --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06),
     0 8px 32px hsl(0, 0% / 0.45);
 
+  /* Map shadcn tokens — industrial dark, not neon */
+  --background: var(--lm-graphite);
+  --foreground: var(--lm-warm-white);
+  --card: var(--lm-gunmetal);
+  --card-foreground: var(--lm-warm-white);
+  --popover: var(--lm-charcoal);
+  --popover-foreground: var(--lm-warm-white);
+  --primary: var(--lm-stainless);
+  --primary-foreground: var(--lm-graphite);
+  --secondary: var(--lm-charcoal);
+  --secondary-foreground: var(--lm-warm-white);
+  --muted: var(--lm-charcoal);
+  --muted-foreground: var(--lm-muted);
+  --accent: var(--lm-smoke-chrome);
+  --accent-foreground: var(--lm-warm-white);
+  --destructive: var(--lm-crimson);
+  --destructive-foreground: var(--lm-warm-white);
+  --border: hsl(210, 15%, 78% / 0.12);
+  --input: var(--lm-smoke-chrome);
+  --ring: var(--lm-titanium);
+
   color: var(--lm-warm-white);
   background-color: var(--lm-graphite);
 }
+
+/* ── App shell (Layout) ─────────────────────────────────────────────── */
+
+.liquid-metal .lm-shell-header {
+  background: linear-gradient(
+    180deg,
+    hsl(215, 12%, 14%) 0%,
+    hsl(220, 10%, 10%) 100%
+  );
+  border-bottom: 1px solid var(--lm-edge-highlight);
+  box-shadow: 0 1px 0 hsl(210, 15%, 78% / 0.04);
+}
+
+.liquid-metal .lm-shell-sidebar {
+  background: var(--lm-surface-gradient);
+  border-right: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .lm-nav-link {
+  min-height: 44px;
+  color: var(--lm-muted);
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.liquid-metal .lm-nav-link:hover {
+  color: var(--lm-warm-white);
+  background: hsl(215, 10%, 18% / 0.7);
+  border-color: hsl(210, 15%, 78% / 0.08);
+}
+
+.liquid-metal .lm-nav-link-active {
+  color: var(--lm-warm-white);
+  background: linear-gradient(
+    155deg,
+    hsl(215, 11%, 20%) 0%,
+    hsl(218, 9%, 15%) 100%
+  );
+  border-color: var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .lm-nav-link-active svg {
+  color: var(--lm-brushed-highlight);
+}
+
+/* ── Machined Card / Button surfaces ────────────────────────────────── */
+
+.liquid-metal .lm-card {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+  color: var(--lm-warm-white);
+}
+
+.liquid-metal .lm-card-muted {
+  background: linear-gradient(
+    160deg,
+    hsl(215, 11%, 15%) 0%,
+    hsl(220, 10%, 11%) 100%
+  );
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .lm-btn-metal {
+  background: linear-gradient(
+    180deg,
+    hsl(210, 10%, 72%) 0%,
+    hsl(215, 8%, 58%) 100%
+  );
+  color: var(--lm-graphite);
+  border: 1px solid hsl(210, 12%, 82% / 0.35);
+  box-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.22),
+    0 1px 2px hsl(0, 0% / 0.35);
+}
+
+.liquid-metal .lm-btn-metal:hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    hsl(210, 12%, 78%) 0%,
+    hsl(215, 8%, 62%) 100%
+  );
+}
+
+.liquid-metal .lm-btn-outline {
+  background: hsl(218, 9%, 14% / 0.6);
+  border: 1px solid var(--lm-edge-highlight);
+  color: var(--lm-warm-white);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .lm-btn-outline:hover:not(:disabled) {
+  background: hsl(215, 10%, 20% / 0.85);
+  border-color: hsl(210, 15%, 78% / 0.22);
+}
+
+/* ── POS industrial surfaces ────────────────────────────────────────── */
+
+.liquid-metal .pos-shell {
+  background: var(--lm-graphite);
+  color: var(--lm-warm-white);
+}
+
+.liquid-metal .pos-products-panel {
+  background: var(--lm-graphite);
+}
+
+.liquid-metal .pos-section-header {
+  border-bottom: 1px solid var(--lm-edge-highlight);
+}
+
+.liquid-metal .pos-cart-rail {
+  background: var(--lm-surface-gradient);
+  border-left: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .pos-product-card {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.liquid-metal .pos-product-card:hover:not(.pos-product-card-disabled) {
+  border-color: hsl(210, 15%, 78% / 0.28);
+  box-shadow: var(--lm-inner-shadow), 0 4px 16px hsl(0, 0% / 0.25);
+}
+
+.liquid-metal .pos-product-card:active:not(.pos-product-card-disabled) {
+  transform: scale(0.98);
+}
+
+.liquid-metal .pos-product-card-disabled {
+  opacity: 0.65;
+}
+
+.liquid-metal .pos-price {
+  color: var(--lm-stainless);
+}
+
+.liquid-metal .pos-quick-bar {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-panel-shadow);
+}
+
+.liquid-metal .pos-fab {
+  background: linear-gradient(
+    180deg,
+    hsl(210, 10%, 72%) 0%,
+    hsl(215, 8%, 58%) 100%
+  );
+  color: var(--lm-graphite);
+  border: 1px solid hsl(210, 12%, 82% / 0.35);
+  box-shadow: var(--lm-panel-shadow);
+}
+
+.liquid-metal .pos-empty-state {
+  background: hsl(218, 9%, 14% / 0.5);
+  border: 1px dashed hsl(210, 15%, 78% / 0.18);
+  color: var(--lm-muted);
+}
+
+.liquid-metal .pos-summary-card {
+  background: linear-gradient(
+    160deg,
+    hsl(215, 11%, 16%) 0%,
+    hsl(220, 10%, 12%) 100%
+  );
+  border: 1px solid hsl(210, 15%, 78% / 0.2);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.liquid-metal .pos-status-emerald {
+  color: var(--lm-emerald);
+}
+
+.liquid-metal .pos-status-crimson {
+  color: var(--lm-crimson);
+}
+
+.liquid-metal .pos-status-amber {
+  color: var(--lm-amber);
+}
+
+/* ── E1 spatial Insights (flag-gated) ───────────────────────────────── */
 
 .liquid-metal .insights-spatial-core :where(.rounded-lg.border) {
   background: var(--lm-surface-gradient);

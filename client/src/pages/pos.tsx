@@ -14,9 +14,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket } from "lucide-react";
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
+import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -56,7 +57,7 @@ function PosProductGridSkeleton() {
       {Array.from({ length: placeholders }).map((_, i) => (
         <div
           key={i}
-          className="flex min-h-[188px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm"
+          className="lm-card-muted flex min-h-[188px] flex-col overflow-hidden rounded-lg"
         >
           <div className="space-y-2 px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
             <Skeleton className="h-10 w-full" />
@@ -82,6 +83,7 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
@@ -478,6 +480,18 @@ export default function POS() {
       return;
     }
 
+    if (paymentMethod === "gift_card") {
+      if (!giftCardPayment?.code || giftCardPayment.amountToApply <= 0) {
+        toast({ title: "Gift card required", description: "Look up a gift card and enter an amount to apply", variant: "destructive" });
+        return;
+      }
+      const remainder = Math.round((total - giftCardPayment.amountToApply) * 100) / 100;
+      if (remainder > 0.01 && !giftCardPayment.remainderPaymentMethod) {
+        toast({ title: "Remainder payment required", description: "Choose how to pay the remaining balance", variant: "destructive" });
+        return;
+      }
+    }
+
     const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
@@ -486,6 +500,11 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
     };
+    if (paymentMethod === "gift_card" && giftCardPayment) {
+      orderData.giftCardCode = giftCardPayment.code;
+      orderData.giftCardAmount = giftCardPayment.amountToApply;
+      if (giftCardPayment.remainderPaymentMethod) orderData.remainderPaymentMethod = giftCardPayment.remainderPaymentMethod;
+    }
     
     // Only include customerId if a customer is selected (Zod expects optional, not null)
     if (selectedCustomer?.id) {
@@ -540,23 +559,23 @@ export default function POS() {
 
   return (
     <div
-      className="flex h-screen flex-col bg-background lg:flex-row"
+      className="pos-shell flex h-screen flex-col lg:flex-row"
       style={{ paddingBottom: isMobile ? safeAreaBottom : undefined }}
     >
       {/* Products Panel - Step 1: Add items */}
-      <div className="flex-1 overflow-hidden p-4 sm:p-6">
-        <div className="mb-6 border-b border-border/60 pb-6">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 1 of 4 · Add items</p>
+      <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6">
+        <div className="pos-section-header mb-6 pb-6">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 4 · Add items</p>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Point of sale</h1>
-              <p className="mt-1 max-w-xl text-sm text-muted-foreground">Search products, build the cart, then check out.</p>
+              <h1 className="text-xl font-semibold tracking-tight text-metal-warm-white sm:text-2xl">Point of sale</h1>
+              <p className="mt-1 max-w-xl text-sm text-metal-muted">Search products, build the cart, then check out.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {shiftId && (
                 <Button
                   variant="outline"
-                  className="min-h-[44px] shrink-0"
+                  className="lm-btn-outline min-h-[44px] shrink-0"
                   onClick={() => setShiftCloseOpen(true)}
                 >
                   <Clock className="mr-2 h-4 w-4" />
@@ -564,7 +583,7 @@ export default function POS() {
                 </Button>
               )}
               {!isMobile && (
-                <Button asChild variant="outline" className="min-h-[44px] shrink-0" data-testid="link-dashboard">
+                <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
                   <Link href="/">
                     <Package className="mr-2 h-4 w-4" />
                     Dashboard
@@ -574,12 +593,12 @@ export default function POS() {
             </div>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-metal-muted" />
             <Input
               placeholder="Search by name, SKU, or barcode…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="min-h-[44px] pl-10"
+              className="min-h-[44px] border-metal-edge bg-metal-charcoal pl-10 text-metal-warm-white placeholder:text-metal-muted"
               data-testid="search-products"
             />
           </div>
@@ -593,10 +612,10 @@ export default function POS() {
             {productsLoading ? (
               <PosProductGridSkeleton />
             ) : filteredProducts.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-12 text-center">
-                <Package className="mx-auto mb-3 h-10 w-10 text-muted-foreground/70" />
-                <p className="font-medium text-foreground">No products match this search</p>
-                <p className="mt-2 text-sm text-muted-foreground">Try another keyword or clear the search box.</p>
+              <div className="pos-empty-state col-span-full rounded-xl px-6 py-12 text-center">
+                <Package className="mx-auto mb-3 h-10 w-10 text-metal-muted" />
+                <p className="font-medium text-metal-warm-white">No products match this search</p>
+                <p className="mt-2 text-sm text-metal-muted">Try another keyword or clear the search box.</p>
               </div>
             ) : (
               filteredProducts.map((product) => (
@@ -614,7 +633,7 @@ export default function POS() {
 
       {/* Desktop Cart Panel */}
       {!isMobile && (
-        <div className="flex w-96 flex-col border-l border-border/60 bg-card p-4 shadow-sm">
+        <div className="pos-cart-rail flex w-96 flex-col p-4">
           <PosCartPanel {...cartPanelProps} />
         </div>
       )}
@@ -626,7 +645,7 @@ export default function POS() {
             <SheetTrigger asChild>
               <Button
                 size="lg"
-                className="fixed right-4 z-50 h-14 w-14 min-h-[48px] min-w-[48px] rounded-full p-0 shadow-lg"
+                className="pos-fab fixed right-4 z-50 h-14 w-14 min-h-[48px] min-w-[48px] rounded-full p-0"
                 style={{ bottom: mobileFabBottom }}
                 data-testid="mobile-cart-button"
                 aria-label={cartItemCount > 0 ? `Cart: ${cartItemCount} items` : "Open cart"}
@@ -641,7 +660,7 @@ export default function POS() {
                 </div>
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:w-96 flex flex-col p-4">
+            <SheetContent side="right" className="pos-cart-rail flex w-full flex-col p-4 sm:w-96">
               <SheetHeader className="mb-4">
                 <SheetTitle>
                   <div className="flex items-center gap-2">
@@ -664,18 +683,18 @@ export default function POS() {
           {/* Mobile quick bar - visible when cart has items, above FAB */}
           {cart.length > 0 && (
             <div className="fixed bottom-0 left-4 right-16 z-40 lg:hidden" style={{ bottom: mobileQuickBarBottom }}>
-              <Card className="border-border/60 shadow-lg">
+              <Card className="pos-quick-bar">
                 <CardContent className="flex items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground">{cartItemCount} items</div>
-                    <div className="text-lg font-bold">${total.toFixed(2)}</div>
+                    <div className="text-xs text-metal-muted">{cartItemCount} items</div>
+                    <div className="text-lg font-bold text-metal-warm-white">${total.toFixed(2)}</div>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button
                       variant="outline"
                       onClick={() => setCartOpen(true)}
                       size="sm"
-                      className="min-h-[44px]"
+                      className="lm-btn-outline min-h-[44px]"
                       disabled={placeOrderMutation.isPending}
                       data-testid="view-cart-button"
                     >
@@ -684,7 +703,7 @@ export default function POS() {
                     <Button
                       onClick={handleCheckout}
                       size="sm"
-                      className="min-h-[44px] gap-2"
+                      className="lm-btn-metal min-h-[44px] gap-2"
                       disabled={placeOrderMutation.isPending}
                       data-testid="mobile-checkout-button"
                     >
@@ -707,11 +726,11 @@ export default function POS() {
 
       {/* Checkout Dialog - Steps 3 & 4: Choose payment → Confirm */}
       <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="lm-card max-h-[90vh] max-w-lg overflow-y-auto border-metal-edge bg-metal-gunmetal">
           <DialogHeader className="space-y-1 text-left">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 3 &amp; 4 of 4</p>
-            <DialogTitle className="text-xl font-semibold tracking-tight">Payment &amp; confirm</DialogTitle>
-            <DialogDescription className="text-sm leading-relaxed">
+            <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 3 &amp; 4 of 4</p>
+            <DialogTitle className="text-xl font-semibold tracking-tight text-metal-warm-white">Payment &amp; confirm</DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed text-metal-muted">
               Choose how the customer paid, then confirm to complete the sale.
             </DialogDescription>
           </DialogHeader>
@@ -748,14 +767,24 @@ export default function POS() {
                       On Credit (Tick)
                     </div>
                   </SelectItem>
+                  <SelectItem value="gift_card">
+                    <div className="flex items-center gap-2">
+                      <Ticket className="h-4 w-4" />
+                      Gift card
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+            {paymentMethod === "gift_card" && (
+              <GiftCardPayment orderTotal={total} value={giftCardPayment} onChange={setGiftCardPayment} />
+            )}
+
             {/* Order Expenses Section */}
-            <Card>
+            <Card className="lm-card-muted">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">Order Expenses (Optional)</CardTitle>
+                <CardTitle className="text-sm font-medium text-metal-warm-white">Order Expenses (Optional)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -830,7 +859,7 @@ export default function POS() {
               </CardContent>
             </Card>
 
-            <div className="flex items-start gap-3 rounded-lg border p-3">
+            <div className="lm-card-muted flex items-start gap-3 rounded-lg border border-metal-edge p-3">
               <Checkbox
                 id="email-receipt"
                 checked={emailReceipt}
@@ -854,9 +883,9 @@ export default function POS() {
               </div>
             </div>
 
-            <Card>
+            <Card className="lm-card-muted">
               <CardContent className="p-4">
-                <div className="space-y-2 text-sm">
+                <div className="space-y-2 text-sm text-metal-warm-white">
                   <div className="flex justify-between">
                     <span>Customer</span>
                     <span className="font-medium">{selectedCustomer?.name || "Walk-in"}</span>
@@ -876,7 +905,7 @@ export default function POS() {
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)} className="w-full sm:w-auto min-h-[44px]">
+            <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)} className="lm-btn-outline w-full min-h-[44px] sm:w-auto">
               Cancel
             </Button>
             <Button
@@ -884,7 +913,7 @@ export default function POS() {
               disabled={cart.length === 0 || placeOrderMutation.isPending}
               aria-label={cart.length === 0 ? "Payment disabled – add items to cart" : "Confirm payment"}
               data-testid="button-confirm-payment"
-              className="min-h-[44px] w-full gap-2 sm:w-auto"
+              className="lm-btn-metal min-h-[44px] w-full gap-2 sm:w-auto"
             >
               {placeOrderMutation.isPending ? (
                 <>

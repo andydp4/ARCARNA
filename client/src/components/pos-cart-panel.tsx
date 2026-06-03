@@ -118,12 +118,12 @@ export function PosCartPanel({
   return (
     <>
       {cart.length > 0 ? (
-        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Step 2 of 4 · Review cart</p>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 2 of 4 · Review cart</p>
       ) : (
-        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">Add products from the grid to start a sale.</p>
+        <p className="mb-3 text-sm leading-relaxed text-metal-muted">Add products from the grid to start a sale.</p>
       )}
       <div className="mb-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight sm:text-xl">
+        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-metal-warm-white sm:text-xl">
           <ShoppingCart className="h-5 w-5 shrink-0" />
           Cart
           {cartItemCount > 0 && (
@@ -178,19 +178,19 @@ export function PosCartPanel({
         </Select>
 
         {selectedCustomer && customerTier && (
-          <Card className="mt-2">
+          <Card className="lm-card-muted mt-2">
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Award className="h-4 w-4 text-yellow-500" />
-                  <span className="text-sm font-medium">{customerTier.name} Member</span>
+                  <Award className="h-4 w-4 pos-status-amber h-4 w-4" />
+                  <span className="text-sm font-medium text-metal-warm-white">{customerTier.name} Member</span>
                 </div>
                 <Badge variant="outline">
                   <Star className="mr-1 h-3 w-3" />
                   {selectedCustomer.loyaltyPoints} pts
                 </Badge>
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-metal-muted">
                 {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
               </div>
             </CardContent>
@@ -218,14 +218,14 @@ export function PosCartPanel({
               }}
               disabled={orderSubmitting || !promoCode || validatePromoMutation.isPending}
               data-testid="button-apply-promo"
-              className="min-h-[44px] min-w-[44px]"
+              className="lm-btn-outline min-h-[44px] min-w-[44px]"
             >
               <Tag className="h-4 w-4" />
             </Button>
           </div>
           {appliedPromo && (
-            <div className="mt-2 flex items-center justify-between rounded-md bg-secondary p-2">
-              <span className="text-sm">{appliedPromo.name}</span>
+            <div className="mt-2 flex items-center justify-between lm-card-muted mt-2 flex items-center justify-between rounded-md p-2">
+              <span className="text-sm text-metal-warm-white">{appliedPromo.name}</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -248,9 +248,9 @@ export function PosCartPanel({
 
       <ScrollArea className="mb-4 flex-1">
         {cart.length === 0 ? (
-          <div className="py-10 text-center text-muted-foreground">
+          <div className="py-10 text-center text-metal-muted">
             <ShoppingCart className="mx-auto mb-2 h-12 w-12 opacity-40" />
-            <p className="font-medium">Your cart is empty</p>
+            <p className="font-medium text-metal-warm-white">Your cart is empty</p>
             <p className="mt-1 text-sm">Tap a product to add it</p>
           </div>
         ) : (
@@ -259,13 +259,13 @@ export function PosCartPanel({
               <Card
                 key={item.product.id}
                 data-testid={`cart-item-${item.product.id}`}
-                className="overflow-hidden"
+                className="lm-card-muted overflow-hidden"
               >
                 <CardContent className="p-3">
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="line-clamp-2 font-medium">{item.product.name}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs text-metal-muted">
                         Default: {formatPrice(item.product)}
                       </div>
                     </div>
@@ -340,11 +340,11 @@ export function PosCartPanel({
                   </div>
 
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1 rounded-md border p-1">
+                    <div className="flex items-center gap-1 rounded-md border border-metal-edge p-1">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 min-h-[40px] min-w-[40px]"
+                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
                         onClick={() => updateQuantity(item.product.id, -1)}
                         data-testid={`decrease-qty-${item.product.id}`}
                         aria-label="Decrease quantity"
@@ -411,14 +411,14 @@ export function PosCartPanel({
                             )
                           );
                         }}
-                        className="h-9 min-h-[40px] w-14 border-0 bg-transparent text-center font-medium focus-visible:ring-0"
+                        className="h-11 min-h-[44px] w-14 border-0 bg-transparent text-center font-medium focus-visible:ring-0"
                         data-testid={`qty-input-${item.product.id}`}
                         disabled={orderSubmitting}
                       />
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 min-h-[40px] min-w-[40px]"
+                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
                         onClick={() => updateQuantity(item.product.id, 1)}
                         data-testid={`increase-qty-${item.product.id}`}
                         aria-label="Increase quantity"
@@ -436,30 +436,30 @@ export function PosCartPanel({
         )}
       </ScrollArea>
 
-      <Card className="mb-4 border-primary/20 bg-muted/30">
+      <Card className="pos-summary-card mb-4">
         <CardHeader className="px-4 pb-2 pt-4">
-          <CardTitle className="text-sm font-medium">Order Summary</CardTitle>
+          <CardTitle className="text-sm font-medium text-metal-warm-white">Order Summary</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-0">
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-sm text-metal-warm-white">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-metal-muted">Subtotal</span>
               <span data-testid="cart-subtotal">${subtotal.toFixed(2)}</span>
             </div>
             {loyaltyDiscountAmount > 0 && (
-              <div className="flex justify-between text-green-600">
+              <div className="pos-status-emerald flex justify-between">
                 <span>Loyalty ({loyaltyDiscount}%)</span>
                 <span data-testid="loyalty-discount">-${loyaltyDiscountAmount.toFixed(2)}</span>
               </div>
             )}
             {promoDiscountAmount > 0 && (
-              <div className="flex justify-between text-green-600">
+              <div className="pos-status-emerald flex justify-between">
                 <span>Promo: {appliedPromo?.name}</span>
                 <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Tax (10%)</span>
+              <span className="text-metal-muted">Tax (10%)</span>
               <span data-testid="cart-tax">${tax.toFixed(2)}</span>
             </div>
             <Separator />
@@ -468,7 +468,7 @@ export function PosCartPanel({
               <span data-testid="cart-total">${total.toFixed(2)}</span>
             </div>
             {selectedCustomer && pointsEarned > 0 && (
-              <div className="border-t pt-2 text-center text-xs text-muted-foreground">
+              <div className="border-t border-metal-edge pt-2 text-center text-xs text-metal-muted">
                 <Award className="mr-1 inline h-3 w-3" />
                 Earn {pointsEarned} loyalty points
               </div>
@@ -484,7 +484,7 @@ export function PosCartPanel({
           cart.length === 0 ? "Checkout disabled – add items to cart" : "Proceed to checkout"
         }
         title={cart.length === 0 ? "Add items to cart" : undefined}
-        className="min-h-[52px] w-full gap-2 text-base font-semibold"
+        className="lm-btn-metal min-h-[52px] w-full gap-2 text-base font-semibold"
         size="lg"
         data-testid="button-checkout"
       >
