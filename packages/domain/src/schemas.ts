@@ -7,7 +7,7 @@ export const OrderLineInput = z.object({
 export const PlaceOrderInput = z.object({
   customerId: z.string().optional(),
   lines: z.array(OrderLineInput).min(1),
-  paymentMethod: z.enum(['cash','card','transfer','tick']),
+  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
 })

@@ -17,6 +17,7 @@ import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
+import { issueGiftCardInTx } from "../lib/giftCardService";
 
 const refundLineSchema = z.object({
   orderLineId: z.string().uuid(),
@@ -240,54 +241,47 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             });
           }
 
-          const eventId = await publishEventTx(
-            tx as unknown as typeof db,
-            "RefundIssued",
-            refund.id,
-            {
-            refundId: refund.id,
-            orderId: order.id,
-            customerId: order.customerId,
-            total: refundTotal,
-            orderTotal,
-            pointsToReverse,
-            method: refundMethod,
-            lines: resolvedLines.map((l) => ({
-              lineId: l.orderLineId,
-              qty: l.qty,
-              productId: l.productId,
-              sku: l.sku,
-            })),
-          }, {
-            actor: { type: "user", id: userId },
-            source: "api-refunds",
-          });
+          let storeCreditGiftCard: Awaited<ReturnType<typeof issueGiftCardInTx>> | null = null;
+          if (refundMethod === "store_credit") {
+            if (!order.customerId) throw new Error("Store credit refund requires a customer on the order");
+            storeCreditGiftCard = await issueGiftCardInTx(tx, {
+              orgId: ctx.orgId, amount: refundTotal, customerId: order.customerId,
+              issuedByUserId: userId, refundId: refund.id, movementType: "refund_credit", actorUserId: userId,
+            });
+          }
 
-          return { refund, eventId };
+          const eventId = await publishEventTx(tx as unknown as typeof db, "RefundIssued", refund.id, {
+            refundId: refund.id, orderId: order.id, customerId: order.customerId, total: refundTotal,
+            orderTotal, pointsToReverse, method: refundMethod,
+            storeCreditGiftCardId: storeCreditGiftCard?.card.id ?? null,
+            lines: resolvedLines.map((l) => ({ lineId: l.orderLineId, qty: l.qty, productId: l.productId, sku: l.sku })),
+          }, { actor: { type: "user", id: userId }, source: "api-refunds" });
+
+          return { refund, eventId, storeCreditGiftCard };
         });
 
         await recordAdminAudit(req, {
-          actorUserId: userId,
-          actorRole: req.orgContext?.role ?? "CASHIER",
-          action: "refund.issued",
-          targetType: "order",
-          targetId: order.id,
-          orgId: ctx.orgId,
+          actorUserId: userId, actorRole: req.orgContext?.role ?? "CASHIER", action: "refund.issued",
+          targetType: "order", targetId: order.id, orgId: ctx.orgId,
           metadata: {
-            refundId: result.refund.id,
-            total: refundTotal,
-            reason: body.reason,
-            method: refundMethod,
+            refundId: result.refund.id, total: refundTotal, reason: body.reason, method: refundMethod,
+            storeCreditGiftCardId: result.storeCreditGiftCard?.card.id ?? null,
           },
         });
 
-        res.status(201).json(result);
+        res.status(201).json({
+          ...result,
+          storeCredit: result.storeCreditGiftCard ? {
+            giftCardId: result.storeCreditGiftCard.card.id,
+            code: result.storeCreditGiftCard.code,
+            amount: refundTotal,
+          } : null,
+        });
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid request", errors: error.errors });
-        }
+        if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
+        const message = error instanceof Error ? error.message : "Failed to issue refund";
         console.error("[Refunds] create:", error);
-        res.status(500).json({ message: "Failed to issue refund" });
+        res.status(/store credit|customer/i.test(message) ? 400 : 500).json({ message });
       }
     },
   );

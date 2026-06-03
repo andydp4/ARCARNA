@@ -14,9 +14,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket } from "lucide-react";
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
+import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -82,6 +83,7 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
@@ -478,6 +480,18 @@ export default function POS() {
       return;
     }
 
+    if (paymentMethod === "gift_card") {
+      if (!giftCardPayment?.code || giftCardPayment.amountToApply <= 0) {
+        toast({ title: "Gift card required", description: "Look up a gift card and enter an amount to apply", variant: "destructive" });
+        return;
+      }
+      const remainder = Math.round((total - giftCardPayment.amountToApply) * 100) / 100;
+      if (remainder > 0.01 && !giftCardPayment.remainderPaymentMethod) {
+        toast({ title: "Remainder payment required", description: "Choose how to pay the remaining balance", variant: "destructive" });
+        return;
+      }
+    }
+
     const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
@@ -486,6 +500,11 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
     };
+    if (paymentMethod === "gift_card" && giftCardPayment) {
+      orderData.giftCardCode = giftCardPayment.code;
+      orderData.giftCardAmount = giftCardPayment.amountToApply;
+      if (giftCardPayment.remainderPaymentMethod) orderData.remainderPaymentMethod = giftCardPayment.remainderPaymentMethod;
+    }
     
     // Only include customerId if a customer is selected (Zod expects optional, not null)
     if (selectedCustomer?.id) {
@@ -748,9 +767,19 @@ export default function POS() {
                       On Credit (Tick)
                     </div>
                   </SelectItem>
+                  <SelectItem value="gift_card">
+                    <div className="flex items-center gap-2">
+                      <Ticket className="h-4 w-4" />
+                      Gift card
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {paymentMethod === "gift_card" && (
+              <GiftCardPayment orderTotal={total} value={giftCardPayment} onChange={setGiftCardPayment} />
+            )}
 
             {/* Order Expenses Section */}
             <Card>

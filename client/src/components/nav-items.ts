@@ -19,6 +19,7 @@ import {
   CalendarClock,
   Activity,
   Timer,
+  Ticket,
 } from 'lucide-react'
 
 export const navItems = [
@@ -70,6 +71,13 @@ export const navItems = [
     href: '/customers',
     icon: Users,
     testId: 'nav-customers'
+  },
+  {
+    key: 'gift-cards',
+    label: 'Gift cards',
+    href: '/gift-cards',
+    icon: Ticket,
+    testId: 'nav-gift-cards'
   },
   {
     key: 'loyalty',
