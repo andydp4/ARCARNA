@@ -42,12 +42,14 @@ import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import SignInPage from "@/pages/sign-in";
+import { CommandPalette } from "@/components/CommandPalette";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
     <WouterRouter base={APP_BASE}>
+    <CommandPalette />
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/pending-approval" component={PendingApproval} />
