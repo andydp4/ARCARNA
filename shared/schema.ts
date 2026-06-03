@@ -14,6 +14,7 @@ import {
   primaryKey,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -766,6 +767,28 @@ export const giftCardMovements = pgTable("gift_card_movements", {
   index("gift_card_movements_refund_id_idx").on(table.refundId),
 ]);
 export type GiftCardMovement = typeof giftCardMovements.$inferSelect;
+
+// Saved filter views (U3)
+export const savedViews = pgTable(
+  "saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    page: varchar("page", { length: 32 }).notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    filters: jsonb("filters").notNull().default({}),
+    sort: jsonb("sort").notNull().default({}),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("saved_views_user_org_page_name_idx").on(table.userId, table.orgId, table.page, table.name),
+    index("saved_views_user_org_page_idx").on(table.userId, table.orgId, table.page),
+  ],
+);
+export type SavedView = typeof savedViews.$inferSelect;
+export type InsertSavedView = typeof savedViews.$inferInsert;
 
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {

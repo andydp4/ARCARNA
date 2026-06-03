@@ -39,6 +39,7 @@ import { registerReceiptRoutes } from "./routes/receipts";
 import { registerShiftRoutes } from "./routes/shifts";
 import { registerRefundRoutes } from "./routes/refunds";
 import { registerGiftCardRoutes } from "./routes/giftCards";
+import { registerSavedViewRoutes } from "./routes/savedViews";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
@@ -69,6 +70,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerShiftRoutes(app, scoped);
   registerRefundRoutes(app, scoped);
   registerGiftCardRoutes(app, scoped);
+  registerSavedViewRoutes(app, scoped);
   registerInventoryRoutes(app, scoped);
   registerReportRoutes(app, scoped);
   registerLocationRoutes(app, scoped);

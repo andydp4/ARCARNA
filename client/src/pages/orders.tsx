@@ -30,6 +30,9 @@ import {
   Search,
 } from "lucide-react";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import { ViewSelector } from "@/components/ViewSelector";
+import { useSavedViews, useApplyDefaultView } from "@/hooks/useSavedViews";
+import { captureViewState } from "@shared/savedViews/state";
 import { Separator } from "@/components/ui/separator";
 import {
   OrdersRow,
@@ -84,6 +87,27 @@ export default function Orders() {
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const savedViews = useSavedViews("orders");
+
+  useApplyDefaultView(savedViews.defaultView, (state) => {
+    if (typeof state.filters.filterStatus === "string") setFilterStatus(state.filters.filterStatus);
+    if (typeof state.filters.searchQuery === "string") setSearchQuery(state.filters.searchQuery);
+    if (savedViews.defaultView) setActiveViewId(savedViews.defaultView.id);
+  });
+
+  const applySavedView = (view: typeof savedViews.views[0] | null) => {
+    if (!view) {
+      setActiveViewId(null);
+      setFilterStatus("active");
+      setSearchQuery("");
+      return;
+    }
+    setActiveViewId(view.id);
+    const state = savedViews.applyView(view);
+    if (typeof state.filters.filterStatus === "string") setFilterStatus(state.filters.filterStatus);
+    if (typeof state.filters.searchQuery === "string") setSearchQuery(state.filters.searchQuery);
+  };
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
 
   const copyToClipboard = (text: string, label: string) => {
@@ -485,6 +509,31 @@ export default function Orders() {
         {/* Filters & search */}
         <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
           <CardContent className="p-4 sm:p-5 sm:pt-6">
+            <div className="mb-4">
+              <ViewSelector
+                views={savedViews.views}
+                activeViewId={activeViewId}
+                onSelectView={applySavedView}
+                onSaveCurrent={(name, isDefault) => {
+                  savedViews.saveView.mutate({
+                    name,
+                    isDefault,
+                    state: captureViewState({ filterStatus, searchQuery }),
+                  });
+                }}
+                onRename={(id, currentName) => {
+                  const next = window.prompt("Rename view", currentName);
+                  if (next?.trim()) savedViews.updateView.mutate({ id, name: next.trim() });
+                }}
+                onSetDefault={(id) => savedViews.updateView.mutate({ id, isDefault: true })}
+                onDelete={(id) => {
+                  savedViews.deleteView.mutate(id);
+                  if (activeViewId === id) applySavedView(null);
+                }}
+                currentState={captureViewState({ filterStatus, searchQuery })}
+                saving={savedViews.saveView.isPending}
+              />
+            </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
               <div className="flex-1 min-w-[min(100%,14rem)] space-y-2">
                 <Label htmlFor="order-status-filter" className="text-muted-foreground">

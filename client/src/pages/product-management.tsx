@@ -59,11 +59,32 @@ import {
   type ProductImportPreview,
 } from '@shared/productImport'
 import { downloadBlob } from '@/lib/fileImport'
+import { ViewSelector } from '@/components/ViewSelector'
+import { useSavedViews, useApplyDefaultView } from '@/hooks/useSavedViews'
+import { captureViewState } from '@shared/savedViews/state'
 
 export default function ProductManagement() {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  const savedViews = useSavedViews('products')
+
+  useApplyDefaultView(savedViews.defaultView, (state) => {
+    if (typeof state.filters.searchTerm === 'string') setSearchTerm(state.filters.searchTerm)
+    if (savedViews.defaultView) setActiveViewId(savedViews.defaultView.id)
+  })
+
+  const applySavedView = (view: typeof savedViews.views[0] | null) => {
+    if (!view) {
+      setActiveViewId(null)
+      setSearchTerm('')
+      return
+    }
+    setActiveViewId(view.id)
+    const state = savedViews.applyView(view)
+    if (typeof state.filters.searchTerm === 'string') setSearchTerm(state.filters.searchTerm)
+  }
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -667,7 +688,30 @@ export default function ProductManagement() {
         </div>
 
         {/* Search */}
-        <div className="mb-4 sm:mb-6">
+        <div className="mb-4 sm:mb-6 space-y-3">
+          <ViewSelector
+            views={savedViews.views}
+            activeViewId={activeViewId}
+            onSelectView={applySavedView}
+            onSaveCurrent={(name, isDefault) => {
+              savedViews.saveView.mutate({
+                name,
+                isDefault,
+                state: captureViewState({ searchTerm }),
+              })
+            }}
+            onRename={(id, currentName) => {
+              const next = window.prompt('Rename view', currentName)
+              if (next?.trim()) savedViews.updateView.mutate({ id, name: next.trim() })
+            }}
+            onSetDefault={(id) => savedViews.updateView.mutate({ id, isDefault: true })}
+            onDelete={(id) => {
+              savedViews.deleteView.mutate(id)
+              if (activeViewId === id) applySavedView(null)
+            }}
+            currentState={captureViewState({ searchTerm })}
+            saving={savedViews.saveView.isPending}
+          />
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
