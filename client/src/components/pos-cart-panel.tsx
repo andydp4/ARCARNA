@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import type { PosProduct } from "@/components/pos-product-card";
 import { ActionLoader } from "@/components/action-loader";
+import type { TierProgress } from "@shared/loyalty/progress";
 
 export interface PosCartItem {
   product: PosProduct;
@@ -73,6 +74,11 @@ export type PosCartPanelProps = {
   tax: number;
   total: number;
   pointsEarned: number;
+  tierProgress: TierProgress | null;
+  minRedeemPoints: number;
+  redeemPoints: number;
+  pointsRedemptionAmount: number;
+  onRedeemPointsClick: () => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, delta: number) => void;
   formatPrice: (p: PosProduct) => string;
@@ -107,6 +113,11 @@ export function PosCartPanel({
   tax,
   total,
   pointsEarned,
+  tierProgress,
+  minRedeemPoints,
+  redeemPoints,
+  pointsRedemptionAmount,
+  onRedeemPointsClick,
   removeFromCart,
   updateQuantity,
   formatPrice,
@@ -193,6 +204,39 @@ export function PosCartPanel({
               <div className="mt-1 text-xs text-metal-muted">
                 {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
               </div>
+              {tierProgress?.nextTier && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-metal-muted mb-1">
+                    <span>{tierProgress.pointsToNext} pts to {tierProgress.nextTier.name}</span>
+                    <span>{tierProgress.percent}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-metal-surface overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-amber-500/80 transition-all"
+                      style={{ width: `${tierProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full lm-btn-outline"
+                disabled={
+                  orderSubmitting ||
+                  (selectedCustomer?.loyaltyPoints ?? 0) < minRedeemPoints
+                }
+                title={
+                  (selectedCustomer?.loyaltyPoints ?? 0) < minRedeemPoints
+                    ? `Need at least ${minRedeemPoints} points`
+                    : undefined
+                }
+                onClick={onRedeemPointsClick}
+              >
+                Redeem points
+                {redeemPoints > 0 ? ` (${redeemPoints} applied)` : ""}
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -456,6 +500,12 @@ export function PosCartPanel({
               <div className="pos-status-emerald flex justify-between">
                 <span>Promo: {appliedPromo?.name}</span>
                 <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {pointsRedemptionAmount > 0 && (
+              <div className="pos-status-emerald flex justify-between">
+                <span>Points redeemed ({redeemPoints})</span>
+                <span data-testid="points-redemption">-${pointsRedemptionAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between">

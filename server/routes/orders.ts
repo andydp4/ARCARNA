@@ -18,6 +18,7 @@ import {
 import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
+import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
@@ -69,6 +70,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             await tx.update(orders).set({ payment_method: paymentLabel }).where(eq(orders.id, result.orderId));
             createdOrder.payment_method = paymentLabel;
           }
+        }
+
+        const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);
+        if (redeemPoints > 0) {
+          if (!createdOrder?.customer_id) throw new Error("Customer required for points redemption");
+          const discount = await redeemPointsInTx(tx, ctx.orgId!, createdOrder.customer_id, redeemPoints);
+          const newTotal = roundMoney(Math.max(0, parseFloat(String(createdOrder.total)) - discount));
+          await tx.update(orders).set({ total: String(newTotal) }).where(eq(orders.id, result.orderId));
+          createdOrder.total = String(newTotal);
         }
 
         const sendEmailReceipt = body.sendEmailReceipt === true;
