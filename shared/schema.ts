@@ -767,6 +767,25 @@ export const giftCardMovements = pgTable("gift_card_movements", {
 ]);
 export type GiftCardMovement = typeof giftCardMovements.$inferSelect;
 
+// Customer RFM segmentation (A2)
+export const customerRfm = pgTable(
+  "customer_rfm",
+  {
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }).notNull(),
+    recencyScore: integer("recency_score").notNull(),
+    frequencyScore: integer("frequency_score").notNull(),
+    monetaryScore: integer("monetary_score").notNull(),
+    segment: varchar("segment", { length: 24 }).notNull(),
+    computedAt: timestamp("computed_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.customerId] }),
+    index("customer_rfm_org_segment_idx").on(table.orgId, table.segment),
+  ],
+);
+export type CustomerRfm = typeof customerRfm.$inferSelect;
+
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -29,6 +29,7 @@ import Orders from "@/pages/orders";
 import OrderRefundPage from "@/pages/orders/refund";
 import ShiftsPage from "@/pages/shifts";
 import GiftCardsPage from "@/pages/gift-cards";
+import RfmAnalyticsPage from "@/pages/analytics/rfm";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
@@ -74,6 +75,7 @@ function Router() {
           <Route path="/insights" component={Insights} />
           <Route path="/reports" component={Insights} />
           <Route path="/analytics" component={Insights} />
+          <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
           <Route path="/locations" component={Locations} />
           <Route path="/customers" component={Customers} />
           <Route path="/loyalty" component={Loyalty} />

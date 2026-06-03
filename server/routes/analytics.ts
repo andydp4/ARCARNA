@@ -2,7 +2,10 @@ import type { Express, RequestHandler } from "express";
 import { format } from "date-fns";
 import { storage } from "../storage";
 import type { DailyKpiResponse } from "@shared/analytics/kpi";
+import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 import { getDailyKpi } from "../services/dailyKpi";
+import { getRfmCustomersBySegment, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
+import { requireRole } from "../auth";
 
 type KpiCacheEntry = { payload: DailyKpiResponse; expiresAt: number };
 
@@ -88,6 +91,81 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     } catch (error) {
       console.error("Error fetching daily KPI:", error);
       res.status(500).json({ message: "Failed to fetch daily KPI" });
+    }
+  });
+
+  app.get("/api/analytics/rfm", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      let summary = await getRfmSummary(ctx.orgId);
+      if (summary.totalCustomers === 0) {
+        await recomputeOrgRfm(ctx.orgId);
+        summary = await getRfmSummary(ctx.orgId);
+      }
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching RFM summary:", error);
+      res.status(500).json({ message: "Failed to fetch RFM analytics" });
+    }
+  });
+
+  app.get("/api/analytics/rfm/customers", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const segment = String(req.query.segment || "") as RfmSegment;
+      if (!RFM_SEGMENTS.includes(segment)) {
+        return res.status(400).json({ message: "Invalid segment" });
+      }
+      const limit = Math.min(parseInt(String(req.query.limit || "50"), 10) || 50, 200);
+      const offset = parseInt(String(req.query.offset || "0"), 10) || 0;
+      const customers = await getRfmCustomersBySegment(ctx.orgId, segment, limit, offset);
+      res.json({ segment, customers, limit, offset });
+    } catch (error) {
+      console.error("Error fetching RFM customers:", error);
+      res.status(500).json({ message: "Failed to fetch RFM customers" });
+    }
+  });
+
+  app.get("/api/analytics/rfm/export", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const segment = String(req.query.segment || "") as RfmSegment;
+      if (!RFM_SEGMENTS.includes(segment)) {
+        return res.status(400).json({ message: "Invalid segment" });
+      }
+      const rows = await getRfmCustomersBySegment(ctx.orgId, segment, 5000, 0);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="rfm-${segment.toLowerCase()}.csv"`);
+      res.write("customer_id,name,email,segment,r,f,m,total_spent,loyalty_points\n");
+      for (const row of rows) {
+        const line = [
+          row.customerId,
+          `"${(row.name || "").replace(/"/g, '""')}"`,
+          row.email || "",
+          row.segment,
+          row.recencyScore,
+          row.frequencyScore,
+          row.monetaryScore,
+          row.totalSpent,
+          row.loyaltyPoints,
+        ].join(",");
+        res.write(line + "\n");
+      }
+      res.end();
+    } catch (error) {
+      console.error("Error exporting RFM CSV:", error);
+      res.status(500).json({ message: "Failed to export RFM CSV" });
+    }
+  });
+
+  app.post("/api/analytics/rfm/recompute", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const count = await recomputeOrgRfm(ctx.orgId);
+      res.json({ success: true, customersScored: count });
+    } catch (error) {
+      console.error("Error recomputing RFM:", error);
+      res.status(500).json({ message: "Failed to recompute RFM" });
     }
   });
 

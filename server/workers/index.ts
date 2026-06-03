@@ -212,6 +212,7 @@ let isRunning = false;
 let dispatchInterval: NodeJS.Timeout | null = null;
 let processInterval: NodeJS.Timeout | null = null;
 let scheduledReportInterval: NodeJS.Timeout | null = null;
+let rfmInterval: NodeJS.Timeout | null = null;
 
 // Start the worker runner
 export function startWorkerRunner(options?: {
@@ -267,6 +268,15 @@ export function startWorkerRunner(options?: {
     }
   }, 60_000);
 
+  rfmInterval = setInterval(async () => {
+    try {
+      const { processRfmNightly } = await import("../services/rfmRunner");
+      await processRfmNightly();
+    } catch (error) {
+      console.error("[WorkerRunner] RFM nightly tick failed:", error);
+    }
+  }, 60_000);
+
   console.log('[WorkerRunner] Started successfully');
 }
 
@@ -289,6 +299,11 @@ export function stopWorkerRunner(): void {
   if (scheduledReportInterval) {
     clearInterval(scheduledReportInterval);
     scheduledReportInterval = null;
+  }
+
+  if (rfmInterval) {
+    clearInterval(rfmInterval);
+    rfmInterval = null;
   }
 
   isRunning = false;

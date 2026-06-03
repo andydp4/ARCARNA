@@ -94,6 +94,13 @@ export const navItems = [
     testId: 'nav-insights'
   },
   {
+    key: 'rfm',
+    label: 'RFM Segments',
+    href: '/analytics/rfm',
+    icon: PieChart,
+    testId: 'nav-rfm'
+  },
+  {
     key: 'expenses',
     label: 'Expenses',
     href: '/expenses',
