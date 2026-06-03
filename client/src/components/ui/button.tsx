@@ -18,6 +18,8 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        metal: "lm-btn-metal border border-metal-edge/35 text-metal-graphite shadow-sm",
+        metalOutline: "lm-btn-outline border-metal-edge text-metal-warm-white",
       },
       size: {
         default: "h-10 px-4 py-2",

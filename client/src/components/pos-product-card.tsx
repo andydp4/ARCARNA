@@ -62,26 +62,24 @@ function PosProductCardInner({ product, onAdd, disabled = false }: PosProductCar
   return (
     <Card
       className={cn(
-        "transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        canAdd
-          ? "cursor-pointer hover:shadow-md hover:border-primary/30 active:scale-[0.98]"
-          : "cursor-not-allowed opacity-75"
+        "pos-product-card focus:outline-none focus-visible:ring-2 focus-visible:ring-metal-titanium",
+        canAdd ? "cursor-pointer" : "pos-product-card-disabled cursor-not-allowed"
       )}
       onClick={() => canAdd && onAdd(product)}
       data-testid={`product-card-${product.id}`}
     >
       <CardHeader className="px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
-        <CardTitle className="line-clamp-2 text-base font-semibold leading-tight sm:text-lg">
+        <CardTitle className="line-clamp-2 text-base font-semibold leading-tight text-metal-warm-white sm:text-lg">
           {product.name}
         </CardTitle>
-        <div className="text-xs text-muted-foreground">{product.productId}</div>
+        <div className="text-xs text-metal-muted">{product.productId}</div>
       </CardHeader>
       <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
-        <div className="mb-2 text-xl font-bold text-primary sm:text-2xl">
+        <div className="pos-price mb-2 text-xl font-bold sm:text-2xl">
           {formatProductPrice(product)}
         </div>
         <div className="mb-2">{stockBadge(product)}</div>
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-metal-muted">
           {inStock ? "Use Add to include this item in the cart" : "Unavailable until stock is replenished"}
         </p>
         <Button
@@ -89,7 +87,7 @@ function PosProductCardInner({ product, onAdd, disabled = false }: PosProductCar
           type="button"
           className={cn(
             "min-h-[44px] w-full font-medium",
-            canAdd ? "bg-primary hover:bg-primary/90" : "pointer-events-none opacity-50"
+            canAdd ? "lm-btn-metal" : "pointer-events-none opacity-50"
           )}
           disabled={!canAdd}
           onClick={(e) => {
