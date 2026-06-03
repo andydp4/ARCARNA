@@ -15,6 +15,9 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { validateGiftCardCode } from "@shared/giftCards/code";
+import { roundMoney } from "@shared/giftCards/balance";
+import { redeemGiftCardInTx } from "../lib/giftCardService";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
@@ -29,20 +32,44 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { publishEventTx } = await import('../eventBus');
       const { engine } = await import('../../apps/server/src/engine.wiring');
       const body = { ...req.body, orgId: ctx.orgId ?? undefined, locationId: ctx.locationId ?? undefined };
+      const userId = req.user?.id ?? "unknown";
+      const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
+      if (usesGiftCard) {
+        if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
+          return res.status(400).json({ message: "Valid giftCardCode is required" });
+        }
+        const giftCardAmount = roundMoney(Number(body.giftCardAmount ?? 0));
+        if (giftCardAmount <= 0) return res.status(400).json({ message: "giftCardAmount must be positive" });
+        body.giftCardAmount = giftCardAmount;
+      }
 
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
-
         const shiftId = req.shift?.id;
         if (shiftId) {
-          await tx
-            .update(orders)
-            .set({ shift_id: shiftId })
-            .where(eq(orders.id, result.orderId));
+          await tx.update(orders).set({ shift_id: shiftId }).where(eq(orders.id, result.orderId));
         }
-
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
+
+        if (usesGiftCard && createdOrder) {
+          const orderTotal = parseFloat(String(createdOrder.total));
+          const giftCardAmount = roundMoney(Number(body.giftCardAmount));
+          if (giftCardAmount > orderTotal + 0.01) throw new Error("Gift card amount exceeds order total");
+          const remainder = roundMoney(orderTotal - giftCardAmount);
+          if (remainder > 0.01 && !body.remainderPaymentMethod) {
+            throw new Error("remainderPaymentMethod required when gift card does not cover the full total");
+          }
+          await redeemGiftCardInTx(tx, {
+            orgId: ctx.orgId!, code: body.giftCardCode, amount: giftCardAmount,
+            orderId: result.orderId, actorUserId: userId,
+          });
+          const paymentLabel = remainder > 0.01 ? `gift_card+${body.remainderPaymentMethod}` : "gift_card";
+          if (paymentLabel !== createdOrder.payment_method) {
+            await tx.update(orders).set({ payment_method: paymentLabel }).where(eq(orders.id, result.orderId));
+            createdOrder.payment_method = paymentLabel;
+          }
+        }
 
         const sendEmailReceipt = body.sendEmailReceipt === true;
         const eventId = await publishEventTx(tx, 'OrderCreated', result.orderId, {
@@ -83,7 +110,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     } catch (error: any) {
       console.error("Error creating order:", error);
       const message = error.message || "Failed to create order";
-      const status = error.name === 'ZodError' ? 400 : 500;
+      const status = error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message) ? 400 : 500;
       res.status(status).json({ message, errors: error.errors });
     }
   });

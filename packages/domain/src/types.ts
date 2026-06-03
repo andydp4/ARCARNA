@@ -37,6 +37,6 @@ export type OrderLine = { productId: ProductId; quantity: number; unitPrice: Mon
 export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];
   subtotal: MoneyGBP; vat: MoneyGBP; total: MoneyGBP;
-  paymentMethod: 'cash'|'card'|'transfer'|'tick';
+  paymentMethod: 'cash'|'card'|'transfer'|'tick'|'gift_card';
   status: 'pending'|'processing'|'completed'|'cancelled'|'on-hold'; createdAt: Date;
 }

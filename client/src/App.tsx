@@ -28,6 +28,7 @@ import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
 import OrderRefundPage from "@/pages/orders/refund";
 import ShiftsPage from "@/pages/shifts";
+import GiftCardsPage from "@/pages/gift-cards";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
@@ -67,6 +68,7 @@ function Router() {
           <Route path="/orders" component={Orders} />
           <Route path="/orders/:id/refund" component={OrderRefundPage} />
           <Route path="/shifts" component={ShiftsPage} />
+          <Route path="/gift-cards" component={GiftCardsPage} />
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
           <Route path="/insights" component={Insights} />

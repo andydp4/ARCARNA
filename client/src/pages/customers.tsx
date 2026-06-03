@@ -38,6 +38,26 @@ import { Skeleton } from '@/components/Skeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ContactsImport } from '@/components/import/ContactsImport'
 import { UnsavedChangesAlert } from '@/components/UnsavedChangesAlert'
+import { apiFetch } from '@/lib/appPaths'
+
+function CustomerStoreCredit({ customerId }: { customerId: string }) {
+  const { data } = useQuery<{ totalCredit: number; giftCards: Array<{ status: string }> }>({
+    queryKey: ['/api/gift-cards', customerId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/gift-cards?customerId=${customerId}`, { credentials: 'include' })
+      if (!res.ok) return { totalCredit: 0, giftCards: [] }
+      return res.json()
+    },
+  })
+  const activeCount = (data?.giftCards ?? []).filter((c) => c.status === 'active').length
+  if (!data || (data.totalCredit <= 0 && activeCount === 0)) return <span className="text-muted-foreground">—</span>
+  return (
+    <div className="text-sm">
+      <div className="font-medium">£{data.totalCredit.toFixed(2)}</div>
+      {activeCount > 0 && <div className="text-xs text-muted-foreground">{activeCount} card{activeCount !== 1 ? 's' : ''}</div>}
+    </div>
+  )
+}
 
 export default function Customers() {
   const { toast } = useToast()
@@ -634,6 +654,10 @@ export default function Customers() {
                               <div className="text-xs text-muted-foreground">Total Spent</div>
                               <div className="font-medium">£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</div>
                             </div>
+                            <div className="col-span-2">
+                              <div className="text-xs text-muted-foreground">Store credit</div>
+                              <CustomerStoreCredit customerId={customer.id} />
+                            </div>
                           </div>
 
                           <div className="flex gap-2 pt-2">
@@ -746,6 +770,7 @@ export default function Customers() {
                         <TableHead>Intelligence</TableHead>
                         <TableHead>Loyalty Points</TableHead>
                         <TableHead>Total Spent</TableHead>
+                        <TableHead>Store credit</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -820,6 +845,7 @@ export default function Customers() {
                           </TableCell>
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
                           <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>
+                          <TableCell><CustomerStoreCredit customerId={customer.id} /></TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Dialog>

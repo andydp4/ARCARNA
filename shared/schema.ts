@@ -727,6 +727,46 @@ export const refundLines = pgTable(
 export type RefundLine = typeof refundLines.$inferSelect;
 export type InsertRefundLine = typeof refundLines.$inferInsert;
 
+export const GIFT_CARD_STATUSES = ["active", "redeemed", "expired", "void"] as const;
+export type GiftCardStatus = (typeof GIFT_CARD_STATUSES)[number];
+export const GIFT_CARD_MOVEMENT_TYPES = ["issue", "redeem", "refund_credit", "void", "expire"] as const;
+export type GiftCardMovementType = (typeof GIFT_CARD_MOVEMENT_TYPES)[number];
+
+export const giftCards = pgTable("gift_cards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  balance: numeric("balance", { precision: 10, scale: 2 }).notNull(),
+  originalAmount: numeric("original_amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("GBP"),
+  issuedToCustomerId: uuid("issued_to_customer_id").references(() => customers.id),
+  issuedByUserId: varchar("issued_by_user_id", { length: 255 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("active"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("gift_cards_org_id_idx").on(table.orgId),
+  index("gift_cards_customer_id_idx").on(table.issuedToCustomerId),
+  index("gift_cards_code_idx").on(table.code),
+]);
+export type GiftCard = typeof giftCards.$inferSelect;
+
+export const giftCardMovements = pgTable("gift_card_movements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  giftCardId: uuid("gift_card_id").references(() => giftCards.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id),
+  refundId: uuid("refund_id").references(() => refunds.id),
+  type: varchar("type", { length: 16 }).notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: numeric("balance_after", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("gift_card_movements_card_id_idx").on(table.giftCardId),
+  index("gift_card_movements_order_id_idx").on(table.orderId),
+  index("gift_card_movements_refund_id_idx").on(table.refundId),
+]);
+export type GiftCardMovement = typeof giftCardMovements.$inferSelect;
+
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -1016,6 +1056,8 @@ export const EVENT_TYPES = [
   'OrderStatusChanged',
   'PaymentCaptured',
   'RefundIssued',
+  'GiftCardIssued',
+  'GiftCardRedeemed',
   'OrderCancelled',
   'ExpenseLogged',
   'ExpenseUpdated',
@@ -1309,6 +1351,8 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   OrderStatusChanged: ['CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],
   PaymentCaptured: ['InvoiceWorker', 'FinanceWorker', 'AutomationWorker'],
   RefundIssued: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
+  GiftCardIssued: ['CustomerWorker', 'BusinessInsightsWorker'],
+  GiftCardRedeemed: ['CustomerWorker', 'BusinessInsightsWorker'],
   OrderCancelled: ['InventoryWorker', 'LoyaltyWorker', 'CustomerWorker', 'BusinessInsightsWorker', 'FinanceWorker'],
   ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
