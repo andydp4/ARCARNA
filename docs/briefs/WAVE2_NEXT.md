@@ -6,10 +6,12 @@
 
 ## Recommended agents (2 parallel max)
 
+**Status:** Merged to `main` (U1 → F2+F3).
+
 | Agent | Branch | Brief | Notes |
 |-------|--------|-------|--------|
-| **1** | `feat/f2-shifts-zreport` | **F2** then **F3** | **Sequential in one agent** — shifts before refunds |
-| **2** | `feat/u1-skeletons` | **U1** | Skeletons + empty states (Liquid Metal tokens on main) |
+| **1** | `feat/f2-f3-shifts-refunds` | **F2** + **F3** | Done |
+| **2** | `feat/u1-skeletons-empty-states` | **U1** | Done |
 
 Optional parallel (third agent): **F7** channel attribution after A1 on main.
 

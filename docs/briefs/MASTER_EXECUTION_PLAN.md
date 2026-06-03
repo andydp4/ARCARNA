@@ -285,8 +285,11 @@ When starting any brief:
 | P10a | **Done** | `main` — Sentry browser SDK |
 | P10b–e | Not started | |
 | F1 | **Done** | `main` — email receipts |
-| F2–F7 | Not started | **Wave 2** |
-| U1–U7 | Not started | After E1 — start U1 |
+| F2 | **Done** | `main` — shifts + Z-report |
+| F3 | **Done** | `main` — refunds wizard |
+| F4–F7 | Not started | **Wave 3–4** |
+| U1 | **Done** | `main` — skeletons + empty states |
+| U2–U7 | Not started | **Wave 3** — U2 next |
 | A1 | **Done** | `main` — daily KPI card |
 | A2–A5 | Not started | |
 | M4 drill | Not started | Use O2 |

@@ -37,7 +37,10 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
          migrations/012_channel_readiness.sql \
          migrations/013_feature_flags.sql \
          migrations/014_admin_audit_retention.sql \
-         migrations/022_receipt_settings.sql; do
+         migrations/022_receipt_settings.sql \
+         migrations/023_shifts.sql \
+         migrations/024_orders_shift_id.sql \
+         migrations/025_refunds.sql; do
   if [[ ! -f "$f" ]]; then
     echo "  SKIP missing $f"
     continue

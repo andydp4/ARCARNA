@@ -1,6 +1,6 @@
 # Execution Briefs — Post-Stabilise
 
-**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Next work:** [`WAVE2_NEXT.md`](./WAVE2_NEXT.md) · Wave 1 complete — see [`WAVE1_NEXT.md`](./WAVE1_NEXT.md)
+**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Next work:** [`WAVE3_NEXT.md`](./WAVE3_NEXT.md) · Wave 2 complete — see [`WAVE2_NEXT.md`](./WAVE2_NEXT.md)
 
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
