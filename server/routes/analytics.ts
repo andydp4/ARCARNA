@@ -5,6 +5,7 @@ import type { DailyKpiResponse } from "@shared/analytics/kpi";
 import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 import { getDailyKpi } from "../services/dailyKpi";
 import { getHourOfDayAnalytics } from "../services/hourOfDayService";
+import { getStockTurnAnalytics } from "../services/stockTurnService";
 import { getRfmCustomersBySegment, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
 import { requireRole } from "../auth";
 
@@ -12,8 +13,10 @@ type KpiCacheEntry = { payload: DailyKpiResponse; expiresAt: number };
 
 const KPI_CACHE_TTL_MS = 60_000;
 const HOD_CACHE_TTL_MS = 5 * 60_000;
+const STOCK_TURN_CACHE_TTL_MS = 5 * 60_000;
 const kpiCache = new Map<string, KpiCacheEntry>();
 const hodCache = new Map<string, { payload: unknown; expiresAt: number }>();
+const stockTurnCache = new Map<string, { payload: unknown; expiresAt: number }>();
 
 function kpiCacheKey(orgId: string, date: string): string {
   return `${orgId}:${date}`;
@@ -188,6 +191,25 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     } catch (error) {
       console.error("Error fetching hour-of-day analytics:", error);
       res.status(500).json({ message: "Failed to fetch hour-of-day analytics" });
+    }
+  });
+
+  app.get("/api/analytics/stock-turn", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const windowDays = Math.min(parseInt(String(req.query.windowDays || "90"), 10) || 90, 365);
+      const cacheKey = `${ctx.orgId}:${windowDays}`;
+      const hit = stockTurnCache.get(cacheKey);
+      if (hit && hit.expiresAt > Date.now()) {
+        res.json(hit.payload);
+        return;
+      }
+      const payload = await getStockTurnAnalytics(ctx.orgId, windowDays);
+      stockTurnCache.set(cacheKey, { payload, expiresAt: Date.now() + STOCK_TURN_CACHE_TTL_MS });
+      res.json(payload);
+    } catch (error) {
+      console.error("Error fetching stock turn:", error);
+      res.status(500).json({ message: "Failed to fetch stock turn analytics" });
     }
   });
 

@@ -21,6 +21,7 @@ import {
   Timer,
   Ticket,
   Clock,
+  Layers,
 } from 'lucide-react'
 
 export const navItems = [
@@ -107,6 +108,13 @@ export const navItems = [
     href: '/analytics/hour-of-day',
     icon: Clock,
     testId: 'nav-hour-of-day'
+  },
+  {
+    key: 'stock-turn',
+    label: 'Stock turn',
+    href: '/analytics/stock-turn',
+    icon: Layers,
+    testId: 'nav-stock-turn'
   },
   {
     key: 'expenses',
