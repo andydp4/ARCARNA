@@ -47,6 +47,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
+import { PageHeader, LM_CARD } from '@/components/PageHeader'
 import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
@@ -202,17 +203,11 @@ export default function Settings() {
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
-            <Settings2 className="h-6 sm:h-8 w-6 sm:w-8" />
-            System Settings
-          </h1>
-          <p className="text-muted-foreground mt-1">Configure your EPOS system settings and preferences</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            General, payment, invoice, and system options below save to this browser unless your environment syncs them server-side.
-          </p>
-        </div>
+        <PageHeader
+          icon={Settings2}
+          title="System Settings"
+          description="Configure your EPOS system settings and preferences. General, payment, invoice, and system options below save to this browser unless your environment syncs them server-side."
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 min-h-[48px]">
@@ -237,7 +232,7 @@ export default function Settings() {
           {/* General Settings */}
           <TabsContent value="general" className="space-y-6">
               <OrgNameSettings />
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Building className="h-5 w-5" />
@@ -317,7 +312,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Tax Settings</CardTitle>
                   <CardDescription>Configure VAT and tax calculations</CardDescription>
@@ -365,7 +360,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Appearance</CardTitle>
                   <CardDescription>Customize the look and feel</CardDescription>
@@ -391,7 +386,7 @@ export default function Settings() {
 
           {/* Payment Settings */}
           <TabsContent value="payment" className="space-y-6">
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <CreditCard className="h-5 w-5" />
@@ -439,7 +434,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Bank Details</CardTitle>
                   <CardDescription>Shown on invoices and receipts when customers pay by transfer</CardDescription>
@@ -540,7 +535,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Collection & Delivery</CardTitle>
                   <CardDescription>Pickup and delivery options shown to staff and on customer-facing flows</CardDescription>
@@ -631,7 +626,7 @@ export default function Settings() {
 
           {/* Invoice Settings */}
           <TabsContent value="invoice" className="space-y-6">
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Mail className="h-5 w-5" />
@@ -647,7 +642,7 @@ export default function Settings() {
                   </Link>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Receipt className="h-5 w-5" />
@@ -713,7 +708,7 @@ export default function Settings() {
 
           {/* System Settings */}
           <TabsContent value="system" className="space-y-6">
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Stock Management</CardTitle>
                   <CardDescription>Configure inventory thresholds and alerts</CardDescription>
@@ -744,7 +739,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Backup Settings</CardTitle>
                   <CardDescription>Configure automatic backups</CardDescription>
@@ -785,7 +780,7 @@ export default function Settings() {
 
               <Separator />
 
-              <Card>
+              <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle>Multi-Location</CardTitle>
                   <CardDescription>Manage multiple store locations</CardDescription>
@@ -814,7 +809,7 @@ export default function Settings() {
           )}
 
           <TabsContent value="users">
-            <Card>
+            <Card className={LM_CARD}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />

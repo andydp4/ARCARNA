@@ -44,7 +44,7 @@ import {
 import { OrdersPageSkeleton } from "@/components/orders-skeleton";
 import { AppPageHeader } from "@/components/app-page-header";
 import { ActionLoader } from "@/components/action-loader";
-import { EmptyStatePanel } from "@/components/empty-state-panel";
+import { EmptyState } from "@/components/EmptyState";
 import { BulkActionBar } from "@/components/BulkActionBar";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { useAuth } from "@/hooks/useAuth";
@@ -622,25 +622,23 @@ export default function Orders() {
           <Card className="border-border/60 shadow-sm">
             <CardContent className="p-6 sm:p-8">
               {orders.length === 0 ? (
-                <EmptyStatePanel
-                  variant="empty"
+                <EmptyState
                   icon={PackageCheck}
                   title="No orders yet"
-                  description="New orders from POS and other channels will show up here when they are created."
+                  body="New orders from POS and other channels will show up here when they are created."
+                  cta={{ label: "Open POS", href: "/pos" }}
                 />
               ) : searchQuery.trim() ? (
-                <EmptyStatePanel
-                  variant="search"
+                <EmptyState
                   icon={Search}
                   title="No orders match your search"
-                  description="Try another customer name, order ID fragment, or payment keyword—or clear the search field."
+                  body="Try another customer name, order ID fragment, or payment keyword—or clear the search field."
                 />
               ) : (
-                <EmptyStatePanel
-                  variant="filtered"
+                <EmptyState
                   icon={PackageCheck}
                   title="Nothing in this view"
-                  description="Change the status filter or choose “All orders” to see more rows."
+                  body="Change the status filter or choose “All orders” to see more rows."
                 />
               )}
             </CardContent>

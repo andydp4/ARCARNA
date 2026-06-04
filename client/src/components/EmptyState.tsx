@@ -19,7 +19,10 @@ export type EmptyStateProps = {
 };
 
 function CtaButton({ cta, variant }: { cta: EmptyStateCta; variant: "default" | "outline" }) {
-  const className = "min-h-[44px]";
+  const className = cn(
+    "min-h-[44px]",
+    variant === "default" ? "lm-btn-metal" : "lm-btn-outline",
+  );
   if (cta.href) {
     return (
       <Button asChild variant={variant} className={className}>
@@ -41,18 +44,18 @@ export function EmptyState({ title, body, cta, secondary, icon: Icon, className 
   return (
     <div
       className={cn(
-        "mx-auto max-w-md rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-10 text-center",
+        "mx-auto max-w-md rounded-xl border border-dashed border-[hsl(210,15%,78%/0.18)] lm-card-muted px-6 py-10 text-center",
         className
       )}
       role="status"
     >
       {Icon && (
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 ring-1 ring-border/60">
-          <Icon className="h-8 w-8 text-muted-foreground/75" aria-hidden />
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(215,10%,18%)] ring-1 ring-[hsl(210,15%,78%/0.12)]">
+          <Icon className="h-8 w-8 text-metal-muted" aria-hidden />
         </div>
       )}
-      <p className="text-base font-semibold text-foreground">{title}</p>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+      <p className="text-base font-semibold text-metal-warm-white">{title}</p>
+      <p className="mt-2 text-sm leading-relaxed text-metal-muted">{body}</p>
       {(cta || secondary) && (
         <div className="mt-6 flex flex-col items-center justify-center gap-2 sm:flex-row">
           {cta && <CtaButton cta={cta} variant="default" />}

@@ -40,7 +40,7 @@ import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
 import { AppPageHeader } from "@/components/app-page-header";
 import { ActionLoader } from "@/components/action-loader";
 import { DataTableShell } from "@/components/data-table-shell";
-import { EmptyStatePanel } from "@/components/empty-state-panel";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Invoice extends InvoiceListItem {
   orderId: string;
@@ -439,32 +439,30 @@ export default function Invoices() {
           <CardContent className="pt-2">
             {filteredInvoices.length === 0 ? (
               invoices.length === 0 ? (
-                <EmptyStatePanel
-                  variant="empty"
+                <EmptyState
                   icon={FileText}
                   title="No invoices yet"
-                  description="Created invoices will appear here. Use Create invoice when you are ready to bill a customer."
+                  body="Created invoices will appear here after you bill customers from orders or create them manually."
+                  cta={{ label: "View orders", href: "/orders" }}
+                  secondary={{ label: "Manage customers", href: "/customers" }}
                 />
               ) : periodInvoices.length === 0 ? (
-                <EmptyStatePanel
-                  variant="filtered"
+                <EmptyState
                   icon={FileText}
                   title="Nothing in this date window"
-                  description="Widen the period (for example All dates or This month) to see invoices that fall outside the current range."
+                  body="Widen the period (for example All dates or This month) to see invoices outside the current range."
                 />
               ) : searchTerm.trim() ? (
-                <EmptyStatePanel
-                  variant="search"
+                <EmptyState
                   icon={Search}
                   title="No invoices match your search"
-                  description="Try another invoice number, customer name, or email—or clear the search field."
+                  body="Try another invoice number, customer name, or email—or clear the search field."
                 />
               ) : (
-                <EmptyStatePanel
-                  variant="filtered"
+                <EmptyState
                   icon={FileText}
                   title="No invoices match these filters"
-                  description="Set status to All statuses, choose a wider date window, or clear the search to see more rows."
+                  body="Set status to All statuses, choose a wider date window, or clear the search to see more rows."
                 />
               )
             ) : (

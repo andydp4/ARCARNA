@@ -16,8 +16,8 @@
 | Onboarding pages → `lm-auth-shell` | Done |
 | `npm run wave10:preflight` script | Done |
 | `scripts/verify-workers.ts` (REQUIRED_WORKERS registry) | Done |
-| GAP-E2-01 remainder (settings, all list chrome) | Partial — Layout/POS/home done |
-| GAP-U1 empty states | Backlog |
+| GAP-E2-01 remainder (settings, all list chrome) | Done — settings + reports (`PageHeader`, `LM_CARD`) |
+| GAP-U1 empty states | Done — orders, invoices, reports zero-data |
 | `lint:strict` green | Backlog |
 | O1–O3 ops (HSTS verify, backups cron) | Operator |
 

@@ -52,7 +52,7 @@
 | **Brief** | E2 |
 | **Snag** | Wave 3 E2 scoped Layout + POS; Settings, reports, some list chrome may still use default shadcn only |
 | **Fix** | Wave 10 or dedicated `feat/e2-shell-remainder` — apply `liquid-metal` / card variants per `PHASE_E_LIQUID_METAL.md` |
-| **Closed** | [ ] |
+| **Closed** | [x] Wave 10b — settings + reports (`PageHeader`, `LM_CARD`) |
 
 ---
 
@@ -67,9 +67,7 @@
 | **Brief** | U1 |
 | **Snag** | `orders.tsx`, `invoices.tsx` use `EmptyStatePanel` without primary CTA from shared `<EmptyState>` |
 | **Fix** | Align with `UI_PATTERNS.md` or document exception in `UI_PATTERNS.md` |
-| **Closed** | [ ] |
-
-<a id="gap-u1-02"></a>
+| **Closed** | [x] Wave 10b — `EmptyState` + Open POS / View orders CTAs |
 
 ### GAP-U1-02 — Reports loading / empty
 
@@ -78,9 +76,7 @@
 | **Brief** | U1 |
 | **Snag** | `reports.tsx` has skeleton; no list-style empty state for zero-data dashboards |
 | **Fix** | Add `EmptyState` or dashboard-specific empty panel |
-| **Closed** | [ ] |
-
-<a id="gap-u1-03"></a>
+| **Closed** | [x] Wave 10b — `insights.tsx` zero-data empty + Last 30 days preset |
 
 ### GAP-U1-03 — Import flows
 

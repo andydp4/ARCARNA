@@ -20,10 +20,8 @@ import {
   Users,
   DollarSign,
   ShoppingCart,
-  Home,
   BarChart3,
 } from "lucide-react";
-import { Link } from "wouter";
 import {
   LineChart,
   Line,
@@ -44,6 +42,8 @@ import { ActionLoader } from "@/components/action-loader";
 import { DataTableShell, DataTableScrollRegion } from "@/components/data-table-shell";
 import { SpatialInsightsShell } from "@/components/spatial/SpatialInsightsShell";
 import { useFlag } from "@/hooks/useFlag";
+import { PageHeader, LM_CARD } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 
 interface ReportData {
   revenue: {
@@ -138,6 +138,9 @@ export default function Insights() {
       avgOrder: toNum(r.orders?.average),
     };
   }, [reportData]);
+
+  const reportsEmpty =
+    !reportsInitialLoad && summaryStats.orders === 0 && summaryStats.revenue === 0;
 
   const revenueByDay = useMemo(() => reportData?.revenue?.byDay ?? [], [reportData]);
   const revenueByCategory = useMemo(() => reportData?.revenue?.byCategory ?? [], [reportData]);
@@ -275,7 +278,7 @@ export default function Insights() {
   ) : (
     <>
         {/* Date Range Controls */}
-        <Card className="mb-8 border-border/60 bg-muted/[0.04] shadow-sm">
+        <Card className={`mb-8 ${LM_CARD}`}>
           <CardHeader className="space-y-0 pb-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -372,7 +375,7 @@ export default function Insights() {
                   <Button
                     onClick={() => handleExport("full")}
                     disabled={isExporting}
-                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[10.5rem] sm:w-auto"
+                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[10.5rem] sm:w-auto lm-btn-metal"
                     data-testid="button-export-full"
                   >
                     {isExporting ? (
@@ -393,11 +396,21 @@ export default function Insights() {
           </CardContent>
         </Card>
 
+        {reportsEmpty ? (
+          <EmptyState
+            icon={BarChart3}
+            title="No activity in this period"
+            body="There are no orders or revenue in the selected date range. Process a sale in POS or try a wider preset."
+            cta={{ label: "Open POS", href: "/pos" }}
+            secondary={{ label: "Last 30 days", onClick: () => handlePresetRange("last30") }}
+          />
+        ) : (
+        <>
         {/* Summary Cards */}
         <div className="mb-2 grid grid-cols-2 gap-4 sm:gap-4 lg:grid-cols-4">
-          <Card className="border-border/60 bg-card shadow-sm">
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-metal-muted">Total revenue</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -407,7 +420,7 @@ export default function Insights() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60 bg-card shadow-sm">
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total orders</CardTitle>
             </CardHeader>
@@ -419,7 +432,7 @@ export default function Insights() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60 bg-card shadow-sm">
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Active customers</CardTitle>
             </CardHeader>
@@ -431,7 +444,7 @@ export default function Insights() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60 bg-card shadow-sm">
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Avg order value</CardTitle>
             </CardHeader>
@@ -469,7 +482,7 @@ export default function Insights() {
 
           {/* Revenue Tab */}
           <TabsContent value="revenue" className="space-y-6">
-            <Card className="border-border/60 shadow-sm">
+            <Card className={LM_CARD}>
               <CardHeader className="space-y-0 pb-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -519,7 +532,7 @@ export default function Insights() {
             </Card>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <Card className="border-border/60 shadow-sm">
+              <Card className={LM_CARD}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Revenue by category</CardTitle>
                   <CardDescription className="mt-1 leading-relaxed">Share of revenue by product category</CardDescription>
@@ -546,7 +559,7 @@ export default function Insights() {
                 </CardContent>
               </Card>
 
-              <Card className="border-border/60 shadow-sm">
+              <Card className={LM_CARD}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Payment methods</CardTitle>
                   <CardDescription className="mt-1 leading-relaxed">Volume and revenue by tender type</CardDescription>
@@ -589,7 +602,7 @@ export default function Insights() {
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-6">
-            <Card className="border-border/60 shadow-sm">
+            <Card className={LM_CARD}>
               <CardHeader className="space-y-0 pb-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -679,7 +692,7 @@ export default function Insights() {
 
           {/* Customers Tab */}
           <TabsContent value="customers" className="space-y-6">
-            <Card className="border-border/60 shadow-sm">
+            <Card className={LM_CARD}>
               <CardHeader className="space-y-0 pb-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -809,7 +822,7 @@ export default function Insights() {
 
           {/* Inventory Tab */}
           <TabsContent value="inventory" className="space-y-6">
-            <Card className="border-border/60 shadow-sm">
+            <Card className={LM_CARD}>
               <CardHeader className="space-y-0 pb-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -905,6 +918,8 @@ export default function Insights() {
             </Card>
           </TabsContent>
         </Tabs>
+        </>
+        )}
     </>
   );
 
@@ -921,37 +936,15 @@ export default function Insights() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-primary shadow-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-[4.25rem] items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/95 ring-1 ring-white/15">
-                <BarChart3 className="h-5 w-5 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-white sm:text-2xl">Business insights</h1>
-                <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-primary-foreground/70 sm:text-sm sm:line-clamp-1">
-                  Pick a period, explore revenue and operations, then export CSV or PDF when you need to share.
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button asChild variant="ghost" className="min-h-[44px] text-white hover:bg-white/10" data-testid="link-home">
-                <Link href="/">
-                  <Home className="h-4 w-4 sm:mr-2" />
-                  <span className="sr-only sm:not-sr-only">Dashboard</span>
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+    <div className="w-full">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <PageHeader
+          icon={BarChart3}
+          title="Business insights"
+          description="Pick a period, explore revenue and operations, then export CSV or PDF when you need to share."
+        />
         {insightsBody}
-      </main>
+      </div>
     </div>
   );
 }
