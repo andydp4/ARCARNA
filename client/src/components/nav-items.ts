@@ -21,6 +21,7 @@ import {
   Timer,
   Ticket,
   Clock,
+  Radio,
 } from 'lucide-react'
 
 export const navItems = [
@@ -107,6 +108,13 @@ export const navItems = [
     href: '/analytics/hour-of-day',
     icon: Clock,
     testId: 'nav-hour-of-day'
+  },
+  {
+    key: 'channels',
+    label: 'Channels',
+    href: '/analytics/channels',
+    icon: Radio,
+    testId: 'nav-channels'
   },
   {
     key: 'expenses',
