@@ -61,6 +61,14 @@ import {
 import { downloadBlob } from '@/lib/fileImport'
 import { ViewSelector } from '@/components/ViewSelector'
 import { useSavedViews, useApplyDefaultView } from '@/hooks/useSavedViews'
+import { Checkbox } from '@/components/ui/checkbox'
+import { BulkActionBar } from '@/components/BulkActionBar'
+import { ConfirmDestructive } from '@/components/ConfirmDestructive'
+import { useBulkSelection } from '@/hooks/useBulkSelection'
+import { useAuth } from '@/hooks/useAuth'
+import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
+import type { Role } from '@shared/schema'
+import { executeBulkAction, downloadBlob as downloadBulkCsv } from '@/lib/bulkActionsClient'
 import { captureViewState } from '@shared/savedViews/state'
 
 export default function ProductManagement() {
@@ -342,6 +350,44 @@ export default function ProductManagement() {
     product.productId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.barcode?.includes(searchTerm)
   )
+
+  const { user } = useAuth()
+  const bulk = useBulkSelection(filteredProducts)
+  const bulkActions = getBulkActionsForRole('products', (user?.role ?? 'CASHIER') as Role)
+  const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  const runBulk = async (action: BulkActionId) => {
+    setBulkBusy(true)
+    try {
+      const result = await executeBulkAction('products', [...bulk.selectedIds], action)
+      if (result.kind === 'csv') {
+        downloadBulkCsv(result.blob, result.filename)
+        toast({ title: 'Export started', description: `${bulk.count} products exported.` })
+      } else {
+        toast({ title: 'Bulk action complete', description: `Updated ${bulk.count} products.` })
+        await invalidateAfterCatalogMutation(queryClient)
+      }
+      bulk.clear()
+    } catch (err: any) {
+      toast({ title: 'Bulk action failed', description: err.message, variant: 'destructive' })
+    } finally {
+      setBulkBusy(false)
+      setPendingBulkAction(null)
+      setConfirmDeleteOpen(false)
+    }
+  }
+
+  const handleBulkAction = (action: BulkActionId) => {
+    const def = bulkActions.find((a) => a.id === action)
+    if (def?.destructive) {
+      setPendingBulkAction(action)
+      setConfirmDeleteOpen(true)
+      return
+    }
+    void runBulk(action)
+  }
 
   const getStockStatus = (product: any) => {
     const stockPercentage = (product.stock / (product.stockLimit || 100)) * 100
@@ -934,6 +980,13 @@ export default function ProductManagement() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={bulk.allVisibleSelected}
+                            onCheckedChange={() => bulk.toggleAllVisible()}
+                            aria-label="Select all visible products"
+                          />
+                        </TableHead>
                         <TableHead>Product ID</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Barcode</TableHead>
@@ -949,6 +1002,13 @@ export default function ProductManagement() {
                         const stockStatus = getStockStatus(product)
                         return (
                           <TableRow key={product.id} data-testid={`product-row-${product.id}`}>
+                        <TableCell>
+                          <Checkbox
+                            checked={bulk.isSelected(product.id)}
+                            onCheckedChange={() => bulk.toggle(product.id)}
+                            aria-label={`Select ${product.name}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-sm">{product.productId || '-'}</TableCell>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
@@ -1097,6 +1157,24 @@ export default function ProductManagement() {
             )}
           </CardContent>
         </Card>
+        <BulkActionBar
+          count={bulk.count}
+          actions={bulkActions}
+          onAction={handleBulkAction}
+          onClear={bulk.clear}
+          busy={bulkBusy}
+        />
+        <ConfirmDestructive
+          open={confirmDeleteOpen}
+          title="Delete selected products"
+          description={`This will permanently delete ${bulk.count} product(s). Type DELETE to confirm.`}
+          onConfirm={() => pendingBulkAction && void runBulk(pendingBulkAction)}
+          onCancel={() => {
+            setConfirmDeleteOpen(false)
+            setPendingBulkAction(null)
+          }}
+          busy={bulkBusy}
+        />
       </div>
     </div>
   )

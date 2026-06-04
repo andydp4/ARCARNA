@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 
 export interface OrdersListOrder {
@@ -81,9 +82,11 @@ export type OrdersRowProps = {
   onEdit: (orderId: string) => void;
   onUpdateStatus: (order: OrdersListOrder) => void;
   onDelete: (order: OrdersListOrder) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 };
 
-function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete }: OrdersRowProps) {
+function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selected, onToggleSelect }: OrdersRowProps) {
   const totalNum = parseFloat(order.total || "0");
   const placed = new Date(order.createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
@@ -99,6 +102,11 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete }: Ord
       )}
       data-testid={`order-${order.id}`}
     >
+      {onToggleSelect && (
+        <div className="flex items-start sm:items-center">
+          <Checkbox checked={!!selected} onCheckedChange={onToggleSelect} aria-label={`Select order ${order.id.slice(0, 8)}`} />
+        </div>
+      )}
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p className="text-base font-semibold leading-snug tracking-tight text-foreground">
