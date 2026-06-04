@@ -1,0 +1,35 @@
+import AxeBuilder from "@axe-core/playwright";
+import { test, expect } from "@playwright/test";
+import type { Result } from "axe-core";
+
+const CRITICAL_PATHS = [
+  { name: "POS", path: "/midnight/pos" },
+  { name: "Customers", path: "/midnight/customers" },
+  { name: "Products", path: "/midnight/products" },
+  { name: "Orders", path: "/midnight/orders" },
+  { name: "Settings", path: "/midnight/settings" },
+] as const;
+
+function seriousOrCritical(violations: Result[]): Result[] {
+  return violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+}
+
+function formatViolations(violations: Result[]): string {
+  return violations
+    .map((v) => `${v.id} (${v.impact}): ${v.help} — ${v.nodes.length} node(s)`)
+    .join("\n");
+}
+
+for (const { name, path } of CRITICAL_PATHS) {
+  test(`${name} — zero serious/critical axe violations`, async ({ page }) => {
+    await page.goto(path);
+    await page.waitForLoadState("domcontentloaded");
+
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+
+    const bad = seriousOrCritical(results.violations);
+    expect(bad, formatViolations(bad)).toEqual([]);
+  });
+}
