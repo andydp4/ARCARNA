@@ -1,8 +1,11 @@
 import "./instrument";
 import { createRoot } from "react-dom/client";
 import { Sentry } from "./instrument";
+import { initProductAnalytics } from "./lib/analytics";
 import App from "./App";
 import "./index.css";
+
+initProductAnalytics();
 import { APP_BASE } from "./lib/appPaths";
 import { syncService } from "./lib/sync-service";
 
