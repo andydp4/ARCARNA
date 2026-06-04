@@ -267,15 +267,21 @@ npm run deploy:restart
 ## 8. Update workflow (routine deploy)
 
 ```bash
-cd /var/www/midnight-epos
+cd /root/MidnightEPOS   # or /var/www/midnight-epos
 git pull origin main
-npm install
-npm run deploy:build
-export $(grep -v '^#' .env | xargs)
-psql "$DATABASE_URL" -f migrations/009_domain_outbox_and_workers.sql 2>/dev/null || true
-npm run migration:sanity
-npm run deploy:restart
+
+# Important: do not run npm ci while NODE_ENV=production is exported (e.g. from sourcing .env).
+unset NODE_ENV
+npm ci --include=dev
+npm run build
+
+set -a && source .env && set +a
+bash scripts/apply-migrations-pm2.sh
+pm2 restart midnight-epos --update-env
+curl -sS http://127.0.0.1:5000/midnight/api/health
 ```
+
+**Sentry sourcemaps on VPS:** If build logs `Invalid token (401)` from `@sentry/vite-plugin`, either set a valid `SENTRY_AUTH_TOKEN` or remove that line from `.env` (runtime error reporting via `SENTRY_DSN` still works; only upload fails).
 
 Open https://viger.cloud — you should see the **Viger Cloud** portal. Open **Midnight EPOS** or go to https://viger.cloud/midnight for **Sign in** (Clerk).
 

@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { applySecurityMiddleware, mountTieredApiRateLimits } from "./security";
-import { setupVite, serveStatic, log } from "./vite";
+import { serveStatic, log } from "./static";
 import { validateProductionEnv } from "./validateProductionEnv";
 import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
 import { APP_BASE_PATH } from "./appBase";
@@ -169,6 +169,7 @@ process.on("unhandledRejection", (reason) => {
   if (isProduction) {
     serveStatic(midnight, swScope);
   } else {
+    const { setupVite } = await import("./vite");
     await setupVite(midnight, server);
   }
 
