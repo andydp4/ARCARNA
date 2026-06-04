@@ -20,6 +20,7 @@ import {
   Activity,
   Timer,
   Ticket,
+  Clock,
 } from 'lucide-react'
 
 export const navItems = [
@@ -99,6 +100,13 @@ export const navItems = [
     href: '/analytics/rfm',
     icon: PieChart,
     testId: 'nav-rfm'
+  },
+  {
+    key: 'hour-of-day',
+    label: 'Hour of day',
+    href: '/analytics/hour-of-day',
+    icon: Clock,
+    testId: 'nav-hour-of-day'
   },
   {
     key: 'expenses',

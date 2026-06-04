@@ -31,6 +31,7 @@ import OrderRefundPage from "@/pages/orders/refund";
 import ShiftsPage from "@/pages/shifts";
 import GiftCardsPage from "@/pages/gift-cards";
 import RfmAnalyticsPage from "@/pages/analytics/rfm";
+import HourOfDayAnalyticsPage from "@/pages/analytics/hour-of-day";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
@@ -77,6 +78,7 @@ function Router() {
           <Route path="/reports" component={Insights} />
           <Route path="/analytics" component={Insights} />
           <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
+          <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />
           <Route path="/locations" component={Locations} />
           <Route path="/customers" component={Customers} />
           <Route path="/loyalty" component={Loyalty} />

@@ -4,13 +4,16 @@ import { storage } from "../storage";
 import type { DailyKpiResponse } from "@shared/analytics/kpi";
 import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 import { getDailyKpi } from "../services/dailyKpi";
+import { getHourOfDayAnalytics } from "../services/hourOfDayService";
 import { getRfmCustomersBySegment, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
 import { requireRole } from "../auth";
 
 type KpiCacheEntry = { payload: DailyKpiResponse; expiresAt: number };
 
 const KPI_CACHE_TTL_MS = 60_000;
+const HOD_CACHE_TTL_MS = 5 * 60_000;
 const kpiCache = new Map<string, KpiCacheEntry>();
+const hodCache = new Map<string, { payload: unknown; expiresAt: number }>();
 
 function kpiCacheKey(orgId: string, date: string): string {
   return `${orgId}:${date}`;
@@ -166,6 +169,25 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     } catch (error) {
       console.error("Error recomputing RFM:", error);
       res.status(500).json({ message: "Failed to recompute RFM" });
+    }
+  });
+
+  app.get("/api/analytics/hour-of-day", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const weeks = Math.min(parseInt(String(req.query.weeks || "12"), 10) || 12, 52);
+      const cacheKey = `${ctx.orgId}:${weeks}`;
+      const hit = hodCache.get(cacheKey);
+      if (hit && hit.expiresAt > Date.now()) {
+        res.json(hit.payload);
+        return;
+      }
+      const payload = await getHourOfDayAnalytics(ctx.orgId, weeks);
+      hodCache.set(cacheKey, { payload, expiresAt: Date.now() + HOD_CACHE_TTL_MS });
+      res.json(payload);
+    } catch (error) {
+      console.error("Error fetching hour-of-day analytics:", error);
+      res.status(500).json({ message: "Failed to fetch hour-of-day analytics" });
     }
   });
 
