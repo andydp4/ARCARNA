@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Gift, Plus, Edit2, Trash2, Calendar, Percent, DollarSign, Tag, Clock, Users } from "lucide-react";
+import { Link } from "wouter";
+import { Gift, Plus, Edit2, Trash2, Calendar, Percent, DollarSign, Tag, Clock, Users, TrendingUp } from "lucide-react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
@@ -288,6 +289,16 @@ export default function PromotionsPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <Link href={`/promotions/${promo.id}/lift`}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="View lift report"
+                          data-testid={`button-lift-${promo.id}`}
+                        >
+                          <TrendingUp className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="icon"
