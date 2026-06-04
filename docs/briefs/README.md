@@ -1,8 +1,8 @@
 # Execution Briefs — Post-Stabilise
 
-**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Next work:** [`WAVE9_NEXT.md`](./WAVE9_NEXT.md)
+**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Next work:** [`WAVE10_NEXT.md`](./WAVE10_NEXT.md)
 
-Waves **0–8** are merged on `main` (retail, UX, analytics, platform). Wave **9** = onboarding + tablet POS + U5 eslint (8b).
+Waves **0–9** on `main` (through onboarding, tablet POS, eslint infra). Wave **10** = ops + snag sweeps + long horizon.
 
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
