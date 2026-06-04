@@ -361,3 +361,15 @@
 .lm-auth-shell .text-metal-muted {
   color: var(--lm-muted);
 }
+
+.liquid-metal .lm-quick-action {
+  cursor: pointer;
+}
+
+.liquid-metal .text-metal-warm-white {
+  color: var(--lm-warm-white);
+}
+
+.liquid-metal .text-metal-muted {
+  color: var(--lm-muted);
+}

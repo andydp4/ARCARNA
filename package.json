@@ -26,6 +26,7 @@
     "db:migrate": "bash scripts/apply-migrations-pm2.sh",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
     "release:preflight": "npm run migration:sanity && npm run gate",
+    "wave10:preflight": "bash scripts/wave10-preflight.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=e2e",

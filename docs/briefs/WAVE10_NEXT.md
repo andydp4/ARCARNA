@@ -1,6 +1,8 @@
 # Wave 10 — Next work
 
-**Prerequisite:** Wave 9 on `main` (U6 onboarding, U5 eslint infra, U7 tablet POS).
+**Launch tracker:** [`WAVE10_LAUNCH.md`](./WAVE10_LAUNCH.md) · **Preflight:** `npm run wave10:preflight`
+
+**Prerequisite:** Wave 9 on `main` ✓
 
 ---
 

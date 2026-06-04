@@ -82,7 +82,7 @@ export async function setupClerkAuth(app: Express) {
       process.env.VITE_CLERK_ACCOUNTS_URL?.trim();
     if (accountsUrl) {
       const base = accountsUrl.replace(/\/$/, "");
-      const redirect = encodeURIComponent(appUrlFromRequest(req, appRedirectPath("/")));
+      const redirect = encodeURIComponent(appUrlFromRequest(req, appRedirectPath("/sign-out?done=1")));
       return res.redirect(302, `${base}/sign-out?redirect_url=${redirect}`);
     }
     redirectToAppPath(res, "/sign-in");

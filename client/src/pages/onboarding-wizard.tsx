@@ -144,7 +144,7 @@ export default function OnboardingWizard() {
 
   if (activeStep === "done") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-slate-900 to-slate-800">
+      <div className="min-h-screen lm-auth-shell liquid-metal flex items-center justify-center p-4">
         <Card className="w-full max-w-lg text-center">
           <CardHeader>
             <Check className="mx-auto h-12 w-12 text-emerald-500 mb-2" />
@@ -167,7 +167,7 @@ export default function OnboardingWizard() {
   const StepIcon = STEP_META[activeStep].icon;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 py-8 px-4">
+    <div className="min-h-screen lm-auth-shell liquid-metal py-8 px-4">
       <div className="max-w-lg mx-auto space-y-6">
         <div>
           <p className="text-sm text-slate-400 mb-2">

@@ -50,6 +50,7 @@ import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import SignInPage from "@/pages/sign-in";
+import SignOutPage from "@/pages/sign-out";
 import { CommandPalette } from "@/components/CommandPalette";
 
 function Router() {
@@ -60,6 +61,7 @@ function Router() {
     <CommandPalette />
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
+      <Route path="/sign-out" component={SignOutPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/wizard" component={OnboardingWizard} />

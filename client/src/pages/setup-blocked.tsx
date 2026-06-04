@@ -1,25 +1,19 @@
-import { Clock } from "lucide-react";
+import { Clock, LogOut } from "lucide-react";
 import { navigateToLogout } from "@/lib/orgCacheWipe";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthShell } from "@/components/AuthShell";
 
 export default function SetupBlocked() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <Clock className="mx-auto h-12 w-12 text-yellow-500 mb-2" />
-          <CardTitle>Setup in progress</CardTitle>
-          <CardDescription>
-            An administrator is completing organization setup. You can sign in again once setup is finished.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" className="w-full min-h-[44px]" onClick={() => navigateToLogout()}>
-            Sign out
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthShell title="Setup in progress" subtitle="Organization configuration" showBrand={false}>
+      <Clock className="mx-auto h-12 w-12 text-[hsl(38,92%,50%)] mb-4" aria-hidden />
+      <p className="text-sm text-center text-metal-muted mb-6">
+        An administrator is completing organization setup. You can sign in again once setup is finished.
+      </p>
+      <Button variant="outline" className="w-full min-h-[44px] lm-btn-outline" onClick={() => navigateToLogout()}>
+        <LogOut className="mr-2 h-4 w-4" />
+        Sign out
+      </Button>
+    </AuthShell>
   );
 }

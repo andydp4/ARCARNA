@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, resolveAppPath } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, LogOut, XCircle, RefreshCw } from "lucide-react";
 import { navigateToLogout } from "@/lib/orgCacheWipe";
+import { AuthShell } from "@/components/AuthShell";
 
 interface ApprovalStatus {
   authenticated: boolean;
@@ -18,25 +18,19 @@ export default function PendingApproval() {
   const { data: status, isLoading, refetch } = useQuery<ApprovalStatus>({
     queryKey: ["/api/auth/approval-status"],
     queryFn: async () => {
-      const response = await apiFetch("/api/auth/approval-status", { credentials: 'include' });
+      const response = await apiFetch("/api/auth/approval-status", { credentials: "include" });
       return response.json();
     },
     refetchInterval: 30000,
   });
 
-  const handleLogout = () => {
-    navigateToLogout();
-  };
-
-  const handleRefresh = () => {
-    refetch();
-  };
-
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
+      <AuthShell title="Checking access…" subtitle="">
+        <div className="flex justify-center py-6">
+          <div className="h-10 w-10 rounded-full border-2 border-[hsl(210,15%,78%/0.2)] border-t-[hsl(210,10%,78%)] animate-spin" />
+        </div>
+      </AuthShell>
     );
   }
 
@@ -45,82 +39,45 @@ export default function PendingApproval() {
     return null;
   }
 
+  const rejected = status?.isRejected;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          {status?.isRejected ? (
-            <>
-              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                <XCircle className="h-8 w-8 text-red-600" />
-              </div>
-              <CardTitle className="text-2xl text-red-600">Access Denied</CardTitle>
-              <CardDescription>
-                Your access request has been rejected
-              </CardDescription>
-            </>
-          ) : (
-            <>
-              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
-                <Clock className="h-8 w-8 text-yellow-600 animate-pulse" />
-              </div>
-              <CardTitle className="text-2xl">Access Pending</CardTitle>
-              <CardDescription>
-                Your request is waiting for approval
-              </CardDescription>
-            </>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="text-center space-y-2">
-            <p className="text-lg font-medium">Hello, {status?.name || 'User'}</p>
-            {status?.email && (
-              <p className="text-sm text-muted-foreground">{status.email}</p>
-            )}
-          </div>
+    <AuthShell
+      title={rejected ? "Access denied" : "Access pending"}
+      subtitle={status?.email || "Awaiting administrator approval"}
+      showBrand={false}
+    >
+      <div className="text-center mb-6">
+        {rejected ? (
+          <XCircle className="mx-auto h-12 w-12 text-[hsl(0,72%,51%)] mb-3" aria-hidden />
+        ) : (
+          <Clock className="mx-auto h-12 w-12 text-[hsl(38,92%,50%)] mb-3 animate-pulse" aria-hidden />
+        )}
+        <p className="text-lg font-medium text-metal-warm-white">Hello, {status?.name || "User"}</p>
+      </div>
 
-          {status?.isRejected ? (
-            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <p className="text-sm text-center text-red-700 dark:text-red-400">
-                The system administrator has denied your access request. 
-                If you believe this is an error, please contact the administrator.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-              <p className="text-sm text-center text-yellow-700 dark:text-yellow-400">
-                The system administrator will review your access request. 
-                This page will automatically update when your request is processed.
-              </p>
-            </div>
-          )}
+      <div
+        className={
+          rejected
+            ? "lm-card-muted rounded-lg p-4 mb-6 text-sm text-center text-[hsl(0,72%,65%)]"
+            : "lm-card-muted rounded-lg p-4 mb-6 text-sm text-center text-[hsl(38,92%,60%)]"
+        }
+      >
+        {rejected
+          ? "The administrator denied your access request. Contact them if you believe this is an error."
+          : "Your request is waiting for review. This page refreshes automatically every 30 seconds."}
+      </div>
 
-          <div className="flex flex-col gap-3">
-            <Button 
-              onClick={handleRefresh}
-              variant="outline"
-              className="w-full min-h-[44px]"
-              data-testid="button-refresh-status"
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Check Status
-            </Button>
-            <Button 
-              onClick={handleLogout}
-              variant="ghost"
-              className="w-full min-h-[44px] text-muted-foreground"
-              data-testid="button-logout"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </Button>
-          </div>
-
-          <p className="text-xs text-center text-muted-foreground">
-            Status checks automatically every 30 seconds
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+      <div className="flex flex-col gap-3">
+        <Button onClick={() => refetch()} variant="outline" className="w-full min-h-[44px] lm-btn-outline" data-testid="button-refresh-status">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Check status
+        </Button>
+        <Button onClick={() => navigateToLogout()} variant="ghost" className="w-full min-h-[44px] text-metal-muted" data-testid="button-logout">
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign out
+        </Button>
+      </div>
+    </AuthShell>
   );
 }

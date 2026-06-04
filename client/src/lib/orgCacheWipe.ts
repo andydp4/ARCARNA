@@ -1,8 +1,4 @@
-import { apiFetch, resolveApiUrl, resolveAppPath } from "@/lib/appPaths";
-import {
-  isClerkMode,
-  type AuthRuntime,
-} from "@/lib/authConfig";
+import { resolveAppPath } from "@/lib/appPaths";
 import { LEGACY_OFFLINE_DB_NAME, offlineDbNameForOrg } from "@/lib/offline-storage";
 
 export async function deleteIndexedDb(name: string): Promise<void> {
@@ -51,22 +47,7 @@ export async function wipeAllOfflineData(): Promise<void> {
   await clearServiceWorkerAllCaches();
 }
 
-/** Sign out from any screen (Clerk signOut flow or /api/logout fallback). */
+/** Sign out — clears offline data and ends Clerk / legacy session. */
 export async function navigateToLogout(): Promise<void> {
-  await wipeAllOfflineData();
-
-  try {
-    const res = await apiFetch("/api/auth/runtime", { credentials: "include" });
-    if (res.ok) {
-      const runtime = (await res.json()) as AuthRuntime;
-      if (isClerkMode(runtime)) {
-        window.location.href = resolveAppPath("/sign-in?logout=1");
-        return;
-      }
-    }
-  } catch (e) {
-    console.warn("[logout] Could not load auth runtime, using /api/logout", e);
-  }
-
-  window.location.href = resolveApiUrl("/api/logout");
+  window.location.href = resolveAppPath("/sign-out");
 }

@@ -72,7 +72,7 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     const satelliteDomain = clerkSatelliteDomain();
     const clerkCommon = {
       publishableKey: config.publishableKey,
-      afterSignOutUrl: appUrl("/"),
+      afterSignOutUrl: appUrl("/sign-out?done=1"),
       signInUrl: signInUrl,
       signUpUrl: signUpUrl,
       signInFallbackRedirectUrl: appUrl("/"),
