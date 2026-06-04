@@ -15,6 +15,7 @@ export interface AuthUser {
   isPending?: boolean;
   accessState?: AccessState;
   needsOnboarding?: boolean;
+  needsOrgOnboarding?: boolean;
   setupComplete?: boolean;
   needsSetupWizard?: boolean;
   runtime?: {
@@ -77,6 +78,7 @@ export function useAuth() {
     isAuthenticated: !!user,
     accessState: user?.accessState ?? "ok",
     needsOnboarding: !!user?.needsOnboarding,
+    needsOrgOnboarding: !!user?.needsOrgOnboarding,
     needsSetupWizard: !!user?.needsSetupWizard,
     setupComplete: user?.setupComplete !== false,
     devAuthBypass: !!user?.runtime?.devAuthBypass,

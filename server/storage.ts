@@ -145,6 +145,7 @@ export interface IStorage {
   ): Promise<{ imported: number; skipped: number; merged: number; failed: number; errors: string[] }>;
   getOrgProfile(orgId: string): Promise<Organization | null>;
   updateOrgProfile(orgId: string, patch: Record<string, unknown>): Promise<Organization>;
+  updateOnboardingState(orgId: string, state: Record<string, unknown>): Promise<Organization>;
   completeOrgSetup(orgId: string): Promise<Organization>;
   getImportHistory(orgId: string, limit?: number): Promise<ImportHistory[]>;
   recordImportHistory(data: InsertImportHistory): Promise<ImportHistory>;
@@ -684,7 +685,7 @@ export class DatabaseStorage implements IStorage {
       "currency", "timezone", "businessType", "logoUrl", "invoiceTemplate", "invoicePrefix",
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
       "receiptTemplateHtml",
-      "accentStyle", "businessColors", "setupWizardState",
+      "accentStyle", "businessColors", "setupWizardState", "onboardingState",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
@@ -692,6 +693,16 @@ export class DatabaseStorage implements IStorage {
     const [org] = await db
       .update(organizations)
       .set({ ...allowed, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId))
+      .returning();
+    if (!org) throw new Error("Organization not found");
+    return org;
+  }
+
+  async updateOnboardingState(orgId: string, state: Record<string, unknown>): Promise<Organization> {
+    const [org] = await db
+      .update(organizations)
+      .set({ onboardingState: state, updatedAt: new Date() })
       .where(eq(organizations.id, orgId))
       .returning();
     if (!org) throw new Error("Organization not found");

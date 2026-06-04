@@ -37,6 +37,7 @@ export const organizations = pgTable("organizations", {
   name: varchar("name", { length: 255 }).notNull(),
   setupComplete: integer("setup_complete").default(0).notNull(),
   setupWizardState: jsonb("setup_wizard_state"),
+  onboardingState: jsonb("onboarding_state").default({}).notNull(),
   tradingName: varchar("trading_name", { length: 255 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),

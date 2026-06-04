@@ -7,6 +7,7 @@ const PUBLIC_PATHS = new Set([
   "/pending-approval",
   "/no-access",
   "/onboarding",
+  "/onboarding/wizard",
   "/setup-wizard",
   "/setup-blocked",
 ]);
@@ -18,7 +19,7 @@ function LoadingSpinner() {
 }
 
 export function AccessGate({ children }: { children: ReactNode }) {
-  const { user, isLoading, isAuthenticated, accessState, needsOnboarding, needsSetupWizard } = useAuth();
+  const { user, isLoading, isAuthenticated, accessState, needsOnboarding, needsOrgOnboarding, needsSetupWizard } = useAuth();
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -37,6 +38,10 @@ export function AccessGate({ children }: { children: ReactNode }) {
       }
       return;
     }
+    if (needsOrgOnboarding) {
+      setLocation("/onboarding/wizard");
+      return;
+    }
     if (needsSetupWizard) {
       if (user?.role && SETUP_ROLES.has(user.role)) {
         setLocation("/setup-wizard");
@@ -49,6 +54,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
     isAuthenticated,
     accessState,
     needsOnboarding,
+    needsOrgOnboarding,
     needsSetupWizard,
     location,
     setLocation,

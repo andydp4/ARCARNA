@@ -38,6 +38,7 @@ import StockTurnAnalyticsPage from "@/pages/analytics/stock-turn";
 import UserAccess from "@/pages/user-access";
 import PendingApproval from "@/pages/pending-approval";
 import Onboarding from "@/pages/onboarding";
+import OnboardingWizard from "@/pages/onboarding-wizard";
 import NoAccess from "@/pages/no-access";
 import SetupWizard from "@/pages/setup-wizard";
 import SetupBlocked from "@/pages/setup-blocked";
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
+      <Route path="/onboarding/wizard" component={OnboardingWizard} />
       <Route path="/no-access" component={NoAccess} />
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />

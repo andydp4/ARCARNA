@@ -26,6 +26,7 @@ const LEGACY_EPOS_SEGMENTS = [
   "sign-in",
   "pending-approval",
   "onboarding",
+  "onboarding/wizard",
   "no-access",
   "setup-wizard",
   "setup-blocked",

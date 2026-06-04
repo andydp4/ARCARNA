@@ -5,6 +5,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { isOnboardingComplete, parseOnboardingState } from "@shared/onboarding";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -31,10 +32,15 @@ export function registerAuthRoutes(app: Express): void {
       const setupOrgId =
         role === "SUPER_ADMIN" ? headerOrg || orgId || null : orgId;
       let setupComplete = true;
+      let needsOrgOnboarding = false;
       if (setupOrgId) {
         const org = await storage.getOrganization(setupOrgId);
         orgName = org?.name ?? orgName;
         setupComplete = org?.setupComplete === 1;
+        if (org) {
+          const ob = parseOnboardingState(org.onboardingState);
+          needsOrgOnboarding = !isOnboardingComplete(ob);
+        }
       }
       const orgCount = await storage.countOrganizations();
       let accessState: "ok" | "pending" | "no_org" | "no_access" = "ok";
@@ -69,8 +75,9 @@ export function registerAuthRoutes(app: Express): void {
         isPending: !!req.user.isPending,
         accessState,
         needsOnboarding: role === "SUPER_ADMIN" && orgCount === 0,
+        needsOrgOnboarding,
         setupComplete,
-        needsSetupWizard: !!setupOrgId && !setupComplete,
+        needsSetupWizard: !!setupOrgId && !setupComplete && !needsOrgOnboarding,
         runtime: getAuthRuntimeSnapshot(),
         clerkTwoFactorEnabled,
       });
