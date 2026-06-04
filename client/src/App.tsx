@@ -17,6 +17,7 @@ import Insights from "@/pages/insights";
 import Locations from "@/pages/locations";
 import Loyalty from "@/pages/loyalty";
 import Promotions from "@/pages/promotions";
+import PromotionLiftPage from "@/pages/promotions/lift";
 import { ExpensesPage } from "@/pages/expenses";
 import { ExpenseReportsPage } from "@/pages/expense-reports";
 import Customers from "@/pages/customers";
@@ -87,6 +88,7 @@ function Router() {
           <Route path="/customers" component={Customers} />
           <Route path="/loyalty" component={Loyalty} />
           <Route path="/promotions" component={Promotions} />
+          <Route path="/promotions/:id/lift" component={PromotionLiftPage} />
           <Route path="/expenses" component={ExpensesPage} />
           <Route path="/expense-reports" component={ExpenseReportsPage} />
           <Route path="/invoices" component={Invoices} />
