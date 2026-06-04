@@ -1,5 +1,7 @@
 # Phase O — Operations & resilience
 
+**Status (2026-06-04):** **O4 Done** · **O1–O3 Ops** (unchecked) — [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md)
+
 Closes **M4 drill**, **S8 external alerts**, and VPS hygiene. Mostly config + docs; minimal app code.
 
 ---

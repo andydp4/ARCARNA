@@ -1,8 +1,19 @@
 # Phase U — UX polish
 
+**Status (2026-06-04):** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · Gaps: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md)
+
+| ID | Status |
+|----|--------|
+| U1 | Done† |
+| U2 | Done† |
+| U3 | Done |
+| U4 | Done† |
+| U5 | Partial (axe); **8b** eslint in [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
+| U6–U7 | Planned (Wave 9) |
+
 Seven briefs: **U1** skeleton + empty-state pass, **U2** Cmd-K command palette, **U3** saved filter views, **U4** bulk actions, **U5** accessibility audit (WCAG AA), **U6** onboarding wizard for new orgs, **U7** tablet POS layout.
 
-U1–U5 can run in parallel with Phase A. U6 and U7 are best done after new-org acquisition is real (onboarding) or tablet-cashier feedback arrives.
+U1–U5 shipped on `main` (Waves 2–8). U6 and U7 are Wave 9. Remaining DoD gaps are tracked in `GAPS_BACKLOG.md`.
 
 ---
 

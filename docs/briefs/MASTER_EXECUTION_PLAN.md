@@ -4,6 +4,8 @@
 
 **Canonical brief format:** Goal / Touch / Steps / Out of scope / DoD / Verification / PR title — see [`README.md`](./README.md).
 
+**Live status (2026-06-04):** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps/snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Next agents:** [`WAVE9_NEXT.md`](./WAVE9_NEXT.md)
+
 **Design direction:** [Liquid Metal Industrial](../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md) — apply to all UI phases (E, U, F client surfaces).
 
 ---
@@ -268,38 +270,33 @@ When starting any brief:
 
 ---
 
-## 8. Status tracker (update as PRs merge)
+## 8. Status tracker
 
-| ID | Status | PR / notes |
-|----|--------|------------|
-| H1 | **Done** | `main` — tiered limits, `server/security.ts` |
-| H2 | **Done** | `main` — rotation runbook + retention policy |
-| H3 | **Done** | `main` — extended `/api/health/metrics` |
-| H4 | **Done** | `main` — `STORAGE_STRATEGY.md` |
-| O4 | **Done** | `main` — `docs/ops/INCIDENT_CHECKLIST.md` |
-| O1 | Not started | External uptime (operator) |
-| O2 | Not started | M4 restore drill (VPS) |
-| O3 | Not started | pm2 startup (VPS) |
-| E1 | **Done** | `main` — Liquid Metal + spatial Insights |
-| E2–E3 | Not started | |
-| P10a | **Done** | `main` — Sentry browser SDK |
-| P10b–e | Not started | |
-| F1 | **Done** | `main` — email receipts |
-| F2 | **Done** | `main` — shifts + Z-report |
-| F3 | **Done** | `main` — refunds wizard |
-| F4–F7 | Not started | **Wave 3–4** |
-| U1 | **Done** | `main` — skeletons + empty states |
-| U2–U7 | Not started | **Wave 3** — U2 next |
-| A1 | **Done** | `main` — daily KPI card |
-| A2–A5 | Not started | |
-| M4 drill | Not started | Use O2 |
+**Maintained in:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) (full table + wave history). **DoD gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md).
+
+Summary on `main` as of **2026-06-04** (`fc9032d`, Waves **0–8** merged):
+
+| Area | Done | Partial / gaps | Not started |
+|------|------|----------------|-------------|
+| **H** | H1†, H2, H3, H4 | H1: live HSTS verify, CSP policy sign-off | — |
+| **O** | O4 | — | **O1, O2, O3** (operator) |
+| **P10** | P10a–e | P10b: Plausible dashboards (ops) | — |
+| **E** | E1, E2†, E3 | E2: non-POS pages shell | — |
+| **F** | F1–F7 | F6: label print deferred | F8+ long-tail |
+| **U** | U1†, U2†, U3, U4† | U5: axe only; **8b** eslint queued | **U6, U7** (Wave 9) |
+| **A** | A1–A5 | — | — |
+| **L** | — | — | L1–L7 deferred |
+| **M4 drill** | scripts | — | **O2** |
+
+† = shipped with documented gaps in `GAPS_BACKLOG.md`.
 
 ---
 
-## 9. Quick “what do I do Monday?”
+## 9. Quick “what do I do Monday?” (post Wave 8)
 
-1. **Wave 0:** Merge **H1** + **O1** + **O2** (security + uptime + backup proof).  
-2. **Wave 1:** **E1** + **F1** in parallel (design system + receipts).  
-3. Revisit **U1** once E1 is on `main`.
+1. **Production:** VPS smoke per [`WAVE8_NEXT.md`](./WAVE8_NEXT.md) § VPS; confirm health + one POS sale.  
+2. **Ops:** Close **O1–O3** + **GAP-H1-01** in [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md).  
+3. **Dev:** Launch **Wave 9** per [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) (U6 → 8b → U7).  
+4. **Snags:** Optional **Snag sweep A/B** in gaps backlog before Wave 9 if you want strict U1/U4 DoD.
 
 For full brief text: follow links in §3.

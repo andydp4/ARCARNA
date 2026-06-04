@@ -1,5 +1,7 @@
 # Phase E — Liquid Metal Industrial (design system + spatial shell)
 
+**Status (2026-06-04):** **E1, E3 Done** · **E2 Done†** (Layout/POS; remainder: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#gap-e2-01))
+
 **Canonical UX spec:** [`../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md`](../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md)  
 **Spatial notes:** [`../ux-concepts/concept-E-aurora.md`](../ux-concepts/concept-E-aurora.md)
 

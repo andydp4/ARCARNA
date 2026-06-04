@@ -1,5 +1,7 @@
 # Phase A — Analytics & insights
 
+**Status (2026-06-04):** **A1–A5 Done** on `main` ([`BRIEF_STATUS.md`](./BRIEF_STATUS.md))
+
 Five briefs: **A1** daily KPI card, **A2** RFM customer segmentation, **A3** hour-of-day sales heatmap, **A4** stock turn ratio per category, **A5** promotion lift measurement.
 
 All five sit on top of the existing `analytics_daily / weekly / monthly` tables (in schema). The aggregation pipeline is the existing event-driven worker layer (post-S2 — `event_outbox` + `server/workers/`). New routes serve pre-aggregated reads; pages render with Recharts (already a dep).

@@ -1,5 +1,7 @@
 # Phase F — Retail features
 
+**Status (2026-06-04):** **F1–F7 Done** on `main` · F6 snags: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#gap-f6-01)
+
 Six briefs: **F1** email receipts, **F2** shifts + Z-report, **F3** refunds polish, **F4** gift cards / store credit, **F5** loyalty UX, **F6** barcode scanner first-class. F1–F3 are reproduced here in the canonical Goal/Touch/Steps/DoD/Verification/PR-title format (originally in plan §16); F4–F6 expand the compact entries from the plan.
 
 Execute strictly in numerical order — F2 depends on `orders.shift_id` (added by F2 itself), F3 reuses F2's `shift_id` in the refund timeline, F4 plugs into F3's payment-method system.

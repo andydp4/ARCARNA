@@ -4,6 +4,8 @@
 
 **Canonical briefs:** [`PHASE_U_UX_POLISH.md`](./PHASE_U_UX_POLISH.md) (U6, U7, U5 eslint), [`PHASE_E_LIQUID_METAL.md`](./PHASE_E_LIQUID_METAL.md) (E2), [`PHASE_F_FEATURES.md`](./PHASE_F_FEATURES.md) (029/F6), [`PHASE_P10_PLATFORM.md`](./PHASE_P10_PLATFORM.md) (P10b), [`PHASE_O_OPS.md`](./PHASE_O_OPS.md) (O1–O3).
 
+**Pre-wave snags (optional):** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) — U1/U4/U5/H1/E2 items you may close before or alongside Wave 9.
+
 ---
 
 ## 1. Scope table

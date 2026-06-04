@@ -1,8 +1,10 @@
 # Phase P10 — Platform tooling
 
+**Status (2026-06-04):** **P10a–e Done** on `main` · P10b ops gap: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#gap-p10b-01)
+
 Maps architecture review **P10** to executable briefs. Feature flags (**M3**) and optional backend Sentry (**S8**) are already on `main`.
 
-Execute **P10a** early (Wave 1); **P10d** before **U5** (a11y uses Playwright).
+**P10d** and axe **U5** merged in Wave 8. **U5 eslint (8b)** remains in [`WAVE9_NEXT.md`](./WAVE9_NEXT.md).
 
 ---
 

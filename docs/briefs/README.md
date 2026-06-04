@@ -1,6 +1,8 @@
 # Execution Briefs — Post-Stabilise
 
-**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Next work:** [`WAVE3_NEXT.md`](./WAVE3_NEXT.md) · Wave 2 complete — see [`WAVE2_NEXT.md`](./WAVE2_NEXT.md)
+**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Next work:** [`WAVE9_NEXT.md`](./WAVE9_NEXT.md)
+
+Waves **0–8** are merged on `main` (retail, UX, analytics, platform). Wave **9** = onboarding + tablet POS + U5 eslint (8b).
 
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
@@ -33,24 +35,26 @@ Every brief must:
 
 **S1–S8 and C1–C5 are merged on `main`** (as of May 2026). Channel readiness landed in PR #14 (`feat(channels): C1–C5`). CI on `main`: TypeScript check, migration sanity, release gate.
 
-**Phase M (M1–M4)** — implemented on branch `chore/m1-dead-code-purge` (pending merge). Includes base-path auth redirect fix for `/midnight` deploys. **M4 restore drill** still needs a one-time run on VPS/R2 before calling ops DoD complete.
+**Phase M (M1–M4)** — **M1–M3** and **M4 scripts** on `main`. **M4 restore drill** = operator task **O2** (see [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md)).
 
-## Phase order
+## Phase order (historical — most items complete)
 
-After S1–S8 and C1–C5 are merged, execute in this order:
+Original sequence from the architecture review. **Current truth:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md).
 
-1. **M1** — dead-code purge + dependency cleanup (small + unblocks F/U work in the same files).
-2. **F1** — email receipts (highest-ROI user-visible win).
-3. **A1** — daily KPI card (high-visibility dashboard win).
-4. **F2** → **F3** — shifts/Z-report → refunds polish.
-5. **F4** → **F5** → **F6** — gift cards, loyalty UX, barcode scanner.
-6. **U1** → **U5** — UX polish (run in parallel with A2–A5 if capacity allows).
-7. **A2** → **A5** — analytics surfaces.
-8. **M2** → **M4** — structural cleanup as pressure builds.
-9. **U6** → **U7** — onboarding + tablet POS layout when new-org acquisition matters.
-10. **L1**–**L7** — long-horizon, brief them when prioritised.
+| Phase | On `main`? |
+|-------|------------|
+| M1–M3, M4 scripts | Yes |
+| F1–F7, A1–A5 | Yes |
+| U1–U4, U2, E1–E3, P10a–e | Yes (U5 partial; U6–U7 planned) |
+| H1–H4, O4 | Yes (O1–O3 operator) |
+| U6 → U7 | **Wave 9** next |
+| L1–L7 | Deferred |
 
 ## Index
+
+### Status & backlog
+- [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) — every brief ID: Done / Partial / Ops / Planned
+- [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) — DoD gaps and snags with checkboxes
 
 ### Phase M — Maintenance & cleanup
 - [`PHASE_M_CLEANUP.md`](./PHASE_M_CLEANUP.md) — **M1** (dead code purge, partial — what's left after PR #11), **M2** (routes split), **M3** (feature flags), **M4** (backup automation).

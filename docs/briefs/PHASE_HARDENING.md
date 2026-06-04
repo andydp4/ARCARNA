@@ -1,5 +1,7 @@
 # Phase H — Stabilise gaps (S6 / S7 / S8 / P6 finish)
 
+**Status (2026-06-04):** **H2–H4 Done** · **H1 Done†** (live HSTS verify: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#gap-h1-01))
+
 Work here closes items from the architecture review that shipped **partially** on `main`. Do not duplicate M1–M4 or S1–S5.
 
 ---
