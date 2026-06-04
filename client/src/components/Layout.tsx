@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
+import { BrandLogo } from '@/components/BrandLogo'
 
 interface LayoutProps {
   children: ReactNode
@@ -91,7 +92,7 @@ export function Layout({ children }: LayoutProps) {
                   <div className="flex h-full flex-col">
                     <div className="border-b border-border p-4">
                       <Link href="/" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
-                        <img src="/logo.png" alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-lg object-contain" />
+                        <BrandLogo variant="white-on-navy" size="sm" alt="" className="rounded-lg" />
                         <h2 className="text-lg font-semibold tracking-tight text-metal-warm-white">Midnight EPOS</h2>
                       </Link>
                     </div>
@@ -110,7 +111,7 @@ export function Layout({ children }: LayoutProps) {
               </Button>
             )}
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <img src="/logo.png" alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-md object-contain" />
+              <BrandLogo variant="white-on-navy" size="sm" alt="" className="rounded-md" />
               <span className="truncate text-xl font-semibold tracking-tight text-metal-warm-white">Midnight EPOS</span>
             </Link>
           </div>

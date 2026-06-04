@@ -306,3 +306,58 @@
   stroke-opacity: 0.18;
   fill: none;
 }
+
+/* ── Auth / landing shell (outside app Layout) ─────────────────────── */
+
+.lm-auth-shell {
+  --lm-graphite: hsl(220, 10%, 7%);
+  --lm-gunmetal: hsl(215, 12%, 13%);
+  --lm-charcoal: hsl(218, 9%, 17%);
+  --lm-warm-white: hsl(210, 18%, 95%);
+  --lm-muted: hsl(215, 10%, 58%);
+  --lm-edge-highlight: hsl(210, 15%, 78% / 0.14);
+  --lm-surface-gradient: linear-gradient(
+    155deg,
+    hsl(215, 12%, 16%) 0%,
+    hsl(220, 10%, 10%) 48%,
+    hsl(218, 11%, 13%) 100%
+  );
+  --lm-inner-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.05),
+    inset 0 -1px 0 hsl(0, 0% / 0.28);
+  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06),
+    0 8px 32px hsl(0, 0% / 0.45);
+  background: radial-gradient(
+    ellipse 120% 80% at 50% -20%,
+    hsl(215, 12%, 16%) 0%,
+    var(--lm-graphite) 55%
+  );
+  color: var(--lm-warm-white);
+}
+
+.lm-auth-shell .lm-card {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow), var(--lm-panel-shadow);
+}
+
+.lm-auth-shell .lm-card-muted {
+  background: linear-gradient(
+    160deg,
+    hsl(215, 11%, 15%) 0%,
+    hsl(220, 10%, 11%) 100%
+  );
+  border: 1px solid var(--lm-edge-highlight);
+  box-shadow: var(--lm-inner-shadow);
+}
+
+.lm-auth-shell .lm-divider {
+  border-color: hsl(210, 15%, 78% / 0.12);
+}
+
+.lm-auth-shell .text-metal-warm-white {
+  color: var(--lm-warm-white);
+}
+
+.lm-auth-shell .text-metal-muted {
+  color: var(--lm-muted);
+}

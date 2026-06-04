@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuthConfig } from "@/components/AuthProviders";
 import { ClerkSignInPanel } from "@/components/ClerkSignInPanel";
+import { AuthShell } from "@/components/AuthShell";
 import { type AuthRuntime, isClerkMode } from "@/lib/authConfig";
 import { useEffect, useRef } from "react";
 
@@ -41,40 +42,42 @@ export default function SignInPage() {
 
   if (!publishableKey) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
-        <div className="w-full max-w-md">
-          <Alert variant="destructive">
-            <AlertTitle>Sign-in unavailable</AlertTitle>
-            <AlertDescription>
-              Clerk publishable key is missing. Configure{" "}
-              <code className="text-xs">VITE_CLERK_PUBLISHABLE_KEY</code> and rebuild, or set{" "}
-              <code className="text-xs">CLERK_PUBLISHABLE_KEY</code> in server{" "}
-              <code className="text-xs">.env</code>.
-            </AlertDescription>
-          </Alert>
-          <Button className="mt-4 w-full" variant="outline" onClick={() => { window.location.href = resolveAppPath("/"); }}>
-            Back to home
-          </Button>
-        </div>
-      </div>
+      <AuthShell subtitle="">
+        <Alert variant="destructive">
+          <AlertTitle>Sign-in unavailable</AlertTitle>
+          <AlertDescription>
+            Clerk publishable key is missing. Configure{" "}
+            <code className="text-xs">VITE_CLERK_PUBLISHABLE_KEY</code> and rebuild, or set{" "}
+            <code className="text-xs">CLERK_PUBLISHABLE_KEY</code> in server{" "}
+            <code className="text-xs">.env</code>.
+          </AlertDescription>
+        </Alert>
+        <Button
+          className="mt-4 w-full min-h-[44px] lm-btn-outline"
+          variant="outline"
+          onClick={() => {
+            window.location.href = resolveAppPath("/");
+          }}
+        >
+          Back to home
+        </Button>
+      </AuthShell>
     );
   }
 
   if (!clerkReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
-        <Button disabled className="w-full max-w-md min-h-[44px]">
+      <AuthShell subtitle="">
+        <Button disabled className="w-full min-h-[44px] lm-btn-outline">
           Loading sign-in…
         </Button>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary via-slate-800 to-slate-900 px-4">
-      <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-2xl text-center">
-        <ClerkSignInPanel autoRedirect portalPath="/sign-in" />
-      </div>
-    </div>
+    <AuthShell subtitle="Sign in to continue">
+      <ClerkSignInPanel autoRedirect portalPath="/sign-in" />
+    </AuthShell>
   );
 }

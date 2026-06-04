@@ -52,7 +52,7 @@ export function ClerkSignInPanel({
       <div className="space-y-3">
         <Button
           type="button"
-          className="w-full min-h-[44px]"
+          className="w-full min-h-[44px] lm-btn-metal font-medium"
           disabled={syncing}
           onClick={() => {
             void enterApp();
@@ -96,7 +96,7 @@ export function ClerkSignInPanel({
   return (
     <Button
       type="button"
-      className="w-full min-h-[44px] bg-secondary hover:bg-blue-600 text-white font-medium"
+      className="w-full min-h-[44px] lm-btn-metal font-medium"
       onClick={() => {
         window.location.href = portalUrl;
       }}
