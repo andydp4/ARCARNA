@@ -28,6 +28,27 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
+  app.get("/api/products/by-barcode/:code", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const code = decodeURIComponent(req.params.code || "").trim();
+      if (!code) return res.status(400).json({ message: "Barcode required" });
+      const { db } = await import("../db");
+      const { products } = await import("@shared/schema");
+      const { and, eq } = await import("drizzle-orm");
+      const [product] = await db
+        .select()
+        .from(products)
+        .where(and(eq(products.orgId, ctx.orgId), eq(products.barcode, code)))
+        .limit(1);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      res.json(product);
+    } catch (error) {
+      console.error("Error fetching product by barcode:", error);
+      res.status(500).json({ message: "Failed to fetch product" });
+    }
+  });
+
   app.get("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };

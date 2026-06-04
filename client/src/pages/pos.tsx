@@ -28,6 +28,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
 import { Label } from "@/components/ui/label";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 
 type Product = PosProduct;
 
@@ -353,6 +355,40 @@ export default function POS() {
       description: `${product.name} added to cart`,
     });
   }, [placeOrderMutation.isPending, toast]);
+
+  const addProductByBarcode = useCallback(
+    async (code: string) => {
+      const localMatch = products.find((product) => product.barcode === code);
+      if (localMatch) {
+        addToCart(localMatch);
+        playScanSuccessBeep();
+        return;
+      }
+
+      try {
+        const res = await apiFetch(`/api/products/by-barcode/${encodeURIComponent(code)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Product not found");
+        const product = (await res.json()) as Product;
+        addToCart(product);
+        playScanSuccessBeep();
+      } catch {
+        playScanFailBeep();
+        setSearchTerm(code);
+        toast({
+          title: "Unknown barcode",
+          description: `No product matched "${code}". Search opened with that code.`,
+          variant: "destructive",
+        });
+      }
+    },
+    [products, addToCart, toast],
+  );
+
+  useBarcodeScanner((code) => {
+    void addProductByBarcode(code);
+  });
 
   // Update cart quantity
   const updateQuantity = (productId: string, delta: number) => {
