@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
+import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 
 interface LayoutProps {
   children: ReactNode
@@ -126,6 +127,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </header>
+      <PwaInstallBanner />
       <div className="flex">
         {!isMobile && (
           <aside className={cn('lm-shell-sidebar sticky top-16 h-[calc(100vh-4rem)] transition-all duration-300', sidebarOpen ? 'w-64' : 'w-16')}>

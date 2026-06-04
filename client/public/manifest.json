@@ -5,8 +5,8 @@
   "start_url": "/midnight/",
   "scope": "/midnight/",
   "display": "standalone",
-  "background_color": "#1E293B",
-  "theme_color": "#1E293B",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "orientation": "portrait-primary",
   "icons": [
     {
