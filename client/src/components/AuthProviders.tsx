@@ -3,11 +3,14 @@ import { apiFetch } from "@/lib/appPaths";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ClerkSessionSync } from "@/components/ClerkSessionSync";
+import { ClerkTokenBridge } from "@/components/ClerkTokenBridge";
 import {
   type AuthRuntime,
   resolveAuthProvider,
   resolveClerkPublishableKey,
   resolveClerkAccountsUrl,
+  usesClerkSatelliteDomain,
+  clerkSatelliteDomain,
   appUrl,
 } from "@/lib/authConfig";
 
@@ -65,19 +68,46 @@ export function AuthProviders({ children }: { children: ReactNode }) {
   );
 
   if (config.clerkReady && config.publishableKey) {
-    return (
-      <ClerkProvider
-        publishableKey={config.publishableKey}
-        afterSignOutUrl={appUrl("/")}
-        signInUrl={signInUrl}
-        signUpUrl={signUpUrl}
-        signInFallbackRedirectUrl={appUrl("/")}
-        signUpFallbackRedirectUrl={appUrl("/")}
-      >
+    const isSatellite = usesClerkSatelliteDomain(data);
+    const satelliteDomain = clerkSatelliteDomain();
+    const clerkCommon = {
+      publishableKey: config.publishableKey,
+      afterSignOutUrl: appUrl("/"),
+      signInUrl: signInUrl,
+      signUpUrl: signUpUrl,
+      signInFallbackRedirectUrl: appUrl("/"),
+      signUpFallbackRedirectUrl: appUrl("/"),
+    };
+    const clerkChildren = (
+      <>
+        <ClerkTokenBridge />
         <ClerkSessionSync />
         {content}
-      </ClerkProvider>
+      </>
     );
+    const clerkRouter = {
+      routerPush: (to: string) => {
+        window.location.assign(to);
+      },
+      routerReplace: (to: string) => {
+        window.location.replace(to);
+      },
+    };
+
+    if (isSatellite && satelliteDomain) {
+      return (
+        <ClerkProvider
+          {...clerkCommon}
+          isSatellite
+          domain={satelliteDomain}
+          {...clerkRouter}
+        >
+          {clerkChildren}
+        </ClerkProvider>
+      );
+    }
+
+    return <ClerkProvider {...clerkCommon}>{clerkChildren}</ClerkProvider>;
   }
 
   return content;

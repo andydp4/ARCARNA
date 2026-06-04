@@ -54,6 +54,22 @@ export function appUrl(path: string): string {
 
 export { APP_BASE };
 
+/** True when Account Portal host differs from the app (e.g. accounts.viger.cloud vs viger.cloud). */
+export function usesClerkSatelliteDomain(runtime?: AuthRuntime | null): boolean {
+  const accounts = resolveClerkAccountsUrl(runtime);
+  if (!accounts || typeof window === "undefined") return false;
+  try {
+    return new URL(accounts).hostname !== window.location.hostname;
+  } catch {
+    return false;
+  }
+}
+
+export function clerkSatelliteDomain(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.location.origin;
+}
+
 /** Account Portal link with redirect back to this app after auth. */
 export function clerkAccountPortalUrl(
   portalPath: "/sign-in" | "/sign-up",

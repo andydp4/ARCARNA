@@ -1,4 +1,5 @@
 import { apiPathWithBase, normalizeAppBasePath, withAppBase } from "@shared/appPaths";
+import { withClerkAuthHeaders } from "./clerkApiAuth";
 
 /** Client mount path, e.g. `/midnight` (from VITE_BASE_PATH). */
 export const APP_BASE = normalizeAppBasePath(
@@ -15,5 +16,6 @@ export function resolveApiUrl(path: string): string {
 }
 
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(resolveApiUrl(input), init);
+  const headers = await withClerkAuthHeaders(init?.headers);
+  return fetch(resolveApiUrl(input), { ...init, headers, credentials: "include" });
 }

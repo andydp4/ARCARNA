@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchAuthUser } from "@/hooks/useAuth";
+import { apiFetch } from "@/lib/appPaths";
 import { isMidnightAppPath, navigateToAppEntry } from "@/lib/authNavigation";
 import { resolveAppPath } from "@/lib/appPaths";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,8 +33,36 @@ export function useEnterApp(options?: { autoRedirect?: boolean }) {
       });
 
       if (!authUser) {
-        const message =
+        let message =
           "Signed in with Clerk, but the server session is not ready. You may need allow-list approval — try again in a moment.";
+        try {
+          const statusRes = await apiFetch("/api/auth/approval-status", {
+            credentials: "include",
+          });
+          if (statusRes.ok) {
+            const status = (await statusRes.json()) as {
+              isPending?: boolean;
+              isRejected?: boolean;
+            };
+            if (status.isPending) {
+              return navigateToAppEntry(
+                {
+                  id: "pending",
+                  role: "CASHIER",
+                  orgId: null,
+                  accessState: "pending",
+                  isPending: true,
+                },
+                "auth",
+              );
+            }
+            if (status.isRejected) {
+              message = "Your access request was rejected. Contact your administrator.";
+            }
+          }
+        } catch {
+          // keep default message
+        }
         console.warn("[auth] Clerk session active; /api/auth/user returned null");
         setSyncError(message);
         return false;

@@ -97,6 +97,21 @@ The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=
 
 `/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 
+### Satellite domain (required for Account Portal on a subdomain)
+
+When sign-in runs on `accounts.viger.cloud` but the app runs on `viger.cloud/midnight`, Clerk treats `viger.cloud` as a **satellite** domain.
+
+1. Clerk Dashboard → **Configure → Domains** → add **`viger.cloud`** as a satellite / allowed origin (follow Clerk’s DNS steps if prompted).
+2. Rebuild after env changes (`VITE_CLERK_*` keys are baked into the client bundle).
+3. The app sends your Clerk session token on every API call and enables `isSatellite` on `ClerkProvider` automatically when `CLERK_ACCOUNTS_URL` is on a different host than the app.
+
+If you see **“Signed in with Clerk, but the server session is not ready”**, check:
+
+- `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` are from the **same** Clerk application
+- `VITE_CLERK_PUBLISHABLE_KEY` matches `CLERK_PUBLISHABLE_KEY` (rebuild after changing)
+- Clerk dashboard lists `https://viger.cloud/midnight/` under allowed redirect URLs
+- Your email is on the **allowed users** list (or approve yourself as super admin via database — see developer)
+
 ---
 
 ## Step 4 — Deploy and run database migration
@@ -150,6 +165,7 @@ Use `--dry-run` first to preview.
 | Symptom | Likely cause |
 |---------|----------------|
 | Blank page after login | Wrong `CLERK_PUBLISHABLE_KEY` or migration 008 not applied |
+| “Could not open dashboard” / server session not ready | Account Portal on `accounts.*` — add `viger.cloud` as Clerk satellite domain; rebuild so API sends Bearer token; verify keys match |
 | “Access pending approval” | Email not on allowed list — approve in **User access** as super admin |
 | App crashes on start | Missing Clerk keys with `AUTH_PROVIDER=clerk` |
 | Redirect error from Clerk | Redirect URLs not added in Clerk dashboard |

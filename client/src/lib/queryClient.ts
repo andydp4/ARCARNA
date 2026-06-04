@@ -2,6 +2,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { offlineStorage } from "./offline-storage";
 import { orgScopeHeaders } from "./orgScope";
 import { resolveApiUrl } from "./appPaths";
+import { withClerkAuthHeaders } from "./clerkApiAuth";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -20,12 +21,13 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers = await withClerkAuthHeaders({
+    ...orgScopeHeaders(),
+    ...(data ? { "Content-Type": "application/json" } : {}),
+  });
   const res = await fetch(resolveApiUrl(url), {
     method,
-    headers: {
-      ...orgScopeHeaders(),
-      ...(data ? { "Content-Type": "application/json" } : {}),
-    },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -44,9 +46,10 @@ export const getQueryFn: <T>(options: {
     const url = resolveApiUrl(endpoint);
 
     try {
+      const headers = await withClerkAuthHeaders(orgScopeHeaders());
       const res = await fetch(url, {
         credentials: "include",
-        headers: orgScopeHeaders(),
+        headers,
       });
 
       if (unauthorizedBehavior === "returnNull" && res.status === 401) {
