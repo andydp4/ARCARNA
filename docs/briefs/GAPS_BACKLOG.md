@@ -165,9 +165,9 @@
 | | |
 |---|---|
 | **Brief** | U5 |
-| **Snag** | Axe CI on `main`; **no** jsx-a11y in `.eslintrc.cjs` |
-| **Fix** | `chore/u5-eslint-a11y` per `WAVE9_NEXT.md` — merge before or after U7 per plan |
-| **Closed** | [ ] |
+| **Snag** | Plugin + config on `main`; `npm run lint:strict` not green repo-wide |
+| **Fix** | Incremental PRs to clear `npm run lint:strict`; then remove POS from `ignorePatterns` |
+| **Closed** | [x] 2026-06-04 (infra) — [ ] full strict pass |
 
 <a id="gap-u5-02"></a>
 

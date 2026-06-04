@@ -1,6 +1,6 @@
 # Brief status tracker
 
-**Last updated:** 2026-06-04 · **`main` ref:** `fc9032d` (Wave 8 merged; Wave 9 planned)
+**Last updated:** 2026-06-04 · **`main` ref:** Wave 9 in progress (U6 merged locally; 8b + U7 on `main`)
 
 **Sources of truth:** git `main`, wave merge docs (`WAVE3_NEXT` … `WAVE8_NEXT`), codebase grep.  
 **Gaps & snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) (actionable checklist).
@@ -101,9 +101,9 @@
 | U2 | **Done†** | Cmd-K palette (Wave 3); mounted in `App.tsx` not `Layout.tsx` |
 | U3 | **Done** | Saved views, 030 (Wave 4) |
 | U4 | **Done†** | Bulk actions (Wave 5) — [GAP-U4-01](./GAPS_BACKLOG.md#gap-u4-01) |
-| U5 | **Partial** | Axe + CI + doc (Wave 8); eslint jsx-a11y = **8b** — [GAP-U5-01](./GAPS_BACKLOG.md#gap-u5-01) |
-| U6 | **Planned** | Wave 9 — `031_org_onboarding.sql` |
-| U7 | **Planned** | Wave 9 — tablet POS layout |
+| U5 | **Partial** | Axe + CI; **8b** eslint plugin on `main` — [GAP-U5-01](./GAPS_BACKLOG.md#gap-u5-01) (full `lint:strict` pending) |
+| U6 | **Done** | Wizard + `031` + home banner |
+| U7 | **Done†** | Tablet grid/cart split + visual spec — [GAP-E2-01](./GAPS_BACKLOG.md#gap-e2-01) POS extract optional |
 
 ---
 
@@ -140,7 +140,7 @@
 | 6 | Yes | E3, F7, A4 |
 | 7 | Yes | P10c, P10e, A5 |
 | 8 | Yes | P10d, P10b, U5 (axe) |
-| 9 | **Planned** | U6, U7, 8b (U5 eslint) — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
+| 9 | **Done** (local) | U6, 8b infra, U7 layout — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
 
 ---
 

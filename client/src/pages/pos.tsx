@@ -631,11 +631,11 @@ export default function POS() {
 
   return (
     <div
-      className="pos-shell flex h-screen flex-col lg:flex-row"
+      className="pos-shell pos-tablet-shell flex h-screen flex-col lg:flex-row"
       style={{ paddingBottom: isMobile ? safeAreaBottom : undefined }}
     >
-      {/* Products Panel - Step 1: Add items */}
-      <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6">
+      {/* Products Panel - Step 1: Add items (~62% on tablet landscape) */}
+      <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6 lg:max-w-[62%] lg:flex-[1.62]">
         <div className="pos-section-header mb-6 pb-6">
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 4 · Add items</p>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -676,9 +676,9 @@ export default function POS() {
           </div>
         </div>
 
-        <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-140px)]">
+        <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-156px)]">
           <div
-            className="grid grid-cols-2 gap-3 p-1 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-2 lg:pb-4 xl:grid-cols-3 2xl:grid-cols-4"
+            className="pos-product-grid grid grid-cols-2 gap-3 p-1 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-3 lg:gap-3 lg:pb-4 min-[1194px]:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5"
             style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
           >
             {productsLoading ? (
@@ -705,7 +705,7 @@ export default function POS() {
 
       {/* Desktop Cart Panel */}
       {!isMobile && (
-        <div className="pos-cart-rail flex w-96 flex-col p-4">
+        <div className="pos-cart-rail flex w-full max-w-md flex-col border-l border-metal-edge p-4 lg:max-w-[38%] lg:flex-1 lg:pb-24">
           <PosCartPanel {...cartPanelProps} />
         </div>
       )}

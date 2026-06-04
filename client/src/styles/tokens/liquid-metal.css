@@ -183,6 +183,16 @@
   box-shadow: var(--lm-inner-shadow);
 }
 
+/* U7: tablet landscape — reserve bottom drawer / thumb zone */
+@media (min-width: 1024px) {
+  .pos-tablet-shell .pos-cart-rail {
+    padding-bottom: 6rem;
+  }
+  .pos-tablet-shell .pos-product-grid {
+    row-gap: 0.5rem;
+  }
+}
+
 .liquid-metal .pos-product-card {
   background: var(--lm-surface-gradient);
   border: 1px solid var(--lm-edge-highlight);

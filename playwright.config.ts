@@ -36,5 +36,6 @@ export default defineConfig({
   projects: [
     { name: "e2e", testDir: "tests/e2e" },
     { name: "a11y", testDir: "tests/a11y" },
+    { name: "visual", testDir: "tests/visual" },
   ],
 });
