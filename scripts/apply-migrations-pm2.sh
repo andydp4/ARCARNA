@@ -43,7 +43,8 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
          migrations/025_refunds.sql \
          migrations/026_gift_cards.sql \
          migrations/027_gift_card_movements.sql \
-         migrations/030_saved_views.sql; do
+         migrations/030_saved_views.sql \
+         migrations/032_customer_rfm.sql; do
   if [[ ! -f "$f" ]]; then
     echo "  SKIP missing $f"
     continue
