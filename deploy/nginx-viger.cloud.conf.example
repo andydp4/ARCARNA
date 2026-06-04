@@ -1,4 +1,5 @@
 # Example Nginx site for viger.cloud
+# Cloudflare DNS/proxy/cache: see docs/ops/CLOUDFLARE.md
 # - /           → Viger Cloud portal (static, served by Node from dist/portal)
 # - /midnight   → Midnight EPOS (Node on :5000)
 # - /files, /backups → portal placeholder pages
