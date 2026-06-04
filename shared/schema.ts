@@ -159,6 +159,15 @@ export const insertLoyaltyTierSchema = createInsertSchema(loyaltyTiers).omit({
 });
 export type InsertLoyaltyTierData = z.infer<typeof insertLoyaltyTierSchema>;
 
+// Loyalty redemption settings (F5)
+export const loyaltySettings = pgTable("loyalty_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  redemptionRate: numeric("redemption_rate", { precision: 10, scale: 4 }).notNull().default("0.01"),
+  minRedeemPoints: integer("min_redeem_points").notNull().default(100),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type LoyaltySettings = typeof loyaltySettings.$inferSelect;
+
 // Promotions/campaigns table
 export const promotions = pgTable("promotions", {
   id: uuid("id").primaryKey().defaultRandom(),

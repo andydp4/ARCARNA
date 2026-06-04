@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
@@ -14,8 +15,67 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import {
+  getLoyaltySettings,
+  upsertLoyaltySettings,
+  validatePointsRedemption,
+} from "../lib/loyaltyRedemptionService";
+
+const settingsSchema = z.object({
+  redemptionRate: z.coerce.number().positive().max(1).optional(),
+  minRedeemPoints: z.coerce.number().int().min(1).optional(),
+});
+
+const redeemPreviewSchema = z.object({
+  customerId: z.string().uuid(),
+  points: z.coerce.number().int().positive(),
+});
 
 export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): void {
+  app.get("/api/loyalty/settings", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: string };
+      res.json(await getLoyaltySettings(ctx.orgId));
+    } catch (error) {
+      console.error("Error fetching loyalty settings:", error);
+      res.status(500).json({ message: "Failed to fetch loyalty settings" });
+    }
+  });
+
+  app.put("/api/loyalty/settings", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const body = settingsSchema.parse(req.body);
+      const settings = await upsertLoyaltySettings(ctx.orgId, body);
+      await recordAdminAudit(req, {
+        actorUserId: req.user?.id ?? "unknown",
+        actorRole: ctx.role ?? "MANAGER",
+        action: "loyalty.settings.update",
+        targetType: "organization",
+        targetId: ctx.orgId,
+        orgId: ctx.orgId,
+        metadata: settings,
+      });
+      res.json(settings);
+    } catch (error: any) {
+      if (error.name === "ZodError") return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      console.error("Error updating loyalty settings:", error);
+      res.status(500).json({ message: "Failed to update loyalty settings" });
+    }
+  });
+
+  app.post("/api/loyalty/redeem-preview", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const body = redeemPreviewSchema.parse(req.body);
+      const result = await validatePointsRedemption(ctx.orgId, body.customerId, body.points);
+      res.json(result);
+    } catch (error: any) {
+      const message = error.message || "Redemption preview failed";
+      res.status(400).json({ message });
+    }
+  });
+
   app.get("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };

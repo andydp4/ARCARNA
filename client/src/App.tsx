@@ -23,6 +23,7 @@ import Customers from "@/pages/customers";
 import ProductManagement from "@/pages/product-management";
 import Settings from "@/pages/settings";
 import ReceiptSettingsPage from "@/pages/settings/receipts";
+import LoyaltySettingsPage from "@/pages/settings/loyalty";
 import TickList from "@/pages/tick-list";
 import Invoices from "@/pages/invoices";
 import Orders from "@/pages/orders";
@@ -85,6 +86,7 @@ function Router() {
           <Route path="/invoices" component={Invoices} />
           <Route path="/settings" component={Settings} />
           <Route path="/settings/receipts" component={ReceiptSettingsPage} />
+          <Route path="/settings/loyalty" component={LoyaltySettingsPage} />
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />

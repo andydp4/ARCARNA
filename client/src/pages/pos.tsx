@@ -26,6 +26,8 @@ import type { PosProduct } from "@/components/pos-product-card";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionLoader } from "@/components/action-loader";
+import { computeTierProgress } from "@shared/loyalty/progress";
+import { Label } from "@/components/ui/label";
 
 type Product = PosProduct;
 
@@ -89,6 +91,10 @@ export default function POS() {
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
   const [customerTier, setCustomerTier] = useState<any>(null);
+  const [redeemPoints, setRedeemPoints] = useState(0);
+  const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
+  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [redeemInput, setRedeemInput] = useState("");
   const [orderExpenses, setOrderExpenses] = useState<Array<{
     category: string;
     description: string;
@@ -148,6 +154,22 @@ export default function POS() {
   const { data: loyaltyTiers = [] } = useQuery<any[]>({
     queryKey: ["/api/loyalty-tiers"],
   });
+
+  const { data: loyaltySettings } = useQuery<{ redemptionRate: number; minRedeemPoints: number }>({
+    queryKey: ["/api/loyalty/settings"],
+  });
+
+  const tierProgress = useMemo(() => {
+    if (!selectedCustomer || loyaltyTiers.length === 0) return null;
+    return computeTierProgress(
+      selectedCustomer.loyaltyPoints,
+      loyaltyTiers.map((t: any) => ({
+        name: t.name,
+        pointsRequired: t.pointsRequired,
+        color: t.color,
+      })),
+    );
+  }, [selectedCustomer, loyaltyTiers]);
 
   // Stable list reference when cart/checkout state changes → memoized product tiles can skip re-render
   const filteredProducts = useMemo(
@@ -377,13 +399,19 @@ export default function POS() {
     }
   }, [selectedCustomer, loyaltyTiers]);
 
+  useEffect(() => {
+    setRedeemPoints(0);
+    setPointsRedemptionAmount(0);
+    setRedeemInput("");
+  }, [selectedCustomer?.id]);
+
   // Calculate totals with discounts
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
   const promoDiscountAmount = appliedPromo ? 
     (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
     : 0;
-  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount;
+  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
   const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
   const tax = discountedSubtotal * 0.1; // 10% tax
   const total = discountedSubtotal + tax;
@@ -510,6 +538,9 @@ export default function POS() {
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
     }
+    if (redeemPoints > 0) {
+      orderData.redeemPoints = redeemPoints;
+    }
     orderData.sendEmailReceipt = emailReceipt && !!selectedCustomer?.email;
 
     placeOrderMutation.mutate(orderData);
@@ -550,6 +581,11 @@ export default function POS() {
     tax,
     total,
     pointsEarned,
+    tierProgress,
+    minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 100,
+    redeemPoints,
+    pointsRedemptionAmount,
+    onRedeemPointsClick: () => setRedeemDialogOpen(true),
     removeFromCart,
     updateQuantity,
     formatPrice,
@@ -923,6 +959,56 @@ export default function POS() {
               ) : (
                 "Confirm payment"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redeem loyalty points</DialogTitle>
+            <DialogDescription>
+              {selectedCustomer?.name} has {selectedCustomer?.loyaltyPoints ?? 0} points.
+              Minimum redemption: {loyaltySettings?.minRedeemPoints ?? 100} points.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="redeem-points-input">Points to redeem</Label>
+            <Input
+              id="redeem-points-input"
+              type="number"
+              min={loyaltySettings?.minRedeemPoints ?? 100}
+              max={selectedCustomer?.loyaltyPoints ?? 0}
+              value={redeemInput}
+              onChange={(e) => setRedeemInput(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRedeemDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                const pts = parseInt(redeemInput, 10);
+                if (!selectedCustomer?.id || !pts) return;
+                try {
+                  const res = await apiFetch("/api/loyalty/redeem-preview", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ customerId: selectedCustomer.id, points: pts }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.message || "Redemption failed");
+                  setRedeemPoints(pts);
+                  setPointsRedemptionAmount(data.discountAmount);
+                  setRedeemDialogOpen(false);
+                  toast({ title: "Points applied", description: `£${data.discountAmount.toFixed(2)} discount` });
+                } catch (e: any) {
+                  toast({ title: "Cannot redeem", description: e.message, variant: "destructive" });
+                }
+              }}
+            >
+              Apply discount
             </Button>
           </DialogFooter>
         </DialogContent>
