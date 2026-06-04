@@ -22,6 +22,7 @@ import {
   Ticket,
   Clock,
   Radio,
+  Layers,
 } from 'lucide-react'
 
 export const navItems = [
@@ -115,6 +116,13 @@ export const navItems = [
     href: '/analytics/channels',
     icon: Radio,
     testId: 'nav-channels'
+  },
+  {
+    key: 'stock-turn',
+    label: 'Stock turn',
+    href: '/analytics/stock-turn',
+    icon: Layers,
+    testId: 'nav-stock-turn'
   },
   {
     key: 'expenses',
