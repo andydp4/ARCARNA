@@ -18,6 +18,8 @@ Every brief:
 - **Verification:** commands or manual checks proving DoD.
 - **PR title:** suggested commit / PR title.
 
+**Dependency updates:** Renovate (`renovate.json` at repo root) opens grouped patch PRs; dev-dependency patches may automerge when CI passes. Major bumps require dashboard approval.
+
 Every brief must:
 
 - Keep PR small (target < 600 lines diff; exceptions noted).
