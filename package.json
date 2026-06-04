@@ -24,7 +24,9 @@
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
     "release:preflight": "npm run migration:sanity && npm run gate",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "dev:e2e": "NODE_ENV=development DEV_AUTH_BYPASS=1 tsx server/index.ts"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.3",
@@ -126,6 +128,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@sentry/vite-plugin": "^5.3.0",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.3",
