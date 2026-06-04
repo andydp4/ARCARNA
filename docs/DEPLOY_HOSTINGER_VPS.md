@@ -342,7 +342,8 @@ See also `deploy/nginx-viger.cloud.conf.example` in the repo.
 | App exits on start | Check `CLERK_SECRET_KEY`, `SESSION_SECRET`, `DATABASE_URL` |
 | Clerk redirect error | Add exact URLs in Clerk dashboard |
 | `migration:sanity` fails | Run missing migration files in order |
-| 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos` |
+| `tsx: not found` on VPS | `unset NODE_ENV` then `npm ci --include=dev` (or `npm install`); do not run `npm ci` while `.env` has `NODE_ENV=production` exported |
+| 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/midnight/api/health` |
 
 For structured triage (health, PM2, nginx, auth loops, post-incident audit), use **[ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)**.
 

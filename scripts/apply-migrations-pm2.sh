@@ -58,6 +58,12 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
 done
 
 echo "=== migration:sanity ==="
-npm run migration:sanity
+# npm ci with NODE_ENV=production (often set in .env) omits devDependencies and breaks `tsx`.
+TSX_BIN="node_modules/.bin/tsx"
+if [[ ! -x "$TSX_BIN" ]]; then
+  echo "  tsx missing — installing (use: unset NODE_ENV && npm ci --include=dev)"
+  npm install tsx@^4.20.6 --no-save --no-audit --no-fund
+fi
+"$TSX_BIN" scripts/migration-sanity-check.ts
 
 echo "OK: Migrations finished."
