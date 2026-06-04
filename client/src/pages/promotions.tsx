@@ -302,6 +302,7 @@ export default function PromotionsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Edit promotion"
                         onClick={() => openPromoDialog(promo)}
                         data-testid={`button-edit-${promo.id}`}
                       >
@@ -310,6 +311,7 @@ export default function PromotionsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Delete promotion"
                         onClick={() => deletePromo.mutate(promo.id)}
                         data-testid={`button-delete-${promo.id}`}
                       >

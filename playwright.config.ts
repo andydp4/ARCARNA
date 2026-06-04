@@ -17,7 +17,6 @@ if (process.env.DATABASE_URL) {
 }
 
 export default defineConfig({
-  testDir: "tests/e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -34,4 +33,8 @@ export default defineConfig({
     timeout: 120_000,
     env: e2eEnv,
   },
+  projects: [
+    { name: "e2e", testDir: "tests/e2e" },
+    { name: "a11y", testDir: "tests/a11y" },
+  ],
 });
