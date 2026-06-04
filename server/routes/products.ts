@@ -14,6 +14,7 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 
 export function registerProductRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/products", ...scoped, async (req: any, res) => {
@@ -106,6 +107,28 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       console.error("Error deleting product:", error);
       if (error?.message === 'Product not found') return res.status(404).json({ message: "Product not found" });
       res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  app.post("/api/products/bulk", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: Role };
+      const outcome = await handleBulkAction(req, "products", {
+        orgId: ctx.orgId,
+        role: ctx.role,
+        userId: req.user?.id,
+      });
+      if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
+      const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
+      if (result.format === "csv" && result.rows) {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="products-export.csv"');
+        return res.send(rowsToCsv(result.rows));
+      }
+      res.json(outcome.result);
+    } catch (error: any) {
+      console.error("Error in product bulk action:", error);
+      res.status(500).json({ message: error.message || "Bulk action failed" });
     }
   });
 

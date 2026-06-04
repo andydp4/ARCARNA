@@ -45,6 +45,12 @@ import { OrdersPageSkeleton } from "@/components/orders-skeleton";
 import { AppPageHeader } from "@/components/app-page-header";
 import { ActionLoader } from "@/components/action-loader";
 import { EmptyStatePanel } from "@/components/empty-state-panel";
+import { BulkActionBar } from "@/components/BulkActionBar";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { useAuth } from "@/hooks/useAuth";
+import { getBulkActionsForRole, type BulkActionId } from "@shared/bulkActions";
+import type { Role } from "@shared/schema";
+import { executeBulkAction, downloadBlob } from "@/lib/bulkActionsClient";
 
 type Order = OrdersListOrder;
 
@@ -352,6 +358,44 @@ export default function Orders() {
     });
   }, [orders, filterStatus, searchQuery]);
 
+  const visibleOrders = useMemo(
+    () => sortedGroupEntries.flatMap(([, list]) => list),
+    [sortedGroupEntries],
+  );
+  const { user } = useAuth();
+  const bulk = useBulkSelection(visibleOrders);
+  const bulkActions = getBulkActionsForRole("orders", (user?.role ?? "CASHIER") as Role);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const runBulk = async (action: BulkActionId, payload?: Record<string, unknown>) => {
+    setBulkBusy(true);
+    try {
+      const result = await executeBulkAction("orders", [...bulk.selectedIds], action, payload);
+      if (result.kind === "csv") {
+        downloadBlob(result.blob, result.filename);
+        toast({ title: "Export started", description: `${bulk.count} orders exported.` });
+      } else {
+        toast({ title: "Bulk action complete", description: `Updated ${bulk.count} orders.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      }
+      bulk.clear();
+    } catch (err: any) {
+      toast({ title: "Bulk action failed", description: err.message, variant: "destructive" });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkAction = (action: BulkActionId) => {
+    if (action === "tag") {
+      const status = window.prompt("Set status for selected orders:", "completed");
+      if (!status) return;
+      void runBulk("tag", { status });
+      return;
+    }
+    void runBulk(action);
+  };
+
   const openStatusDialog = useCallback((order: Order) => {
     setSelectedOrder(order);
     setNewStatus(order.status || "pending");
@@ -627,6 +671,8 @@ export default function Orders() {
                         onEdit={openEditDialog}
                         onUpdateStatus={openStatusDialog}
                         onDelete={openDeleteDialog}
+                        selected={bulk.isSelected(order.id)}
+                        onToggleSelect={() => bulk.toggle(order.id)}
                       />
                     ))}
                   </ul>
@@ -1082,6 +1128,13 @@ export default function Orders() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <BulkActionBar
+          count={bulk.count}
+          actions={bulkActions}
+          onAction={handleBulkAction}
+          onClear={bulk.clear}
+          busy={bulkBusy}
+        />
       </div>
     </div>
   );

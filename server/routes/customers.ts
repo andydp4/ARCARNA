@@ -14,6 +14,7 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 
 export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
@@ -112,6 +113,28 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       console.error("Error deleting customer:", error);
       if (error?.message === 'Customer not found') return res.status(404).json({ message: "Customer not found" });
       res.status(500).json({ message: "Failed to delete customer" });
+    }
+  });
+
+  app.post("/api/customers/bulk", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: Role };
+      const outcome = await handleBulkAction(req, "customers", {
+        orgId: ctx.orgId,
+        role: ctx.role,
+        userId: req.user?.id,
+      });
+      if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
+      const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
+      if (result.format === "csv" && result.rows) {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="customers-export.csv"');
+        return res.send(rowsToCsv(result.rows));
+      }
+      res.json(outcome.result);
+    } catch (error: any) {
+      console.error("Error in customer bulk action:", error);
+      res.status(500).json({ message: error.message || "Bulk action failed" });
     }
   });
 

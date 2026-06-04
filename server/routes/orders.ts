@@ -19,6 +19,7 @@ import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
+import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
@@ -397,6 +398,28 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';
       const status = error.message === 'Order not found' ? 404 : 500;
       res.status(status).json({ message });
+    }
+  });
+
+  app.post("/api/orders/bulk", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: Role };
+      const outcome = await handleBulkAction(req, "orders", {
+        orgId: ctx.orgId,
+        role: ctx.role,
+        userId: req.user?.id,
+      });
+      if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
+      const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
+      if (result.format === "csv" && result.rows) {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="orders-export.csv"');
+        return res.send(rowsToCsv(result.rows));
+      }
+      res.json(outcome.result);
+    } catch (error: any) {
+      console.error("Error in order bulk action:", error);
+      res.status(500).json({ message: error.message || "Bulk action failed" });
     }
   });
 

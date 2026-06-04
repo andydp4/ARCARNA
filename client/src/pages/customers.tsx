@@ -42,6 +42,14 @@ import { apiFetch } from '@/lib/appPaths'
 import { ViewSelector } from '@/components/ViewSelector'
 import { useSavedViews, useApplyDefaultView } from '@/hooks/useSavedViews'
 import { captureViewState } from '@shared/savedViews/state'
+import { Checkbox } from '@/components/ui/checkbox'
+import { BulkActionBar } from '@/components/BulkActionBar'
+import { ConfirmDestructive } from '@/components/ConfirmDestructive'
+import { useBulkSelection } from '@/hooks/useBulkSelection'
+import { useAuth } from '@/hooks/useAuth'
+import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
+import type { Role } from '@shared/schema'
+import { executeBulkAction, downloadBlob } from '@/lib/bulkActionsClient'
 
 function CustomerStoreCredit({ customerId }: { customerId: string }) {
   const { data } = useQuery<{ totalCredit: number; giftCards: Array<{ status: string }> }>({
@@ -328,6 +336,50 @@ export default function Customers() {
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone?.includes(searchTerm)
   )
+
+  const { user } = useAuth()
+  const bulk = useBulkSelection(filteredCustomers)
+  const bulkActions = getBulkActionsForRole('customers', (user?.role ?? 'CASHIER') as Role)
+  const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  const runBulk = async (action: BulkActionId, payload?: Record<string, unknown>) => {
+    setBulkBusy(true)
+    try {
+      const result = await executeBulkAction('customers', [...bulk.selectedIds], action, payload)
+      if (result.kind === 'csv') {
+        downloadBlob(result.blob, result.filename)
+        toast({ title: 'Export started', description: `${bulk.count} customers exported.` })
+      } else {
+        toast({ title: 'Bulk action complete', description: `Updated ${bulk.count} customers.` })
+        queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
+      }
+      bulk.clear()
+    } catch (err: any) {
+      toast({ title: 'Bulk action failed', description: err.message, variant: 'destructive' })
+    } finally {
+      setBulkBusy(false)
+      setPendingBulkAction(null)
+      setConfirmDeleteOpen(false)
+    }
+  }
+
+  const handleBulkAction = (action: BulkActionId) => {
+    const def = bulkActions.find((a) => a.id === action)
+    if (def?.destructive) {
+      setPendingBulkAction(action)
+      setConfirmDeleteOpen(true)
+      return
+    }
+    if (action === 'tag') {
+      const category = window.prompt('Set category for selected customers:', 'Bronze')
+      if (!category) return
+      void runBulk('tag', { category })
+      return
+    }
+    void runBulk(action)
+  }
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -807,6 +859,13 @@ export default function Customers() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={bulk.allVisibleSelected}
+                            onCheckedChange={() => bulk.toggleAllVisible()}
+                            aria-label="Select all visible customers"
+                          />
+                        </TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Contact</TableHead>
                         <TableHead>Address</TableHead>
@@ -821,6 +880,13 @@ export default function Customers() {
                     <TableBody>
                       {filteredCustomers.map((customer: any) => (
                         <TableRow key={customer.id} data-testid={`customer-row-${customer.id}`}>
+                          <TableCell>
+                            <Checkbox
+                              checked={bulk.isSelected(customer.id)}
+                              onCheckedChange={() => bulk.toggle(customer.id)}
+                              aria-label={`Select ${customer.name}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{customer.name}</TableCell>
                           <TableCell>
                             <div className="space-y-1">
@@ -990,6 +1056,24 @@ export default function Customers() {
             )}
           </CardContent>
         </Card>
+        <BulkActionBar
+          count={bulk.count}
+          actions={bulkActions}
+          onAction={handleBulkAction}
+          onClear={bulk.clear}
+          busy={bulkBusy}
+        />
+        <ConfirmDestructive
+          open={confirmDeleteOpen}
+          title="Delete selected customers"
+          description={`This will permanently delete ${bulk.count} customer record(s). This cannot be undone.`}
+          onConfirm={() => pendingBulkAction && void runBulk(pendingBulkAction)}
+          onCancel={() => {
+            setConfirmDeleteOpen(false)
+            setPendingBulkAction(null)
+          }}
+          busy={bulkBusy}
+        />
       </div>
     </div>
   )
