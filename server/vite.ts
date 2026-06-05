@@ -34,7 +34,8 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
+  // Express 5 / path-to-regexp v8: bare "*" is invalid; pathless middleware catches SPA fallback.
+  app.use(async (req, res, next) => {
     const url = req.originalUrl;
 
     try {

@@ -46,7 +46,8 @@ export function serveStatic(app: Express, serviceWorkerScope = "/") {
     }),
   );
 
-  app.use("*", (req, res, next) => {
+  // Express 5 / path-to-regexp v8: bare "*" is invalid; pathless middleware catches SPA fallback.
+  app.use((req, res, next) => {
     if (req.path === "/sw.js" || req.path === "/manifest.json") {
       return res.status(404).type("text/plain").send("Not found — run npm run build");
     }
