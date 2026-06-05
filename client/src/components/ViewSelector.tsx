@@ -67,8 +67,8 @@ export function ViewSelector({
           }
         }}
       >
-        <SelectTrigger className="w-[180px] h-9">
-          <Bookmark className="h-4 w-4 mr-2 text-muted-foreground" />
+        <SelectTrigger className="w-[180px] h-9" aria-label="Saved view">
+          <Bookmark className="h-4 w-4 mr-2 text-muted-foreground" aria-hidden="true" />
           <SelectValue placeholder="All" />
         </SelectTrigger>
         <SelectContent>

@@ -376,8 +376,13 @@ export default function Settings() {
                       size="icon"
                       onClick={toggleTheme}
                       data-testid="button-toggle-theme"
+                      aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
                     >
-                      {isDarkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                      {isDarkMode ? (
+                        <Moon className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Sun className="h-4 w-4" aria-hidden="true" />
+                      )}
                     </Button>
                   </div>
                 </CardContent>

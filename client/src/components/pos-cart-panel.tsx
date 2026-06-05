@@ -160,7 +160,11 @@ export function PosCartPanel({
             }
           }}
         >
-          <SelectTrigger data-testid="select-customer" className="min-h-[44px]">
+          <SelectTrigger
+            data-testid="select-customer"
+            className="min-h-[44px]"
+            aria-label="Customer"
+          >
             <SelectValue placeholder="Walk-in Customer" />
           </SelectTrigger>
           <SelectContent>
