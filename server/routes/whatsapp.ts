@@ -14,6 +14,7 @@
  */
 import type { Express, Request, RequestHandler } from "express";
 import { requireRole } from "../auth";
+import { recordAdminAudit } from "../adminAudit";
 import { APP_BASE_PATH } from "../appBase";
 import { getWhatsappConfig, canSendWhatsapp } from "../whatsapp/config";
 import { verifyWebhookChallenge, verifyWebhookSignature } from "../whatsapp/verify";
@@ -161,7 +162,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canSend,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
         const userId = (req.user as { id?: string } | undefined)?.id;
         const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
         if (!text) {
@@ -209,6 +210,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           status: "sent",
           sentByUserId: userId,
         });
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.message.sent",
+          targetType: "whatsapp_conversation",
+          targetId: conversation.id,
+          orgId: ctx.orgId,
+          metadata: { messageType: "text" },
+        });
         res.status(201).json({ message });
       } catch (error) {
         console.error("[whatsapp] reply error", error);
@@ -224,7 +234,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canManage,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
         const userId = (req.user as { id?: string } | undefined)?.id;
         const customerId = typeof req.body?.customerId === "string" ? req.body.customerId : "";
         if (!customerId) return res.status(400).json({ message: "customerId is required" });
@@ -237,6 +247,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           conversationId: conversation.id,
           customerId,
           linkedByUserId: userId,
+        });
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.conversation.linked_customer",
+          targetType: "whatsapp_conversation",
+          targetId: conversation.id,
+          orgId: ctx.orgId,
+          metadata: { customerId },
         });
         res.json({ ok: true, customerId });
       } catch (error) {
@@ -253,7 +272,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canManage,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
         const userId = (req.user as { id?: string } | undefined)?.id;
         const conversation = await store.getConversation(req.params.id, ctx.orgId);
         if (!conversation) return res.status(404).json({ message: "Conversation not found" });
@@ -271,6 +290,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           name,
           phone,
           linkedByUserId: userId,
+        });
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.customer.created",
+          targetType: "customer",
+          targetId: customer.id,
+          orgId: ctx.orgId,
+          metadata: { conversationId: conversation.id },
         });
         res.status(201).json({ customer });
       } catch (error) {
@@ -303,7 +331,8 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canSend,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
+        const userId = (req.user as { id?: string } | undefined)?.id;
         const conversation = await store.getConversation(req.params.id, ctx.orgId);
         if (!conversation) return res.status(404).json({ message: "Conversation not found" });
 
@@ -325,6 +354,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
         if (intent) {
           await store.updateOrderIntent(intent.id, ctx.orgId, { status: "accepted" });
         }
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.order_intent.accepted",
+          targetType: "whatsapp_conversation",
+          targetId: conversation.id,
+          orgId: ctx.orgId,
+          metadata: { intentId: intent?.id ?? null },
+        });
 
         const items = providedItems ?? intent?.parsedItems ?? [];
         res.json({
@@ -351,7 +389,8 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canManage,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
+        const userId = (req.user as { id?: string } | undefined)?.id;
         const conversation = await store.getConversation(req.params.id, ctx.orgId);
         if (!conversation) return res.status(404).json({ message: "Conversation not found" });
 
@@ -379,6 +418,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
         await store.updateOrderIntent(intent.id, ctx.orgId, {
           status: "converted",
           draftOrderId: orderId,
+        });
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.order_intent.converted",
+          targetType: "order",
+          targetId: orderId,
+          orgId: ctx.orgId,
+          metadata: { conversationId: conversation.id, intentId: intent.id },
         });
         res.json({ ok: true, orderId, intentId: intent.id });
       } catch (error) {
@@ -452,7 +500,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     canSend,
     async (req: any, res) => {
       try {
-        const ctx = req.orgContext as { orgId: string };
+        const ctx = req.orgContext as { orgId: string; role: string };
         const userId = (req.user as { id?: string } | undefined)?.id;
         const templateName = typeof req.body?.templateName === "string" ? req.body.templateName : "";
         const language = typeof req.body?.language === "string" ? req.body.language : "en_GB";
@@ -504,6 +552,15 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           body: preview,
           status: "sent",
           sentByUserId: userId,
+        });
+        await recordAdminAudit(req, {
+          actorUserId: userId ?? "unknown",
+          actorRole: ctx.role,
+          action: "whatsapp.template.sent",
+          targetType: "whatsapp_conversation",
+          targetId: conversation.id,
+          orgId: ctx.orgId,
+          metadata: { templateName, language },
         });
         res.status(201).json({ message });
       } catch (error) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
@@ -12,6 +12,8 @@ import {
   Link2,
   ShoppingCart,
   ExternalLink,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,11 +112,64 @@ export function WhatsAppPanel() {
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [soundOn, setSoundOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("midnight.whatsapp.sound") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const prevUnread = useRef<number | null>(null);
 
   const { data: status } = useQuery<WhatsappStatus>({
     queryKey: ["/api/whatsapp/status"],
-    refetchInterval: 60000,
+    refetchInterval: 30000,
   });
+
+  // New-message notification: toast (and optional sound) when unread rises.
+  useEffect(() => {
+    const current = status?.unread ?? 0;
+    if (prevUnread.current === null) {
+      prevUnread.current = current;
+      return;
+    }
+    if (current > prevUnread.current) {
+      if (!open) {
+        toast({ title: "New WhatsApp message", description: "You have unread WhatsApp messages." });
+      }
+      if (soundOn) {
+        try {
+          const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
+          if (Ctx) {
+            const ctx = new Ctx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.frequency.value = 660;
+            gain.gain.value = 0.05;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+          }
+        } catch {
+          /* ignore audio errors */
+        }
+      }
+    }
+    prevUnread.current = current;
+  }, [status?.unread, open, soundOn, toast]);
+
+  const toggleSound = () => {
+    setSoundOn((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("midnight.whatsapp.sound", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const { data: conversations = [], isLoading: loadingList } = useQuery<ConversationListItem[]>({
     queryKey: ["/api/whatsapp/conversations", search],
@@ -320,16 +375,28 @@ export function WhatsAppPanel() {
               <MessageCircle className="h-5 w-5 text-primary" />
               <span className="font-semibold">WhatsApp</span>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setOpen(false)}
-              aria-label="Close WhatsApp panel"
-              data-testid="whatsapp-close"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={toggleSound}
+                aria-label={soundOn ? "Mute new-message sound" : "Enable new-message sound"}
+                data-testid="whatsapp-sound-toggle"
+              >
+                {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setOpen(false)}
+                aria-label="Close WhatsApp panel"
+                data-testid="whatsapp-close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {status && !status.enabled && (
