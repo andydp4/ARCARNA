@@ -1396,6 +1396,156 @@ export type WorkerResult = {
   error?: string;
 };
 
+// ==================== WHATSAPP BUSINESS INTEGRATION ====================
+// Official WhatsApp Business Platform (Cloud API) channel. Disabled by default
+// via WHATSAPP_ENABLED. All tables are org-scoped (Principle 3).
+
+export const WHATSAPP_CONVERSATION_STATUSES = ['open', 'pending', 'closed', 'archived'] as const;
+export type WhatsappConversationStatus = (typeof WHATSAPP_CONVERSATION_STATUSES)[number];
+
+export const WHATSAPP_MESSAGE_DIRECTIONS = ['inbound', 'outbound'] as const;
+export type WhatsappMessageDirection = (typeof WHATSAPP_MESSAGE_DIRECTIONS)[number];
+
+export const WHATSAPP_MESSAGE_TYPES = [
+  'text',
+  'image',
+  'document',
+  'audio',
+  'video',
+  'location',
+  'unknown',
+] as const;
+export type WhatsappMessageType = (typeof WHATSAPP_MESSAGE_TYPES)[number];
+
+export const WHATSAPP_MESSAGE_STATUSES = ['received', 'sent', 'delivered', 'read', 'failed'] as const;
+export type WhatsappMessageStatus = (typeof WHATSAPP_MESSAGE_STATUSES)[number];
+
+/** Connected WhatsApp Business account / phone number metadata (one per org number). */
+export const whatsappAccounts = pgTable(
+  "whatsapp_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    phoneNumber: varchar("phone_number", { length: 32 }).notNull(),
+    phoneNumberId: varchar("phone_number_id", { length: 64 }).notNull(),
+    businessAccountId: varchar("business_account_id", { length: 64 }),
+    displayName: varchar("display_name", { length: 255 }),
+    status: varchar("status", { length: 24 }).notNull().default("connected"),
+    lastWebhookAt: timestamp("last_webhook_at"),
+    lastOutboundAt: timestamp("last_outbound_at"),
+    lastOutboundStatus: varchar("last_outbound_status", { length: 24 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_accounts_org_idx").on(table.orgId),
+    // phone_number_id is globally unique on Meta's side; used to route inbound webhooks to an org.
+    uniqueIndex("whatsapp_accounts_phone_number_id_idx").on(table.phoneNumberId),
+  ],
+);
+
+export type WhatsappAccount = typeof whatsappAccounts.$inferSelect;
+export type InsertWhatsappAccount = typeof whatsappAccounts.$inferInsert;
+
+/** One row per customer/contact conversation. */
+export const whatsappConversations = pgTable(
+  "whatsapp_conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    whatsappAccountId: uuid("whatsapp_account_id")
+      .references(() => whatsappAccounts.id, { onDelete: "cascade" })
+      .notNull(),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    phone: varchar("phone", { length: 32 }).notNull(),
+    waId: varchar("wa_id", { length: 32 }).notNull(),
+    profileName: varchar("profile_name", { length: 255 }),
+    lastMessageAt: timestamp("last_message_at"),
+    lastMessagePreview: varchar("last_message_preview", { length: 512 }),
+    lastInboundAt: timestamp("last_inbound_at"),
+    unreadCount: integer("unread_count").notNull().default(0),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_conversations_org_idx").on(table.orgId),
+    index("whatsapp_conversations_customer_idx").on(table.customerId),
+    index("whatsapp_conversations_last_message_idx").on(table.orgId, table.lastMessageAt),
+    // One conversation per (account, wa_id) — idempotent upsert target.
+    uniqueIndex("whatsapp_conversations_account_wa_idx").on(table.whatsappAccountId, table.waId),
+  ],
+);
+
+export type WhatsappConversation = typeof whatsappConversations.$inferSelect;
+export type InsertWhatsappConversation = typeof whatsappConversations.$inferInsert;
+
+/** Inbound/outbound message log. whatsapp_message_id is unique for idempotency. */
+export const whatsappMessages = pgTable(
+  "whatsapp_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => whatsappConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    whatsappMessageId: varchar("whatsapp_message_id", { length: 128 }),
+    direction: varchar("direction", { length: 12 }).notNull(),
+    messageType: varchar("message_type", { length: 16 }).notNull().default("text"),
+    body: text("body"),
+    mediaId: varchar("media_id", { length: 128 }),
+    mediaMimeType: varchar("media_mime_type", { length: 128 }),
+    status: varchar("status", { length: 16 }).notNull().default("received"),
+    rawPayload: jsonb("raw_payload"),
+    sentByUserId: varchar("sent_by_user_id", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_messages_conversation_idx").on(table.conversationId, table.createdAt),
+    index("whatsapp_messages_org_idx").on(table.orgId),
+    // Idempotency: Meta message IDs are globally unique. Partial unique (allows multiple NULLs for outbound-before-ack).
+    uniqueIndex("whatsapp_messages_wa_message_id_idx")
+      .on(table.whatsappMessageId)
+      .where(sql`${table.whatsappMessageId} IS NOT NULL`),
+  ],
+);
+
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;
+export type InsertWhatsappMessage = typeof whatsappMessages.$inferInsert;
+
+/** Explicit audit of customer<->conversation links (in addition to conversation.customerId). */
+export const whatsappCustomerLinks = pgTable(
+  "whatsapp_customer_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => whatsappConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    customerId: uuid("customer_id")
+      .references(() => customers.id, { onDelete: "cascade" })
+      .notNull(),
+    linkedByUserId: varchar("linked_by_user_id", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_customer_links_org_idx").on(table.orgId),
+    index("whatsapp_customer_links_conversation_idx").on(table.conversationId),
+  ],
+);
+
+export type WhatsappCustomerLink = typeof whatsappCustomerLinks.$inferSelect;
+export type InsertWhatsappCustomerLink = typeof whatsappCustomerLinks.$inferInsert;
+
 // Required workers per event type configuration
 export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'ReceiptEmailWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],

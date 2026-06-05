@@ -41,10 +41,12 @@ import { registerRefundRoutes } from "./routes/refunds";
 import { registerGiftCardRoutes } from "./routes/giftCards";
 import { registerSavedViewRoutes } from "./routes/savedViews";
 import { registerOnboardingRoutes } from "./routes/onboarding";
+import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
   registerChannelPublicRoutes(app);
+  registerWhatsappPublicRoutes(app);
 
   await setupAuth(app);
 
@@ -73,6 +75,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerGiftCardRoutes(app, scoped);
   registerSavedViewRoutes(app, scoped);
   registerOnboardingRoutes(app, scoped);
+  registerWhatsappRoutes(app, scoped);
   registerInventoryRoutes(app, scoped);
   registerReportRoutes(app, scoped);
   registerLocationRoutes(app, scoped);

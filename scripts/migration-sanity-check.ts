@@ -27,6 +27,10 @@ const REQUIRED_TABLES = [
   "domain_outbox",
   "event_outbox",
   "job_queue",
+  "whatsapp_accounts",
+  "whatsapp_conversations",
+  "whatsapp_messages",
+  "whatsapp_customer_links",
 ] as const;
 
 const DOMAIN_OUTBOX_COLUMNS = [
