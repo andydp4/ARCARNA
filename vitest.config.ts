@@ -11,7 +11,10 @@ export default defineConfig({
     ],
     exclude: process.env.DATABASE_URL
       ? []
-      : ["server/__tests__/orderOutboxAtomicity.test.ts"],
+      : [
+          "server/__tests__/orderOutboxAtomicity.test.ts",
+          "server/__tests__/whatsappStore.integration.test.ts",
+        ],
     testTimeout: 30_000,
   },
   resolve: {

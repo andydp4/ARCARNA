@@ -64,10 +64,10 @@ CREATE TABLE IF NOT EXISTS whatsapp_messages (
 CREATE INDEX IF NOT EXISTS whatsapp_messages_conversation_idx
   ON whatsapp_messages (conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS whatsapp_messages_org_idx ON whatsapp_messages (org_id);
--- Idempotency: Meta message IDs are globally unique. Partial index allows many NULLs.
+-- Idempotency on Meta's globally-unique message id. A plain unique index still
+-- permits multiple NULLs (Postgres treats NULLs as distinct) for outbound-before-ack.
 CREATE UNIQUE INDEX IF NOT EXISTS whatsapp_messages_wa_message_id_idx
-  ON whatsapp_messages (whatsapp_message_id)
-  WHERE whatsapp_message_id IS NOT NULL;
+  ON whatsapp_messages (whatsapp_message_id);
 
 CREATE TABLE IF NOT EXISTS whatsapp_customer_links (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1514,10 +1514,9 @@ export const whatsappMessages = pgTable(
   (table) => [
     index("whatsapp_messages_conversation_idx").on(table.conversationId, table.createdAt),
     index("whatsapp_messages_org_idx").on(table.orgId),
-    // Idempotency: Meta message IDs are globally unique. Partial unique (allows multiple NULLs for outbound-before-ack).
-    uniqueIndex("whatsapp_messages_wa_message_id_idx")
-      .on(table.whatsappMessageId)
-      .where(sql`${table.whatsappMessageId} IS NOT NULL`),
+    // Idempotency on Meta's globally-unique message id. A plain unique index still
+    // permits multiple NULLs (Postgres treats NULLs as distinct) for outbound-before-ack.
+    uniqueIndex("whatsapp_messages_wa_message_id_idx").on(table.whatsappMessageId),
   ],
 );
 
