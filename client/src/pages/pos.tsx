@@ -27,6 +27,7 @@ import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-pane
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
+import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
 import { Label } from "@/components/ui/label";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
@@ -151,6 +152,47 @@ export default function POS() {
   const { data: customers = [], isLoading: customersLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
+
+  // Consume a WhatsApp draft-order prefill once products + customers are loaded.
+  const [draftConsumed, setDraftConsumed] = useState(false);
+  useEffect(() => {
+    if (draftConsumed || productsLoading || customersLoading) return;
+    const draft = consumeWhatsappDraft();
+    if (!draft) {
+      setDraftConsumed(true);
+      return;
+    }
+    const matched: CartItem[] = [];
+    const unmatched: string[] = [];
+    for (const item of draft.items) {
+      const product = products.find(
+        (p) => (item.sku && p.productId === item.sku) || (item.productId && p.productId === item.productId),
+      ) as PosProduct | undefined;
+      if (!product) {
+        unmatched.push(item.name);
+        continue;
+      }
+      const price =
+        typeof product.defaultSalePrice === "string"
+          ? parseFloat(product.defaultSalePrice)
+          : product.defaultSalePrice;
+      const quantity = Math.max(1, item.quantity || 1);
+      matched.push({ product, quantity, customPrice: price, subtotal: price * quantity });
+    }
+    if (matched.length > 0) setCart(matched);
+    if (draft.customerId) {
+      const customer = customers.find((c) => c.id === draft.customerId);
+      if (customer) setSelectedCustomer(customer);
+    }
+    setDraftConsumed(true);
+    toast({
+      title: "WhatsApp draft loaded",
+      description:
+        matched.length > 0
+          ? `${matched.length} item(s) added to cart${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
+          : "No catalogue products matched the message. Add items manually.",
+    });
+  }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
   // Fetch loyalty tiers
   const { data: loyaltyTiers = [] } = useQuery<any[]>({

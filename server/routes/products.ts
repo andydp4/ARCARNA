@@ -116,6 +116,27 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
+  // Update product aliases (shorthand names for WhatsApp/order-intent matching).
+  app.patch("/api/products/:id/aliases", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const raw = req.body?.aliases;
+      if (!Array.isArray(raw)) {
+        return res.status(400).json({ message: "aliases must be an array of strings" });
+      }
+      const aliases = raw
+        .map((a: unknown) => (typeof a === "string" ? a.trim() : ""))
+        .filter((a: string) => a.length > 0)
+        .slice(0, 25);
+      const product = await storage.updateProductAliases(req.params.id, ctx.orgId, aliases);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      res.json(product);
+    } catch (error: any) {
+      console.error("Error updating product aliases:", error);
+      res.status(500).json({ message: "Failed to update product aliases" });
+    }
+  });
+
   app.delete("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
