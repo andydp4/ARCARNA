@@ -40,7 +40,7 @@ async function main() {
   console.log("\n=== Phase 2E Release Gate ===\n");
 
   // 1. TypeScript check
-  console.log("[1/4] Running npm run check...");
+  console.log("[1/5] Running npm run check...");
   const check = run("npm run check");
   if (!check.ok) {
     failures.push("TypeScript check failed");
@@ -50,7 +50,7 @@ async function main() {
   }
 
   // 2. Production hooks check (test hooks must stay OFF when NODE_ENV=production)
-  console.log("[2/4] Asserting test hooks off in production...");
+  console.log("[2/5] Asserting test hooks off in production...");
   const hooksCheck = run(
     "npx tsx scripts/assert-production-hooks-off.ts",
     { env: { ...process.env, NODE_ENV: "production", PHASE2D_TEST: "1" } }
@@ -62,9 +62,19 @@ async function main() {
     console.log("  ✓ Production hooks check passed\n");
   }
 
+  // 3. Production security audit (high/critical runtime deps only)
+  console.log("[3/5] Running production security audit...");
+  const audit = run("npx tsx scripts/security-audit.ts");
+  if (!audit.ok) {
+    failures.push("Production security audit failed");
+    console.error(audit.out || "High/critical production vulnerabilities found");
+  } else {
+    console.log("  ✓ Production security audit passed\n");
+  }
+
   if (!hasDb) {
-    console.log("[3/4] Skipping Phase 2D seed (DATABASE_URL not set)");
-    console.log("[4/4] Skipping Phase 2D tests (DATABASE_URL not set)");
+    console.log("[4/5] Skipping Phase 2D seed (DATABASE_URL not set)");
+    console.log("[5/5] Skipping Phase 2D tests (DATABASE_URL not set)");
     console.log("\n  Set DATABASE_URL to run full multi-org isolation validation.");
     console.log("  Gate considers check-only run as pass if TypeScript succeeds.\n");
     if (failures.length > 0) {
@@ -76,8 +86,8 @@ async function main() {
     process.exit(0);
   }
 
-  // 3. Phase 2D seed
-  console.log("[3/4] Running Phase 2D seed...");
+  // 4. Phase 2D seed
+  console.log("[4/5] Running Phase 2D seed...");
   let seedJson: string;
   try {
     const out = execSync("npx tsx scripts/phase2d-seed.ts 2>&1", {
@@ -102,8 +112,8 @@ async function main() {
     process.exit(1);
   }
 
-  // 4. Phase 2D tests (storage-only - no server required)
-  console.log("[4/4] Running Phase 2D tests (storage + analytics + workers)...");
+  // 5. Phase 2D tests (storage-only - no server required)
+  console.log("[5/5] Running Phase 2D tests (storage + analytics + workers)...");
   const tmpDir = mkdtempSync(join(tmpdir(), "phase2d-"));
   const seedPath = join(tmpDir, "seed.json");
   writeFileSync(seedPath, seedJson, "utf-8");

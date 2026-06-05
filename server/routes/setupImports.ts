@@ -103,11 +103,11 @@ export function registerSetupAndImportRoutes(app: Express) {
   app.post("/api/products/import/preview", ...importScoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const { contentBase64, fileName, mapping, duplicateMode = "skip" } = req.body;
+      const { contentBase64, fileName, mimeType, mapping, duplicateMode = "skip" } = req.body;
       if (!contentBase64 || !fileName) {
         return res.status(400).json({ message: "contentBase64 and fileName are required" });
       }
-      const sheet = await parseSpreadsheet(contentBase64, fileName);
+      const sheet = await parseSpreadsheet(contentBase64, fileName, mimeType);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
       const orgProducts = await db.select().from(products).where(eq(products.orgId, ctx.orgId));
       const bySku = new Map(orgProducts.map((p) => [p.productId, p]));
@@ -180,6 +180,7 @@ export function registerSetupAndImportRoutes(app: Express) {
         contentBase64,
         contentText,
         fileName,
+        mimeType,
         mapping,
         duplicateMode = "skip",
         defaultCategory = "Bronze",
@@ -202,7 +203,7 @@ export function registerSetupAndImportRoutes(app: Express) {
       }
 
       const b64 = readBase64FromBody({ contentBase64 });
-      const sheet = await parseSpreadsheet(b64, fileName);
+      const sheet = await parseSpreadsheet(b64, fileName, mimeType);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
       const preview = previewCustomerImport(mapped, existing, duplicateMode, defaultCategory);
       res.json({ headers: sheet.headers, ...preview });

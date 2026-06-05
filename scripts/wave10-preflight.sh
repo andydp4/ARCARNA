@@ -45,7 +45,7 @@ fi
 
 run_step "Unit tests (vitest)" npm run test
 
-run_step "Production hooks off" npx tsx scripts/assert-production-hooks-off.ts
+run_step "Production hooks off" env NODE_ENV=production PHASE2D_TEST=1 npx tsx scripts/assert-production-hooks-off.ts
 
 echo "→ Worker registry (REQUIRED_WORKERS vs factories)"
 if npx tsx scripts/verify-workers.ts; then
@@ -56,9 +56,18 @@ else
 fi
 echo ""
 
-echo "→ npm audit (high+)"
+echo "→ Production security audit (high/critical runtime deps)"
+if npx tsx scripts/security-audit.ts; then
+  echo "  ✓ Production security audit"
+else
+  echo "  ✗ Production security audit FAILED"
+  FAIL=1
+fi
+echo ""
+
+echo "→ Full security audit (high/critical, dev tooling — informational)"
 npm audit --audit-level=high || true
-echo "  (Review audit output above; non-zero audit does not fail preflight by default)"
+echo "  (Dev-only high/critical findings above do not fail preflight unless production audit failed)"
 echo ""
 
 echo "→ UX legacy gradient scan"

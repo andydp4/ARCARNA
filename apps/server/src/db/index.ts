@@ -34,8 +34,8 @@ export async function withTransaction<T>(fn: (tx: any)=>Promise<T>): Promise<T> 
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    const txDb = drizzle(client)
-    const result = await txStore.run(txDb, () => fn(txDb))
+    const txDb = drizzle({ client })
+    const result = await txStore.run(txDb as unknown as typeof db, () => fn(txDb))
     await client.query('COMMIT')
     return result
   } catch (e) {
