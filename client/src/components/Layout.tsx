@@ -14,6 +14,7 @@ import { NotificationCenter } from '@/components/NotificationCenter'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 import { BrandLogo } from '@/components/BrandLogo'
+import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
 
 interface LayoutProps {
   children: ReactNode
@@ -144,6 +145,7 @@ export function Layout({ children }: LayoutProps) {
         )}
         <main className="min-w-0 flex-1">{children}</main>
       </div>
+      <WhatsAppPanel />
     </div>
   )
 }

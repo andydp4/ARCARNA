@@ -36,6 +36,14 @@ export async function apiRequest(
   return res;
 }
 
+/** GET a base-path-aware API URL and parse JSON. For custom query keys with query strings. */
+export async function getJson<T = unknown>(url: string): Promise<T> {
+  const headers = await withClerkAuthHeaders(orgScopeHeaders());
+  const res = await fetch(resolveApiUrl(url), { credentials: "include", headers });
+  await throwIfResNotOk(res);
+  return (await res.json()) as T;
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
