@@ -53,7 +53,7 @@ export default function Onboarding() {
         </CardHeader>
         <CardContent className="space-y-4">
           {devAuthBypass && (
-            <p className="text-xs text-center text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded-md p-2">
+            <p className="text-xs text-center text-amber-950 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-100 rounded-md p-2">
               Dev auth bypass is active (DEV_AUTH_BYPASS=1).
             </p>
           )}

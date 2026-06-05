@@ -4,7 +4,6 @@ import path from "path";
 import { createServer as createViteServer, createLogger } from "vite";
 import type { Server } from "http";
 import viteConfig from "../vite.config";
-import { nanoid } from "nanoid";
 
 const viteLogger = createLogger();
 
@@ -26,7 +25,6 @@ export async function setupVite(app: Express, server: Server) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
       },
     },
     server: serverOptions,
@@ -47,16 +45,7 @@ export async function setupVite(app: Express, server: Server) {
       );
 
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      const base = (viteConfig as { base?: string }).base ?? "/";
-      const scriptSrc = `${base}src/main.tsx`.replace(/\/+/g, "/");
-      template = template.replace(
-        `src="${base}src/main.tsx"`,
-        `src="${scriptSrc}?v=${nanoid()}"`,
-      );
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="${scriptSrc}?v=${nanoid()}"`,
-      );
+      // Let Vite apply base-path rewrites; manual prefixing duplicates /midnight in dev.
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
