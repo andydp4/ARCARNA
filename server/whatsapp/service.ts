@@ -9,6 +9,7 @@
 import type { ParsedInboundMessage, ParsedWebhook } from "./parse";
 import { parseWebhookPayload } from "./parse";
 import * as store from "./store";
+import { parseOrderIntent } from "./intent";
 import type { WhatsappMessageType } from "@shared/schema";
 
 /** WhatsApp's free-form customer service window: 24h from the last inbound message. */
@@ -50,6 +51,7 @@ export interface IngestSummary {
   skippedNoAccount: number;
   statusUpdates: number;
   autoLinked: number;
+  orderIntents: number;
 }
 
 async function ingestMessage(
@@ -97,7 +99,8 @@ async function ingestMessage(
   });
 
   // Auto-link to an existing customer by phone when not already linked.
-  if (!conversation.customerId) {
+  let linkedCustomerId = conversation.customerId;
+  if (!linkedCustomerId) {
     const customer = await store.findCustomerByPhone(account.orgId, msg.phone);
     if (customer) {
       await store.linkConversationCustomer({
@@ -105,7 +108,34 @@ async function ingestMessage(
         conversationId: conversation.id,
         customerId: customer.id,
       });
+      linkedCustomerId = customer.id;
       summary.autoLinked += 1;
+    }
+  }
+
+  // Order-intent parsing for text messages that look like an order.
+  if (msg.messageType === "text" && msg.body?.trim()) {
+    try {
+      const products = await store.getProductsForIntent(account.orgId);
+      const intent = parseOrderIntent(msg.body, products);
+      if (intent.isOrderLike && intent.items.length > 0) {
+        await store.createOrderIntent({
+          orgId: account.orgId,
+          conversationId: conversation.id,
+          messageId: inserted.id,
+          customerId: linkedCustomerId,
+          parsedItems: intent.items,
+          rawText: msg.body,
+          confidence: intent.confidence,
+          status: "suggested",
+        });
+        summary.orderIntents += 1;
+      }
+    } catch (err) {
+      console.error("[whatsapp] order-intent parse failed", {
+        waMessageId: msg.whatsappMessageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -119,6 +149,7 @@ export async function ingestWebhook(payload: unknown): Promise<IngestSummary> {
     skippedNoAccount: 0,
     statusUpdates: 0,
     autoLinked: 0,
+    orderIntents: 0,
   };
   let parsed: ParsedWebhook;
   try {

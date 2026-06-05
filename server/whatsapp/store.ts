@@ -9,19 +9,27 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   customers,
+  orders,
+  products,
   whatsappAccounts,
   whatsappConversations,
   whatsappCustomerLinks,
   whatsappMessages,
+  whatsappOrderIntents,
   type Customer,
+  type Order,
   type WhatsappAccount,
   type WhatsappConversation,
   type WhatsappMessage,
   type WhatsappMessageDirection,
   type WhatsappMessageStatus,
   type WhatsappMessageType,
+  type WhatsappOrderIntent,
+  type WhatsappOrderIntentStatus,
+  type WhatsappParsedItem,
 } from "@shared/schema";
 import { phonesMatch } from "./phone";
+import type { IntentProduct } from "./intent";
 
 /** Routing lookup: which org owns the receiving WhatsApp number. */
 export async function getAccountByPhoneNumberId(
@@ -350,4 +358,127 @@ export async function linkConversationCustomer(params: {
     linkedByUserId: params.linkedByUserId,
     createdAt: new Date(),
   });
+}
+
+/** Create a customer from a conversation and link it (source = whatsapp). */
+export async function createCustomerFromConversation(params: {
+  orgId: string;
+  conversationId: string;
+  name: string;
+  phone: string;
+  linkedByUserId?: string;
+}): Promise<Customer> {
+  const now = new Date();
+  const [customer] = await db
+    .insert(customers)
+    .values({
+      orgId: params.orgId,
+      name: params.name,
+      phone: params.phone,
+      source: "whatsapp",
+      address: "Created from WhatsApp conversation",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+  await linkConversationCustomer({
+    orgId: params.orgId,
+    conversationId: params.conversationId,
+    customerId: customer.id,
+    linkedByUserId: params.linkedByUserId,
+  });
+  return customer;
+}
+
+// ---- Order intents ----
+
+/** Products in a lightweight shape for the order-intent parser. */
+export async function getProductsForIntent(orgId: string): Promise<IntentProduct[]> {
+  const rows = await db
+    .select({
+      productId: products.productId,
+      name: products.name,
+      aliases: products.aliases,
+    })
+    .from(products)
+    .where(eq(products.orgId, orgId));
+  return rows.map((r) => ({ productId: r.productId, name: r.name, aliases: r.aliases ?? [] }));
+}
+
+export async function createOrderIntent(params: {
+  orgId: string;
+  conversationId: string;
+  messageId?: string;
+  customerId?: string | null;
+  parsedItems: WhatsappParsedItem[];
+  rawText?: string;
+  confidence?: number;
+  status?: WhatsappOrderIntentStatus;
+}): Promise<WhatsappOrderIntent> {
+  const now = new Date();
+  const [row] = await db
+    .insert(whatsappOrderIntents)
+    .values({
+      orgId: params.orgId,
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      customerId: params.customerId ?? null,
+      parsedItems: params.parsedItems,
+      rawText: params.rawText,
+      confidenceScore: params.confidence !== undefined ? params.confidence.toFixed(3) : null,
+      status: params.status ?? "suggested",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+  return row;
+}
+
+export async function listIntentsForConversation(
+  conversationId: string,
+  orgId: string,
+): Promise<WhatsappOrderIntent[]> {
+  return db
+    .select()
+    .from(whatsappOrderIntents)
+    .where(
+      and(
+        eq(whatsappOrderIntents.conversationId, conversationId),
+        eq(whatsappOrderIntents.orgId, orgId),
+      ),
+    )
+    .orderBy(desc(whatsappOrderIntents.createdAt));
+}
+
+export async function getOrderIntent(
+  id: string,
+  orgId: string,
+): Promise<WhatsappOrderIntent | null> {
+  const [row] = await db
+    .select()
+    .from(whatsappOrderIntents)
+    .where(and(eq(whatsappOrderIntents.id, id), eq(whatsappOrderIntents.orgId, orgId)))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updateOrderIntent(
+  id: string,
+  orgId: string,
+  patch: { status?: WhatsappOrderIntentStatus; draftOrderId?: string | null; customerId?: string | null },
+): Promise<void> {
+  await db
+    .update(whatsappOrderIntents)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(whatsappOrderIntents.id, id), eq(whatsappOrderIntents.orgId, orgId)));
+}
+
+/** Validate an order belongs to the org (for attach-order). */
+export async function getOrderForOrg(orderId: string, orgId: string): Promise<Order | null> {
+  const [row] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)))
+    .limit(1);
+  return row ?? null;
 }

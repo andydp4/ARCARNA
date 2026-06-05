@@ -107,7 +107,8 @@ export default function ProductManagement() {
     salePrice: '',
     stock: '',
     stockLimit: '',
-    categoryId: ''
+    categoryId: '',
+    aliases: ''
   })
 
   // Fetch products
@@ -244,13 +245,14 @@ export default function ProductManagement() {
       salePrice: '',
       stock: '',
       stockLimit: '',
-      categoryId: ''
+      categoryId: '',
+      aliases: ''
     }
     setFormData(defaultData)
     localStorage.removeItem(AUTOSAVE_KEY)
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name || !formData.salePrice) {
       toast({
         title: 'Error',
@@ -260,20 +262,36 @@ export default function ProductManagement() {
       return
     }
 
+    // Aliases persist via a dedicated endpoint (the order engine ignores them).
+    const aliasesArr = formData.aliases
+      .split(',')
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0)
+    const { aliases: _aliases, ...rest } = formData
     const productData = {
-      ...formData,
+      ...rest,
       costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
       salePrice: parseFloat(formData.salePrice),
       stock: formData.stock ? parseInt(formData.stock) : 0,
       stockLimit: formData.stockLimit ? parseInt(formData.stockLimit) : 100,
     }
 
-    if (editingProduct) {
-      updateMutation.mutate({ id: editingProduct.id, data: productData })
-    } else {
-      createMutation.mutate(productData)
+    try {
+      if (editingProduct) {
+        await updateMutation.mutateAsync({ id: editingProduct.id, data: productData })
+        await apiRequest('PATCH', `/api/products/${editingProduct.id}/aliases`, { aliases: aliasesArr })
+      } else {
+        const res = await createMutation.mutateAsync(productData)
+        const created = await res.json().catch(() => null)
+        if (created?.id && aliasesArr.length > 0) {
+          await apiRequest('PATCH', `/api/products/${created.id}/aliases`, { aliases: aliasesArr })
+        }
+      }
+      await refreshAfterProductMutation()
+    } catch {
+      // mutation onError handlers already surface a toast
     }
-    
+
     // Clear autosave after successful submission
     localStorage.removeItem(AUTOSAVE_KEY)
   }
@@ -288,7 +306,8 @@ export default function ProductManagement() {
       salePrice: (product.salePrice || product.defaultSalePrice || '').toString(),
       stock: (product.stock || '').toString(),
       stockLimit: (product.stockLimit || '').toString(),
-      categoryId: product.categoryId || ''
+      categoryId: product.categoryId || '',
+      aliases: Array.isArray(product.aliases) ? product.aliases.join(', ') : ''
     })
   }
 
@@ -495,6 +514,24 @@ export default function ProductManagement() {
                       className="min-h-[44px]"
                       data-testid="input-product-barcode"
                     />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="aliases">Aliases (WhatsApp / order matching)</Label>
+                    <Input
+                      id="aliases"
+                      value={formData.aliases}
+                      onChange={(e) => {
+                        const updated = { ...formData, aliases: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
+                      placeholder="coke, large coke, coca cola"
+                      className="min-h-[44px]"
+                      data-testid="input-product-aliases"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Comma-separated shorthand names customers might use in WhatsApp messages.
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">

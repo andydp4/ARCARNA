@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageCircle, X, ChevronLeft, Search, Send, User, UserPlus } from "lucide-react";
+import { useLocation } from "wouter";
+import {
+  MessageCircle,
+  X,
+  ChevronLeft,
+  Search,
+  Send,
+  User,
+  UserPlus,
+  Link2,
+  ShoppingCart,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiRequest, getJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { stashWhatsappDraft } from "@/lib/whatsappDraft";
 
 interface WhatsappStatus {
   enabled: boolean;
@@ -40,10 +53,32 @@ interface WhatsappMessage {
   createdAt: string;
 }
 
+interface ParsedItem {
+  productId?: string;
+  sku?: string;
+  name: string;
+  quantity: number;
+  matched: boolean;
+}
+
+interface OrderIntent {
+  id: string;
+  parsedItems: ParsedItem[];
+  rawText: string | null;
+  status: string;
+  createdAt: string;
+}
+
 interface ConversationDetail {
   conversation: ConversationListItem;
   messages: WhatsappMessage[];
   withinServiceWindow: boolean;
+}
+
+interface CustomerLite {
+  id: string;
+  name: string;
+  phone: string | null;
 }
 
 function formatTime(iso: string | null): string {
@@ -61,6 +96,7 @@ function formatTime(iso: string | null): string {
 export function WhatsAppPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -88,6 +124,18 @@ export function WhatsAppPanel() {
     refetchInterval: open && !!activeId ? 15000 : false,
   });
 
+  const { data: intents = [] } = useQuery<OrderIntent[]>({
+    queryKey: ["/api/whatsapp/conversations", activeId, "intents"],
+    queryFn: () => getJson(`/api/whatsapp/conversations/${activeId}/intents`),
+    enabled: open && !!activeId,
+  });
+
+  const refreshConversation = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/conversations", activeId, "detail"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/conversations"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status"] });
+  };
+
   const markRead = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/whatsapp/conversations/${id}/read`),
     onSuccess: () => {
@@ -103,13 +151,86 @@ export function WhatsAppPanel() {
     },
     onSuccess: () => {
       setReply("");
-      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/conversations", activeId, "detail"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/conversations"] });
+      refreshConversation();
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : "Failed to send message";
-      toast({ title: "Could not send", description: message, variant: "destructive" });
+      toast({
+        title: "Could not send",
+        description: err instanceof Error ? err.message : "Failed to send message",
+        variant: "destructive",
+      });
     },
+  });
+
+  const createCustomer = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/whatsapp/conversations/${activeId}/create-customer`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Customer created", description: "Linked to this conversation." });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      refreshConversation();
+    },
+    onError: (err: unknown) =>
+      toast({
+        title: "Could not create customer",
+        description: err instanceof Error ? err.message : "Failed",
+        variant: "destructive",
+      }),
+  });
+
+  const linkCustomer = useMutation({
+    mutationFn: async (customerId: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/whatsapp/conversations/${activeId}/link-customer`,
+        { customerId },
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Customer linked" });
+      refreshConversation();
+    },
+    onError: (err: unknown) =>
+      toast({
+        title: "Could not link customer",
+        description: err instanceof Error ? err.message : "Failed",
+        variant: "destructive",
+      }),
+  });
+
+  const createDraftOrder = useMutation({
+    mutationFn: async (intentId?: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/whatsapp/conversations/${activeId}/create-draft-order`,
+        intentId ? { intentId } : {},
+      );
+      return res.json();
+    },
+    onSuccess: (data: { prefill: { customerId: string | null; conversationId: string; note?: string; items: ParsedItem[] } }) => {
+      stashWhatsappDraft({
+        conversationId: data.prefill.conversationId,
+        customerId: data.prefill.customerId,
+        note: data.prefill.note,
+        items: data.prefill.items.map((i) => ({
+          productId: i.productId,
+          sku: i.sku,
+          name: i.name,
+          quantity: i.quantity,
+        })),
+      });
+      setOpen(false);
+      navigate("/pos");
+    },
+    onError: (err: unknown) =>
+      toast({
+        title: "Could not create draft order",
+        description: err instanceof Error ? err.message : "Failed",
+        variant: "destructive",
+      }),
   });
 
   const openConversation = (id: string) => {
@@ -121,7 +242,6 @@ export function WhatsAppPanel() {
 
   return (
     <>
-      {/* Persistent launcher (always available across the app shell). */}
       <Button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -147,7 +267,6 @@ export function WhatsAppPanel() {
           role="dialog"
           aria-label="WhatsApp conversations"
         >
-          {/* Header */}
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <div className="flex items-center gap-2">
               {activeId && (
@@ -194,11 +313,20 @@ export function WhatsAppPanel() {
           ) : (
             <ConversationView
               detail={detail}
+              intents={intents}
               reply={reply}
               onReply={setReply}
               onSend={() => reply.trim() && sendReply.mutate(reply.trim())}
               sending={sendReply.isPending}
               canSend={status?.canSend ?? false}
+              onCreateCustomer={() => createCustomer.mutate()}
+              onLinkCustomer={(id) => linkCustomer.mutate(id)}
+              onCreateDraftOrder={(intentId) => createDraftOrder.mutate(intentId)}
+              busy={createCustomer.isPending || linkCustomer.isPending || createDraftOrder.isPending}
+              onViewCustomer={() => {
+                setOpen(false);
+                navigate("/customers");
+              }}
             />
           )}
         </div>
@@ -294,31 +422,125 @@ function ConversationList({
 
 function ConversationView({
   detail,
+  intents,
   reply,
   onReply,
   onSend,
   sending,
   canSend,
+  onCreateCustomer,
+  onLinkCustomer,
+  onCreateDraftOrder,
+  onViewCustomer,
+  busy,
 }: {
   detail: ConversationDetail | undefined;
+  intents: OrderIntent[];
   reply: string;
   onReply: (v: string) => void;
   onSend: () => void;
   sending: boolean;
   canSend: boolean;
+  onCreateCustomer: () => void;
+  onLinkCustomer: (customerId: string) => void;
+  onCreateDraftOrder: (intentId?: string) => void;
+  onViewCustomer: () => void;
+  busy: boolean;
 }) {
+  const [linkOpen, setLinkOpen] = useState(false);
   if (!detail) {
     return <p className="flex-1 p-4 text-center text-sm text-muted-foreground">Loading…</p>;
   }
   const { conversation, messages, withinServiceWindow } = detail;
+  const suggestion = intents.find((i) => i.status === "suggested") ?? intents[0];
+
   return (
     <>
-      <div className="border-b border-border px-4 py-3">
-        <p className="font-medium">
-          {conversation.customerName || conversation.profileName || conversation.phone}
-        </p>
-        <p className="text-xs text-muted-foreground">+{conversation.waId}</p>
+      <div className="space-y-2 border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-medium">
+              {conversation.customerName || conversation.profileName || conversation.phone}
+            </p>
+            <p className="text-xs text-muted-foreground">+{conversation.waId}</p>
+          </div>
+          <Badge variant={conversation.customerId ? "secondary" : "outline"} className="shrink-0 text-[10px]">
+            {conversation.customerId ? "Linked" : "Unlinked"}
+          </Badge>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {conversation.customerId ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={onViewCustomer}
+              data-testid="whatsapp-view-customer"
+            >
+              <ExternalLink className="mr-1 h-3.5 w-3.5" /> View customer
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={onCreateCustomer}
+                disabled={busy}
+                data-testid="whatsapp-create-customer"
+              >
+                <UserPlus className="mr-1 h-3.5 w-3.5" /> Create customer
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => setLinkOpen((v) => !v)}
+                disabled={busy}
+                data-testid="whatsapp-link-customer-toggle"
+              >
+                <Link2 className="mr-1 h-3.5 w-3.5" /> Link existing
+              </Button>
+            </>
+          )}
+        </div>
+
+        {linkOpen && !conversation.customerId && (
+          <LinkCustomerPicker
+            onPick={(id) => {
+              setLinkOpen(false);
+              onLinkCustomer(id);
+            }}
+          />
+        )}
+
+        {suggestion && suggestion.parsedItems.length > 0 && (
+          <div
+            className="rounded-md border border-border bg-muted/40 p-2"
+            data-testid="whatsapp-order-suggestion"
+          >
+            <p className="mb-1 text-xs font-medium">Suggested order</p>
+            <ul className="mb-2 space-y-0.5 text-xs text-muted-foreground">
+              {suggestion.parsedItems.map((it, idx) => (
+                <li key={idx}>
+                  {it.quantity} × {it.name}
+                </li>
+              ))}
+            </ul>
+            <Button
+              size="sm"
+              className="h-8 w-full"
+              onClick={() => onCreateDraftOrder(suggestion.id)}
+              disabled={busy}
+              data-testid="whatsapp-create-draft-order"
+            >
+              <ShoppingCart className="mr-1 h-3.5 w-3.5" /> Create draft order
+            </Button>
+          </div>
+        )}
       </div>
+
       <ScrollArea className="flex-1 px-4 py-3">
         <div className="space-y-2">
           {messages.map((m) => (
@@ -335,9 +557,7 @@ function ConversationView({
                 )}
                 data-testid={`whatsapp-message-${m.id}`}
               >
-                <p className="whitespace-pre-wrap break-words">
-                  {m.body || `[${m.messageType}]`}
-                </p>
+                <p className="whitespace-pre-wrap break-words">{m.body || `[${m.messageType}]`}</p>
                 <p className="mt-1 text-right text-[10px] opacity-70">
                   {formatTime(m.createdAt)}
                   {m.direction === "outbound" ? ` · ${m.status}` : ""}
@@ -350,6 +570,7 @@ function ConversationView({
           )}
         </div>
       </ScrollArea>
+
       <div className="border-t border-border p-3">
         {!withinServiceWindow ? (
           <p
@@ -390,5 +611,45 @@ function ConversationView({
         )}
       </div>
     </>
+  );
+}
+
+function LinkCustomerPicker({ onPick }: { onPick: (customerId: string) => void }) {
+  const [q, setQ] = useState("");
+  const { data: customers = [] } = useQuery<CustomerLite[]>({ queryKey: ["/api/customers"] });
+  const filtered = customers
+    .filter((c) =>
+      q.trim()
+        ? c.name.toLowerCase().includes(q.toLowerCase()) || (c.phone ?? "").includes(q)
+        : true,
+    )
+    .slice(0, 6);
+  return (
+    <div className="rounded-md border border-border p-2" data-testid="whatsapp-link-picker">
+      <Input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search customers…"
+        className="mb-2 h-8"
+      />
+      <ul className="max-h-40 space-y-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <li className="px-1 py-1 text-xs text-muted-foreground">No matches</li>
+        ) : (
+          filtered.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                className="w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
+                onClick={() => onPick(c.id)}
+              >
+                {c.name}
+                {c.phone ? <span className="text-xs text-muted-foreground"> · {c.phone}</span> : null}
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
   );
 }

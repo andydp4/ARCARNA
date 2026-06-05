@@ -209,6 +209,8 @@ export const customers = pgTable("customers", {
   receiptEmailOptIn: boolean("receipt_email_opt_in").default(true).notNull(),
   address: varchar("address", { length: 1024 }),
   category: varchar("category", { length: 64 }).default("Bronze"),
+  // Acquisition source, e.g. "whatsapp", "import", "pos". Null for legacy rows.
+  source: varchar("source", { length: 32 }),
   manualOverrideProtected: integer("manual_override_protected").default(0).notNull(),
   loyaltyPoints: integer("loyalty_points").default(0),
   tierId: uuid("tier_id").references(() => loyaltyTiers.id),
@@ -244,6 +246,8 @@ export const products = pgTable("products", {
   stock: integer("stock").default(0),
   stockLimit: integer("stock_limit").default(10),
   barcode: varchar("barcode", { length: 255 }),
+  // Optional shorthand names used for WhatsApp/order-intent matching, e.g. ["coke", "large coke"].
+  aliases: jsonb("aliases").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -1545,6 +1549,54 @@ export const whatsappCustomerLinks = pgTable(
 
 export type WhatsappCustomerLink = typeof whatsappCustomerLinks.$inferSelect;
 export type InsertWhatsappCustomerLink = typeof whatsappCustomerLinks.$inferInsert;
+
+export const WHATSAPP_ORDER_INTENT_STATUSES = [
+  "suggested",
+  "accepted",
+  "rejected",
+  "converted",
+] as const;
+export type WhatsappOrderIntentStatus = (typeof WHATSAPP_ORDER_INTENT_STATUSES)[number];
+
+/** A single parsed line in an order-intent suggestion. */
+export interface WhatsappParsedItem {
+  productId?: string;
+  sku?: string;
+  name: string;
+  quantity: number;
+  matched: boolean;
+}
+
+/** Rule-based order suggestions parsed from inbound messages (pre-confirmation). */
+export const whatsappOrderIntents = pgTable(
+  "whatsapp_order_intents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => whatsappConversations.id, { onDelete: "cascade" })
+      .notNull(),
+    messageId: uuid("message_id").references(() => whatsappMessages.id, { onDelete: "set null" }),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    parsedItems: jsonb("parsed_items").$type<WhatsappParsedItem[]>().notNull().default([]),
+    rawText: text("raw_text"),
+    confidenceScore: numeric("confidence_score", { precision: 4, scale: 3 }),
+    status: varchar("status", { length: 16 }).notNull().default("suggested"),
+    draftOrderId: uuid("draft_order_id").references(() => orders.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_order_intents_org_idx").on(table.orgId),
+    index("whatsapp_order_intents_conversation_idx").on(table.conversationId),
+    index("whatsapp_order_intents_status_idx").on(table.orgId, table.status),
+  ],
+);
+
+export type WhatsappOrderIntent = typeof whatsappOrderIntents.$inferSelect;
+export type InsertWhatsappOrderIntent = typeof whatsappOrderIntents.$inferInsert;
 
 // Required workers per event type configuration
 export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {

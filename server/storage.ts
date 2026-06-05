@@ -431,6 +431,16 @@ export class DatabaseStorage implements IStorage {
     return product || null;
   }
 
+  /** Update a product's WhatsApp/order-intent aliases (org-scoped). */
+  async updateProductAliases(id: string, orgId: string, aliases: string[]): Promise<Product | null> {
+    const [product] = await db
+      .update(products)
+      .set({ aliases, updatedAt: new Date() })
+      .where(and(eq(products.id, id), eq(products.orgId, orgId)))
+      .returning();
+    return product || null;
+  }
+
   async importProducts(
     productList: any[],
     orgId: string,

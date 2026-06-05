@@ -11,6 +11,8 @@ vi.mock("../whatsapp/store", () => ({
   findCustomerByPhone: vi.fn(),
   linkConversationCustomer: vi.fn(),
   applyStatusUpdate: vi.fn(),
+  getProductsForIntent: vi.fn(),
+  createOrderIntent: vi.fn(),
 }));
 
 import * as store from "../whatsapp/store";
@@ -46,6 +48,8 @@ beforeEach(() => {
   mocked.findOrCreateConversation.mockResolvedValue(conversation);
   mocked.insertInboundMessage.mockResolvedValue({ id: "msg-1" });
   mocked.findCustomerByPhone.mockResolvedValue(null);
+  mocked.getProductsForIntent.mockResolvedValue([]);
+  mocked.createOrderIntent.mockResolvedValue({ id: "intent-1" });
 });
 
 describe("service window", () => {
@@ -110,6 +114,26 @@ describe("ingestWebhook", () => {
     expect(summary.skippedNoAccount).toBe(1);
     expect(summary.stored).toBe(0);
     expect(mocked.insertInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it("creates an order intent when the message matches a product", async () => {
+    mocked.getProductsForIntent.mockResolvedValue([
+      { productId: "COKE", name: "Coke", aliases: ["coke"] },
+    ]);
+    const summary = await ingestWebhook(messagePayload("wamid.ORD", "can I get 2 cokes"));
+    expect(summary.orderIntents).toBe(1);
+    expect(mocked.createOrderIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-1", conversationId: "conv-1", status: "suggested" }),
+    );
+  });
+
+  it("does not create an order intent for chit-chat", async () => {
+    mocked.getProductsForIntent.mockResolvedValue([
+      { productId: "COKE", name: "Coke", aliases: ["coke"] },
+    ]);
+    const summary = await ingestWebhook(messagePayload("wamid.CHAT", "hello are you open"));
+    expect(summary.orderIntents).toBe(0);
+    expect(mocked.createOrderIntent).not.toHaveBeenCalled();
   });
 
   it("applies status updates keyed by message id", async () => {
