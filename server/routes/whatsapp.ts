@@ -14,10 +14,11 @@
  */
 import type { Express, Request, RequestHandler } from "express";
 import { requireRole } from "../auth";
+import { APP_BASE_PATH } from "../appBase";
 import { getWhatsappConfig, canSendWhatsapp } from "../whatsapp/config";
 import { verifyWebhookChallenge, verifyWebhookSignature } from "../whatsapp/verify";
 import { ingestWebhook, isWithinServiceWindow } from "../whatsapp/service";
-import { sendTextMessage } from "../whatsapp/client";
+import { sendTextMessage, sendTemplateMessage, fetchTemplates } from "../whatsapp/client";
 import * as store from "../whatsapp/store";
 
 const OUTSIDE_WINDOW_MESSAGE =
@@ -79,10 +80,21 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
       const cfg = getWhatsappConfig();
       const account = await store.getPrimaryAccount(ctx.orgId);
       const unread = await store.totalUnread(ctx.orgId);
+      const webhookUrl = `${req.protocol}://${req.get("host")}${APP_BASE_PATH}/api/whatsapp/webhook`;
       res.json({
         enabled: cfg.enabled,
         canSend: canSendWhatsapp(cfg),
         unread,
+        webhookUrl,
+        // Non-secret config presence — never expose tokens to the client (Principle 7).
+        config: {
+          hasVerifyToken: !!cfg.verifyToken,
+          hasAccessToken: !!cfg.accessToken,
+          hasAppSecret: !!cfg.appSecret,
+          phoneNumberId: cfg.phoneNumberId || null,
+          businessAccountId: cfg.businessAccountId || null,
+          defaultCountryCode: cfg.defaultCountryCode,
+        },
         account: account
           ? {
               id: account.id,
@@ -372,6 +384,131 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
       } catch (error) {
         console.error("[whatsapp] attach order error", error);
         res.status(500).json({ message: "Failed to attach order" });
+      }
+    },
+  );
+
+  // List templates (seeds local examples on first read).
+  app.get("/api/whatsapp/templates", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      let templates = await store.listTemplates(ctx.orgId);
+      if (templates.length === 0) {
+        await store.seedDefaultTemplates(ctx.orgId);
+        templates = await store.listTemplates(ctx.orgId);
+      }
+      res.json(templates);
+    } catch (error) {
+      console.error("[whatsapp] list templates error", error);
+      res.status(500).json({ message: "Failed to list templates" });
+    }
+  });
+
+  // Sync approved templates from the WhatsApp Business Account (Graph API).
+  app.post("/api/whatsapp/templates/sync", ...scoped, canManage, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const cfg = getWhatsappConfig();
+      // Always ensure local seeds exist so the org has starting points.
+      await store.seedDefaultTemplates(ctx.orgId);
+
+      if (!cfg.accessToken || !cfg.businessAccountId) {
+        const templates = await store.listTemplates(ctx.orgId);
+        return res.json({
+          synced: 0,
+          seeded: true,
+          message: "Local seed templates available. Add access token and business account ID to sync from Meta.",
+          templates,
+        });
+      }
+
+      const result = await fetchTemplates(cfg);
+      if (!result.ok) {
+        return res.status(502).json({ message: result.error ?? "Template sync failed" });
+      }
+      for (const t of result.templates) {
+        if (!t.name) continue;
+        await store.upsertSyncedTemplate(ctx.orgId, {
+          templateName: t.name,
+          category: t.category,
+          language: t.language,
+          status: t.status,
+          body: t.body,
+          variables: t.variables,
+        });
+      }
+      const templates = await store.listTemplates(ctx.orgId);
+      res.json({ synced: result.templates.length, templates });
+    } catch (error) {
+      console.error("[whatsapp] template sync error", error);
+      res.status(500).json({ message: "Failed to sync templates" });
+    }
+  });
+
+  // Send an approved template message (allowed outside the service window).
+  app.post(
+    "/api/whatsapp/conversations/:id/send-template",
+    ...scoped,
+    canSend,
+    async (req: any, res) => {
+      try {
+        const ctx = req.orgContext as { orgId: string };
+        const userId = (req.user as { id?: string } | undefined)?.id;
+        const templateName = typeof req.body?.templateName === "string" ? req.body.templateName : "";
+        const language = typeof req.body?.language === "string" ? req.body.language : "en_GB";
+        const bodyParams = Array.isArray(req.body?.bodyParams)
+          ? req.body.bodyParams.map((p: unknown) => String(p ?? ""))
+          : [];
+        if (!templateName) {
+          return res.status(400).json({ message: "templateName is required" });
+        }
+
+        const cfg = getWhatsappConfig();
+        if (!canSendWhatsapp(cfg)) {
+          return res
+            .status(409)
+            .json({ message: "WhatsApp is not enabled or is missing credentials" });
+        }
+
+        const conversation = await store.getConversation(req.params.id, ctx.orgId);
+        if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+
+        const template = await store.getTemplate(ctx.orgId, templateName, language);
+        if (template && template.status !== "APPROVED" && template.status !== "LOCAL") {
+          return res
+            .status(422)
+            .json({ message: `Template "${templateName}" is not approved (status: ${template.status})` });
+        }
+
+        const result = await sendTemplateMessage(conversation.waId, templateName, language, bodyParams, cfg);
+        const account = await store.getPrimaryAccount(ctx.orgId);
+        const preview = `[template: ${templateName}] ${(template?.body ?? "").trim()}`.trim();
+
+        if (!result.ok) {
+          if (account) await store.recordOutboundStatus(account.id, "failed");
+          await store.insertOutboundMessage({
+            orgId: ctx.orgId,
+            conversationId: conversation.id,
+            body: preview,
+            status: "failed",
+            sentByUserId: userId,
+          });
+          return res.status(502).json({ message: result.error ?? "Failed to send template" });
+        }
+
+        if (account) await store.recordOutboundStatus(account.id, "sent");
+        const message = await store.insertOutboundMessage({
+          orgId: ctx.orgId,
+          conversationId: conversation.id,
+          whatsappMessageId: result.messageId,
+          body: preview,
+          status: "sent",
+          sentByUserId: userId,
+        });
+        res.status(201).json({ message });
+      } catch (error) {
+        console.error("[whatsapp] send template error", error);
+        res.status(500).json({ message: "Failed to send template" });
       }
     },
   );

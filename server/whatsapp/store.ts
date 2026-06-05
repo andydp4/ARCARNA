@@ -16,6 +16,7 @@ import {
   whatsappCustomerLinks,
   whatsappMessages,
   whatsappOrderIntents,
+  whatsappTemplates,
   type Customer,
   type Order,
   type WhatsappAccount,
@@ -27,9 +28,11 @@ import {
   type WhatsappOrderIntent,
   type WhatsappOrderIntentStatus,
   type WhatsappParsedItem,
+  type WhatsappTemplate,
 } from "@shared/schema";
 import { phonesMatch } from "./phone";
 import type { IntentProduct } from "./intent";
+import { SEED_TEMPLATES, extractVariables } from "./templates";
 
 /** Routing lookup: which org owns the receiving WhatsApp number. */
 export async function getAccountByPhoneNumberId(
@@ -481,4 +484,97 @@ export async function getOrderForOrg(orderId: string, orgId: string): Promise<Or
     .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)))
     .limit(1);
   return row ?? null;
+}
+
+// ---- Templates ----
+
+export async function listTemplates(orgId: string): Promise<WhatsappTemplate[]> {
+  return db
+    .select()
+    .from(whatsappTemplates)
+    .where(eq(whatsappTemplates.orgId, orgId))
+    .orderBy(whatsappTemplates.templateName);
+}
+
+export async function getTemplate(
+  orgId: string,
+  templateName: string,
+  language: string,
+): Promise<WhatsappTemplate | null> {
+  const [row] = await db
+    .select()
+    .from(whatsappTemplates)
+    .where(
+      and(
+        eq(whatsappTemplates.orgId, orgId),
+        eq(whatsappTemplates.templateName, templateName),
+        eq(whatsappTemplates.language, language),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Insert local seed templates for an org (idempotent). */
+export async function seedDefaultTemplates(orgId: string): Promise<number> {
+  let inserted = 0;
+  for (const t of SEED_TEMPLATES) {
+    const [row] = await db
+      .insert(whatsappTemplates)
+      .values({
+        orgId,
+        templateName: t.templateName,
+        category: t.category,
+        language: t.language,
+        status: "LOCAL",
+        body: t.body,
+        variables: extractVariables(t.body),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing({
+        target: [
+          whatsappTemplates.orgId,
+          whatsappTemplates.templateName,
+          whatsappTemplates.language,
+        ],
+      })
+      .returning();
+    if (row) inserted += 1;
+  }
+  return inserted;
+}
+
+/** Upsert a synced template from the Graph API. */
+export async function upsertSyncedTemplate(
+  orgId: string,
+  t: { templateName: string; category: string; language: string; status: string; body: string; variables: string[] },
+): Promise<void> {
+  await db
+    .insert(whatsappTemplates)
+    .values({
+      orgId,
+      templateName: t.templateName,
+      category: t.category || null,
+      language: t.language || "en_GB",
+      status: t.status || "APPROVED",
+      body: t.body,
+      variables: t.variables,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        whatsappTemplates.orgId,
+        whatsappTemplates.templateName,
+        whatsappTemplates.language,
+      ],
+      set: {
+        category: t.category || null,
+        status: t.status || "APPROVED",
+        body: t.body,
+        variables: t.variables,
+        updatedAt: new Date(),
+      },
+    });
 }

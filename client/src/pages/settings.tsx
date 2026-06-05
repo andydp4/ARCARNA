@@ -50,6 +50,7 @@ import { OrgNameSettings } from '@/components/OrgNameSettings'
 import { PageHeader, LM_CARD } from '@/components/PageHeader'
 import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
+import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
 import { Link } from "wouter";
@@ -210,19 +211,24 @@ export default function Settings() {
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 min-h-[48px]">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-7 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="imports">Imports</TabsTrigger>
             <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
+            <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="imports" className="space-y-6">
             <ImportsHub />
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-6">
+            <WhatsAppSettings />
           </TabsContent>
 
           <TabsContent value="suppliers" className="space-y-6">

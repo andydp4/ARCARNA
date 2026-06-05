@@ -1598,6 +1598,37 @@ export const whatsappOrderIntents = pgTable(
 export type WhatsappOrderIntent = typeof whatsappOrderIntents.$inferSelect;
 export type InsertWhatsappOrderIntent = typeof whatsappOrderIntents.$inferInsert;
 
+/** Synced / seeded WhatsApp message templates. */
+export const whatsappTemplates = pgTable(
+  "whatsapp_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    templateName: varchar("template_name", { length: 128 }).notNull(),
+    category: varchar("category", { length: 48 }),
+    language: varchar("language", { length: 16 }).notNull().default("en_GB"),
+    // Meta approval status: APPROVED / PENDING / REJECTED / LOCAL (seed, not yet submitted).
+    status: varchar("status", { length: 24 }).notNull().default("LOCAL"),
+    body: text("body"),
+    variables: jsonb("variables").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("whatsapp_templates_org_idx").on(table.orgId),
+    uniqueIndex("whatsapp_templates_org_name_lang_idx").on(
+      table.orgId,
+      table.templateName,
+      table.language,
+    ),
+  ],
+);
+
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+export type InsertWhatsappTemplate = typeof whatsappTemplates.$inferInsert;
+
 // Required workers per event type configuration
 export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   OrderCreated: ['InventoryWorker', 'CustomerWorker', 'LoyaltyWorker', 'InvoiceWorker', 'ReceiptEmailWorker', 'BusinessInsightsWorker', 'FinanceWorker', 'AutomationWorker'],

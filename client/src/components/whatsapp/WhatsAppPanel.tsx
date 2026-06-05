@@ -75,6 +75,15 @@ interface ConversationDetail {
   withinServiceWindow: boolean;
 }
 
+interface Template {
+  id: string;
+  templateName: string;
+  language: string;
+  status: string;
+  body: string | null;
+  variables: string[];
+}
+
 interface CustomerLite {
   id: string;
   name: string;
@@ -127,6 +136,12 @@ export function WhatsAppPanel() {
   const { data: intents = [] } = useQuery<OrderIntent[]>({
     queryKey: ["/api/whatsapp/conversations", activeId, "intents"],
     queryFn: () => getJson(`/api/whatsapp/conversations/${activeId}/intents`),
+    enabled: open && !!activeId,
+  });
+
+  const { data: templates = [] } = useQuery<Template[]>({
+    queryKey: ["/api/whatsapp/templates"],
+    queryFn: () => getJson("/api/whatsapp/templates"),
     enabled: open && !!activeId,
   });
 
@@ -196,6 +211,27 @@ export function WhatsAppPanel() {
     onError: (err: unknown) =>
       toast({
         title: "Could not link customer",
+        description: err instanceof Error ? err.message : "Failed",
+        variant: "destructive",
+      }),
+  });
+
+  const sendTemplate = useMutation({
+    mutationFn: async (vars: { templateName: string; language: string; bodyParams: string[] }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/whatsapp/conversations/${activeId}/send-template`,
+        vars,
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Template sent" });
+      refreshConversation();
+    },
+    onError: (err: unknown) =>
+      toast({
+        title: "Could not send template",
         description: err instanceof Error ? err.message : "Failed",
         variant: "destructive",
       }),
@@ -314,11 +350,14 @@ export function WhatsAppPanel() {
             <ConversationView
               detail={detail}
               intents={intents}
+              templates={templates}
               reply={reply}
               onReply={setReply}
               onSend={() => reply.trim() && sendReply.mutate(reply.trim())}
               sending={sendReply.isPending}
               canSend={status?.canSend ?? false}
+              onSendTemplate={(vars) => sendTemplate.mutate(vars)}
+              sendingTemplate={sendTemplate.isPending}
               onCreateCustomer={() => createCustomer.mutate()}
               onLinkCustomer={(id) => linkCustomer.mutate(id)}
               onCreateDraftOrder={(intentId) => createDraftOrder.mutate(intentId)}
@@ -423,11 +462,14 @@ function ConversationList({
 function ConversationView({
   detail,
   intents,
+  templates,
   reply,
   onReply,
   onSend,
   sending,
   canSend,
+  onSendTemplate,
+  sendingTemplate,
   onCreateCustomer,
   onLinkCustomer,
   onCreateDraftOrder,
@@ -436,11 +478,14 @@ function ConversationView({
 }: {
   detail: ConversationDetail | undefined;
   intents: OrderIntent[];
+  templates: Template[];
   reply: string;
   onReply: (v: string) => void;
   onSend: () => void;
   sending: boolean;
   canSend: boolean;
+  onSendTemplate: (vars: { templateName: string; language: string; bodyParams: string[] }) => void;
+  sendingTemplate: boolean;
   onCreateCustomer: () => void;
   onLinkCustomer: (customerId: string) => void;
   onCreateDraftOrder: (intentId?: string) => void;
@@ -573,12 +618,20 @@ function ConversationView({
 
       <div className="border-t border-border p-3">
         {!withinServiceWindow ? (
-          <p
-            className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground"
-            data-testid="whatsapp-window-closed"
-          >
-            This conversation is outside WhatsApp's customer service window. Use an approved template.
-          </p>
+          <div className="space-y-2">
+            <p
+              className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground"
+              data-testid="whatsapp-window-closed"
+            >
+              This conversation is outside WhatsApp's customer service window. Use an approved template.
+            </p>
+            <TemplateComposer
+              templates={templates}
+              canSend={canSend}
+              sending={sendingTemplate}
+              onSend={onSendTemplate}
+            />
+          </div>
         ) : (
           <div className="flex items-end gap-2">
             <Textarea
@@ -611,6 +664,84 @@ function ConversationView({
         )}
       </div>
     </>
+  );
+}
+
+function TemplateComposer({
+  templates,
+  canSend,
+  sending,
+  onSend,
+}: {
+  templates: Template[];
+  canSend: boolean;
+  sending: boolean;
+  onSend: (vars: { templateName: string; language: string; bodyParams: string[] }) => void;
+}) {
+  const [selected, setSelected] = useState<string>("");
+  const [params, setParams] = useState<string[]>([]);
+  const template = templates.find((t) => t.id === selected);
+
+  const onSelect = (id: string) => {
+    setSelected(id);
+    const t = templates.find((x) => x.id === id);
+    setParams(t ? t.variables.map(() => "") : []);
+  };
+
+  if (templates.length === 0) {
+    return <p className="text-xs text-muted-foreground">No templates available. Sync them in Settings → Integrations.</p>;
+  }
+
+  return (
+    <div className="space-y-2" data-testid="whatsapp-template-composer">
+      <select
+        value={selected}
+        onChange={(e) => onSelect(e.target.value)}
+        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+        aria-label="Choose a template"
+        data-testid="whatsapp-template-select"
+      >
+        <option value="">Choose a template…</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.templateName} ({t.status})
+          </option>
+        ))}
+      </select>
+      {template && (
+        <>
+          {template.body && <p className="text-xs text-muted-foreground">{template.body}</p>}
+          {template.variables.map((v, idx) => (
+            <Input
+              key={v + idx}
+              value={params[idx] ?? ""}
+              onChange={(e) => {
+                const next = [...params];
+                next[idx] = e.target.value;
+                setParams(next);
+              }}
+              placeholder={`Value for ${v}`}
+              className="h-8"
+            />
+          ))}
+          <Button
+            size="sm"
+            className="w-full"
+            disabled={!canSend || sending}
+            onClick={() =>
+              onSend({
+                templateName: template.templateName,
+                language: template.language,
+                bodyParams: params,
+              })
+            }
+            data-testid="whatsapp-send-template"
+          >
+            Send template
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
