@@ -12,6 +12,8 @@ const e2eEnv: Record<string, string> = {
   VITE_BASE_PATH: "/midnight",
 };
 
+const appBasePath = (e2eEnv.APP_BASE_PATH ?? "/midnight").replace(/\/$/, "");
+
 if (process.env.DATABASE_URL) {
   e2eEnv.DATABASE_URL = process.env.DATABASE_URL;
 }
@@ -28,7 +30,7 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run dev:e2e",
-    url: `${baseURL}/api/health`,
+    url: `${baseURL}${appBasePath}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: e2eEnv,
