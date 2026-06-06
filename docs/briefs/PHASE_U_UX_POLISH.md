@@ -69,7 +69,7 @@ U1–U5 shipped on `main` (Waves 2–8). U6 and U7 are Wave 9. Remaining DoD gap
 - `+ client/src/components/CommandPalette.tsx` — `cmdk` wrapper; sections for Pages, Customers, Products, Orders, Actions
 - `+ client/src/lib/commandPaletteIndex.ts` — builds a fuzzy index from cached query data (TanStack Query cache reads — no extra API calls)
 - `+ client/src/hooks/useGlobalShortcut.ts` — registers Cmd/Ctrl-K, ignores when typing in inputs
-- `~ client/src/components/Layout.tsx` — mount palette + register shortcut
+- `~ client/src/App.tsx` — mount palette globally (implementation; brief originally listed `Layout.tsx`)
 - `~ shared/commandPaletteActions.ts` — declarative actions list (`"Create order"`, `"Add product"`, `"Open today's Z-report"`, etc.) with route + role gating
 
 **Steps:**

@@ -8,16 +8,17 @@ describe.skipIf(!hasDb)("inventoryWorkerSkip", () => {
     const worker = new InventoryWorker();
     (worker as any).resolveOrderStockContext = async () => null;
 
-    await expect(
-      worker.handle({
-        eventId: "evt_1",
-        eventType: "OrderCreated",
-        occurredAt: new Date().toISOString(),
-        correlationId: "order_1",
-        version: 1,
-        payload: { order: { orderId: "order_1", items: [] } },
-      } as any),
-    ).rejects.toThrow("missing org/location context");
+    const result = await worker.handle({
+      eventId: "evt_1",
+      eventType: "OrderCreated",
+      occurredAt: new Date().toISOString(),
+      correlationId: "order_1",
+      version: 1,
+      payload: { order: { orderId: "order_1", items: [] } },
+    } as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/missing org\/location context/);
   });
 });
 

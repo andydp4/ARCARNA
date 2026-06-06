@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
 import type { Result } from "axe-core";
+import { prepareTenantContext } from "../helpers/e2eTenant";
 
 const CRITICAL_PATHS = [
   { name: "POS", path: "/midnight/pos" },
@@ -21,9 +22,11 @@ function formatViolations(violations: Result[]): string {
 }
 
 for (const { name, path } of CRITICAL_PATHS) {
-  test(`${name} — zero serious/critical axe violations`, async ({ page }) => {
+  test(`${name} — zero serious/critical axe violations`, async ({ page, request }) => {
+    await prepareTenantContext(page, request);
     await page.goto(path);
     await page.waitForLoadState("domcontentloaded");
+    expect(new URL(page.url()).pathname).toBe(path);
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

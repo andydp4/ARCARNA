@@ -89,6 +89,16 @@
 
 ---
 
+### GAP-TEST-01 — E2E/a11y tenant context (fixed 2026-06-06)
+
+| | |
+|---|---|
+| **Snag** | Playwright POS/a11y tests ran axe on onboarding wizard redirect, not tenant pages (missing org + onboarding completion) |
+| **Fix** | `tests/helpers/e2eTenant.ts` — complete onboarding + set org before navigation |
+| **Closed** | [x] 2026-06-06 — visual + a11y critical paths |
+
+---
+
 ## U2 — Command palette
 
 <a id="gap-u2-01"></a>
@@ -100,7 +110,7 @@
 | **Brief** | U2 |
 | **Snag** | Brief says `Layout.tsx`; implementation uses `App.tsx` (works globally) |
 | **Fix** | Update `PHASE_U_UX_POLISH.md` U2 touch to `App.tsx` **or** move mount (low priority) |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-06-06 — brief touch updated to `App.tsx` |
 
 ---
 
