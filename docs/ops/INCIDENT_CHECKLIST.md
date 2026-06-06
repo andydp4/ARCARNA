@@ -2,7 +2,7 @@
 
 One-page runbook for **site down**, **API 502/503**, and **auth redirect loops** on production (**https://viger.cloud/midnight**).
 
-Escalation contacts and on-call rotation are **team-specific** — fill in names/phones in your internal wiki; link external monitors from [DEPLOY_HOSTINGER_VPS.md](../DEPLOY_HOSTINGER_VPS.md) (O1).
+Escalation contacts and on-call rotation are **team-specific** — fill in names/phones in your internal wiki; link external monitors from [UPTIME_MONITORING.md](./UPTIME_MONITORING.md) (O1).
 
 ---
 

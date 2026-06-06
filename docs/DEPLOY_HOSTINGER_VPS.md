@@ -340,6 +340,22 @@ See also `deploy/nginx-viger.cloud.conf.example` in the repo.
 
 ---
 
+## 11. Ops runbooks (Wave 0)
+
+Production items that require VPS or external tooling (not app PRs):
+
+| Brief | Doc |
+|-------|-----|
+| **O1** Uptime monitors | [ops/UPTIME_MONITORING.md](./ops/UPTIME_MONITORING.md) |
+| **O2** Restore drill | [DISASTER_RECOVERY.md](./DISASTER_RECOVERY.md) |
+| **O3** PM2 reboot persistence | §5 above + [ops/OPERATOR_CHECKLIST.md](./ops/OPERATOR_CHECKLIST.md) |
+| **O4** Incidents | [ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md) |
+| **H1** HSTS verify | `bash scripts/verify-production-headers.sh` |
+
+**Consolidated sign-off:** [ops/OPERATOR_CHECKLIST.md](./ops/OPERATOR_CHECKLIST.md)
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |

@@ -25,8 +25,8 @@
 |---|---|
 | **Brief** | H1 |
 | **Snag** | HSTS documented in nginx example + deploy doc; **not verified** on live `viger.cloud` |
-| **Fix** | On VPS: ensure Certbot HTTPS block includes `Strict-Transport-Security`; `curl -sI https://viger.cloud/midnight/api/health` shows header |
-| **Closed** | [ ] |
+| **Fix** | On VPS: ensure Certbot HTTPS block includes `Strict-Transport-Security`; run `bash scripts/verify-production-headers.sh` or `curl -sI https://viger.cloud/midnight/api/health` |
+| **Closed** | [x] 2026-06-06 — verified via `scripts/verify-production-headers.sh` (HSTS present on live) |
 
 <a id="gap-h1-02"></a>
 
@@ -37,7 +37,7 @@
 | **Brief** | H1 |
 | **Snag** | `contentSecurityPolicy: false` in `server/security.ts` (intentional for Clerk+Vite) |
 | **Fix** | Either document as accepted risk in `SECURITY_REVIEW.md` sign-off, or implement nginx-only CSP per H1 steps and re-test sign-in |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-06-05 — accepted risk in `SECURITY_REVIEW.md` § CSP sign-off |
 
 ---
 
@@ -234,10 +234,12 @@
 
 | ID | Task | Closed |
 |----|------|--------|
-| **GAP-O1-01** | External uptime on `/midnight/api/health` | [ ] |
+| **GAP-O1-01** | External uptime on `/midnight/api/health` — see [docs/ops/UPTIME_MONITORING.md](../ops/UPTIME_MONITORING.md) | [ ] |
 | **GAP-O2-01** | M4 restore drill + sign-off in `DISASTER_RECOVERY.md` | [ ] |
 | **GAP-O3-01** | `pm2 startup` + `pm2 save` (+ optional reboot test) | [ ] |
 | **GAP-M4-01** | Same as O2 — M4 DoD | [ ] |
+
+**Consolidated checklist:** [docs/ops/OPERATOR_CHECKLIST.md](../ops/OPERATOR_CHECKLIST.md)
 
 ---
 
