@@ -71,7 +71,7 @@ function CustomerStoreCredit({ customerId }: { customerId: string }) {
 }
 
 export default function Customers() {
-  const { toast } = useToast()
+  const { toast, dismiss } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
   const savedViews = useSavedViews('customers')
@@ -119,6 +119,7 @@ export default function Customers() {
     category: 'Bronze',
   })
 
+
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ['/api/customers'],
   })
@@ -165,6 +166,12 @@ export default function Customers() {
       })
     },
   })
+
+  const closeAddDialog = () => {
+    setShowAddDialog(false)
+    createMutation.reset()
+    dismiss()
+  }
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: any) => {
@@ -408,7 +415,7 @@ export default function Customers() {
               <FileUp className="h-4 w-4" />
               Import from Contacts
             </Button>
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
             <DialogTrigger asChild>
               <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
                 <UserPlus className="h-4 w-4" />
@@ -525,7 +532,7 @@ export default function Customers() {
                 </div>
               </div>
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)} className="min-h-[44px]">
+                <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
                   Cancel
                 </Button>
                 <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]">
