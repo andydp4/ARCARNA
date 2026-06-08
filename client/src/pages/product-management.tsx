@@ -72,7 +72,7 @@ import { executeBulkAction, downloadBlob as downloadBulkCsv } from '@/lib/bulkAc
 import { captureViewState } from '@shared/savedViews/state'
 
 export default function ProductManagement() {
-  const { toast } = useToast()
+  const { toast, dismiss } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
@@ -111,6 +111,7 @@ export default function ProductManagement() {
     aliases: ''
   })
 
+
   // Fetch products
   const { data: products = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/products'],
@@ -141,6 +142,12 @@ export default function ProductManagement() {
       })
     },
   })
+
+  const closeAddDialog = () => {
+    setShowAddDialog(false)
+    createMutation.reset()
+    dismiss()
+  }
 
   // Update product mutation
   const updateMutation = useMutation({
@@ -455,7 +462,7 @@ export default function ProductManagement() {
               onChange={handleFileUpload}
               className="hidden"
             />
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
               <DialogTrigger asChild>
                 <Button className="gap-2 min-h-[44px]" data-testid="button-add-product">
                   <Plus className="h-4 w-4" />
@@ -605,7 +612,7 @@ export default function ProductManagement() {
                   </div>
                 </div>
                 <DialogFooter className="gap-2">
-                  <Button variant="outline" onClick={() => setShowAddDialog(false)} className="min-h-[44px]">
+                  <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
                     Cancel
                   </Button>
                   <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">

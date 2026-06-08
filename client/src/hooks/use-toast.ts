@@ -6,7 +6,10 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+/** Delay before removing a dismissed toast from the DOM (ms). */
+const TOAST_REMOVE_DELAY = 5000
+/** Default visible duration when a toast call omits `duration`. */
+const TOAST_DEFAULT_DURATION = 5000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -141,6 +144,7 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  const duration = props.duration ?? TOAST_DEFAULT_DURATION
 
   const update = (props: ToasterToast) =>
     dispatch({
@@ -153,6 +157,7 @@ function toast({ ...props }: Toast) {
     type: "ADD_TOAST",
     toast: {
       ...props,
+      duration,
       id,
       open: true,
       onOpenChange: (open) => {
@@ -160,6 +165,13 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Controlled open state disables Radix auto-dismiss; schedule our own timer.
+  if (duration !== Infinity && duration > 0) {
+    setTimeout(() => {
+      dismiss()
+    }, duration)
+  }
 
   return {
     id: id,
