@@ -59,6 +59,14 @@ export function ClerkSignInPanel({
   }
 
   if (clerkSignedIn) {
+    if (autoRedirect && syncing) {
+      return (
+        <Button disabled className="w-full min-h-[44px]">
+          Syncing session…
+        </Button>
+      );
+    }
+
     return (
       <div className="space-y-3">
         <Button
@@ -70,7 +78,7 @@ export function ClerkSignInPanel({
           }}
           data-testid="button-continue"
         >
-          {syncing ? "Opening dashboard…" : "Continue to dashboard"}
+          {syncing ? "Syncing session…" : "Continue to dashboard"}
         </Button>
         {syncError && (
           <Alert variant="destructive">
