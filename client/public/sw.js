@@ -1,13 +1,16 @@
 const SW_BASE = self.location.pathname.replace(/\/sw\.js$/i, "") || "";
 const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
 
-const CACHE_NAME = "midnight-epos-v3";
-const PRECACHE_ASSETS = [
-  SW_BASE ? `${SW_BASE}/` : "/",
-  SW_BASE ? `${SW_BASE}/index.html` : "/index.html",
-];
+/** Bump when cache layout changes; activate deletes older midnight-epos-* caches. */
+const CACHE_VERSION = "4";
+const CACHE_PREFIX = "midnight-epos";
+const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
+const API_CACHE_NAME = `${CACHE_PREFIX}-api-${CACHE_VERSION}`;
 
-const API_CACHE_NAME = "midnight-epos-api-v3";
+const SHELL_URL = SW_BASE ? `${SW_BASE}/` : "/";
+const INDEX_URL = SW_BASE ? `${SW_BASE}/index.html` : "/index.html";
+const PRECACHE_ASSETS = [SHELL_URL, INDEX_URL];
+
 const ORG_CACHE_PARAM = "__midnight_org";
 
 function orgIdFromRequest(request) {
@@ -30,29 +33,106 @@ function cacheRequestForOrg(request) {
   });
 }
 
+function isApiRequest(pathname) {
+  return pathname.startsWith(API_PREFIX) || pathname.startsWith("/api/");
+}
+
+function isNavigationRequest(request) {
+  if (request.mode === "navigate") return true;
+  const accept = request.headers.get("accept") || "";
+  return accept.includes("text/html");
+}
+
+async function cacheShellResponse(request, response) {
+  if (!response || !response.ok) return;
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response.clone());
+  if (request.url !== INDEX_URL) {
+    await cache.put(INDEX_URL, response.clone());
+  }
+  if (request.url !== SHELL_URL) {
+    await cache.put(SHELL_URL, response.clone());
+  }
+}
+
+/** Offline-only fallback for SPA navigations — never reject. */
+async function offlineNavigationFallback() {
+  for (const url of [SHELL_URL, INDEX_URL]) {
+    const cached = await caches.match(url);
+    if (cached) return cached;
+  }
+  return new Response("Offline — reconnect to load Midnight EPOS.", {
+    status: 503,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
+/** Network-first for navigations; cache only when the network is unavailable. */
+async function handleNavigationRequest(request) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      await cacheShellResponse(request, response);
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    return offlineNavigationFallback();
+  }
+}
+
+/** Network-first for static assets; cache fallback on failure, never throw. */
+async function handleAssetRequest(request) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok && response.type === "basic") {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    return new Response("", { status: 404, statusText: "Not Found" });
+  }
+}
+
 self.addEventListener("install", (event) => {
-  console.log("[Service Worker] Installing…", { base: SW_BASE });
+  console.log("[Service Worker] Installing…", { base: SW_BASE, version: CACHE_VERSION });
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
+      .catch((err) => {
+        console.warn("[Service Worker] Precache partial/failed (offline install?):", err);
+      })
       .then(() => self.skipWaiting()),
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) =>
-      Promise.all(
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== API_CACHE_NAME) {
+          const isCurrent =
+            cacheName === CACHE_NAME || cacheName === API_CACHE_NAME;
+          const isOurs =
+            cacheName.startsWith(`${CACHE_PREFIX}-`) ||
+            cacheName.startsWith(`${CACHE_PREFIX}-api-`) ||
+            cacheName === "midnight-epos-v3" ||
+            cacheName === "midnight-epos-api-v3";
+          if (!isCurrent && isOurs) {
+            console.log("[Service Worker] Deleting stale cache:", cacheName);
             return caches.delete(cacheName);
           }
         }),
-      ),
-    ),
+      );
+      await self.clients.claim();
+    })(),
   );
-  return self.clients.claim();
 });
 
 self.addEventListener("message", (event) => {
@@ -77,10 +157,6 @@ async function clearOrgApiCache(orgId) {
       .filter((req) => req.url.includes(prefix))
       .map((req) => cache.delete(req)),
   );
-}
-
-function isApiRequest(pathname) {
-  return pathname.startsWith(API_PREFIX) || pathname.startsWith("/api/");
 }
 
 self.addEventListener("fetch", (event) => {
@@ -119,20 +195,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then(
-      (cachedResponse) =>
-        cachedResponse ??
-        fetch(request).then((response) => {
-          if (!response || response.status !== 200 || response.type !== "basic") {
-            return response;
-          }
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
-          });
-          return response;
-        }),
-    ),
+    isNavigationRequest(request)
+      ? handleNavigationRequest(request)
+      : handleAssetRequest(request),
   );
 });
 
