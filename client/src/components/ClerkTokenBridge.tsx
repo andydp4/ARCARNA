@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { registerClerkTokenGetter } from "@/lib/clerkApiAuth";
 
@@ -6,7 +6,8 @@ import { registerClerkTokenGetter } from "@/lib/clerkApiAuth";
 export function ClerkTokenBridge() {
   const { getToken, isLoaded } = useClerkAuth();
 
-  useEffect(() => {
+  // Register before child effects run enterApp() after Account Portal redirect.
+  useLayoutEffect(() => {
     if (!isLoaded) return;
     registerClerkTokenGetter(() => getToken());
     return () => registerClerkTokenGetter(null);
