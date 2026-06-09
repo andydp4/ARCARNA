@@ -1,6 +1,6 @@
 {
   "name": "Midnight EPOS",
-  "short_name": "EPOS",
+  "short_name": "Midnight",
   "description": "Enterprise Point of Sale System with offline support",
   "start_url": "/midnight/",
   "scope": "/midnight/",
