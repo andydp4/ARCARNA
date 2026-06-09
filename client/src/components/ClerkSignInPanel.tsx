@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { apiFetch } from "@/lib/appPaths";
-import { useUser } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -9,6 +9,7 @@ import {
   type AuthRuntime,
   clerkAccountPortalUrl,
   usesClerkAccountPortal,
+  usesClerkSatelliteDomain,
 } from "@/lib/authConfig";
 
 type ClerkSignInPanelProps = {
@@ -29,15 +30,24 @@ export function ClerkSignInPanel({
   });
 
   const { isSignedIn, isLoaded } = useUser();
+  const { loaded: clerkLoaded, buildSignInUrl, buildSignUpUrl } = useClerk();
   const { enterApp, syncing, syncError, clerkSignedIn } = useEnterApp({ autoRedirect });
   const portalUrl = clerkAccountPortalUrl(portalPath, "/", runtime);
   const accountPortal = usesClerkAccountPortal(runtime);
+  const isSatellite = usesClerkSatelliteDomain(runtime);
+
+  const authUrl =
+    isSatellite && clerkLoaded
+      ? portalPath === "/sign-up"
+        ? buildSignUpUrl()
+        : buildSignInUrl()
+      : portalUrl;
 
   useEffect(() => {
-    if (autoRedirect && isLoaded && !isSignedIn && portalUrl) {
-      window.location.href = portalUrl;
+    if (autoRedirect && isLoaded && !isSignedIn && authUrl) {
+      window.location.href = authUrl;
     }
-  }, [autoRedirect, isLoaded, isSignedIn, portalUrl]);
+  }, [autoRedirect, isLoaded, isSignedIn, authUrl]);
 
   if (!isLoaded) {
     return (
@@ -71,7 +81,7 @@ export function ClerkSignInPanel({
     );
   }
 
-  if (!accountPortal || !portalUrl) {
+  if (!accountPortal || !authUrl) {
     return (
       <Alert variant="destructive" data-testid="alert-clerk-accounts-url-missing">
         <AlertTitle>Account Portal not configured</AlertTitle>
@@ -98,7 +108,7 @@ export function ClerkSignInPanel({
       type="button"
       className="w-full min-h-[44px] lm-btn-metal font-medium"
       onClick={() => {
-        window.location.href = portalUrl;
+        window.location.href = authUrl;
       }}
       data-testid="button-clerk-account-portal"
     >

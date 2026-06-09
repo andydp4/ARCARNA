@@ -71,6 +71,23 @@ export function clerkSatelliteDomain(): string | undefined {
   return window.location.hostname;
 }
 
+/** Optional FAPI proxy when clerk.{domain} DNS is unavailable (see Clerk satellite docs). */
+export function resolveClerkProxyUrl(): string | undefined {
+  const configured = (import.meta.env.VITE_CLERK_PROXY_URL as string | undefined)?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  return undefined;
+}
+
+/** Origins Clerk may redirect back to after Account Portal auth (satellite sync). */
+export function clerkSatelliteRedirectOrigins(runtime?: AuthRuntime | null): string[] {
+  const origins = new Set<string>();
+  const appOrigin = getAppOrigin();
+  const accounts = resolveClerkAccountsUrl(runtime);
+  if (appOrigin) origins.add(appOrigin);
+  if (accounts) origins.add(accounts);
+  return [...origins];
+}
+
 /** Account Portal link with redirect back to this app after auth. */
 export function clerkAccountPortalUrl(
   portalPath: "/sign-in" | "/sign-up",

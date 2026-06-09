@@ -11,6 +11,8 @@ import {
   resolveClerkAccountsUrl,
   usesClerkSatelliteDomain,
   clerkSatelliteDomain,
+  clerkSatelliteRedirectOrigins,
+  resolveClerkProxyUrl,
   appUrl,
 } from "@/lib/authConfig";
 
@@ -95,11 +97,15 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     };
 
     if (isSatellite && satelliteDomain) {
+      const proxyUrl = resolveClerkProxyUrl();
+      const satelliteProps = proxyUrl
+        ? { isSatellite: true as const, proxyUrl }
+        : { isSatellite: true as const, domain: satelliteDomain };
       return (
         <ClerkProvider
           {...clerkCommon}
-          isSatellite
-          domain={satelliteDomain}
+          {...satelliteProps}
+          allowedRedirectOrigins={clerkSatelliteRedirectOrigins(data)}
           {...clerkRouter}
         >
           {clerkChildren}
