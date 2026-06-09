@@ -54,12 +54,32 @@ export function appUrl(path: string): string {
 
 export { APP_BASE };
 
-/** True when Account Portal host differs from the app (e.g. accounts.viger.cloud vs viger.cloud). */
+/** Best-effort registrable domain (e.g. accounts.viger.cloud → viger.cloud). */
+export function clerkRegistrableDomain(hostname: string): string {
+  const host = hostname.toLowerCase();
+  const parts = host.split(".").filter(Boolean);
+  if (parts.length <= 2) return host;
+  const twoPartTlds = new Set(["co.uk", "com.au", "org.uk", "net.au"]);
+  const lastTwo = parts.slice(-2).join(".");
+  if (twoPartTlds.has(lastTwo) && parts.length >= 3) {
+    return parts.slice(-3).join(".");
+  }
+  return lastTwo;
+}
+
+/**
+ * True only for Clerk multi-domain satellites (different registrable domains).
+ * Subdomains of the primary domain (accounts.viger.cloud + viger.cloud) are NOT satellites —
+ * Clerk shares sessions across subdomains by default.
+ */
 export function usesClerkSatelliteDomain(runtime?: AuthRuntime | null): boolean {
   const accounts = resolveClerkAccountsUrl(runtime);
   if (!accounts || typeof window === "undefined") return false;
   try {
-    return new URL(accounts).hostname !== window.location.hostname;
+    const accountsHost = new URL(accounts).hostname;
+    const appHost = window.location.hostname;
+    if (accountsHost === appHost) return false;
+    return clerkRegistrableDomain(accountsHost) !== clerkRegistrableDomain(appHost);
   } catch {
     return false;
   }

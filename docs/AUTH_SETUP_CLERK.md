@@ -93,17 +93,19 @@ VITE_BASE_PATH=/midnight
 APP_BASE_PATH=/midnight
 ```
 
-The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/&link_domain=viger.cloud` (the `link_domain` param is required for satellite sync).
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/`.
 
 `/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 
-### Satellite domain (required for Account Portal on a subdomain)
+### Subdomains vs satellite domains (important)
 
-When sign-in runs on `accounts.viger.cloud` but the app runs on `viger.cloud/midnight`, Clerk treats `viger.cloud` as a **satellite** domain.
+`viger.cloud` is your **primary** Clerk domain. `accounts.viger.cloud` is a **subdomain** of that primary.
 
-1. Clerk Dashboard → **Configure → Domains** → add **`viger.cloud`** as a satellite / allowed origin (follow Clerk’s DNS steps if prompted).
-2. Rebuild after env changes (`VITE_CLERK_*` keys are baked into the client bundle).
-3. The app sends your Clerk session token on every API call and enables `isSatellite` on `ClerkProvider` automatically when `CLERK_ACCOUNTS_URL` is on a different host than the app.
+Clerk **shares sessions across subdomains automatically** on the primary domain. You do **not** add `viger.cloud` under **Domains → Satellites** — that tab is only for a *different* domain (e.g. `other-shop.com`), and Clerk will reject the primary domain as “already taken”.
+
+The app only enables Clerk `isSatellite` when the EPOS host and Account Portal host are on **different registrable domains** (not `accounts.*` + `viger.cloud`).
+
+Rebuild after env changes (`VITE_CLERK_*` keys are baked into the client bundle).
 
 If you see **“Signed in with Clerk, but the server session is not ready”**, check:
 
@@ -165,10 +167,10 @@ Use `--dry-run` first to preview.
 | Symptom | Likely cause |
 |---------|----------------|
 | Blank page after login | Wrong `CLERK_PUBLISHABLE_KEY` or migration 008 not applied |
-| “Could not open dashboard” / server session not ready | Account Portal on `accounts.*` — add `viger.cloud` as Clerk satellite domain; rebuild so API sends Bearer token; verify keys match |
+| “Could not open dashboard” / server session not ready | Rebuild so API sends Bearer token; verify keys match; ensure `viger.cloud` is primary in Clerk (do not add as satellite) |
 | “Access pending approval” | Email not on allowed list — approve in **User access** as super admin |
 | App crashes on start | Missing Clerk keys with `AUTH_PROVIDER=clerk` |
-| `link_domain must be included` | Rebuild after latest auth fixes; add `viger.cloud` as satellite in Clerk Domains; ensure `clerk.viger.cloud` DNS CNAME is verified; optional `VITE_CLERK_PROXY_URL=https://clerk.viger.cloud` if HTTPS detection fails behind a proxy |
+| `link_domain must be included` | Usually means the app was wrongly treated as a satellite — rebuild with latest auth code (subdomain setup should not use `link_domain`). If you truly use a separate domain for the app, add *that* domain under Satellites, not the primary |
 | Redirect error from Clerk | Redirect URLs not added in Clerk dashboard |
 | Still shows “Login with Replit” | `AUTH_PROVIDER` not set to `clerk` or app not rebuilt after env change |
 
