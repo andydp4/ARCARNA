@@ -44,10 +44,11 @@ export function ClerkSignInPanel({
       : portalUrl;
 
   useEffect(() => {
-    if (autoRedirect && isLoaded && !isSignedIn && authUrl) {
-      window.location.href = authUrl;
-    }
-  }, [autoRedirect, isLoaded, isSignedIn, authUrl]);
+    if (!autoRedirect || !isLoaded || isSignedIn || !authUrl) return;
+    // Wait for Clerk SDK on satellite so buildSignInUrl includes sync params.
+    if (isSatellite && !clerkLoaded) return;
+    window.location.href = authUrl;
+  }, [autoRedirect, isLoaded, isSignedIn, authUrl, isSatellite, clerkLoaded]);
 
   if (!isLoaded) {
     return (
@@ -98,7 +99,7 @@ export function ClerkSignInPanel({
   if (autoRedirect) {
     return (
       <Button disabled className="w-full min-h-[44px]">
-        Redirecting to sign-in…
+        {isSatellite && !clerkLoaded ? "Preparing sign-in…" : "Redirecting to sign-in…"}
       </Button>
     );
   }

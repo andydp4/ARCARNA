@@ -96,8 +96,15 @@ export function clerkAccountPortalUrl(
 ): string | null {
   const base = resolveClerkAccountsUrl(runtime);
   if (!base) return null;
-  const redirect = encodeURIComponent(appUrl(redirectPath));
-  return `${base}${portalPath}?redirect_url=${redirect}`;
+  const params = new URLSearchParams({
+    redirect_url: appUrl(redirectPath),
+  });
+  // Satellite apps must pass link_domain when sending users to the primary Account Portal.
+  if (usesClerkSatelliteDomain(runtime)) {
+    const linkDomain = clerkSatelliteDomain();
+    if (linkDomain) params.set("link_domain", linkDomain);
+  }
+  return `${base}${portalPath}?${params.toString()}`;
 }
 
 /** Account Portal sign-out (ends Clerk session, then returns to the app). */
