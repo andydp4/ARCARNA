@@ -67,7 +67,8 @@ export function usesClerkSatelliteDomain(runtime?: AuthRuntime | null): boolean 
 
 export function clerkSatelliteDomain(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  return window.location.origin;
+  // Clerk satellite `domain` must be a bare hostname (e.g. viger.cloud), not origin with scheme.
+  return window.location.hostname;
 }
 
 /** Account Portal link with redirect back to this app after auth. */
