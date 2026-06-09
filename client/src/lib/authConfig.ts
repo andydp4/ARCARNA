@@ -67,6 +67,17 @@ export function clerkRegistrableDomain(hostname: string): string {
   return lastTwo;
 }
 
+/** True when Account Portal host differs from the app (e.g. accounts.viger.cloud vs viger.cloud). */
+export function usesClerkCrossHostAccountPortal(runtime?: AuthRuntime | null): boolean {
+  const accounts = resolveClerkAccountsUrl(runtime);
+  if (!accounts || typeof window === "undefined") return false;
+  try {
+    return new URL(accounts).hostname !== window.location.hostname;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * True only for Clerk multi-domain satellites (different registrable domains).
  * Subdomains of the primary domain (accounts.viger.cloud + viger.cloud) are NOT satellites —
@@ -119,8 +130,8 @@ export function clerkAccountPortalUrl(
   const params = new URLSearchParams({
     redirect_url: appUrl(redirectPath),
   });
-  // Satellite apps must pass link_domain when sending users to the primary Account Portal.
-  if (usesClerkSatelliteDomain(runtime)) {
+  // Cross-host Account Portal (e.g. accounts.* → viger.cloud) requires link_domain on the redirect.
+  if (usesClerkCrossHostAccountPortal(runtime)) {
     const linkDomain = clerkSatelliteDomain();
     if (linkDomain) params.set("link_domain", linkDomain);
   }

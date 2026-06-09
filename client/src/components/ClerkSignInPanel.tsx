@@ -9,7 +9,7 @@ import {
   type AuthRuntime,
   clerkAccountPortalUrl,
   usesClerkAccountPortal,
-  usesClerkSatelliteDomain,
+  usesClerkCrossHostAccountPortal,
 } from "@/lib/authConfig";
 
 type ClerkSignInPanelProps = {
@@ -34,10 +34,10 @@ export function ClerkSignInPanel({
   const { enterApp, syncing, syncError, clerkSignedIn } = useEnterApp({ autoRedirect });
   const portalUrl = clerkAccountPortalUrl(portalPath, "/", runtime);
   const accountPortal = usesClerkAccountPortal(runtime);
-  const isSatellite = usesClerkSatelliteDomain(runtime);
+  const crossHostPortal = usesClerkCrossHostAccountPortal(runtime);
 
   const authUrl =
-    isSatellite && clerkLoaded
+    crossHostPortal && clerkLoaded
       ? portalPath === "/sign-up"
         ? buildSignUpUrl()
         : buildSignInUrl()
@@ -45,10 +45,10 @@ export function ClerkSignInPanel({
 
   useEffect(() => {
     if (!autoRedirect || !isLoaded || isSignedIn || !authUrl) return;
-    // Wait for Clerk SDK on satellite so buildSignInUrl includes sync params.
-    if (isSatellite && !clerkLoaded) return;
+    // Wait for Clerk SDK so buildSignInUrl can attach link_domain / sync params.
+    if (crossHostPortal && !clerkLoaded) return;
     window.location.href = authUrl;
-  }, [autoRedirect, isLoaded, isSignedIn, authUrl, isSatellite, clerkLoaded]);
+  }, [autoRedirect, isLoaded, isSignedIn, authUrl, crossHostPortal, clerkLoaded]);
 
   if (!isLoaded) {
     return (
@@ -99,7 +99,7 @@ export function ClerkSignInPanel({
   if (autoRedirect) {
     return (
       <Button disabled className="w-full min-h-[44px]">
-        {isSatellite && !clerkLoaded ? "Preparing sign-in…" : "Redirecting to sign-in…"}
+        {crossHostPortal && !clerkLoaded ? "Preparing sign-in…" : "Redirecting to sign-in…"}
       </Button>
     );
   }

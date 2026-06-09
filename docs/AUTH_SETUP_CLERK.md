@@ -93,7 +93,7 @@ VITE_BASE_PATH=/midnight
 APP_BASE_PATH=/midnight
 ```
 
-The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/`.
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/&link_domain=viger.cloud` (`link_domain` links the Account Portal back to the app host; this is **not** the same as adding a satellite in the Dashboard).
 
 `/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 
@@ -170,7 +170,7 @@ Use `--dry-run` first to preview.
 | “Could not open dashboard” / server session not ready | Rebuild so API sends Bearer token; verify keys match; ensure `viger.cloud` is primary in Clerk (do not add as satellite) |
 | “Access pending approval” | Email not on allowed list — approve in **User access** as super admin |
 | App crashes on start | Missing Clerk keys with `AUTH_PROVIDER=clerk` |
-| `link_domain must be included` | Usually means the app was wrongly treated as a satellite — rebuild with latest auth code (subdomain setup should not use `link_domain`). If you truly use a separate domain for the app, add *that* domain under Satellites, not the primary |
+| `link_domain must be included` | Rebuild with latest auth code (must send `link_domain=viger.cloud` on Account Portal redirects). Do **not** enable `isSatellite` for this setup. If error persists behind Nginx, set `VITE_CLERK_PROXY_URL=https://clerk.viger.cloud` and rebuild |
 | Redirect error from Clerk | Redirect URLs not added in Clerk dashboard |
 | Still shows “Login with Replit” | `AUTH_PROVIDER` not set to `clerk` or app not rebuilt after env change |
 

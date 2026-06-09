@@ -10,6 +10,7 @@ import {
   resolveClerkPublishableKey,
   resolveClerkAccountsUrl,
   usesClerkSatelliteDomain,
+  usesClerkCrossHostAccountPortal,
   clerkSatelliteDomain,
   clerkSatelliteRedirectOrigins,
   resolveClerkProxyUrl,
@@ -96,6 +97,9 @@ export function AuthProviders({ children }: { children: ReactNode }) {
       },
     };
 
+    const crossHostPortal = usesClerkCrossHostAccountPortal(data);
+    const redirectOrigins = crossHostPortal ? clerkSatelliteRedirectOrigins(data) : undefined;
+
     if (isSatellite && satelliteDomain) {
       const proxyUrl = resolveClerkProxyUrl();
       const satelliteProps = proxyUrl
@@ -105,9 +109,17 @@ export function AuthProviders({ children }: { children: ReactNode }) {
         <ClerkProvider
           {...clerkCommon}
           {...satelliteProps}
-          allowedRedirectOrigins={clerkSatelliteRedirectOrigins(data)}
+          allowedRedirectOrigins={redirectOrigins}
           {...clerkRouter}
         >
+          {clerkChildren}
+        </ClerkProvider>
+      );
+    }
+
+    if (crossHostPortal && redirectOrigins) {
+      return (
+        <ClerkProvider {...clerkCommon} allowedRedirectOrigins={redirectOrigins} {...clerkRouter}>
           {clerkChildren}
         </ClerkProvider>
       );
