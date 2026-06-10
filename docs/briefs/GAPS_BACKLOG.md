@@ -54,6 +54,17 @@
 | **Fix** | Wave 10 or dedicated `feat/e2-shell-remainder` — apply `liquid-metal` / card variants per `PHASE_E_LIQUID_METAL.md` |
 | **Closed** | [x] Wave 10b — settings + reports (`PageHeader`, `LM_CARD`) |
 
+<a id="gap-e2-02"></a>
+
+### GAP-E2-02 — Setup wizard Liquid Metal shell
+
+| | |
+|---|---|
+| **Brief** | E2 |
+| **Snag** | `setup-wizard.tsx` used default `bg-background` while `onboarding.tsx` / `onboarding-wizard.tsx` use `lm-auth-shell` |
+| **Fix** | Wave 11 Agent 1 — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) §2 |
+| **Closed** | [ ] |
+
 ---
 
 ## U1 — Skeletons & empty states

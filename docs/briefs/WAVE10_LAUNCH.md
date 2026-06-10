@@ -18,7 +18,8 @@
 | `scripts/verify-workers.ts` (REQUIRED_WORKERS registry) | Done |
 | GAP-E2-01 remainder (settings, all list chrome) | Done — settings + reports (`PageHeader`, `LM_CARD`) |
 | GAP-U1 empty states | Done — orders, invoices, reports zero-data |
-| `lint:strict` green | Backlog |
+| Setup wizard Liquid Metal | → Wave 11 — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) Agent 1 |
+| `lint:strict` green | Backlog — Wave 11 Agent 3 |
 | O1–O3 ops (HSTS verify, backups cron) | Operator |
 
 ---

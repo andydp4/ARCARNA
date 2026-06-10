@@ -162,24 +162,24 @@ export default function SetupWizard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen lm-auth-shell liquid-metal flex items-center justify-center">
         <div className="animate-spin h-10 w-10 border-b-2 border-primary rounded-full" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10">
+    <div className="min-h-screen lm-auth-shell liquid-metal py-8 px-4">
+      <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Organization setup</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="text-2xl font-semibold text-metal-warm-white">Organization setup</h1>
+          <p className="text-metal-muted text-sm mt-1">
             Step {stepIndex + 1} of {SETUP_WIZARD_STEPS.length}: {STEP_META[stepIndex]?.label}
           </p>
           <Progress value={progress} className="mt-4 h-2" />
         </div>
 
-        <Card className="mb-6">
+        <Card className="mb-6 lm-card border-0 shadow-none">
           <CardContent className="pt-6">
             {currentStep === "business" && (
               <div className="space-y-4">
