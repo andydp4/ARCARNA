@@ -1,6 +1,6 @@
 # Brief status tracker
 
-**Last updated:** 2026-06-04 · **`main` ref:** Wave 9 in progress (U6 merged locally; 8b + U7 on `main`)
+**Last updated:** 2026-06-10 · **`main` ref:** Wave 10 on `main` (through PR #31); Wave 11 queued — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md)
 
 **Sources of truth:** git `main`, wave merge docs (`WAVE3_NEXT` … `WAVE8_NEXT`), codebase grep.  
 **Gaps & snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) (actionable checklist).
@@ -140,7 +140,9 @@
 | 6 | Yes | E3, F7, A4 |
 | 7 | Yes | P10c, P10e, A5 |
 | 8 | Yes | P10d, P10b, U5 (axe) |
-| 9 | **Done** (local) | U6, 8b infra, U7 layout — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
+| 9 | Yes | U6, 8b infra, U7 layout — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
+| 10 | Yes | PWA SW, WhatsApp, logo, Clerk auth (#30–#31), ops docs — [`WAVE10_LAUNCH.md`](./WAVE10_LAUNCH.md) |
+| 11 | **Queued** | Setup wizard Liquid Metal — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) |
 
 ---
 
