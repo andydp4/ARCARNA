@@ -1,6 +1,6 @@
 # Wave 10 — Launch & preflight
 
-**Status:** In progress on `main` (Wave 10 sweep started).
+**Status:** Complete on `main`. Wave 11 deploy + QA: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
 
 **Prerequisite:** Wave 9 complete (U6 onboarding, U5 eslint, U7 tablet POS, auth satellite fix, Liquid Metal front pages).
 
@@ -18,8 +18,8 @@
 | `scripts/verify-workers.ts` (REQUIRED_WORKERS registry) | Done |
 | GAP-E2-01 remainder (settings, all list chrome) | Done — settings + reports (`PageHeader`, `LM_CARD`) |
 | GAP-U1 empty states | Done — orders, invoices, reports zero-data |
-| Setup wizard Liquid Metal | → Wave 11 — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) Agent 1 |
-| `lint:strict` green | Backlog — Wave 11 Agent 3 |
+| Setup wizard Liquid Metal | Done — Wave 11 PR #32 |
+| `lint:strict` green | Backlog — Wave 11/12 — GAP-U5-01 |
 | O1–O3 ops (HSTS verify, backups cron) | Operator |
 
 ---
@@ -69,4 +69,4 @@ pm2 restart midnight-epos --update-env
 
 ## Next agents (optional)
 
-See [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md): `lint:strict`, U1 empty states, E2 settings/reports polish.
+See [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) for deploy + QA, or [`WAVE12_NEXT.md`](./WAVE12_NEXT.md) for list-page E2 and remaining snags.

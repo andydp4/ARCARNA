@@ -1,6 +1,6 @@
 # Brief status tracker
 
-**Last updated:** 2026-06-10 · **`main` ref:** Wave 10 on `main` (through PR #31); Wave 11 queued — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md)
+**Last updated:** 2026-06-10 · **`main` ref:** Wave 11 Agent 1 merged (PR #32); deploy + QA — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md)
 
 **Sources of truth:** git `main`, wave merge docs (`WAVE3_NEXT` … `WAVE8_NEXT`), codebase grep.  
 **Gaps & snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) (actionable checklist).
@@ -73,7 +73,7 @@
 | ID | Status | Wave / notes |
 |----|--------|----------------|
 | E1 | **Done** | Tokens + spatial Insights flag (Wave 0 / early) |
-| E2 | **Done†** | Layout + POS shell (Wave 3); not every page reskinned — [GAP-E2-01](./GAPS_BACKLOG.md#gap-e2-01) |
+| E2 | **Done†** | Layout + POS shell (Wave 3); setup wizard LM (Wave 11 #32); list pages still default — [GAP-E2-02](./GAPS_BACKLOG.md#gap-e2-02) closed; inventory/reports deferred Wave 12 |
 | E3 | **Done** | PWA install banner (Wave 6) |
 
 ---
@@ -142,18 +142,20 @@
 | 8 | Yes | P10d, P10b, U5 (axe) |
 | 9 | Yes | U6, 8b infra, U7 layout — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
 | 10 | Yes | PWA SW, WhatsApp, logo, Clerk auth (#30–#31), ops docs — [`WAVE10_LAUNCH.md`](./WAVE10_LAUNCH.md) |
-| 11 | **Queued** | Setup wizard Liquid Metal — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) |
+| 11 | Yes | Setup wizard Liquid Metal (#32) — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) |
+| 12 | **Queued** | List-page E2, lint:strict — [`WAVE12_NEXT.md`](./WAVE12_NEXT.md) |
 
 ---
 
 ## Migrations on `main`
 
-Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030, 032** (gaps 015–021 intentional).
+Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030–035, 032** (gaps 015–021 intentional; 031 onboarding; 033–035 WhatsApp).
 
 | File | Brief |
 |------|-------|
 | 029 | **Not in repo** — F6 uses existing `products.barcode` column |
-| 031 | **Planned** — U6 onboarding |
+| 031 | **Done** — U6 onboarding |
+| 033–035 | **Done** — WhatsApp (Wave 10) |
 
 ---
 
@@ -162,7 +164,7 @@ Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030, 032*
 | | Count |
 |---|------|
 | **Done** on `main` | 40+ brief IDs |
-| **Done† / Partial** | 6 (H1, E2, U1, U4, U5, P10b) |
+| **Done† / Partial** | 5 (H1, E2 list pages, U1 import, U4, U5, P10b) |
 | **Ops** (you) | 3 (O1–O3) + M4 drill |
-| **Planned** | U6, U7, U5-8b |
+| **Planned** | Wave 12 E2 list pages, U1-03, lint:strict |
 | **Deferred** | L1–L7, F long-tail |

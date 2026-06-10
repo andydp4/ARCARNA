@@ -2,7 +2,7 @@
 
 **Purpose:** Close the delta between brief **Definition of Done** and what is on `main`. Check items off in PRs or ops runbooks.
 
-**Status tracker:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Next wave:** [`WAVE9_NEXT.md`](./WAVE9_NEXT.md)
+**Status tracker:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Next wave:** [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) (deploy + QA) · [`WAVE12_NEXT.md`](./WAVE12_NEXT.md)
 
 ---
 
@@ -63,7 +63,7 @@
 | **Brief** | E2 |
 | **Snag** | `setup-wizard.tsx` used default `bg-background` while `onboarding.tsx` / `onboarding-wizard.tsx` use `lm-auth-shell` |
 | **Fix** | Wave 11 Agent 1 — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) §2 |
-| **Closed** | [ ] |
+| **Closed** | [x] PR #32 — 2026-06-10 |
 
 ---
 
@@ -269,7 +269,7 @@
 | ID | Task | Closed |
 |----|------|--------|
 | **GAP-DOC-01** | `MASTER_EXECUTION_PLAN.md` §8 matches `BRIEF_STATUS.md` | [x] 2026-06-04 |
-| **GAP-DOC-02** | `README.md` points to current wave (`WAVE9_NEXT`) | [x] 2026-06-04 |
+| **GAP-DOC-02** | `README.md` points to current wave (`WAVE11_LAUNCH`) | [x] 2026-06-10 |
 
 ---
 

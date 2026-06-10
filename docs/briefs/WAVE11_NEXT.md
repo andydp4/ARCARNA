@@ -1,8 +1,10 @@
 # Wave 11 — Next work
 
+**Status:** Agent 1 **merged** (PR **#32**). Deploy + QA: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
+
 **Prerequisite:** Wave 10 on `main` (through PR **#31** — Clerk JWT session sync; PWA SW fix on `main`; WhatsApp, logo, ops docs).
 
-**Launch tracker (Wave 10):** [`WAVE10_LAUNCH.md`](./WAVE10_LAUNCH.md) · **Preflight:** `npm run wave10:preflight`
+**Preflight:** `npm run wave10:preflight`
 
 ---
 
@@ -43,10 +45,10 @@
 
 **DoD:**
 
-- [ ] `/setup-wizard` (or post-onboarding redirect) shows Liquid Metal shell on desktop and mobile.
-- [ ] Loading spinner uses `lm-auth-shell` (no flash of white `bg-background`).
-- [ ] No regression in wizard steps, import, or complete flow.
-- [ ] `npm run check && npm run build` green.
+- [x] `/setup-wizard` (or post-onboarding redirect) shows Liquid Metal shell on desktop and mobile.
+- [x] Loading spinner uses `lm-auth-shell` (no flash of white `bg-background`).
+- [x] No regression in wizard steps, import, or complete flow.
+- [x] `npm run check && npm run build` green.
 
 **Verification:**
 
@@ -76,10 +78,11 @@ npm run check && npm run build
 
 ---
 
-## 5. Housekeeping (no code)
+## 5. Housekeeping
 
-- **PR #29** — PWA service worker fix is already on `main` (`cfffbf0`); close the open PR on GitHub as superseded.
-- **Deploy** — after Wave 11 Agent 1 merges, standard VPS pull/build/restart (no new migrations).
+- [x] **PR #29** — closed (PWA SW already on `main`).
+- [x] **PR #32** — merged Agent 1.
+- [ ] **Deploy** — operator: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) § Deploy.
 
 ---
 

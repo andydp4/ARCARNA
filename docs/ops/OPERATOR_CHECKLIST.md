@@ -2,7 +2,9 @@
 
 One-page checklist for **VPS / external tooling** items that cannot be closed by application PRs alone. Run after each major deploy or quarterly.
 
-**Code status on `main`:** H2–H4, P10a–e, F1–F7, A1–A5, E1–E3, U1–U7, O4 are **shipped**. This checklist closes the remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
+**After Wave 11 merge:** deploy + app QA first — [`briefs/WAVE11_LAUNCH.md`](../briefs/WAVE11_LAUNCH.md). Then complete ops rows below.
+
+**Code status on `main`:** H2–H4, P10a–e, F1–F7, A1–A5, E1–E3, U1–U7, O4, Wave 11 setup-wizard LM are **shipped**. This checklist closes the remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
 
 ---
 
