@@ -20,7 +20,6 @@ import {
   DollarSign,
   Edit,
   Trash2,
-  Home,
   CheckCircle,
   XCircle,
   AlertTriangle,
@@ -29,7 +28,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Link } from "wouter";
+import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -267,50 +266,39 @@ export default function Locations() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-primary border-b border-slate-700 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-10 h-10 bg-accent rounded-lg">
-                <MapPin className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-white">Location Management</h1>
-                <p className="text-xs sm:text-sm text-slate-400">Manage Multiple Store Locations</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {locations.length > 0 && (
-                <Select value={currentLocationId} onValueChange={handleLocationSwitch}>
-                  <SelectTrigger className="w-full sm:w-48 bg-slate-700 text-white border-slate-600 min-h-[44px]" data-testid="select-location">
-                    <SelectValue placeholder="Select Location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((location) => (
-                      <SelectItem key={location.id} value={location.id}>
-                        {location.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Button asChild variant="ghost" className="text-white min-h-[44px]" data-testid="link-home">
-                <Link href="/">
-                  <Home className="h-4 w-4 sm:mr-2" />
-                  <span className="sr-only sm:not-sr-only">Dashboard</span>
-                </Link>
-              </Button>
-            </div>
+    <div className="w-full">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <PageHeader
+          icon={MapPin}
+          title="Locations"
+          description="Manage multiple store locations, defaults, and per-site stats."
+        />
+        {locations.length > 0 && (
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Label htmlFor="location-switch" className="text-sm text-muted-foreground sm:sr-only">
+              Active location
+            </Label>
+            <Select value={currentLocationId} onValueChange={handleLocationSwitch}>
+              <SelectTrigger
+                id="location-switch"
+                className="w-full sm:w-56 min-h-[44px]"
+                data-testid="select-location"
+              >
+                <SelectValue placeholder="Select Location" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((location) => (
+                  <SelectItem key={location.id} value={location.id}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        )}
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Locations</CardTitle>
             </CardHeader>
@@ -321,7 +309,7 @@ export default function Locations() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Active Locations</CardTitle>
             </CardHeader>
@@ -332,7 +320,7 @@ export default function Locations() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
             </CardHeader>
@@ -350,7 +338,7 @@ export default function Locations() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Staff</CardTitle>
             </CardHeader>
@@ -366,7 +354,7 @@ export default function Locations() {
         </div>
 
         {/* Locations Table */}
-        <Card>
+        <Card className={LM_CARD}>
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
@@ -845,7 +833,7 @@ export default function Locations() {
             </div>
           </CardContent>
         </Card>
-      </main>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <Dialog

@@ -17,12 +17,11 @@ import {
   Shield, 
   Clock, 
   Trash2,
-  Home,
   CheckCircle,
   XCircle,
   Crown
 } from "lucide-react";
-import { Link } from "wouter";
+import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import {
   Select,
   SelectContent,
@@ -167,37 +166,21 @@ export default function UserAccess() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-card border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" data-testid="button-back">
-                  <Home className="h-5 w-5" />
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-xl font-bold flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-blue-500" />
-                  User Access Control
-                </h1>
-                <p className="text-sm text-muted-foreground">Manage who can access this organization</p>
-                <Badge variant="outline" className="mt-2 font-normal">
-                  Scope: this workspace / org
-                </Badge>
-              </div>
-            </div>
-            {pendingApprovals.length > 0 && (
-              <Badge variant="destructive" className="text-sm">
-                {pendingApprovals.length} Pending
-              </Badge>
-            )}
-          </div>
+    <div className="w-full">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <PageHeader
+            icon={Shield}
+            title="User access"
+            description="Manage who can access this organization. Scope: this workspace / org."
+            className="mb-0"
+          />
+          {pendingApprovals.length > 0 && (
+            <Badge variant="destructive" className="text-sm shrink-0 self-start">
+              {pendingApprovals.length} pending
+            </Badge>
+          )}
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="pending" className="flex items-center gap-2 min-h-[44px]" data-testid="tab-pending">
@@ -215,7 +198,7 @@ export default function UserAccess() {
           </TabsList>
 
           <TabsContent value="pending">
-            <Card>
+            <Card className={LM_CARD}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5 text-yellow-500" />
@@ -299,7 +282,7 @@ export default function UserAccess() {
           </TabsContent>
 
           <TabsContent value="allowed">
-            <Card>
+            <Card className={LM_CARD}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <UserCheck className="h-5 w-5 text-green-500" />
@@ -399,7 +382,7 @@ export default function UserAccess() {
             </Card>
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
 
       <Dialog open={!!approveTarget} onOpenChange={(open) => !open && setApproveTarget(null)}>
         <DialogContent className="sm:max-w-[440px]">
