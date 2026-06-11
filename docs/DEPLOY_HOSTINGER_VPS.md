@@ -85,7 +85,7 @@ nano .env
 |----------|---------|
 | `NODE_ENV` | `production` |
 | `PORT` | `5000` |
-| `DATABASE_URL` | `postgresql://...` (Neon with `?sslmode=require`) |
+| `DATABASE_URL` | `postgresql://...` (Neon **pooler** URL with `?sslmode=require` — host contains `-pooler.neon.tech`) |
 | `SESSION_SECRET` | 32+ random characters |
 | `AUTH_PROVIDER` | `clerk` |
 | `CLERK_SECRET_KEY` | `sk_live_...` |
@@ -366,6 +366,9 @@ Production items that require VPS or external tooling (not app PRs):
 | `migration:sanity` fails | Run missing migration files in order |
 | `tsx: not found` on VPS | `unset NODE_ENV` then `npm ci --include=dev` (or `npm install`); do not run `npm ci` while `.env` has `NODE_ENV=production` exported |
 | 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/midnight/api/health` |
+| Sentry `57P01` / "terminating connection due to administrator command" | Expected when Neon compute suspends or restarts. Use **pooler** `DATABASE_URL` (`-pooler.neon.tech`); app retries transient errors. One-off is normal — disable Neon scale-to-zero for production or accept wake latency on first query after idle. |
+| Uptime monitor 404 on `/midnightepos` | Wrong path — use `GET /midnight/api/health` (note the slash after `midnight`). |
+| High Neon CU-hours / transfer on Free plan | Set `WORKER_DISPATCH_INTERVAL_MS=5000`, `WORKER_PROCESS_INTERVAL_MS=2000`, `WORKER_CONCURRENCY=1` in `.env`; use pooler `DATABASE_URL`; poll `/api/health` not `/api/health/metrics` every minute |
 
 For structured triage (health, PM2, nginx, auth loops, post-incident audit), use **[ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)**.
 

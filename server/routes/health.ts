@@ -40,8 +40,10 @@ export function registerHealthRoutes(app: Express): void {
     }
     try {
       const { db } = await import("../db");
+      const { withRetries } = await import("../lib/dbUtils");
       const { sql } = await import("drizzle-orm");
-      const metrics = await db.execute(sql`
+      const metrics = await withRetries(() =>
+        db.execute(sql`
         SELECT
           (SELECT count(*)::int FROM event_outbox WHERE status = 'pending') AS outbox_pending,
           (SELECT count(*)::int FROM event_outbox WHERE status = 'dispatched') AS outbox_dispatched,
@@ -52,7 +54,8 @@ export function registerHealthRoutes(app: Express): void {
             0
           ) AS oldest_pending_seconds,
           (SELECT count(*)::int FROM job_queue WHERE status = 'queued') AS job_queued
-      `);
+      `),
+      );
       const row = (metrics as { rows?: Record<string, number>[] }).rows?.[0] ?? {};
       res.json({
         ok: true,

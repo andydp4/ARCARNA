@@ -23,12 +23,44 @@ export const driver: "neon" | "node-postgres" =
         ? "neon"
         : "node-postgres";
 
+/** Prefer Neon pooler host (-pooler.neon.tech) in production — survives compute suspend better. */
+export function usesNeonPooler(): boolean {
+  return connectionString.includes("-pooler.");
+}
+
+function attachPoolErrorHandler(pool: NeonPool | pg.Pool, label: string) {
+  // node-postgres Pool emits 'error' on idle clients; Neon serverless Pool typings omit it.
+  (pool as pg.Pool).on?.("error", (err: Error) => {
+    console.error(`[db] Idle ${label} pool client error (non-fatal):`, err);
+  });
+}
+
 function createPool() {
   if (driver === "neon") {
     neonConfig.webSocketConstructor = ws;
-    return new NeonPool({ connectionString });
+    if (!usesNeonPooler() && process.env.NODE_ENV === "production") {
+      console.warn(
+        "[db] DATABASE_URL does not use Neon pooler (-pooler.neon.tech). " +
+          "Direct connections may see 57P01 when compute suspends; use the pooler URL from Neon dashboard.",
+      );
+    }
+    const pool = new NeonPool({
+      connectionString,
+      max: 10,
+      idleTimeoutMillis: 20_000,
+      connectionTimeoutMillis: 10_000,
+    });
+    attachPoolErrorHandler(pool, "neon");
+    return pool;
   }
-  return new pg.Pool({ connectionString });
+  const pool = new pg.Pool({
+    connectionString,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  });
+  attachPoolErrorHandler(pool, "node-postgres");
+  return pool;
 }
 
 export const pool = createPool();
