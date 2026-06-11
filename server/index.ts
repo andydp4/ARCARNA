@@ -192,10 +192,13 @@ process.on("unhandledRejection", (reason) => {
       // Start event-driven worker runner
       try {
         const { startWorkerRunner } = await import('./workers');
+        const dispatchMs = Number(process.env.WORKER_DISPATCH_INTERVAL_MS ?? 1000);
+        const processMs = Number(process.env.WORKER_PROCESS_INTERVAL_MS ?? 200);
+        const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 3);
         startWorkerRunner({
-          dispatchIntervalMs: 1000,
-          processIntervalMs: 200,
-          concurrency: 3,
+          dispatchIntervalMs: dispatchMs > 0 ? dispatchMs : 1000,
+          processIntervalMs: processMs > 0 ? processMs : 200,
+          concurrency: concurrency > 0 ? concurrency : 3,
         });
         log('Event-driven worker runner started');
       } catch (error) {

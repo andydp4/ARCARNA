@@ -11,6 +11,7 @@
  */
 
 import { db } from "./db";
+import { withRetries } from "./lib/dbUtils";
 import { 
   eventOutbox, 
   jobQueue, 
@@ -123,6 +124,10 @@ export function createTransactionalPublisher(tx: typeof db) {
  * Uses transaction to ensure atomicity - only marks dispatched after all jobs created
  */
 export async function dispatchPendingEvents(): Promise<number> {
+  return withRetries(async () => dispatchPendingEventsInner());
+}
+
+async function dispatchPendingEventsInner(): Promise<number> {
   // Find pending events
   const pendingEvents = await db
     .select()
