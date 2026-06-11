@@ -72,6 +72,7 @@ import {
   type ApiKey,
   type OutboundWebhook,
 } from "@shared/schema";
+import { withRetries } from "./lib/dbUtils";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
 import { randomBytes } from "crypto";
@@ -273,8 +274,10 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return withRetries(async () => {
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      return user;
+    });
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
@@ -284,27 +287,29 @@ export class DatabaseStorage implements IStorage {
       (userData as { authProvider?: string }).authProvider ?? "replit";
     const authUserId =
       (userData as { authUserId?: string }).authUserId ?? subjectId;
-    const [user] = await db
-      .insert(users)
-      .values({
-        ...userData,
-        id: subjectId,
-        replitUserId: (userData as { replitUserId?: string }).replitUserId ?? subjectId,
-        authProvider,
-        authUserId,
-      } as typeof users.$inferInsert)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          email: userData.email,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          profileImageUrl: userData.profileImageUrl,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    return withRetries(async () => {
+      const [user] = await db
+        .insert(users)
+        .values({
+          ...userData,
+          id: subjectId,
+          replitUserId: (userData as { replitUserId?: string }).replitUserId ?? subjectId,
+          authProvider,
+          authUserId,
+        } as typeof users.$inferInsert)
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            profileImageUrl: userData.profileImageUrl,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return user;
+    });
   }
 
   async getTopCustomers(limit: number = 10, orgId: string): Promise<
@@ -313,18 +318,20 @@ export class DatabaseStorage implements IStorage {
       metrics: CustomerMetric | null;
     }>
   > {
-    const base = db
-      .select({
-        customer: customers,
-        metrics: customerMetrics,
-      })
-      .from(customers)
-      .leftJoin(
-        customerMetrics,
-        eq(customers.id, customerMetrics.customerId)
-      );
-    const results = await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit);
-    return results;
+    return withRetries(async () => {
+      const base = db
+        .select({
+          customer: customers,
+          metrics: customerMetrics,
+        })
+        .from(customers)
+        .leftJoin(
+          customerMetrics,
+          eq(customers.id, customerMetrics.customerId)
+        );
+      const results = await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit);
+      return results;
+    });
   }
 
   async getDailyRevenue(days: number = 30, orgId: string): Promise<
@@ -334,20 +341,22 @@ export class DatabaseStorage implements IStorage {
       totalRevenue: string;
     }>
   > {
-    let q = db
-      .select({
-        date: analyticsDaily.date,
-        totalOrders: analyticsDaily.totalOrders,
-        totalRevenue: analyticsDaily.totalRevenue,
-      })
-      .from(analyticsDaily);
-    q = q.where(eq(analyticsDaily.orgId, orgId)) as typeof q;
-    const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
-    return results.reverse().map((r) => ({
-      date: r.date || "",
-      totalOrders: r.totalOrders || 0,
-      totalRevenue: r.totalRevenue || "0",
-    }));
+    return withRetries(async () => {
+      let q = db
+        .select({
+          date: analyticsDaily.date,
+          totalOrders: analyticsDaily.totalOrders,
+          totalRevenue: analyticsDaily.totalRevenue,
+        })
+        .from(analyticsDaily);
+      q = q.where(eq(analyticsDaily.orgId, orgId)) as typeof q;
+      const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
+      return results.reverse().map((r) => ({
+        date: r.date || "",
+        totalOrders: r.totalOrders || 0,
+        totalRevenue: r.totalRevenue || "0",
+      }));
+    });
   }
 
   async getMonthlySummary(months: number = 12, orgId: string): Promise<
@@ -358,62 +367,68 @@ export class DatabaseStorage implements IStorage {
       totalRevenue: string;
     }>
   > {
-    let q = db
-      .select({
-        year: analyticsMonthly.year,
-        month: analyticsMonthly.month,
-        totalOrders: analyticsMonthly.totalOrders,
-        totalRevenue: analyticsMonthly.totalRevenue,
-      })
-      .from(analyticsMonthly);
-    q = q.where(eq(analyticsMonthly.orgId, orgId)) as typeof q;
-    const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
-    return results.reverse().map((r) => ({
-      year: r.year || 0,
-      month: r.month || 0,
-      totalOrders: r.totalOrders || 0,
-      totalRevenue: r.totalRevenue || "0",
-    }));
+    return withRetries(async () => {
+      let q = db
+        .select({
+          year: analyticsMonthly.year,
+          month: analyticsMonthly.month,
+          totalOrders: analyticsMonthly.totalOrders,
+          totalRevenue: analyticsMonthly.totalRevenue,
+        })
+        .from(analyticsMonthly);
+      q = q.where(eq(analyticsMonthly.orgId, orgId)) as typeof q;
+      const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
+      return results.reverse().map((r) => ({
+        year: r.year || 0,
+        month: r.month || 0,
+        totalOrders: r.totalOrders || 0,
+        totalRevenue: r.totalRevenue || "0",
+      }));
+    });
   }
 
   async getProducts(orgId: string): Promise<Product[]> {
-    return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
+    return withRetries(async () => {
+      return await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
+    });
   }
 
   async createProduct(data: InsertProduct): Promise<Product> {
-    // Validate data before insertion
-    if (!data.name || data.name.trim().length === 0) {
-      throw new Error('Product name is required');
-    }
-    if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
-      throw new Error('Product price cannot be negative');
-    }
-    if (data.stock !== undefined && safeParseInt(data.stock) < 0) {
-      throw new Error('Stock cannot be negative');
-    }
-
-    const [product] = await db.insert(products).values(data).returning();
-    if (product.orgId) {
-      const { ensureProductLocationStockRow, syncLegacyProductStockPlaceholder, resolveProductLocationForBackfill } =
-        await import("./services/productLocationStock");
-      const resolved = await resolveProductLocationForBackfill(product.orgId, {
-        id: product.id,
-        locationId: product.locationId,
-        stock: product.stock,
-        stockLimit: product.stockLimit,
-      });
-      if (!("skip" in resolved)) {
-        await ensureProductLocationStockRow(
-          product.orgId,
-          product.id,
-          resolved.locationId,
-          product.stock ?? 0,
-          product.stockLimit ?? 10,
-        );
-        await syncLegacyProductStockPlaceholder(product.id);
+    return withRetries(async () => {
+      // Validate data before insertion
+      if (!data.name || data.name.trim().length === 0) {
+        throw new Error('Product name is required');
       }
-    }
-    return product;
+      if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
+        throw new Error('Product price cannot be negative');
+      }
+      if (data.stock !== undefined && safeParseInt(data.stock) < 0) {
+        throw new Error('Stock cannot be negative');
+      }
+
+      const [product] = await db.insert(products).values(data).returning();
+      if (product.orgId) {
+        const { ensureProductLocationStockRow, syncLegacyProductStockPlaceholder, resolveProductLocationForBackfill } =
+          await import("./services/productLocationStock");
+        const resolved = await resolveProductLocationForBackfill(product.orgId, {
+          id: product.id,
+          locationId: product.locationId,
+          stock: product.stock,
+          stockLimit: product.stockLimit,
+        });
+        if (!("skip" in resolved)) {
+          await ensureProductLocationStockRow(
+            product.orgId,
+            product.id,
+            resolved.locationId,
+            product.stock ?? 0,
+            product.stockLimit ?? 10,
+          );
+          await syncLegacyProductStockPlaceholder(product.id);
+        }
+      }
+      return product;
+    });
   }
 
   async updateProduct(id: string, data: any): Promise<Product> {
