@@ -10,8 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, Package, Plus, Minus, Search, TrendingDown, AlertCircle, Home } from "lucide-react";
+import { AlertTriangle, Package, Plus, Minus, Search, TrendingDown, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
+import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -178,33 +179,13 @@ export default function Inventory() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-primary border-b border-slate-700 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-accent rounded-lg">
-                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-base sm:text-xl font-bold text-white">Inventory Management</h1>
-                <p className="hidden sm:block text-xs text-slate-400">Real-time Stock Tracking</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="ghost" className="text-white min-h-[44px]" data-testid="link-home">
-                <Link href="/">
-                  <Home className="mr-0 sm:mr-2 h-4 w-4" />
-                  <span className="hidden sm:inline">Dashboard</span>
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+    <div className="w-full">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <PageHeader
+          icon={Package}
+          title="Inventory"
+          description="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
+        />
         <Tabs defaultValue="stock" className="w-full">
           <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-5 mb-6 min-h-[48px]">
             <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
@@ -273,7 +254,7 @@ export default function Inventory() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Products</CardTitle>
             </CardHeader>
@@ -281,7 +262,7 @@ export default function Inventory() {
               <p className="text-2xl font-bold">{products.length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Stock Value</CardTitle>
             </CardHeader>
@@ -295,7 +276,7 @@ export default function Inventory() {
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Items</CardTitle>
             </CardHeader>
@@ -303,7 +284,7 @@ export default function Inventory() {
               <p className="text-2xl font-bold text-orange-600">{lowStockProducts.length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={LM_CARD}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Out of Stock</CardTitle>
             </CardHeader>
@@ -345,7 +326,7 @@ export default function Inventory() {
         </div>
 
         {/* Products Table */}
-        <Card>
+        <Card className={LM_CARD}>
           <CardHeader>
             <CardTitle className="text-base sm:text-lg">Product Inventory</CardTitle>
             <CardDescription className="text-xs sm:text-sm">Manage stock levels and monitor inventory in real-time</CardDescription>
@@ -533,7 +514,7 @@ export default function Inventory() {
         </Card>
           </TabsContent>
         </Tabs>
-      </main>
+      </div>
 
       {/* Stock Adjustment Dialog */}
       <Dialog open={adjustmentDialogOpen} onOpenChange={setAdjustmentDialogOpen}>
