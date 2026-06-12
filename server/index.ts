@@ -10,6 +10,7 @@ import { registerPortalRoutes } from "./portal";
 import { registerLegacyEposRedirects } from "./legacyRedirects";
 import { withAppBase } from "@shared/appPaths";
 import { requestIdMiddleware, type RequestWithId } from "./requestId";
+import { sentryRequestContextMiddleware } from "./sentryRequestContext";
 import { logApiJson } from "./structuredLog";
 
 validateProductionEnv();
@@ -45,6 +46,7 @@ declare module 'http' {
   }
 }
 app.use(requestIdMiddleware);
+app.use(sentryRequestContextMiddleware);
 app.use(
   express.json({
     limit: IMPORT_JSON_BODY_LIMIT,

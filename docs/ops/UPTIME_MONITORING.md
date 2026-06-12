@@ -56,8 +56,8 @@ Better Stack / Pingdom: same URLs; configure status code 200 and response-time S
 
 ## Verification (DoD)
 
-- [ ] Primary health monitor live and green
-- [ ] Test alert received and acknowledged
+- [x] Primary health monitor live and green
+- [x] Test alert received and acknowledged
 - [ ] Escalation contacts documented (team wiki)
 - [ ] Optional: metrics monitor with thresholds
 
