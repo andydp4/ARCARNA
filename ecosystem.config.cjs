@@ -2,8 +2,12 @@
  * PM2 production config for MidnightEPOS (Hostinger VPS).
  * Usage:
  *   pm2 start ecosystem.config.cjs
- *   pm2 restart ecosystem.config.cjs --update-env
  *   pm2 save
+ *
+ * After editing .env, RE-CREATE the process so env_file is re-read — there is no
+ * dotenv fallback in the app, and `pm2 restart/reload --update-env` keeps the env
+ * captured at creation (a changed CLERK_SECRET_KEY etc. would be silently ignored):
+ *   pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
  */
 const path = require("path");
 
