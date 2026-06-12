@@ -47,10 +47,13 @@ Save: Ctrl+O, Enter, Ctrl+X.
 ```bash
 source .env
 npm run build
-pm2 restart midnight-epos --update-env
+# delete+start (not `pm2 restart`) so the changed .env is actually re-read
+pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
 ```
 
-`VITE_*` values are baked in at **build** time.
+`VITE_*` values are baked in at **build** time. Server-side keys (e.g. `SENTRY_DSN`)
+are read from `.env` by PM2 at process creation — `pm2 restart --update-env` keeps the
+old value, so use the delete+start above after editing `.env`.
 
 ---
 

@@ -277,9 +277,22 @@ npm run build
 
 set -a && source .env && set +a
 bash scripts/apply-migrations-pm2.sh
-pm2 restart midnight-epos --update-env
+
+# Reload PM2 so the CURRENT .env is read. `pm2 restart <name> --update-env` does
+# NOT re-read the env_file (it keeps the env captured at process creation), and
+# this app has no dotenv fallback — so a changed secret would be silently ignored.
+# Delete + start forces a fresh .env read.
+pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
+
 curl -sS http://127.0.0.1:5000/midnight/api/health
 ```
+
+> ⚠️ **`.env` changes only take effect after a delete+start (above), not `pm2 restart`/`reload`.**
+> To confirm the live process actually loaded a key, read its real environment:
+> ```bash
+> tr '\0' '\n' < /proc/$(pm2 pid midnight-epos)/environ | grep -E '^CLERK_|^AUTH_PROVIDER='
+> ```
+> A stale `CLERK_SECRET_KEY` here (not matching `.env`) makes Clerk reject every session token with HTTP 401 — sign-in succeeds but the dashboard never opens.
 
 **Sentry sourcemaps on VPS:** If build logs `Invalid token (401)` from `@sentry/vite-plugin`, either set a valid `SENTRY_AUTH_TOKEN` or remove that line from `.env` (runtime error reporting via `SENTRY_DSN` still works; only upload fails).
 
