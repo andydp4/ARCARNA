@@ -1078,37 +1078,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async getInventoryReports(fromDate: Date, toDate: Date, orgId: string) {
-    let prodQ = db.select({
-      total: sql<number>`SUM(${products.stock} * CAST(${products.costPrice} AS DECIMAL))`
-    }).from(products);
-    if (orgId) prodQ = prodQ.where(eq(products.orgId, orgId)) as any;
-    const stockValue = await prodQ;
-    const lowStockCond = sql`${products.stock} <= ${products.stockLimit} * 0.2 AND ${products.stock} > 0`;
-    const lowStockWhere = and(lowStockCond, eq(products.orgId, orgId));
-    const lowStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(lowStockWhere);
-    const outStockWhere = and(eq(products.stock, 0), eq(products.orgId, orgId));
-    const outOfStock = await db.select({ count: sql<number>`COUNT(*)` }).from(products).where(outStockWhere);
+    // Stock is authoritative in productLocationStock; products.stock is a legacy
+    // placeholder written as 0 by syncLegacyProductStockPlaceholder. Derive
+    // valuation and counts from real per-location totals (same source as POS/inventory).
+    const withStock = await this.getProductsWithStock(orgId);
+    const stockByProduct = new Map(withStock.map((p) => [p.id, p.stock ?? 0]));
+
+    const totalValue = withStock.reduce(
+      (sum, p) => sum + (p.stock ?? 0) * (parseFloat(String(p.costPrice ?? 0)) || 0),
+      0,
+    );
+    const lowStock = withStock.filter((p) => {
+      const limit = p.stockLimit ?? 0;
+      const s = p.stock ?? 0;
+      return limit > 0 && s > 0 && s <= limit * 0.2;
+    }).length;
+    const outOfStock = withStock.filter((p) => (p.stock ?? 0) === 0).length;
 
     const topMovingCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`;
     const topMovingWhere = and(topMovingCond, eq(products.orgId, orgId));
-    const topMoving = await db
+    const topMovingRaw = await db
       .select({
+        productId: products.id,
         product: products.name,
         sold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)`.as('sold'),
-        remaining: products.stock
       })
       .from(products)
       .leftJoin(orderItems, eq(products.id, orderItems.productId))
       .leftJoin(orders, eq(orderItems.orderId, orders.id))
       .where(topMovingWhere)
-      .groupBy(products.id, products.name, products.stock)
+      .groupBy(products.id, products.name)
       .orderBy(sql`COALESCE(SUM(${orderItems.quantity}), 0) DESC`)
       .limit(10);
+    const topMoving = topMovingRaw.map((r) => ({
+      product: r.product,
+      sold: r.sold,
+      remaining: stockByProduct.get(r.productId) ?? 0,
+    }));
 
     return {
-      totalValue: stockValue[0]?.total || 0,
-      lowStock: lowStock[0]?.count || 0,
-      outOfStock: outOfStock[0]?.count || 0,
+      totalValue,
+      lowStock,
+      outOfStock,
       turnoverRate: 0, // Would need more calculation
       topMoving
     };

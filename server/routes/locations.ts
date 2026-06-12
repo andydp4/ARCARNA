@@ -79,16 +79,31 @@ export function registerLocationRoutes(app: Express, scoped: RequestHandler[]): 
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../db');
-      const { products, locations } = await import('@shared/schema');
-      const { eq, and, desc } = await import('drizzle-orm');
+      const { products, locations, productLocationStock } = await import('@shared/schema');
+      const { eq, and, desc, sql } = await import('drizzle-orm');
       if (ctx?.orgId) {
         const [loc] = await db.select().from(locations).where(and(eq(locations.id, req.params.id), eq(locations.orgId, ctx.orgId)));
         if (!loc) return res.status(404).json({ message: 'Location not found' });
       }
+      // Per-location stock comes from productLocationStock (authoritative), not the
+      // legacy products.stock column which is always 0.
+      const locStock = sql<number>`COALESCE(${productLocationStock.stock}, 0)`;
       const prodCond = ctx?.orgId ? eq(products.orgId, ctx.orgId) : undefined;
+      const baseSelect = {
+        id: products.id,
+        name: products.name,
+        productCode: products.productId,
+        stock: locStock,
+        salePrice: products.defaultSalePrice,
+        costPrice: products.costPrice,
+      };
+      const joinCond = and(
+        eq(productLocationStock.productId, products.id),
+        eq(productLocationStock.locationId, req.params.id),
+      );
       const allProducts = prodCond
-        ? await db.select({ id: products.id, name: products.name, productCode: products.productId, stock: products.stock, salePrice: products.defaultSalePrice, costPrice: products.costPrice }).from(products).where(prodCond).orderBy(desc(products.stock))
-        : await db.select({ id: products.id, name: products.name, productCode: products.productId, stock: products.stock, salePrice: products.defaultSalePrice, costPrice: products.costPrice }).from(products).orderBy(desc(products.stock));
+        ? await db.select(baseSelect).from(products).leftJoin(productLocationStock, joinCond).where(prodCond).orderBy(desc(locStock))
+        : await db.select(baseSelect).from(products).leftJoin(productLocationStock, joinCond).orderBy(desc(locStock));
       
       const stockSummary = {
         totalProducts: allProducts.length,
