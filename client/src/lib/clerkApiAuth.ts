@@ -2,8 +2,26 @@ type TokenGetter = () => Promise<string | null>;
 
 let tokenGetter: TokenGetter | null = null;
 
+/** Cap on a single clerk-js getToken() call so a stalled Clerk frontend-API
+ * request can't block every apiFetch indefinitely (requests then go out
+ * unauthenticated and the caller's retry logic takes over). */
+const TOKEN_CALL_TIMEOUT_MS = 5_000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getTokenWithTimeout(timeoutMs = TOKEN_CALL_TIMEOUT_MS): Promise<string | null> {
+  if (!tokenGetter) return null;
+  try {
+    return await Promise.race([
+      tokenGetter(),
+      sleep(timeoutMs).then(() => null),
+    ]);
+  } catch {
+    // Session may still be hydrating after cross-host redirect.
+    return null;
+  }
 }
 
 /** Registered by ClerkTokenBridge when ClerkProvider is active. */
@@ -29,12 +47,9 @@ export async function waitForClerkToken(options?: {
 
   while (Date.now() < deadline) {
     if (tokenGetter) {
-      try {
-        const token = await tokenGetter();
-        if (token) return token;
-      } catch {
-        // Session may still be hydrating after cross-host redirect.
-      }
+      const remaining = deadline - Date.now();
+      const token = await getTokenWithTimeout(Math.min(remaining, TOKEN_CALL_TIMEOUT_MS));
+      if (token) return token;
     }
     await sleep(intervalMs);
   }
@@ -43,12 +58,7 @@ export async function waitForClerkToken(options?: {
 
 export async function withClerkAuthHeaders(base?: HeadersInit): Promise<Headers> {
   const headers = new Headers(base);
-  if (!tokenGetter) return headers;
-  try {
-    const token = await tokenGetter();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  } catch {
-    // Clerk session may still be hydrating after Account Portal redirect.
-  }
+  const token = await getTokenWithTimeout();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   return headers;
 }

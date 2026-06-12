@@ -69,7 +69,19 @@ export async function setupClerkAuth(app: Express) {
     ) {
       return next();
     }
-    return clerkRequestMiddleware(req, res, next);
+    return clerkRequestMiddleware(req, res, (err?: unknown) => {
+      if (!err) return next();
+      // A malformed/unverifiable Authorization header must behave like a missing
+      // one (401), not bubble to the 500 handler (was: "Unexpected end of data").
+      console.warn(
+        "[Auth] Clerk middleware rejected request:",
+        err instanceof Error ? err.message : err,
+      );
+      if (req.path.startsWith("/api/")) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      return next(err);
+    });
   });
 
   app.get("/api/login", (_req, res) => {
