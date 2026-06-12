@@ -394,41 +394,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProduct(data: InsertProduct): Promise<Product> {
-    return withRetries(async () => {
-      // Validate data before insertion
-      if (!data.name || data.name.trim().length === 0) {
-        throw new Error('Product name is required');
-      }
-      if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
-        throw new Error('Product price cannot be negative');
-      }
-      if (data.stock !== undefined && safeParseInt(data.stock) < 0) {
-        throw new Error('Stock cannot be negative');
-      }
+    // Validate data before insertion. This flow is intentionally not wrapped in
+    // withRetries: replaying a successful insert after a transient post-insert
+    // failure can create duplicate catalog rows.
+    if (!data.name || data.name.trim().length === 0) {
+      throw new Error('Product name is required');
+    }
+    if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
+      throw new Error('Product price cannot be negative');
+    }
+    if (data.stock !== undefined && safeParseInt(data.stock) < 0) {
+      throw new Error('Stock cannot be negative');
+    }
 
-      const [product] = await db.insert(products).values(data).returning();
-      if (product.orgId) {
-        const { ensureProductLocationStockRow, syncLegacyProductStockPlaceholder, resolveProductLocationForBackfill } =
-          await import("./services/productLocationStock");
-        const resolved = await resolveProductLocationForBackfill(product.orgId, {
-          id: product.id,
-          locationId: product.locationId,
-          stock: product.stock,
-          stockLimit: product.stockLimit,
-        });
-        if (!("skip" in resolved)) {
-          await ensureProductLocationStockRow(
-            product.orgId,
-            product.id,
-            resolved.locationId,
-            product.stock ?? 0,
-            product.stockLimit ?? 10,
-          );
-          await syncLegacyProductStockPlaceholder(product.id);
-        }
+    const [product] = await db.insert(products).values(data).returning();
+    if (product.orgId) {
+      const { ensureProductLocationStockRow, syncLegacyProductStockPlaceholder, resolveProductLocationForBackfill } =
+        await import("./services/productLocationStock");
+      const resolved = await resolveProductLocationForBackfill(product.orgId, {
+        id: product.id,
+        locationId: product.locationId,
+        stock: product.stock,
+        stockLimit: product.stockLimit,
+      });
+      if (!("skip" in resolved)) {
+        await ensureProductLocationStockRow(
+          product.orgId,
+          product.id,
+          resolved.locationId,
+          product.stock ?? 0,
+          product.stockLimit ?? 10,
+        );
+        await syncLegacyProductStockPlaceholder(product.id);
       }
-      return product;
-    });
+    }
+    return product;
   }
 
   async updateProduct(id: string, data: any): Promise<Product> {
