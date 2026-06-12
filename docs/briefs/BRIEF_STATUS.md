@@ -1,6 +1,6 @@
 # Brief status tracker
 
-**Last updated:** 2026-06-10 · **`main` ref:** Wave 11 Agent 1 merged (PR #32); deploy + QA — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md)
+**Last updated:** 2026-06-12 · **`main` ref:** `a37e9ae` (PRs **#31–#39**); deploy + QA — [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) · **Next:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
 
 **Sources of truth:** git `main`, wave merge docs (`WAVE3_NEXT` … `WAVE8_NEXT`), codebase grep.  
 **Gaps & snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) (actionable checklist).
@@ -49,7 +49,7 @@
 
 | ID | Status | Wave / notes |
 |----|--------|----------------|
-| O1 | **Ops** | External uptime monitor |
+| O1 | **Done†** | Uptime on `/midnight/api/health` — operator configured; fix `/midnightepos` stray monitor |
 | O2 | **Ops** | M4 restore drill on VPS/R2 |
 | O3 | **Ops** | `pm2 startup` + `pm2 save` |
 | O4 | **Done** | `docs/ops/INCIDENT_CHECKLIST.md` |
@@ -73,7 +73,7 @@
 | ID | Status | Wave / notes |
 |----|--------|----------------|
 | E1 | **Done** | Tokens + spatial Insights flag (Wave 0 / early) |
-| E2 | **Done†** | Layout + POS shell (Wave 3); setup wizard LM (Wave 11 #32); list pages still default — [GAP-E2-02](./GAPS_BACKLOG.md#gap-e2-02) closed; inventory/reports deferred Wave 12 |
+| E2 | **Done** | Layout + POS (Wave 3); setup wizard LM (#32); list pages LM (#35); insights/reports LM (Wave 10b) |
 | E3 | **Done** | PWA install banner (Wave 6) |
 
 ---
@@ -142,8 +142,9 @@
 | 8 | Yes | P10d, P10b, U5 (axe) |
 | 9 | Yes | U6, 8b infra, U7 layout — [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
 | 10 | Yes | PWA SW, WhatsApp, logo, Clerk auth (#30–#31), ops docs — [`WAVE10_LAUNCH.md`](./WAVE10_LAUNCH.md) |
-| 11 | Yes | Setup wizard Liquid Metal (#32) — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) |
-| 12 | **Queued** | List-page E2, lint:strict — [`WAVE12_NEXT.md`](./WAVE12_NEXT.md) |
+| 11 | Yes | Setup wizard LM (#32) + auth (#31) — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) |
+| 12 | Yes | List-page E2 (#35), Neon retries (#33–#34), auth/deploy (#36–#39, #37) — [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) |
+| 13 | **Queued** | Import empty states, lint:strict, O2/O3 — [`WAVE13_NEXT.md`](./WAVE13_NEXT.md) |
 
 ---
 
@@ -164,7 +165,7 @@ Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030–035
 | | Count |
 |---|------|
 | **Done** on `main` | 40+ brief IDs |
-| **Done† / Partial** | 5 (H1, E2 list pages, U1 import, U4, U5, P10b) |
-| **Ops** (you) | 3 (O1–O3) + M4 drill |
-| **Planned** | Wave 12 E2 list pages, U1-03, lint:strict |
+| **Done† / Partial** | 4 (H1, U1 import modals, U4, U5, P10b) |
+| **Ops** (you) | 2 (O2–O3) + M4 drill |
+| **Planned** | Wave 13 — U1-03, lint:strict, ops drills |
 | **Deferred** | L1–L7, F long-tail |

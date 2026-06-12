@@ -1,6 +1,6 @@
 # Wave 11 — Next work
 
-**Status:** Agent 1 **merged** (PR **#32**). Deploy + QA: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
+**Status:** **Complete** — PR **#32** merged; deploy + QA done. See [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md).
 
 **Prerequisite:** Wave 10 on `main` (through PR **#31** — Clerk JWT session sync; PWA SW fix on `main`; WhatsApp, logo, ops docs).
 
@@ -82,7 +82,7 @@ npm run check && npm run build
 
 - [x] **PR #29** — closed (PWA SW already on `main`).
 - [x] **PR #32** — merged Agent 1.
-- [ ] **Deploy** — operator: [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) § Deploy.
+- [x] **Deploy** — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) / [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md).
 
 ---
 

@@ -69,4 +69,4 @@ pm2 restart midnight-epos --update-env
 
 ## Next agents (optional)
 
-See [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) for deploy + QA, or [`WAVE12_NEXT.md`](./WAVE12_NEXT.md) for list-page E2 and remaining snags.
+See [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) for current production state, or [`WAVE13_NEXT.md`](./WAVE13_NEXT.md) for next snags.

@@ -1,6 +1,6 @@
 # Wave 11 — Launch & testing readiness
 
-**Status:** Ready for VPS deploy + manual QA (`main` @ PR **#32** merged).
+**Status:** **Complete** — deployed + QA signed off. See [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) for current production state.
 
 **Prerequisite:** Wave 10 on `main` (Clerk #30–#31, PWA SW, WhatsApp 033–035, logo, ops docs).
 
@@ -15,8 +15,8 @@
 | Setup wizard Liquid Metal shell (`setup-wizard.tsx`) | **Done** — PR #32 |
 | GAP-E2-02 closed | **Done** |
 | `npm run wave10:preflight` green (local) | **Done** |
-| VPS deploy (`654ae9d`+) | **Operator** — run § Deploy below |
-| Live smoke (§ Testing matrix) | **Operator** |
+| VPS deploy (`654ae9d`+) | **Done** |
+| Live smoke (§ Testing matrix) | **Done** |
 
 **Still backlog (non-blocking for QA):**
 

@@ -2,7 +2,7 @@
 
 **Purpose:** Close the delta between brief **Definition of Done** and what is on `main`. Check items off in PRs or ops runbooks.
 
-**Status tracker:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Next wave:** [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) (deploy + QA) · [`WAVE12_NEXT.md`](./WAVE12_NEXT.md)
+**Status tracker:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Launch:** [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) · **Next wave:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
 
 ---
 
@@ -64,6 +64,51 @@
 | **Snag** | `setup-wizard.tsx` used default `bg-background` while `onboarding.tsx` / `onboarding-wizard.tsx` use `lm-auth-shell` |
 | **Fix** | Wave 11 Agent 1 — [`WAVE11_NEXT.md`](./WAVE11_NEXT.md) §2 |
 | **Closed** | [x] PR #32 — 2026-06-10 |
+
+<a id="gap-e2-03"></a>
+
+### GAP-E2-03 — List pages Liquid Metal shell
+
+| | |
+|---|---|
+| **Brief** | E2 |
+| **Snag** | `inventory.tsx`, `locations.tsx`, `user-access.tsx` used `min-h-screen bg-background` + duplicate sticky headers inside `Layout` |
+| **Fix** | Wave 12 — `PageHeader` + `LM_CARD` (mirror `insights.tsx`) |
+| **Closed** | [x] PR #35 — 2026-06-11 |
+
+---
+
+## Auth — Clerk session sync
+
+<a id="gap-auth-01"></a>
+
+### GAP-AUTH-01 — JWT before server session sync
+
+| | |
+|---|---|
+| **Snag** | API calls before Clerk JWT available → 401 session |
+| **Fix** | `waitForClerkToken()` before session probe |
+| **Closed** | [x] PR #31 — 2026-06-09 |
+
+<a id="gap-auth-02"></a>
+
+### GAP-AUTH-02 — CancelledError aborting sign-in
+
+| | |
+|---|---|
+| **Snag** | TanStack query cancel during `useEnterApp` surfaced as sign-in failure |
+| **Fix** | Plain `fetch` probe; no concurrent `fetchQuery` on auth key |
+| **Closed** | [x] PR #36 — 2026-06-12 |
+
+<a id="gap-auth-03"></a>
+
+### GAP-AUTH-03 — ClerkSessionSync refetch race
+
+| | |
+|---|---|
+| **Snag** | `ClerkSessionSync` invalidated `/api/auth/user` before JWT hydrated; `withRetries` on `createProduct` could duplicate rows |
+| **Fix** | Gate invalidation on `waitForClerkToken()`; remove retry wrapper from create |
+| **Closed** | [x] PR #37 — 2026-06-12 |
 
 ---
 
@@ -255,7 +300,7 @@
 
 | ID | Task | Closed |
 |----|------|--------|
-| **GAP-O1-01** | External uptime on `/midnight/api/health` — see [docs/ops/UPTIME_MONITORING.md](../ops/UPTIME_MONITORING.md) | [ ] |
+| **GAP-O1-01** | External uptime on `/midnight/api/health` — see [docs/ops/UPTIME_MONITORING.md](../ops/UPTIME_MONITORING.md) | [x] 2026-06-11 |
 | **GAP-O2-01** | M4 restore drill + sign-off in `DISASTER_RECOVERY.md` | [ ] |
 | **GAP-O3-01** | `pm2 startup` + `pm2 save` (+ optional reboot test) | [ ] |
 | **GAP-M4-01** | Same as O2 — M4 DoD | [ ] |
@@ -269,7 +314,7 @@
 | ID | Task | Closed |
 |----|------|--------|
 | **GAP-DOC-01** | `MASTER_EXECUTION_PLAN.md` §8 matches `BRIEF_STATUS.md` | [x] 2026-06-04 |
-| **GAP-DOC-02** | `README.md` points to current wave (`WAVE11_LAUNCH`) | [x] 2026-06-10 |
+| **GAP-DOC-02** | Briefs README points to current wave (`WAVE12_LAUNCH` / `WAVE13_NEXT`) | [x] 2026-06-12 |
 
 ---
 

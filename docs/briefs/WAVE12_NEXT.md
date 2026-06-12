@@ -1,21 +1,23 @@
-# Wave 12 — Next work (preview)
+# Wave 12 — Next work
 
-**Prerequisite:** Wave 11 deployed and QA signed off — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md).
-
----
-
-## Suggested scope
-
-| Brief ID | Branch | Notes |
-|----------|--------|-------|
-| **E2** | `feat/e2-list-pages-shell` | `inventory.tsx`, `reports.tsx`, `locations.tsx`, `user-access.tsx` — replace `bg-background` with Layout/LM chrome |
-| **U1** | `feat/u1-import-empty-states` | GAP-U1-03 — import modals |
-| **U5** | `chore/lint-strict-pass` | GAP-U5-01 — `npm run lint:strict` green |
-
-**Ops:** Close remaining rows in [`OPERATOR_CHECKLIST.md`](../ops/OPERATOR_CHECKLIST.md) (O1–O3, P10b).
+**Status:** **Complete** — see [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md). **Next:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md).
 
 ---
 
-## Out of scope until product asks
+## Delivered (PR #35 + deploy)
 
-F8 barcode labels, L1–L7 long horizon — [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) §6.
+| Brief ID | Branch | Status |
+|----------|--------|--------|
+| **E2** | `feat/e2-list-pages-shell` | **Merged** — `inventory.tsx`, `locations.tsx`, `user-access.tsx` |
+
+`reports.tsx` unused (routing uses `insights.tsx`, already LM).
+
+---
+
+## Carried to Wave 13
+
+| Brief ID | Notes |
+|----------|-------|
+| **U1** | GAP-U1-03 import modals |
+| **U5** | GAP-U5-01 `lint:strict` |
+| **Ops** | O2, O3 |

@@ -16,6 +16,8 @@ Configure **external** HTTP checks so production failures page someone within mi
 
 Expected health body: `{"ok":true,...}`.
 
+**Do not use** `/midnightepos` (no slash) — returns 404 and spams PM2 logs.
+
 ---
 
 ## Optional metrics thresholds (H3)

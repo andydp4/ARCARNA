@@ -2,9 +2,9 @@
 
 One-page checklist for **VPS / external tooling** items that cannot be closed by application PRs alone. Run after each major deploy or quarterly.
 
-**After Wave 11 merge:** deploy + app QA first — [`briefs/WAVE11_LAUNCH.md`](../briefs/WAVE11_LAUNCH.md). Then complete ops rows below.
+**After Wave 12:** production at `a37e9ae`+ on VPS1 `/root/MidnightEPOS` — [`briefs/WAVE12_LAUNCH.md`](../briefs/WAVE12_LAUNCH.md).
 
-**Code status on `main`:** H2–H4, P10a–e, F1–F7, A1–A5, E1–E3, U1–U7, O4, Wave 11 setup-wizard LM are **shipped**. This checklist closes the remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
+**Code status on `main`:** Waves 0–12 shipped (LM list pages #35, auth #31/#36/#37, deploy #38, Sentry context #39). This checklist closes remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
 
 ---
 
@@ -39,9 +39,10 @@ One-page checklist for **VPS / external tooling** items that cannot be closed by
 
 Follow [UPTIME_MONITORING.md](./UPTIME_MONITORING.md).
 
-- [ ] Health monitor live (`/midnight/api/health`)
-- [ ] Test alert fired and acknowledged
+- [x] Health monitor live (`/midnight/api/health`) — 2026-06-11
+- [x] Test alert fired and acknowledged
 - [ ] On-call contacts linked from incident checklist
+- [ ] Remove stray monitor polling `/midnightepos` (404 every minute in PM2 logs)
 
 ---
 

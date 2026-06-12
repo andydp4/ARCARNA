@@ -1,8 +1,8 @@
 # Execution Briefs — Post-Stabilise
 
-**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Deploy + QA:** [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) · **Next work:** [`WAVE12_NEXT.md`](./WAVE12_NEXT.md)
+**Start here:** [`MASTER_EXECUTION_PLAN.md`](./MASTER_EXECUTION_PLAN.md) · **Status:** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Deploy + QA:** [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) · **Next work:** [`WAVE13_NEXT.md`](./WAVE13_NEXT.md)
 
-Waves **0–11** on `main` (through setup-wizard Liquid Metal PR #32). **Deploy + manual QA** per Wave 11 launch doc; Wave **12** = list-page E2 + lint/import snags.
+Waves **0–12** on `main` (`a37e9ae` — PRs #31–#39). Production on **VPS1** `/root/MidnightEPOS`. Wave **13** = import empty states, `lint:strict`, ops drills (O2/O3).
 
 This directory contains full execution briefs for everything that ships **after** the Stabilise (S1–S8) and Channel Readiness (C1–C5) phases land. Each brief is self-contained so any agent (any model) can pick one up, execute it, open a PR, and stop.
 
