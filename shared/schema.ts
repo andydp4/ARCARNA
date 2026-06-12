@@ -89,7 +89,7 @@ export const locations = pgTable("locations", {
   name: varchar("name", { length: 255 }).notNull(),
   address: varchar("address", { length: 500 }).notNull(),
   city: varchar("city", { length: 100 }).notNull(),
-  state: varchar("state", { length: 2 }).notNull(),
+  state: varchar("state", { length: 100 }).notNull(),
   zipCode: varchar("zip_code", { length: 10 }).notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
