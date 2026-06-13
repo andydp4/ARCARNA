@@ -36,7 +36,7 @@ This document tracks **high-level security posture** for MidnightEPOS. It comple
 - Tiered rate limits on auth and import routes.
 - Clerk-hosted auth; no custom password forms in-app.
 
-**Future tighten (optional):** nginx-only CSP for static assets under `/midnight/assets/*` — re-test `/midnight/sign-in` after any change. See [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md) § HTTP security headers.
+**Future tighten (optional):** nginx-only CSP for static assets under `/arcarna/assets/*` — re-test `/arcarna/sign-in` after any change. See [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md) § HTTP security headers.
 
 **Signed off:** 2026-06-05 — documented accepted risk; no Node CSP until Clerk+Vite boot path supports nonce/hash CSP.
 

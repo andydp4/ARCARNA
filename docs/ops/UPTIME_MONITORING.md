@@ -10,9 +10,9 @@ Configure **external** HTTP checks so production failures page someone within mi
 
 | Monitor | URL | Interval | Alert on |
 |---------|-----|----------|----------|
-| **Primary health** | `GET https://viger.cloud/midnight/api/health` | 1–5 min | Non-200, timeout (>30s), SSL error |
-| **App shell (optional)** | `GET https://viger.cloud/midnight/` | 5 min | Non-200 |
-| **Metrics (optional)** | `GET https://viger.cloud/midnight/api/health/metrics` | 5 min | Non-200; JSON field thresholds (see below) |
+| **Primary health** | `GET https://viger.cloud/arcarna/api/health` | 1–5 min | Non-200, timeout (>30s), SSL error |
+| **App shell (optional)** | `GET https://viger.cloud/arcarna/` | 5 min | Non-200 |
+| **Metrics (optional)** | `GET https://viger.cloud/arcarna/api/health/metrics` | 5 min | Non-200; JSON field thresholds (see below) |
 
 Expected health body: `{"ok":true,...}`.
 
@@ -38,7 +38,7 @@ Tune thresholds per environment. Public scrape is intentional (no auth) — see 
 ## Setup steps (UptimeRobot example)
 
 1. Create account → **Add New Monitor** → type **HTTP(s)**.
-2. URL: `https://viger.cloud/midnight/api/health`
+2. URL: `https://viger.cloud/arcarna/api/health`
 3. Monitoring interval: **5 minutes** (or 1 min for critical).
 4. Alert contacts: email/SMS/Slack — assign on-call rotation in your team wiki.
 5. **Create monitor** → use **Test Alert** to confirm delivery.

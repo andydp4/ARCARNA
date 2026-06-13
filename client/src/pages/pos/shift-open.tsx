@@ -20,12 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-
-const SHIFT_STORAGE_KEY = "midnight_currentShiftId";
+import {
+  migrateStorageKey,
+  STORAGE_SHIFT_ID,
+  STORAGE_SHIFT_ID_LEGACY,
+} from "@shared/storageKeys";
 
 export function getStoredShiftId(): string | null {
   try {
-    return localStorage.getItem(SHIFT_STORAGE_KEY);
+    return migrateStorageKey(STORAGE_SHIFT_ID_LEGACY, STORAGE_SHIFT_ID);
   } catch {
     return null;
   }
@@ -33,8 +36,8 @@ export function getStoredShiftId(): string | null {
 
 export function setStoredShiftId(id: string | null) {
   try {
-    if (id) localStorage.setItem(SHIFT_STORAGE_KEY, id);
-    else localStorage.removeItem(SHIFT_STORAGE_KEY);
+    if (id) localStorage.setItem(STORAGE_SHIFT_ID, id);
+    else localStorage.removeItem(STORAGE_SHIFT_ID);
   } catch {
     /* ignore */
   }

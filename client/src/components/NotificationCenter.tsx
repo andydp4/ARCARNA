@@ -10,6 +10,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  migrateStorageKey,
+  STORAGE_NOTIFICATIONS_DISMISSED,
+  STORAGE_NOTIFICATIONS_DISMISSED_LEGACY,
+} from "@shared/storageKeys";
 
 type NotificationItem = {
   id: string;
@@ -22,11 +27,12 @@ type NotificationItem = {
   readAt?: string | null;
 };
 
-const STORAGE_KEY = "midnight.notifications.dismissed";
-
 function loadDismissed(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = migrateStorageKey(
+      STORAGE_NOTIFICATIONS_DISMISSED_LEGACY,
+      STORAGE_NOTIFICATIONS_DISMISSED,
+    );
     if (!raw) return new Set();
     return new Set(JSON.parse(raw) as string[]);
   } catch {
@@ -35,7 +41,7 @@ function loadDismissed(): Set<string> {
 }
 
 function saveDismissed(ids: Set<string>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
+  localStorage.setItem(STORAGE_NOTIFICATIONS_DISMISSED, JSON.stringify([...ids]));
 }
 
 export function NotificationCenter() {

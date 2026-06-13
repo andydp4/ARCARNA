@@ -60,9 +60,9 @@ In Clerk → **Configure** → **Paths** (or **Domains / URLs** depending on Cle
 |---------|------------------------|
 | Sign-in URL | `https://accounts.viger.cloud/sign-in` |
 | Sign-up URL | `https://accounts.viger.cloud/sign-up` |
-| After sign-in (fallback) | `https://viger.cloud/midnight/` |
+| After sign-in (fallback) | `https://viger.cloud/arcarna/` |
 | After sign-out | `https://viger.cloud/` |
-| Home URL | `https://viger.cloud/midnight/` |
+| Home URL | `https://viger.cloud/arcarna/` |
 
 For **IP-only testing** before a domain:
 
@@ -88,12 +88,12 @@ Add to server `.env` and rebuild:
 ```env
 CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
 VITE_CLERK_ACCOUNTS_URL=https://accounts.viger.cloud
-VITE_APP_URL=https://viger.cloud/midnight
-VITE_BASE_PATH=/midnight
-APP_BASE_PATH=/midnight
+VITE_APP_URL=https://viger.cloud/arcarna
+VITE_BASE_PATH=/arcarna
+APP_BASE_PATH=/arcarna
 ```
 
-The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/midnight/&link_domain=viger.cloud` (`link_domain` links the Account Portal back to the app host; this is **not** the same as adding a satellite in the Dashboard).
+The app redirects sign-in to `https://accounts.viger.cloud/sign-in?redirect_url=https://viger.cloud/arcarna/&link_domain=viger.cloud` (`link_domain` links the Account Portal back to the app host; this is **not** the same as adding a satellite in the Dashboard).
 
 `/sign-in` on `viger.cloud` auto-redirects to the Account Portal.
 
@@ -111,7 +111,7 @@ If you see **“Signed in with Clerk, but the server session is not ready”**, 
 
 - `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY` are from the **same** Clerk application
 - `VITE_CLERK_PUBLISHABLE_KEY` matches `CLERK_PUBLISHABLE_KEY` (rebuild after changing)
-- Clerk dashboard lists `https://viger.cloud/midnight/` under allowed redirect URLs
+- Clerk dashboard lists `https://viger.cloud/arcarna/` under allowed redirect URLs
 - Your email is on the **allowed users** list (or approve yourself as super admin via database — see developer)
 
 ---

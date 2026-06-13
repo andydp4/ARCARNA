@@ -56,7 +56,7 @@ export const organizations = pgTable("organizations", {
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
   receiptTemplateHtml: text("receipt_template_html"),
-  accentStyle: varchar("accent_style", { length: 32 }).default("midnight"),
+  accentStyle: varchar("accent_style", { length: 32 }).default("arcarna"),
   businessColors: jsonb("business_colors"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

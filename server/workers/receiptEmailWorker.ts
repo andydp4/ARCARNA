@@ -48,7 +48,7 @@ function receiptFromEmail(): string {
   return (
     process.env.RECEIPT_FROM_EMAIL?.trim() ||
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    "receipts@midnight.local"
+    "receipts@arcarna.local"
   );
 }
 

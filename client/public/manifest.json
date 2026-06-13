@@ -1,22 +1,22 @@
 {
-  "name": "Midnight EPOS",
-  "short_name": "Midnight",
+  "name": "ARCARNA EPOS",
+  "short_name": "ARCARNA",
   "description": "Enterprise Point of Sale System with offline support",
-  "start_url": "/midnight/",
-  "scope": "/midnight/",
+  "start_url": "/arcarna/",
+  "scope": "/arcarna/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/midnight/icon-192.png",
+      "src": "/arcarna/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/midnight/icon-512.png",
+      "src": "/arcarna/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

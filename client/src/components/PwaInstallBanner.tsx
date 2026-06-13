@@ -1,6 +1,7 @@
 import { Download, Share, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { BRAND_PRODUCT_NAME } from "@shared/brand";
 
 export function PwaInstallBanner() {
   const { visible, showInstallPrompt, showIosHint, promptInstall, dismiss } = usePwaInstall();
@@ -11,7 +12,7 @@ export function PwaInstallBanner() {
     <div
       className="lm-shell-header border-b border-primary/20 bg-primary/5 px-4 py-2"
       role="region"
-      aria-label="Install Midnight EPOS"
+      aria-label={`Install ${BRAND_PRODUCT_NAME}`}
       data-testid="pwa-install-banner"
     >
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
@@ -25,7 +26,7 @@ export function PwaInstallBanner() {
               </>
             ) : (
               <>
-                Install <strong>Midnight EPOS</strong> for fullscreen POS, faster launch, and offline shell.
+                Install <strong>{BRAND_PRODUCT_NAME}</strong> for fullscreen POS, faster launch, and offline shell.
               </>
             )}
           </p>

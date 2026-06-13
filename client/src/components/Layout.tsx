@@ -14,6 +14,7 @@ import { NotificationCenter } from '@/components/NotificationCenter'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 import { BrandLogo } from '@/components/BrandLogo'
+import { BRAND_NAME, BRAND_PRODUCT_NAME } from '@shared/brand'
 import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
 
 interface LayoutProps {
@@ -93,8 +94,8 @@ export function Layout({ children }: LayoutProps) {
                   <div className="flex h-full flex-col">
                     <div className="border-b border-border p-4">
                       <Link href="/" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
-                        <BrandLogo variant="white-on-navy" size="sm" alt="" className="rounded-lg" />
-                        <h2 className="text-lg font-semibold tracking-tight text-metal-warm-white">Midnight EPOS</h2>
+                        <BrandLogo variant="mark" size="sm" alt="" className="rounded-lg" />
+                        <h2 className="text-lg font-semibold tracking-tight text-metal-warm-white">{BRAND_NAME}</h2>
                       </Link>
                     </div>
                     <div className="flex-1 overflow-y-auto"><NavLinks /></div>
@@ -112,8 +113,8 @@ export function Layout({ children }: LayoutProps) {
               </Button>
             )}
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <BrandLogo variant="white-on-navy" size="sm" alt="" className="rounded-md" />
-              <span className="truncate text-xl font-semibold tracking-tight text-metal-warm-white">Midnight EPOS</span>
+              <BrandLogo variant="mark" size="sm" alt="" className="rounded-md" />
+              <span className="truncate text-xl font-semibold tracking-tight text-metal-warm-white">{BRAND_PRODUCT_NAME}</span>
             </Link>
           </div>
           <div className="flex items-center gap-3">

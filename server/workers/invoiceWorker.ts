@@ -321,7 +321,7 @@ async function generateAndUploadPdf(
     console.log(`[InvoiceWorker] Generated PDF for ${invoiceNumber}, size: ${pdfBuffer.length} bytes`);
 
     // Upload to Google Drive
-    const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+    const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
     const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoiceNumber}.pdf`, folderId);
 
     console.log(`[InvoiceWorker] Uploaded ${invoiceNumber} to Drive: ${uploadResult.webViewLink}`);

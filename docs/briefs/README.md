@@ -29,7 +29,7 @@ Every brief must:
 - Never run `npm run db:push` against production.
 - Never commit `.env*` files.
 - Cite the architectural principle being honoured in the PR description if it touches storage, schema, or workers.
-- **Logo (mandatory for any UI work):** Use only the official brand files in `client/public/brand/` (`midnight-logo-navy-on-white.png`, `midnight-logo-white-on-navy.png`). Do **not** redraw, approximate, or “improve” the mark in code, CSS, SVG, or AI mockups. Hull shapes (M-profile, etc.) may echo the logo’s geometry as layout inspiration; the rendered logo asset itself is fixed. See `docs/ux-concepts/_shared-context.md` § Brand.
+- **Logo (mandatory for any UI work):** Use only the official brand files in `client/public/brand/` (`arcarna-mark.png`, `arcarna-wordmark.png`). Do **not** redraw, approximate, or “improve” the mark in code, CSS, SVG, or AI mockups. Hull shapes (M-profile, etc.) may echo the logo’s geometry as layout inspiration; the rendered logo asset itself is fixed. See `docs/ux-concepts/_shared-context.md` § Brand.
 
 ## Stabilise + Channel Readiness status
 

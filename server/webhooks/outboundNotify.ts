@@ -38,8 +38,8 @@ export async function notifyOutboundWebhooksForEvent(event: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Midnight-Signature": sig,
-        "X-Midnight-Event": event.eventType,
+        "X-Arcarna-Signature": sig,
+        "X-Arcarna-Event": event.eventType,
       },
       body,
     }).catch(() => {});

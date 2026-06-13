@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { apiFetch, resolveApiUrl, resolveAppPath } from "@/lib/appPaths";
 import { isClerkMode, type AuthRuntime } from "@/lib/authConfig";
 import { wipeAllOfflineData } from "@/lib/orgCacheWipe";
+import { BRAND_PRODUCT_NAME } from "@shared/brand";
 
 function SigningOutView() {
   return (
@@ -66,7 +67,7 @@ export default function SignOutPage() {
     <AuthShell subtitle="" title="Signed out" showBrand={false}>
       <CheckCircle2 className="mx-auto h-12 w-12 text-[hsl(158,64%,42%)] mb-4" aria-hidden />
       <p className="text-metal-muted text-center mb-6">
-        You have been signed out of Midnight EPOS. Local offline data was cleared from this device.
+        You have been signed out of {BRAND_PRODUCT_NAME}. Local offline data was cleared from this device.
       </p>
       <div className="flex flex-col gap-3">
         <Button className="w-full min-h-[44px] lm-btn-metal" asChild>

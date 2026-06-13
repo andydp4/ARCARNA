@@ -144,7 +144,7 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
       });
       
       // Upload to Google Drive
-      const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+      const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
       const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoice.invoiceNumber}.pdf`, folderId);
       
       // Update invoice with Google Drive info
@@ -192,7 +192,7 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         return;
       }
       
-      const folderId = await createFolderIfNotExists('Midnight EPOS Invoices');
+      const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
       
       const results: Array<{ invoiceNumber: string; status: string; error?: string }> = [];
       
