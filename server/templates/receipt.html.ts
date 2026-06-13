@@ -135,7 +135,7 @@ export function renderReceiptTemplate(
 
 export function buildSampleReceiptContext(unsubscribeUrl: string): ReceiptRenderContext {
   return {
-    org: { name: "Midnight Retail", logoUrl: "" },
+    org: { name: "ARCARNA Retail", logoUrl: "" },
     customer: { name: "Alex Sample" },
     order: {
       number: "ORD-SAMPLE",

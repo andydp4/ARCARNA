@@ -1,5 +1,10 @@
 import { resolveAppPath } from "@/lib/appPaths";
-import { LEGACY_OFFLINE_DB_NAME, offlineDbNameForOrg } from "@/lib/offline-storage";
+import {
+  legacyOfflineDbNameForOrg,
+  offlineDbNameForOrg,
+  OFFLINE_DB_PREFIX,
+  OFFLINE_DB_PREFIX_LEGACY,
+} from "@shared/storageKeys";
 
 export async function deleteIndexedDb(name: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -28,18 +33,25 @@ export async function clearServiceWorkerAllCaches(): Promise<void> {
 export async function wipeOrgOfflineData(orgId: string): Promise<void> {
   await Promise.all([
     deleteIndexedDb(offlineDbNameForOrg(orgId)),
+    deleteIndexedDb(legacyOfflineDbNameForOrg(orgId)),
     clearServiceWorkerOrgCache(orgId),
   ]);
 }
 
 /** Logout / session end — drop legacy DB and every org-scoped offline DB. */
 export async function wipeAllOfflineData(): Promise<void> {
-  const names = new Set<string>([LEGACY_OFFLINE_DB_NAME]);
+  const names = new Set<string>([OFFLINE_DB_PREFIX_LEGACY, OFFLINE_DB_PREFIX]);
   if (typeof indexedDB.databases === "function") {
     const listed = await indexedDB.databases();
     for (const db of listed) {
-      if (db.name?.startsWith("midnight-epos-db")) {
-        names.add(db.name);
+      const name = db.name;
+      if (
+        name?.startsWith(`${OFFLINE_DB_PREFIX_LEGACY}--`) ||
+        name?.startsWith(`${OFFLINE_DB_PREFIX}--`) ||
+        name === OFFLINE_DB_PREFIX_LEGACY ||
+        name === OFFLINE_DB_PREFIX
+      ) {
+        names.add(name);
       }
     }
   }

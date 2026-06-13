@@ -1,7 +1,8 @@
 # Example Nginx site for viger.cloud
 # Cloudflare DNS/proxy/cache: see docs/ops/CLOUDFLARE.md
 # - /           → Viger Cloud portal (static, served by Node from dist/portal)
-# - /midnight   → Midnight EPOS (Node on :5000)
+# - /arcarna   → ARCARNA EPOS (Node on :5000)
+# - Legacy: /midnight → 301 to /arcarna (app-level + optional edge redirect below)
 # - /files, /backups → portal placeholder pages
 #
 # After Certbot: use the HTTPS server block below (or add HSTS to the block Certbot creates).
@@ -11,6 +12,14 @@ server {
     server_name viger.cloud www.viger.cloud;
 
     client_max_body_size 25m;
+
+    location /midnight/ {
+        rewrite ^/midnight/(.*)$ /arcarna/$1 permanent;
+    }
+
+    location = /midnight {
+        return 301 /arcarna/;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:5000;

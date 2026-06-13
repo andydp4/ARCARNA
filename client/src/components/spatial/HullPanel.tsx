@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { resolveAppPath } from "@/lib/appPaths";
+import { BRAND_MARK, BRAND_NAME } from "@shared/brand";
 
 type HullPanelProps = {
   children: ReactNode;
@@ -34,8 +35,8 @@ export function HullPanel({
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             {showLogo && (
               <img
-                src={resolveAppPath("/brand/midnight-logo-white-on-navy.png")}
-                alt="Midnight"
+                src={resolveAppPath(BRAND_MARK)}
+                alt={BRAND_NAME}
                 className="h-9 w-auto shrink-0 object-contain sm:h-10"
                 width={120}
                 height={40}

@@ -5,7 +5,20 @@
  * then navigates to /pos, which consumes it once on mount. No order is created
  * until the user confirms checkout (Principle 14).
  */
-const KEY = "midnight.whatsapp.draftOrder";
+import {
+  STORAGE_WHATSAPP_DRAFT,
+  STORAGE_WHATSAPP_DRAFT_LEGACY,
+} from "@shared/storageKeys";
+
+function migrateDraftKey(): void {
+  if (typeof sessionStorage === "undefined") return;
+  if (sessionStorage.getItem(STORAGE_WHATSAPP_DRAFT) !== null) return;
+  const legacy = sessionStorage.getItem(STORAGE_WHATSAPP_DRAFT_LEGACY);
+  if (legacy !== null) {
+    sessionStorage.setItem(STORAGE_WHATSAPP_DRAFT, legacy);
+    sessionStorage.removeItem(STORAGE_WHATSAPP_DRAFT_LEGACY);
+  }
+}
 
 export interface WhatsappDraftItem {
   productId?: string;
@@ -23,7 +36,7 @@ export interface WhatsappDraftOrder {
 
 export function stashWhatsappDraft(draft: WhatsappDraftOrder): void {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(draft));
+    sessionStorage.setItem(STORAGE_WHATSAPP_DRAFT, JSON.stringify(draft));
   } catch {
     /* ignore storage failures */
   }
@@ -32,9 +45,10 @@ export function stashWhatsappDraft(draft: WhatsappDraftOrder): void {
 /** Read and clear the pending draft (consume-once). */
 export function consumeWhatsappDraft(): WhatsappDraftOrder | null {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    migrateDraftKey();
+    const raw = sessionStorage.getItem(STORAGE_WHATSAPP_DRAFT);
     if (!raw) return null;
-    sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(STORAGE_WHATSAPP_DRAFT);
     return JSON.parse(raw) as WhatsappDraftOrder;
   } catch {
     return null;

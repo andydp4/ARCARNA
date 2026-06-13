@@ -4,7 +4,7 @@
 
 ### Product
 
-**Midnight EPOS** is a TypeScript monolith: Express API + React/Vite SPA (PWA) on port **5000**, mounted at **`/midnight`** by default (`APP_BASE_PATH` / `VITE_BASE_PATH`). A static owner portal is served at `/`. See `ARCHITECTURE.md` and `package.json` scripts.
+**ARCARNA EPOS** is a TypeScript monolith: Express API + React/Vite SPA (PWA) on port **5000**, mounted at **`/arcarna`** by default (`APP_BASE_PATH` / `VITE_BASE_PATH`). Legacy **`/midnight`** URLs 301 to `/arcarna`. A static owner portal is served at `/`. See `ARCHITECTURE.md` and `package.json` scripts.
 
 ### Services (local dev)
 
@@ -30,11 +30,11 @@ PORT=5000
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/midnight_dev
 SESSION_SECRET=dev_session_secret_at_least_32_characters
 DEV_AUTH_USER_ID=seed-cashier
-VITE_BASE_PATH=/midnight
-APP_BASE_PATH=/midnight
+VITE_BASE_PATH=/arcarna
+APP_BASE_PATH=/arcarna
 ```
 
-Use URLs under **`http://localhost:5000/midnight/`** (not bare `/api/*`).
+Use URLs under **`http://localhost:5000/arcarna/`** (not bare `/api/*`).
 
 ### PostgreSQL on Cloud Agent VMs
 
@@ -91,6 +91,6 @@ Prefer **tmux** for long-running `npm run dev` (e.g. session `midnight-dev`).
 
 ### Hello-world verification
 
-1. `curl http://localhost:5000/midnight/api/health` → `{"ok":true,...}`
-2. Open `http://localhost:5000/midnight/pos`, add a product, complete a cash sale.
-3. Or `POST /midnight/api/orders` with session cookie after visiting the app once (see `packages/domain/src/schemas.ts` `PlaceOrderInput`).
+1. `curl http://localhost:5000/arcarna/api/health` → `{"ok":true,...}`
+2. Open `http://localhost:5000/arcarna/pos`, add a product, complete a cash sale.
+3. Or `POST /arcarna/api/orders` with session cookie after visiting the app once (see `packages/domain/src/schemas.ts` `PlaceOrderInput`).

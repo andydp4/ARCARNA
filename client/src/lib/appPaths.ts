@@ -1,9 +1,9 @@
 import { apiPathWithBase, normalizeAppBasePath, withAppBase } from "@shared/appPaths";
 import { withClerkAuthHeaders } from "./clerkApiAuth";
 
-/** Client mount path, e.g. `/midnight` (from VITE_BASE_PATH). */
+/** Client mount path, e.g. `/arcarna` (from VITE_BASE_PATH). */
 export const APP_BASE = normalizeAppBasePath(
-  (import.meta.env.VITE_BASE_PATH as string | undefined) ?? "/midnight",
+  (import.meta.env.VITE_BASE_PATH as string | undefined) ?? "/arcarna",
 );
 
 export function resolveAppPath(path: string): string {

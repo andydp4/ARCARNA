@@ -3,8 +3,8 @@ import path from "node:path";
 
 const src = path.resolve("portal");
 const dest = path.resolve("dist/portal");
-const brandSrc = path.resolve("client/public/brand/midnight-logo-white-on-navy.png");
-const brandDest = path.resolve("portal/portal-assets/midnight-logo-white-on-navy.png");
+const brandSrc = path.resolve("client/public/brand/arcarna-wordmark.png");
+const brandDest = path.resolve("portal/portal-assets/arcarna-wordmark.png");
 
 if (!fs.existsSync(src)) {
   console.error("portal/ directory not found");

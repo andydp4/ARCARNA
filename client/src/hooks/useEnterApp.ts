@@ -3,7 +3,7 @@ import { useUser } from "@clerk/clerk-react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { AuthUser } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/appPaths";
-import { isMidnightAppPath, navigateToAppEntry } from "@/lib/authNavigation";
+import { isAppBasePath, navigateToAppEntry } from "@/lib/authNavigation";
 import { resolveAppPath } from "@/lib/appPaths";
 import { useAuth } from "@/hooks/useAuth";
 import { waitForClerkToken } from "@/lib/clerkApiAuth";
@@ -195,7 +195,7 @@ export function useEnterApp(options?: { autoRedirect?: boolean }) {
       const path = window.location.pathname;
       const entry = resolveAppPath("/");
       const signIn = resolveAppPath("/sign-in");
-      if (path === entry || path === signIn || !isMidnightAppPath(path)) {
+      if (path === entry || path === signIn || !isAppBasePath(path)) {
         navigateToAppEntry(user, "auth-auto");
       }
       return;

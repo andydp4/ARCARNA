@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { setSelectedOrgId } from "@/lib/orgScope";
+import { BRAND_PRODUCT_NAME } from "@shared/brand";
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
@@ -48,7 +49,7 @@ export default function Onboarding() {
           </div>
           <CardTitle className="text-2xl">Set up your business</CardTitle>
           <CardDescription>
-            Create your first organization to start using Midnight EPOS.
+            Create your first organization to start using {BRAND_PRODUCT_NAME}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -63,7 +64,7 @@ export default function Onboarding() {
               id="org-name"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
-              placeholder="e.g. Midnight Retail Ltd"
+              placeholder="e.g. Acme Retail Ltd"
               data-testid="input-org-name"
             />
           </div>

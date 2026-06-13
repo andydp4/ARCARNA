@@ -1,6 +1,6 @@
 # Deploy MidnightEPOS on Hostinger VPS (Node 20 + PM2 + Nginx)
 
-Production site: **https://viger.cloud** (portal) · **https://viger.cloud/midnight** (Midnight EPOS)
+Production site: **https://viger.cloud** (portal) · **https://viger.cloud/arcarna** (ARCARNA EPOS)
 
 This guide matches the **current VPS layout** (Node/PM2/Nginx). For Docker Compose instead, see [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md).
 
@@ -94,16 +94,16 @@ nano .env
 | `VITE_CLERK_PUBLISHABLE_KEY` | same as publishable key |
 | `CLERK_ACCOUNTS_URL` | `https://accounts.viger.cloud` |
 | `VITE_CLERK_ACCOUNTS_URL` | same (baked in at build) |
-| `VITE_APP_URL` | `https://viger.cloud/midnight` |
-| `VITE_BASE_PATH` | `/midnight` |
-| `APP_BASE_PATH` | `/midnight` |
+| `VITE_APP_URL` | `https://viger.cloud/arcarna` |
+| `VITE_BASE_PATH` | `/arcarna` |
+| `APP_BASE_PATH` | `/arcarna` |
 | `DEV_AUTH_BYPASS` | `0` or unset |
 
 **Clerk dashboard** → Paths / Account Portal:
 
 - Sign-in: `https://accounts.viger.cloud/sign-in`
 - Sign-up: `https://accounts.viger.cloud/sign-up`
-- After sign-in / home: `https://viger.cloud/midnight/`
+- After sign-in / home: `https://viger.cloud/arcarna/`
 - DNS: `accounts.viger.cloud` records from Clerk → Domains
 
 See [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md).
@@ -250,9 +250,9 @@ SESSION_COOKIE_SECURE=1
 
 | Header / policy | Set by | Notes |
 |-----------------|--------|--------|
-| **HSTS** (`Strict-Transport-Security`) | **Nginx** (HTTPS `server` block) | Add after Certbot: `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;` — see `deploy/nginx-viger.cloud.conf.example`. Verify: `curl -sI https://viger.cloud/midnight/api/health` includes the header. |
+| **HSTS** (`Strict-Transport-Security`) | **Nginx** (HTTPS `server` block) | Add after Certbot: `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;` — see `deploy/nginx-viger.cloud.conf.example`. Verify: `curl -sI https://viger.cloud/arcarna/api/health` includes the header. |
 | **Helmet defaults** (e.g. `X-Content-Type-Options`, `X-Frame-Options`) | **Node** (`server/security.ts`, production only) | Applied when `NODE_ENV=production`. |
-| **Content-Security-Policy** | **Off in Node** | Helmet CSP is disabled so Vite inline bootstraps and Clerk sign-in (`/midnight/sign-in` → `accounts.viger.cloud`) work without console violations. Optional strict CSP at nginx for static assets only — not required for API/HTML shell. |
+| **Content-Security-Policy** | **Off in Node** | Helmet CSP is disabled so Vite inline bootstraps and Clerk sign-in (`/arcarna/sign-in` → `accounts.viger.cloud`) work without console violations. Optional strict CSP at nginx for static assets only — not required for API/HTML shell. |
 | **Rate limits** | **Node** (`server/security.ts`) | Global `/api/*`: 800 req / 15 min (prod). `/api/auth/*`: 20 / min. `/api/*/import*`: 5 / min. Health probes (`/api/health`, `/api/auth/runtime`) exempt from global limiter. |
 
 Rebuild/restart if you change `VITE_*` keys:
@@ -284,7 +284,7 @@ bash scripts/apply-migrations-pm2.sh
 # Delete + start forces a fresh .env read.
 pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
 
-curl -sS http://127.0.0.1:5000/midnight/api/health
+curl -sS http://127.0.0.1:5000/arcarna/api/health
 ```
 
 > ⚠️ **`.env` changes only take effect after a delete+start (above), not `pm2 restart`/`reload`.**
@@ -296,7 +296,7 @@ curl -sS http://127.0.0.1:5000/midnight/api/health
 
 **Sentry sourcemaps on VPS:** If build logs `Invalid token (401)` from `@sentry/vite-plugin`, either set a valid `SENTRY_AUTH_TOKEN` or remove that line from `.env` (runtime error reporting via `SENTRY_DSN` still works; only upload fails).
 
-Open https://viger.cloud — you should see the **Viger Cloud** portal. Open **Midnight EPOS** or go to https://viger.cloud/midnight for **Sign in** (Clerk).
+Open https://viger.cloud — you should see the **Viger Cloud** portal. Open **ARCARNA EPOS** or go to https://viger.cloud/arcarna for **Sign in** (Clerk).
 
 ---
 
@@ -378,9 +378,9 @@ Production items that require VPS or external tooling (not app PRs):
 | Clerk redirect error | Add exact URLs in Clerk dashboard |
 | `migration:sanity` fails | Run missing migration files in order |
 | `tsx: not found` on VPS | `unset NODE_ENV` then `npm ci --include=dev` (or `npm install`); do not run `npm ci` while `.env` has `NODE_ENV=production` exported |
-| 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/midnight/api/health` |
+| 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/arcarna/api/health` |
 | Sentry `57P01` / "terminating connection due to administrator command" | Expected when Neon compute suspends or restarts. Use **pooler** `DATABASE_URL` (`-pooler.neon.tech`); app retries transient errors. One-off is normal — disable Neon scale-to-zero for production or accept wake latency on first query after idle. |
-| Uptime monitor 404 on `/midnightepos` | Wrong path — use `GET /midnight/api/health` (note the slash after `midnight`). |
+| Uptime monitor 404 on `/midnightepos` | Wrong path — use `GET /arcarna/api/health`. Legacy `/midnight/` 301s to `/arcarna/`. |
 | High Neon CU-hours / transfer on Free plan | Set `WORKER_DISPATCH_INTERVAL_MS=5000`, `WORKER_PROCESS_INTERVAL_MS=2000`, `WORKER_CONCURRENCY=1` in `.env`; use pooler `DATABASE_URL`; poll `/api/health` not `/api/health/metrics` every minute |
 
 For structured triage (health, PM2, nginx, auth loops, post-incident audit), use **[ops/INCIDENT_CHECKLIST.md](./ops/INCIDENT_CHECKLIST.md)**.

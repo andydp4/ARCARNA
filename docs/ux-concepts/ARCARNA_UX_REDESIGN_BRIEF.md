@@ -1,6 +1,4 @@
-
-> **Note:** Formerly \`MIDNIGHT_UX_REDESIGN_BRIEF.md\`. Product brand is now ARCARNA EPOS.
-# Midnight — UX/UI Redesign Brief
+# ARCARNA — UX/UI Redesign Brief
 
 **Direction:** Liquid Metal Industrial ⚙️🩶  
 **Status:** Approved design direction (May 2026)  

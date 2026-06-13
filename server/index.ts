@@ -7,8 +7,9 @@ import { validateProductionEnv } from "./validateProductionEnv";
 import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
 import { APP_BASE_PATH } from "./appBase";
 import { registerPortalRoutes } from "./portal";
-import { registerLegacyEposRedirects } from "./legacyRedirects";
+import { registerLegacyEposRedirects, registerDefaultLegacyBasePathRedirects } from "./legacyRedirects";
 import { withAppBase } from "@shared/appPaths";
+import { BRAND_PRODUCT_NAME } from "@shared/brand";
 import { requestIdMiddleware, type RequestWithId } from "./requestId";
 import { sentryRequestContextMiddleware } from "./sentryRequestContext";
 import { logApiJson } from "./structuredLog";
@@ -105,6 +106,7 @@ process.on("unhandledRejection", (reason) => {
 (async () => {
   registerPortalRoutes(app);
   registerLegacyEposRedirects(app, APP_BASE_PATH);
+  registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
 
   // Root-level aliases for bookmarks / old links that omit APP_BASE_PATH
   if (APP_BASE_PATH) {
@@ -116,11 +118,11 @@ process.on("unhandledRejection", (reason) => {
     });
   }
 
-  const midnight = express();
+  const eposApp = express();
 
-  mountTieredApiRateLimits(midnight, isProduction);
+  mountTieredApiRateLimits(eposApp, isProduction);
 
-  await registerRoutes(midnight);
+  await registerRoutes(eposApp);
 
   const mount = APP_BASE_PATH || "/";
   if (APP_BASE_PATH) {
@@ -142,7 +144,7 @@ process.on("unhandledRejection", (reason) => {
       return next();
     });
   }
-  app.use(mount, midnight);
+  app.use(mount, eposApp);
 
   const server = createServer(app);
 
@@ -169,10 +171,10 @@ process.on("unhandledRejection", (reason) => {
   const swScope = APP_BASE_PATH ? withAppBase(APP_BASE_PATH, "/") : "/";
 
   if (isProduction) {
-    serveStatic(midnight, swScope);
+    serveStatic(eposApp, swScope);
   } else {
     const { setupVite } = await import("./vite");
-    await setupVite(midnight, server);
+    await setupVite(eposApp, server);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -186,7 +188,7 @@ process.on("unhandledRejection", (reason) => {
     host: "0.0.0.0",
     reusePort: true,
   }, async () => {
-    log(`serving on port ${port} (portal at /, Midnight EPOS at ${mount || "/"})`);
+    log(`serving on port ${port} (portal at /, ${BRAND_PRODUCT_NAME} at ${mount || "/"})`);
     
     if (process.env.DATABASE_URL) {
       // domain_outbox / analytics.worker deprecated — use event_outbox + server/workers/*

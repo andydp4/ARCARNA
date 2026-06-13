@@ -23,7 +23,7 @@ One-page checklist for **VPS / external tooling** items that cannot be closed by
    ```bash
    bash scripts/verify-production-headers.sh
    # or manually:
-   curl -sI https://viger.cloud/midnight/api/health | grep -i strict-transport-security
+   curl -sI https://viger.cloud/arcarna/api/health | grep -i strict-transport-security
    ```
 
 3. Expected: `Strict-Transport-Security: max-age=31536000; includeSubDomains`
@@ -39,7 +39,7 @@ One-page checklist for **VPS / external tooling** items that cannot be closed by
 
 Follow [UPTIME_MONITORING.md](./UPTIME_MONITORING.md).
 
-- [x] Health monitor live (`/midnight/api/health`) — 2026-06-11
+- [x] Health monitor live (`/arcarna/api/health`) — 2026-06-11
 - [x] Test alert fired and acknowledged
 - [ ] On-call contacts linked from incident checklist
 - [ ] Remove stray monitor polling `/midnightepos` (404 every minute in PM2 logs)
@@ -76,7 +76,7 @@ Optional maintenance window:
 ```bash
 sudo reboot
 # within 2 min after boot:
-curl -fsS http://127.0.0.1:5000/midnight/api/health
+curl -fsS http://127.0.0.1:5000/arcarna/api/health
 pm2 list
 ```
 

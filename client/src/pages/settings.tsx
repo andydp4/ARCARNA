@@ -87,7 +87,7 @@ export default function Settings() {
   // Load settings from localStorage or API
   const [settings, setSettings] = useState({
     // General Settings
-    businessName: 'Midnight EPOS',
+    businessName: 'ARCARNA EPOS',
     businessAddress: '',
     businessPhone: '',
     businessEmail: '',
@@ -136,9 +136,9 @@ export default function Settings() {
 
   // Mock users data - would come from API
   const [users] = useState([
-    { id: 1, name: 'Admin User', email: 'admin@midnight.com', role: 'admin', status: 'active' },
-    { id: 2, name: 'John Doe', email: 'john@midnight.com', role: 'manager', status: 'active' },
-    { id: 3, name: 'Jane Smith', email: 'jane@midnight.com', role: 'cashier', status: 'pending' },
+    { id: 1, name: 'Admin User', email: 'admin@example.com', role: 'admin', status: 'active' },
+    { id: 2, name: 'John Doe', email: 'john@example.com', role: 'manager', status: 'active' },
+    { id: 3, name: 'Jane Smith', email: 'jane@example.com', role: 'cashier', status: 'pending' },
   ])
 
   useEffect(() => {

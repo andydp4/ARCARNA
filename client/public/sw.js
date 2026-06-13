@@ -1,9 +1,10 @@
 const SW_BASE = self.location.pathname.replace(/\/sw\.js$/i, "") || "";
 const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
 
-/** Bump when cache layout changes; activate deletes older midnight-epos-* caches. */
-const CACHE_VERSION = "4";
-const CACHE_PREFIX = "midnight-epos";
+/** Bump when cache layout changes; activate deletes older arcarna-epos-* and midnight-epos-* caches. */
+const CACHE_VERSION = "5";
+const CACHE_PREFIX = "arcarna-epos";
+const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
 const API_CACHE_NAME = `${CACHE_PREFIX}-api-${CACHE_VERSION}`;
 
@@ -11,7 +12,8 @@ const SHELL_URL = SW_BASE ? `${SW_BASE}/` : "/";
 const INDEX_URL = SW_BASE ? `${SW_BASE}/index.html` : "/index.html";
 const PRECACHE_ASSETS = [SHELL_URL, INDEX_URL];
 
-const ORG_CACHE_PARAM = "__midnight_org";
+const ORG_CACHE_PARAM = "__arcarna_org";
+const LEGACY_ORG_CACHE_PARAM = "__midnight_org";
 
 function orgIdFromRequest(request) {
   return request.headers.get("X-Org-Id") || "_no_org";
@@ -61,7 +63,7 @@ async function offlineNavigationFallback() {
     const cached = await caches.match(url);
     if (cached) return cached;
   }
-  return new Response("Offline — reconnect to load Midnight EPOS.", {
+  return new Response("Offline — reconnect to load ARCARNA EPOS.", {
     status: 503,
     headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
@@ -98,6 +100,21 @@ async function handleAssetRequest(request) {
   }
 }
 
+function isStaleBrandCache(cacheName) {
+  const isCurrent =
+    cacheName === CACHE_NAME || cacheName === API_CACHE_NAME;
+  if (isCurrent) return false;
+  const isArcarna =
+    cacheName.startsWith(`${CACHE_PREFIX}-`) ||
+    cacheName.startsWith(`${CACHE_PREFIX}-api-`);
+  const isMidnight =
+    cacheName.startsWith(`${LEGACY_CACHE_PREFIX}-`) ||
+    cacheName.startsWith(`${LEGACY_CACHE_PREFIX}-api-`) ||
+    cacheName === "midnight-epos-v3" ||
+    cacheName === "midnight-epos-api-v3";
+  return isArcarna || isMidnight;
+}
+
 self.addEventListener("install", (event) => {
   console.log("[Service Worker] Installing…", { base: SW_BASE, version: CACHE_VERSION });
   event.waitUntil(
@@ -117,14 +134,7 @@ self.addEventListener("activate", (event) => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames.map((cacheName) => {
-          const isCurrent =
-            cacheName === CACHE_NAME || cacheName === API_CACHE_NAME;
-          const isOurs =
-            cacheName.startsWith(`${CACHE_PREFIX}-`) ||
-            cacheName.startsWith(`${CACHE_PREFIX}-api-`) ||
-            cacheName === "midnight-epos-v3" ||
-            cacheName === "midnight-epos-api-v3";
-          if (!isCurrent && isOurs) {
+          if (isStaleBrandCache(cacheName)) {
             console.log("[Service Worker] Deleting stale cache:", cacheName);
             return caches.delete(cacheName);
           }
@@ -151,10 +161,14 @@ self.addEventListener("message", (event) => {
 async function clearOrgApiCache(orgId) {
   const cache = await caches.open(API_CACHE_NAME);
   const keys = await cache.keys();
-  const prefix = `${ORG_CACHE_PARAM}=${encodeURIComponent(orgId)}`;
+  const orgParam = encodeURIComponent(orgId);
   await Promise.all(
     keys
-      .filter((req) => req.url.includes(prefix))
+      .filter(
+        (req) =>
+          req.url.includes(`${ORG_CACHE_PARAM}=${orgParam}`) ||
+          req.url.includes(`${LEGACY_ORG_CACHE_PARAM}=${orgParam}`),
+      )
       .map((req) => cache.delete(req)),
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/appPaths";
+import { apiFetch, resolveApiUrl } from "@/lib/appPaths";
 import { queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,10 @@ export default function RfmAnalyticsPage() {
   });
 
   const handleExport = () => {
-    window.open(`/midnight/api/analytics/rfm/export?segment=${encodeURIComponent(selectedSegment)}`, "_blank");
+    window.open(
+      resolveApiUrl(`/api/analytics/rfm/export?segment=${encodeURIComponent(selectedSegment)}`),
+      "_blank",
+    );
   };
 
   if (isLoading) {

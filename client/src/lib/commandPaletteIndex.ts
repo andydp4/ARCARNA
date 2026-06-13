@@ -14,6 +14,10 @@ import {
   type CommandPaletteAction,
 } from "@shared/commandPaletteActions";
 import type { OrdersListOrder } from "@/components/orders-row";
+import {
+  STORAGE_COMMAND_PALETTE_RECENT,
+  STORAGE_COMMAND_PALETTE_RECENT_LEGACY,
+} from "@shared/storageKeys";
 
 export type CommandPaletteSection = "pages" | "customers" | "products" | "orders" | "actions";
 
@@ -36,8 +40,22 @@ const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: L
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
-const RECENT_STORAGE_PREFIX = "midnight-command-palette-recent";
 const MAX_RECENT = 20;
+
+function recentStorageKey(userId: string): string {
+  return `${STORAGE_COMMAND_PALETTE_RECENT}:${userId}`;
+}
+
+function migrateRecentPaletteKey(userId: string): void {
+  const newKey = recentStorageKey(userId);
+  if (localStorage.getItem(newKey) !== null) return;
+  const legacyKey = `${STORAGE_COMMAND_PALETTE_RECENT_LEGACY}:${userId}`;
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy !== null) {
+    localStorage.setItem(newKey, legacy);
+    localStorage.removeItem(legacyKey);
+  }
+}
 
 function readArrayFromCache<T>(queryClient: QueryClient, queryKey: readonly unknown[]): T[] {
   const cached = queryClient.getQueryData<T[]>(queryKey);
@@ -67,7 +85,8 @@ function productSalesRank(queryClient: QueryClient): Map<string, number> {
 export function getRecentPaletteIds(userId: string | undefined): string[] {
   if (!userId || typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(`${RECENT_STORAGE_PREFIX}:${userId}`);
+    migrateRecentPaletteKey(userId);
+    const raw = localStorage.getItem(recentStorageKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
@@ -81,7 +100,7 @@ export function recordPaletteSelection(userId: string | undefined, itemId: strin
   const existing = getRecentPaletteIds(userId).filter((id) => id !== itemId);
   const next = [itemId, ...existing].slice(0, MAX_RECENT);
   try {
-    localStorage.setItem(`${RECENT_STORAGE_PREFIX}:${userId}`, JSON.stringify(next));
+    localStorage.setItem(recentStorageKey(userId), JSON.stringify(next));
   } catch {
     // ignore quota errors
   }

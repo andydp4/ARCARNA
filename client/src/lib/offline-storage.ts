@@ -1,8 +1,39 @@
-export const LEGACY_OFFLINE_DB_NAME = "midnight-epos-db";
+import {
+  legacyOfflineDbNameForOrg,
+  offlineDbNameForOrg,
+  OFFLINE_DB_PREFIX_LEGACY,
+} from "@shared/storageKeys";
+
+export { offlineDbNameForOrg, legacyOfflineDbNameForOrg };
+
+/** @deprecated use OFFLINE_DB_PREFIX_LEGACY from shared/storageKeys */
+export const LEGACY_OFFLINE_DB_NAME = OFFLINE_DB_PREFIX_LEGACY;
+
 const DB_VERSION = 2;
 
-export function offlineDbNameForOrg(orgId: string): string {
-  return `midnight-epos-db--${orgId}`;
+async function dbExists(name: string): Promise<boolean> {
+  if (typeof indexedDB === "undefined") return false;
+  if (typeof indexedDB.databases === "function") {
+    const dbs = await indexedDB.databases();
+    return dbs.some((d) => d.name === name);
+  }
+  return new Promise((resolve) => {
+    const req = indexedDB.open(name);
+    req.onsuccess = () => {
+      req.result.close();
+      resolve(true);
+    };
+    req.onerror = () => resolve(false);
+  });
+}
+
+/** Prefer new DB name; fall back to legacy per-org DB if user has offline data from before rebrand. */
+export async function resolveOfflineDbName(orgId: string): Promise<string> {
+  const newName = offlineDbNameForOrg(orgId);
+  const legacyName = legacyOfflineDbNameForOrg(orgId);
+  if (await dbExists(newName)) return newName;
+  if (await dbExists(legacyName)) return legacyName;
+  return newName;
 }
 
 export interface OfflineOrder {
@@ -50,44 +81,46 @@ class OfflineStorage {
       return this.dbPromise;
     }
 
-    const dbName = offlineDbNameForOrg(orgId);
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(dbName, DB_VERSION);
+    this.dbPromise = (async () => {
+      const dbName = await resolveOfflineDbName(orgId);
+      return new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(dbName, DB_VERSION);
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
 
-        if (!db.objectStoreNames.contains('offline-orders')) {
-          const orderStore = db.createObjectStore('offline-orders', { 
-            keyPath: 'id', 
-            autoIncrement: true 
-          });
-          orderStore.createIndex('synced', 'synced', { unique: false });
-          orderStore.createIndex('timestamp', 'timestamp', { unique: false });
-        }
+          if (!db.objectStoreNames.contains('offline-orders')) {
+            const orderStore = db.createObjectStore('offline-orders', {
+              keyPath: 'id',
+              autoIncrement: true
+            });
+            orderStore.createIndex('synced', 'synced', { unique: false });
+            orderStore.createIndex('timestamp', 'timestamp', { unique: false });
+          }
 
-        if (!db.objectStoreNames.contains('mutations-queue')) {
-          const mutationsStore = db.createObjectStore('mutations-queue', { 
-            keyPath: 'id', 
-            autoIncrement: true 
-          });
-          mutationsStore.createIndex('synced', 'synced', { unique: false });
-          mutationsStore.createIndex('timestamp', 'timestamp', { unique: false });
-          mutationsStore.createIndex('type', 'type', { unique: false });
-        }
+          if (!db.objectStoreNames.contains('mutations-queue')) {
+            const mutationsStore = db.createObjectStore('mutations-queue', {
+              keyPath: 'id',
+              autoIncrement: true
+            });
+            mutationsStore.createIndex('synced', 'synced', { unique: false });
+            mutationsStore.createIndex('timestamp', 'timestamp', { unique: false });
+            mutationsStore.createIndex('type', 'type', { unique: false });
+          }
 
-        if (!db.objectStoreNames.contains('products-cache')) {
-          db.createObjectStore('products-cache', { keyPath: 'id' });
-        }
+          if (!db.objectStoreNames.contains('products-cache')) {
+            db.createObjectStore('products-cache', { keyPath: 'id' });
+          }
 
-        if (!db.objectStoreNames.contains('customers-cache')) {
-          db.createObjectStore('customers-cache', { keyPath: 'id' });
-        }
-      };
-    });
+          if (!db.objectStoreNames.contains('customers-cache')) {
+            db.createObjectStore('customers-cache', { keyPath: 'id' });
+          }
+        };
+      });
+    })();
 
     return this.dbPromise;
   }

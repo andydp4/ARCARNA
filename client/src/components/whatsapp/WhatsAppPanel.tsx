@@ -23,6 +23,11 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiRequest, getJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  migrateStorageKey,
+  STORAGE_WHATSAPP_SOUND,
+  STORAGE_WHATSAPP_SOUND_LEGACY,
+} from "@shared/storageKeys";
 import { stashWhatsappDraft } from "@/lib/whatsappDraft";
 
 interface WhatsappStatus {
@@ -114,7 +119,7 @@ export function WhatsAppPanel() {
   const [reply, setReply] = useState("");
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     try {
-      return localStorage.getItem("midnight.whatsapp.sound") === "1";
+      return migrateStorageKey(STORAGE_WHATSAPP_SOUND_LEGACY, STORAGE_WHATSAPP_SOUND) === "1";
     } catch {
       return false;
     }
@@ -163,7 +168,7 @@ export function WhatsAppPanel() {
     setSoundOn((v) => {
       const next = !v;
       try {
-        localStorage.setItem("midnight.whatsapp.sound", next ? "1" : "0");
+        localStorage.setItem(STORAGE_WHATSAPP_SOUND, next ? "1" : "0");
       } catch {
         /* ignore */
       }

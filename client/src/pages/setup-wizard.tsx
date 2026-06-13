@@ -75,7 +75,7 @@ export default function SetupWizard() {
     defaultTaxRate: "20",
     receiptFooter: "Thank you for your business",
     receiptStyle: "standard",
-    accentStyle: "midnight",
+    accentStyle: "arcarna",
     businessColors: { primary: "#1e293b", accent: "#6366f1" },
   });
 

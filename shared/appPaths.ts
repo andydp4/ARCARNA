@@ -1,6 +1,6 @@
 /** Normalize app mount path (no trailing slash). Empty string = site root. */
 export function normalizeAppBasePath(raw?: string | null): string {
-  const value = (raw ?? "/midnight").trim();
+  const value = (raw ?? "/arcarna").trim();
   if (!value || value === "/") return "";
   const withLeading = value.startsWith("/") ? value : `/${value}`;
   return withLeading.replace(/\/+$/, "");

@@ -18,7 +18,7 @@ export function resolveAppEntryPath(user: AuthUser | null): string {
   return resolveAppPath("/");
 }
 
-export function isMidnightAppPath(pathname: string): boolean {
+export function isAppBasePath(pathname: string): boolean {
   if (!APP_BASE) return true;
   return pathname === APP_BASE || pathname.startsWith(`${APP_BASE}/`);
 }
