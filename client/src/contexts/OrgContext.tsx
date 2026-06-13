@@ -17,7 +17,6 @@ import {
 } from "@/lib/offline-storage";
 import {
   deleteIndexedDb,
-  wipeAllOfflineData,
   wipeOrgOfflineData,
 } from "@/lib/orgCacheWipe";
 
@@ -67,7 +66,6 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setSelectedOrgIdState(null);
       prevOrgIdRef.current = null;
       offlineStorage.setActiveOrg(null);
-      void wipeAllOfflineData();
       return;
     }
     void deleteIndexedDb(LEGACY_OFFLINE_DB_NAME);

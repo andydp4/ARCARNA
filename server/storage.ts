@@ -158,7 +158,7 @@ export interface IStorage {
   getCustomer(id: string, orgId: string): Promise<Customer | null>;
 
   // Inventory operations
-  getProductsWithStock(orgId: string): Promise<Product[]>;
+  getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]>;
   updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
 
   // Reports operations
@@ -850,20 +850,33 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getProductsWithStock(orgId: string): Promise<Product[]> {
+  async getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]> {
     const { productLocationStock } = await import("@shared/schema");
     const base = await db.select().from(products).where(eq(products.orgId, orgId)).orderBy(products.name);
 
-    const totals = await db
-      .select({
-        productId: productLocationStock.productId,
-        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
-      })
-      .from(productLocationStock)
-      .where(eq(productLocationStock.orgId, orgId))
-      .groupBy(productLocationStock.productId);
+    const stockRows = locationId
+      ? await db
+          .select({
+            productId: productLocationStock.productId,
+            total: productLocationStock.stock,
+          })
+          .from(productLocationStock)
+          .where(
+            and(
+              eq(productLocationStock.orgId, orgId),
+              eq(productLocationStock.locationId, locationId),
+            ),
+          )
+      : await db
+          .select({
+            productId: productLocationStock.productId,
+            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+          })
+          .from(productLocationStock)
+          .where(eq(productLocationStock.orgId, orgId))
+          .groupBy(productLocationStock.productId);
 
-    const stockMap = new Map(totals.map((t) => [t.productId, Number(t.total) || 0]));
+    const stockMap = new Map(stockRows.map((t) => [t.productId, Number(t.total) || 0]));
 
     return base.map((p) => ({
       ...p,

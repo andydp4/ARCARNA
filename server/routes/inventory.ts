@@ -19,7 +19,7 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const list = await storage.getProductsWithStock(ctx.orgId);
+      const list = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching inventory:", error);
@@ -52,7 +52,7 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
   app.get("/api/inventory/alerts", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const products = await storage.getProductsWithStock(ctx.orgId);
+      const products = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
       const alerts = products
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;
