@@ -21,13 +21,13 @@
 ## VPS after Wave 4 deploy
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull origin main
 source .env
 npm ci && npm run build
 bash scripts/apply-migrations-pm2.sh
 # includes 028_loyalty_settings.sql, 030_saved_views.sql, 032_customer_rfm.sql
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **Try in app:**

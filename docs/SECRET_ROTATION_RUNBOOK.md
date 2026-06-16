@@ -7,7 +7,7 @@ Operators use this runbook when rotating credentials for MidnightEPOS on **https
 | Role | Responsibility |
 |------|----------------|
 | **Platform owner** | Approves rotation window; updates Clerk dashboard; verifies sign-in after Clerk rotate |
-| **VPS operator** | Edits `/var/www/midnight-epos/.env`, runs `npm run deploy:build` + `npm run deploy:restart`, confirms health |
+| **VPS operator** | Edits `/root/ARCARNA/.env`, runs `npm run deploy:build` + `npm run deploy:restart`, confirms health |
 | **DB admin** | Rotates Neon password; updates `DATABASE_URL`; confirms `migration:sanity` |
 
 | Secret | Recommended cadence | Trigger for immediate rotate |
@@ -25,7 +25,7 @@ Operators use this runbook when rotating credentials for MidnightEPOS on **https
 
 1. Schedule a **5–15 minute** maintenance window (users can stay signed in; plan for one forced re-login after `SESSION_SECRET` rotate).
 2. Confirm current health: `curl -fsS https://viger.cloud/midnight/api/health`.
-3. Note current PM2 uptime: `pm2 status midnight-epos`.
+3. Note current PM2 uptime: `pm2 status arcarna-epos`.
 4. Ensure you can edit `.env` on the VPS and access Clerk + Neon dashboards.
 5. **Do not** paste new secrets into chat, tickets, or git — only into `.env` on the server.
 
@@ -98,7 +98,7 @@ Configured in `POST /api/webhooks` (see [CHANNEL_INGEST.md](./CHANNEL_INGEST.md)
 ```bash
 curl -fsS https://viger.cloud/midnight/api/health
 curl -fsS https://viger.cloud/midnight/api/health/metrics   # if H3 metrics deployed
-pm2 logs midnight-epos --lines 30 --nostream
+pm2 logs arcarna-epos --lines 30 --nostream
 ```
 
 1. Confirm no spike in 5xx in nginx/PM2 logs.

@@ -22,7 +22,7 @@
 
 ## VPS after deploy
 
-1. `git pull` on VPS → `npm ci && npm run build` → `pm2 restart midnight-epos`
+1. `git pull` on VPS → `npm ci && npm run build` → `pm2 restart arcarna-epos`
 2. Apply migration: `psql "$DATABASE_URL" -f migrations/014_admin_audit_retention.sql`
 3. Run **O2** restore drill when convenient; **O3** `pm2 startup` if not done
 

@@ -48,7 +48,7 @@ npm run build
 SSH to production (see Hostinger: **Live.Viger.Cloud** or app path in [`DEPLOY_HOSTINGER_VPS.md`](../DEPLOY_HOSTINGER_VPS.md)).
 
 ```bash
-cd /var/www/midnight-epos   # or /root/MidnightEPOS
+cd /root/ARCARNA
 git fetch origin && git checkout main && git pull origin main
 git log -1 --oneline        # expect 654ae9d or newer
 
@@ -65,7 +65,7 @@ npm run deploy:restart
 
 ```bash
 curl -fsS http://127.0.0.1:5000/midnight/api/health
-pm2 logs midnight-epos --lines 20 --nostream | grep -i worker
+pm2 logs arcarna-epos --lines 20 --nostream | grep -i worker
 ```
 
 **From laptop:**

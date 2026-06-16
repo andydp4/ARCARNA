@@ -30,7 +30,7 @@ Optional: `BACKUP_NOTIFY_WEBHOOK` posts success to Slack or another webhook.
 
 ## Cron
 
-On the VPS, schedule via `scripts/cron.example` (02:15 UTC daily). Logs: `/var/log/midnight-backup.log`.
+On the VPS, schedule via `scripts/cron.example` (02:15 UTC daily). Logs: `/var/log/arcarna-backup.log`.
 
 ## See also
 

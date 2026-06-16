@@ -21,13 +21,13 @@
 ## VPS after Wave 6 deploy
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull origin main
 source .env
 npm ci && npm run build
 bash scripts/apply-migrations-pm2.sh
 # no new SQL in Wave 6 — script unchanged (028, 030, 032 still apply on fresh DBs)
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **Try in app:**

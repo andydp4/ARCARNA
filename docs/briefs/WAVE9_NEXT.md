@@ -169,14 +169,14 @@ Complete these on the VPS / external tools; no app PR required unless docs gaps 
 After **U6** merges (and `scripts/apply-migrations-pm2.sh` lists `031`):
 
 ```bash
-cd /root/MidnightEPOS   # or /var/www/midnight-epos
+cd /root/ARCARNA
 git pull origin main
 source .env
 # If using Plausible: ensure VITE_PLAUSIBLE_DOMAIN is set before build
 npm ci && npm run build
 bash scripts/apply-migrations-pm2.sh
 # adds migrations/031_org_onboarding.sql — update script in U6 PR if missing
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **Try in app:**

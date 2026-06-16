@@ -2,7 +2,7 @@
 
 One-page checklist for **VPS / external tooling** items that cannot be closed by application PRs alone. Run after each major deploy or quarterly.
 
-**After Wave 12:** production at `a37e9ae`+ on VPS1 `/root/MidnightEPOS` — [`briefs/WAVE12_LAUNCH.md`](../briefs/WAVE12_LAUNCH.md).
+**After Wave 12:** production at `a37e9ae`+ on VPS1 `/root/ARCARNA` — [`briefs/WAVE12_LAUNCH.md`](../briefs/WAVE12_LAUNCH.md).
 
 **Code status on `main`:** Waves 0–12 shipped (LM list pages #35, auth #31/#36/#37, deploy #38, Sentry context #39). This checklist closes remaining **operator** gaps from [GAPS_BACKLOG.md](../briefs/GAPS_BACKLOG.md).
 
@@ -66,7 +66,7 @@ Follow [DISASTER_RECOVERY.md](../DISASTER_RECOVERY.md) § Restore drill.
 On VPS as deploy user:
 
 ```bash
-pm2 list                    # midnight-epos online
+pm2 list                    # arcarna-epos online
 pm2 startup                 # run printed sudo systemd command once
 pm2 save
 ```

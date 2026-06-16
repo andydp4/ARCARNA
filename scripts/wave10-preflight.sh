@@ -84,4 +84,4 @@ if [[ "$FAIL" -ne 0 ]]; then
 fi
 
 echo "=== PREFLIGHT PASSED ==="
-echo "Next: unset NODE_ENV && npm ci --include=dev && npm run build && pm2 restart midnight-epos"
+echo "Next: unset NODE_ENV && npm ci --include=dev && npm run build && pm2 restart arcarna-epos"

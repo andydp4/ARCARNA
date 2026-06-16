@@ -126,7 +126,7 @@ You should see folders like `client`, `server`, `docs`, `scripts`.
 
 ## Part 4 — Create your password file
 
-**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
+**Where:** **ON THE SERVER**, inside `/root/ARCARNA`
 
 **Paste:**
 
@@ -176,7 +176,7 @@ Leave these as-is for first test:
 
 ## Part 6 — Run the install script
 
-**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
+**Where:** **ON THE SERVER**, inside `/root/ARCARNA`
 
 **Paste:**
 
@@ -225,7 +225,7 @@ You should see the MidnightEPOS login / landing page.
 
 ## Updating the app later (after code changes)
 
-**Where:** **ON THE SERVER**, inside `/root/MidnightEPOS`
+**Where:** **ON THE SERVER**, inside `/root/ARCARNA`
 
 ```bash
 ./scripts/hostinger-deploy.sh update
@@ -258,7 +258,7 @@ Your database is **not** deleted. Start again with:
 **ON THE SERVER:**
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 ./scripts/hostinger-deploy.sh stop
 ```
 
@@ -267,7 +267,7 @@ cd /root/MidnightEPOS
 **ON THE SERVER:**
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git fetch origin
 git checkout recovery-stable-r7
 ./scripts/hostinger-deploy.sh install
@@ -280,7 +280,7 @@ git checkout recovery-stable-r7
 If you ran a backup before changing:
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 docker compose --env-file .env.production exec -T postgres pg_dump -U midnight midnight_epos > backup.sql
 ```
 
@@ -321,7 +321,7 @@ Ask Hostinger: “Point my domain to my VPS and enable HTTPS for port 5000.”
 
 ## Quick reference card
 
-| I want to… | ON SERVER, in `/root/MidnightEPOS` |
+| I want to… | ON SERVER, in `/root/ARCARNA` |
 |------------|-------------------------------------|
 | First install | `./scripts/hostinger-deploy.sh install` |
 | Check if running | `./scripts/hostinger-deploy.sh status` |

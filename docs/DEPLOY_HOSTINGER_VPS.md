@@ -11,7 +11,7 @@ This guide matches the **current VPS layout** (Node/PM2/Nginx). For Docker Compo
 If database credentials were ever pasted in chat, email, or committed to git:
 
 1. **Rotate the Neon/Postgres password** in your database dashboard.
-2. Update `DATABASE_URL` in `/var/www/midnight-epos/.env` (or your app path).
+2. Update `DATABASE_URL` in `/root/ARCARNA/.env` (or your app path).
 3. Restart the app: `npm run deploy:restart`
 
 Never commit `.env` to GitHub.
@@ -53,9 +53,9 @@ sudo apt-get install -y nginx certbot python3-certbot-nginx
 **First time:**
 
 ```bash
-sudo mkdir -p /var/www/midnight-epos
-sudo chown $USER:$USER /var/www/midnight-epos
-cd /var/www/midnight-epos
+sudo mkdir -p /root/ARCARNA
+sudo chown $USER:$USER /root/ARCARNA
+cd /root/ARCARNA
 git clone https://github.com/andydp4/MidnightEPOS.git .
 git checkout main
 git pull origin main
@@ -64,7 +64,7 @@ git pull origin main
 **Updates:**
 
 ```bash
-cd /var/www/midnight-epos
+cd /root/ARCARNA
 git fetch origin
 git checkout main
 git pull origin main
@@ -113,7 +113,7 @@ See [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md).
 ## 4. Install, build, migrate
 
 ```bash
-cd /var/www/midnight-epos
+cd /root/ARCARNA
 npm install
 npm run build
 ```
@@ -184,7 +184,7 @@ npm run deploy:restart
 **Logs:**
 
 ```bash
-pm2 logs midnight-epos --lines 100
+pm2 logs arcarna-epos --lines 100
 # or: tail -f logs/pm2-out.log logs/pm2-error.log
 ```
 
@@ -267,7 +267,7 @@ npm run deploy:restart
 ## 8. Update workflow (routine deploy)
 
 ```bash
-cd /root/MidnightEPOS   # or /var/www/midnight-epos
+cd /root/ARCARNA
 git pull origin main
 
 # Important: do not run npm ci while NODE_ENV=production is exported (e.g. from sourcing .env).
@@ -282,7 +282,7 @@ bash scripts/apply-migrations-pm2.sh
 # NOT re-read the env_file (it keeps the env captured at process creation), and
 # this app has no dotenv fallback — so a changed secret would be silently ignored.
 # Delete + start forces a fresh .env read.
-pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
+pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save
 
 curl -sS http://127.0.0.1:5000/arcarna/api/health
 ```
@@ -290,7 +290,7 @@ curl -sS http://127.0.0.1:5000/arcarna/api/health
 > ⚠️ **`.env` changes only take effect after a delete+start (above), not `pm2 restart`/`reload`.**
 > To confirm the live process actually loaded a key, read its real environment:
 > ```bash
-> tr '\0' '\n' < /proc/$(pm2 pid midnight-epos)/environ | grep -E '^CLERK_|^AUTH_PROVIDER='
+> tr '\0' '\n' < /proc/$(pm2 pid arcarna-epos)/environ | grep -E '^CLERK_|^AUTH_PROVIDER='
 > ```
 > A stale `CLERK_SECRET_KEY` here (not matching `.env`) makes Clerk reject every session token with HTTP 401 — sign-in succeeds but the dashboard never opens.
 
@@ -316,11 +316,11 @@ Nightly logical dumps are optional but recommended. See [DISASTER_RECOVERY.md](.
 4. Install cron from [`scripts/cron.example`](../scripts/cron.example):
 
 ```bash
-chmod +x /var/www/midnight-epos/scripts/backup-neon-to-r2.sh
+chmod +x /root/ARCARNA/scripts/backup-neon-to-r2.sh
 # crontab -e — add the 02:15 UTC line from scripts/cron.example
 ```
 
-Logs: `/var/log/midnight-backup.log`.
+Logs: `/var/log/arcarna-backup.log`.
 
 ---
 
@@ -378,7 +378,7 @@ Production items that require VPS or external tooling (not app PRs):
 | Clerk redirect error | Add exact URLs in Clerk dashboard |
 | `migration:sanity` fails | Run missing migration files in order |
 | `tsx: not found` on VPS | `unset NODE_ENV` then `npm ci --include=dev` (or `npm install`); do not run `npm ci` while `.env` has `NODE_ENV=production` exported |
-| 502 from Nginx | `pm2 status`, `pm2 logs midnight-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/arcarna/api/health` |
+| 502 from Nginx | `pm2 status`, `pm2 logs arcarna-epos`; confirm `dist/index.js` exists (`npm run build`); curl `http://127.0.0.1:5000/arcarna/api/health` |
 | Sentry `57P01` / "terminating connection due to administrator command" | Expected when Neon compute suspends or restarts. Use **pooler** `DATABASE_URL` (`-pooler.neon.tech`); app retries transient errors. One-off is normal — disable Neon scale-to-zero for production or accept wake latency on first query after idle. |
 | Uptime monitor 404 on `/midnightepos` | Wrong path — use `GET /arcarna/api/health`. Legacy `/midnight/` 301s to `/arcarna/`. |
 | High Neon CU-hours / transfer on Free plan | Set `WORKER_DISPATCH_INTERVAL_MS=5000`, `WORKER_PROCESS_INTERVAL_MS=2000`, `WORKER_CONCURRENCY=1` in `.env`; use pooler `DATABASE_URL`; poll `/api/health` not `/api/health/metrics` every minute |

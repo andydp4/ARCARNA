@@ -64,7 +64,7 @@ Closes **M4 drill**, **S8 external alerts**, and VPS hygiene. Mostly config + do
 **Steps:**
 
 1. On VPS as deploy user: `pm2 startup` (follow printed systemd command).
-2. `pm2 save` after confirming `midnight-epos` online.
+2. `pm2 save` after confirming `arcarna-epos` online.
 3. Optional: reboot test in maintenance window.
 
 **DoD:** Reboot → app listening on :5000 within 2 min without manual `pm2 start`.
