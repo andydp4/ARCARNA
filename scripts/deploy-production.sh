@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# MidnightEPOS production deploy (PM2 + Nginx on Hostinger VPS)
+# ARCARNA EPOS production deploy (PM2 + Nginx on Hostinger VPS)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "=== MidnightEPOS production deploy ==="
+echo "=== ARCARNA EPOS production deploy ==="
 
 if [[ ! -f .env ]]; then
   echo "ERROR: Missing .env — copy .env.production.example and configure secrets."
@@ -32,16 +32,16 @@ echo "=== PM2 (re)start with fresh .env ==="
 # the only thing that loads .env into process.env — so a changed secret (e.g.
 # CLERK_SECRET_KEY) is silently ignored and the old value keeps running.
 # Delete + start re-reads ecosystem.config.cjs's env_file, guaranteeing the
-# current .env is loaded. (Verify after: tr '\0' '\n' < /proc/$(pm2 pid midnight-epos)/environ | grep CLERK_)
-if pm2 describe midnight-epos >/dev/null 2>&1; then
-  pm2 delete midnight-epos
+# current .env is loaded. (Verify after: tr '\0' '\n' < /proc/$(pm2 pid arcarna-epos)/environ | grep CLERK_)
+if pm2 describe arcarna-epos >/dev/null 2>&1; then
+  pm2 delete arcarna-epos
 fi
 pm2 start ecosystem.config.cjs
 pm2 save
 
 echo "=== health check ==="
 sleep 4
-HEALTH_PATH="${APP_BASE_PATH:-/midnight}/api/health"
+HEALTH_PATH="${APP_BASE_PATH:-/arcarna}/api/health"
 if curl -sf "http://127.0.0.1:5000${HEALTH_PATH}" >/dev/null; then
   curl -s "http://127.0.0.1:5000${HEALTH_PATH}"
   echo ""
@@ -49,13 +49,13 @@ if curl -sf "http://127.0.0.1:5000${HEALTH_PATH}" >/dev/null; then
 else
   echo "NOT READY: /api/health failed"
   echo "--- pm2 status ---"
-  pm2 status midnight-epos || true
+  pm2 status arcarna-epos || true
   echo "--- last 30 log lines ---"
-  pm2 logs midnight-epos --lines 30 --nostream || true
+  pm2 logs arcarna-epos --lines 30 --nostream || true
   echo ""
   echo "Common fixes:"
   echo "  1. Add to .env: CLERK_ACCOUNTS_URL=https://accounts.viger.cloud"
-  echo "  2. pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save  (forces fresh .env read)"
+  echo "  2. pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save  (forces fresh .env read)"
   exit 1
 fi
 

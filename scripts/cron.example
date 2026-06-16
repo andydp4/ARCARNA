@@ -1,5 +1,5 @@
-# Example crontab entries for MidnightEPOS on the production VPS.
-# Install: crontab -e  (adjust paths)
+# Example crontab entries for ARCARNA EPOS on the production VPS.
+# Install: crontab -e  (adjust paths to match your deploy dir)
 
 # Nightly Neon backup → R2 (02:15 UTC)
-15 2 * * * /opt/midnight/scripts/backup-neon-to-r2.sh >> /var/log/midnight-backup.log 2>&1
+15 2 * * * /root/ARCARNA/scripts/backup-neon-to-r2.sh >> /var/log/arcarna-backup.log 2>&1

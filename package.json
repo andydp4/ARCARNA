@@ -10,7 +10,7 @@
     "deploy:build": "npm run build",
     "deploy": "bash scripts/deploy-production.sh",
     "deploy:start": "pm2 start ecosystem.config.cjs",
-    "deploy:restart": "pm2 delete midnight-epos 2>/dev/null || true; pm2 start ecosystem.config.cjs && pm2 save",
+    "deploy:restart": "pm2 delete arcarna-epos 2>/dev/null || true; pm2 start ecosystem.config.cjs && pm2 save",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "lint": "eslint \"client/src/**/*.{ts,tsx}\"",
