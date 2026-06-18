@@ -1,6 +1,6 @@
 # Launch smoke test checklist
 
-Run after deploy using [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md) (or [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md) for PM2 path) and [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md). For Wave 11 deploy steps and priority QA, see [briefs/WAVE11_LAUNCH.md](./briefs/WAVE11_LAUNCH.md). Mark each item pass/fail.
+Run after deploy using [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md) and [AUTH_SETUP_CLERK.md](./AUTH_SETUP_CLERK.md). For Wave 11 deploy steps and priority QA, see [briefs/WAVE11_LAUNCH.md](./briefs/WAVE11_LAUNCH.md). Mark each item pass/fail.
 
 ## Access & auth (Clerk)
 

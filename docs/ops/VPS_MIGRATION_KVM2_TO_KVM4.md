@@ -293,11 +293,11 @@ Wait 48–72h, confirm: clean `pm2 logs arcarna-epos`, nightly R2 backup ran fro
 
 Pure repo changes — no VPS access. Now that the path is `/root/ARCARNA` + `arcarna-epos`, the old-path/old-name docs are actively misleading.
 
-- [ ] **5a.** Standardize deploy dir → `/root/ARCARNA` and PM2 → `arcarna-epos` across: `DEPLOY_HOSTINGER_VPS.md`, `DEPLOYMENT_HOSTINGER_VPS.md`, `SECRET_ROTATION_RUNBOOK.md`, `ops/INCIDENT_CHECKLIST.md`, `ops/OPERATOR_CHECKLIST.md`, `ops/CLOUDFLARE.md`, `SENTRY_SETUP.md`, `AUTH_SETUP_CLERK.md`. Kill every stale `/var/www/midnight-epos` and `/opt/midnight` reference.
-- [ ] **5b.** Retire the dead Docker path: remove `scripts/hostinger-deploy.sh`, `docs/DEPLOYMENT_HOSTINGER_VPS.md` (Docker-compose, migrations only to `009`), Docker-only vars in `.env.production.example`.
-- [ ] **5c.** Archive `docs/briefs/WAVE*_NEXT.md` (12 files) + completed `PHASE*.md` into `docs/archive/` (these are where most stale `pm2 restart midnight-epos` lines live — leave archived copies as historical).
-- [ ] **5d.** Update `.claude/settings.local.json` allow-rule that probes `/root/MidnightEPOS /var/www/midnight-epos` → `/root/ARCARNA`.
-- [ ] **5e.** Confirm `server/replitAuth.ts` still needed (yes — `AUTH_PROVIDER=replit` rollback path); audit unused deps (`react-router-dom`, `vite-plugin-pwa`, `workbox-window`, `@replit/vite-plugin-*`) and `scripts/` one-offs (`phase2d-*.ts`, `dataPurge.js`, `wave10-preflight.sh`, etc.).
+- [x] **5a.** Standardized deploy dir → `/root/ARCARNA`, PM2 → `arcarna-epos`, backup log → `/var/log/arcarna-backup.log` across all operational docs (70 replacements / 27 files). Stale `/var/www/midnight-epos` and `/opt/midnight` paths gone.
+- [x] **5b.** Retired the dead Docker deploy path — removed `scripts/hostinger-deploy.sh` + `docs/DEPLOYMENT_HOSTINGER_VPS.md`, repointed 4 referring docs to `DEPLOY_HOSTINGER_VPS.md`, and converted `AUTH_SETUP_CLERK.md`'s deploy commands (`hostinger-deploy.sh …`, `docker compose exec`) to the PM2 path. `Dockerfile` / `docker-compose.yml` kept as an optional local build (not prod).
+- [ ] **5c.** Archive `docs/briefs/WAVE{1..12}_NEXT.md` + completed `PHASE*.md` into `docs/archive/`. **Deferred to its own PR** — 20+ docs cross-link these (incl. non-brief docs), so mechanical archiving would dangle links; needs a focused pass with link fixes + per-phase "is it done?" judgment.
+- [ ] **5d.** `.claude/settings.local.json` probe path → `/root/ARCARNA`. **Local-only / untracked** — not in version control, so out of PR scope; update on the operator's machine if desired.
+- [x] **5e.** Audited: `server/replitAuth.ts` retained (still imported by `server/auth/index.ts` for the `AUTH_PROVIDER=replit` rollback path). The flagged unused deps (`react-router-dom`, `vite-plugin-pwa`, `workbox-window`, `@replit/*`) are **already absent** from `package.json` — nothing to remove. `scripts/` one-off audit left for a separate cleanup.
 
 ---
 

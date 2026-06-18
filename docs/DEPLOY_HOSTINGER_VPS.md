@@ -2,7 +2,7 @@
 
 Production site: **https://viger.cloud** (portal) · **https://viger.cloud/arcarna** (ARCARNA EPOS)
 
-This guide matches the **current VPS layout** (Node/PM2/Nginx). For Docker Compose instead, see [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md).
+This guide matches the **current VPS layout** (Node/PM2/Nginx).
 
 ---
 
