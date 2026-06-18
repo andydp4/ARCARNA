@@ -18,6 +18,9 @@ export const STORAGE_WHATSAPP_DRAFT_LEGACY = "midnight.whatsapp.draftOrder";
 export const STORAGE_WHATSAPP_SOUND = "arcarna.whatsapp.sound";
 export const STORAGE_WHATSAPP_SOUND_LEGACY = "midnight.whatsapp.sound";
 
+export const STORAGE_VOICE_ENABLED = "arcarna.voice.enabled";
+export const STORAGE_VOICE_STYLE = "arcarna.voice.style";
+
 export const OFFLINE_DB_PREFIX = "arcarna-epos-db";
 export const OFFLINE_DB_PREFIX_LEGACY = "midnight-epos-db";
 

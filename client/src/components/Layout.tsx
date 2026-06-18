@@ -16,6 +16,7 @@ import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 import { BrandLogo } from '@/components/BrandLogo'
 import { BRAND_NAME, BRAND_PRODUCT_NAME } from '@shared/brand'
 import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
+import { ArcarnaAssistantBar } from '@/components/assistant/ArcarnaAssistantBar'
 
 interface LayoutProps {
   children: ReactNode
@@ -147,6 +148,7 @@ export function Layout({ children }: LayoutProps) {
         <main className="min-w-0 flex-1">{children}</main>
       </div>
       <WhatsAppPanel />
+      <ArcarnaAssistantBar />
     </div>
   )
 }
