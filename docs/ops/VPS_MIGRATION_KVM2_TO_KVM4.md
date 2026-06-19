@@ -1,6 +1,6 @@
 # VPS migration: Hostinger KVM2 → KVM4 (ARCARNA)
 
-**Status:** Planning — no VPS steps started yet. Repo infra-rename (Phase R) edits staged locally, not yet merged.
+**Status:** Phase R merged — repo ready. **Next:** Phase 0 inventory on KVM2, then build KVM4 (`72.60.23.130` / `Live.Viger.Cloud`).
 
 **Related:** [DEPLOY_HOSTINGER_VPS.md](../DEPLOY_HOSTINGER_VPS.md) · [REBRAND_ARCARNA.md](../REBRAND_ARCARNA.md) · [ops/CLOUDFLARE.md](./CLOUDFLARE.md) · [ops/OPERATOR_CHECKLIST.md](./OPERATOR_CHECKLIST.md) · [DISASTER_RECOVERY.md](../DISASTER_RECOVERY.md) · [SECRET_ROTATION_RUNBOOK.md](../SECRET_ROTATION_RUNBOOK.md)
 
@@ -51,8 +51,8 @@ KVM4 is built from a fresh clone of `main`, so the rename must be in the repo fi
 
 **Rollback safety:** KVM2 keeps running its existing `midnight-epos` PM2 process. Merging this PR does **not** touch KVM2 unless someone redeploys there — and migration rollback is a DNS revert only (no KVM2 redeploy). Safe.
 
-- [ ] `feat/arcarna-infra-rename` PR reviewed + merged to `main`
-- [ ] Doc sweep (Phase 5) ideally lands in the same PR so KVM4 is built from corrected docs
+- [x] `feat/arcarna-infra-rename` PR reviewed + merged to `main`
+- [x] Doc sweep (Phase 5a/5b) landed in the same PR — KVM4 builds from corrected docs
 
 ---
 
@@ -96,7 +96,7 @@ curl -sI http://127.0.0.1:5000/midnight/ | head -3   # expect 301 → /arcarna/
 ### 1. Provision
 Order KVM4 (Ubuntu 22.04/24.04 LTS), get its IP + root SSH key set up.
 
-- [ ] KVM4 provisioned, IP: `__________`
+- [x] KVM4 provisioned — IP: **`72.60.23.130`** (hostname `Live.Viger.Cloud`, Ubuntu 22.04, KVM 4 / 16 GB)
 
 ### 2. OS baseline (the "fresh start") — run on KVM4
 ```bash
@@ -130,7 +130,7 @@ Source path is KVM2's **old** dir; destination is KVM4's **new** dir:
 ```bash
 # from your LOCAL machine
 scp root@KVM2_IP:/root/MidnightEPOS/.env ~/arcarna-env-backup
-scp ~/arcarna-env-backup root@KVM4_IP:/root/ARCARNA/.env
+scp ~/arcarna-env-backup root@72.60.23.130:/root/ARCARNA/.env
 shred -u ~/arcarna-env-backup   # don't leave secrets on your laptop
 ```
 - [ ] Done
@@ -247,11 +247,11 @@ cd /root/ARCARNA && bash scripts/backup-neon-to-r2.sh && echo "backup OK"
 
 Test KVM4 *as if* it were production, without moving traffic. Direct-to-origin over HTTP (CF not in front yet):
 ```bash
-curl -s  -H "Host: viger.cloud" http://KVM4_IP/arcarna/api/health
-curl -s  -H "Host: viger.cloud" http://KVM4_IP/arcarna/api/health/metrics
-curl -sI -H "Host: viger.cloud" http://KVM4_IP/midnight/ | head -3   # expect 301 → /arcarna/
+curl -s  -H "Host: viger.cloud" http://72.60.23.130/arcarna/api/health
+curl -s  -H "Host: viger.cloud" http://72.60.23.130/arcarna/api/health/metrics
+curl -sI -H "Host: viger.cloud" http://72.60.23.130/midnight/ | head -3   # expect 301 → /arcarna/
 ```
-For a real browser test (sign-in, dashboard, Clerk flow) against the Origin CA TLS, temporarily add `KVM4_IP viger.cloud` to your local machine's `/etc/hosts`, hit `https://viger.cloud/arcarna`. Remove the `/etc/hosts` line after.
+For a real browser test (sign-in, dashboard, Clerk flow) against the Origin CA TLS, temporarily add `72.60.23.130 viger.cloud` to your local machine's `/etc/hosts`, hit `https://viger.cloud/arcarna`. Remove the `/etc/hosts` line after.
 
 - [ ] `/arcarna/api/health` returns ok, `/arcarna/api/health/metrics` shows `db:true`
 - [ ] `/midnight/` 301s to `/arcarna/`
@@ -263,7 +263,7 @@ For a real browser test (sign-in, dashboard, Clerk flow) against the Origin CA T
 
 ## Phase 3 — Cutover (minutes, fully reversible)
 
-1. Cloudflare → DNS → edit the `A` record(s) for `viger.cloud` and `www` from KVM2_IP → **KVM4_IP** (check for an `AAAA`/IPv6 record too).
+1. Cloudflare → DNS → edit the `A` record(s) for `viger.cloud` and `www` from KVM2_IP → **72.60.23.130** (check for an `AAAA`/IPv6 record too).
 2. Cloudflare → SSL/TLS → set mode to **Full (strict)** (Origin CA cert already installed, so no gap).
 3. Watch `pm2 logs arcarna-epos` on KVM4 for real traffic arriving.
 4. Smoke test `https://viger.cloud/arcarna` for real, and `https://viger.cloud/midnight/` → 301.

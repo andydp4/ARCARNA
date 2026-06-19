@@ -1,8 +1,8 @@
-# Deploy MidnightEPOS on Hostinger VPS (Node 20 + PM2 + Nginx)
+# Deploy ARCARNA EPOS on Hostinger VPS (Node 20 + PM2 + Nginx)
 
 Production site: **https://viger.cloud** (portal) · **https://viger.cloud/arcarna** (ARCARNA EPOS)
 
-This guide matches the **current VPS layout** (Node/PM2/Nginx).
+This guide matches the **current VPS layout** (Node/PM2/Nginx). For **KVM2 → KVM4 migration**, follow [ops/VPS_MIGRATION_KVM2_TO_KVM4.md](./ops/VPS_MIGRATION_KVM2_TO_KVM4.md) first.
 
 ---
 
@@ -24,7 +24,7 @@ Never commit `.env` to GitHub.
 |------|--------|
 | Hostinger VPS | Ubuntu 22.04+ |
 | Domain | `viger.cloud` → VPS IP |
-| GitHub repo | `andydp4/MidnightEPOS` branch **`main`** (V1.0 test) |
+| GitHub repo | `andydp4/ARCARNA` branch **`main`** (`MidnightEPOS` redirects to this repo) |
 | Clerk account | API keys + redirect URLs for `https://viger.cloud` |
 | PostgreSQL | Neon or VPS Postgres `DATABASE_URL` |
 
@@ -56,7 +56,7 @@ sudo apt-get install -y nginx certbot python3-certbot-nginx
 sudo mkdir -p /root/ARCARNA
 sudo chown $USER:$USER /root/ARCARNA
 cd /root/ARCARNA
-git clone https://github.com/andydp4/MidnightEPOS.git .
+git clone https://github.com/andydp4/ARCARNA.git .
 git checkout main
 git pull origin main
 ```
@@ -344,7 +344,7 @@ Then:
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
-cd ~/MidnightEPOS   # or your app path
+cd /root/ARCARNA
 git pull origin main
 npm install && npm run deploy
 ```
