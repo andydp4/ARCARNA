@@ -47,6 +47,7 @@ import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerV1Routes } from "./routes/v1";
 import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
 import { registerAssistantPublicRoutes, registerAssistantRoutes } from "./routes/assistant";
+import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./routes/website";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
@@ -54,6 +55,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
   registerAssistantPublicRoutes(app);
+  registerWebsitePublicRoutes(app);
 
   await setupAuth(app);
 
@@ -98,6 +100,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerSettingsOrgRoutes(app, scoped);
   registerReceiptRoutes(app, scoped);
   registerFeatureFlagRoutes(app, scoped);
+  registerWebsiteAdminRoutes(app, scoped);
 
   registerAdminRoutes(app);
   registerWorkerAdminRoutes(app);

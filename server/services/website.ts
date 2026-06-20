@@ -271,11 +271,14 @@ export function buildPublicSiteConfig(params: {
   theme?: WebsiteThemeRow | null;
   orderSettings?: WebsiteOrderSettingsRow | null;
   blocks?: WebsiteBlockRow[];
+  includeHiddenBlocks?: boolean;
 }) {
   return {
     theme: normalizeWebsiteTheme(params.theme, params.orgName),
     orderSettings: normalizeWebsiteOrderSettings(params.orderSettings),
-    blocks: normalizeWebsiteBlocks(params.blocks ?? []),
+    blocks: normalizeWebsiteBlocks(params.blocks ?? [], {
+      includeHidden: params.includeHiddenBlocks,
+    }),
   };
 }
 
@@ -301,7 +304,11 @@ export function createWebsiteService(repository: WebsiteRepository) {
       return publicWebsiteOrderSchema.parse(input);
     },
 
-    async getPublicSiteConfig(orgId: string, page = "home") {
+    async getSiteConfig(
+      orgId: string,
+      page = "home",
+      options: { includeHiddenBlocks?: boolean } = {},
+    ) {
       const [org, theme, orderSettings, blocks] = await Promise.all([
         repository.getOrg(orgId),
         repository.getThemeSettings(orgId),
@@ -314,7 +321,12 @@ export function createWebsiteService(repository: WebsiteRepository) {
         theme,
         orderSettings,
         blocks,
+        includeHiddenBlocks: options.includeHiddenBlocks,
       });
+    },
+
+    async getPublicSiteConfig(orgId: string, page = "home") {
+      return this.getSiteConfig(orgId, page, { includeHiddenBlocks: false });
     },
 
     async updateTheme(orgId: string, input: unknown, updatedBy?: string) {

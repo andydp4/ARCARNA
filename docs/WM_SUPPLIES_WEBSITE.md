@@ -104,3 +104,39 @@ The media foundation currently covers:
 - local save/delete provider for development and test use
 
 R2/S3 and admin upload routes can be added on top of this provider interface without changing the validation rules.
+
+## Phase 4 Backend API Wiring
+
+Website API routes live in:
+
+`server/routes/website.ts`
+
+Repository/database wiring lives in:
+
+`server/services/websiteRepository.ts`
+
+Public routes:
+
+- `GET /api/public/wm-supplies/site-config`
+- `GET /api/public/wm-supplies/products`
+- `GET /api/public/products`
+
+Public routes resolve the organisation from `WM_SUPPLIES_ORG_ID` or `WM_SUPPLIES_WEBSITE_ORG_ID`. For local testing only, `?orgId={uuid}` is also accepted.
+
+Protected staff routes:
+
+- `GET /api/website/config`
+- `PUT /api/website/theme`
+- `PUT /api/website/order-settings`
+- `POST /api/website/blocks`
+- `POST /api/website/uploads/metadata`
+
+These routes use the existing scoped middleware from `server/routes.ts` and then require one of:
+
+- `SUPER_ADMIN`
+- `ADMIN`
+- `MANAGER`
+
+Admin mutations write admin audit entries. Public product responses are projected through the service layer and do not include cost price or other internal fields.
+
+The upload metadata route records already-validated metadata only. Binary upload handling and R2/S3 provider support are separate follow-on tasks.
