@@ -23,8 +23,14 @@ export async function runAssistantTurn(
   const turn = processQuickEntryTurn(draft, text, products);
   if (turn.action !== "save" || !turn.draft) return turn;
 
-  const orderId = await saveQuickEntryOrder(orgId, turn.draft, products, userId);
-  return { ...turn, savedOrderId: orderId };
+  try {
+    const orderId = await saveQuickEntryOrder(orgId, turn.draft, products, userId);
+    return { ...turn, savedOrderId: orderId };
+  } catch (e) {
+    console.error("[assistant] failed to save order:", e);
+    const message = "Sorry, I couldn't save that order. Please try again or say no to discard it.";
+    return { action: "ask", draft: turn.draft, message, voiceResponse: message, missingFields: [] };
+  }
 }
 
 async function saveQuickEntryOrder(
