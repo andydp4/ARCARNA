@@ -102,21 +102,16 @@ async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgI
 
 export const ProductsRepoDrizzle: ProductsRepo = {
   async checkStock(p: ProductId, ctx?: StockContext): Promise<number> {
-    const { getProductStockTotal, getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
+    const { getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
     let orgId = ctx?.orgId
     if (!orgId) {
       const [product] = await getDb().select({ org_id: s.products.org_id }).from(s.products).where(eq(s.products.id, p as any)).limit(1)
       orgId = product?.org_id ?? undefined
     }
     if (!orgId) return 0
-    try {
-      const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
-      const row = await getProductLocationStock(orgId, p as string, locationId)
-      if (row) return row.stock ?? 0
-    } catch {
-      // fall through to total
-    }
-    return getProductStockTotal(orgId, p as string)
+    const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
+    const row = await getProductLocationStock(orgId, p as string, locationId)
+    return row?.stock ?? 0
   },
   async reserveStock(p: ProductId, qty: number, ctx: StockContext) {
     const { adjustProductLocationStock } = await import('../../../../server/services/productLocationStock')

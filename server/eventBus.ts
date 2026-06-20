@@ -146,29 +146,45 @@ async function dispatchPendingEventsInner(): Promise<number> {
     try {
       const eventType = event.eventType as EventType;
       const requiredWorkers = REQUIRED_WORKERS[eventType] || [];
-      let eventJobsCreated = 0;
+      const eventJobsCreated = await db.transaction(async (tx) => {
+        const locked = await tx.execute(sql`
+          SELECT event_id
+          FROM event_outbox
+          WHERE event_id = ${event.eventId}
+            AND status = 'pending'
+          FOR UPDATE SKIP LOCKED
+        `);
 
-      // Create all jobs for this event first, then mark as dispatched
-      for (const workerName of requiredWorkers) {
-        // Use ON CONFLICT DO NOTHING to handle idempotency
-        const result = await db.insert(jobQueue).values({
-          eventId: event.eventId,
-          workerName,
-          status: 'queued',
-          attempts: 0,
-          maxAttempts: 10,
-          runAt: new Date(),
-        }).onConflictDoNothing();
-        
-        eventJobsCreated++;
-      }
+        if (!locked.rows?.length) {
+          return null;
+        }
 
-      // Only mark as dispatched after all jobs are created
-      if (eventJobsCreated > 0 || requiredWorkers.length === 0) {
-        await db
+        let created = 0;
+
+        // Create all jobs for this event, then mark dispatched in the same transaction.
+        for (const workerName of requiredWorkers) {
+          await tx.insert(jobQueue).values({
+            eventId: event.eventId,
+            workerName,
+            status: 'queued',
+            attempts: 0,
+            maxAttempts: 10,
+            runAt: new Date(),
+          }).onConflictDoNothing();
+
+          created++;
+        }
+
+        await tx
           .update(eventOutbox)
           .set({ status: 'dispatched' })
           .where(eq(eventOutbox.eventId, event.eventId));
+
+        return created;
+      });
+
+      // Only notify after the enqueue + status update transaction commits.
+      if (eventJobsCreated !== null) {
         jobsCreated += eventJobsCreated;
 
         try {

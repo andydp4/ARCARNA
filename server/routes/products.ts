@@ -20,10 +20,9 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
   app.get("/api/products", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      // Use per-location stock totals (productLocationStock), not the legacy
-      // products.stock column which is written as 0 by the compatibility sync.
-      // POS and any other /api/products consumer needs real availability.
-      const list = await storage.getProductsWithStock(ctx.orgId);
+      // Use authoritative productLocationStock for the active location, not the
+      // legacy products.stock column or an org-wide total that POS cannot sell from.
+      const list = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching products:", error);
