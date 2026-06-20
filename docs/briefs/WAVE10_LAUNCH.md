@@ -27,7 +27,7 @@
 ## Preflight (local or VPS)
 
 ```bash
-cd /root/MidnightEPOS   # or dev clone
+cd /root/ARCARNA   # or dev clone
 git pull origin main
 
 # Full check (needs DATABASE_URL in .env for migration sanity)
@@ -39,7 +39,7 @@ npm ci --include=dev
 npm run build
 set -a && source .env && set +a
 bash scripts/apply-migrations-pm2.sh
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 ---

@@ -7,7 +7,8 @@
 - **User-facing:** Every label, title, `alt` text, PWA name, portal card, receipt/email copy, and error message that says "Midnight" becomes **ARCARNA** (use **ARCARNA EPOS** only where the product previously said "Midnight EPOS").
 - **URLs:** App mount moves **`/midnight` → `/arcarna`** with **301 redirects** from old paths so bookmarks and the stray `/midnightepos` monitor keep working.
 - **Assets:** Two official marks — **A icon** for small surfaces; **full ARCARNA wordmark** for key brand points (see § Brand assets below).
-- **Out of scope (v1):** GitHub repo name `MidnightEPOS`, PM2 process name `midnight-epos`, R2 bucket `midnight-backups`, Docker image names — infra identifiers stay unless you explicitly want a second ops wave.
+- **Out of scope (v1 rebrand):** R2 bucket `midnight-backups`, Docker image names — unchanged unless you want a second ops wave.
+- **Infra rename (Phase R, KVM4 migration):** GitHub repo → `ARCARNA`, deploy dir → `/root/ARCARNA`, PM2 → `arcarna-epos` — see [ops/VPS_MIGRATION_KVM2_TO_KVM4.md](ops/VPS_MIGRATION_KVM2_TO_KVM4.md).
 
 ## Architecture — before / after
 
@@ -206,7 +207,7 @@ APP_BASE_PATH=/arcarna
 ```
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull && npm ci --include=dev && npm run build
 npm run deploy:restart
 curl -fsS http://127.0.0.1:5000/arcarna/api/health

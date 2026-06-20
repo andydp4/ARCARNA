@@ -1,4 +1,4 @@
-# Hostinger VPS — use docs/DEPLOYMENT_HOSTINGER_VPS.md and scripts/hostinger-deploy.sh
+# Optional container build — NOT used in production (prod is PM2/bare Node; see docs/DEPLOY_HOSTINGER_VPS.md)
 
 services:
   postgres:

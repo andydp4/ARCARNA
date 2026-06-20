@@ -183,7 +183,7 @@ Four briefs: **M1** dead-code purge (partial — accounts for #11 already retiri
 1. Script uses `pg_dump` v16 (matches Neon); produces `midnight-YYYY-MM-DD-HHMMSS.dump`.
 2. Upload via `aws --endpoint-url $R2_ENDPOINT s3 cp` (R2 supports S3 v4).
 3. Rotation: after upload, list bucket and delete objects older than 30 days (also via `aws s3 ls / rm`).
-4. Cron entry in `scripts/cron.example`: `15 2 * * * /opt/midnight/scripts/backup-neon-to-r2.sh >> /var/log/midnight-backup.log 2>&1`.
+4. Cron entry in `scripts/cron.example`: `15 2 * * * /root/ARCARNA/scripts/backup-neon-to-r2.sh >> /var/log/arcarna-backup.log 2>&1`.
 5. `restore-from-r2.sh` accepts a date or "latest"; pipes through `pg_restore --clean --if-exists` into a target URL.
 6. **Restore drill**: spin up a fresh Neon branch, run the script, confirm row counts match within 1% of source; document timing and any glitches in `DISASTER_RECOVERY.md`.
 7. (Optional) post a Slack / email summary on script success/failure if `BACKUP_NOTIFY_WEBHOOK` is set.

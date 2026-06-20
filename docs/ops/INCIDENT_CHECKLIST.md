@@ -11,8 +11,8 @@ Escalation contacts and on-call rotation are **team-specific** — fill in names
 | Check | Command / action | Healthy signal |
 |-------|------------------|----------------|
 | Public health | `curl -fsSI https://viger.cloud/midnight/api/health` | HTTP 200, body `{"ok":true}` |
-| App process | `pm2 status midnight-epos` | `online`, stable restarts |
-| Recent errors | `pm2 logs midnight-epos --lines 80 --nostream` | No repeating stack traces |
+| App process | `pm2 status arcarna-epos` | `online`, stable restarts |
+| Recent errors | `pm2 logs arcarna-epos --lines 80 --nostream` | No repeating stack traces |
 | Nginx | `sudo tail -n 50 /var/log/nginx/error.log` | No upstream flood |
 | Database | Neon status page + `npm run migration:sanity` on VPS | Sanity passes |
 | Deploy config | `grep -E '^(APP_BASE_PATH|VITE_BASE_PATH|AUTH_PROVIDER|DATABASE_URL)=' .env` | `APP_BASE_PATH=/midnight`, `AUTH_PROVIDER=clerk`, `DATABASE_URL` set |
@@ -25,8 +25,8 @@ If health is **200** but users report issues, suspect **browser/service worker c
 
 ### Site down / 502 Bad Gateway
 
-1. `pm2 status` — if **stopped** or **errored**: `cd /var/www/midnight-epos && npm run deploy:restart`.
-2. If restart loops: `pm2 logs midnight-epos --lines 100` — common causes: missing `CLERK_SECRET_KEY`, invalid `DATABASE_URL`, `DEV_AUTH_BYPASS=1` in production.
+1. `pm2 status` — if **stopped** or **errored**: `cd /root/ARCARNA && npm run deploy:restart`.
+2. If restart loops: `pm2 logs arcarna-epos --lines 100` — common causes: missing `CLERK_SECRET_KEY`, invalid `DATABASE_URL`, `DEV_AUTH_BYPASS=1` in production.
 3. Nginx upstream: confirm app listens on `127.0.0.1:5000` (`ss -lntp | grep 5000`).
 4. `sudo nginx -t && sudo systemctl reload nginx`.
 5. Last resort after config fix: `npm run deploy:build && npm run deploy:restart`.
@@ -88,10 +88,10 @@ After a bad deploy or asset mismatch:
 
 ```bash
 # On VPS as deploy user
-cd /var/www/midnight-epos
+cd /root/ARCARNA
 curl -fsS https://viger.cloud/midnight/api/health
 pm2 status
-pm2 logs midnight-epos --lines 50 --nostream
+pm2 logs arcarna-epos --lines 50 --nostream
 npm run migration:sanity
 npm run deploy:restart
 ```

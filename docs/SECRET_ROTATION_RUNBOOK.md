@@ -1,13 +1,13 @@
 # Secret rotation runbook
 
-Operators use this runbook when rotating credentials for MidnightEPOS on **https://viger.cloud/midnight** (PM2 + Neon + Clerk). Pair with [SECURITY_REVIEW.md](./SECURITY_REVIEW.md) and [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md).
+Operators use this runbook when rotating credentials for ARCARNA EPOS on **https://viger.cloud/arcarna** (PM2 + Neon + Clerk). Pair with [SECURITY_REVIEW.md](./SECURITY_REVIEW.md) and [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md).
 
 ## Roles and cadence
 
 | Role | Responsibility |
 |------|----------------|
 | **Platform owner** | Approves rotation window; updates Clerk dashboard; verifies sign-in after Clerk rotate |
-| **VPS operator** | Edits `/var/www/midnight-epos/.env`, runs `npm run deploy:build` + `npm run deploy:restart`, confirms health |
+| **VPS operator** | Edits `/root/ARCARNA/.env`, runs `npm run deploy:build` + `npm run deploy:restart`, confirms health |
 | **DB admin** | Rotates Neon password; updates `DATABASE_URL`; confirms `migration:sanity` |
 
 | Secret | Recommended cadence | Trigger for immediate rotate |
@@ -24,8 +24,8 @@ Operators use this runbook when rotating credentials for MidnightEPOS on **https
 ## Pre-rotation checklist
 
 1. Schedule a **5–15 minute** maintenance window (users can stay signed in; plan for one forced re-login after `SESSION_SECRET` rotate).
-2. Confirm current health: `curl -fsS https://viger.cloud/midnight/api/health`.
-3. Note current PM2 uptime: `pm2 status midnight-epos`.
+2. Confirm current health: `curl -fsS https://viger.cloud/arcarna/api/health`.
+3. Note current PM2 uptime: `pm2 status arcarna-epos`.
 4. Ensure you can edit `.env` on the VPS and access Clerk + Neon dashboards.
 5. **Do not** paste new secrets into chat, tickets, or git — only into `.env` on the server.
 
@@ -37,7 +37,7 @@ Operators use this runbook when rotating credentials for MidnightEPOS on **https
 2. On the VPS, update `.env`: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` (all three must match the same Clerk instance).
 3. Rebuild frontend (keys are baked at build time): `npm run deploy:build`.
 4. `npm run deploy:restart`.
-5. **Verify:** Open `/midnight/sign-in`, complete login, open a tenant page. Check browser console for Clerk/CSP errors.
+5. **Verify:** Open `/arcarna/sign-in`, complete login, open a tenant page. Check browser console for Clerk/CSP errors.
 6. **Blast radius:** All users must sign in again if sessions are invalidated; existing Clerk sessions usually survive secret-only rotate — test explicitly.
 
 ### Database (`DATABASE_URL`)
@@ -45,7 +45,7 @@ Operators use this runbook when rotating credentials for MidnightEPOS on **https
 1. In Neon → **Reset password** (or create a new role and connection string with least privilege).
 2. Update `DATABASE_URL` in `.env` only.
 3. `npm run deploy:restart` (no frontend rebuild required).
-4. **Verify:** `curl -fsS https://viger.cloud/midnight/api/health` and `npm run migration:sanity` on the VPS.
+4. **Verify:** `curl -fsS https://viger.cloud/arcarna/api/health` and `npm run migration:sanity` on the VPS.
 5. **Blast radius:** App down until URL is correct; no data loss if URL points to same database.
 
 ### Session signing (`SESSION_SECRET`)
@@ -96,9 +96,9 @@ Configured in `POST /api/webhooks` (see [CHANNEL_INGEST.md](./CHANNEL_INGEST.md)
 ## Post-rotation verification (all rotates)
 
 ```bash
-curl -fsS https://viger.cloud/midnight/api/health
-curl -fsS https://viger.cloud/midnight/api/health/metrics   # if H3 metrics deployed
-pm2 logs midnight-epos --lines 30 --nostream
+curl -fsS https://viger.cloud/arcarna/api/health
+curl -fsS https://viger.cloud/arcarna/api/health/metrics   # if H3 metrics deployed
+pm2 logs arcarna-epos --lines 30 --nostream
 ```
 
 1. Confirm no spike in 5xx in nginx/PM2 logs.

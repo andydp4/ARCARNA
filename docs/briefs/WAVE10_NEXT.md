@@ -29,12 +29,12 @@
 ## VPS after Wave 9
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull origin main
 source .env
 npm ci && npm run build
 bash scripts/apply-migrations-pm2.sh   # adds 031
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 Smoke: new org → `/onboarding/wizard`; home banner until complete; POS on iPad landscape.

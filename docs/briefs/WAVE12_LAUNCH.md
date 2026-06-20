@@ -14,7 +14,7 @@
 |------|--------|
 | List-page Liquid Metal (`inventory`, `locations`, `user-access`) | **Done** — PR #35 |
 | GAP-E2 list pages closed | **Done** |
-| VPS deploy (`392515a`+) | **Done** — `/root/MidnightEPOS` |
+| VPS deploy (`392515a`+) | **Done** — `/root/ARCARNA` |
 | Live smoke (list pages + auth) | **Done** |
 | Auth hardening follow-ups (#36–#37) | **Done** — merged; redeploy `a37e9ae` for #37 |
 | Deploy env reload (#38) | **Done** — `deploy:restart` delete+start |
@@ -32,10 +32,10 @@
 
 ## Deploy (VPS)
 
-App path: **`/root/MidnightEPOS`** (not `/var/www/midnight-epos`).
+App path: **`/root/ARCARNA`**.
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git fetch origin && git checkout main && git pull origin main
 git log -1 --oneline    # expect a37e9ae or newer
 

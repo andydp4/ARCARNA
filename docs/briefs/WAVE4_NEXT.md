@@ -21,13 +21,13 @@
 ## VPS after Wave 3 deploy
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull origin main
 source .env
 npm ci && npm run build
 bash scripts/apply-migrations-pm2.sh
 # includes 026_gift_cards.sql, 027_gift_card_movements.sql
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **Try in app:**

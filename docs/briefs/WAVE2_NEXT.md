@@ -20,11 +20,11 @@ Optional parallel (third agent): **F7** channel attribution after A1 on main.
 ## VPS after Wave 1 deploy
 
 ```bash
-cd /root/MidnightEPOS && git pull origin main
+cd /root/ARCARNA && git pull origin main
 source .env
 npm ci && npm run build
 psql "$DATABASE_URL" -f migrations/022_receipt_settings.sql
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **F1 env (optional):** `RESEND_API_KEY`, `RECEIPT_FROM_EMAIL`, `RECEIPT_SIGNING_SECRET`  

@@ -18,7 +18,7 @@ In Sentry’s project wizard, choose **React** → then **Skip** install steps �
 ## Step 2 — Add to VPS `.env`
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 nano .env
 ```
 
@@ -48,7 +48,7 @@ Save: Ctrl+O, Enter, Ctrl+X.
 source .env
 npm run build
 # delete+start (not `pm2 restart`) so the changed .env is actually re-read
-pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save
+pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save
 ```
 
 `VITE_*` values are baked in at **build** time. Server-side keys (e.g. `SENTRY_DSN`)

@@ -26,7 +26,7 @@ This guide explains how to turn on **Clerk** login for MidnightEPOS on your Host
 
 ## Step 2 — Copy your keys into `.env.production`
 
-On the **server**, edit `/root/MidnightEPOS/.env.production` (see [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md)).
+On the **server**, edit `/root/ARCARNA/.env.production` (see [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md)).
 
 Add or update these lines:
 
@@ -121,16 +121,16 @@ If you see **“Signed in with Clerk, but the server session is not ready”**, 
 On the server:
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull
-./scripts/hostinger-deploy.sh update
+npm run deploy
 ```
 
 Migration `008_auth_subject.sql` adds `auth_user_id` / `auth_provider` columns. Existing users keep their old Replit id until linked.
 
-**Success:** `./scripts/hostinger-deploy.sh status` shows `OK: App is responding.`
+**Success:** `npm run deploy` shows `OK: App is responding.`
 
-**Failure:** See deploy logs: `./scripts/hostinger-deploy.sh logs`
+**Failure:** See deploy logs: `pm2 logs arcarna-epos --lines 50`
 
 ---
 
@@ -141,8 +141,8 @@ When someone had a Replit account, their row in `allowed_users` may still use th
 For manual linking (developer or you with SSH):
 
 ```bash
-cd /root/MidnightEPOS
-docker compose exec app npm run auth:link-clerk -- --email staff@shop.com --clerk-user-id user_xxxxxxxx
+cd /root/ARCARNA
+npm run auth:link-clerk -- --email staff@shop.com --clerk-user-id user_xxxxxxxx
 ```
 
 Use `--dry-run` first to preview.
@@ -186,7 +186,7 @@ REPL_ID=your_replit_client_id
 REPLIT_DOMAINS=your.domain.com
 ```
 
-Then `./scripts/hostinger-deploy.sh update`.
+Then `npm run deploy`.
 
 ---
 

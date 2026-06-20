@@ -93,7 +93,7 @@ Optional Cloudflare WAF managed rules for production; test POS checkout after en
 ## Deploy checklist (after code on VPS)
 
 1. `git pull` + `npm ci && npm run build` on VPS (see wave briefs).
-2. `pm2 delete midnight-epos && pm2 start ecosystem.config.cjs && pm2 save` (re-reads `.env`; `pm2 restart` does not)
+2. `pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save` (re-reads `.env`; `pm2 restart` does not)
 3. If users report stale UI: purge Cloudflare cache for `/midnight` paths.
 4. Smoke: `curl -sI https://viger.cloud/midnight/api/health` — expect `200`, `Cache-Control` no-store.
 

@@ -5,6 +5,8 @@ Point-of-sale and business management system. See [ARCHITECTURE.md](./ARCHITECTU
 ### Docs
 
 - **[docs/ARCHITECTURAL_PRINCIPLES.md](docs/ARCHITECTURAL_PRINCIPLES.md)** — Architectural principles (repo constitution)
+- **[docs/DEPLOY_HOSTINGER_VPS.md](docs/DEPLOY_HOSTINGER_VPS.md)** — Production VPS deploy (PM2 + Nginx)
+- **[docs/ops/VPS_MIGRATION_KVM2_TO_KVM4.md](docs/ops/VPS_MIGRATION_KVM2_TO_KVM4.md)** — KVM2 → KVM4 server migration runbook
 
 ---
 

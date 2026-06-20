@@ -21,7 +21,7 @@
 ## VPS after Wave 2 deploy
 
 ```bash
-cd /root/MidnightEPOS
+cd /root/ARCARNA
 git pull origin main
 source .env
 npm ci && npm run build
@@ -29,7 +29,7 @@ bash scripts/apply-migrations-pm2.sh
 # or: psql "$DATABASE_URL" -f migrations/023_shifts.sql
 #     psql "$DATABASE_URL" -f migrations/024_orders_shift_id.sql
 #     psql "$DATABASE_URL" -f migrations/025_refunds.sql
-pm2 restart midnight-epos --update-env
+pm2 restart arcarna-epos --update-env
 ```
 
 **Try in app:**

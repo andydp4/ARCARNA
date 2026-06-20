@@ -1,6 +1,6 @@
 # Production environment variables (technical reference)
 
-**If you are deploying on Hostinger, start with [DEPLOYMENT_HOSTINGER_VPS.md](./DEPLOYMENT_HOSTINGER_VPS.md)** — that is the simple step-by-step guide. This page is for lookup only.
+**If you are deploying on Hostinger, start with [DEPLOY_HOSTINGER_VPS.md](./DEPLOY_HOSTINGER_VPS.md)** — that is the simple step-by-step guide. This page is for lookup only.
 
 ## Required in production
 
