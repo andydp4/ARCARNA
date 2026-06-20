@@ -1,5 +1,5 @@
 /** Drizzle schema (simplified) - must stay in sync with shared/schema for org-scoped columns */
-import { pgTable, uuid, varchar, integer, timestamp, numeric, jsonb, boolean, date } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, integer, timestamp, numeric, jsonb, boolean, date, text } from 'drizzle-orm/pg-core'
 
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -16,8 +16,27 @@ export const customers = pgTable('customers', {
   email: varchar('email',{length:255}),
   address: varchar('address',{length:1024}),
   category: varchar('category',{length:64}).default('Bronze'),
+  source: varchar('source', { length: 32 }),
   manual_override_protected: integer('manual_override_protected').default(0).notNull(),
   loyalty_points: integer('loyalty_points').default(0),
+  created_at: timestamp('created_at').defaultNow(),
+  updated_at: timestamp('updated_at').defaultNow(),
+})
+
+export const website_uploaded_files = pgTable('website_uploaded_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  org_id: uuid('org_id').references(() => organizations.id).notNull(),
+  provider: varchar('provider', { length: 32 }).default('local').notNull(),
+  storage_key: varchar('storage_key', { length: 1024 }),
+  public_url: varchar('public_url', { length: 2048 }).notNull(),
+  file_name: varchar('file_name', { length: 255 }).notNull(),
+  original_file_name: varchar('original_file_name', { length: 255 }),
+  mime_type: varchar('mime_type', { length: 128 }).notNull(),
+  byte_size: integer('byte_size').notNull(),
+  width: integer('width'),
+  height: integer('height'),
+  alt_text: varchar('alt_text', { length: 255 }),
+  status: varchar('status', { length: 32 }).default('available').notNull(),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })
@@ -35,6 +54,13 @@ export const products = pgTable('products', {
   stock: numeric('stock', { precision: 14, scale: 3, mode: 'number' }).default(0),
   stock_limit: numeric('stock_limit', { precision: 14, scale: 3, mode: 'number' }).default(10),
   barcode: varchar('barcode',{length:255}),
+  available_for_website: boolean('available_for_website').default(false).notNull(),
+  website_title: varchar('website_title', { length: 255 }),
+  website_description: text('website_description'),
+  website_category: varchar('website_category', { length: 120 }),
+  website_unit_label: varchar('website_unit_label', { length: 120 }),
+  website_sort_order: integer('website_sort_order').default(0).notNull(),
+  website_image_file_id: uuid('website_image_file_id').references(() => website_uploaded_files.id),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })
@@ -59,6 +85,7 @@ export const orders = pgTable('orders', {
   // inflate the refundable amount.
   settled_total: numeric('settled_total',{precision:10,scale:2}),
   settled_at: timestamp('settled_at'),
+  channel: varchar('channel', { length: 32 }).default('pos').notNull(),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

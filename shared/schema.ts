@@ -256,6 +256,150 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 });
 export type InsertCustomerData = z.infer<typeof insertCustomerSchema>;
 
+export const WEBSITE_FILE_STATUSES = ["available", "pending", "deleted"] as const;
+export type WebsiteFileStatus = (typeof WEBSITE_FILE_STATUSES)[number];
+
+export const WEBSITE_FILE_PROVIDERS = ["local", "r2"] as const;
+export type WebsiteFileProvider = (typeof WEBSITE_FILE_PROVIDERS)[number];
+
+export const websiteUploadedFiles = pgTable("website_uploaded_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull().default("local"),
+  storageKey: varchar("storage_key", { length: 1024 }),
+  publicUrl: varchar("public_url", { length: 2048 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  originalFileName: varchar("original_file_name", { length: 255 }),
+  mimeType: varchar("mime_type", { length: 128 }).notNull(),
+  byteSize: integer("byte_size").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  altText: varchar("alt_text", { length: 255 }),
+  status: varchar("status", { length: 32 }).notNull().default("available"),
+  uploadedBy: varchar("uploaded_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("website_uploaded_files_org_status_idx").on(table.orgId, table.status),
+  index("website_uploaded_files_org_created_idx").on(table.orgId, table.createdAt),
+  uniqueIndex("website_uploaded_files_provider_storage_key_uq")
+    .on(table.provider, table.storageKey)
+    .where(sql`${table.storageKey} IS NOT NULL`),
+]);
+
+export type WebsiteUploadedFile = typeof websiteUploadedFiles.$inferSelect;
+export type InsertWebsiteUploadedFile = typeof websiteUploadedFiles.$inferInsert;
+export const insertWebsiteUploadedFileSchema = createInsertSchema(websiteUploadedFiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWebsiteUploadedFileData = z.infer<typeof insertWebsiteUploadedFileSchema>;
+
+export const WEBSITE_BLOCK_TYPES = [
+  "hero",
+  "image",
+  "wide",
+  "split",
+  "cta",
+  "notice",
+  "gallery",
+  "spacer",
+] as const;
+export type WebsiteBlockType = (typeof WEBSITE_BLOCK_TYPES)[number];
+
+export const WEBSITE_ORDER_ACCESS_MODES = ["public", "password", "clerk"] as const;
+export type WebsiteOrderAccessMode = (typeof WEBSITE_ORDER_ACCESS_MODES)[number];
+
+export const websiteThemeSettings = pgTable("website_theme_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  siteName: varchar("site_name", { length: 255 }).notNull().default("WM Supplies"),
+  logoFileId: uuid("logo_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  faviconFileId: uuid("favicon_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  primaryColor: varchar("primary_color", { length: 16 }).notNull().default("#FACC15"),
+  secondaryColor: varchar("secondary_color", { length: 16 }).notNull().default("#111827"),
+  accentColor: varchar("accent_color", { length: 16 }).notNull().default("#EF4444"),
+  backgroundColor: varchar("background_color", { length: 16 }).notNull().default("#FFFFFF"),
+  textColor: varchar("text_color", { length: 16 }).notNull().default("#111827"),
+  borderColor: varchar("border_color", { length: 16 }).notNull().default("#111827"),
+  buttonBackgroundColor: varchar("button_background_color", { length: 16 }).notNull().default("#111827"),
+  buttonTextColor: varchar("button_text_color", { length: 16 }).notNull().default("#FFFFFF"),
+  headingFont: varchar("heading_font", { length: 120 }),
+  bodyFont: varchar("body_font", { length: 120 }),
+  customCss: text("custom_css"),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteThemeSettings = typeof websiteThemeSettings.$inferSelect;
+export type InsertWebsiteThemeSettings = typeof websiteThemeSettings.$inferInsert;
+export const insertWebsiteThemeSettingsSchema = createInsertSchema(websiteThemeSettings).omit({
+  updatedAt: true,
+});
+export type InsertWebsiteThemeSettingsData = z.infer<typeof insertWebsiteThemeSettingsSchema>;
+
+export const websiteOrderSettings = pgTable("website_order_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  orderAccessMode: varchar("order_access_mode", { length: 32 }).notNull().default("public"),
+  defaultOrderStatus: varchar("default_order_status", { length: 20 }).notNull().default("pending"),
+  defaultLocationId: uuid("default_location_id").references(() => locations.id, { onDelete: "set null" }),
+  allowOutOfStockOrders: boolean("allow_out_of_stock_orders").notNull().default(false),
+  minOrderValue: numeric("min_order_value", { precision: 10, scale: 2 }),
+  orderIntroText: text("order_intro_text"),
+  successMessage: text("success_message"),
+  notificationEmail: varchar("notification_email", { length: 255 }),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteOrderSettings = typeof websiteOrderSettings.$inferSelect;
+export type InsertWebsiteOrderSettings = typeof websiteOrderSettings.$inferInsert;
+export const insertWebsiteOrderSettingsSchema = createInsertSchema(websiteOrderSettings).omit({
+  updatedAt: true,
+});
+export type InsertWebsiteOrderSettingsData = z.infer<typeof insertWebsiteOrderSettingsSchema>;
+
+export const websiteBlocks = pgTable("website_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  page: varchar("page", { length: 64 }).notNull().default("home"),
+  type: varchar("type", { length: 32 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isVisible: boolean("is_visible").notNull().default(true),
+  title: varchar("title", { length: 255 }),
+  subtitle: varchar("subtitle", { length: 255 }),
+  body: text("body"),
+  ctaLabel: varchar("cta_label", { length: 120 }),
+  ctaLink: varchar("cta_link", { length: 2048 }),
+  imageFileId: uuid("image_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  backgroundColor: varchar("background_color", { length: 16 }),
+  textColor: varchar("text_color", { length: 16 }),
+  borderColor: varchar("border_color", { length: 16 }),
+  buttonBackgroundColor: varchar("button_background_color", { length: 16 }),
+  buttonTextColor: varchar("button_text_color", { length: 16 }),
+  overlayColor: varchar("overlay_color", { length: 16 }),
+  overlayOpacity: numeric("overlay_opacity", { precision: 4, scale: 3 }).notNull().default("0"),
+  imageFit: varchar("image_fit", { length: 16 }).notNull().default("cover"),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: varchar("created_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("website_blocks_org_page_sort_idx").on(table.orgId, table.page, table.sortOrder),
+  index("website_blocks_org_visible_idx").on(table.orgId, table.isVisible),
+  index("website_blocks_image_file_idx").on(table.imageFileId),
+]);
+
+export type WebsiteBlock = typeof websiteBlocks.$inferSelect;
+export type InsertWebsiteBlock = typeof websiteBlocks.$inferInsert;
+export const insertWebsiteBlockSchema = createInsertSchema(websiteBlocks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWebsiteBlockData = z.infer<typeof insertWebsiteBlockSchema>;
+
 // Products table (orgId required for new rows; nullable for legacy backfill)
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -277,11 +421,20 @@ export const products = pgTable("products", {
   barcode: varchar("barcode", { length: 255 }),
   // Optional shorthand names used for WhatsApp/order-intent matching, e.g. ["coke", "large coke"].
   aliases: jsonb("aliases").$type<string[]>(),
+  availableForWebsite: boolean("available_for_website").notNull().default(false),
+  websiteTitle: varchar("website_title", { length: 255 }),
+  websiteDescription: text("website_description"),
+  websiteCategory: varchar("website_category", { length: 120 }),
+  websiteUnitLabel: varchar("website_unit_label", { length: 120 }),
+  websiteSortOrder: integer("website_sort_order").notNull().default(0),
+  websiteImageFileId: uuid("website_image_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("products_org_id_idx").on(table.orgId),
   index("products_org_product_id_idx").on(table.orgId, table.productId),
+  index("products_org_website_idx").on(table.orgId, table.availableForWebsite, table.websiteSortOrder),
+  index("products_website_image_file_idx").on(table.websiteImageFileId),
 ]);
 
 export type Product = typeof products.$inferSelect;
