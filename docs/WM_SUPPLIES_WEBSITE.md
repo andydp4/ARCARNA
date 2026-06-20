@@ -62,3 +62,45 @@ ALTER TABLE products
 ```
 
 Do not run rollback SQL against production without a backup and explicit approval.
+
+## Phase 2 Service Contract
+
+Shared validation lives in:
+
+`shared/website.ts`
+
+Backend service logic lives in:
+
+`server/services/website.ts`
+
+This layer currently covers:
+
+- theme patch validation
+- block input validation
+- upload metadata validation
+- order settings validation
+- public order payload validation
+- default public site configuration
+- hidden block filtering
+- block and product sort order
+- safe public product projection
+
+Public order payloads deliberately reject client-supplied totals. Prices must be resolved and calculated server-side when the public order API is implemented.
+
+## Phase 3 Media Foundation
+
+Media validation and the local storage provider live in:
+
+`server/services/websiteMedia.ts`
+
+The media foundation currently covers:
+
+- JPG, PNG, and WebP MIME allowlist
+- image magic-byte validation to reject fake files
+- MIME/content mismatch rejection
+- 10 MB image limit
+- filename sanitisation and path traversal rejection
+- org-scoped storage keys under `orgs/{orgId}/uploads/website/...`
+- local save/delete provider for development and test use
+
+R2/S3 and admin upload routes can be added on top of this provider interface without changing the validation rules.
