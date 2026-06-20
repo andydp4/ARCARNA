@@ -11,6 +11,52 @@ export const LEGACY_OFFLINE_DB_NAME = OFFLINE_DB_PREFIX_LEGACY;
 
 const DB_VERSION = 2;
 
+type QueueStoreName = 'offline-orders' | 'mutations-queue';
+type OfflineQueueRecord = (OfflineOrder | QueuedMutation) & Record<string, unknown>;
+
+const QUEUE_STORE_NAMES: QueueStoreName[] = ['offline-orders', 'mutations-queue'];
+
+function upgradeOfflineDbSchema(db: IDBDatabase): void {
+  if (!db.objectStoreNames.contains('offline-orders')) {
+    const orderStore = db.createObjectStore('offline-orders', {
+      keyPath: 'id',
+      autoIncrement: true
+    });
+    orderStore.createIndex('synced', 'synced', { unique: false });
+    orderStore.createIndex('timestamp', 'timestamp', { unique: false });
+  }
+
+  if (!db.objectStoreNames.contains('mutations-queue')) {
+    const mutationsStore = db.createObjectStore('mutations-queue', {
+      keyPath: 'id',
+      autoIncrement: true
+    });
+    mutationsStore.createIndex('synced', 'synced', { unique: false });
+    mutationsStore.createIndex('timestamp', 'timestamp', { unique: false });
+    mutationsStore.createIndex('type', 'type', { unique: false });
+  }
+
+  if (!db.objectStoreNames.contains('products-cache')) {
+    db.createObjectStore('products-cache', { keyPath: 'id' });
+  }
+
+  if (!db.objectStoreNames.contains('customers-cache')) {
+    db.createObjectStore('customers-cache', { keyPath: 'id' });
+  }
+}
+
+function openOfflineDb(name: string): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name, DB_VERSION);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      upgradeOfflineDbSchema((event.target as IDBOpenDBRequest).result);
+    };
+  });
+}
+
 async function dbExists(name: string): Promise<boolean> {
   if (typeof indexedDB === "undefined") return false;
   if (typeof indexedDB.databases === "function") {
@@ -18,21 +64,99 @@ async function dbExists(name: string): Promise<boolean> {
     return dbs.some((d) => d.name === name);
   }
   return new Promise((resolve) => {
+    let createdDuringProbe = false;
     const req = indexedDB.open(name);
+    req.onupgradeneeded = () => {
+      createdDuringProbe = true;
+      req.transaction?.abort();
+    };
     req.onsuccess = () => {
       req.result.close();
       resolve(true);
     };
-    req.onerror = () => resolve(false);
+    req.onerror = () => resolve(!createdDuringProbe && req.error?.name !== "AbortError");
   });
 }
 
-/** Prefer new DB name; fall back to legacy per-org DB if user has offline data from before rebrand. */
+function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+async function getAllFromStore<T>(db: IDBDatabase, storeName: QueueStoreName): Promise<T[]> {
+  if (!db.objectStoreNames.contains(storeName)) return [];
+  const tx = db.transaction(storeName, 'readonly');
+  const records = await requestToPromise<T[]>(tx.objectStore(storeName).getAll());
+  await transactionDone(tx);
+  return records;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`).join(",")}}`;
+}
+
+function queueRecordSignature(record: OfflineQueueRecord): string {
+  const { id: _id, synced: _synced, error: _error, ...signature } = record;
+  return stableStringify(signature);
+}
+
+async function copyUnsyncedQueue(
+  sourceDb: IDBDatabase,
+  targetDb: IDBDatabase,
+  storeName: QueueStoreName,
+): Promise<number> {
+  const sourceRecords = (await getAllFromStore<OfflineQueueRecord>(sourceDb, storeName))
+    .filter((record) => record.synced === 0);
+  if (sourceRecords.length === 0) return 0;
+
+  const targetRecords = await getAllFromStore<OfflineQueueRecord>(targetDb, storeName);
+  const existing = new Set(targetRecords.map(queueRecordSignature));
+  const recordsToCopy = sourceRecords.filter((record) => !existing.has(queueRecordSignature(record)));
+  if (recordsToCopy.length === 0) return 0;
+
+  const tx = targetDb.transaction(storeName, 'readwrite');
+  const store = tx.objectStore(storeName);
+  for (const record of recordsToCopy) {
+    const { id: _id, synced: _synced, error: _error, ...copy } = record;
+    store.add({ ...copy, synced: 0 });
+  }
+  await transactionDone(tx);
+  return recordsToCopy.length;
+}
+
+async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
+  const legacyName = legacyOfflineDbNameForOrg(orgId);
+  if (!(await dbExists(legacyName))) return;
+
+  const currentDb = await openOfflineDb(offlineDbNameForOrg(orgId));
+  const legacyDb = await openOfflineDb(legacyName);
+  try {
+    await Promise.all(
+      QUEUE_STORE_NAMES.map((storeName) => copyUnsyncedQueue(legacyDb, currentDb, storeName)),
+    );
+  } finally {
+    currentDb.close();
+    legacyDb.close();
+  }
+}
+
+/** Use the current DB name after copying any unsynced legacy queues from before rebrand. */
 export async function resolveOfflineDbName(orgId: string): Promise<string> {
   const newName = offlineDbNameForOrg(orgId);
-  const legacyName = legacyOfflineDbNameForOrg(orgId);
-  if (await dbExists(newName)) return newName;
-  if (await dbExists(legacyName)) return legacyName;
+  await migrateLegacyQueuesToCurrentDb(orgId);
   return newName;
 }
 
@@ -83,43 +207,7 @@ class OfflineStorage {
 
     this.dbPromise = (async () => {
       const dbName = await resolveOfflineDbName(orgId);
-      return new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(dbName, DB_VERSION);
-
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-
-        request.onupgradeneeded = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-
-          if (!db.objectStoreNames.contains('offline-orders')) {
-            const orderStore = db.createObjectStore('offline-orders', {
-              keyPath: 'id',
-              autoIncrement: true
-            });
-            orderStore.createIndex('synced', 'synced', { unique: false });
-            orderStore.createIndex('timestamp', 'timestamp', { unique: false });
-          }
-
-          if (!db.objectStoreNames.contains('mutations-queue')) {
-            const mutationsStore = db.createObjectStore('mutations-queue', {
-              keyPath: 'id',
-              autoIncrement: true
-            });
-            mutationsStore.createIndex('synced', 'synced', { unique: false });
-            mutationsStore.createIndex('timestamp', 'timestamp', { unique: false });
-            mutationsStore.createIndex('type', 'type', { unique: false });
-          }
-
-          if (!db.objectStoreNames.contains('products-cache')) {
-            db.createObjectStore('products-cache', { keyPath: 'id' });
-          }
-
-          if (!db.objectStoreNames.contains('customers-cache')) {
-            db.createObjectStore('customers-cache', { keyPath: 'id' });
-          }
-        };
-      });
+      return openOfflineDb(dbName);
     })();
 
     return this.dbPromise;
