@@ -37,6 +37,18 @@ interface OrgContextValue {
 
 const OrgContext = createContext<OrgContextValue | null>(null);
 
+export function shouldWipeOfflineDataForAuthState({
+  user,
+  isLoading,
+  error,
+}: {
+  user: AuthUser | null;
+  isLoading: boolean;
+  error: unknown;
+}): boolean {
+  return !isLoading && !error && !user;
+}
+
 function resolveSelectedOrg(
   user: AuthUser | null | undefined,
   orgs: Organization[],
@@ -53,7 +65,12 @@ function resolveSelectedOrg(
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { user, isAuthenticated } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    error: authError,
+  } = useAuth();
   const { data: orgs = [], isLoading } = useQuery<Organization[]>({
     queryKey: ["/api/orgs"],
     enabled: isAuthenticated && !!user,
@@ -61,17 +78,23 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const [selectedOrgId, setSelectedOrgIdState] = useState<string | null>(null);
   const prevOrgIdRef = useRef<string | null>(null);
+  const shouldWipeOfflineData = shouldWipeOfflineDataForAuthState({
+    user,
+    isLoading: authLoading,
+    error: authError,
+  });
 
   useEffect(() => {
-    if (!user) {
+    if (shouldWipeOfflineData) {
       setSelectedOrgIdState(null);
       prevOrgIdRef.current = null;
       offlineStorage.setActiveOrg(null);
       void wipeAllOfflineData();
       return;
     }
+    if (!user) return;
     void deleteIndexedDb(LEGACY_OFFLINE_DB_NAME);
-  }, [user]);
+  }, [shouldWipeOfflineData, user]);
 
   useEffect(() => {
     if (!user) return;
