@@ -28,6 +28,8 @@ export const PlaceOrderInput = z.object({
   // Injected by the route from organizations.default_tax_rate. Optional so
   // existing callers keep the previous fixed 20% behaviour.
   taxRatePercent: z.number().min(0).max(100).optional(),
+  channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
+  status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
 export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })

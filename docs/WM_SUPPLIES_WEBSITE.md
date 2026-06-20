@@ -85,7 +85,7 @@ This layer currently covers:
 - block and product sort order
 - safe public product projection
 
-Public order payloads deliberately reject client-supplied totals. Prices must be resolved and calculated server-side when the public order API is implemented.
+Public order payloads deliberately reject client-supplied totals. Prices are resolved and calculated server-side by the public order submission service.
 
 ## Phase 3 Media Foundation
 
@@ -120,6 +120,7 @@ Public routes:
 - `GET /api/public/wm-supplies/site-config`
 - `GET /api/public/wm-supplies/products`
 - `GET /api/public/products`
+- `POST /api/public/wm-supplies/orders`
 
 Public routes resolve the organisation from `WM_SUPPLIES_ORG_ID` or `WM_SUPPLIES_WEBSITE_ORG_ID`. For local testing only, `?orgId={uuid}` is also accepted.
 
@@ -140,3 +141,34 @@ These routes use the existing scoped middleware from `server/routes.ts` and then
 Admin mutations write admin audit entries. Public product responses are projected through the service layer and do not include cost price or other internal fields.
 
 The upload metadata route records already-validated metadata only. Binary upload handling and R2/S3 provider support are separate follow-on tasks.
+
+## Phase 5 Public Website and Order Intake
+
+Customer-facing React routes live in:
+
+`client/src/features/wm-supplies/WmSuppliesPublicSite.tsx`
+
+Pure rendering/order helpers live in:
+
+`client/src/features/wm-supplies/publicWebsite.ts`
+
+Public routes inside the current Arcana mount:
+
+- `/`
+- `/order`
+- `/order/success`
+
+When no backend blocks are configured, the frontend renders a small bold fallback shop-window set. Once staff add visible homepage blocks, backend blocks take over.
+
+Public order submission:
+
+- validates payloads with `publicWebsiteOrderSchema`
+- rejects client-supplied totals
+- resolves products by `org_id` and `available_for_website = true`
+- uses server-side `default_sale_price`
+- creates customers with `source = 'website'`
+- places orders through the domain engine
+- persists `orders.channel = 'web'`
+- publishes an `OrderCreated` outbox event with source `wm-supplies-website`
+
+The first public order slice is deliberately conservative for stock: any shortage is rejected with `409`, even if the setting is enabled, until the inventory worker is adjusted to avoid unsafe deductions for out-of-stock website requests.

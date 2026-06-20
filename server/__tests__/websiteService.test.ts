@@ -5,6 +5,9 @@ import {
   normalizeWebsiteBlocks,
   projectPublicProduct,
   projectPublicProducts,
+  resolvePublicOrderLines,
+  WebsitePublicOrderError,
+  type WebsiteOrderRuntime,
   type WebsiteRepository,
 } from "../services/website";
 
@@ -19,7 +22,35 @@ function repo(overrides: Partial<WebsiteRepository> = {}): WebsiteRepository {
     upsertBlock: vi.fn(),
     createUpload: vi.fn(),
     listPublicProducts: vi.fn().mockResolvedValue([]),
+    listWebsiteOrderProducts: vi.fn().mockResolvedValue([]),
     ...overrides,
+  };
+}
+
+function runtime(): WebsiteOrderRuntime {
+  return {
+    withTransaction: vi.fn(async (fn) => fn({ tx: true })),
+    engine: {
+      createCustomer: vi.fn().mockResolvedValue({ id: "customer-1" }),
+      placeOrder: vi.fn().mockResolvedValue({ orderId: "order-1", warnings: [] }),
+    },
+    publishOrderCreated: vi.fn().mockResolvedValue("event-1"),
+    loadCreatedOrder: vi.fn().mockResolvedValue({
+      id: "order-1",
+      status: "pending",
+      total: "36.00",
+      paymentMethod: "transfer",
+      customerId: "customer-1",
+      items: [
+        {
+          id: "line-1",
+          productId: "00000000-0000-4000-8000-000000000001",
+          quantity: 2,
+          unitPrice: "15.00",
+          totalPrice: "30.00",
+        },
+      ],
+    }),
   };
 }
 
@@ -84,7 +115,7 @@ describe("website config projection", () => {
     const config = buildPublicSiteConfig({ orgName: "WM Supplies" });
 
     expect(config.theme.siteName).toBe("WM Supplies");
-    expect(config.theme.primaryColor).toBe("#FACC15");
+    expect(config.theme.primaryColor).toBe("#ff2bd6");
     expect(config.orderSettings.orderAccessMode).toBe("public");
     expect(config.blocks).toEqual([]);
   });
@@ -126,6 +157,166 @@ describe("website config projection", () => {
     expect(config.theme.siteName).toBe("WM Supplies");
     expect(config.blocks.map((block) => block.id)).toEqual(["visible"]);
     expect(repository.listBlocks).toHaveBeenCalledWith("org-1", "home");
+  });
+});
+
+describe("public website order submission", () => {
+  const productId = "00000000-0000-4000-8000-000000000001";
+
+  it("server-resolves product prices and ignores browser totals", async () => {
+    const repository = repo({
+      listWebsiteOrderProducts: vi.fn().mockResolvedValue([
+        {
+          id: productId,
+          productId: "SKU-1",
+          name: "Cups",
+          defaultSalePrice: "15.00",
+          availableForWebsite: true,
+          stock: 10,
+        },
+      ]),
+    });
+    const service = createWebsiteService(repository);
+    const orderRuntime = runtime();
+
+    const result = await service.submitPublicOrder(
+      "org-1",
+      {
+        customer: { name: "Ada Buyer", email: "ada@example.com" },
+        fulfilment: { method: "pickup" },
+        items: [{ productId, quantity: 2 }],
+      },
+      orderRuntime,
+    );
+
+    expect(result).toMatchObject({ orderId: "order-1", eventId: "event-1", total: 36 });
+    expect(orderRuntime.engine.placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "web",
+        paymentMethod: "transfer",
+        lines: [{ productId, quantity: 2, unitPrice: 15 }],
+      }),
+    );
+    expect(orderRuntime.engine.createCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "website", name: "Ada Buyer" }),
+    );
+  });
+
+  it("rejects unavailable products, stock shortages, and minimum order misses", () => {
+    expect(() =>
+      resolvePublicOrderLines({
+        requestedItems: [{ productId, quantity: 1 }],
+        products: [],
+        settings: {
+          orderAccessMode: "public",
+          defaultOrderStatus: "pending",
+          defaultLocationId: null,
+          allowOutOfStockOrders: false,
+          minOrderValue: null,
+          orderIntroText: null,
+          successMessage: null,
+          notificationEmail: null,
+        },
+      }),
+    ).toThrow(WebsitePublicOrderError);
+
+    expect(() =>
+      resolvePublicOrderLines({
+        requestedItems: [{ productId, quantity: 3 }],
+        products: [
+          {
+            id: productId,
+            productId: "SKU-1",
+            name: "Cups",
+            defaultSalePrice: "5.00",
+            availableForWebsite: true,
+            stock: 2,
+          },
+        ],
+        settings: {
+          orderAccessMode: "public",
+          defaultOrderStatus: "pending",
+          defaultLocationId: null,
+          allowOutOfStockOrders: false,
+          minOrderValue: null,
+          orderIntroText: null,
+          successMessage: null,
+          notificationEmail: null,
+        },
+      }),
+    ).toThrow(/enough stock/);
+
+    expect(() =>
+      resolvePublicOrderLines({
+        requestedItems: [{ productId, quantity: 1 }],
+        products: [
+          {
+            id: productId,
+            productId: "SKU-1",
+            name: "Cups",
+            defaultSalePrice: "5.00",
+            availableForWebsite: true,
+            stock: 10,
+          },
+        ],
+        settings: {
+          orderAccessMode: "public",
+          defaultOrderStatus: "pending",
+          defaultLocationId: null,
+          allowOutOfStockOrders: false,
+          minOrderValue: 10,
+          orderIntroText: null,
+          successMessage: null,
+          notificationEmail: null,
+        },
+      }),
+    ).toThrow(/Minimum order value/);
+  });
+
+  it("enforces password and clerk order access modes before creating an order", async () => {
+    const repository = repo({
+      getOrderSettings: vi.fn().mockResolvedValue({
+        orgId: "org-1",
+        orderAccessMode: "password",
+      }),
+    });
+    const service = createWebsiteService(repository);
+    const orderRuntime = runtime();
+
+    process.env.WM_SUPPLIES_ORDER_PASSWORD = "let-me-in";
+    await expect(
+      service.submitPublicOrder(
+        "org-1",
+        {
+          customer: { name: "Ada Buyer" },
+          items: [{ productId, quantity: 1 }],
+          accessPassword: "wrong",
+        },
+        orderRuntime,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    const clerkService = createWebsiteService(
+      repo({
+        getOrderSettings: vi.fn().mockResolvedValue({
+          orgId: "org-1",
+          orderAccessMode: "clerk",
+        }),
+      }),
+    );
+    await expect(
+      clerkService.submitPublicOrder(
+        "org-1",
+        {
+          customer: { name: "Ada Buyer" },
+          items: [{ productId, quantity: 1 }],
+        },
+        orderRuntime,
+      ),
+    ).rejects.toMatchObject({ statusCode: 401 });
+
+    delete process.env.WM_SUPPLIES_ORDER_PASSWORD;
+    expect(orderRuntime.engine.placeOrder).not.toHaveBeenCalled();
   });
 });
 

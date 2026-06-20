@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   organizations,
@@ -257,6 +257,43 @@ export const websiteRepository: WebsiteRepository = {
       .from(products)
       .leftJoin(websiteUploadedFiles, eq(products.websiteImageFileId, websiteUploadedFiles.id))
       .where(and(eq(products.orgId, orgId), eq(products.availableForWebsite, true)));
+
+    return rows;
+  },
+
+  async listWebsiteOrderProducts(
+    orgId: string,
+    productIds: string[],
+  ): Promise<WebsiteProductRow[]> {
+    if (productIds.length === 0) return [];
+
+    const rows = await db
+      .select({
+        id: products.id,
+        productId: products.productId,
+        name: products.name,
+        defaultSalePrice: products.defaultSalePrice,
+        availableForWebsite: products.availableForWebsite,
+        websiteTitle: products.websiteTitle,
+        websiteDescription: products.websiteDescription,
+        websiteCategory: products.websiteCategory,
+        websiteUnitLabel: products.websiteUnitLabel,
+        websiteSortOrder: products.websiteSortOrder,
+        websiteImageFileId: products.websiteImageFileId,
+        websiteImageUrl: websiteUploadedFiles.publicUrl,
+        websiteImageAlt: websiteUploadedFiles.altText,
+        stock: products.stock,
+        costPrice: products.costPrice,
+      })
+      .from(products)
+      .leftJoin(websiteUploadedFiles, eq(products.websiteImageFileId, websiteUploadedFiles.id))
+      .where(
+        and(
+          eq(products.orgId, orgId),
+          eq(products.availableForWebsite, true),
+          inArray(products.id, productIds),
+        ),
+      );
 
     return rows;
   },

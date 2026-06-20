@@ -13,6 +13,11 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
+import {
+  WmSuppliesHomePage,
+  WmSuppliesOrderPage,
+  WmSuppliesOrderSuccessPage,
+} from "@/features/wm-supplies/WmSuppliesPublicSite";
 
 // Route-level code splitting: each page ships as its own chunk, fetched on
 // first navigation, instead of one ~1.5MB bundle loaded up front.
@@ -94,6 +99,8 @@ function Router() {
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-out" component={SignOutPage} />
+      <Route path="/order" component={WmSuppliesOrderPage} />
+      <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/wizard" component={OnboardingWizard} />
@@ -101,7 +108,7 @@ function Router() {
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
       {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <Route path="/" component={WmSuppliesHomePage} />
       ) : (
         <AccessGate>
         <Layout>

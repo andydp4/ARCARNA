@@ -1,18 +1,90 @@
 import type { Express, Request, RequestHandler } from "express";
 import { z } from "zod";
-import { createWebsiteService } from "../services/website";
+import {
+  createWebsiteService,
+  WebsitePublicOrderError,
+  type WebsiteOrderRuntime,
+} from "../services/website";
 
 type WebsiteService = ReturnType<typeof createWebsiteService>;
 
 const uuidSchema = z.string().uuid();
 let defaultWebsiteService: WebsiteService | null = null;
+let defaultWebsiteOrderRuntime: WebsiteOrderRuntime | null = null;
 const adminAuditModulePath = "../adminAudit";
+const websiteRepositoryModulePath = "../services/websiteRepository";
+const appsDbModulePath = "../../apps/server/src/db";
+const engineWiringModulePath = "../../apps/server/src/engine.wiring";
+const eventBusModulePath = "../eventBus";
+const appsDbSchemaModulePath = "../../apps/server/src/db/schema";
+const drizzleOrmModulePath = "drizzle-orm";
 
 async function getDefaultWebsiteService(): Promise<WebsiteService> {
   if (defaultWebsiteService) return defaultWebsiteService;
-  const { websiteRepository } = await import("../services/websiteRepository");
+  const { websiteRepository } = await import(websiteRepositoryModulePath);
   defaultWebsiteService = createWebsiteService(websiteRepository);
   return defaultWebsiteService;
+}
+
+async function getDefaultWebsiteOrderRuntime(): Promise<WebsiteOrderRuntime> {
+  if (defaultWebsiteOrderRuntime) return defaultWebsiteOrderRuntime;
+  const [{ withTransaction }, { engine }, { publishEventTx }] = await Promise.all([
+    import(appsDbModulePath),
+    import(engineWiringModulePath),
+    import(eventBusModulePath),
+  ]);
+  defaultWebsiteOrderRuntime = {
+    withTransaction,
+    engine,
+    publishOrderCreated: (tx, eventType, correlationId, payload, options) =>
+      publishEventTx(tx as never, eventType, correlationId, payload, options),
+    async loadCreatedOrder(tx, orderId) {
+      const [{ orders, order_items }, { eq }] = await Promise.all([
+        import(appsDbSchemaModulePath),
+        import(drizzleOrmModulePath),
+      ]);
+      const db = tx as {
+        select: () => {
+          from: (table: unknown) => {
+            where: (where: unknown) => Promise<Array<Record<string, unknown>>>;
+          };
+        };
+      };
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId));
+      if (!order) return null;
+      const items = await db
+        .select()
+        .from(order_items)
+        .where(eq(order_items.order_id, orderId));
+      return {
+        id: String(order.id),
+        status: order.status === null || order.status === undefined ? null : String(order.status),
+        total: order.total as string | number | null,
+        paymentMethod:
+          order.payment_method === null || order.payment_method === undefined
+            ? null
+            : String(order.payment_method),
+        customerId:
+          order.customer_id === null || order.customer_id === undefined
+            ? null
+            : String(order.customer_id),
+        items: items.map((orderLine) => ({
+          id: String(orderLine.id),
+          productId:
+            orderLine.product_id === null || orderLine.product_id === undefined
+              ? null
+              : String(orderLine.product_id),
+          quantity: Number(orderLine.quantity ?? 0),
+          unitPrice: orderLine.unit_price as string | number | null,
+          totalPrice: orderLine.total_price as string | number | null,
+        })),
+      };
+    },
+  };
+  return defaultWebsiteOrderRuntime;
 }
 
 function zodErrorPayload(error: z.ZodError) {
@@ -77,7 +149,10 @@ export function requireWebsiteStaffRole(): RequestHandler {
   };
 }
 
-export function createWebsitePublicHandlers(service?: WebsiteService) {
+export function createWebsitePublicHandlers(
+  service?: WebsiteService,
+  orderRuntime?: WebsiteOrderRuntime,
+) {
   const getSiteConfig: RequestHandler = async (req, res) => {
     try {
       const activeService = service ?? (await getDefaultWebsiteService());
@@ -111,17 +186,49 @@ export function createWebsitePublicHandlers(service?: WebsiteService) {
     }
   };
 
-  return { getSiteConfig, getProducts };
+  const createOrder: RequestHandler = async (req, res) => {
+    try {
+      const activeService = service ?? (await getDefaultWebsiteService());
+      const orgId = resolvePublicOrgId(req);
+      if (!orgId) {
+        return res.status(400).json({
+          message: "WM Supplies website organization is not configured",
+        });
+      }
+      const runtime = orderRuntime ?? (await getDefaultWebsiteOrderRuntime());
+      const result = await activeService.submitPublicOrder(orgId, req.body ?? {}, runtime);
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json(zodErrorPayload(error));
+      }
+      if (error instanceof WebsitePublicOrderError) {
+        return res.status(error.statusCode).json({
+          message: error.message,
+          details: error.details,
+        });
+      }
+      console.error("[Website] public order:", error);
+      res.status(500).json({ message: "Failed to create website order" });
+    }
+  };
+
+  return { getSiteConfig, getProducts, createOrder };
 }
 
 export function registerWebsitePublicRoutes(
   app: Express,
   service?: WebsiteService,
+  orderRuntime?: WebsiteOrderRuntime,
 ): void {
-  const { getSiteConfig, getProducts } = createWebsitePublicHandlers(service);
+  const { getSiteConfig, getProducts, createOrder } = createWebsitePublicHandlers(
+    service,
+    orderRuntime,
+  );
   app.get("/api/public/wm-supplies/site-config", getSiteConfig);
   app.get("/api/public/wm-supplies/products", getProducts);
   app.get("/api/public/products", getProducts);
+  app.post("/api/public/wm-supplies/orders", createOrder);
 }
 
 export function createWebsiteAdminHandlers(service?: WebsiteService) {

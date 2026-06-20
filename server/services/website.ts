@@ -4,6 +4,7 @@ import {
   websiteOrderSettingsPatchSchema,
   websiteThemePatchSchema,
   websiteUploadMetadataSchema,
+  type PublicWebsiteOrderInput,
   type WebsiteBlockInput,
   type WebsiteOrderSettingsPatch,
   type WebsiteThemePatch,
@@ -85,6 +86,37 @@ export interface WebsiteProductRow {
   costPrice?: string | number | null;
 }
 
+export interface WebsiteOrderEngine {
+  createCustomer(input: unknown): Promise<{ id: string }>;
+  placeOrder(input: unknown): Promise<{ orderId: string; warnings?: string[] }>;
+}
+
+export interface WebsiteOrderRuntime {
+  withTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
+  engine: WebsiteOrderEngine;
+  publishOrderCreated(
+    tx: unknown,
+    eventType: "OrderCreated",
+    correlationId: string,
+    payload: unknown,
+    options: { source: string },
+  ): Promise<string>;
+  loadCreatedOrder(tx: unknown, orderId: string): Promise<{
+    id: string;
+    status: string | null;
+    total: string | number | null;
+    paymentMethod: string | null;
+    customerId: string | null;
+    items: Array<{
+      id: string;
+      productId: string | null;
+      quantity: number;
+      unitPrice: string | number | null;
+      totalPrice: string | number | null;
+    }>;
+  } | null>;
+}
+
 export interface WebsiteRepository {
   getOrg(orgId: string): Promise<{ id: string; name: string; tradingName?: string | null } | null>;
   getThemeSettings(orgId: string): Promise<WebsiteThemeRow | null>;
@@ -107,6 +139,7 @@ export interface WebsiteRepository {
     upload: WebsiteUploadMetadata & { uploadedBy?: string },
   ): Promise<{ id: string; publicUrl: string }>;
   listPublicProducts(orgId: string): Promise<WebsiteProductRow[]>;
+  listWebsiteOrderProducts(orgId: string, productIds: string[]): Promise<WebsiteProductRow[]>;
 }
 
 export const DEFAULT_WEBSITE_THEME = {
@@ -115,14 +148,14 @@ export const DEFAULT_WEBSITE_THEME = {
   logoUrl: null,
   faviconFileId: null,
   faviconUrl: null,
-  primaryColor: "#FACC15",
-  secondaryColor: "#111827",
-  accentColor: "#EF4444",
-  backgroundColor: "#FFFFFF",
-  textColor: "#111827",
-  borderColor: "#111827",
-  buttonBackgroundColor: "#111827",
-  buttonTextColor: "#FFFFFF",
+  primaryColor: "#ff2bd6",
+  secondaryColor: "#00d4ff",
+  accentColor: "#ffe600",
+  backgroundColor: "#111111",
+  textColor: "#ffffff",
+  borderColor: "#ffffff",
+  buttonBackgroundColor: "#ffe600",
+  buttonTextColor: "#111111",
   headingFont: null,
   bodyFont: null,
   customCss: null,
@@ -138,6 +171,17 @@ export const DEFAULT_WEBSITE_ORDER_SETTINGS = {
   successMessage: null,
   notificationEmail: null,
 } as const;
+
+export class WebsitePublicOrderError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "WebsitePublicOrderError";
+  }
+}
 
 function asNumber(value: string | number | null | undefined, fallback = 0): number {
   if (value === null || value === undefined || value === "") return fallback;
@@ -266,6 +310,102 @@ export function projectPublicProducts(products: WebsiteProductRow[]) {
     });
 }
 
+function combinePublicOrderItems(orderLines: PublicWebsiteOrderInput["items"]) {
+  const byProductId = new Map<string, number>();
+  for (const orderLine of orderLines) {
+    byProductId.set(
+      orderLine.productId,
+      (byProductId.get(orderLine.productId) ?? 0) + orderLine.quantity,
+    );
+  }
+  return [...byProductId.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+}
+
+function calculateResolvedSubtotal(
+  lines: Array<{ quantity: number; unitPrice: number }>,
+): number {
+  return Number(
+    lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0).toFixed(2),
+  );
+}
+
+export function resolvePublicOrderLines(params: {
+  requestedItems: PublicWebsiteOrderInput["items"];
+  products: WebsiteProductRow[];
+  settings: ReturnType<typeof normalizeWebsiteOrderSettings>;
+}) {
+  const combinedItems = combinePublicOrderItems(params.requestedItems);
+  const productById = new Map(params.products.map((product) => [product.id, product]));
+  const missing = combinedItems.filter((orderLine) => !productById.has(orderLine.productId));
+  if (missing.length > 0) {
+    throw new WebsitePublicOrderError(400, "One or more products are not available online", {
+      productIds: missing.map((orderLine) => orderLine.productId),
+    });
+  }
+
+  const stockShortages = combinedItems
+    .map((orderLine) => {
+      const product = productById.get(orderLine.productId);
+      if (!product || product.stock === null || product.stock === undefined) return null;
+      return product.stock < orderLine.quantity
+        ? {
+            productId: orderLine.productId,
+            available: product.stock,
+            requested: orderLine.quantity,
+          }
+        : null;
+    })
+    .filter((shortage): shortage is NonNullable<typeof shortage> => Boolean(shortage));
+
+  if (stockShortages.length > 0) {
+    throw new WebsitePublicOrderError(
+      409,
+      params.settings.allowOutOfStockOrders
+        ? "Out-of-stock website orders are not enabled for this release"
+        : "One or more products do not have enough stock",
+      { stockShortages },
+    );
+  }
+
+  const lines = combinedItems.map((orderLine) => {
+    const product = productById.get(orderLine.productId);
+    return {
+      productId: orderLine.productId,
+      quantity: orderLine.quantity,
+      unitPrice: asNumber(product?.defaultSalePrice, 0),
+    };
+  });
+  const subtotal = calculateResolvedSubtotal(lines);
+
+  if (params.settings.minOrderValue !== null && subtotal < params.settings.minOrderValue) {
+    throw new WebsitePublicOrderError(
+      400,
+      `Minimum order value is ${params.settings.minOrderValue.toFixed(2)}`,
+      { minOrderValue: params.settings.minOrderValue, subtotal },
+    );
+  }
+
+  return { lines, subtotal };
+}
+
+function assertPublicOrderAccess(
+  settings: ReturnType<typeof normalizeWebsiteOrderSettings>,
+  order: PublicWebsiteOrderInput,
+) {
+  if (settings.orderAccessMode === "clerk") {
+    throw new WebsitePublicOrderError(401, "Sign in is required to place a website order");
+  }
+  if (settings.orderAccessMode !== "password") return;
+
+  const expected = process.env.WM_SUPPLIES_ORDER_PASSWORD?.trim();
+  if (!expected) {
+    throw new WebsitePublicOrderError(503, "Website order password is not configured");
+  }
+  if (order.accessPassword !== expected) {
+    throw new WebsitePublicOrderError(403, "Incorrect website order password");
+  }
+}
+
 export function buildPublicSiteConfig(params: {
   orgName?: string;
   theme?: WebsiteThemeRow | null;
@@ -351,6 +491,83 @@ export function createWebsiteService(repository: WebsiteRepository) {
 
     async listPublicProducts(orgId: string) {
       return projectPublicProducts(await repository.listPublicProducts(orgId));
+    },
+
+    async submitPublicOrder(orgId: string, input: unknown, runtime: WebsiteOrderRuntime) {
+      const order = publicWebsiteOrderSchema.parse(input);
+      const settings = normalizeWebsiteOrderSettings(await repository.getOrderSettings(orgId));
+      assertPublicOrderAccess(settings, order);
+
+      const requestedProductIds = [...new Set(order.items.map((orderLine) => orderLine.productId))];
+      const products = await repository.listWebsiteOrderProducts(orgId, requestedProductIds);
+      const resolved = resolvePublicOrderLines({
+        requestedItems: order.items,
+        products,
+        settings,
+      });
+
+      return runtime.withTransaction(async (tx) => {
+        const customer = await runtime.engine.createCustomer({
+          orgId,
+          name: order.customer.name,
+          phone: order.customer.phone,
+          email: order.customer.email,
+          address: order.fulfilment.method === "delivery" ? order.fulfilment.address : undefined,
+          source: "website",
+        });
+        const result = await runtime.engine.placeOrder({
+          orgId,
+          customerId: customer.id,
+          locationId: settings.defaultLocationId ?? undefined,
+          lines: resolved.lines,
+          paymentMethod: "transfer",
+          channel: "web",
+          status: settings.defaultOrderStatus,
+        });
+        const createdOrder = await runtime.loadCreatedOrder(tx, result.orderId);
+        const orderTotal = asNumber(createdOrder?.total, resolved.subtotal);
+        const eventId = await runtime.publishOrderCreated(
+          tx,
+          "OrderCreated",
+          result.orderId,
+          {
+            order: {
+              orderId: result.orderId,
+              status: createdOrder?.status || settings.defaultOrderStatus,
+              customerId: createdOrder?.customerId ?? customer.id,
+              total: orderTotal,
+              paymentMethod: createdOrder?.paymentMethod ?? "transfer",
+              channel: "web",
+              source: "website",
+              fulfilment: order.fulfilment,
+              items:
+                createdOrder?.items.map((orderLine) => ({
+                  lineId: orderLine.id,
+                  productId: orderLine.productId,
+                  qty: orderLine.quantity,
+                  unitPrice: asNumber(orderLine.unitPrice),
+                  lineTotal: asNumber(orderLine.totalPrice),
+                })) ??
+                resolved.lines.map((line) => ({
+                  productId: line.productId,
+                  qty: line.quantity,
+                  unitPrice: line.unitPrice,
+                  lineTotal: Number((line.quantity * line.unitPrice).toFixed(2)),
+                })),
+            },
+          },
+          { source: "wm-supplies-website" },
+        );
+
+        return {
+          orderId: result.orderId,
+          eventId,
+          status: createdOrder?.status || settings.defaultOrderStatus,
+          subtotal: resolved.subtotal,
+          total: orderTotal,
+          warnings: result.warnings ?? [],
+        };
+      });
     },
   };
 }

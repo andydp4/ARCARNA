@@ -6,6 +6,7 @@ import {
   createWebsitePublicHandlers,
   requireWebsiteStaffRole,
 } from "../routes/website";
+import { WebsitePublicOrderError, type WebsiteOrderRuntime } from "../services/website";
 
 const recordAdminAuditMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
@@ -29,6 +30,19 @@ function createService() {
     validateUploadMetadata: vi.fn(),
     validateOrderSettingsPatch: vi.fn(),
     validatePublicOrder: vi.fn(),
+    submitPublicOrder: vi.fn().mockResolvedValue({ orderId: "order-1", eventId: "event-1" }),
+  };
+}
+
+function createOrderRuntime(): WebsiteOrderRuntime {
+  return {
+    withTransaction: vi.fn(async (fn) => fn({})),
+    engine: {
+      createCustomer: vi.fn().mockResolvedValue({ id: "customer-1" }),
+      placeOrder: vi.fn().mockResolvedValue({ orderId: "order-1", warnings: [] }),
+    },
+    publishOrderCreated: vi.fn().mockResolvedValue("event-1"),
+    loadCreatedOrder: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -115,6 +129,60 @@ describe("website public handlers", () => {
 
     expect(res.statusCode).toBe(400);
     expect(service.listPublicProducts).not.toHaveBeenCalled();
+  });
+
+  it("creates a public website order through the injected runtime", async () => {
+    process.env.WM_SUPPLIES_ORG_ID = ORG_ID;
+    const service = createService();
+    const runtime = createOrderRuntime();
+    const handlers = createWebsitePublicHandlers(service as any, runtime);
+    const body = {
+      customer: { name: "Ada Buyer" },
+      items: [{ productId: "00000000-0000-4000-8000-000000000010", quantity: 2 }],
+    };
+    const { req, res } = mockReqRes({ body });
+
+    await run(handlers.createOrder, req, res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toEqual({ orderId: "order-1", eventId: "event-1" });
+    expect(service.submitPublicOrder).toHaveBeenCalledWith(ORG_ID, body, runtime);
+  });
+
+  it("turns public order validation and access errors into HTTP responses", async () => {
+    process.env.WM_SUPPLIES_ORG_ID = ORG_ID;
+    const runtime = createOrderRuntime();
+    const invalidService = createService();
+    invalidService.submitPublicOrder.mockRejectedValueOnce(
+      new z.ZodError([
+        {
+          code: "custom",
+          path: ["items"],
+          message: "At least one item is required",
+        },
+      ]),
+    );
+    const invalidHandlers = createWebsitePublicHandlers(invalidService as any, runtime);
+    const invalid = mockReqRes({ body: { customer: { name: "Ada" }, items: [] } });
+
+    await run(invalidHandlers.createOrder, invalid.req, invalid.res);
+
+    expect(invalid.res.statusCode).toBe(400);
+    expect((invalid.res.body as { message: string }).message).toBe("Invalid website payload");
+
+    const lockedService = createService();
+    lockedService.submitPublicOrder.mockRejectedValueOnce(
+      new WebsitePublicOrderError(409, "One or more products do not have enough stock"),
+    );
+    const lockedHandlers = createWebsitePublicHandlers(lockedService as any, runtime);
+    const locked = mockReqRes({ body: { customer: { name: "Ada" }, items: [] } });
+
+    await run(lockedHandlers.createOrder, locked.req, locked.res);
+
+    expect(locked.res.statusCode).toBe(409);
+    expect((locked.res.body as { message: string }).message).toBe(
+      "One or more products do not have enough stock",
+    );
   });
 });
 
