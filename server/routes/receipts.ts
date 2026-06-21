@@ -5,6 +5,7 @@ import { customers, organizations } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { storage } from "../storage";
 import { recordAdminAudit } from "../adminAudit";
+import { requireRole } from "../auth";
 import {
   renderReceiptTemplate,
   buildSampleReceiptContext,
@@ -72,7 +73,7 @@ export function registerReceiptRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.put("/api/receipts/settings", ...scoped, async (req: any, res) => {
+  app.put("/api/receipts/settings", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role: string };
       const body = settingsBodySchema.parse(req.body ?? {});

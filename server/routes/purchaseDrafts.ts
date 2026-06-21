@@ -19,6 +19,7 @@ const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 
 function sendError(res: any, err: unknown) {
+  if ((err as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete: still referenced by goods receipts or other records. Archive it instead." });
   if (err instanceof PurchaseDraftError) {
     const status =
       err.code === "NOT_FOUND"
