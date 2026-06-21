@@ -1,5 +1,5 @@
 /**
- * PM2 production config for MidnightEPOS (Hostinger VPS).
+ * PM2 production config for ARCARNA (Hostinger VPS).
  * Usage:
  *   pm2 start ecosystem.config.cjs
  *   pm2 save
@@ -14,7 +14,7 @@ const path = require("path");
 module.exports = {
   apps: [
     {
-      name: "midnight-epos",
+      name: "ARCARNA",
       cwd: __dirname,
       script: path.join(__dirname, "dist", "index.js"),
       instances: 1,

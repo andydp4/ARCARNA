@@ -1,0 +1,1 @@
+ALTER TABLE domain_outbox ADD COLUMN IF NOT EXISTS type TEXT; ALTER TABLE domain_outbox ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;

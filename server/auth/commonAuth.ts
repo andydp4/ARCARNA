@@ -1,8 +1,10 @@
 import type { RequestHandler, Request, Response, NextFunction } from "express";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { shifts } from "../../shared/schema";
 import { storage } from "../storage";
 import { isDevAuthBypassEnabled } from "../authRuntime";
 
-/** Localhost-only test impersonation (PHASE2D_TEST); never active in production. */
 export async function tryPhase2dTestAuth(
   req: Request,
   res: Response,
@@ -16,9 +18,7 @@ export async function tryPhase2dTestAuth(
   const testSecret = process.env.PHASE2D_TEST_SECRET;
   const secretMatch = !!testSecret && req.headers["x-test-secret"] === testSecret;
   const allowImpersonation = isTestMode && testUserId && isLocalhost && secretMatch;
-
   if (!allowImpersonation) return false;
-
   try {
     const roleAndOrg = await storage.getUserRoleAndOrg(testUserId);
     if (!roleAndOrg) {
@@ -44,14 +44,12 @@ export async function tryPhase2dTestAuth(
   }
 }
 
-/** DEV_AUTH_BYPASS=1 and NODE_ENV !== production — skips OAuth for local dev. */
 export async function tryDevAuthBypass(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<boolean> {
   if (!isDevAuthBypassEnabled()) return false;
-
   const devUserId = process.env.DEV_AUTH_USER_ID || "dev-user";
   let role = "SUPER_ADMIN";
   let orgId: string | null = null;
@@ -62,9 +60,8 @@ export async function tryDevAuthBypass(
       orgId = roleAndOrg.orgId;
     }
   } catch {
-    // SUPER_ADMIN defaults
+    /* SUPER_ADMIN defaults */
   }
-
   req.user = req.user || {
     id: devUserId,
     username: "Developer",
@@ -75,11 +72,7 @@ export async function tryDevAuthBypass(
     isPending: false,
     role,
     orgId,
-    claims: {
-      sub: devUserId,
-      email: "dev@example.com",
-      name: "Developer",
-    },
+    claims: { sub: devUserId, email: "dev@example.com", name: "Developer" },
     expires_at: Math.floor(Date.now() / 1000) + 3600,
   };
   next();
@@ -110,27 +103,49 @@ export function requireRole(...allowedRoles: string[]): RequestHandler {
   };
 }
 
+async function resolveLocationFromOpenShift(orgId: string, userId: string): Promise<string | null> {
+  const [open] = await db
+    .select({ locationId: shifts.locationId })
+    .from(shifts)
+    .where(and(eq(shifts.orgId, orgId), eq(shifts.userId, userId), eq(shifts.status, "open")))
+    .limit(1);
+  return open?.locationId ?? null;
+}
+
 export const requireOrgContext: RequestHandler = async (req, res, next) => {
-  const user = req.user as {
-    role?: string;
-    isOwner?: boolean;
-    orgId?: string | null;
-    defaultLocationId?: string;
-  } | undefined;
-  if (!user) return next();
-  const role = user.role ?? (user.isOwner ? "SUPER_ADMIN" : "CASHIER");
-  const userOrgId = user.orgId ?? null;
-  const headerOrg = req.headers["x-org-id"] as string;
-  const queryOrg = req.query?.orgId as string;
-  const orgId = role === "SUPER_ADMIN" ? headerOrg || queryOrg || null : userOrgId;
-  const locationId =
-    (req.headers["x-location-id"] as string) || user.defaultLocationId || null;
-  (req as { orgContext?: unknown }).orgContext = {
-    orgId: orgId || null,
-    locationId: locationId || null,
-    role,
-  };
-  return next();
+  try {
+    const user = req.user as {
+      id?: string;
+      role?: string;
+      isOwner?: boolean;
+      orgId?: string | null;
+      defaultLocationId?: string;
+    } | undefined;
+    if (!user) return next();
+    const role = user.role ?? (user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+    const userOrgId = user.orgId ?? null;
+    const headerOrg = req.headers["x-org-id"] as string;
+    const queryOrg = req.query?.orgId as string;
+    let orgId = role === "SUPER_ADMIN" ? headerOrg || queryOrg || null : userOrgId;
+    if (role === "SUPER_ADMIN" && !orgId) {
+      const orgs = await storage.listOrganizations();
+      if (orgs.length === 1) orgId = orgs[0].id;
+    }
+    let locationId =
+      (req.headers["x-location-id"] as string) || user.defaultLocationId || null;
+    if (!locationId && orgId && user.id) {
+      locationId = await resolveLocationFromOpenShift(orgId, user.id);
+    }
+    (req as { orgContext?: unknown }).orgContext = {
+      orgId: orgId || null,
+      locationId: locationId || null,
+      role,
+    };
+    return next();
+  } catch (error) {
+    console.error("[requireOrgContext]", error);
+    return res.status(500).json({ message: "Failed to resolve organization context" });
+  }
 };
 
 export const requireOrgScope: RequestHandler = async (req, res, next) => {

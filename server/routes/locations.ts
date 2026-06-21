@@ -59,6 +59,7 @@ export function registerLocationRoutes(app: Express, scoped: RequestHandler[]): 
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting location:", error);
+      if ((error as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete this location: it is still referenced by orders, shifts, stock, or transfers. Archive or deactivate it instead." });
       res.status(500).json({ message: "Failed to delete location" });
     }
   });

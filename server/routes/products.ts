@@ -151,6 +151,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     } catch (error: any) {
       console.error("Error deleting product:", error);
       if (error?.message === 'Product not found') return res.status(404).json({ message: "Product not found" });
+      if ((error as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete this product: it is still referenced by sales, stock, or purchase records. Archive or deactivate it instead." });
       res.status(500).json({ message: "Failed to delete product" });
     }
   });

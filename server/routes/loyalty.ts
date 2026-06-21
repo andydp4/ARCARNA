@@ -128,6 +128,7 @@ export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): v
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting loyalty tier:", error);
+      if ((error as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete this loyalty tier: it is still referenced by customers or promotions. Archive or deactivate it instead." });
       res.status(500).json({ message: "Failed to delete loyalty tier" });
     }
   });

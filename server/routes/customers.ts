@@ -112,6 +112,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     } catch (error: any) {
       console.error("Error deleting customer:", error);
       if (error?.message === 'Customer not found') return res.status(404).json({ message: "Customer not found" });
+      if ((error as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete this customer: it is still referenced by orders, invoices, gift cards, or loyalty history. Archive or deactivate it instead." });
       res.status(500).json({ message: "Failed to delete customer" });
     }
   });

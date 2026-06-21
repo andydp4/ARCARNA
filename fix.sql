@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS domain_outbox (id SERIAL PRIMARY KEY, org_id TEXT, event_type TEXT NOT NULL, aggregate_type TEXT, aggregate_id TEXT, payload JSONB NOT NULL DEFAULT '{}'::jsonb, processed_at TIMESTAMP, created_at TIMESTAMP NOT NULL DEFAULT NOW());
