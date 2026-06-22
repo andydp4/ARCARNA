@@ -348,12 +348,44 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { db } = await import('../../apps/server/src/db');
       const { orders, order_items, products } = await import('../../apps/server/src/db/schema');
-      const { eq, and } = await import('drizzle-orm');
+      const {
+        refunds: refundsTable,
+        refundLines,
+        orderExpenses,
+        loyaltyLedger,
+        giftCardMovements,
+        invoices,
+      } = await import('@shared/schema');
+      const { eq, and, inArray } = await import('drizzle-orm');
+      const mainDb = (await import('../db')).db;
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
-      
+
       const [order] = await db.select().from(orders).where(orderCond);
       if (!order) throw new Error('Order not found');
       const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
+
+      // Clear records that reference this order (refunds, invoices, loyalty,
+      // gift-card movements, expenses) before deleting it, so the delete does
+      // not fail on a foreign-key constraint. If the order had refunds we skip
+      // the restock below — the stock was already settled by the refund.
+      const refundRows = await mainDb
+        .select({ id: refundsTable.id })
+        .from(refundsTable)
+        .where(eq(refundsTable.orderId, req.params.id));
+      const hadRefunds = refundRows.length > 0;
+      const refundIds = refundRows.map((r) => r.id);
+
+      if (refundIds.length > 0) {
+        await mainDb.delete(giftCardMovements).where(inArray(giftCardMovements.refundId, refundIds));
+      }
+      await mainDb.delete(giftCardMovements).where(eq(giftCardMovements.orderId, req.params.id));
+      if (refundIds.length > 0) {
+        await mainDb.delete(refundLines).where(inArray(refundLines.refundId, refundIds));
+        await mainDb.delete(refundsTable).where(eq(refundsTable.orderId, req.params.id));
+      }
+      await mainDb.delete(orderExpenses).where(eq(orderExpenses.orderId, req.params.id));
+      await mainDb.delete(loyaltyLedger).where(eq(loyaltyLedger.orderId, req.params.id));
+      await mainDb.delete(invoices).where(eq(invoices.orderId, req.params.id));
 
       await db.transaction(async (tx) => {
         await tx.delete(order_items).where(eq(order_items.order_id, req.params.id));
@@ -361,7 +393,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         if (!deleted) throw new Error('Order not found');
       });
 
-      if (order.org_id && items.length > 0) {
+      if (order.org_id && items.length > 0 && !hadRefunds) {
         const { adjustProductLocationStock, resolveStockLocationId } = await import(
           "../services/productLocationStock",
         );

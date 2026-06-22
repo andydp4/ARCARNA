@@ -18,24 +18,40 @@ declare module "express-serve-static-core" {
 }
 
 /**
- * Requires an open shift for the current user at the org location.
- * Sets req.shift; responds 409 when none exists.
+ * Requires an open shift for the current user at the org location. When the
+ * request carries no explicit location, falls back to the location of the
+ * user's currently-open shift. Sets req.shift; responds 409 when none exists.
  */
 export const requireOpenShift: RequestHandler = async (req, res, next) => {
   try {
-    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } })
-      .orgContext;
+    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } }).orgContext;
     const user = req.user as { id?: string } | undefined;
     if (!ctx?.orgId || !user?.id) {
       return res.status(400).json({ message: "Org context and authenticated user required" });
     }
-    const locationId = ctx.locationId;
+    let locationId = ctx.locationId;
+    if (!locationId) {
+      const [openForUser] = await db
+        .select({ locationId: shifts.locationId })
+        .from(shifts)
+        .where(
+          and(
+            eq(shifts.orgId, ctx.orgId),
+            eq(shifts.userId, user.id),
+            eq(shifts.status, "open"),
+          ),
+        )
+        .limit(1);
+      if (openForUser?.locationId) {
+        locationId = openForUser.locationId;
+        ctx.locationId = locationId;
+      }
+    }
     if (!locationId) {
       return res.status(400).json({
         message: "Location required for POS. Pass X-Location-Id or set a default location.",
       });
     }
-
     const [open] = await db
       .select()
       .from(shifts)
@@ -48,14 +64,12 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
         ),
       )
       .limit(1);
-
     if (!open) {
       return res.status(409).json({
         message: "No open shift for this location. Open a shift before taking orders.",
         code: "SHIFT_REQUIRED",
       });
     }
-
     req.shift = {
       id: open.id,
       orgId: open.orgId,

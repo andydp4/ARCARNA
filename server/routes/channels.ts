@@ -16,7 +16,7 @@ export function registerChannelPublicRoutes(app: Express): void {
       if (!verified || verified.orgId !== orgId) {
         return res.status(403).json({ message: "Invalid API key for this organization" });
       }
-      if (!verified.scopes.includes("products:read")) {
+      if (!verified.scopes.includes("products:read") && !verified.scopes.includes("*")) {
         return res.status(403).json({ message: "Missing products:read scope" });
       }
       const rows = await storage.getProductsForOrgPublic(orgId);
