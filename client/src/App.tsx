@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { APP_BASE } from "@/lib/appPaths";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -75,9 +75,14 @@ function Router() {
         <AccessGate>
         <Layout>
           <Route path="/" component={Home} />
-          <Route path="/pos" component={POS} />
-          <Route path="/orders" component={Orders} />
-          <Route path="/orders/:id/refund" component={OrderRefundPage} />
+          <Route path="/create-order" component={POS} />
+          <Route path="/pos"><Redirect to="/create-order" /></Route>
+          <Route path="/open-orders" component={Orders} />
+          <Route path="/orders"><Redirect to="/open-orders" /></Route>
+          <Route path="/open-orders/:id/refund" component={OrderRefundPage} />
+          <Route path="/orders/:id/refund">
+            {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
+          </Route>
           <Route path="/shifts" component={ShiftsPage} />
           <Route path="/gift-cards" component={GiftCardsPage} />
           <Route path="/inventory" component={Inventory} />

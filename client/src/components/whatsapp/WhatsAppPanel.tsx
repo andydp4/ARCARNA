@@ -319,7 +319,7 @@ export function WhatsAppPanel() {
         })),
       });
       setOpen(false);
-      navigate("/pos");
+      navigate("/create-order");
     },
     onError: (err: unknown) =>
       toast({
@@ -358,7 +358,7 @@ export function WhatsAppPanel() {
 
       {open && (
         <div
-          className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-border bg-background shadow-xl"
+          className="fixed bottom-0 right-0 top-16 z-40 flex w-full max-w-md flex-col border-l border-border bg-background shadow-xl"
           data-testid="whatsapp-panel"
           role="dialog"
           aria-label="WhatsApp conversations"

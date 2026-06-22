@@ -626,7 +626,7 @@ export default function Orders() {
                   icon={PackageCheck}
                   title="No orders yet"
                   body="New orders from POS and other channels will show up here when they are created."
-                  cta={{ label: "Open POS", href: "/pos" }}
+                  cta={{ label: "Open POS", href: "/create-order" }}
                 />
               ) : searchQuery.trim() ? (
                 <EmptyState
@@ -741,7 +741,7 @@ export default function Orders() {
 
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/orders/${orderDetails.id}/refund`}>
+                    <Link href={`/open-orders/${orderDetails.id}/refund`}>
                       <RotateCcw className="h-4 w-4 mr-1" />
                       Issue refund
                     </Link>

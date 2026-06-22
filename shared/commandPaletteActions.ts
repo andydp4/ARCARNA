@@ -14,13 +14,13 @@ export const commandPaletteActions: CommandPaletteAction[] = [
     id: "action-create-order",
     label: "Create order",
     keywords: ["pos", "sale", "checkout", "new order"],
-    href: "/pos",
+    href: "/create-order",
   },
   {
     id: "action-open-pos",
     label: "Open POS terminal",
     keywords: ["pos", "terminal", "register"],
-    href: "/pos",
+    href: "/create-order",
   },
   {
     id: "action-add-product",

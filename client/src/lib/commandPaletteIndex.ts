@@ -33,8 +33,8 @@ export type CommandPaletteItem = {
 
 const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: LucideIcon }> = [
   { id: "page-home", label: "Dashboard", href: "/", icon: Home },
-  { id: "page-pos", label: "POS Terminal", href: "/pos", icon: ShoppingCart },
-  { id: "page-orders", label: "Orders", href: "/orders", icon: PackageCheck },
+  { id: "page-pos", label: "Create Order", href: "/create-order", icon: ShoppingCart },
+  { id: "page-orders", label: "Open Orders", href: "/open-orders", icon: PackageCheck },
   { id: "page-products", label: "Products", href: "/products", icon: Package },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings },
@@ -197,7 +197,7 @@ function buildOrderItems(orders: OrdersListOrder[], recentIds: string[]): Comman
         section: "orders" as const,
         label: order.customerName ? `Order — ${order.customerName}` : `Order ${order.id.slice(0, 8)}`,
         subtext: `${totalLabel} · ${order.status}`,
-        href: "/orders",
+        href: "/open-orders",
         recentBoost: recentBoostFor(id, recentIds),
       };
     });

@@ -11,7 +11,7 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { Skeleton } from "@/components/Skeleton";
 
 const QUICK_ACTIONS = [
-  { href: "/pos", icon: "fas fa-cash-register", title: "POS Terminal", description: "Process sales & orders", testId: "quick-action-pos" },
+  { href: "/create-order", icon: "fas fa-cash-register", title: "Create Order", description: "Process sales & orders", testId: "quick-action-pos" },
   { href: "/products", icon: "fas fa-plus-circle", title: "Add Product", description: "Create a new catalog item", testId: "quick-action-add-product" },
   { href: "/inventory", icon: "fas fa-boxes", title: "Inventory", description: "Manage products & stock", testId: "quick-action-inventory" },
   { href: "/customers", icon: "fas fa-users", title: "Customers", description: "Manage customer database", testId: "quick-action-customers" },

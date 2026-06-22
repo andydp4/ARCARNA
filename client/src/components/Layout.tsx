@@ -1,11 +1,11 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { Link, useLocation } from 'wouter'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { useNavigation } from '@/contexts/NavigationContext'
-import { navItems } from './nav-items'
+import { navItems, type NavItem } from './nav-items'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { OrgSwitcher } from './OrgSwitcher'
 import { useAuth } from '@/hooks/useAuth'
@@ -22,20 +22,40 @@ interface LayoutProps {
   children: ReactNode
 }
 
+function isNavItemVisible(item: NavItem, role?: string): boolean {
+  if (item.key === 'user-access') {
+    return role === 'SUPER_ADMIN' || role === 'ADMIN'
+  }
+  return true
+}
+
+function filterNavItems(items: NavItem[], role?: string): NavItem[] {
+  return items
+    .filter((item) => isNavItemVisible(item, role))
+    .map((item) =>
+      item.children ? { ...item, children: filterNavItems(item.children, role) } : item
+    )
+}
+
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation()
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useNavigation()
   const isMobile = useMediaQuery('(max-width: 768px)')
   const { user, devAuthBypass } = useAuth()
-  const visibleNav = navItems.filter((item) => {
-    if (item.key === 'user-access') {
-      return user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+  const visibleNav = filterNavItems(navItems, user?.role)
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    for (const item of navItems) {
+      if (item.children?.some((child) => child.href === location)) {
+        initial[item.key] = true
+      }
     }
-    if (item.key === 'worker-logs' || item.key === 'audit-logs') {
-      return user?.role === 'SUPER_ADMIN'
-    }
-    return true
+    return initial
   })
+
+  const toggleGroup = (key: string) =>
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }))
 
   useEffect(() => {
     if (isMobile) {
@@ -47,23 +67,83 @@ export function Layout({ children }: LayoutProps) {
     <nav className="space-y-1 px-3 py-4">
       {visibleNav.map((item) => {
         const Icon = item.icon
+        const hasChildren = !!item.children?.length
         const isActive = location === item.href
+        const isChildActive = item.children?.some((child) => child.href === location) ?? false
+        const isGroupOpen = openGroups[item.key] ?? isChildActive
+        const collapsedRail = isMobile && !sidebarOpen
+        const showLabels = !isMobile || sidebarOpen
+
+        if (!hasChildren) {
+          return (
+            <Link
+              key={item.key}
+              href={item.href}
+              className={cn(
+                'lm-nav-link flex items-center gap-3 rounded-lg px-3 py-2.5',
+                isActive && 'lm-nav-link-active'
+              )}
+              data-testid={item.testId}
+              onClick={() => isMobile && setSidebarOpen(false)}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {showLabels && <span className="text-sm font-medium">{item.label}</span>}
+            </Link>
+          )
+        }
+
         return (
-          <Link
-            key={item.key}
-            href={item.href}
-            className={cn(
-              'lm-nav-link flex items-center gap-3 rounded-lg px-3 py-2.5',
-              isActive && 'lm-nav-link-active'
+          <div key={item.key}>
+            <div className="flex items-stretch gap-1">
+              <Link
+                href={item.href}
+                className={cn(
+                  'lm-nav-link flex flex-1 items-center gap-3 rounded-lg px-3 py-2.5',
+                  isActive && 'lm-nav-link-active'
+                )}
+                data-testid={item.testId}
+                onClick={() => isMobile && setSidebarOpen(false)}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {showLabels && <span className="text-sm font-medium">{item.label}</span>}
+              </Link>
+              {showLabels && !collapsedRail && (
+                <button
+                  type="button"
+                  aria-label={isGroupOpen ? `Collapse ${item.label}` : `Expand ${item.label}`}
+                  onClick={() => toggleGroup(item.key)}
+                  className="lm-nav-link flex w-9 shrink-0 items-center justify-center rounded-lg"
+                >
+                  <ChevronDown
+                    className={cn('h-4 w-4 transition-transform', isGroupOpen && 'rotate-180')}
+                  />
+                </button>
+              )}
+            </div>
+            {showLabels && isGroupOpen && (
+              <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
+                {item.children!.map((child) => {
+                  const ChildIcon = child.icon
+                  const isChildItemActive = location === child.href
+                  return (
+                    <Link
+                      key={child.key}
+                      href={child.href}
+                      className={cn(
+                        'lm-nav-link flex items-center gap-3 rounded-lg px-3 py-2',
+                        isChildItemActive && 'lm-nav-link-active'
+                      )}
+                      data-testid={child.testId}
+                      onClick={() => isMobile && setSidebarOpen(false)}
+                    >
+                      <ChildIcon className="h-4 w-4 shrink-0" />
+                      <span className="text-sm font-medium">{child.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
             )}
-            data-testid={item.testId}
-            onClick={() => isMobile && setSidebarOpen(false)}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {(!isMobile || sidebarOpen) && (
-              <span className="text-sm font-medium">{item.label}</span>
-            )}
-          </Link>
+          </div>
         )
       })}
     </nav>
