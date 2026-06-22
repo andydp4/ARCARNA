@@ -134,6 +134,15 @@ function getAdminContext(req: Request) {
   };
 }
 
+function getBlockId(req: Request, res: Parameters<RequestHandler>[1]): string | null {
+  const parsed = uuidSchema.safeParse(req.params.blockId);
+  if (!parsed.success) {
+    res.status(400).json({ message: "Invalid website block id" });
+    return null;
+  }
+  return parsed.data;
+}
+
 export function requireWebsiteStaffRole(): RequestHandler {
   const allowed = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
   return (req, res, next) => {
@@ -321,6 +330,94 @@ export function createWebsiteAdminHandlers(service?: WebsiteService) {
     }
   };
 
+  const updateBlock: RequestHandler = async (req, res) => {
+    try {
+      const activeService = service ?? (await getDefaultWebsiteService());
+      const ctx = getAdminContext(req);
+      if (!ctx) return res.status(400).json({ message: "Organization context required" });
+      const blockId = getBlockId(req, res);
+      if (!blockId) return;
+      const block = await activeService.updateBlock(ctx.orgId, blockId, req.body ?? {}, ctx.userId);
+      if (!block) return res.status(404).json({ message: "Website block not found" });
+      await recordWebsiteAdminAudit(req, {
+        actorUserId: ctx.userId,
+        actorRole: ctx.role,
+        orgId: ctx.orgId,
+        action: "website.block.updated",
+        targetType: "website_blocks",
+        targetId: block.id,
+      });
+      res.json(block);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json(zodErrorPayload(error));
+      }
+      console.error("[Website] update block:", error);
+      res.status(500).json({ message: "Failed to update website block" });
+    }
+  };
+
+  const duplicateBlock: RequestHandler = async (req, res) => {
+    try {
+      const activeService = service ?? (await getDefaultWebsiteService());
+      const ctx = getAdminContext(req);
+      if (!ctx) return res.status(400).json({ message: "Organization context required" });
+      const blockId = getBlockId(req, res);
+      if (!blockId) return;
+      const block = await activeService.duplicateBlock(ctx.orgId, blockId, ctx.userId);
+      if (!block) return res.status(404).json({ message: "Website block not found" });
+      await recordWebsiteAdminAudit(req, {
+        actorUserId: ctx.userId,
+        actorRole: ctx.role,
+        orgId: ctx.orgId,
+        action: "website.block.duplicated",
+        targetType: "website_blocks",
+        targetId: block.id,
+        metadata: { sourceBlockId: blockId },
+      });
+      res.status(201).json(block);
+    } catch (error) {
+      console.error("[Website] duplicate block:", error);
+      res.status(500).json({ message: "Failed to duplicate website block" });
+    }
+  };
+
+  const deleteBlock: RequestHandler = async (req, res) => {
+    try {
+      const activeService = service ?? (await getDefaultWebsiteService());
+      const ctx = getAdminContext(req);
+      if (!ctx) return res.status(400).json({ message: "Organization context required" });
+      const blockId = getBlockId(req, res);
+      if (!blockId) return;
+      const deleted = await activeService.deleteBlock(ctx.orgId, blockId);
+      if (!deleted) return res.status(404).json({ message: "Website block not found" });
+      await recordWebsiteAdminAudit(req, {
+        actorUserId: ctx.userId,
+        actorRole: ctx.role,
+        orgId: ctx.orgId,
+        action: "website.block.deleted",
+        targetType: "website_blocks",
+        targetId: blockId,
+      });
+      res.json({ deleted: true });
+    } catch (error) {
+      console.error("[Website] delete block:", error);
+      res.status(500).json({ message: "Failed to delete website block" });
+    }
+  };
+
+  const listUploads: RequestHandler = async (req, res) => {
+    try {
+      const activeService = service ?? (await getDefaultWebsiteService());
+      const ctx = getAdminContext(req);
+      if (!ctx) return res.status(400).json({ message: "Organization context required" });
+      res.json(await activeService.listUploads(ctx.orgId));
+    } catch (error) {
+      console.error("[Website] list uploads:", error);
+      res.status(500).json({ message: "Failed to load website uploads" });
+    }
+  };
+
   const createUploadMetadata: RequestHandler = async (req, res) => {
     try {
       const activeService = service ?? (await getDefaultWebsiteService());
@@ -345,7 +442,17 @@ export function createWebsiteAdminHandlers(service?: WebsiteService) {
     }
   };
 
-  return { getConfig, updateTheme, updateOrderSettings, createBlock, createUploadMetadata };
+  return {
+    getConfig,
+    updateTheme,
+    updateOrderSettings,
+    createBlock,
+    updateBlock,
+    duplicateBlock,
+    deleteBlock,
+    listUploads,
+    createUploadMetadata,
+  };
 }
 
 export function registerWebsiteAdminRoutes(
@@ -359,6 +466,10 @@ export function registerWebsiteAdminRoutes(
     updateTheme,
     updateOrderSettings,
     createBlock,
+    updateBlock,
+    duplicateBlock,
+    deleteBlock,
+    listUploads,
     createUploadMetadata,
   } = createWebsiteAdminHandlers(service);
 
@@ -366,5 +477,9 @@ export function registerWebsiteAdminRoutes(
   app.put("/api/website/theme", ...staffOnly, updateTheme);
   app.put("/api/website/order-settings", ...staffOnly, updateOrderSettings);
   app.post("/api/website/blocks", ...staffOnly, createBlock);
+  app.put("/api/website/blocks/:blockId", ...staffOnly, updateBlock);
+  app.post("/api/website/blocks/:blockId/duplicate", ...staffOnly, duplicateBlock);
+  app.delete("/api/website/blocks/:blockId", ...staffOnly, deleteBlock);
+  app.get("/api/website/uploads", ...staffOnly, listUploads);
   app.post("/api/website/uploads/metadata", ...staffOnly, createUploadMetadata);
 }

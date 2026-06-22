@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   organizations,
@@ -14,9 +14,11 @@ import type {
   WebsiteOrderSettingsRow,
   WebsiteBlockRow,
   WebsiteProductRow,
+  WebsiteUploadRow,
 } from "./website";
 import type {
   WebsiteBlockInput,
+  WebsiteBlockPatch,
   WebsiteOrderSettingsPatch,
   WebsiteThemePatch,
   WebsiteUploadMetadata,
@@ -115,9 +117,11 @@ export const websiteRepository: WebsiteRepository = {
       defaultLocationId: patch.defaultLocationId,
       allowOutOfStockOrders: patch.allowOutOfStockOrders,
       minOrderValue:
-        patch.minOrderValue === null || patch.minOrderValue === undefined
-          ? patch.minOrderValue
-          : String(patch.minOrderValue),
+        patch.minOrderValue === undefined
+          ? undefined
+          : patch.minOrderValue === null
+            ? null
+            : String(patch.minOrderValue),
       orderIntroText: patch.orderIntroText,
       successMessage: patch.successMessage,
       notificationEmail: patch.notificationEmail,
@@ -207,6 +211,100 @@ export const websiteRepository: WebsiteRepository = {
     return { ...row, imageUrl: null, imageAlt: null };
   },
 
+  async updateBlock(
+    orgId: string,
+    blockId: string,
+    patch: WebsiteBlockPatch & { updatedBy?: string },
+  ): Promise<WebsiteBlockRow | null> {
+    const values = withoutUndefined({
+      page: patch.page,
+      type: patch.type,
+      sortOrder: patch.sortOrder,
+      isVisible: patch.isVisible,
+      title: patch.title,
+      subtitle: patch.subtitle,
+      body: patch.body,
+      ctaLabel: patch.ctaLabel,
+      ctaLink: patch.ctaLink,
+      imageFileId: patch.imageFileId,
+      backgroundColor: patch.backgroundColor,
+      textColor: patch.textColor,
+      borderColor: patch.borderColor,
+      buttonBackgroundColor: patch.buttonBackgroundColor,
+      buttonTextColor: patch.buttonTextColor,
+      overlayColor: patch.overlayColor,
+      overlayOpacity:
+        patch.overlayOpacity === undefined ? undefined : String(patch.overlayOpacity),
+      imageFit: patch.imageFit,
+      content: patch.content,
+      updatedBy: patch.updatedBy,
+      updatedAt: new Date(),
+    });
+
+    const [row] = await db
+      .update(websiteBlocks)
+      .set(values)
+      .where(and(eq(websiteBlocks.orgId, orgId), eq(websiteBlocks.id, blockId)))
+      .returning();
+
+    return row ? { ...row, imageUrl: null, imageAlt: null } : null;
+  },
+
+  async duplicateBlock(
+    orgId: string,
+    blockId: string,
+    updatedBy?: string,
+  ): Promise<WebsiteBlockRow | null> {
+    const [source] = await db
+      .select()
+      .from(websiteBlocks)
+      .where(and(eq(websiteBlocks.orgId, orgId), eq(websiteBlocks.id, blockId)))
+      .limit(1);
+
+    if (!source) return null;
+
+    const [row] = await db
+      .insert(websiteBlocks)
+      .values({
+        orgId,
+        page: source.page,
+        type: source.type,
+        sortOrder: source.sortOrder + 1,
+        isVisible: source.isVisible,
+        title: source.title ? `${source.title} copy` : source.title,
+        subtitle: source.subtitle,
+        body: source.body,
+        ctaLabel: source.ctaLabel,
+        ctaLink: source.ctaLink,
+        imageFileId: source.imageFileId,
+        backgroundColor: source.backgroundColor,
+        textColor: source.textColor,
+        borderColor: source.borderColor,
+        buttonBackgroundColor: source.buttonBackgroundColor,
+        buttonTextColor: source.buttonTextColor,
+        overlayColor: source.overlayColor,
+        overlayOpacity: String(source.overlayOpacity ?? 0),
+        imageFit: source.imageFit,
+        content: source.content ?? {},
+        createdBy: updatedBy ?? source.createdBy ?? undefined,
+        updatedBy: updatedBy ?? source.updatedBy ?? undefined,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return { ...row, imageUrl: null, imageAlt: null };
+  },
+
+  async deleteBlock(orgId: string, blockId: string): Promise<boolean> {
+    const deleted = await db
+      .delete(websiteBlocks)
+      .where(and(eq(websiteBlocks.orgId, orgId), eq(websiteBlocks.id, blockId)))
+      .returning({ id: websiteBlocks.id });
+
+    return deleted.length > 0;
+  },
+
   async createUpload(
     orgId: string,
     upload: WebsiteUploadMetadata & { uploadedBy?: string },
@@ -233,6 +331,29 @@ export const websiteRepository: WebsiteRepository = {
       .returning({ id: websiteUploadedFiles.id, publicUrl: websiteUploadedFiles.publicUrl });
 
     return row;
+  },
+
+  async listUploads(orgId: string): Promise<WebsiteUploadRow[]> {
+    return db
+      .select({
+        id: websiteUploadedFiles.id,
+        provider: websiteUploadedFiles.provider,
+        storageKey: websiteUploadedFiles.storageKey,
+        publicUrl: websiteUploadedFiles.publicUrl,
+        fileName: websiteUploadedFiles.fileName,
+        originalFileName: websiteUploadedFiles.originalFileName,
+        mimeType: websiteUploadedFiles.mimeType,
+        byteSize: websiteUploadedFiles.byteSize,
+        width: websiteUploadedFiles.width,
+        height: websiteUploadedFiles.height,
+        altText: websiteUploadedFiles.altText,
+        status: websiteUploadedFiles.status,
+        createdAt: websiteUploadedFiles.createdAt,
+        updatedAt: websiteUploadedFiles.updatedAt,
+      })
+      .from(websiteUploadedFiles)
+      .where(and(eq(websiteUploadedFiles.orgId, orgId), eq(websiteUploadedFiles.status, "available")))
+      .orderBy(desc(websiteUploadedFiles.createdAt));
   },
 
   async listPublicProducts(orgId: string): Promise<WebsiteProductRow[]> {

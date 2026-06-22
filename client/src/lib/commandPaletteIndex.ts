@@ -7,6 +7,7 @@ import {
   Package,
   Users,
   Settings,
+  LayoutTemplate,
 } from "lucide-react";
 import type { Customer, Product } from "@shared/schema";
 import {
@@ -41,6 +42,12 @@ const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: L
   { id: "page-products", label: "Products", href: "/products", icon: Package },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings },
+  {
+    id: "page-wm-supplies-website",
+    label: "WM Supplies Website",
+    href: "/settings/wm-supplies-website",
+    icon: LayoutTemplate,
+  },
 ];
 
 const MAX_RECENT = 20;
@@ -79,8 +86,8 @@ function productSalesRank(queryClient: QueryClient): Map<string, number> {
     "/api/inventory/smart-stock?windowDays=30",
   ]);
   const rank = new Map<string, number>();
-  for (const item of smartStock?.items ?? []) {
-    rank.set(item.productId, item.unitsSoldWindow ?? 0);
+  for (const smartStockItem of smartStock?.items ?? []) {
+    rank.set(smartStockItem.productId, smartStockItem.unitsSoldWindow ?? 0);
   }
   return rank;
 }

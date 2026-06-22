@@ -96,6 +96,33 @@ export const websiteBlockInputSchema = z
   })
   .strict();
 
+export const websiteBlockPatchSchema = z
+  .object({
+    page: z.string().trim().min(1).max(64).optional(),
+    type: z.enum(WEBSITE_BLOCK_TYPES).optional(),
+    sortOrder: z.number().int().min(0).max(100_000).optional(),
+    isVisible: z.boolean().optional(),
+    title: z.string().trim().max(255).nullable().optional(),
+    subtitle: z.string().trim().max(255).nullable().optional(),
+    body: z.string().max(10_000).nullable().optional(),
+    ctaLabel: z.string().trim().max(120).nullable().optional(),
+    ctaLink: websiteSafeLinkSchema.nullable().optional(),
+    imageFileId: z.string().uuid().nullable().optional(),
+    backgroundColor: websiteHexColorSchema.nullable().optional(),
+    textColor: websiteHexColorSchema.nullable().optional(),
+    borderColor: websiteHexColorSchema.nullable().optional(),
+    buttonBackgroundColor: websiteHexColorSchema.nullable().optional(),
+    buttonTextColor: websiteHexColorSchema.nullable().optional(),
+    overlayColor: websiteHexColorSchema.nullable().optional(),
+    overlayOpacity: z.number().min(0).max(1).optional(),
+    imageFit: z.enum(["cover", "contain", "fill"]).optional(),
+    content: z.record(z.unknown()).optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: "Provide at least one website block field",
+  });
+
 export const websiteOrderSettingsPatchSchema = z
   .object({
     orderAccessMode: z.enum(WEBSITE_ORDER_ACCESS_MODES).optional(),
@@ -144,5 +171,6 @@ export const publicWebsiteOrderSchema = z
 export type WebsiteThemePatch = z.infer<typeof websiteThemePatchSchema>;
 export type WebsiteUploadMetadata = z.infer<typeof websiteUploadMetadataSchema>;
 export type WebsiteBlockInput = z.infer<typeof websiteBlockInputSchema>;
+export type WebsiteBlockPatch = z.infer<typeof websiteBlockPatchSchema>;
 export type WebsiteOrderSettingsPatch = z.infer<typeof websiteOrderSettingsPatchSchema>;
 export type PublicWebsiteOrderInput = z.infer<typeof publicWebsiteOrderSchema>;

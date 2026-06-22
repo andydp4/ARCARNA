@@ -130,6 +130,10 @@ Protected staff routes:
 - `PUT /api/website/theme`
 - `PUT /api/website/order-settings`
 - `POST /api/website/blocks`
+- `PUT /api/website/blocks/:blockId`
+- `POST /api/website/blocks/:blockId/duplicate`
+- `DELETE /api/website/blocks/:blockId`
+- `GET /api/website/uploads`
 - `POST /api/website/uploads/metadata`
 
 These routes use the existing scoped middleware from `server/routes.ts` and then require one of:
@@ -172,3 +176,42 @@ Public order submission:
 - publishes an `OrderCreated` outbox event with source `wm-supplies-website`
 
 The first public order slice is deliberately conservative for stock: any shortage is rejected with `409`, even if the setting is enabled, until the inventory worker is adjusted to avoid unsafe deductions for out-of-stock website requests.
+
+## Phase 6 Admin Website Manager
+
+Staff website management now lives in:
+
+`client/src/pages/settings/wm-supplies-website.tsx`
+
+Shared admin form helpers live in:
+
+`client/src/features/wm-supplies/adminWebsite.ts`
+
+Routes:
+
+- `/settings/wm-supplies-website`
+- `/admin/wm-supplies/website`
+
+The manager currently covers:
+
+- overview counts and public-site link
+- theme editing
+- homepage block create/edit/hide/show/reorder/duplicate/delete
+- media metadata listing and URL registration
+- public order settings
+- saved homepage preview with hidden blocks marked
+
+Navigation entry points:
+
+- Settings > Integrations > WM Supplies Website
+- command palette entry `WM Supplies Website`
+
+Verification for this phase:
+
+- targeted website/admin helper tests
+- full Vitest suite
+- ESLint on touched client files
+- targeted TypeScript checks for the client manager and API contract
+- Vite production build
+
+Rendered browser validation of the protected admin route requires a local `DATABASE_URL`/auth context. This clone does not currently contain a local `.env`, and the production secret that was pasted during planning should not be reused for local QA.

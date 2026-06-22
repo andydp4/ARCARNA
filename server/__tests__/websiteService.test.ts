@@ -20,7 +20,11 @@ function repo(overrides: Partial<WebsiteRepository> = {}): WebsiteRepository {
     upsertOrderSettings: vi.fn(),
     listBlocks: vi.fn().mockResolvedValue([]),
     upsertBlock: vi.fn(),
+    updateBlock: vi.fn(),
+    duplicateBlock: vi.fn(),
+    deleteBlock: vi.fn(),
     createUpload: vi.fn(),
+    listUploads: vi.fn().mockResolvedValue([]),
     listPublicProducts: vi.fn().mockResolvedValue([]),
     listWebsiteOrderProducts: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -108,6 +112,20 @@ describe("website validation", () => {
       }),
     ).toThrow();
   });
+
+  it("validates non-empty block patches with existing block safety rules", () => {
+    const service = createWebsiteService(repo());
+
+    expect(service.validateBlockPatch({ isVisible: false, sortOrder: 20 })).toEqual({
+      isVisible: false,
+      sortOrder: 20,
+    });
+
+    expect(() => service.validateBlockPatch({})).toThrow(/at least one/i);
+    expect(() => service.validateBlockPatch({ ctaLink: "javascript:alert(1)" })).toThrow(
+      /relative, http, https, mailto, or tel/i,
+    );
+  });
 });
 
 describe("website config projection", () => {
@@ -157,6 +175,60 @@ describe("website config projection", () => {
     expect(config.theme.siteName).toBe("WM Supplies");
     expect(config.blocks.map((block) => block.id)).toEqual(["visible"]);
     expect(repository.listBlocks).toHaveBeenCalledWith("org-1", "home");
+  });
+
+  it("updates, duplicates, deletes, and lists website admin content through the repository", async () => {
+    const repository = repo({
+      updateBlock: vi.fn().mockResolvedValue({
+        id: "00000000-0000-4000-8000-000000000101",
+        page: "home",
+        type: "hero",
+        sortOrder: 0,
+        isVisible: false,
+      }),
+      duplicateBlock: vi.fn().mockResolvedValue({
+        id: "00000000-0000-4000-8000-000000000102",
+        page: "home",
+        type: "hero",
+        sortOrder: 1,
+        isVisible: false,
+      }),
+      deleteBlock: vi.fn().mockResolvedValue(true),
+      listUploads: vi.fn().mockResolvedValue([
+        {
+          id: "00000000-0000-4000-8000-000000000201",
+          provider: "local",
+          publicUrl: "/uploads/hero.webp",
+          fileName: "hero.webp",
+          mimeType: "image/webp",
+          byteSize: 100,
+          status: "available",
+        },
+      ]),
+    });
+    const service = createWebsiteService(repository);
+
+    await expect(
+      service.updateBlock(
+        "org-1",
+        "00000000-0000-4000-8000-000000000101",
+        { isVisible: false },
+        "user-1",
+      ),
+    ).resolves.toMatchObject({ isVisible: false });
+    await expect(
+      service.duplicateBlock("org-1", "00000000-0000-4000-8000-000000000101", "user-1"),
+    ).resolves.toMatchObject({ id: "00000000-0000-4000-8000-000000000102" });
+    await expect(
+      service.deleteBlock("org-1", "00000000-0000-4000-8000-000000000101"),
+    ).resolves.toBe(true);
+    await expect(service.listUploads("org-1")).resolves.toHaveLength(1);
+
+    expect(repository.updateBlock).toHaveBeenCalledWith(
+      "org-1",
+      "00000000-0000-4000-8000-000000000101",
+      { isVisible: false, updatedBy: "user-1" },
+    );
   });
 });
 

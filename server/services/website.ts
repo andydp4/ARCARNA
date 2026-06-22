@@ -1,11 +1,13 @@
 import {
   publicWebsiteOrderSchema,
   websiteBlockInputSchema,
+  websiteBlockPatchSchema,
   websiteOrderSettingsPatchSchema,
   websiteThemePatchSchema,
   websiteUploadMetadataSchema,
   type PublicWebsiteOrderInput,
   type WebsiteBlockInput,
+  type WebsiteBlockPatch,
   type WebsiteOrderSettingsPatch,
   type WebsiteThemePatch,
   type WebsiteUploadMetadata,
@@ -66,6 +68,23 @@ export interface WebsiteBlockRow {
   overlayOpacity?: string | number | null;
   imageFit?: string | null;
   content?: Record<string, unknown> | null;
+}
+
+export interface WebsiteUploadRow {
+  id: string;
+  provider: string;
+  storageKey?: string | null;
+  publicUrl: string;
+  fileName: string;
+  originalFileName?: string | null;
+  mimeType: string;
+  byteSize: number;
+  width?: number | null;
+  height?: number | null;
+  altText?: string | null;
+  status: string;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
 }
 
 export interface WebsiteProductRow {
@@ -134,10 +153,22 @@ export interface WebsiteRepository {
     orgId: string,
     block: WebsiteBlockInput & { updatedBy?: string },
   ): Promise<WebsiteBlockRow>;
+  updateBlock(
+    orgId: string,
+    blockId: string,
+    patch: WebsiteBlockPatch & { updatedBy?: string },
+  ): Promise<WebsiteBlockRow | null>;
+  duplicateBlock(
+    orgId: string,
+    blockId: string,
+    updatedBy?: string,
+  ): Promise<WebsiteBlockRow | null>;
+  deleteBlock(orgId: string, blockId: string): Promise<boolean>;
   createUpload(
     orgId: string,
     upload: WebsiteUploadMetadata & { uploadedBy?: string },
   ): Promise<{ id: string; publicUrl: string }>;
+  listUploads(orgId: string): Promise<WebsiteUploadRow[]>;
   listPublicProducts(orgId: string): Promise<WebsiteProductRow[]>;
   listWebsiteOrderProducts(orgId: string, productIds: string[]): Promise<WebsiteProductRow[]>;
 }
@@ -432,6 +463,10 @@ export function createWebsiteService(repository: WebsiteRepository) {
       return websiteBlockInputSchema.parse(input);
     },
 
+    validateBlockPatch(input: unknown) {
+      return websiteBlockPatchSchema.parse(input);
+    },
+
     validateUploadMetadata(input: unknown) {
       return websiteUploadMetadataSchema.parse(input);
     },
@@ -484,9 +519,26 @@ export function createWebsiteService(repository: WebsiteRepository) {
       return repository.upsertBlock(orgId, { ...block, updatedBy });
     },
 
+    async updateBlock(orgId: string, blockId: string, input: unknown, updatedBy?: string) {
+      const patch = websiteBlockPatchSchema.parse(input);
+      return repository.updateBlock(orgId, blockId, { ...patch, updatedBy });
+    },
+
+    async duplicateBlock(orgId: string, blockId: string, updatedBy?: string) {
+      return repository.duplicateBlock(orgId, blockId, updatedBy);
+    },
+
+    async deleteBlock(orgId: string, blockId: string) {
+      return repository.deleteBlock(orgId, blockId);
+    },
+
     async createUpload(orgId: string, input: unknown, uploadedBy?: string) {
       const upload = websiteUploadMetadataSchema.parse(input);
       return repository.createUpload(orgId, { ...upload, uploadedBy });
+    },
+
+    async listUploads(orgId: string) {
+      return repository.listUploads(orgId);
     },
 
     async listPublicProducts(orgId: string) {

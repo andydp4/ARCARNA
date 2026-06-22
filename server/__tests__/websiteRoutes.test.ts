@@ -24,9 +24,14 @@ function createService() {
     updateTheme: vi.fn().mockResolvedValue({ orgId: ORG_ID, siteName: "WM Supplies" }),
     updateOrderSettings: vi.fn().mockResolvedValue({ orgId: ORG_ID, orderAccessMode: "public" }),
     upsertBlock: vi.fn().mockResolvedValue({ id: "block-1", type: "hero" }),
+    updateBlock: vi.fn().mockResolvedValue({ id: ORG_ID, type: "hero", isVisible: false }),
+    duplicateBlock: vi.fn().mockResolvedValue({ id: ORG_ID, type: "hero", title: "Hero copy" }),
+    deleteBlock: vi.fn().mockResolvedValue(true),
     createUpload: vi.fn().mockResolvedValue({ id: "file-1", publicUrl: "/uploads/file.webp" }),
+    listUploads: vi.fn().mockResolvedValue([{ id: "file-1", publicUrl: "/uploads/file.webp" }]),
     validateThemePatch: vi.fn(),
     validateBlockInput: vi.fn(),
+    validateBlockPatch: vi.fn(),
     validateUploadMetadata: vi.fn(),
     validateOrderSettingsPatch: vi.fn(),
     validatePublicOrder: vi.fn(),
@@ -48,12 +53,14 @@ function createOrderRuntime(): WebsiteOrderRuntime {
 
 function mockReqRes(params: {
   query?: Record<string, unknown>;
+  params?: Record<string, string>;
   body?: unknown;
   user?: Record<string, unknown>;
   orgContext?: Record<string, unknown>;
 } = {}) {
   const req = {
     query: params.query ?? {},
+    params: params.params ?? {},
     body: params.body,
     user: params.user,
     orgContext: params.orgContext,
@@ -82,6 +89,15 @@ function adminReqRes(body?: unknown, query?: Record<string, unknown>) {
   return mockReqRes({
     body,
     query,
+    user: { id: "user-1", role: "ADMIN" },
+    orgContext: { orgId: ORG_ID, role: "ADMIN" },
+  });
+}
+
+function adminBlockReqRes(body?: unknown, blockId = ORG_ID) {
+  return mockReqRes({
+    body,
+    params: { blockId },
     user: { id: "user-1", role: "ADMIN" },
     orgContext: { orgId: ORG_ID, role: "ADMIN" },
   });
@@ -259,6 +275,54 @@ describe("website admin handlers", () => {
 
     expect(upload.res.statusCode).toBe(201);
     expect(service.createUpload).toHaveBeenCalledWith(ORG_ID, uploadBody, "user-1");
+  });
+
+  it("updates, duplicates, deletes, and lists media through scoped admin handlers", async () => {
+    const service = createService();
+    const handlers = createWebsiteAdminHandlers(service as any);
+
+    const update = adminBlockReqRes({ isVisible: false });
+    await run(handlers.updateBlock, update.req, update.res);
+
+    expect(update.res.statusCode).toBe(200);
+    expect(service.updateBlock).toHaveBeenCalledWith(
+      ORG_ID,
+      ORG_ID,
+      { isVisible: false },
+      "user-1",
+    );
+
+    const duplicate = adminBlockReqRes();
+    await run(handlers.duplicateBlock, duplicate.req, duplicate.res);
+
+    expect(duplicate.res.statusCode).toBe(201);
+    expect(service.duplicateBlock).toHaveBeenCalledWith(ORG_ID, ORG_ID, "user-1");
+
+    const deletion = adminBlockReqRes();
+    await run(handlers.deleteBlock, deletion.req, deletion.res);
+
+    expect(deletion.res.statusCode).toBe(200);
+    expect(deletion.res.body).toEqual({ deleted: true });
+    expect(service.deleteBlock).toHaveBeenCalledWith(ORG_ID, ORG_ID);
+
+    const uploads = adminReqRes();
+    await run(handlers.listUploads, uploads.req, uploads.res);
+
+    expect(uploads.res.statusCode).toBe(200);
+    expect(uploads.res.body).toEqual([{ id: "file-1", publicUrl: "/uploads/file.webp" }]);
+    expect(service.listUploads).toHaveBeenCalledWith(ORG_ID);
+  });
+
+  it("returns 404 when a scoped block action cannot find the block", async () => {
+    const service = createService();
+    service.updateBlock.mockResolvedValueOnce(null);
+    const handlers = createWebsiteAdminHandlers(service as any);
+    const { req, res } = adminBlockReqRes({ title: "Missing" });
+
+    await run(handlers.updateBlock, req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect((res.body as { message: string }).message).toBe("Website block not found");
   });
 
   it("requires a staff role before admin handlers are mounted", async () => {
