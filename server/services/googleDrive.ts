@@ -305,12 +305,3 @@ export async function createFolderIfNotExists(folderName: string): Promise<strin
   console.log(`[GoogleDrive] Created new folder: ${folderName} (${newId})`);
   return newId;
 }
-
-/**
- * Clears the cached connector settings.
- * Useful for forcing token refresh after errors.
- */
-export function clearConnectionCache(): void {
-  cachedConnection = null;
-  console.log('[GoogleDrive] Connection cache cleared');
-}
