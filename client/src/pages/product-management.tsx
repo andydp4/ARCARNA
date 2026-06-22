@@ -940,6 +940,20 @@ export default function ProductManagement() {
                                         className="min-h-[44px]"
                                       />
                                     </div>
+                                    <div className="grid gap-2">
+                                      <Label htmlFor="edit-aliases-mobile">Aliases (WhatsApp / order matching)</Label>
+                                      <Input
+                                        id="edit-aliases-mobile"
+                                        value={formData.aliases}
+                                        onChange={(e) => setFormData({ ...formData, aliases: e.target.value })}
+                                        placeholder="coke, large coke, coca cola"
+                                        className="min-h-[44px]"
+                                        data-testid="input-edit-product-aliases-mobile"
+                                      />
+                                      <p className="text-xs text-muted-foreground">
+                                        Comma-separated shorthand names customers might use.
+                                      </p>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="grid gap-2">
                                         <Label htmlFor="edit-costPrice-mobile">Cost Price</Label>
@@ -1119,6 +1133,20 @@ export default function ProductManagement() {
                                       placeholder="123456789"
                                       className="min-h-[44px]"
                                     />
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="edit-aliases">Aliases (WhatsApp / order matching)</Label>
+                                    <Input
+                                      id="edit-aliases"
+                                      value={formData.aliases}
+                                      onChange={(e) => setFormData({ ...formData, aliases: e.target.value })}
+                                      placeholder="coke, large coke, coca cola"
+                                      className="min-h-[44px]"
+                                      data-testid="input-edit-product-aliases"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      Comma-separated shorthand names customers might use.
+                                    </p>
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
