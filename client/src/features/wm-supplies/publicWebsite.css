@@ -8,6 +8,62 @@
   letter-spacing: 0;
 }
 
+.wm-private-site {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(0deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px) 0 0 / 44px 44px,
+    #111111;
+  color: #ffffff;
+  padding: 1rem;
+}
+
+.wm-private-gate {
+  width: min(100%, 720px);
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+  border: 6px solid #ffffff;
+  background: #ff2bd6;
+  color: #111111;
+  box-shadow: 10px 10px 0 #000;
+  padding: clamp(1.25rem, 5vw, 2.5rem);
+}
+
+.wm-private-gate .wm-brand-mark {
+  border-color: #111111;
+}
+
+.wm-private-gate svg {
+  width: 58px;
+  height: 58px;
+}
+
+.wm-private-gate h1 {
+  max-width: 12ch;
+  margin: 0;
+  font-size: clamp(2.4rem, 8vw, 5rem);
+  font-weight: 950;
+  line-height: 0.88;
+  text-transform: uppercase;
+}
+
+.wm-private-gate p {
+  max-width: 54ch;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.wm-private-gate .wm-block-button {
+  --wm-border: #111111;
+  --wm-block-button-bg: #ffe600;
+  --wm-block-button-text: #111111;
+}
+
 .wm-header,
 .wm-footer,
 .wm-block,

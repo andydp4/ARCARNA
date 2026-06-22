@@ -1,6 +1,8 @@
 # WM Supplies Website
 
-The WM Supplies customer-facing website is an Arcana extension, not a separate ecommerce system. Arcana owns the content, product visibility, order settings, and eventual order-tray integration.
+The WM Supplies customer-facing website is an invite-only Arcana extension, not a separate ecommerce system. Arcana owns the content, product visibility, account approval, order settings, and eventual order-tray integration.
+
+Customers must sign in with Clerk and be approved in Arcana before they can see homepage content, products, or the order form.
 
 ## Phase 1 Schema Foundation
 
@@ -115,14 +117,14 @@ Repository/database wiring lives in:
 
 `server/services/websiteRepository.ts`
 
-Public routes:
+Customer website API routes:
 
 - `GET /api/public/wm-supplies/site-config`
 - `GET /api/public/wm-supplies/products`
 - `GET /api/public/products`
 - `POST /api/public/wm-supplies/orders`
 
-Public routes resolve the organisation from `WM_SUPPLIES_ORG_ID` or `WM_SUPPLIES_WEBSITE_ORG_ID`. For local testing only, `?orgId={uuid}` is also accepted.
+These routes are mounted behind Clerk authentication, Arcana allow-list approval, and org scoping. They resolve the organisation from the approved account context, or for `SUPER_ADMIN` testing from the scoped org header/query. `WM_SUPPLIES_ORG_ID` / `WM_SUPPLIES_WEBSITE_ORG_ID` remain the public-org fallback for route handlers and local service tests.
 
 Protected staff routes:
 
@@ -161,6 +163,8 @@ Public routes inside the current Arcana mount:
 - `/`
 - `/order`
 - `/order/success`
+
+All three routes render a private account gate until Clerk auth and Arcana account approval pass. The frontend does not fetch site config, products, or order data before approval. The backend also rejects direct customer API calls without approved auth.
 
 When no backend blocks are configured, the frontend renders a small bold fallback shop-window set. Once staff add visible homepage blocks, backend blocks take over.
 

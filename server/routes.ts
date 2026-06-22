@@ -55,13 +55,14 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
   registerAssistantPublicRoutes(app);
-  registerWebsitePublicRoutes(app);
 
   await setupAuth(app);
 
   registerAuthRoutes(app);
 
   const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+  const websiteCustomerScoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+  registerWebsitePublicRoutes(app, websiteCustomerScoped);
 
   registerChannelAuthenticatedRoutes(app, scoped);
   registerAnalyticsRoutes(app, scoped);

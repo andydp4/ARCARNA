@@ -227,6 +227,7 @@ export function createWebsitePublicHandlers(
 
 export function registerWebsitePublicRoutes(
   app: Express,
+  scoped: RequestHandler[] = [],
   service?: WebsiteService,
   orderRuntime?: WebsiteOrderRuntime,
 ): void {
@@ -234,10 +235,10 @@ export function registerWebsitePublicRoutes(
     service,
     orderRuntime,
   );
-  app.get("/api/public/wm-supplies/site-config", getSiteConfig);
-  app.get("/api/public/wm-supplies/products", getProducts);
-  app.get("/api/public/products", getProducts);
-  app.post("/api/public/wm-supplies/orders", createOrder);
+  app.get("/api/public/wm-supplies/site-config", ...scoped, getSiteConfig);
+  app.get("/api/public/wm-supplies/products", ...scoped, getProducts);
+  app.get("/api/public/products", ...scoped, getProducts);
+  app.post("/api/public/wm-supplies/orders", ...scoped, createOrder);
 }
 
 export function createWebsiteAdminHandlers(service?: WebsiteService) {

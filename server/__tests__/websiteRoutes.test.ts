@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   createWebsiteAdminHandlers,
   createWebsitePublicHandlers,
+  registerWebsitePublicRoutes,
   requireWebsiteStaffRole,
 } from "../routes/website";
 import { WebsitePublicOrderError, type WebsiteOrderRuntime } from "../services/website";
@@ -110,6 +111,37 @@ beforeEach(() => {
 });
 
 describe("website public handlers", () => {
+  it("mounts customer website routes behind supplied auth middleware", () => {
+    const app = {
+      get: vi.fn(),
+      post: vi.fn(),
+    };
+    const authGate: RequestHandler = (_req, _res, next) => next();
+
+    registerWebsitePublicRoutes(app as any, [authGate], createService() as any);
+
+    expect(app.get).toHaveBeenCalledWith(
+      "/api/public/wm-supplies/site-config",
+      authGate,
+      expect.any(Function),
+    );
+    expect(app.get).toHaveBeenCalledWith(
+      "/api/public/wm-supplies/products",
+      authGate,
+      expect.any(Function),
+    );
+    expect(app.get).toHaveBeenCalledWith(
+      "/api/public/products",
+      authGate,
+      expect.any(Function),
+    );
+    expect(app.post).toHaveBeenCalledWith(
+      "/api/public/wm-supplies/orders",
+      authGate,
+      expect.any(Function),
+    );
+  });
+
   it("returns public site config using configured org id", async () => {
     process.env.WM_SUPPLIES_ORG_ID = ORG_ID;
     const service = createService();

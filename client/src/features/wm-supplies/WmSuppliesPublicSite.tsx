@@ -13,6 +13,8 @@ import {
   Store,
 } from "lucide-react";
 import { resolveAppPath } from "@/lib/appPaths";
+import { withClerkAuthHeaders } from "@/lib/clerkApiAuth";
+import { useAuth, type AccessState } from "@/hooks/useAuth";
 import {
   blockCssVars,
   calculateCartTotal,
@@ -32,7 +34,8 @@ import {
 import "./publicWebsite.css";
 
 async function getPublicJson<T>(path: string): Promise<T> {
-  const res = await fetch(publicWebsiteApiUrl(path), { credentials: "include" });
+  const headers = await withClerkAuthHeaders({ Accept: "application/json" });
+  const res = await fetch(publicWebsiteApiUrl(path), { credentials: "include", headers });
   if (!res.ok) {
     throw new Error((await res.text()) || res.statusText);
   }
@@ -40,9 +43,10 @@ async function getPublicJson<T>(path: string): Promise<T> {
 }
 
 async function postPublicJson<T>(path: string, payload: unknown): Promise<T> {
+  const headers = await withClerkAuthHeaders({ "Content-Type": "application/json" });
   const res = await fetch(publicWebsiteApiUrl(path), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "include",
     body: JSON.stringify(payload),
   });
@@ -52,19 +56,21 @@ async function postPublicJson<T>(path: string, payload: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-function usePublicSiteConfig() {
+function usePublicSiteConfig(enabled: boolean) {
   return useQuery({
     queryKey: ["wm-supplies", "site-config"],
     queryFn: () => getPublicJson<PublicSiteConfig>("/api/public/wm-supplies/site-config"),
     retry: false,
+    enabled,
   });
 }
 
-function usePublicProducts() {
+function usePublicProducts(enabled: boolean) {
   return useQuery({
     queryKey: ["wm-supplies", "products"],
     queryFn: () => getPublicJson<PublicWebsiteProduct[]>("/api/public/wm-supplies/products"),
     retry: false,
+    enabled,
   });
 }
 
@@ -91,7 +97,7 @@ function WmHeader({ theme }: { theme: PublicWebsiteTheme }) {
       <nav className="wm-nav" aria-label="WM Supplies">
         <a href={resolveAppPath("/")}>Home</a>
         <a href={resolveAppPath("/order")}>Order</a>
-        <a href={resolveAppPath("/sign-in")}>Staff sign-in</a>
+        <a href={resolveAppPath("/sign-in?logout=1")}>Sign out</a>
       </nav>
     </header>
   );
@@ -147,6 +153,74 @@ function WmVisualPanel({ label }: { label: string }) {
       <ImageIcon className="wm-visual-icon" aria-hidden="true" />
     </div>
   );
+}
+
+function websiteAccessCopy(accessState: AccessState | "signed_out" | "loading") {
+  if (accessState === "loading") {
+    return {
+      title: "Checking account access",
+      body: "WM Supplies is available to approved account holders only.",
+      action: null,
+    };
+  }
+  if (accessState === "signed_out") {
+    return {
+      title: "Private WM Supplies account required",
+      body: "Sign in with your invited account. New accounts stay locked until approved.",
+      action: "Sign in",
+    };
+  }
+  if (accessState === "pending") {
+    return {
+      title: "Account awaiting approval",
+      body: "Your account has been received and needs approval before you can view WM Supplies.",
+      action: null,
+    };
+  }
+  return {
+    title: "Account not approved",
+    body: "This WM Supplies website is invite-only. Contact the team if you need access.",
+    action: null,
+  };
+}
+
+function WmPrivateAccessGate({
+  accessState,
+}: {
+  accessState: AccessState | "signed_out" | "loading";
+}) {
+  const copy = websiteAccessCopy(accessState);
+
+  return (
+    <main className="wm-private-site">
+      <section className="wm-private-gate" aria-labelledby="wm-private-title">
+        <span className="wm-brand-mark">WM</span>
+        <Lock aria-hidden="true" />
+        <h1 id="wm-private-title">{copy.title}</h1>
+        <p>{copy.body}</p>
+        {copy.action ? (
+          <a className="wm-block-button" href={resolveAppPath("/sign-in")}>
+            <span>{copy.action}</span>
+            <ArrowRight size={18} aria-hidden="true" />
+          </a>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
+function useApprovedWebsiteAccess() {
+  const auth = useAuth();
+  const isApproved =
+    !auth.isLoading && auth.isAuthenticated && auth.accessState === "ok";
+  const gateState: AccessState | "signed_out" | "loading" =
+    auth.isLoading
+      ? "loading"
+      : !auth.isAuthenticated
+        ? "signed_out"
+        : auth.accessState;
+
+  return { isApproved, gateState };
 }
 
 function BlockImage({ block }: { block: PublicWebsiteBlock }) {
@@ -241,7 +315,12 @@ function WebsiteBlock({ block, theme }: { block: PublicWebsiteBlock; theme: Publ
 }
 
 export function WmSuppliesHomePage() {
-  const siteQuery = usePublicSiteConfig();
+  const access = useApprovedWebsiteAccess();
+  const siteQuery = usePublicSiteConfig(access.isApproved);
+  if (!access.isApproved) {
+    return <WmPrivateAccessGate accessState={access.gateState} />;
+  }
+
   const config = siteDataFromQuery(siteQuery.data);
   const blocks = getRenderableBlocks(config);
 
@@ -310,8 +389,9 @@ function productsByCategory(products: PublicWebsiteProduct[]) {
 
 export function WmSuppliesOrderPage() {
   const [, setLocation] = useLocation();
-  const siteQuery = usePublicSiteConfig();
-  const productsQuery = usePublicProducts();
+  const access = useApprovedWebsiteAccess();
+  const siteQuery = usePublicSiteConfig(access.isApproved);
+  const productsQuery = usePublicProducts(access.isApproved);
   const config = siteDataFromQuery(siteQuery.data);
   const products = productsQuery.data ?? [];
   const groupedProducts = useMemo(() => productsByCategory(products), [products]);
@@ -332,9 +412,7 @@ export function WmSuppliesOrderPage() {
   const total = calculateCartTotal(products, cartLines);
   const minOrderValue = config.orderSettings.minOrderValue ?? 0;
   const needsPassword = config.orderSettings.orderAccessMode === "password";
-  const requiresClerk = config.orderSettings.orderAccessMode === "clerk";
   const canSubmit =
-    !requiresClerk &&
     cartLines.length > 0 &&
     customerName.trim().length > 0 &&
     (method === "pickup" || address.trim().length > 0) &&
@@ -384,6 +462,10 @@ export function WmSuppliesOrderPage() {
     }
   };
 
+  if (!access.isApproved) {
+    return <WmPrivateAccessGate accessState={access.gateState} />;
+  }
+
   return (
     <WmPublicLayout config={config}>
       <form className="wm-order-shell" onSubmit={submitOrder}>
@@ -403,140 +485,131 @@ export function WmSuppliesOrderPage() {
           </div>
         </section>
 
-        {requiresClerk ? (
-          <section className="wm-order-gate">
-            <Lock aria-hidden="true" />
-            <h2>Sign in to order</h2>
-            <p>This order page is currently limited to signed-in customers.</p>
-            <a className="wm-block-button" href={resolveAppPath("/sign-in")}>
-              <span>Sign in</span>
-              <ArrowRight size={18} aria-hidden="true" />
-            </a>
+        {needsPassword ? (
+          <section className="wm-order-panel">
+            <label>
+              Order password
+              <input
+                type="password"
+                value={accessPassword}
+                onChange={(event) => setAccessPassword(event.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
           </section>
-        ) : (
-          <>
-            {needsPassword ? (
-              <section className="wm-order-panel">
-                <label>
-                  Order password
-                  <input
-                    type="password"
-                    value={accessPassword}
-                    onChange={(event) => setAccessPassword(event.target.value)}
-                    autoComplete="current-password"
-                  />
-                </label>
-              </section>
-            ) : null}
+        ) : null}
 
-            <section className="wm-product-groups" aria-label="Products">
-              {products.length === 0 ? (
-                <div className="wm-empty-products">
-                  <Store aria-hidden="true" />
-                  <h2>Products are waiting to be published</h2>
-                  <p>Once staff mark Arcana products as available for the website, they will appear here.</p>
+        <section className="wm-product-groups" aria-label="Products">
+          {products.length === 0 ? (
+            <div className="wm-empty-products">
+              <Store aria-hidden="true" />
+              <h2>Products are waiting to be published</h2>
+              <p>Once staff mark Arcana products as available for the website, they will appear here.</p>
+            </div>
+          ) : (
+            Object.entries(groupedProducts).map(([category, items]) => (
+              <div className="wm-product-group" key={category}>
+                <h2>{category}</h2>
+                <div className="wm-product-grid">
+                  {items.map((product) => (
+                    <ProductTile
+                      key={product.id}
+                      product={product}
+                      quantity={cart[product.id] ?? 0}
+                      onChange={(quantity) => updateQuantity(product.id, quantity)}
+                    />
+                  ))}
                 </div>
-              ) : (
-                Object.entries(groupedProducts).map(([category, items]) => (
-                  <div className="wm-product-group" key={category}>
-                    <h2>{category}</h2>
-                    <div className="wm-product-grid">
-                      {items.map((product) => (
-                        <ProductTile
-                          key={product.id}
-                          product={product}
-                          quantity={cart[product.id] ?? 0}
-                          onChange={(quantity) => updateQuantity(product.id, quantity)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </section>
-
-            <section className="wm-order-form-grid">
-              <div className="wm-order-panel">
-                <h2>Your details</h2>
-                <label>
-                  Name
-                  <input
-                    value={customerName}
-                    onChange={(event) => setCustomerName(event.target.value)}
-                    autoComplete="name"
-                    required
-                  />
-                </label>
-                <label>
-                  Phone
-                  <input
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    autoComplete="tel"
-                  />
-                </label>
-                <label>
-                  Email
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    autoComplete="email"
-                  />
-                </label>
               </div>
+            ))
+          )}
+        </section>
 
-              <div className="wm-order-panel">
-                <h2>Fulfilment</h2>
-                <div className="wm-choice-row" role="radiogroup" aria-label="Fulfilment method">
-                  <button
-                    type="button"
-                    className={method === "pickup" ? "is-selected" : ""}
-                    onClick={() => setMethod("pickup")}
-                  >
-                    Pickup
-                  </button>
-                  <button
-                    type="button"
-                    className={method === "delivery" ? "is-selected" : ""}
-                    onClick={() => setMethod("delivery")}
-                  >
-                    Delivery
-                  </button>
-                </div>
-                {method === "delivery" ? (
-                  <label>
-                    Delivery address
-                    <textarea value={address} onChange={(event) => setAddress(event.target.value)} />
-                  </label>
-                ) : null}
-                <label>
-                  Notes
-                  <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-                </label>
-              </div>
-            </section>
+        <section className="wm-order-form-grid">
+          <div className="wm-order-panel">
+            <h2>Your details</h2>
+            <label>
+              Name
+              <input
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                autoComplete="name"
+                required
+              />
+            </label>
+            <label>
+              Phone
+              <input
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                autoComplete="tel"
+              />
+            </label>
+            <label>
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+              />
+            </label>
+          </div>
 
-            <section className="wm-order-submit">
-              <div>
-                <strong>{formatWebsiteMoney(total)}</strong>
-                {minOrderValue > 0 ? <span>Minimum order {formatWebsiteMoney(minOrderValue)}</span> : null}
-                {error ? <p className="wm-order-error">{error}</p> : null}
-              </div>
-              <button className="wm-submit-button" type="submit" disabled={!canSubmit}>
-                <ShoppingBasket size={18} aria-hidden="true" />
-                {isSubmitting ? "Sending..." : "Send order request"}
+          <div className="wm-order-panel">
+            <h2>Fulfilment</h2>
+            <div className="wm-choice-row" role="radiogroup" aria-label="Fulfilment method">
+              <button
+                type="button"
+                className={method === "pickup" ? "is-selected" : ""}
+                onClick={() => setMethod("pickup")}
+              >
+                Pickup
               </button>
-            </section>
-          </>
-        )}
+              <button
+                type="button"
+                className={method === "delivery" ? "is-selected" : ""}
+                onClick={() => setMethod("delivery")}
+              >
+                Delivery
+              </button>
+            </div>
+            {method === "delivery" ? (
+              <label>
+                Delivery address
+                <textarea value={address} onChange={(event) => setAddress(event.target.value)} />
+              </label>
+            ) : null}
+            <label>
+              Notes
+              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+            </label>
+          </div>
+        </section>
+
+        <section className="wm-order-submit">
+          <div>
+            <strong>{formatWebsiteMoney(total)}</strong>
+            {minOrderValue > 0 ? <span>Minimum order {formatWebsiteMoney(minOrderValue)}</span> : null}
+            {error ? <p className="wm-order-error">{error}</p> : null}
+          </div>
+          <button className="wm-submit-button" type="submit" disabled={!canSubmit}>
+            <ShoppingBasket size={18} aria-hidden="true" />
+            {isSubmitting ? "Sending..." : "Send order request"}
+          </button>
+        </section>
       </form>
     </WmPublicLayout>
   );
 }
 
 export function WmSuppliesOrderSuccessPage() {
-  const siteQuery = usePublicSiteConfig();
+  const access = useApprovedWebsiteAccess();
+  const siteQuery = usePublicSiteConfig(access.isApproved);
+  if (!access.isApproved) {
+    return <WmPrivateAccessGate accessState={access.gateState} />;
+  }
+
   const config = siteDataFromQuery(siteQuery.data);
   const params = new URLSearchParams(window.location.search);
   const orderId = params.get("orderId");
