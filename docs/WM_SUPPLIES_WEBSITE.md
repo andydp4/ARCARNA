@@ -240,3 +240,16 @@ Backend route:
 - `PATCH /api/products/:id/website`
 
 The route is org-scoped, role-gated, validates payloads with `websiteProductSettingsPatchSchema`, writes only website display fields, and records a `website.product.updated` admin audit event.
+
+## Phase 8 Website Order Visibility
+
+Website orders use the existing Arcana order tray and are identified by `orders.channel = 'web'`.
+
+Staff order management now shows:
+
+- a Website count in the Orders summary cards
+- a Channel filter with Website/POS/WhatsApp/Phone/API options
+- a channel badge on each order row
+- channel information in the order details dialog
+
+The orders API includes `channel` on list and detail responses so website orders remain traceable without a separate order backend.
