@@ -153,7 +153,7 @@ export default function OnboardingWizard() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Button asChild className="min-h-[44px]">
-              <Link href="/pos">Open POS</Link>
+              <Link href="/create-order">Open POS</Link>
             </Button>
             <Button asChild variant="outline" className="min-h-[44px]">
               <Link href="/">Go to dashboard</Link>
@@ -321,7 +321,7 @@ export default function OnboardingWizard() {
                   <Check className="ml-2 h-4 w-4" />
                 </Button>
                 <Button asChild variant="outline" className="w-full min-h-[44px]">
-                  <Link href="/pos">Open POS instead</Link>
+                  <Link href="/create-order">Open POS instead</Link>
                 </Button>
               </>
             )}

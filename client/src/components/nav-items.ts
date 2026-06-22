@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react'
 import {
   ShoppingCart,
   Package,
@@ -15,9 +16,7 @@ import {
   CreditCard,
   PackageCheck,
   Shield,
-  Workflow,
   CalendarClock,
-  Activity,
   Timer,
   Ticket,
   Clock,
@@ -26,7 +25,16 @@ import {
   Code2,
 } from 'lucide-react'
 
-export const navItems = [
+export interface NavItem {
+  key: string
+  label: string
+  href: string
+  icon: LucideIcon
+  testId: string
+  children?: NavItem[]
+}
+
+export const navItems: NavItem[] = [
   {
     key: 'home',
     label: 'Dashboard',
@@ -36,24 +44,40 @@ export const navItems = [
   },
   {
     key: 'pos',
-    label: 'POS Terminal',
-    href: '/pos',
+    label: 'Create Order',
+    href: '/create-order',
     icon: ShoppingCart,
     testId: 'nav-pos'
   },
   {
     key: 'orders',
-    label: 'Orders',
-    href: '/orders',
+    label: 'Open Orders',
+    href: '/open-orders',
     icon: PackageCheck,
-    testId: 'nav-orders'
-  },
-  {
-    key: 'shifts',
-    label: 'Shifts',
-    href: '/shifts',
-    icon: Timer,
-    testId: 'nav-shifts'
+    testId: 'nav-orders',
+    children: [
+      {
+        key: 'orders-main',
+        label: 'Open Orders',
+        href: '/open-orders',
+        icon: PackageCheck,
+        testId: 'nav-orders-main'
+      },
+      {
+        key: 'shifts',
+        label: 'Shifts',
+        href: '/shifts',
+        icon: Timer,
+        testId: 'nav-shifts'
+      },
+      {
+        key: 'locations',
+        label: 'Locations',
+        href: '/locations',
+        icon: MapPin,
+        testId: 'nav-locations'
+      }
+    ]
   },
   {
     key: 'products',
@@ -74,56 +98,95 @@ export const navItems = [
     label: 'Customers',
     href: '/customers',
     icon: Users,
-    testId: 'nav-customers'
-  },
-  {
-    key: 'gift-cards',
-    label: 'Gift cards',
-    href: '/gift-cards',
-    icon: Ticket,
-    testId: 'nav-gift-cards'
-  },
-  {
-    key: 'loyalty',
-    label: 'Loyalty',
-    href: '/loyalty',
-    icon: Award,
-    testId: 'nav-loyalty'
+    testId: 'nav-customers',
+    children: [
+      {
+        key: 'customers-main',
+        label: 'Customers',
+        href: '/customers',
+        icon: Users,
+        testId: 'nav-customers-main'
+      },
+      {
+        key: 'gift-cards',
+        label: 'Gift cards',
+        href: '/gift-cards',
+        icon: Ticket,
+        testId: 'nav-gift-cards'
+      },
+      {
+        key: 'loyalty',
+        label: 'Loyalty',
+        href: '/loyalty',
+        icon: Award,
+        testId: 'nav-loyalty'
+      },
+      {
+        key: 'promotions',
+        label: 'Promotions',
+        href: '/promotions',
+        icon: Gift,
+        testId: 'nav-promotions'
+      }
+    ]
   },
   {
     key: 'insights',
     label: 'Business Insights',
     href: '/insights',
     icon: TrendingUp,
-    testId: 'nav-insights'
-  },
-  {
-    key: 'rfm',
-    label: 'RFM Segments',
-    href: '/analytics/rfm',
-    icon: PieChart,
-    testId: 'nav-rfm'
-  },
-  {
-    key: 'hour-of-day',
-    label: 'Hour of day',
-    href: '/analytics/hour-of-day',
-    icon: Clock,
-    testId: 'nav-hour-of-day'
-  },
-  {
-    key: 'channels',
-    label: 'Channels',
-    href: '/analytics/channels',
-    icon: Radio,
-    testId: 'nav-channels'
-  },
-  {
-    key: 'stock-turn',
-    label: 'Stock turn',
-    href: '/analytics/stock-turn',
-    icon: Layers,
-    testId: 'nav-stock-turn'
+    testId: 'nav-insights',
+    children: [
+      {
+        key: 'insights-main',
+        label: 'Overview',
+        href: '/insights',
+        icon: TrendingUp,
+        testId: 'nav-insights-main'
+      },
+      {
+        key: 'rfm',
+        label: 'RFM Segments',
+        href: '/analytics/rfm',
+        icon: PieChart,
+        testId: 'nav-rfm'
+      },
+      {
+        key: 'hour-of-day',
+        label: 'Hour of day',
+        href: '/analytics/hour-of-day',
+        icon: Clock,
+        testId: 'nav-hour-of-day'
+      },
+      {
+        key: 'channels',
+        label: 'Channels',
+        href: '/analytics/channels',
+        icon: Radio,
+        testId: 'nav-channels'
+      },
+      {
+        key: 'stock-turn',
+        label: 'Stock turn',
+        href: '/analytics/stock-turn',
+        icon: Layers,
+        testId: 'nav-stock-turn'
+      },
+      {
+        key: 'profit',
+        label: 'Profit Analysis',
+        href: '/expense-reports',
+        icon: PieChart,
+        testId: 'nav-profit'
+      },
+      {
+        key: 'scheduled-reports',
+        label: 'Scheduled reports',
+        href: '/scheduled-reports',
+        icon: CalendarClock,
+        testId: 'nav-scheduled-reports'
+      }
+    ]
   },
   {
     key: 'expenses',
@@ -131,27 +194,6 @@ export const navItems = [
     href: '/expenses',
     icon: Wallet,
     testId: 'nav-expenses'
-  },
-  {
-    key: 'profit',
-    label: 'Profit Analysis',
-    href: '/expense-reports',
-    icon: PieChart,
-    testId: 'nav-profit'
-  },
-  {
-    key: 'promotions',
-    label: 'Promotions',
-    href: '/promotions',
-    icon: Gift,
-    testId: 'nav-promotions'
-  },
-  {
-    key: 'locations',
-    label: 'Locations',
-    href: '/locations',
-    icon: MapPin,
-    testId: 'nav-locations'
   },
   {
     key: 'invoices',
@@ -168,52 +210,33 @@ export const navItems = [
     testId: 'nav-tick-list'
   },
   {
-    key: 'audit-logs',
-    label: 'Audit log',
-    href: '/audit-logs',
-    icon: Shield,
-    testId: 'nav-audit-logs'
-  },
-  {
-    key: 'worker-logs',
-    label: 'Worker logs',
-    href: '/worker-logs',
-    icon: Activity,
-    testId: 'nav-worker-logs'
-  },
-  {
-    key: 'rules',
-    label: 'Automation rules',
-    href: '/rules',
-    icon: Workflow,
-    testId: 'nav-rules'
-  },
-  {
-    key: 'scheduled-reports',
-    label: 'Scheduled reports',
-    href: '/scheduled-reports',
-    icon: CalendarClock,
-    testId: 'nav-scheduled-reports'
-  },
-  {
-    key: 'user-access',
-    label: 'User Access',
-    href: '/user-access',
-    icon: Shield,
-    testId: 'nav-user-access'
-  },
-  {
-    key: 'developer',
-    label: 'Developer',
-    href: '/settings/developer',
-    icon: Code2,
-    testId: 'nav-developer'
-  },
-  {
     key: 'settings',
     label: 'Settings',
     href: '/settings',
     icon: Settings,
-    testId: 'nav-settings'
+    testId: 'nav-settings',
+    children: [
+      {
+        key: 'settings-main',
+        label: 'General',
+        href: '/settings',
+        icon: Settings,
+        testId: 'nav-settings-main'
+      },
+      {
+        key: 'developer',
+        label: 'Developer',
+        href: '/settings/developer',
+        icon: Code2,
+        testId: 'nav-developer'
+      },
+      {
+        key: 'user-access',
+        label: 'User Access',
+        href: '/user-access',
+        icon: Shield,
+        testId: 'nav-user-access'
+      }
+    ]
   }
 ]

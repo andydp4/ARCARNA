@@ -401,7 +401,7 @@ export default function Insights() {
             icon={BarChart3}
             title="No activity in this period"
             body="There are no orders or revenue in the selected date range. Process a sale in POS or try a wider preset."
-            cta={{ label: "Open POS", href: "/pos" }}
+            cta={{ label: "Open POS", href: "/create-order" }}
             secondary={{ label: "Last 30 days", onClick: () => handlePresetRange("last30") }}
           />
         ) : (

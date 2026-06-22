@@ -48,7 +48,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export default function OrderRefundPage() {
-  const [, params] = useRoute("/orders/:id/refund");
+  const [, params] = useRoute("/open-orders/:id/refund");
   const orderId = params?.id;
   const { toast } = useToast();
   const [step, setStep] = useState(0);
@@ -134,7 +134,7 @@ export default function OrderRefundPage() {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <Link href="/orders">
+      <Link href="/open-orders">
         <Button variant="ghost" size="sm" className="mb-2">
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back to orders

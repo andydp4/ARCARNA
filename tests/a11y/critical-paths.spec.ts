@@ -4,10 +4,10 @@ import type { Result } from "axe-core";
 import { prepareTenantContext } from "../helpers/e2eTenant";
 
 const CRITICAL_PATHS = [
-  { name: "POS", path: "/arcarna/pos" },
+  { name: "POS", path: "/arcarna/create-order" },
   { name: "Customers", path: "/arcarna/customers" },
   { name: "Products", path: "/arcarna/products" },
-  { name: "Orders", path: "/arcarna/orders" },
+  { name: "Orders", path: "/arcarna/open-orders" },
   { name: "Settings", path: "/arcarna/settings" },
 ] as const;
 

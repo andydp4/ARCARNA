@@ -9,6 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import AuditLogsPage from "@/pages/audit-logs";
+import WorkerLogsPage from "@/pages/worker-logs";
+import RulesPage from "@/pages/rules";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -328,6 +337,8 @@ function RevokeButton({ id }: { id: string }) {
 export default function DeveloperSettingsPage() {
   const { user } = useAuth();
   const canAccess = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const canSeeLogs = user?.role === "SUPER_ADMIN";
+  const [activeTab, setActiveTab] = useState("api-keys");
 
   const { data: keys = [], isLoading } = useQuery<ApiKey[]>({
     queryKey: ["/api/api-keys"],
@@ -354,10 +365,19 @@ export default function DeveloperSettingsPage() {
     <div className="space-y-6 p-4 md:p-6 max-w-4xl">
       <PageHeader
         title="Developer"
-        description="API keys for external agents, integrations and automation tools"
+        description="API keys, audit trail, background jobs and automation rules"
         icon={Code2}
       />
 
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-h-[48px]">
+          <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+          {canSeeLogs && <TabsTrigger value="audit-log">Audit Log</TabsTrigger>}
+          {canSeeLogs && <TabsTrigger value="worker-logs">Worker Logs</TabsTrigger>}
+          <TabsTrigger value="rules">Automation Rules</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="api-keys" className="space-y-6">
       {/* Base URL info */}
       <Card>
         <CardHeader className="pb-3">
@@ -498,6 +518,24 @@ export default function DeveloperSettingsPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {canSeeLogs && (
+          <TabsContent value="audit-log" className="space-y-6">
+            <AuditLogsPage />
+          </TabsContent>
+        )}
+
+        {canSeeLogs && (
+          <TabsContent value="worker-logs" className="space-y-6">
+            <WorkerLogsPage />
+          </TabsContent>
+        )}
+
+        <TabsContent value="rules" className="space-y-6">
+          <RulesPage />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
