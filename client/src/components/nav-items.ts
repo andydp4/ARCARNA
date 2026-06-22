@@ -23,6 +23,7 @@ import {
   Clock,
   Radio,
   Layers,
+  Code2,
 } from 'lucide-react'
 
 export const navItems = [
@@ -200,6 +201,13 @@ export const navItems = [
     href: '/user-access',
     icon: Shield,
     testId: 'nav-user-access'
+  },
+  {
+    key: 'developer',
+    label: 'Developer',
+    href: '/settings/developer',
+    icon: Code2,
+    testId: 'nav-developer'
   },
   {
     key: 'settings',
