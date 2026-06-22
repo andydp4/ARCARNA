@@ -219,3 +219,24 @@ Verification for this phase:
 - Vite production build
 
 Rendered browser validation of the protected admin route requires a local `DATABASE_URL`/auth context. This clone does not currently contain a local `.env`, and the production secret that was pasted during planning should not be reused for local QA.
+
+## Phase 7 Product Website Controls
+
+Product website controls live in the existing product catalogue:
+
+`client/src/pages/product-management.tsx`
+
+Staff with `SUPER_ADMIN`, `ADMIN`, or `MANAGER` can open the Website action on a product and manage:
+
+- show/hide on the WM Supplies website
+- customer-facing title and description
+- website category
+- unit label
+- sort order
+- website image selection from registered website media
+
+Backend route:
+
+- `PATCH /api/products/:id/website`
+
+The route is org-scoped, role-gated, validates payloads with `websiteProductSettingsPatchSchema`, writes only website display fields, and records a `website.product.updated` admin audit event.

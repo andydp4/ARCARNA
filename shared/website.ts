@@ -136,6 +136,21 @@ export const websiteOrderSettingsPatchSchema = z
   })
   .strict();
 
+export const websiteProductSettingsPatchSchema = z
+  .object({
+    availableForWebsite: z.boolean().optional(),
+    websiteTitle: z.string().trim().max(255).nullable().optional(),
+    websiteDescription: z.string().max(10_000).nullable().optional(),
+    websiteCategory: z.string().trim().max(120).nullable().optional(),
+    websiteUnitLabel: z.string().trim().max(120).nullable().optional(),
+    websiteSortOrder: z.number().int().min(0).max(100_000).optional(),
+    websiteImageFileId: z.string().uuid().nullable().optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: "Provide at least one website product field",
+  });
+
 export const publicWebsiteOrderSchema = z
   .object({
     customer: z
@@ -173,4 +188,5 @@ export type WebsiteUploadMetadata = z.infer<typeof websiteUploadMetadataSchema>;
 export type WebsiteBlockInput = z.infer<typeof websiteBlockInputSchema>;
 export type WebsiteBlockPatch = z.infer<typeof websiteBlockPatchSchema>;
 export type WebsiteOrderSettingsPatch = z.infer<typeof websiteOrderSettingsPatchSchema>;
+export type WebsiteProductSettingsPatch = z.infer<typeof websiteProductSettingsPatchSchema>;
 export type PublicWebsiteOrderInput = z.infer<typeof publicWebsiteOrderSchema>;
