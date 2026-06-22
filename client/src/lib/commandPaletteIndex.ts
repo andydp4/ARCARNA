@@ -14,6 +14,7 @@ import {
   getVisibleCommandPaletteActions,
   type CommandPaletteAction,
 } from "@shared/commandPaletteActions";
+import { isRole, roleRank } from "@shared/rbac";
 import type { OrdersListOrder } from "@/components/orders-row";
 import { VOCAB } from "@/lib/vocabulary";
 import {
@@ -35,18 +36,19 @@ export type CommandPaletteItem = {
 
 // Labels mirror the sidebar (nav-items.ts) — both read from VOCAB so the
 // palette and the nav can never drift apart.
-const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: LucideIcon }> = [
-  { id: "page-home", label: VOCAB.controlCentre, href: "/", icon: Home },
-  { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart },
-  { id: "page-orders", label: VOCAB.openOrders, href: "/open-orders", icon: PackageCheck },
-  { id: "page-products", label: "Products", href: "/products", icon: Package },
-  { id: "page-customers", label: "Customers", href: "/customers", icon: Users },
-  { id: "page-settings", label: "Settings", href: "/settings", icon: Settings },
+const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: LucideIcon; minRole: string }> = [
+  { id: "page-home", label: VOCAB.controlCentre, href: "/", icon: Home, minRole: "CASHIER" },
+  { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart, minRole: "CASHIER" },
+  { id: "page-orders", label: VOCAB.openOrders, href: "/open-orders", icon: PackageCheck, minRole: "CASHIER" },
+  { id: "page-products", label: "Products", href: "/products", icon: Package, minRole: "CASHIER" },
+  { id: "page-customers", label: "Customers", href: "/customers", icon: Users, minRole: "CASHIER" },
+  { id: "page-settings", label: "Settings", href: "/settings", icon: Settings, minRole: "MANAGER" },
   {
     id: "page-wm-supplies-website",
     label: "WM Supplies Website",
     href: "/settings/wm-supplies-website",
     icon: LayoutTemplate,
+    minRole: "MANAGER",
   },
 ];
 
@@ -116,7 +118,12 @@ export function recordPaletteSelection(userId: string | undefined, itemId: strin
   }
 }
 
-export async function ensurePaletteData(queryClient: QueryClient): Promise<void> {
+function canUseStaffCommandPalette(userRole: string | undefined): boolean {
+  return !!userRole && isRole(userRole) && roleRank(userRole) >= roleRank("CASHIER");
+}
+
+export async function ensurePaletteData(queryClient: QueryClient, userRole?: string): Promise<void> {
+  if (!canUseStaffCommandPalette(userRole)) return;
   const tasks: Promise<unknown>[] = [];
   if (readArrayFromCache<Customer>(queryClient, ["/api/customers"]).length === 0) {
     tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/customers"] }));
@@ -136,15 +143,17 @@ function recentBoostFor(id: string, recentIds: string[]): number {
   return MAX_RECENT - index;
 }
 
-function buildPageItems(recentIds: string[]): CommandPaletteItem[] {
-  return PAGE_JUMP_ROUTES.map((page) => ({
-    id: page.id,
-    section: "pages" as const,
-    label: page.label,
-    href: page.href,
-    icon: page.icon,
-    recentBoost: recentBoostFor(page.id, recentIds),
-  }));
+function buildPageItems(recentIds: string[], userRole: string | undefined): CommandPaletteItem[] {
+  return PAGE_JUMP_ROUTES.filter(
+    (page) => isRole(page.minRole) && !!userRole && isRole(userRole) && roleRank(userRole) >= roleRank(page.minRole),
+  ).map((page) => ({
+      id: page.id,
+      section: "pages" as const,
+      label: page.label,
+      href: page.href,
+      icon: page.icon,
+      recentBoost: recentBoostFor(page.id, recentIds),
+    }));
 }
 
 function buildCustomerItems(customers: Customer[], recentIds: string[]): CommandPaletteItem[] {
@@ -230,6 +239,9 @@ export function buildCommandPaletteIndex(
   userId: string | undefined,
 ): CommandPaletteItem[] {
   const recentIds = getRecentPaletteIds(userId);
+  const canUseStaffPalette = canUseStaffCommandPalette(userRole);
+  if (!canUseStaffPalette) return [];
+
   const customers = readArrayFromCache<Customer>(queryClient, ["/api/customers"]);
   const products = readArrayFromCache<Product>(queryClient, ["/api/products"]);
   const orders = readArrayFromCache<OrdersListOrder>(queryClient, ["/api/orders"]);
@@ -237,7 +249,7 @@ export function buildCommandPaletteIndex(
   const actions = getVisibleCommandPaletteActions(userRole);
 
   return [
-    ...buildPageItems(recentIds),
+    ...buildPageItems(recentIds, userRole),
     ...buildCustomerItems(customers, recentIds),
     ...buildProductItems(products, salesRank, recentIds),
     ...buildOrderItems(orders, recentIds),
