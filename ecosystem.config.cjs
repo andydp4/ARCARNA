@@ -4,15 +4,25 @@
  *   pm2 start ecosystem.config.cjs
  *   pm2 save
  *
- * After editing .env, RE-CREATE the process so env_file is re-read — there is no
- * dotenv fallback in the app, and `pm2 restart/reload --update-env` keeps the env
- * captured at creation (a changed CLERK_SECRET_KEY etc. would be silently ignored):
+ * .env is parsed here at config-eval time and merged into the env block below.
+ * PM2 does NOT natively honor an `env_file` key (it silently ignores unknown
+ * keys), and the app has no dotenv fallback, so without this the process would
+ * launch with no DATABASE_URL etc. and crash on boot. Because the config is
+ * re-evaluated on every `pm2 start`, a plain delete+start picks up .env changes:
  *   pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save
+ * (Note: `pm2 restart/reload` reuses the env captured at creation, so after
+ *  editing .env you must delete+start, not restart, for changes to take effect.)
  *
  * (Process renamed midnight-epos → arcarna-epos with the ARCARNA infra wave;
  *  on a box still running the old name, `pm2 delete midnight-epos` once first.)
  */
 const path = require("path");
+const fs = require("fs");
+
+const envPath = path.join(__dirname, ".env");
+const fileEnv = fs.existsSync(envPath)
+  ? require("dotenv").parse(fs.readFileSync(envPath))
+  : {};
 
 module.exports = {
   apps: [
@@ -26,9 +36,9 @@ module.exports = {
       max_memory_restart: "500M",
       watch: false,
       env: {
+        ...fileEnv,
         NODE_ENV: "production",
       },
-      env_file: path.join(__dirname, ".env"),
       out_file: path.join(__dirname, "logs", "pm2-out.log"),
       error_file: path.join(__dirname, "logs", "pm2-error.log"),
       merge_logs: true,
