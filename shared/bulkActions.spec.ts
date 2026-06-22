@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getBulkActionsForRole, isBulkActionAllowed } from "./bulkActions";
 
 describe("bulkActions role gating", () => {
+  it("does not expose staff bulk actions to website customers", () => {
+    expect(getBulkActionsForRole("orders", "CUSTOMER")).toEqual([]);
+    expect(isBulkActionAllowed("products", "export", "CUSTOMER")).toBe(false);
+  });
+
   it("allows cashiers export but not delete on customers", () => {
     const actions = getBulkActionsForRole("customers", "CASHIER");
     expect(actions.some((a) => a.id === "export")).toBe(true);

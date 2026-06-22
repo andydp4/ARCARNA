@@ -32,7 +32,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg, type Organization } from "@/contexts/OrgContext";
 
-const ASSIGNABLE_ROLES = ["ADMIN", "MANAGER", "CASHIER"] as const;
+const ASSIGNABLE_ROLES = ["CUSTOMER", "CASHIER", "MANAGER", "ADMIN"] as const;
 
 interface AllowedUser {
   id: string;
@@ -65,7 +65,7 @@ export default function UserAccess() {
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [approveTarget, setApproveTarget] = useState<ApprovalRequest | null>(null);
-  const [approveRole, setApproveRole] = useState<string>("CASHIER");
+  const [approveRole, setApproveRole] = useState<string>("CUSTOMER");
   const [approveOrgId, setApproveOrgId] = useState<string>("");
 
   const { data: allowedUsers = [], isLoading: loadingUsers } = useQuery<AllowedUser[]>({
@@ -173,7 +173,7 @@ export default function UserAccess() {
             icon={Shield}
             title="User access"
             question="Who can do what in your business?"
-            explanation="Manage who can access this business. Scope: this workspace."
+            explanation="Approve invited customers for the private WM Supplies website, and staff for Arcana."
             className="mb-0"
           />
           {pendingApprovals.length > 0 && (
@@ -186,7 +186,7 @@ export default function UserAccess() {
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="pending" className="flex items-center gap-2 min-h-[44px]" data-testid="tab-pending">
               <Clock className="h-4 w-4" />
-              Pending Approvals
+              Pending approvals
               {pendingApprovals.length > 0 && (
                 <Badge variant="secondary" className="ml-1">{pendingApprovals.length}</Badge>
               )}
@@ -206,7 +206,7 @@ export default function UserAccess() {
                   Pending Approval Requests
                 </CardTitle>
                 <CardDescription>
-                  New sign-ins appear here until an owner or admin approves them for this organization.
+                  New account requests stay locked out until you approve them. Use CUSTOMER for website-only access.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -218,7 +218,7 @@ export default function UserAccess() {
                   <div className="text-center py-12 text-muted-foreground">
                     <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-30" />
                     <p>No pending approval requests</p>
-                    <p className="text-sm">New login attempts will appear here</p>
+                    <p className="text-sm">New customer and staff sign-ups will appear here</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -248,7 +248,7 @@ export default function UserAccess() {
                             <Button
                               onClick={() => {
                                 setApproveTarget(request);
-                                setApproveRole("CASHIER");
+                                setApproveRole("CUSTOMER");
                                 setApproveOrgId(
                                   currentUser?.role === "SUPER_ADMIN"
                                     ? organizations[0]?.id ?? ""
@@ -290,7 +290,7 @@ export default function UserAccess() {
                   Allowed Users
                 </CardTitle>
                 <CardDescription>
-                  Everyone listed below can sign in to this organization. Owner has full admin rights.
+                  CUSTOMER users can only use the private WM Supplies website. Staff roles can use Arcana.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -390,7 +390,7 @@ export default function UserAccess() {
           <DialogHeader>
             <DialogTitle>Approve access</DialogTitle>
             <DialogDescription>
-              Assign a role{currentUser?.role === "SUPER_ADMIN" ? " and organization" : ""} for{" "}
+              Assign website-only customer access or a staff role{currentUser?.role === "SUPER_ADMIN" ? " and organization" : ""} for{" "}
               <strong>{approveTarget?.name || approveTarget?.email}</strong>.
             </DialogDescription>
           </DialogHeader>

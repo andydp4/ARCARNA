@@ -2104,7 +2104,7 @@ export class DatabaseStorage implements IStorage {
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
       const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
-      const role = options?.role ?? "CASHIER";
+      const role = options?.role ?? "CUSTOMER";
       const orgId =
         options?.orgId !== undefined
           ? options.orgId

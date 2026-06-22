@@ -91,7 +91,8 @@ function RouteLoadingFallback() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const isCustomerOnly = user?.role === "CUSTOMER";
 
   return (
     <WouterRouter base={APP_BASE}>
@@ -108,7 +109,7 @@ function Router() {
       <Route path="/no-access" component={NoAccess} />
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
-      {isLoading || !isAuthenticated ? (
+      {isLoading || !isAuthenticated || isCustomerOnly ? (
         <Route path="/" component={WmSuppliesHomePage} />
       ) : (
         <AccessGate>

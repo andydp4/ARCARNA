@@ -24,7 +24,7 @@ import { relations } from "drizzle-orm";
 // Locations are treated as stores (one org can have many locations/stores).
 // See ARCHITECTURE.md and RBAC.md for scoping rules.
 
-export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'] as const;
+export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER', 'CUSTOMER'] as const;
 export type Role = typeof ROLES[number];
 
 export const roleEnum = pgEnum('app_role', ROLES);

@@ -253,3 +253,21 @@ Staff order management now shows:
 - channel information in the order details dialog
 
 The orders API includes `channel` on list and detail responses so website orders remain traceable without a separate order backend.
+
+## Phase 9 Customer Account Approval
+
+Migration:
+
+`migrations/039_customer_website_role.sql`
+
+The app now has a `CUSTOMER` role for approved website-only accounts.
+
+Approval behaviour:
+
+- pending Clerk sign-ups still land in User Access
+- approving with `CUSTOMER` grants access to the private WM Supplies website only
+- staff roles remain `CASHIER`, `MANAGER`, `ADMIN`, and `SUPER_ADMIN`
+- staff-only APIs continue to require staff roles
+- signed-in customers land on the WM Supplies website, not the Arcana staff dashboard
+
+Use `CUSTOMER` for invited buyers unless the person should operate Arcana as staff.
