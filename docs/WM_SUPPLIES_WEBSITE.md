@@ -271,3 +271,25 @@ Approval behaviour:
 - signed-in customers land on the WM Supplies website, not the Arcana staff dashboard
 
 Use `CUSTOMER` for invited buyers unless the person should operate Arcana as staff.
+
+## Phase 10 Domain and VPS Plan
+
+Domain deployment guidance lives in:
+
+`docs/WM_SUPPLIES_DOMAIN_DEPLOYMENT.md`
+
+Nginx example:
+
+`deploy/nginx-wm-supplies-domain.conf.example`
+
+The domain can stay registered at GoDaddy. GoDaddy DNS should point the chosen WM Supplies domain or subdomain to the same VPS IP, and Nginx should proxy the traffic to the app.
+
+The existing production app is still mounted at `/arcarna`, so the lowest-risk first customer-domain launch is:
+
+`https://orders.example.co.uk/arcarna/`
+
+A clean root URL such as:
+
+`https://orders.example.co.uk/`
+
+requires a second website build/process with blank `VITE_BASE_PATH` and `APP_BASE_PATH`, or an explicit host-aware routing change. Do not treat `viger.cloud/wmsupplies` as the final customer URL unless it is only a temporary test path.
