@@ -29,14 +29,48 @@ export async function getProductsForAssistant(orgId: string): Promise<AssistantP
   return rows.map((r) => ({ id: r.id, productId: r.productId, name: r.name, aliases: r.aliases ?? [] }));
 }
 
-/** Find an existing customer by name (case-insensitive), or create one. */
-export async function findOrCreateCustomerByName(orgId: string, name: string): Promise<Customer> {
-  const [existing] = await db
+/** Escape LIKE/ILIKE wildcards so a customer name is matched literally. */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * Resolve a spoken/typed customer name to existing candidates (case-insensitive).
+ * Returns an exact-name match first if present, otherwise customers whose name
+ * contains the term — letting the caller offer a pick list instead of blindly
+ * creating a duplicate. Capped to keep the prompt short.
+ */
+export async function findCustomerCandidatesByName(
+  orgId: string,
+  name: string,
+  limit = 5,
+): Promise<Customer[]> {
+  const term = name.trim();
+  if (!term) return [];
+  const exact = await db
     .select()
     .from(customers)
-    .where(and(eq(customers.orgId, orgId), ilike(customers.name, name)))
+    .where(and(eq(customers.orgId, orgId), ilike(customers.name, escapeLike(term))))
     .limit(1);
-  if (existing) return existing;
+  if (exact.length > 0) return exact;
+  return db
+    .select()
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), ilike(customers.name, `%${escapeLike(term)}%`)))
+    .limit(limit);
+}
+
+/**
+ * Find an existing customer by name, or create one.
+ * Matches an exact (case-insensitive) name first, then a single unambiguous
+ * partial match — so "Bunny" resolves to the one "Bunny Smith" instead of
+ * spawning a duplicate. Only creates a new customer when nothing matches, or
+ * when the partial name is ambiguous (multiple matches) and the caller hasn't
+ * disambiguated.
+ */
+export async function findOrCreateCustomerByName(orgId: string, name: string): Promise<Customer> {
+  const candidates = await findCustomerCandidatesByName(orgId, name, 2);
+  if (candidates.length === 1) return candidates[0];
   const now = new Date();
   const [created] = await db
     .insert(customers)
