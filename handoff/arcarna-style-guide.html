@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ARCARNA — Handoff Style Guide</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#0f172a;background:#fff;padding:24px}
+    header{border-bottom:1px solid #e6edf3;padding-bottom:12px;margin-bottom:20px}
+    h1{font-size:24px;margin:0}
+    h2{font-size:18px;margin-top:20px}
+    pre{background:#0b1220;color:#dbeafe;padding:12px;overflow:auto;border-radius:6px}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace;background:#f3f4f6;padding:2px 4px;border-radius:4px}
+    .muted{color:#475569}
+    .file-list{background:#f8fafc;padding:12px;border-radius:6px}
+    a{color:#0366d6}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #e6edf3;padding:8px;text-align:left}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ARCARNA — Handoff Style Guide (auto-generated)</h1>
+    <p class="muted">Repository: <a href="https://github.com/andydp4/arcarna">andydp4/arcarna</a> — branch: <strong>main</strong></p>
+    <p class="muted">Generated: 2026-06-24</p>
+  </header>
+
+  <section>
+    <h2>Deliverables</h2>
+    <ul>
+      <li>Full repository ZIP (download from GitHub): <a href="https://github.com/andydp4/arcarna/archive/refs/heads/main.zip">Download ZIP of main branch</a></li>
+      <li>This HTML style guide (stored in the repo at <code>handoff/arcarna-style-guide.html</code>)</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Quick inventory — top-level (selected)</h2>
+    <div class="file-list">
+      <pre>
+.github/
+.docs/
+.apps/
+.client/
+.packages/
+.portal/
+.server/
+.shared/
+README.md
+ARCHITECTURE.md
+CHANGELOG.md
+package.json
+vite.config.ts
+tailwind.config.ts
+client/src/
+client/public/
+client/src/styles/tokens/liquid-metal.css
+      </pre>
+      <p class="muted">Note: This is a selected list showing the primary source directories and files relevant to layout and style.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>How to get a ZIP of the full repo</h2>
+    <p>Direct download (no credentials required for a public repo):</p>
+    <pre>https://github.com/andydp4/arcarna/archive/refs/heads/main.zip</pre>
+    <p>Or via git clone:</p>
+    <pre>git clone https://github.com/andydp4/arcarna.git
+cd arcarna
+git checkout main</pre>
+  </section>
+
+  <section>
+    <h2>Primary app entry points and layouts</h2>
+    <table>
+      <thead><tr><th>File / Path</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/andydp4/arcarna/blob/main/client/src/main.tsx">client/src/main.tsx</a></td><td>React app bootstrap — renders the top-level Layout / themes</td></tr>
+        <tr><td><a href="https://github.com/andydp4/arcarna/blob/main/client/src/App.tsx">client/src/App.tsx</a></td><td>Routing, top-level shells (POS shell, auth shell)</td></tr>
+        <tr><td><a href="https://github.com/andydp4/arcarna/blob/main/client/src/pages">client/src/pages/</a></td><td>Page-level layouts and routes (POS pages, insights pages)</td></tr>
+        <tr><td><a href="https://github.com/andydp4/arcarna/blob/main/client/src/components">client/src/components/</a></td><td>UI components used by pages and shells (buttons, cards, nav, forms)</td></tr>
+        <tr><td><a href="https://github.com/andydp4/arcarna/blob/main/client/public/brand">client/public/brand/</a></td><td>Brand assets (arcarna-mark.png, arcarna-wordmark.png) — required logo files</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Design tokens — Liquid Metal (canonical source)</h2>
+    <p>Canonical tokens and theme CSS are in:</p>
+    <p><a href="https://github.com/andydp4/arcarna/blob/main/client/src/styles/tokens/liquid-metal.css">client/src/styles/tokens/liquid-metal.css</a></p>
+
+    <h3>Color & token variables (extracted)</h3>
+    <pre>
+--lm-graphite: hsl(220, 10%, 7%);
+--lm-gunmetal: hsl(215, 12%, 13%);
+--lm-charcoal: hsl(218, 9%, 17%);
+--lm-smoke-chrome: hsl(215, 10%, 26%);
+--lm-brushed: hsl(215, 8%, 38%);
+--lm-brushed-highlight: hsl(210, 12%, 68%);
+--lm-titanium: hsl(220, 6%, 52%);
+--lm-stainless: hsl(210, 10%, 78%);
+--lm-warm-white: hsl(210, 18%, 95%);
+--lm-muted: hsl(215, 10%, 58%);
+--lm-amber: hsl(38, 92%, 50%);
+--lm-emerald: hsl(158, 64%, 42%);
+--lm-crimson: hsl(0, 72%, 51%);
+--lm-electric-blue: hsl(210, 78%, 52%);
+--lm-surface-gradient: linear-gradient(155deg, hsl(215, 12%, 16%) 0%, hsl(220, 10%, 10%) 48%, hsl(218, 11%, 13%) 100%);
+--lm-edge-highlight: hsl(210, 15%, 78% / 0.14);
+--lm-inner-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.05), inset 0 -1px 0 hsl(0, 0% / 0.28);
+--lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06), 0 8px 32px hsl(0, 0% / 0.45);
+
+Mapped shadcn tokens (used by components):
+--background, --foreground, --card, --card-foreground, --popover, --primary, --secondary, --muted, --accent, --destructive, --border, --input, --ring
+    </pre>
+    <p class="muted">See the full CSS file for component-specific classes and layout rules. Link above.</p>
+  </section>
+
+  <section>
+    <h2>Important CSS classes & surfaces (high level)</h2>
+    <p>These are the main named layout and component surface classes used across the app:</p>
+    <ul>
+      <li><code>.liquid-metal</code> — top-level scope for the Liquid Metal theme (applied on the Layout)</li>
+      <li><code>.lm-shell-header</code>, <code>.lm-shell-sidebar</code> — app shell header and sidebar styles</li>
+      <li><code>.lm-card</code>, <code>.lm-card-muted</code> — card surfaces</li>
+      <li><code>.lm-btn-metal</code>, <code>.lm-btn-outline</code> — branded metal button surfaces</li>
+      <li><code>.pos-shell</code>, <code>.pos-product-card</code>, <code>.pos-cart-rail</code> — POS-specific surfaces</li>
+      <li><code>.insights-spatial-core</code>, <code>.hull-panel</code>, <code>.satellite-panel</code> — spatial insights system</li>
+    </ul>
+    <p class="muted">Search the token file for these selectors to see exact rules.</p>
+  </section>
+
+  <section>
+    <h2>Component inventory (where to look)</h2>
+    <p>Primary component directory: <a href="https://github.com/andydp4/arcarna/tree/main/client/src/components">client/src/components</a></p>
+    <p>Representative components to include in a handoff:</p>
+    <ul>
+      <li>Navigation / Sidebar components — used by main POS shell</li>
+      <li>Product-card, Product-grid — used for POS product tiles</li>
+      <li>Buttons (metal, outline, fab)</li>
+      <li>Cards and summary cards (pos-summary-card)</li>
+      <li>Auth + landing components (auth shell card, hero layout)</li>
+    </ul>
+    <p class="muted">If you want, I can expand this section with a file-by-file list of components (I can fetch file names and top exports to include usage notes).</p>
+  </section>
+
+  <section>
+    <h2>Brand assets</h2>
+    <p>Official logos are required for any UI work and are located at:</p>
+    <ul>
+      <li><a href="https://github.com/andydp4/arcarna/tree/main/client/public/brand">client/public/brand/</a> — arcarna-mark.png, arcarna-wordmark.png</li>
+    </ul>
+
+    <p class="muted">Docs require using those exact files (see docs/briefs/README.md and docs/ux-concepts/README.md).</p>
+  </section>
+
+  <section>
+    <h2>How to reproduce the site locally (short)</h2>
+    <pre>
+# from a fresh clone
+npm ci
+# run dev server (client + server as in repo scripts)
+npm run dev
+# build (production)
+npm run build
+    </pre>
+    <p class="muted">See <a href="https://github.com/andydp4/arcarna/blob/main/package.json">package.json</a> for full scripts and details (build:portal, release:preflight, migration:sanity).</p>
+  </section>
+
+  <section>
+    <h2>Screenshots and visual exports</h2>
+    <p>This HTML guide does not include rendered screenshots. To include them, run the app locally and capture screens (I can automate WebKit/Playwright captures and embed them if you want). Recommended commands for automated screenshots (playwright/puppeteer are in package.json):</p>
+    <pre>
+# example (manual steps)
+npm run dev
+open http://localhost:5173
+# capture pages with Playwright/Puppeteer scripts or manually
+    </pre>
+  </section>
+
+  <section>
+    <h2>Appendix: links to key files</h2>
+    <ul>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/README.md">README.md</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/ARCHITECTURE.md">ARCHITECTURE.md</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/client/src/App.tsx">client/src/App.tsx</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/client/src/main.tsx">client/src/main.tsx</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/client/src/index.css">client/src/index.css</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/blob/main/client/src/styles/tokens/liquid-metal.css">client/src/styles/tokens/liquid-metal.css</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/tree/main/client/src/components">client/src/components/</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/tree/main/client/src/pages">client/src/pages/</a></li>
+      <li><a href="https://github.com/andydp4/arcarna/tree/main/client/public/brand">client/public/brand/</a></li>
+    </ul>
+  </section>
+
+  <footer style="margin-top:24px;border-top:1px solid #e6edf3;padding-top:12px">
+    <p class="muted">Notes: This file was generated automatically from repository contents on 2026-06-24. It contains the canonical design tokens excerpted from <code>client/src/styles/tokens/liquid-metal.css</code>. If you want me to (1) embed screenshots, (2) add a per-component file inventory with prop lists, or (3) create a full ZIP including build artifacts and screenshots, tell me and I will add them to the handoff.</p>
+  </footer>
+</body>
+</html>
