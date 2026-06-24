@@ -12,9 +12,12 @@ export const LEGACY_OFFLINE_DB_NAME = OFFLINE_DB_PREFIX_LEGACY;
 const DB_VERSION = 2;
 
 type QueueStoreName = 'offline-orders' | 'mutations-queue';
+type CacheStoreName = 'products-cache' | 'customers-cache';
+type LegacyMigratedStoreName = QueueStoreName | CacheStoreName;
 type OfflineQueueRecord = (OfflineOrder | QueuedMutation) & Record<string, unknown>;
 
 const QUEUE_STORE_NAMES: QueueStoreName[] = ['offline-orders', 'mutations-queue'];
+const CACHE_STORE_NAMES: CacheStoreName[] = ['products-cache', 'customers-cache'];
 
 function upgradeOfflineDbSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains('offline-orders')) {
@@ -93,7 +96,7 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-async function getAllFromStore<T>(db: IDBDatabase, storeName: QueueStoreName): Promise<T[]> {
+async function getAllFromStore<T>(db: IDBDatabase, storeName: LegacyMigratedStoreName): Promise<T[]> {
   if (!db.objectStoreNames.contains(storeName)) return [];
   const tx = db.transaction(storeName, 'readonly');
   const records = await requestToPromise<T[]>(tx.objectStore(storeName).getAll());
@@ -137,7 +140,27 @@ async function copyUnsyncedQueue(
   return recordsToCopy.length;
 }
 
-async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
+async function copyCacheIfTargetEmpty(
+  sourceDb: IDBDatabase,
+  targetDb: IDBDatabase,
+  storeName: CacheStoreName,
+): Promise<number> {
+  const targetRecords = await getAllFromStore<Record<string, unknown>>(targetDb, storeName);
+  if (targetRecords.length > 0) return 0;
+
+  const sourceRecords = await getAllFromStore<Record<string, unknown>>(sourceDb, storeName);
+  if (sourceRecords.length === 0) return 0;
+
+  const tx = targetDb.transaction(storeName, 'readwrite');
+  const store = tx.objectStore(storeName);
+  for (const record of sourceRecords) {
+    store.add(record);
+  }
+  await transactionDone(tx);
+  return sourceRecords.length;
+}
+
+async function migrateLegacyDataToCurrentDb(orgId: string): Promise<void> {
   const legacyName = legacyOfflineDbNameForOrg(orgId);
   if (!(await dbExists(legacyName))) return;
 
@@ -145,7 +168,10 @@ async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
   const legacyDb = await openOfflineDb(legacyName);
   try {
     await Promise.all(
-      QUEUE_STORE_NAMES.map((storeName) => copyUnsyncedQueue(legacyDb, currentDb, storeName)),
+      [
+        ...QUEUE_STORE_NAMES.map((storeName) => copyUnsyncedQueue(legacyDb, currentDb, storeName)),
+        ...CACHE_STORE_NAMES.map((storeName) => copyCacheIfTargetEmpty(legacyDb, currentDb, storeName)),
+      ],
     );
   } finally {
     currentDb.close();
@@ -153,10 +179,10 @@ async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
   }
 }
 
-/** Use the current DB name after copying any unsynced legacy queues from before rebrand. */
+/** Use the current DB name after copying legacy offline data from before rebrand. */
 export async function resolveOfflineDbName(orgId: string): Promise<string> {
   const newName = offlineDbNameForOrg(orgId);
-  await migrateLegacyQueuesToCurrentDb(orgId);
+  await migrateLegacyDataToCurrentDb(orgId);
   return newName;
 }
 

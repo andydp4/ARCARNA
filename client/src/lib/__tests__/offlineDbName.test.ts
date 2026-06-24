@@ -76,6 +76,33 @@ describe("offlineDbNameForOrg", () => {
         currentDb.close();
       }
     });
+
+    it("copies legacy product and customer caches before reading the ARCARNA DB offline", async () => {
+      const orgId = "org_cached";
+      await seedLegacyCaches(orgId);
+      await createOfflineDb(offlineDbNameForOrg(orgId));
+
+      offlineStorage.setActiveOrg(orgId);
+
+      await expect(offlineStorage.getCachedProducts()).resolves.toMatchObject([
+        { id: "prod_1", name: "Legacy cached product", productId: "SKU-1" },
+      ]);
+      await expect(offlineStorage.getCachedCustomers()).resolves.toMatchObject([
+        { id: "cust_1", name: "Legacy cached customer" },
+      ]);
+
+      const currentDb = await createOfflineDb(offlineDbNameForOrg(orgId));
+      try {
+        await expect(getAll(currentDb, "products-cache")).resolves.toMatchObject([
+          { id: "prod_1", name: "Legacy cached product", productId: "SKU-1" },
+        ]);
+        await expect(getAll(currentDb, "customers-cache")).resolves.toMatchObject([
+          { id: "cust_1", name: "Legacy cached customer" },
+        ]);
+      } finally {
+        currentDb.close();
+      }
+    });
   });
 });
 
@@ -128,6 +155,22 @@ async function seedLegacyQueues(orgId: string): Promise<void> {
     data: { stock: 9 },
     timestamp: 1001,
     synced: 0,
+  });
+  await transactionDone(tx);
+  db.close();
+}
+
+async function seedLegacyCaches(orgId: string): Promise<void> {
+  const db = await createOfflineDb(legacyOfflineDbNameForOrg(orgId));
+  const tx = db.transaction(["products-cache", "customers-cache"], "readwrite");
+  tx.objectStore("products-cache").add({
+    id: "prod_1",
+    productId: "SKU-1",
+    name: "Legacy cached product",
+  });
+  tx.objectStore("customers-cache").add({
+    id: "cust_1",
+    name: "Legacy cached customer",
   });
   await transactionDone(tx);
   db.close();
