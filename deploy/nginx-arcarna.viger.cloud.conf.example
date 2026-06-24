@@ -1,0 +1,66 @@
+# Example Nginx site for arcarna.viger.cloud (root-mounted EPOS subdomain)
+# Cloudflare DNS/proxy/cache: see docs/ops/CLOUDFLARE.md
+# Pairs with the second PM2 process "arcarna-epos-sub" on :5001
+# (see .env.arcarna-subdomain.example and docs/ops/SUBDOMAIN_MIGRATION_ARCARNA.md).
+#
+# This is separate from nginx-viger.cloud.conf.example, which keeps serving
+# the portal at viger.cloud/ and the legacy path-mounted app at
+# viger.cloud/arcarna — left running during the migration as a rollback path.
+#
+# After Certbot: use the HTTPS server block below (or add HSTS to the block
+# Certbot creates: `certbot --nginx -d arcarna.viger.cloud`).
+
+server {
+    listen 80;
+    server_name arcarna.viger.cloud;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# HTTPS (after `certbot --nginx -d arcarna.viger.cloud`)
+# Certbot may merge this into sites-available/arcarna.viger.cloud — ensure
+# HSTS is present:
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name arcarna.viger.cloud;
+#
+#     client_max_body_size 25m;
+#
+#     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:5001;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_cache_bypass $http_upgrade;
+#     }
+# }
+#
+# --- Phase 2 (after the subdomain is verified): retire the old path ---
+# Replace nginx-viger.cloud.conf's `location /arcarna` proxy with a redirect
+# so old bookmarks/links land on the new subdomain instead of 404ing:
+#
+#     location /arcarna/ {
+#         rewrite ^/arcarna/(.*)$ https://arcarna.viger.cloud/$1 permanent;
+#     }
+#     location = /arcarna {
+#         return 301 https://arcarna.viger.cloud/;
+#     }

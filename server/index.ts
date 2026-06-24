@@ -104,7 +104,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 (async () => {
-  registerPortalRoutes(app);
+  // The portal occupies "/" only when EPOS is mounted under a sub-path,
+  // leaving room at the domain root. A root-mounted (subdomain) deployment
+  // has no portal — its "/" belongs to the EPOS app's own SPA.
+  if (APP_BASE_PATH) {
+    registerPortalRoutes(app);
+  }
   registerLegacyEposRedirects(app, APP_BASE_PATH);
   registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
 

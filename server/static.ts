@@ -2,9 +2,14 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 
-/** Built client assets (Vite outDir). PM2 cwd should be repo root. */
+/**
+ * Built client assets (Vite outDir). PM2 cwd should be repo root.
+ * Override with DIST_PUBLIC_DIR so two builds (e.g. /arcarna path-mounted vs
+ * root-mounted subdomain) can coexist in one checkout without overwriting
+ * each other — each build's base path is baked into its own assets.
+ */
 export function getDistPublicPath(): string {
-  return path.resolve(process.cwd(), "dist", "public");
+  return path.resolve(process.cwd(), process.env.DIST_PUBLIC_DIR ?? "dist/public");
 }
 
 export function log(message: string, source = "express") {

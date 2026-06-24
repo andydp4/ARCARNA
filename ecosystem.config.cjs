@@ -15,35 +15,67 @@
  *
  * (Process renamed midnight-epos → arcarna-epos with the ARCARNA infra wave;
  *  on a box still running the old name, `pm2 delete midnight-epos` once first.)
+ *
+ * Subdomain migration (arcarna.viger.cloud): a second app, "arcarna-epos-sub",
+ * runs from .env.arcarna-subdomain — same checkout, different port, root-
+ * mounted build (see docs/ops/SUBDOMAIN_MIGRATION_ARCARNA.md). Only declared
+ * once that env file exists, so existing single-process deploys are unaffected.
  */
 const path = require("path");
 const fs = require("fs");
 
-const envPath = path.join(__dirname, ".env");
-const fileEnv = fs.existsSync(envPath)
-  ? require("dotenv").parse(fs.readFileSync(envPath))
-  : {};
+function loadEnvFile(relativeName) {
+  const envPath = path.join(__dirname, relativeName);
+  return fs.existsSync(envPath)
+    ? require("dotenv").parse(fs.readFileSync(envPath))
+    : null;
+}
 
-module.exports = {
-  apps: [
-    {
-      name: "arcarna-epos",
-      cwd: __dirname,
-      script: path.join(__dirname, "dist", "index.js"),
-      instances: 1,
-      exec_mode: "fork",
-      autorestart: true,
-      max_memory_restart: "500M",
-      watch: false,
-      env: {
-        ...fileEnv,
-        NODE_ENV: "production",
-      },
-      out_file: path.join(__dirname, "logs", "pm2-out.log"),
-      error_file: path.join(__dirname, "logs", "pm2-error.log"),
-      merge_logs: true,
-      time: true,
-      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+const fileEnv = loadEnvFile(".env") ?? {};
+const subdomainEnv = loadEnvFile(".env.arcarna-subdomain");
+
+const apps = [
+  {
+    name: "arcarna-epos",
+    cwd: __dirname,
+    script: path.join(__dirname, "dist", "index.js"),
+    instances: 1,
+    exec_mode: "fork",
+    autorestart: true,
+    max_memory_restart: "500M",
+    watch: false,
+    env: {
+      ...fileEnv,
+      NODE_ENV: "production",
     },
-  ],
-};
+    out_file: path.join(__dirname, "logs", "pm2-out.log"),
+    error_file: path.join(__dirname, "logs", "pm2-error.log"),
+    merge_logs: true,
+    time: true,
+    log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+  },
+];
+
+if (subdomainEnv) {
+  apps.push({
+    name: "arcarna-epos-sub",
+    cwd: __dirname,
+    script: path.join(__dirname, "dist", "index.js"),
+    instances: 1,
+    exec_mode: "fork",
+    autorestart: true,
+    max_memory_restart: "500M",
+    watch: false,
+    env: {
+      ...subdomainEnv,
+      NODE_ENV: "production",
+    },
+    out_file: path.join(__dirname, "logs", "pm2-out-sub.log"),
+    error_file: path.join(__dirname, "logs", "pm2-error-sub.log"),
+    merge_logs: true,
+    time: true,
+    log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+  });
+}
+
+module.exports = { apps };
