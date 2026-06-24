@@ -428,7 +428,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               movement: {
                 reason: "cancellation",
                 correlationId: req.params.id,
-                eventId: `delete-order-${req.params.id}`,
+                eventId: req.params.id,
                 sku: p?.productId || item.productId,
               },
             }, tx);
