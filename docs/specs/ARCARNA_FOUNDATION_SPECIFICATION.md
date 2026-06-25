@@ -107,13 +107,18 @@ A surface that leaves the user impressed but not empowered has failed the journe
 > Detailed tokens/surfaces live in the Design System Specification. These are the global laws it
 > must implement.
 
-1. **Darkness is the canvas. Truth is the light. Understanding is the destination.** The interface
-   is a dark, calm canvas; meaning is carried by light and a single truth-bearing accent.
-2. **Colour is meaning, never decoration.** Every colour on screen encodes a state or a truth.
-   Remove decorative chrome/metal/gradient effects that exist only to look expensive.
-3. **One truth per view.** Lead with the single most important truth; everything else supports it.
-4. **Calm, engineered, dependable.** Premium because it is precise and quiet, not because it shines.
-5. **Evidence is visible.** Numbers are honest, aligned, and traceable to their source.
+1. **Darkness is the canvas. Truth is the light. Understanding is the destination.** The canvas is
+   **forged dark metal** (the craft); the light is **Truth Blue** (the revelation). Together they
+   express *Reveal Your Truth™*.
+2. **Refine the material — don't replace it.** The premium forged-industrial **Liquid Metal**
+   language is retained. Remove only the *decorative* chrome, excessive gradients, and unnecessary
+   shine. Material represents craftsmanship; it is structural, never decorative.
+3. **Colour is meaning, never decoration.** Truth Blue is the semantic accent for **insight, action,
+   selection, and understanding**; state colours carry state; metal carries surface. If a colour or
+   a shine appears, it earns its place by encoding meaning.
+4. **One truth per view.** Lead with the single most important truth; everything else supports it.
+5. **Calm, engineered, dependable.** Premium because it is precise and quiet — forged, not flashy.
+6. **Evidence is visible.** Numbers are honest, aligned, and traceable to their source.
 
 ## 7. UX principles (global)
 
@@ -207,7 +212,7 @@ A surface is Foundation-compliant when **all** hold:
 - [ ] It moves the user along the **emotional journey** to *empowered* (§5).
 - [ ] It uses **only** `shared/brand.ts` for brand strings and official logo assets (§10).
 - [ ] It uses the **global terminology** (§10) — no banned or legacy term.
-- [ ] **Colour encodes meaning only** (§6.2); decorative chrome/metal removed.
+- [ ] **Colour encodes meaning only** (§6.3); forged material **retained**, decorative shine removed (§6.2).
 - [ ] Copy obeys the **writing principles** (§8) and the **forbidden language** list (§14).
 - [ ] It introduces **no duplicate term or component** (§15).
 

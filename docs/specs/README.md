@@ -15,10 +15,13 @@ gated by the Compliance Report.
 
 ## Direction in one line
 
-> **Reveal Your Truth™.** Darkness is the canvas. Truth is the light. Understanding is the destination.
-> Terminology: Control Centre · Truths · Evidence · Signals · Next Moves. Accent: **Truth Blue**.
+> **Reveal Your Truth™.** **Liquid Metal — Refined:** forged industrial metal (the craft) +
+> **Truth Blue** as the semantic accent for insight, action, selection, and understanding (the
+> revelation). Darkness is the canvas, truth is the light. Terminology: Control Centre · Truths ·
+> Evidence · Signals · Next Moves.
 
 ## Status
 
-Documents complete and internally consistent. **Implementation blocked** pending owner sign-off on
-two items in `ARCARNA_COMPLIANCE_REPORT.md` §7 (visual direction change; orphan-route placement).
+Documents complete and internally consistent. Visual direction **resolved** (refine Liquid Metal +
+Truth Blue — not replace). **One** item remains before implementation: orphan-route placement
+(`ARCARNA_COMPLIANCE_REPORT.md` §7).

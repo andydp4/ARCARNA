@@ -6,7 +6,8 @@
 > until this report passes.**
 >
 > **Verdict:** **CONDITIONAL PASS.** The five specs are internally consistent and
-> implementation-ready. Two items require the owner's explicit sign-off before code begins (§7).
+> implementation-ready. The visual-direction question is **resolved** (owner: refine Liquid Metal +
+> Truth Blue — §2/§7). **One** item remains for sign-off before code begins: orphan-route placement (§7).
 
 ---
 
@@ -34,17 +35,19 @@ reconciliation, non-negotiable verification (Foundation §14/§15), and a codeba
 | Single brand truth / tagline across specs | ✅ "Reveal Your Truth™", founder £300 moment consistent |
 | Terminology consistent (Control Centre, Truths, Evidence, Signals, Next Moves) | ✅ Foundation §10 = Language §1/§3 = Component/Route usage |
 | Framework consistent (Question→Truth→Action; Reveal→Explain→Guide) | ✅ Foundation §11–§12 referenced identically downstream |
-| Design direction consistent (Truth Blue, dark canvas, no metal, Inter) | ✅ Foundation §6 = Design System §1/§3 = Component surfaces |
+| Design direction consistent (refined Liquid Metal + Truth Blue accent, Inter) | ✅ Foundation §6 = Design System §1/§3 = Component surfaces |
 | Route grouping consistent (6 groups) | ✅ Foundation/Language/Route/Component agree |
 | Authority/reading order unambiguous | ✅ Foundation §0 defines precedence; no circular ownership |
 
-**Resolved tension (flagged for sign-off — see §7).** The Design System brief mandates *removing
-Liquid Metal/chrome and adopting Truth Blue*. This **contradicts** two existing repo artifacts:
+**Resolved (owner decision).** An earlier draft of the Design System brief read as *replace* Liquid
+Metal with a flat Truth-Blue theme, which would have contradicted
 `docs/ux-concepts/ARCARNA_UX_REDESIGN_BRIEF.md` ("Liquid Metal Industrial — Approved design
-direction") and the orchestration line "Do not redesign the product." The specs treat the architect
-briefs as the **newer, more specific approved direction** and scope the change to the *visual system
-+ language* (not product capability/IA). This is internally consistent **but** supersedes a
-previously "approved" direction, so it needs the owner's explicit confirmation before code.
+direction") and the orchestration line "Do not redesign the product." The owner has resolved this:
+**refine Liquid Metal — do not replace it.** Retain the forged-industrial material language; remove
+only decorative chrome / excess gradients / shine; introduce **Truth Blue** as the *semantic accent*
+for insight, action, selection, and understanding (material = craft, blue = revelation). This
+**reconciles** with the existing Liquid Metal brief rather than superseding it, and scopes the change
+to the *visual system + language* (not product capability/IA). **No contradiction remains.**
 
 ---
 
@@ -116,14 +119,17 @@ mandates converting to **redirects** to `/insights`.
 **Documentation deliverable: COMPLETE and CONSISTENT.** All six required outputs exist; the five
 specs pass contradiction/duplication/missing-detail checks at the document level.
 
-**Implementation is BLOCKED until the owner confirms:**
+**Resolved:**
 
-1. **Direction sign-off (§2).** Approve replacing **Liquid Metal → Truth Blue on dark canvas** and
-   retiring decorative chrome. This supersedes the previously "approved" Liquid Metal brief.
+1. ✅ **Direction (§2).** Owner decision: **refine Liquid Metal + Truth Blue accent** (do not
+   replace). Specs updated; no contradiction remains.
+
+**One item remains before implementation:**
+
 2. **Orphan-route decisions (Route §10).** For `/purchase-drafts`, `/audit-logs`, `/worker-logs`,
    `/rules`: add to nav (suggested groups given) or hide-by-role intentionally.
 
-On those two confirmations, implementation may proceed against the specs and the §8 backlog.
+On that confirmation, implementation may proceed against the specs and the §8 backlog (R1–R13).
 
 ---
 
@@ -136,7 +142,7 @@ On those two confirmations, implementation may proceed against the specs and the
 | R3 | Rebuild/retire `MetricCard` as `TruthCard` (tokens, state-only colour) | Component §5 | High |
 | R4 | Converge page headers to one canonical `PageHeader` (title + question) | Component §3 | High |
 | R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High |
-| R6 | Flatten Liquid Metal surfaces (remove gradients/inner-shadows); Truth Blue buttons | Design §11–§13 | Medium |
+| R6 | **Refine** Liquid Metal surfaces (reduce shine/excess gradient, **retain** material); retire `lm-btn-metal` mirror fill; Truth Blue primary + selection | Design §3.5/§8/§11–§13 | Medium |
 | R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium |
 | ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
 | R9 | Add page `question` subtitle to every in-app route | Route §14 / Language §5 | Medium |

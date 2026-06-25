@@ -77,13 +77,15 @@ Today there are two: `DailyKpiCard` (`dashboard/DailyKpiCard.tsx`, canonical) an
 FontAwesome).
 
 **Canonical `TruthCard`:**
-- Surface `--surface` + `--border` (Design System §12); **no** metal gradient.
-- Value: large `tabular-nums` (`--text`). Label: `--text-muted`. Lucide icon.
+- Refined forged-metal surface (`--lm-gunmetal`, 2-stop gradient, 1px `--border`); **no top
+  mirror-shine, no light tokens** (Design System §12).
+- Value: large `tabular-nums` (`--lm-warm-white`). Label: `--lm-muted`. Lucide icon.
 - One **meaningful** delta only (Truth Blue or a state colour) tied to a real comparison window —
-  a *truth*, not a decorative badge.
-- Optional Next Move link.
+  a *truth*, not a decorative badge. Selected/active state uses `--truth-blue-subtle`.
+- Optional Next Move link (Truth Blue).
 
-**Mandate:** retire `MetricCard` or rebuild it on `TruthCard`. Remove FontAwesome + light tokens.
+**Mandate:** retire `MetricCard` or rebuild it on `TruthCard`. Remove FontAwesome + light tokens;
+keep the forged-metal material.
 
 ## 6. Quick actions
 
@@ -95,7 +97,7 @@ FontAwesome).
 ## 7. Tables
 
 - `DataTableShell` + `ui/table`, with `BulkActionBar` and `ViewSelector`.
-- Dense, scannable; header `--text-muted` uppercase; selected row `--truth-blue-subtle`; numerics
+- Dense, scannable; header `--lm-muted` uppercase; selected row `--truth-blue-subtle`; numerics
   right-aligned `tabular-nums` (Design System §13).
 - **Mobile:** stack to operational cards (no horizontal scroll).
 - Every table answers "what needs my attention?" — sort/most-urgent-first, not alphabetical by default.
@@ -165,7 +167,7 @@ FontAwesome).
 - `pos-product-card`, `pos-cart-panel`, plus POS shell surfaces; `Orders`/`orders-row`/
   `orders-skeleton`; `ZReport` (shift Z-report); `OrderRefundPage`.
 - Selling is the highest-priority flow: instant search, barcode, large touch targets, optimistic
-  add-to-cart. Price text is neutral (`--text`/Truth Blue), **not** a state colour.
+  add-to-cart. Price text is neutral (`--lm-warm-white`/Truth Blue), **not** a state colour.
 - Availability/stock state via state colour **with text**. Refund/void go through `ConfirmDestructive`.
 
 ## 17. Customer components
@@ -193,8 +195,8 @@ FontAwesome).
 
 | Level | Definition | Gate to next |
 |-------|-----------|--------------|
-| **L0 — Legacy** | Old direction (metal/FontAwesome/light tokens) or duplicate. e.g. `MetricCard`, `PageHeader`(dup), `EmptyStatePanel`(CTA), FontAwesome icons. | Migrate to tokens + dedupe. |
-| **L1 — Compliant** | Uses Design System tokens, Lucide, approved copy; passes a11y. | Add Reveal→Explain→Guide where it's a Truth surface. |
+| **L0 — Legacy** | Decorative shine / light tokens / FontAwesome, or a duplicate. e.g. `MetricCard` (light tokens), `lm-btn-metal` (mirror shine), `PageHeader`(dup), `EmptyStatePanel`(CTA), FontAwesome icons. *(Forged-metal material is **not** legacy — it is retained, refined.)* | Refine to tokens + Truth Blue + dedupe. |
+| **L1 — Compliant** | Uses refined Design System tokens (forged metal + Truth Blue), Lucide, approved copy; passes a11y. | Add Reveal→Explain→Guide where it's a Truth surface. |
 | **L2 — Truth-bearing** | States its truth in words and offers a Next Move (no dead end). | — |
 | **L3 — Canonical** | The single approved component for its job; in the dedup ledger as "keep". | Maintain; no rivals. |
 
@@ -215,7 +217,7 @@ Target: all shell/pattern/Truth components at **L3**; all feature components ≥
 - [ ] Every component supports understanding, trust, action, or empowerment (critical rule).
 - [ ] One canonical component per job; ledger duplicates retired/migrated.
 - [ ] Truth surfaces follow Reveal → Explain → Guide and **state their truth in words**.
-- [ ] All components consume Design System tokens (no metal/FontAwesome/light tokens; §19 of Design System clear).
+- [ ] All components consume refined Design System tokens — forged metal **retained**, decorative shine / FontAwesome / light tokens removed (Design System §19 clear).
 - [ ] Page headers carry `title` (nav label) + `question` (route question).
 - [ ] Empty states / modals / signals / toasts follow Language §7–§11.
 - [ ] a11y: ≥44px targets, `aria-label` on icon controls, state never by colour alone; `npm run test:a11y` green.
