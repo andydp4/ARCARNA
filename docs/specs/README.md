@@ -22,6 +22,7 @@ gated by the Compliance Report.
 
 ## Status
 
-Documents complete and internally consistent. Visual direction **resolved** (refine Liquid Metal +
-Truth Blue — not replace). **One** item remains before implementation: orphan-route placement
-(`ARCARNA_COMPLIANCE_REPORT.md` §7).
+Documents complete, internally consistent, and **fully signed off**. Both open items resolved:
+visual direction (refine Liquid Metal + Truth Blue — not replace) and orphan routes (kept out of
+primary nav for now; future gated placement). Implementation underway — see
+`ARCARNA_COMPLIANCE_REPORT.md` §7 and the §8 backlog.

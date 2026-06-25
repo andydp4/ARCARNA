@@ -182,9 +182,21 @@ convert to redirects.
 ## 10. Orphan routes (registered, not in nav)
 
 `/purchase-drafts`, `/audit-logs`, `/worker-logs`, `/rules` are reachable by URL but absent from
-`nav-items.ts`. **Decide per route:** add to the correct group (Purchase Drafts → Stock; Audit Log,
-System Activity, Rules → Administer) **or** intentionally hide behind role and document it. No route
-should be silently unreachable.
+`nav-items.ts`.
+
+**Owner decision (resolved):** **do not add these to primary navigation yet.** Keep them reachable
+via existing deep links and admin/developer surfaces. They are intentionally not silently
+unreachable — entry remains through their current links. Future placement (deferred, to be done
+behind the noted gates):
+
+| Route | Approved name | Future group | Gate |
+|-------|---------------|--------------|------|
+| `/purchase-drafts` | Purchase Drafts | Stock | permission / feature gated |
+| `/audit-logs` | Audit Log | Administer | admin only |
+| `/worker-logs` | System Activity | Administer | developer / admin only |
+| `/rules` | Rules | Administer | developer / admin only |
+
+Until then, no nav change is made for these routes.
 
 ## 11. Onboarding routes
 
@@ -223,7 +235,8 @@ Each sub-route is its own `PageHeader` (title + question) and returns to Setting
       Administer** with approved labels (Language §3).
 - [ ] Rename `/` "Dashboard" → **Control Centre**; `/insights` "Business Insights" → **Truths**.
 - [ ] Convert `/reports` and `/analytics` from render-aliases to **redirects** to `/insights`.
-- [ ] Add orphan routes to nav or hide-by-role intentionally (§10).
+- [x] Orphan routes: **kept out of primary nav** (owner decision, §10); reachable via existing deep
+      links / admin-developer surfaces; future gated placement deferred.
 - [ ] Every in-app route: `PageHeader` with `title` (approved label) + `question` subtitle.
 - [ ] Every list route: `Skeleton` (load) + `EmptyState` (no data / no matches).
 - [ ] Every route states its **truth in words** and offers a **Next Move** (no dead ends).

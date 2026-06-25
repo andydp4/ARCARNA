@@ -5,9 +5,9 @@
 > (target) and the current codebase. **Per the orchestration rule, implementation must not begin
 > until this report passes.**
 >
-> **Verdict:** **CONDITIONAL PASS.** The five specs are internally consistent and
-> implementation-ready. The visual-direction question is **resolved** (owner: refine Liquid Metal +
-> Truth Blue — §2/§7). **One** item remains for sign-off before code begins: orphan-route placement (§7).
+> **Verdict:** **PASS.** The five specs are internally consistent and implementation-ready. Both
+> open items are resolved (visual direction: refine Liquid Metal + Truth Blue; orphan routes: keep
+> out of primary nav for now — §2/§7). The set is fully signed off; implementation may proceed.
 
 ---
 
@@ -119,17 +119,17 @@ mandates converting to **redirects** to `/insights`.
 **Documentation deliverable: COMPLETE and CONSISTENT.** All six required outputs exist; the five
 specs pass contradiction/duplication/missing-detail checks at the document level.
 
-**Resolved:**
+**Resolved — both open items closed:**
 
 1. ✅ **Direction (§2).** Owner decision: **refine Liquid Metal + Truth Blue accent** (do not
    replace). Specs updated; no contradiction remains.
+2. ✅ **Orphan routes (Route §10).** Owner decision: **do not add to primary nav now**; keep
+   reachable via existing deep links / admin-developer surfaces. Future gated placement deferred
+   (Purchase Drafts→Stock, permission/feature gated; Audit Log→Administer, admin only; System
+   Activity & Rules→Administer, developer/admin only).
 
-**One item remains before implementation:**
-
-2. **Orphan-route decisions (Route §10).** For `/purchase-drafts`, `/audit-logs`, `/worker-logs`,
-   `/rules`: add to nav (suggested groups given) or hide-by-role intentionally.
-
-On that confirmation, implementation may proceed against the specs and the §8 backlog (R1–R13).
+**No items remain. The specification set is fully signed off; implementation may proceed against
+the specs and the §8 backlog (R1–R13).**
 
 ---
 
@@ -149,7 +149,7 @@ On that confirmation, implementation may proceed against the specs and the §8 b
 | R10 | Adopt `EmptyState` everywhere a CTA is needed; retire `EmptyStatePanel` (CTA) | Component §10 | Medium |
 | R11 | Copy sweep: forbidden words + Midnight residue (README/docs/comments) | Language §18 | Medium |
 | R12 | a11y verification on P0 routes after token change (`npm run test:a11y`) | Design §16 | Medium |
-| R13 | Place/hide orphan routes per §7.2 decision | Route §10 | Low |
+| R13 | Orphan routes: **keep out of primary nav now** (decided); future gated placement per §10 (Purchase Drafts→Stock; Audit Log/System Activity/Rules→Administer) | Route §10 | Deferred |
 
 ---
 
