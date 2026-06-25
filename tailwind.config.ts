@@ -78,6 +78,18 @@ export default {
           "electric-blue": "var(--lm-electric-blue)",
           edge: "var(--lm-edge-highlight)",
         },
+        // Truth Blue — semantic accent: insight, action, selection, understanding
+        truth: {
+          DEFAULT: "var(--truth-blue)",
+          bright: "var(--truth-blue-bright)",
+          strong: "var(--truth-blue-strong)",
+          subtle: "var(--truth-blue-subtle)",
+          foreground: "var(--truth-blue-foreground)",
+        },
+        // Semantic state — meaning only
+        success: "var(--success)",
+        warning: "var(--warning)",
+        danger: "var(--danger)",
       },
       boxShadow: {
         "metal-inner": "var(--lm-inner-shadow)",

@@ -1,17 +1,23 @@
 /**
- * Liquid Metal Industrial — design tokens (Phase E1 + E2).
+ * Liquid Metal — Refined (Arcarna Design System v1.0, Phase 1).
+ * Structural material language: forged industrial metal = craftsmanship.
+ * Semantic accent (primary/selection/focus/insight) = Truth Blue (see arcarna.css).
  * Scoped via `.liquid-metal` on Layout; shadcn vars remapped inside scope.
- * Spec: docs/ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md
+ * Spec: docs/specs/ARCARNA_DESIGN_SYSTEM_SPECIFICATION.md
+ *
+ * Refinement vs the original Liquid Metal: decorative chrome removed —
+ * 2-stop low-contrast surface gradient, edge-highlight only on raised surfaces,
+ * inset top "shine" dropped, panel shadow softened. Material retained.
  */
 
 .liquid-metal {
-  /* Base surfaces */
+  /* Base surfaces (forged metal — retained) */
   --lm-graphite: hsl(220, 10%, 7%);
   --lm-gunmetal: hsl(215, 12%, 13%);
   --lm-charcoal: hsl(218, 9%, 17%);
   --lm-smoke-chrome: hsl(215, 10%, 26%);
 
-  /* Metallic highlights */
+  /* Metallic highlights (retained, used sparingly) */
   --lm-brushed: hsl(215, 8%, 38%);
   --lm-brushed-highlight: hsl(210, 12%, 68%);
   --lm-titanium: hsl(220, 6%, 52%);
@@ -21,45 +27,43 @@
   --lm-warm-white: hsl(210, 18%, 95%);
   --lm-muted: hsl(215, 10%, 58%);
 
-  /* Status (sparse use) */
+  /* Status (state only — sparse use) */
   --lm-amber: hsl(38, 92%, 50%);
   --lm-emerald: hsl(158, 64%, 42%);
   --lm-crimson: hsl(0, 72%, 51%);
   --lm-electric-blue: hsl(210, 78%, 52%);
 
-  /* Machined surface treatment */
+  /* Refined machined surface treatment (shine reduced) */
   --lm-surface-gradient: linear-gradient(
     155deg,
-    hsl(215, 12%, 16%) 0%,
-    hsl(220, 10%, 10%) 48%,
-    hsl(218, 11%, 13%) 100%
+    hsl(215, 12%, 14%) 0%,
+    hsl(220, 10%, 11%) 100%
   );
-  --lm-edge-highlight: hsl(210, 15%, 78% / 0.14);
-  --lm-inner-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.05),
-    inset 0 -1px 0 hsl(0, 0% / 0.28);
-  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06),
-    0 8px 32px hsl(0, 0% / 0.45);
+  --lm-edge-highlight: hsl(210, 15%, 78% / 0.07);
+  --lm-inner-shadow: inset 0 -1px 0 hsl(0, 0% / 0.22);
+  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.04),
+    0 8px 24px hsl(0, 0% / 0.4);
 
-  /* Map shadcn tokens — industrial dark, not neon */
+  /* Map shadcn tokens — forged metal surfaces, Truth Blue accent */
   --background: var(--lm-graphite);
   --foreground: var(--lm-warm-white);
   --card: var(--lm-gunmetal);
   --card-foreground: var(--lm-warm-white);
   --popover: var(--lm-charcoal);
   --popover-foreground: var(--lm-warm-white);
-  --primary: var(--lm-stainless);
-  --primary-foreground: var(--lm-graphite);
+  --primary: var(--truth-blue);
+  --primary-foreground: var(--truth-blue-foreground);
   --secondary: var(--lm-charcoal);
   --secondary-foreground: var(--lm-warm-white);
   --muted: var(--lm-charcoal);
   --muted-foreground: var(--lm-muted);
-  --accent: var(--lm-smoke-chrome);
-  --accent-foreground: var(--lm-warm-white);
-  --destructive: var(--lm-crimson);
+  --accent: var(--truth-blue-subtle);
+  --accent-foreground: var(--truth-blue-bright);
+  --destructive: var(--danger);
   --destructive-foreground: var(--lm-warm-white);
-  --border: hsl(210, 15%, 78% / 0.12);
+  --border: hsl(210, 15%, 78% / 0.10);
   --input: var(--lm-smoke-chrome);
-  --ring: var(--lm-titanium);
+  --ring: var(--truth-blue-bright);
 
   color: var(--lm-warm-white);
   background-color: var(--lm-graphite);
@@ -74,13 +78,12 @@
     hsl(220, 10%, 10%) 100%
   );
   border-bottom: 1px solid var(--lm-edge-highlight);
-  box-shadow: 0 1px 0 hsl(210, 15%, 78% / 0.04);
+  box-shadow: 0 1px 0 hsl(210, 15%, 78% / 0.03);
 }
 
 .liquid-metal .lm-shell-sidebar {
   background: var(--lm-surface-gradient);
   border-right: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
 }
 
 .liquid-metal .lm-nav-link {
@@ -96,19 +99,16 @@
   border-color: hsl(210, 15%, 78% / 0.08);
 }
 
+/* Active nav = Truth Blue selection (understanding / you-are-here) */
 .liquid-metal .lm-nav-link-active {
   color: var(--lm-warm-white);
-  background: linear-gradient(
-    155deg,
-    hsl(215, 11%, 20%) 0%,
-    hsl(218, 9%, 15%) 100%
-  );
-  border-color: var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
+  background: var(--truth-blue-subtle);
+  border-color: hsl(213, 90%, 60% / 0.25);
+  box-shadow: inset 2px 0 0 var(--truth-blue);
 }
 
 .liquid-metal .lm-nav-link-active svg {
-  color: var(--lm-brushed-highlight);
+  color: var(--truth-blue-bright);
 }
 
 /* ── Machined Card / Button surfaces ────────────────────────────────── */
@@ -116,7 +116,6 @@
 .liquid-metal .lm-card {
   background: var(--lm-surface-gradient);
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
   color: var(--lm-warm-white);
 }
 
@@ -127,39 +126,30 @@
     hsl(220, 10%, 11%) 100%
   );
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
 }
 
+/* Primary button = Truth Blue (action). Brushed-metal mirror fill retired. */
 .liquid-metal .lm-btn-metal {
-  background: linear-gradient(
-    180deg,
-    hsl(210, 10%, 72%) 0%,
-    hsl(215, 8%, 58%) 100%
-  );
-  color: var(--lm-graphite);
-  border: 1px solid hsl(210, 12%, 82% / 0.35);
-  box-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.22),
-    0 1px 2px hsl(0, 0% / 0.35);
+  background: var(--truth-blue);
+  color: var(--truth-blue-foreground);
+  border: 1px solid hsl(213, 90%, 60% / 0.5);
+  box-shadow: 0 1px 2px hsl(0, 0% / 0.35);
 }
 
 .liquid-metal .lm-btn-metal:hover:not(:disabled) {
-  background: linear-gradient(
-    180deg,
-    hsl(210, 12%, 78%) 0%,
-    hsl(215, 8%, 62%) 100%
-  );
+  background: var(--truth-blue-strong);
 }
 
+/* Secondary button = refined matte metal (no shine) */
 .liquid-metal .lm-btn-outline {
   background: hsl(218, 9%, 14% / 0.6);
   border: 1px solid var(--lm-edge-highlight);
   color: var(--lm-warm-white);
-  box-shadow: var(--lm-inner-shadow);
 }
 
 .liquid-metal .lm-btn-outline:hover:not(:disabled) {
   background: hsl(215, 10%, 20% / 0.85);
-  border-color: hsl(210, 15%, 78% / 0.22);
+  border-color: hsl(210, 15%, 78% / 0.18);
 }
 
 /* ── POS industrial surfaces ────────────────────────────────────────── */
@@ -180,7 +170,6 @@
 .liquid-metal .pos-cart-rail {
   background: var(--lm-surface-gradient);
   border-left: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
 }
 
 /* U7: tablet landscape — reserve bottom drawer / thumb zone */
@@ -196,13 +185,12 @@
 .liquid-metal .pos-product-card {
   background: var(--lm-surface-gradient);
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .liquid-metal .pos-product-card:hover:not(.pos-product-card-disabled) {
-  border-color: hsl(210, 15%, 78% / 0.28);
-  box-shadow: var(--lm-inner-shadow), 0 4px 16px hsl(0, 0% / 0.25);
+  border-color: hsl(213, 90%, 60% / 0.4);
+  box-shadow: 0 4px 16px hsl(0, 0% / 0.25);
 }
 
 .liquid-metal .pos-product-card:active:not(.pos-product-card-disabled) {
@@ -223,14 +211,11 @@
   box-shadow: var(--lm-panel-shadow);
 }
 
+/* FAB = primary action → Truth Blue */
 .liquid-metal .pos-fab {
-  background: linear-gradient(
-    180deg,
-    hsl(210, 10%, 72%) 0%,
-    hsl(215, 8%, 58%) 100%
-  );
-  color: var(--lm-graphite);
-  border: 1px solid hsl(210, 12%, 82% / 0.35);
+  background: var(--truth-blue);
+  color: var(--truth-blue-foreground);
+  border: 1px solid hsl(213, 90%, 60% / 0.5);
   box-shadow: var(--lm-panel-shadow);
 }
 
@@ -246,8 +231,7 @@
     hsl(215, 11%, 16%) 0%,
     hsl(220, 10%, 12%) 100%
   );
-  border: 1px solid hsl(210, 15%, 78% / 0.2);
-  box-shadow: var(--lm-inner-shadow);
+  border: 1px solid var(--lm-edge-highlight);
 }
 
 .liquid-metal .pos-status-emerald {
@@ -267,7 +251,6 @@
 .liquid-metal .insights-spatial-core :where(.rounded-lg.border) {
   background: var(--lm-surface-gradient);
   border-color: var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
   color: var(--lm-warm-white);
 }
 
@@ -288,7 +271,6 @@
     hsl(220, 10%, 11%) 100%
   );
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
 }
 
 .liquid-metal .deck-grid-line {
@@ -296,13 +278,14 @@
   stroke-opacity: 0.22;
 }
 
+/* Spatial nodes/arcs carry insight → Truth Blue */
 .liquid-metal .deck-node {
-  fill: var(--lm-brushed-highlight);
+  fill: var(--truth-blue-bright);
   fill-opacity: 0.35;
 }
 
 .liquid-metal .deck-arc {
-  stroke: var(--lm-titanium);
+  stroke: var(--truth-blue-bright);
   stroke-opacity: 0.18;
   fill: none;
 }
@@ -315,20 +298,26 @@
   --lm-charcoal: hsl(218, 9%, 17%);
   --lm-warm-white: hsl(210, 18%, 95%);
   --lm-muted: hsl(215, 10%, 58%);
-  --lm-edge-highlight: hsl(210, 15%, 78% / 0.14);
+  --lm-edge-highlight: hsl(210, 15%, 78% / 0.07);
   --lm-surface-gradient: linear-gradient(
     155deg,
-    hsl(215, 12%, 16%) 0%,
-    hsl(220, 10%, 10%) 48%,
-    hsl(218, 11%, 13%) 100%
+    hsl(215, 12%, 14%) 0%,
+    hsl(220, 10%, 11%) 100%
   );
-  --lm-inner-shadow: inset 0 1px 0 hsl(210, 20%, 100% / 0.05),
-    inset 0 -1px 0 hsl(0, 0% / 0.28);
-  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.06),
-    0 8px 32px hsl(0, 0% / 0.45);
+  --lm-inner-shadow: inset 0 -1px 0 hsl(0, 0% / 0.22);
+  --lm-panel-shadow: 0 1px 0 hsl(210, 15% 78% / 0.04),
+    0 8px 24px hsl(0, 0% / 0.4);
+
+  /* Truth Blue accent inside the auth shell too */
+  --primary: var(--truth-blue);
+  --primary-foreground: var(--truth-blue-foreground);
+  --accent: var(--truth-blue-subtle);
+  --accent-foreground: var(--truth-blue-bright);
+  --ring: var(--truth-blue-bright);
+
   background: radial-gradient(
     ellipse 120% 80% at 50% -20%,
-    hsl(215, 12%, 16%) 0%,
+    hsl(215, 12%, 15%) 0%,
     var(--lm-graphite) 55%
   );
   color: var(--lm-warm-white);
@@ -337,7 +326,7 @@
 .lm-auth-shell .lm-card {
   background: var(--lm-surface-gradient);
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow), var(--lm-panel-shadow);
+  box-shadow: var(--lm-panel-shadow);
 }
 
 .lm-auth-shell .lm-card-muted {
@@ -347,7 +336,6 @@
     hsl(220, 10%, 11%) 100%
   );
   border: 1px solid var(--lm-edge-highlight);
-  box-shadow: var(--lm-inner-shadow);
 }
 
 .lm-auth-shell .lm-divider {

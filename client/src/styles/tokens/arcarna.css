@@ -1,0 +1,24 @@
+/**
+ * Arcarna Design System — semantic token layer (Design System Spec v1.0, Phase 1).
+ *
+ * Liquid Metal stays the structural material language (see liquid-metal.css).
+ * Truth Blue is the semantic accent: insight, action, selection, understanding.
+ *   Material = craftsmanship.  Truth Blue = revelation.  Together: Reveal Your Truth.
+ *
+ * Primitives live at :root so both the in-app `.liquid-metal` scope and the
+ * `.lm-auth-shell` scope can consume them. Surfaces remain forged metal.
+ */
+
+:root {
+  /* ── Truth Blue — the semantic accent (the light) ───────────────────── */
+  --truth-blue-bright: hsl(208 96% 64%); /* revealed-truth highlight, links, active text, chart-1 */
+  --truth-blue: hsl(213 90% 46%);        /* primary action / button base (AA with white text) */
+  --truth-blue-strong: hsl(214 90% 39%); /* hover / pressed */
+  --truth-blue-subtle: hsl(212 90% 60% / 0.14); /* selection, active-nav tint, focus halo, insight fills */
+  --truth-blue-foreground: hsl(210 40% 98%); /* text/icon on Truth Blue */
+
+  /* ── Semantic state colours — meaning only, never decoration ─────────── */
+  --success: hsl(158 64% 45%);
+  --warning: hsl(38 92% 52%);
+  --danger: hsl(2 78% 56%);
+}

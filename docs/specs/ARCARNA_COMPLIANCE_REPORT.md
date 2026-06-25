@@ -137,12 +137,12 @@ On that confirmation, implementation may proceed against the specs and the §8 b
 
 | ID | Item | Spec | Severity |
 |----|------|------|----------|
-| R1 | Add Truth Blue token layer (`arcarna.css`); map shadcn vars; alias `lm-*` | Design §18 | High |
+| ✅ R1 | Truth Blue token layer (`arcarna.css`) added; `--primary/--accent/--ring` → Truth Blue; metal tokens retained | Design §18 | **Done (Phase 1)** |
 | R2 | Remove FontAwesome (19 occ / 5 files: `index.css`, `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx`); migrate to Lucide | Design §9/§19 | High |
 | R3 | Rebuild/retire `MetricCard` as `TruthCard` (tokens, state-only colour) | Component §5 | High |
 | R4 | Converge page headers to one canonical `PageHeader` (title + question) | Component §3 | High |
 | R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High |
-| R6 | **Refine** Liquid Metal surfaces (reduce shine/excess gradient, **retain** material); retire `lm-btn-metal` mirror fill; Truth Blue primary + selection | Design §3.5/§8/§11–§13 | Medium |
+| ◑ R6 | **Refine** Liquid Metal surfaces (2-stop gradient, edge-light on raised only, top-shine dropped, panel shadow softened); `lm-btn-metal`→Truth Blue; active nav + FAB → Truth Blue | Design §3.5/§8/§11–§13 | **Token/CSS done (Phase 1)**; per-component sweep pending |
 | R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium |
 | ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
 | R9 | Add page `question` subtitle to every in-app route | Route §14 / Language §5 | Medium |
