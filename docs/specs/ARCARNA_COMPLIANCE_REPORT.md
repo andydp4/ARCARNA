@@ -73,11 +73,12 @@ mandates converting to **redirects** to `/insights`.
 |-------|--------|----------|
 | Brand constants centralised | ✅ | `shared/brand.ts` (`BRAND_NAME`, `BRAND_PRODUCT_NAME`) used by `Layout` |
 | Logo law (no redrawn mark) | ✅ in spec | `BrandLogo` variants; official assets |
-| Midnight residue (user-facing) | ⚠ | `README.md` title "Midnight EPOS"; `docs/ARCHITECTURAL_PRINCIPLES.md` P13 "/midnight"; `liquid-metal.css` header comment references `MIDNIGHT_UX_REDESIGN_BRIEF.md`; `analytics/rfm.tsx` hardcoded `/midnight/api` |
-| Forbidden language (SaaS/AI hype) | ✅ spec gate defined | Language §2/§18 grep gate |
-| Colour = meaning only (N6) | ⚠ | `metric-card.tsx` decorative `text-accent bg-accent/10`; metal gradients are decorative |
-| Single icon system (N7) | ⚠ | FontAwesome `@import` in `index.css`; `fas fa-*` in `home.tsx`, `metric-card.tsx` |
-| Approved nav terms | ⚠ | `nav-items.ts` still "Dashboard", "Business Insights", etc. |
+| Midnight residue (user-facing chrome) | ✅ **measured 0** | `rg "Midnight EPOS" client/ portal/ server/templates` → 0 hits. The user-facing rebrand is done. `analytics/rfm.tsx` `/midnight/api` is **already fixed** (0 hits) — corrects an earlier draft claim. |
+| Midnight residue (non-chrome) | ⚠ low | `README.md` line 1 title "Midnight EPOS"; `liquid-metal.css` line 4 comment references `MIDNIGHT_UX_REDESIGN_BRIEF.md` (renamed). Docs/archive intentionally left historical per rebrand plan. |
+| Forbidden language (SaaS/AI hype) | ✅ **measured 0** | `rg` over `client/src` for the §2 list → 0 hits |
+| Colour = meaning only (N6) | ⚠ | `metric-card.tsx` light gradient `to-[hsl(210,40%,98%)]` (line 19), dynamic `bg-${iconColor}` (line 22), decorative `text-accent bg-accent/10` pill (line 26); metal gradients are decorative by construction |
+| Single icon system (N7) | ⚠ | FontAwesome: **19 occurrences across 5 files** — `index.css` (CDN `@import`), `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx` |
+| Approved nav terms | ⚠ | `nav-items.ts` still "Dashboard", "Business Insights", "RFM Segments", "Hour of day", "Channels", "Stock turn", "Scheduled reports", "Gift cards" (8 labels) |
 
 ---
 
@@ -104,7 +105,7 @@ mandates converting to **redirects** to `/insights`.
 | N2 | No new brand strategy | ✅ traces to founder story | n/a |
 | N3 | No generic SaaS language | ✅ banned list + gate | ⚠ enforce in copy sweep |
 | N4 | No AI hype | ✅ assistant = rule-based | ⚠ ensure "Smart Stock" copy compliant |
-| N5 | No Midnight language | ✅ banned | ⚠ README/docs/rfm path (§4) |
+| N5 | No Midnight language | ✅ banned | ✅ chrome clean (measured 0); ⚠ README title + css comment only (§4) |
 | N6 | No decorative colour | ✅ colour=meaning | ⚠ `metric-card`, metal gradients |
 | N7 | No duplicate term/component | ✅ ledgers | ⚠ headers/empty/KPI/icons (§3) |
 
@@ -131,13 +132,13 @@ On those two confirmations, implementation may proceed against the specs and the
 | ID | Item | Spec | Severity |
 |----|------|------|----------|
 | R1 | Add Truth Blue token layer (`arcarna.css`); map shadcn vars; alias `lm-*` | Design §18 | High |
-| R2 | Remove FontAwesome (`index.css` import + `home.tsx`/`metric-card.tsx`); migrate to Lucide | Design §9/§19 | High |
+| R2 | Remove FontAwesome (19 occ / 5 files: `index.css`, `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx`); migrate to Lucide | Design §9/§19 | High |
 | R3 | Rebuild/retire `MetricCard` as `TruthCard` (tokens, state-only colour) | Component §5 | High |
 | R4 | Converge page headers to one canonical `PageHeader` (title + question) | Component §3 | High |
 | R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High |
 | R6 | Flatten Liquid Metal surfaces (remove gradients/inner-shadows); Truth Blue buttons | Design §11–§13 | Medium |
 | R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium |
-| R8 | Fix `analytics/rfm.tsx` `/midnight/api` → `apiFetch`/`resolveAppPath` | Route §6 / §4 | Medium |
+| ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
 | R9 | Add page `question` subtitle to every in-app route | Route §14 / Language §5 | Medium |
 | R10 | Adopt `EmptyState` everywhere a CTA is needed; retire `EmptyStatePanel` (CTA) | Component §10 | Medium |
 | R11 | Copy sweep: forbidden words + Midnight residue (README/docs/comments) | Language §18 | Medium |
@@ -146,7 +147,34 @@ On those two confirmations, implementation may proceed against the specs and the
 
 ---
 
-## 9. Sign-off
+## 9. Measured findings (verified against the codebase)
+
+Ran the spec greps against the working tree (read-only; no code changed). Numbers below are the
+evidence behind §3–§6.
+
+| Audit | Command (essence) | Result |
+|-------|-------------------|--------|
+| FontAwesome usage | `rg "fas fa-\|font-awesome" client/src` | **19** occurrences, **5** files: `index.css`, `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx` |
+| Midnight in user-facing chrome | `rg "Midnight EPOS" client/ portal/ server/templates` | **0** ✅ |
+| Hardcoded `/midnight/api` | `rg "/midnight/api" client/src` | **0** ✅ (already fixed) |
+| Midnight residue (non-chrome) | `rg "Midnight EPOS\|MIDNIGHT_UX"` | `README.md:1`, `liquid-metal.css:4` (low) |
+| Forbidden SaaS/AI words | `rg -i "AI-powered\|streamline\|seamless\|…" client/src` | **0** ✅ |
+| `metric-card.tsx` decorative/light | inspect | light gradient L19, dynamic `bg-${iconColor}` L22, decorative pill L26 — confirmed |
+| `/reports` & `/analytics` render-alias | `rg 'path="/reports"\|"/analytics"' App.tsx` | both `component={Insights}` (L91–92) — confirmed, need redirects |
+| Duplicate components | `ls` | `PageHeader` + `app-page-header`; `EmptyState` + `empty-state-panel`; `metric-card` + `DailyKpiCard` — all present |
+| Nav labels to rename | `rg "label: '…'" nav-items.ts` | 8: Dashboard, Gift cards, Business Insights, RFM Segments, Hour of day, Channels, Stock turn, Scheduled reports |
+
+**Migration scale (sizing for R1/R6):** `lm-*` classes ≈ **207** usages · `pos-*` surfaces ≈ **44** ·
+`metal-*` Tailwind colours ≈ **122**. This confirms the Design System §18 **alias-then-remove**
+strategy (don't hard-cut) is the right approach.
+
+**Net:** the user-facing rebrand is cleaner than the first draft assumed (no Midnight in chrome, no
+forbidden words). The real, sized debt is the **visual system** (Truth Blue migration), **icon
+system** (FontAwesome → Lucide), and **component duplication** — all in §8.
+
+---
+
+## 10. Sign-off
 
 | Role | Output | Status |
 |------|--------|--------|
