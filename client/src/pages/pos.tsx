@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -681,10 +682,12 @@ export default function POS() {
         <div className="pos-section-header mb-6 pb-6">
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 4 · Add items</p>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-metal-warm-white sm:text-2xl">Point of sale</h1>
-              <p className="mt-1 max-w-xl text-sm text-metal-muted">Search products, build the cart, then check out.</p>
-            </div>
+            <PageHeader
+              className="!mb-0"
+              title="Point of sale"
+              question="What is this customer buying?"
+              explanation="Search products, build the cart, then check out."
+            />
             <div className="flex flex-wrap gap-2">
               {shiftId && (
                 <Button

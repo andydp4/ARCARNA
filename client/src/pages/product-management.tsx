@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest } from '@/lib/queryClient'
 import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/PageHeader'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -432,10 +433,12 @@ export default function ProductManagement() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Header */}
         <div className="flex flex-col gap-4 mb-4 sm:mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Product Management</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mt-1">Add, edit, and manage your product catalog</p>
-          </div>
+          <PageHeader
+            className="!mb-0"
+            title="Product Management"
+            question="What you sell — and is it set up right?"
+            explanation="Add, edit, and manage your product catalogue."
+          />
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"

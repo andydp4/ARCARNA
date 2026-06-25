@@ -941,7 +941,8 @@ export default function Insights() {
         <PageHeader
           icon={BarChart3}
           title="Business insights"
-          description="Pick a period, explore revenue and operations, then export CSV or PDF when you need to share."
+          question="What should you know about your business right now?"
+          explanation="Pick a period, explore revenue and operations, then export when you need to share."
         />
         {insightsBody}
       </div>

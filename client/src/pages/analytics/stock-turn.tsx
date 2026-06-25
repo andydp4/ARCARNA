@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/Skeleton";
 import { Layers } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import type { StockTurnCategoryRow, StockTurnStatus } from "@shared/analytics/stockTurn";
 
 type StockTurnResponse = {
@@ -67,16 +68,12 @@ export default function StockTurnAnalyticsPage() {
 
   return (
     <div className="container mx-auto space-y-6 p-4 md:p-6">
-      <div className="flex items-center gap-3">
-        <Layers className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Stock turn</h1>
-          <p className="text-sm text-muted-foreground">
-            Category-level turn and days of stock (last {data?.windowDays ?? 90} days). Slow movers
-            flagged above 90 days.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Layers}
+        title="Stock turn"
+        question="What sells fast, and what sits?"
+        explanation={`Category-level turn and days of stock (last ${data?.windowDays ?? 90} days). Slow movers flagged above 90 days.`}
+      />
 
       <Card>
         <CardHeader>

@@ -9,6 +9,7 @@ import { QuickActionCard } from "@/components/dashboard/QuickActionCard";
 import { OnboardingResumeBanner } from "@/components/OnboardingResumeBanner";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { Skeleton } from "@/components/Skeleton";
+import { PageHeader } from "@/components/PageHeader";
 
 const QUICK_ACTIONS = [
   { href: "/create-order", icon: "fas fa-cash-register", title: "Create Order", description: "Process sales & orders", testId: "quick-action-pos" },
@@ -51,6 +52,11 @@ export default function Home() {
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <PageHeader
+          title="Dashboard"
+          question="How is your business doing today?"
+          explanation="Today's takings, profit signal, and what needs your attention."
+        />
         <OnboardingResumeBanner />
         <DailyKpiCard />
         <BusinessHealthSection />

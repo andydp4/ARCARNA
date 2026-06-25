@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -154,12 +155,12 @@ export function ExpenseReportsPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Financial reports</h1>
-          <p className="mt-1 max-w-2xl text-muted-foreground">
-            Overhead is fixed or recurring cost. Order expenses are charges tied to specific orders. Profit ties both back to revenue for the same period.
-          </p>
-        </div>
+        <PageHeader
+          className="!mb-0"
+          title="Financial reports"
+          question="Are you actually making money?"
+          explanation="Revenue, costs, and the profit you actually keep for the period."
+        />
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="min-h-[44px] w-full sm:w-[200px]" data-testid="select-date-range">

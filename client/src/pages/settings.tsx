@@ -207,7 +207,8 @@ export default function Settings() {
         <PageHeader
           icon={Settings2}
           title="System Settings"
-          description="Configure your EPOS system settings and preferences. General, payment, invoice, and system options below save to this browser unless your environment syncs them server-side."
+          question="How is Arcarna set up for your business?"
+          explanation="Configure your system options below; they save to this browser unless your environment syncs them server-side."
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>

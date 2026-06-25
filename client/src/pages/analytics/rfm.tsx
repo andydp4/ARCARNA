@@ -4,6 +4,7 @@ import { apiFetch, resolveApiUrl } from "@/lib/appPaths";
 import { queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -99,13 +100,17 @@ export default function RfmAnalyticsPage() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Customer segments (RFM)</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Recency, frequency, and monetary scores — updated nightly
-            {summary?.computedAt && (
-              <> · last run {new Date(summary.computedAt).toLocaleString()}</>
-            )}
-          </p>
+          <PageHeader
+            className="!mb-0"
+            title="Customer segments (RFM)"
+            question="Which customers are loyal, at risk, or lost?"
+            explanation="Recency, frequency, and monetary scores — updated nightly."
+          />
+          {summary?.computedAt && (
+            <p className="text-metal-muted text-xs mt-1">
+              Last run {new Date(summary.computedAt).toLocaleString()}
+            </p>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={() => recompute.mutate()} disabled={recompute.isPending}>
           <RefreshCw className={`h-4 w-4 mr-2 ${recompute.isPending ? "animate-spin" : ""}`} />

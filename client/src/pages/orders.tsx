@@ -42,7 +42,7 @@ import {
   type OrdersListOrder,
 } from "@/components/orders-row";
 import { OrdersPageSkeleton } from "@/components/orders-skeleton";
-import { AppPageHeader } from "@/components/app-page-header";
+import { PageHeader } from "@/components/PageHeader";
 import { ActionLoader } from "@/components/action-loader";
 import { EmptyState } from "@/components/EmptyState";
 import { BulkActionBar } from "@/components/BulkActionBar";
@@ -486,10 +486,11 @@ export default function Orders() {
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-        <AppPageHeader
+        <PageHeader
           title="Orders"
-          description="Track and manage orders from creation through completion. Filter by status or search by customer, ID, or payment."
-          trailing={
+          question="What still needs finishing?"
+          explanation="Track and manage orders from creation through completion. Filter by status or search by customer, ID, or payment."
+          action={
             ordersFetching ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">
                 Refreshing orders…

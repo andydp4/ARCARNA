@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -243,7 +244,12 @@ export function ExpensesPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Expense Management</h1>
+          <PageHeader
+            className="!mb-0"
+            title="Expense Management"
+            question="Where is your money going?"
+            explanation="Track and categorise your business costs."
+          />
           {(expensesFetching || analyticsFetching) && (
             <p className="text-xs text-muted-foreground" aria-live="polite">
               Refreshing…

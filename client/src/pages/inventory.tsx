@@ -184,7 +184,8 @@ export default function Inventory() {
         <PageHeader
           icon={Package}
           title="Inventory"
-          description="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
+          question="What's in stock, and what's running out?"
+          explanation="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
         />
         <Tabs defaultValue="stock" className="w-full">
           <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-5 mb-6 min-h-[48px]">

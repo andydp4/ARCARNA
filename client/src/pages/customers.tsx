@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient'
 import { offlineStorage } from '@/lib/offline-storage'
 import { type Customer } from '@shared/schema'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/PageHeader'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -401,10 +402,12 @@ export default function Customers() {
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Customer Database</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mt-1">Manage your customer records and information</p>
-          </div>
+          <PageHeader
+            className="!mb-0"
+            title="Customer Database"
+            question="Who buys from you, and what are they worth?"
+            explanation="Manage your customer records and recent activity."
+          />
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
