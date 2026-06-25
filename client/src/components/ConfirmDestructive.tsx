@@ -1,15 +1,7 @@
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StandardDialog } from "@/components/standard-dialog";
 
 type Props = {
   open: boolean;
@@ -21,6 +13,11 @@ type Props = {
   busy?: boolean;
 };
 
+/**
+ * Destructive confirmation, built on the standard dialog layout
+ * (Question · Explanation · Primary · Secondary). The consequence is spelled
+ * out in `description`; the user must type `confirmText` to enable the action.
+ */
 export function ConfirmDestructive({
   open,
   title,
@@ -40,39 +37,34 @@ export function ConfirmDestructive({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="confirm-destructive">
-            Type <span className="font-mono font-semibold">{confirmText}</span> to confirm
-          </Label>
-          <Input
-            id="confirm-destructive"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={busy || typed !== confirmText}
-            onClick={() => {
-              onConfirm();
-              setTyped("");
-            }}
-          >
-            Confirm
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <StandardDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      destructive
+      busy={busy}
+      question={title}
+      explanation={description}
+      secondaryAction={{ label: "Cancel", onClick: onCancel }}
+      primaryAction={{
+        label: "Confirm",
+        disabled: typed !== confirmText,
+        onClick: () => {
+          onConfirm();
+          setTyped("");
+        },
+      }}
+    >
+      <div className="space-y-2">
+        <Label htmlFor="confirm-destructive">
+          Type <span className="font-mono font-semibold">{confirmText}</span> to confirm
+        </Label>
+        <Input
+          id="confirm-destructive"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoComplete="off"
+        />
+      </div>
+    </StandardDialog>
   );
 }

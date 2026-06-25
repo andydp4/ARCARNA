@@ -114,7 +114,9 @@ export function NotificationCenter() {
         </div>
         <ScrollArea className="max-h-[320px]">
           {visible.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4 text-center">No notifications</p>
+            <p className="text-sm text-muted-foreground p-4 text-center">
+              You're all caught up. New notifications will appear here.
+            </p>
           ) : (
             <ul className="divide-y">
               {visible.map((n) => (
