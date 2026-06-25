@@ -34,6 +34,10 @@ function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+export function isExactCustomerNameMatch(candidateName: string, requestedName: string): boolean {
+  return candidateName.trim().toLocaleLowerCase() === requestedName.trim().toLocaleLowerCase();
+}
+
 /**
  * Resolve a spoken/typed customer name to existing candidates (case-insensitive).
  * Returns an exact-name match first if present, otherwise customers whose name
@@ -62,15 +66,14 @@ export async function findCustomerCandidatesByName(
 
 /**
  * Find an existing customer by name, or create one.
- * Matches an exact (case-insensitive) name first, then a single unambiguous
- * partial match — so "Bunny" resolves to the one "Bunny Smith" instead of
- * spawning a duplicate. Only creates a new customer when nothing matches, or
- * when the partial name is ambiguous (multiple matches) and the caller hasn't
- * disambiguated.
+ * Only exact (case-insensitive) names are safe to auto-bind while saving an
+ * assistant order. Partial matches are suggestions for a future pick list; in
+ * the write path they could silently attach an order to the wrong customer.
  */
 export async function findOrCreateCustomerByName(orgId: string, name: string): Promise<Customer> {
   const candidates = await findCustomerCandidatesByName(orgId, name, 2);
-  if (candidates.length === 1) return candidates[0];
+  const exact = candidates.find((candidate) => isExactCustomerNameMatch(candidate.name, name));
+  if (exact) return exact;
   const now = new Date();
   const [created] = await db
     .insert(customers)

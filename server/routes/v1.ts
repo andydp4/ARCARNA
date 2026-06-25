@@ -13,6 +13,38 @@ import { storage } from "../storage";
 
 const auth = [requireApiKey];
 
+type PublicProductDto = {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: string | null;
+  stock: number | null;
+};
+
+function toPublicProductDto(product: {
+  id: string;
+  name: string;
+  productId?: string | null;
+  defaultSalePrice?: string | null;
+  stock?: number | null;
+}): PublicProductDto {
+  return {
+    id: product.id,
+    name: product.name,
+    sku: product.productId ?? null,
+    price: product.defaultSalePrice ?? null,
+    stock: product.stock ?? null,
+  };
+}
+
+function isGiftCardOrderInput(body: any): boolean {
+  return (
+    body?.paymentMethod === "gift_card" ||
+    body?.giftCardCode != null ||
+    body?.giftCardAmount != null
+  );
+}
+
 function orgGuard(req: any, res: any): string | null {
   const { orgId } = req.params as { orgId: string };
   if (req.apiKeyContext?.orgId !== orgId) {
@@ -37,13 +69,7 @@ export function registerV1Routes(app: Express): void {
       try {
         const rows = await storage.getProductsForOrgPublic(orgId);
         res.json(
-          rows.map((p) => ({
-            id: p.id,
-            name: p.name,
-            sku: p.productId,
-            price: p.defaultSalePrice,
-            stock: p.stock,
-          })),
+          rows.map((p) => toPublicProductDto(p)),
         );
       } catch (e) {
         console.error("[v1] products list:", e);
@@ -62,7 +88,7 @@ export function registerV1Routes(app: Express): void {
       try {
         const product = await storage.getProduct(req.params.productId, orgId);
         if (!product) return res.status(404).json({ error: "not_found" });
-        res.json(product);
+        res.json(toPublicProductDto(product));
       } catch (e) {
         if ((e as any)?.code === '22P02' || (e as any)?.cause?.code === '22P02') return res.status(404).json({ error: "not_found" }); // uuid-guard-product
         console.error("[v1] product get:", e);
@@ -176,9 +202,69 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        if (isGiftCardOrderInput(req.body)) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "Gift-card payments are not supported by the v1 API yet",
+          });
+        }
+        const { withTransaction } = await import("../../apps/server/src/db");
         const { engine } = await import("../../apps/server/src/engine.wiring");
-        const result = await engine.placeOrder({ ...req.body, orgId });
-        res.status(201).json(result);
+        const { orders, order_items } = await import("../../apps/server/src/db/schema");
+        const { eq } = await import("drizzle-orm");
+        const { publishEventTx } = await import("../eventBus");
+        const body = { ...req.body, orgId };
+        const { result, eventId, createdOrder } = await withTransaction(async (tx) => {
+          const result = await engine.placeOrder(body);
+          const [createdOrder] = await tx
+            .select()
+            .from(orders)
+            .where(eq(orders.id, result.orderId));
+          const items = await tx
+            .select()
+            .from(order_items)
+            .where(eq(order_items.order_id, result.orderId));
+          if (!createdOrder || createdOrder.org_id !== orgId) {
+            throw new Error("Order creation failed");
+          }
+          const sendEmailReceipt = body.sendEmailReceipt === true;
+          const eventId = await publishEventTx(
+            tx,
+            "OrderCreated",
+            result.orderId,
+            {
+              order: {
+                orderId: result.orderId,
+                status: createdOrder.status || "pending",
+                customerId: createdOrder.customer_id,
+                total: parseFloat(createdOrder.total || "0"),
+                paymentMethod: createdOrder.payment_method,
+                sendEmailReceipt,
+                items: items.map((item: any) => ({
+                  lineId: item.id,
+                  productId: item.product_id,
+                  qty: item.quantity,
+                  unitPrice: parseFloat(item.unit_price || "0"),
+                  lineTotal: parseFloat(item.total_price || "0"),
+                })),
+              },
+              sendEmailReceipt,
+            },
+            { source: "v1-api" },
+          );
+          return { result, eventId, createdOrder };
+        });
+        res.status(201).json({
+          ...result,
+          eventId,
+          order: {
+            id: createdOrder.id,
+            status: createdOrder.status,
+            total: createdOrder.total,
+            paymentMethod: createdOrder.payment_method,
+            createdAt: createdOrder.created_at,
+          },
+        });
       } catch (e: any) {
         console.error("[v1] order create:", e);
         res.status(e?.name === "ZodError" ? 400 : 500).json({
@@ -197,16 +283,45 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
-        const { db } = await import("../db");
+        const { withTransaction } = await import("../../apps/server/src/db");
         const { orders } = await import("../../apps/server/src/db/schema");
         const { eq, and } = await import("drizzle-orm");
-        const [updated] = await db
-          .update(orders)
-          .set({ status: req.body.status, updated_at: new Date() })
-          .where(and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId)))
-          .returning();
+        const { updateOrderStatusSchema } = await import("@shared/schema");
+        const { publishEventTx } = await import("../eventBus");
+        const validation = updateOrderStatusSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "Invalid status value",
+            errors: validation.error.errors,
+          });
+        }
+        const { updated, eventId } = await withTransaction(async (tx) => {
+          const orderCond = and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId));
+          const [currentOrder] = await tx.select().from(orders).where(orderCond);
+          const previousStatus = currentOrder?.status;
+          const [updated] = await tx
+            .update(orders)
+            .set({ status: validation.data.status, updated_at: new Date() })
+            .where(orderCond)
+            .returning();
+          if (!updated) return { updated: null, eventId: null };
+          const eventId = await publishEventTx(
+            tx,
+            "OrderStatusChanged",
+            req.params.orderId,
+            {
+              orderId: req.params.orderId,
+              from: previousStatus,
+              to: validation.data.status,
+              changedAt: new Date().toISOString(),
+            },
+            { source: "v1-api" },
+          );
+          return { updated, eventId };
+        });
         if (!updated) return res.status(404).json({ error: "not_found" });
-        res.json(updated);
+        res.json({ ...updated, eventId });
       } catch (e) {
         console.error("[v1] order patch:", e);
         res.status(500).json({ error: "internal_error" });
@@ -350,6 +465,25 @@ export function registerV1Routes(app: Express): void {
         };
         if (!productId || !locationId || typeof delta !== "number") {
           return res.status(400).json({ error: "validation_error", message: "productId, locationId, delta required" });
+        }
+        const { db } = await import("../db");
+        const { products, locations } = await import("@shared/schema");
+        const { eq, and } = await import("drizzle-orm");
+        const [product] = await db
+          .select({ id: products.id })
+          .from(products)
+          .where(and(eq(products.id, productId), eq(products.orgId, orgId)))
+          .limit(1);
+        if (!product) {
+          return res.status(404).json({ error: "not_found", message: "Product not found for org" });
+        }
+        const [location] = await db
+          .select({ id: locations.id })
+          .from(locations)
+          .where(and(eq(locations.id, locationId), eq(locations.orgId, orgId)))
+          .limit(1);
+        if (!location) {
+          return res.status(404).json({ error: "not_found", message: "Location not found for org" });
         }
         const { adjustProductLocationStock } = await import("../services/productLocationStock");
         await adjustProductLocationStock({
