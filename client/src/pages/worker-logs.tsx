@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PageHeader } from '@/components/PageHeader';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -167,10 +168,12 @@ export default function WorkerLogsPage() {
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground" data-testid="page-title">Worker Run Logs</h1>
-          <p className="text-muted-foreground">Monitor event processing and worker status</p>
-        </div>
+        <PageHeader
+          className="!mb-0"
+          title="System Activity"
+          question="Are background jobs healthy?"
+          explanation="Monitor event processing and worker status."
+        />
         <Button onClick={handleRefresh} variant="outline" data-testid="btn-refresh">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh

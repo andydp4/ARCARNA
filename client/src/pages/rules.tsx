@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -153,12 +154,12 @@ export default function RulesPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Automation rules</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Event-driven rules (disabled by default). Actions never emit order events — no recursion.
-          </p>
-        </div>
+        <PageHeader
+          className="!mb-0"
+          title="Rules"
+          question="What automations are running?"
+          explanation="Event-driven rules (disabled by default). Actions never emit order events — no recursion."
+        />
         <Button onClick={openCreate} className="gap-1" data-testid="rules-add">
           <Plus className="h-4 w-4" />
           New rule

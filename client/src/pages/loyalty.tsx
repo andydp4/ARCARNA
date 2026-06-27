@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -142,7 +143,12 @@ export default function LoyaltyPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold">Loyalty Program</h1>
+        <PageHeader
+          className="!mb-0"
+          title="Loyalty"
+          question="Are your best customers rewarded?"
+          explanation="Tiers, points, and members."
+        />
         <Button onClick={() => openTierDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-tier">
           <Plus className="mr-2 h-4 w-4" />
           Add Tier

@@ -365,7 +365,8 @@ export default function DeveloperSettingsPage() {
     <div className="space-y-6 p-4 md:p-6 max-w-4xl">
       <PageHeader
         title="Developer"
-        description="API keys, audit trail, background jobs and automation rules"
+        question="How do systems connect to Arcarna?"
+        explanation="API keys, audit trail, background jobs and automation rules"
         icon={Code2}
       />
 

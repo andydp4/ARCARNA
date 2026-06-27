@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageHeader } from '@/components/PageHeader'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Card,
@@ -214,13 +215,12 @@ export default function TickList() {
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
-            <CreditCard className="h-6 sm:h-8 w-6 sm:w-8" />
-            Tick List (Credit Customers)
-          </h1>
-          <p className="text-muted-foreground mt-1">Manage customer credit and outstanding payments</p>
-        </div>
+        <PageHeader
+          icon={CreditCard}
+          title="Tick List"
+          question="Who's buying on tick, and what's outstanding?"
+          explanation="Manage customer credit and outstanding payments."
+        />
 
         {/* Summary Cards */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 mb-6">

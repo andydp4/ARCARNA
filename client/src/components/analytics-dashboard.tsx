@@ -9,7 +9,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   DollarSign,
   ShoppingBag,
-  Users,
   TrendingUp,
   PlusCircle,
   UserPlus,
@@ -57,10 +56,9 @@ export default function AnalyticsDashboard() {
       <Separator className="mb-6 sm:mb-8" />
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
         {isLoadingMonthly ? (
           <>
-            <Skeleton className="h-40 rounded-xl" />
             <Skeleton className="h-40 rounded-xl" />
             <Skeleton className="h-40 rounded-xl" />
             <Skeleton className="h-40 rounded-xl" />
@@ -71,8 +69,7 @@ export default function AnalyticsDashboard() {
               type="truth"
               icon={DollarSign}
               title="Total Revenue"
-              value={`$${totalRevenue.toLocaleString()}`}
-              trend={{ direction: "up", label: "+12.5%" }}
+              value={`£${totalRevenue.toLocaleString()}`}
               footer="Last 30 days"
             />
             <InsightCard
@@ -80,23 +77,13 @@ export default function AnalyticsDashboard() {
               icon={ShoppingBag}
               title="Total Orders"
               value={totalOrders.toLocaleString()}
-              trend={{ direction: "up", label: "+8.2%" }}
-              footer="Last 30 days"
-            />
-            <InsightCard
-              type="truth"
-              icon={Users}
-              title="Active Customers"
-              value="847"
-              trend={{ direction: "up", label: "+24.3%" }}
               footer="Last 30 days"
             />
             <InsightCard
               type="truth"
               icon={TrendingUp}
               title="Avg Order Value"
-              value={`$${avgOrderValue.toFixed(2)}`}
-              trend={{ direction: "up", label: "+3.7%" }}
+              value={`£${avgOrderValue.toFixed(2)}`}
               footer="Last 30 days"
             />
           </>

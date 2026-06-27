@@ -172,7 +172,8 @@ export default function UserAccess() {
           <PageHeader
             icon={Shield}
             title="User access"
-            description="Manage who can access this organization. Scope: this workspace / org."
+            question="Who can do what in your business?"
+            explanation="Manage who can access this business. Scope: this workspace."
             className="mb-0"
           />
           {pendingApprovals.length > 0 && (

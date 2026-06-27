@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { PageHeader } from "@/components/PageHeader";
 import { apiFetch } from "@/lib/appPaths";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -44,15 +45,12 @@ export default function ChannelAttributionPage() {
 
   return (
     <div className="container mx-auto space-y-6 p-4 md:p-6">
-      <div className="flex items-center gap-3">
-        <Radio className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Channel attribution</h1>
-          <p className="text-sm text-muted-foreground">
-            Completed order revenue by sales channel (last {data?.days ?? 90} days).
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Radio}
+        title="Order Channels"
+        question="Where do your orders come from?"
+        explanation={`Completed order revenue by sales channel (last ${data?.days ?? 90} days).`}
+      />
 
       <Card>
         <CardHeader>

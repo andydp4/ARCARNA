@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -197,7 +198,12 @@ export default function PromotionsPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold">Promotional Campaigns</h1>
+        <PageHeader
+          className="!mb-0"
+          title="Promotions"
+          question="What's on offer, and is it working?"
+          explanation="Create campaigns and measure their lift."
+        />
         <Button onClick={() => openPromoDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-promotion">
           <Plus className="mr-2 h-4 w-4" />
           New Campaign

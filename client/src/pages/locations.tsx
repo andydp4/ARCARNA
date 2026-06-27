@@ -271,7 +271,8 @@ export default function Locations() {
         <PageHeader
           icon={MapPin}
           title="Locations"
-          description="Manage multiple store locations, defaults, and per-site stats."
+          question="How is each location performing?"
+          explanation="Manage multiple store locations, defaults, and per-site stats."
         />
         {locations.length > 0 && (
           <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">

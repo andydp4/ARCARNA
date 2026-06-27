@@ -88,8 +88,8 @@ function Router() {
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
           <Route path="/insights" component={Insights} />
-          <Route path="/reports" component={Insights} />
-          <Route path="/analytics" component={Insights} />
+          <Route path="/reports"><Redirect to="/insights" /></Route>
+          <Route path="/analytics"><Redirect to="/insights" /></Route>
           <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
           <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />
           <Route path="/analytics/channels" component={ChannelAttributionPage} />

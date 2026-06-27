@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -99,12 +100,12 @@ export default function ScheduledReportsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Scheduled reports</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Worker-driven snapshots. Delivery to notification center and run history — no outbound email.
-          </p>
-        </div>
+        <PageHeader
+          className="!mb-0"
+          title="Scheduled Evidence"
+          question="Which evidence arrives automatically?"
+          explanation="Worker-driven snapshots. Delivery to your signals and run history — no outbound email."
+        />
         <Button
           onClick={() => {
             setForm({

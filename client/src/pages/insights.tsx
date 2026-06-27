@@ -885,7 +885,7 @@ export default function Insights() {
                   </h4>
                   <DataTableScrollRegion>
                     <Table scrollContainerClassName="overflow-visible">
-                      <TableHeader className="sticky top-0 z-[1] bg-card shadow-[0_1px_0_0_hsl(var(--border))]">
+                      <TableHeader className="sticky top-0 z-[1] bg-card shadow-[0_1px_0_0_var(--border)]">
                         <TableRow className="border-b-0 bg-muted/40 hover:bg-muted/40">
                           <TableHead>Product</TableHead>
                           <TableHead className="text-right tabular-nums">Sold</TableHead>

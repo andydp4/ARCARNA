@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { ChartCard } from "@/components/chart-card";
+import { PageHeader } from "@/components/PageHeader";
 import { HourHeatmap } from "@/components/charts/HourHeatmap";
 import type { HourOfDayBucket } from "@shared/analytics/hourOfDay";
 import { Skeleton } from "@/components/Skeleton";
@@ -24,16 +25,12 @@ export default function HourOfDayAnalyticsPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Clock className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Hour-of-day sales</h1>
-          <p className="text-muted-foreground text-sm">
-            Average revenue by weekday and hour over the last {data?.weeks ?? 12} weeks
-            {data?.timezone ? ` (${data.timezone})` : ""}.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Clock}
+        title="Busiest Hours"
+        question="When are you busiest?"
+        explanation={`Average revenue by weekday and hour over the last ${data?.weeks ?? 12} weeks${data?.timezone ? ` (${data.timezone})` : ""}.`}
+      />
 
       <ChartCard
         title="Sales heatmap"

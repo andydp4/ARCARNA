@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/appPaths";
@@ -89,15 +90,12 @@ export default function ReceiptSettingsPage() {
           </Button>
         </Link>
       </div>
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Mail className="h-6 w-6" />
-          Email receipts
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Customize the HTML template sent to customers after checkout.
-        </p>
-      </div>
+      <PageHeader
+        icon={Mail}
+        title="Receipt Settings"
+        question="What do receipts show?"
+        explanation="Customise the HTML template sent to customers after checkout."
+      />
 
       <Card>
         <CardHeader>

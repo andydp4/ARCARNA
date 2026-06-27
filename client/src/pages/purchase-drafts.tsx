@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -194,12 +195,11 @@ export default function PurchaseDraftsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Purchase drafts</h1>
-          <p className="text-muted-foreground text-sm">
-            Internal workflow only — not sent to suppliers or paid. Stock increases only when a goods receipt is completed.
-          </p>
-        </div>
+        <PageHeader
+          title="Purchase Drafts"
+          question="What do you need to reorder?"
+          explanation="Internal workflow only — not sent to suppliers or paid. Stock increases only when a goods receipt is completed."
+        />
 
         <Card>
           <CardHeader>
