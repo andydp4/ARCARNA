@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Midnight EPOS project will be documented in this file.
+All notable changes to the ARCARNA EPOS project will be documented in this file.
 
 ## [Unreleased]
 

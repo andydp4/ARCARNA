@@ -1,6 +1,6 @@
 # Architectural Principles
 
-This document is the **repo constitution** for MidnightEPOS. Every change to server routes, storage, schema, workers, or cross-cutting client infrastructure should honour these principles.
+This document is the **repo constitution** for ARCARNA EPOS. Every change to server routes, storage, schema, workers, or cross-cutting client infrastructure should honour these principles.
 
 **PRs that violate a principle** must include an explicit `## Principle Exception` section in the PR description explaining why, which principle is waived, and who approved the exception.
 
@@ -32,7 +32,7 @@ This document is the **repo constitution** for MidnightEPOS. Every change to ser
 
 12. **Import safety** — Large imports are parsed client-side where practical; the server enforces `IMPORT_MAX_ROWS`, org scope, and preview-before-commit.
 
-13. **Base path** — The EPOS app lives at `/midnight`; the Viger portal lives at `/`. API and static assets must remain base-path aware.
+13. **Base path** — The EPOS app lives at `/arcarna` (legacy `/midnight` 301-redirects); the Viger portal lives at `/`. API and static assets must remain base-path aware.
 
 14. **External order ingest** — Orders from web, WhatsApp, phone, or the public API must go through the same `engine.placeOrder` code path. No channel may write to the `orders` table directly.
 

@@ -1,6 +1,6 @@
-# MidnightEPOS Architecture
+# ARCARNA EPOS Architecture
 
-This document describes the architecture of the MidnightEPOS monorepo. See **RBAC.md** for role-based access control and org/store scoping.
+This document describes the architecture of the ARCARNA EPOS monorepo. See **RBAC.md** for role-based access control and org/store scoping.
 
 ## See also
 
@@ -39,7 +39,7 @@ This document describes the architecture of the MidnightEPOS monorepo. See **RBA
 ## 2. Folder Responsibilities
 
 ```
-MidnightEPOS/
+ARCARNA/
 ├── client/                 # Main SPA (React, Vite, PWA)
 │   ├── index.html
 │   ├── src/

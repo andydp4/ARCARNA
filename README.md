@@ -1,4 +1,4 @@
-# Midnight EPOS
+# ARCARNA EPOS
 
 Point-of-sale and business management system. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [RBAC.md](./RBAC.md) for design details.
 

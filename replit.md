@@ -1,7 +1,7 @@
-# Midnight EPOS
+# ARCARNA EPOS
 
 ## Overview
-Midnight EPOS is a full-stack TypeScript monorepo enterprise Point of Sale system. It manages order processing, inventory, customer analytics, invoice generation, and business intelligence. The system employs a domain-driven design with a clean separation between business logic, application, and presentation layers. Key capabilities include multiple payment methods, customer lifetime value (CLV) and RFM scoring, PDF invoice generation, and real-time analytics. A core ambition is to provide robust offline capabilities, ensuring critical operations continue uninterrupted during network outages, with automatic synchronization upon reconnection.
+ARCARNA EPOS is a full-stack TypeScript monorepo enterprise Point of Sale system. It manages order processing, inventory, customer analytics, invoice generation, and business intelligence. The system employs a domain-driven design with a clean separation between business logic, application, and presentation layers. Key capabilities include multiple payment methods, customer lifetime value (CLV) and RFM scoring, PDF invoice generation, and real-time analytics. A core ambition is to provide robust offline capabilities, ensuring critical operations continue uninterrupted during network outages, with automatic synchronization upon reconnection.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

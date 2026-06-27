@@ -147,7 +147,7 @@ the specs and the §8 backlog (R1–R13).**
 | ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
 | ✅ R9 | Page `question` subtitle on all operational + admin content routes (31 pages); auth/wizard routes excepted by design | Route §14 / Language §5 | **Done (Phase 2/5b/7)** |
 | ✅ R10 | Adopt `EmptyState`; `EmptyStatePanel` retired (SmartStockTab migrated, +CTA) | Component §10 | **Done (Phase 5c)** |
-| R11 | Copy sweep: forbidden words + Midnight residue (README/docs/comments) | Language §18 | Medium |
+| ◑ R11 | Forbidden words 0; product-name docs swept (`README`, `ARCHITECTURE`, `ARCHITECTURAL_PRINCIPLES`, `replit`, `CHANGELOG` → ARCARNA EPOS; base path `/midnight`→`/arcarna`). Infra/ops names, migration doc, and historical archive intentionally retained | Language §18 | **Mostly done** |
 | R12 | a11y verification on P0 routes after token change (`npm run test:a11y`) | Design §16 | Medium |
 | R13 | Orphan routes: **keep out of primary nav now** (decided); future gated placement per §10 (Purchase Drafts→Stock; Audit Log/System Activity/Rules→Administer) | Route §10 | Deferred |
 
@@ -244,8 +244,15 @@ here (needs DATABASE_URL + Playwright) · R13 ⏸ orphan routes deferred by owne
 - **Legacy light `:root`/`.dark` tokens** in `index.css` — retained; removal risks shadcn components rendered outside `.liquid-metal`. Deprecated, not deleted.
 - **`settings/loyalty`, `settings/feature-flags`** — no clear page header to convert; not given a question subtitle.
 - **`analytics-dashboard` "Recent Orders"** — static empty placeholder (honest, not fabricated); not data-wired (would be new logic).
-- **`README.md` title + `docs/` historical** — still say "Midnight EPOS"/reference old brief names (non-chrome; rebrand plan marks archive docs historical).
-- **a11y verification (R12)** — run `npm run test:a11y` in an environment with a database before release.
+- **Docs Midnight residue** — product-name docs swept to ARCARNA EPOS. Remaining "Midnight" references are intentional: infra/ops names (R2 bucket `midnight-backups`, PM2/cache names — rebrand plan keeps these), the migration doc (`REBRAND_ARCARNA.md`), historical `docs/archive/`, `attached_assets/`, `reports/`, and the superseded `MIDNIGHT_UX_REDESIGN_BRIEF.md` (use `ARCARNA_UX_REDESIGN_BRIEF.md`).
+- **a11y verification (R12)** — **could not run in this environment**: no `DATABASE_URL`, no local Postgres server, and the Docker daemon is unavailable, so the Playwright a11y project (which boots the app against a DB) can't start here. Run it where a DB is available — CI runs the `a11y` project on every PR, or locally:
+  ```bash
+  # local: needs Postgres (node-postgres driver) + Playwright (Chromium preinstalled)
+  export DATABASE_URL=postgresql://USER:PASS@127.0.0.1:5432/arcarna_epos
+  export SESSION_SECRET=local-dev-session-secret-32chars-min
+  npm run db:push           # create schema
+  npm run test:a11y         # Playwright boots npm run dev:e2e, runs axe
+  ```
 
 ### 11.5 Verdict
 
