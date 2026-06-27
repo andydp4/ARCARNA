@@ -1,6 +1,6 @@
 # Concept E — Aurora (spatial workspace)
 
-**Parent direction:** [Liquid Metal Industrial](./MIDNIGHT_UX_REDESIGN_BRIEF.md)  
+**Parent direction:** [Liquid Metal Industrial](./ARCARNA_UX_REDESIGN_BRIEF.md)  
 **Status:** Selected spatial/layout expression — **not** a separate cyan sci-fi theme.
 
 ---

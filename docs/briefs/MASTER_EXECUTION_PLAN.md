@@ -6,7 +6,7 @@
 
 **Live status (2026-06-04):** [`BRIEF_STATUS.md`](./BRIEF_STATUS.md) · **Gaps/snags:** [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md) · **Next agents:** [`WAVE9_NEXT.md`](./WAVE9_NEXT.md)
 
-**Design direction:** [Liquid Metal Industrial](../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md) — apply to all UI phases (E, U, F client surfaces).
+**Design direction:** [Liquid Metal Industrial](../ux-concepts/ARCARNA_UX_REDESIGN_BRIEF.md) — apply to all UI phases (E, U, F client surfaces).
 
 ---
 

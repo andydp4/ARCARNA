@@ -2,7 +2,7 @@
 
 ## Approved direction
 
-**Liquid Metal Industrial** — full spec: [`MIDNIGHT_UX_REDESIGN_BRIEF.md`](./MIDNIGHT_UX_REDESIGN_BRIEF.md)
+**Liquid Metal Industrial** — full spec: [`ARCARNA_UX_REDESIGN_BRIEF.md`](./ARCARNA_UX_REDESIGN_BRIEF.md)
 
 > Apple × Porsche × Bang & Olufsen for high-volume commerce. Dark, machined, tactile — **not** cyberpunk / neon HUD.
 

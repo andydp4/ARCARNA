@@ -77,7 +77,7 @@ mandates converting to **redirects** to `/insights`.
 | Brand constants centralised | ✅ | `shared/brand.ts` (`BRAND_NAME`, `BRAND_PRODUCT_NAME`) used by `Layout` |
 | Logo law (no redrawn mark) | ✅ in spec | `BrandLogo` variants; official assets |
 | Midnight residue (user-facing chrome) | ✅ **measured 0** | `rg "Midnight EPOS" client/ portal/ server/templates` → 0 hits. The user-facing rebrand is done. `analytics/rfm.tsx` `/midnight/api` is **already fixed** (0 hits) — corrects an earlier draft claim. |
-| Midnight residue (non-chrome) | ⚠ low | `README.md` line 1 title "Midnight EPOS"; `liquid-metal.css` line 4 comment references `MIDNIGHT_UX_REDESIGN_BRIEF.md` (renamed). Docs/archive intentionally left historical per rebrand plan. |
+| Midnight residue (non-chrome) | ✅ swept | Product-name docs → ARCARNA EPOS; `liquid-metal.css` comment fixed; superseded `MIDNIGHT_UX_REDESIGN_BRIEF.md` removed. `docs/archive` + infra/ops names intentionally historical per rebrand plan. |
 | Forbidden language (SaaS/AI hype) | ✅ **measured 0** | `rg` over `client/src` for the §2 list → 0 hits |
 | Colour = meaning only (N6) | ⚠ | `metric-card.tsx` light gradient `to-[hsl(210,40%,98%)]` (line 19), dynamic `bg-${iconColor}` (line 22), decorative `text-accent bg-accent/10` pill (line 26); metal gradients are decorative by construction |
 | Single icon system (N7) | ⚠ | FontAwesome: **19 occurrences across 5 files** — `index.css` (CDN `@import`), `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx` |
@@ -244,7 +244,7 @@ here (needs DATABASE_URL + Playwright) · R13 ⏸ orphan routes deferred by owne
 - **Legacy light `:root`/`.dark` tokens** in `index.css` — retained; removal risks shadcn components rendered outside `.liquid-metal`. Deprecated, not deleted.
 - **`settings/loyalty`, `settings/feature-flags`** — no clear page header to convert; not given a question subtitle.
 - **`analytics-dashboard` "Recent Orders"** — static empty placeholder (honest, not fabricated); not data-wired (would be new logic).
-- **Docs Midnight residue** — product-name docs swept to ARCARNA EPOS. Remaining "Midnight" references are intentional: infra/ops names (R2 bucket `midnight-backups`, PM2/cache names — rebrand plan keeps these), the migration doc (`REBRAND_ARCARNA.md`), historical `docs/archive/`, `attached_assets/`, `reports/`, and the superseded `MIDNIGHT_UX_REDESIGN_BRIEF.md` (use `ARCARNA_UX_REDESIGN_BRIEF.md`).
+- **Docs Midnight residue** — product-name docs swept to ARCARNA EPOS; the superseded `MIDNIGHT_UX_REDESIGN_BRIEF.md` and dead `client/src/pages/reports.tsx` were removed. Remaining "Midnight" references are intentional: infra/ops names (R2 bucket `midnight-backups`, PM2/cache names — rebrand plan keeps these), the migration doc (`REBRAND_ARCARNA.md`), and historical `docs/archive/` / `attached_assets/` / `reports/`.
 - **a11y verification (R12)** — **could not run in this environment**: no `DATABASE_URL`, no local Postgres server, and the Docker daemon is unavailable, so the Playwright a11y project (which boots the app against a DB) can't start here. Run it where a DB is available — CI runs the `a11y` project on every PR, or locally:
   ```bash
   # local: needs Postgres (node-postgres driver) + Playwright (Chromium preinstalled)

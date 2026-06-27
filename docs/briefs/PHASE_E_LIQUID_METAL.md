@@ -2,7 +2,7 @@
 
 **Status (2026-06-04):** **E1, E3 Done** · **E2 Done†** (Layout/POS; remainder: [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#gap-e2-01))
 
-**Canonical UX spec:** [`../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md`](../ux-concepts/MIDNIGHT_UX_REDESIGN_BRIEF.md)  
+**Canonical UX spec:** [`../ux-concepts/ARCARNA_UX_REDESIGN_BRIEF.md`](../ux-concepts/ARCARNA_UX_REDESIGN_BRIEF.md)  
 **Spatial notes:** [`../ux-concepts/concept-E-aurora.md`](../ux-concepts/concept-E-aurora.md)
 
 Execute **E1** before wide U1 rollout so polish passes use the same tokens.
@@ -26,7 +26,7 @@ Execute **E1** before wide U1 rollout so polish passes use the same tokens.
 
 **Steps:**
 
-1. Tokens documented in `MIDNIGHT_UX_REDESIGN_BRIEF.md` — implement as CSS vars + Tailwind.
+1. Tokens documented in `ARCARNA_UX_REDESIGN_BRIEF.md` — implement as CSS vars + Tailwind.
 2. Customise shadcn primitives (Card, Button, Table) for machined surfaces — one reference page first (Insights).
 3. `DeckLayer`: subtle grid, node markers, optional dependency arcs — no particles/starfield.
 4. `HullPanel`: navy/metal frame; official logo in header slot only.
