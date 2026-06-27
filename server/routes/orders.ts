@@ -20,6 +20,11 @@ import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import {
+  getUnrefundedRestockLines,
+  orderDeletionMovementEventId,
+  OrderDeleteConflictError,
+} from "../services/orderDeletion";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
@@ -343,12 +348,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.delete("/api/orders/:id", ...scoped, async (req: any, res) => {
+  app.delete("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
-      const { db } = await import('../../apps/server/src/db');
-      const { orders, order_items, products } = await import('../../apps/server/src/db/schema');
+      const { db } = await import('../db');
       const {
+        orders,
+        orderItems,
+        products,
+        customers,
         refunds: refundsTable,
         refundLines,
         orderExpenses,
@@ -356,80 +364,129 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         giftCardMovements,
         invoices,
       } = await import('@shared/schema');
-      const { eq, and, inArray } = await import('drizzle-orm');
-      const mainDb = (await import('../db')).db;
-      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
-
-      const [order] = await db.select().from(orders).where(orderCond);
-      if (!order) throw new Error('Order not found');
-      const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
-
-      // Clear records that reference this order (refunds, invoices, loyalty,
-      // gift-card movements, expenses) before deleting it, so the delete does
-      // not fail on a foreign-key constraint. If the order had refunds we skip
-      // the restock below — the stock was already settled by the refund.
-      const refundRows = await mainDb
-        .select({ id: refundsTable.id })
-        .from(refundsTable)
-        .where(eq(refundsTable.orderId, req.params.id));
-      const hadRefunds = refundRows.length > 0;
-      const refundIds = refundRows.map((r) => r.id);
-
-      if (refundIds.length > 0) {
-        await mainDb.delete(giftCardMovements).where(inArray(giftCardMovements.refundId, refundIds));
-      }
-      await mainDb.delete(giftCardMovements).where(eq(giftCardMovements.orderId, req.params.id));
-      if (refundIds.length > 0) {
-        await mainDb.delete(refundLines).where(inArray(refundLines.refundId, refundIds));
-        await mainDb.delete(refundsTable).where(eq(refundsTable.orderId, req.params.id));
-      }
-      await mainDb.delete(orderExpenses).where(eq(orderExpenses.orderId, req.params.id));
-      await mainDb.delete(loyaltyLedger).where(eq(loyaltyLedger.orderId, req.params.id));
-      await mainDb.delete(invoices).where(eq(invoices.orderId, req.params.id));
+      const { eq, and, inArray, sql } = await import('drizzle-orm');
+      const { adjustProductLocationStock, resolveStockLocationId } = await import(
+        "../services/productLocationStock",
+      );
+      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)) : eq(orders.id, req.params.id);
 
       await db.transaction(async (tx) => {
-        await tx.delete(order_items).where(eq(order_items.order_id, req.params.id));
+        const [order] = await tx.select().from(orders).where(orderCond);
+        if (!order) throw new Error('Order not found');
+        const items = await tx
+          .select({
+            id: orderItems.id,
+            productId: orderItems.productId,
+            quantity: orderItems.quantity,
+          })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, req.params.id));
+
+        const refundRows = await tx
+          .select({ id: refundsTable.id })
+          .from(refundsTable)
+          .where(eq(refundsTable.orderId, req.params.id));
+        const refundIds = refundRows.map((r) => r.id);
+
+        const orderGiftCardMovements = await tx
+          .select({ id: giftCardMovements.id })
+          .from(giftCardMovements)
+          .where(eq(giftCardMovements.orderId, req.params.id))
+          .limit(1);
+        const refundGiftCardMovements = refundIds.length > 0
+          ? await tx
+              .select({ id: giftCardMovements.id })
+              .from(giftCardMovements)
+              .where(inArray(giftCardMovements.refundId, refundIds))
+              .limit(1)
+          : [];
+        if (orderGiftCardMovements.length > 0 || refundGiftCardMovements.length > 0) {
+          throw new OrderDeleteConflictError(
+            "Order has gift-card payment or store-credit refund movements. Void or reconcile the gift card before deleting the order.",
+          );
+        }
+
+        const refundLineRows = refundIds.length > 0
+          ? await tx
+              .select({
+                orderLineId: refundLines.orderLineId,
+                qty: refundLines.qty,
+              })
+              .from(refundLines)
+              .where(inArray(refundLines.refundId, refundIds))
+          : [];
+
+        const loyaltyRows = await tx
+          .select({
+            customerId: loyaltyLedger.customerId,
+            pointsDelta: loyaltyLedger.pointsDelta,
+          })
+          .from(loyaltyLedger)
+          .where(eq(loyaltyLedger.orderId, req.params.id));
+
+        const loyaltyDeltaByCustomer = new Map<string, number>();
+        for (const row of loyaltyRows) {
+          loyaltyDeltaByCustomer.set(
+            row.customerId,
+            (loyaltyDeltaByCustomer.get(row.customerId) ?? 0) + row.pointsDelta,
+          );
+        }
+        for (const [customerId, pointsDelta] of loyaltyDeltaByCustomer) {
+          if (pointsDelta === 0) continue;
+          await tx
+            .update(customers)
+            .set({
+              loyaltyPoints: sql`greatest(0, coalesce(${customers.loyaltyPoints}, 0) - ${pointsDelta})`,
+              updatedAt: new Date(),
+            })
+            .where(eq(customers.id, customerId));
+        }
+
+        const restockLines = getUnrefundedRestockLines(items, refundLineRows);
+        if (order.orgId && restockLines.length > 0) {
+          const locationId = await resolveStockLocationId({
+            orgId: order.orgId,
+            locationId: order.locationId,
+          }, tx);
+          for (const item of restockLines) {
+            const [p] = await tx
+              .select({ productId: products.productId })
+              .from(products)
+              .where(eq(products.id, item.productId))
+              .limit(1);
+            await adjustProductLocationStock({
+              orgId: order.orgId,
+              productId: item.productId,
+              locationId,
+              delta: item.quantity,
+              movement: {
+                reason: "cancellation",
+                correlationId: req.params.id,
+                eventId: orderDeletionMovementEventId(req.params.id),
+                sku: p?.productId || item.productId,
+              },
+            }, tx);
+          }
+        }
+
+        if (refundIds.length > 0) {
+          await tx.delete(refundLines).where(inArray(refundLines.refundId, refundIds));
+          await tx.delete(refundsTable).where(eq(refundsTable.orderId, req.params.id));
+        }
+        await tx.delete(orderExpenses).where(eq(orderExpenses.orderId, req.params.id));
+        await tx.delete(loyaltyLedger).where(eq(loyaltyLedger.orderId, req.params.id));
+        await tx.delete(invoices).where(eq(invoices.orderId, req.params.id));
+        await tx.delete(orderItems).where(eq(orderItems.orderId, req.params.id));
         const [deleted] = await tx.delete(orders).where(orderCond).returning();
         if (!deleted) throw new Error('Order not found');
       });
-
-      if (order.org_id && items.length > 0 && !hadRefunds) {
-        const { adjustProductLocationStock, resolveStockLocationId } = await import(
-          "../services/productLocationStock",
-        );
-        const locationId = await resolveStockLocationId({
-          orgId: order.org_id,
-          locationId: order.location_id,
-          orderId: req.params.id,
-        });
-        for (const item of items) {
-          if (!item.product_id) continue;
-          const [p] = await db
-            .select({ productId: products.product_id })
-            .from(products)
-            .where(eq(products.id, item.product_id))
-            .limit(1);
-          await adjustProductLocationStock({
-            orgId: order.org_id,
-            productId: item.product_id,
-            locationId,
-            delta: item.quantity,
-            movement: {
-              reason: "cancellation",
-              correlationId: req.params.id,
-              eventId: `delete-order-${req.params.id}`,
-              sku: p?.productId || item.product_id,
-            },
-          });
-        }
-      }
       
       res.json({ message: "Order deleted successfully" });
     } catch (error: any) {
       console.error("Error deleting order:", error);
       const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';
-      const status = error.message === 'Order not found' ? 404 : 500;
-      res.status(status).json({ message });
+      const status = error.message === 'Order not found' ? 404 : error.status ?? 500;
+      res.status(status).json({ message: error.status === 409 ? error.message : message });
     }
   });
 
