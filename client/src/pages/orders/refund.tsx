@@ -3,7 +3,7 @@ import { useRoute, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { AppPageHeader } from "@/components/app-page-header";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -141,9 +141,10 @@ export default function OrderRefundPage() {
         </Button>
       </Link>
 
-      <AppPageHeader
+      <PageHeader
         title="Issue refund"
-        description={`Order ${order.id.slice(0, 8)} · ${order.customerName}`}
+        question="What are we refunding, and why?"
+        explanation={`Order ${order.id.slice(0, 8)} · ${order.customerName}`}
       />
 
       {step === 0 && (

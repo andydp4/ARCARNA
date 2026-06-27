@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/appPaths";
-import { AppPageHeader } from "@/components/app-page-header";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,8 +64,8 @@ export default function GiftCardsPage() {
 
   return (
     <div className="space-y-6">
-      <AppPageHeader title="Gift cards" description="Issue, search, void, and review gift card movements"
-        trailing={<Button onClick={() => { setIssueOpen(true); setIssuedCode(null); }} className="min-h-[44px]"><Plus className="mr-2 h-4 w-4" />Issue gift card</Button>} />
+      <PageHeader title="Gift cards" question="What stored value is outstanding?" explanation="Issue, search, void, and review gift card movements"
+        action={<Button onClick={() => { setIssueOpen(true); setIssuedCode(null); }} className="min-h-[44px] lm-btn-metal"><Plus className="mr-2 h-4 w-4" />Issue gift card</Button>} />
       <Card><CardHeader><CardTitle className="text-base">Search</CardTitle></CardHeader>
         <CardContent><div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-10 min-h-[44px] font-mono uppercase" placeholder="Full code or last 4 digits" value={search} onChange={(e) => setSearch(e.target.value)} /></div>

@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FileText, Search, DollarSign, Clock, AlertCircle } from "lucide-react";
 import { InvoiceRow, type InvoiceListItem } from "@/components/invoice-row";
 import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
-import { AppPageHeader } from "@/components/app-page-header";
+import { PageHeader } from "@/components/PageHeader";
 import { ActionLoader } from "@/components/action-loader";
 import { DataTableShell } from "@/components/data-table-shell";
 import { EmptyState } from "@/components/EmptyState";
@@ -302,11 +302,12 @@ export default function Invoices() {
   return (
     <div className="w-full">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
-        <AppPageHeader
+        <PageHeader
+          icon={FileText}
           title="Invoices"
-          description="Totals follow your status, search, and date window. PDF actions need a generated file on the server first."
-          icon={<FileText className="h-7 w-7 shrink-0 text-muted-foreground sm:h-8 sm:w-8" />}
-          trailing={
+          question="Who owes you, and is it paid?"
+          explanation="Totals follow your status, search, and date window. PDF actions need a generated file on the server first."
+          action={
             invoicesFetching ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">
                 Refreshing invoices…

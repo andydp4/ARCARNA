@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
-import { AppPageHeader } from "@/components/app-page-header";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -60,9 +60,10 @@ export default function ShiftsPage() {
 
   return (
     <div className="space-y-6">
-      <AppPageHeader
+      <PageHeader
         title="Shifts"
-        description="Today's shifts, cash variances, and Z-reports"
+        question="Who was on, and did the till balance?"
+        explanation="Today's shifts, cash variances, and Z-reports"
       />
 
       <Card>
