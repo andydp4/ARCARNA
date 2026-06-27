@@ -132,9 +132,9 @@ export default function AnalyticsDashboard() {
             <h3 className="text-lg font-semibold text-foreground">
               Recent Orders
             </h3>
-            <a href="#" className="text-sm text-secondary hover:underline" data-testid="link-viewallorders">
+            <Link href="/open-orders" className="text-sm text-truth-bright hover:underline" data-testid="link-viewallorders">
               View All
-            </a>
+            </Link>
           </div>
           <div className="space-y-3">
             <div className="text-center py-8">
