@@ -246,7 +246,7 @@ export function ExpensesPage() {
         <div>
           <PageHeader
             className="!mb-0"
-            title="Expense Management"
+            title="Expenses"
             question="Where is your money going?"
             explanation="Track and categorise your business costs."
           />

@@ -29,9 +29,9 @@ const QUICK_ACTIONS = [
   { href: "/inventory", icon: Boxes, title: "Inventory", description: "Manage products & stock", testId: "quick-action-inventory" },
   { href: "/customers", icon: Users, title: "Customers", description: "Manage customer database", testId: "quick-action-customers" },
   { href: "/loyalty", icon: Award, title: "Loyalty", description: "Rewards & tiers", testId: "quick-action-loyalty" },
-  { href: "/reports", icon: TrendingUp, title: "Reports", description: "Analytics & insights", testId: "quick-action-reports" },
+  { href: "/reports", icon: TrendingUp, title: "Evidence", description: "Reports & insights", testId: "quick-action-reports" },
   { href: "/expenses", icon: Wallet, title: "Expenses", description: "Track business costs", testId: "quick-action-expenses" },
-  { href: "/expense-reports", icon: PieChart, title: "Profit Analysis", description: "Financial reports", testId: "quick-action-profit" },
+  { href: "/expense-reports", icon: PieChart, title: "Profit Analysis", description: "Margins & profit", testId: "quick-action-profit" },
   { href: "/promotions", icon: Gift, title: "Promotions", description: "Sales & discounts", testId: "quick-action-promotions" },
   { href: "/locations", icon: MapPin, title: "Locations", description: "Multi-store management", testId: "quick-action-locations" },
 ] as const;
@@ -65,7 +65,7 @@ export default function Home() {
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <PageHeader
-          title="Dashboard"
+          title="Control Centre"
           question="How is your business doing today?"
           explanation="Today's takings, profit signal, and what needs your attention."
         />

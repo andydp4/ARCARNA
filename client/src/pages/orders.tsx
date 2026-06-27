@@ -487,7 +487,7 @@ export default function Orders() {
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
         <PageHeader
-          title="Orders"
+          title="Open Orders"
           question="What still needs finishing?"
           explanation="Track and manage orders from creation through completion. Filter by status or search by customer, ID, or payment."
           action={

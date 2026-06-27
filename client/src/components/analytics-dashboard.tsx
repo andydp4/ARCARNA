@@ -48,7 +48,7 @@ export default function AnalyticsDashboard() {
           Revenue, orders, and averages below come from your analytics APIs. For a
           chosen date range, charts, and CSV/PDF exports, open{" "}
           <Link href="/insights" className="font-medium text-primary underline-offset-4 hover:underline">
-            Business Insights
+            Truths
           </Link>
           .
         </p>

@@ -70,7 +70,7 @@ export default function StockTurnAnalyticsPage() {
     <div className="container mx-auto space-y-6 p-4 md:p-6">
       <PageHeader
         icon={Layers}
-        title="Stock turn"
+        title="Stock Turn"
         question="What sells fast, and what sits?"
         explanation={`Category-level turn and days of stock (last ${data?.windowDays ?? 90} days). Slow movers flagged above 90 days.`}
       />

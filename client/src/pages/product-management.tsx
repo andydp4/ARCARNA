@@ -435,7 +435,7 @@ export default function ProductManagement() {
         <div className="flex flex-col gap-4 mb-4 sm:mb-6">
           <PageHeader
             className="!mb-0"
-            title="Product Management"
+            title="Products"
             question="What you sell — and is it set up right?"
             explanation="Add, edit, and manage your product catalogue."
           />

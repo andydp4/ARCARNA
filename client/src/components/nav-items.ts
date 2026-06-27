@@ -37,7 +37,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   {
     key: 'home',
-    label: 'Dashboard',
+    label: 'Control Centre',
     href: '/',
     icon: Home,
     testId: 'nav-home'
@@ -109,7 +109,7 @@ export const navItems: NavItem[] = [
       },
       {
         key: 'gift-cards',
-        label: 'Gift cards',
+        label: 'Gift Cards',
         href: '/gift-cards',
         icon: Ticket,
         testId: 'nav-gift-cards'
@@ -132,7 +132,7 @@ export const navItems: NavItem[] = [
   },
   {
     key: 'insights',
-    label: 'Business Insights',
+    label: 'Truths',
     href: '/insights',
     icon: TrendingUp,
     testId: 'nav-insights',
@@ -146,28 +146,28 @@ export const navItems: NavItem[] = [
       },
       {
         key: 'rfm',
-        label: 'RFM Segments',
+        label: 'Customer Segments',
         href: '/analytics/rfm',
         icon: PieChart,
         testId: 'nav-rfm'
       },
       {
         key: 'hour-of-day',
-        label: 'Hour of day',
+        label: 'Busiest Hours',
         href: '/analytics/hour-of-day',
         icon: Clock,
         testId: 'nav-hour-of-day'
       },
       {
         key: 'channels',
-        label: 'Channels',
+        label: 'Order Channels',
         href: '/analytics/channels',
         icon: Radio,
         testId: 'nav-channels'
       },
       {
         key: 'stock-turn',
-        label: 'Stock turn',
+        label: 'Stock Turn',
         href: '/analytics/stock-turn',
         icon: Layers,
         testId: 'nav-stock-turn'
@@ -181,7 +181,7 @@ export const navItems: NavItem[] = [
       },
       {
         key: 'scheduled-reports',
-        label: 'Scheduled reports',
+        label: 'Scheduled Evidence',
         href: '/scheduled-reports',
         icon: CalendarClock,
         testId: 'nav-scheduled-reports'

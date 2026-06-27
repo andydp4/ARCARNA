@@ -157,7 +157,7 @@ export function ExpenseReportsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           className="!mb-0"
-          title="Financial reports"
+          title="Profit Analysis"
           question="Are you actually making money?"
           explanation="Revenue, costs, and the profit you actually keep for the period."
         />

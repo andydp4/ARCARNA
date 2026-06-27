@@ -158,7 +158,7 @@ export function SmartStockTab() {
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <Sparkles className="h-4 w-4" />
-              Recommendations
+              Next Moves
             </CardTitle>
             <CardDescription>Based on completed orders in the last {data.windowDays} days</CardDescription>
           </CardHeader>

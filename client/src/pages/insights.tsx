@@ -940,7 +940,7 @@ export default function Insights() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <PageHeader
           icon={BarChart3}
-          title="Business insights"
+          title="Truths"
           question="What should you know about your business right now?"
           explanation="Pick a period, explore revenue and operations, then export when you need to share."
         />

@@ -102,7 +102,7 @@ export default function RfmAnalyticsPage() {
         <div>
           <PageHeader
             className="!mb-0"
-            title="Customer segments (RFM)"
+            title="Customer Segments"
             question="Which customers are loyal, at risk, or lost?"
             explanation="Recency, frequency, and monetary scores — updated nightly."
           />

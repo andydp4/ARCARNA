@@ -404,7 +404,7 @@ export default function Customers() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
           <PageHeader
             className="!mb-0"
-            title="Customer Database"
+            title="Customers"
             question="Who buys from you, and what are they worth?"
             explanation="Manage your customer records and recent activity."
           />

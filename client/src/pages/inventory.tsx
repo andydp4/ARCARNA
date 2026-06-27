@@ -299,7 +299,7 @@ export default function Inventory() {
           <Package className="h-4 w-4" />
           <AlertTitle>Need a new product?</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center gap-2">
-            Stock lives here; create catalog entries in Product Management.
+            Stock lives here; create catalog entries in Products.
             <Link href="/products">
               <Button size="sm" variant="secondary" className="min-h-[36px]" data-testid="link-create-product">
                 <Plus className="mr-1 h-4 w-4" />
@@ -340,7 +340,7 @@ export default function Inventory() {
                 <EmptyState
                   icon={Package}
                   title="No inventory items yet"
-                  body="Products you add in Product Management will appear here for stock tracking."
+                  body="Products you add will appear here for stock tracking."
                   cta={{ label: "Go to products", href: "/products" }}
                 />
               ) : (

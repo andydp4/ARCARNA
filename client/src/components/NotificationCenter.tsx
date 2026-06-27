@@ -92,7 +92,7 @@ export function NotificationCenter() {
           size="icon"
           className="relative min-h-[40px] min-w-[40px]"
           data-testid="notification-bell"
-          aria-label="Notifications"
+          aria-label="Signals"
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
@@ -104,7 +104,7 @@ export function NotificationCenter() {
       </PopoverTrigger>
       <PopoverContent className="w-[min(100vw-2rem,360px)] p-0" align="end">
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <p className="font-semibold text-sm">Notifications</p>
+          <p className="font-semibold text-sm">Signals</p>
           {visible.length > 0 && (
             <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={markAllRead}>
               <Check className="h-3 w-3 mr-1" />

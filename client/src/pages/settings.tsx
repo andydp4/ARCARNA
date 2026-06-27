@@ -206,7 +206,7 @@ export default function Settings() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <PageHeader
           icon={Settings2}
-          title="System Settings"
+          title="Settings"
           question="How is Arcarna set up for your business?"
           explanation="Configure your system options below; they save to this browser unless your environment syncs them server-side."
         />

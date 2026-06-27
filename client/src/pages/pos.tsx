@@ -684,7 +684,7 @@ export default function POS() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <PageHeader
               className="!mb-0"
-              title="Point of sale"
+              title="Create Order"
               question="What is this customer buying?"
               explanation="Search products, build the cart, then check out."
             />
