@@ -138,15 +138,15 @@ the specs and the §8 backlog (R1–R13).**
 | ID | Item | Spec | Severity |
 |----|------|------|----------|
 | ✅ R1 | Truth Blue token layer (`arcarna.css`) added; `--primary/--accent/--ring` → Truth Blue; metal tokens retained | Design §18 | **Done (Phase 1)** |
-| R2 | Remove FontAwesome (19 occ / 5 files: `index.css`, `home.tsx`, `top-customers-table.tsx`, `metric-card.tsx`, `analytics-dashboard.tsx`); migrate to Lucide | Design §9/§19 | High |
-| R3 | Rebuild/retire `MetricCard` as `TruthCard` (tokens, state-only colour) | Component §5 | High |
-| R4 | Converge page headers to one canonical `PageHeader` (title + question) | Component §3 | High |
-| R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High |
-| ◑ R6 | **Refine** Liquid Metal surfaces (2-stop gradient, edge-light on raised only, top-shine dropped, panel shadow softened); `lm-btn-metal`→Truth Blue; active nav + FAB → Truth Blue | Design §3.5/§8/§11–§13 | **Token/CSS done (Phase 1)**; per-component sweep pending |
-| R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium |
+| ✅ R2 | FontAwesome removed (CDN @import + all `fas/fab` usages → Lucide); `metric-card.tsx` retired | Design §9/§19 | **Done (Phase 5a)** |
+| ✅ R3 | `MetricCard` retired; `analytics-dashboard` migrated to canonical `InsightCard` (tokens, state-only colour) | Component §5 | **Done (Phase 5a)** |
+| ✅ R4 | Page headers converged on canonical `PageHeader`; `AppPageHeader` removed | Component §3 | **Done (Phase 2 + 5b)** |
+| R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High — **Phase 3** |
+| ✅ R6 | **Refine** Liquid Metal surfaces (Phase 1 tokens) + component sweep: FA→Lucide, hardcoded colours → tokens (`metal-*`, `success`/`danger`) | Design §3.5/§8/§11–§13 | **Done (Phase 1 + 5)** |
+| R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium — **Phase 3** |
 | ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
-| R9 | Add page `question` subtitle to every in-app route | Route §14 / Language §5 | Medium |
-| R10 | Adopt `EmptyState` everywhere a CTA is needed; retire `EmptyStatePanel` (CTA) | Component §10 | Medium |
+| ◑ R9 | Page `question` subtitle: P0 routes done (Phase 2) + invoices/gift-cards/shifts/refund (Phase 5b); remaining non-P0 routes pending | Route §14 / Language §5 | In progress |
+| ✅ R10 | Adopt `EmptyState`; `EmptyStatePanel` retired (SmartStockTab migrated, +CTA) | Component §10 | **Done (Phase 5c)** |
 | R11 | Copy sweep: forbidden words + Midnight residue (README/docs/comments) | Language §18 | Medium |
 | R12 | a11y verification on P0 routes after token change (`npm run test:a11y`) | Design §16 | Medium |
 | R13 | Orphan routes: **keep out of primary nav now** (decided); future gated placement per §10 (Purchase Drafts→Stock; Audit Log/System Activity/Rules→Administer) | Route §10 | Deferred |
