@@ -26,6 +26,9 @@ import {
 import { eq, and, lte, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type EventWriteClient = typeof db | DbTx;
+
 // Generate a unique event ID using UUID v4
 function generateEventId(): string {
   return randomUUID();
@@ -44,7 +47,7 @@ export async function publishEvent<TPayload>(
     actor?: { type: 'user' | 'system'; id: string };
     source?: string;
   },
-  txClient?: typeof db,
+  txClient?: EventWriteClient,
 ): Promise<string> {
   const eventId = generateEventId();
   const now = new Date();
@@ -91,7 +94,7 @@ export async function publishEvent<TPayload>(
 
 /** Publish inside an existing DB transaction (order + outbox atomicity). */
 export async function publishEventTx<TPayload>(
-  tx: typeof db,
+  tx: EventWriteClient,
   eventType: EventType,
   correlationId: string,
   payload: TPayload,

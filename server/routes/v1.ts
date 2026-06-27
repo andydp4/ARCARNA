@@ -10,8 +10,12 @@
 import type { Express } from "express";
 import { requireApiKey, requireScope } from "../middleware/apiKeyAuth";
 import { storage } from "../storage";
+import { z } from "zod";
 
 const auth = [requireApiKey];
+const v1OrderCreateSchema = z.object({
+  locationId: z.string().uuid(),
+}).passthrough();
 
 function orgGuard(req: any, res: any): string | null {
   const { orgId } = req.params as { orgId: string };
@@ -176,8 +180,30 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        const validation = v1OrderCreateSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "locationId is required for public API order creation",
+            errors: validation.error.errors,
+          });
+        }
+        const { db } = await import("../db");
+        const { locations } = await import("@shared/schema");
+        const { eq, and } = await import("drizzle-orm");
+        const [location] = await db
+          .select({ id: locations.id })
+          .from(locations)
+          .where(and(eq(locations.id, validation.data.locationId), eq(locations.orgId, orgId), eq(locations.isActive, 1)))
+          .limit(1);
+        if (!location) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "locationId must belong to an active location in this org",
+          });
+        }
         const { engine } = await import("../../apps/server/src/engine.wiring");
-        const result = await engine.placeOrder({ ...req.body, orgId });
+        const result = await engine.placeOrder({ ...validation.data, orgId });
         res.status(201).json(result);
       } catch (e: any) {
         console.error("[v1] order create:", e);
@@ -197,16 +223,40 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        const { orders, updateOrderStatusSchema } = await import("@shared/schema");
+        const validation = updateOrderStatusSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "Invalid status value",
+            errors: validation.error.errors,
+          });
+        }
         const { db } = await import("../db");
-        const { orders } = await import("../../apps/server/src/db/schema");
         const { eq, and } = await import("drizzle-orm");
-        const [updated] = await db
-          .update(orders)
-          .set({ status: req.body.status, updated_at: new Date() })
-          .where(and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId)))
-          .returning();
-        if (!updated) return res.status(404).json({ error: "not_found" });
-        res.json(updated);
+        const { publishEventTx } = await import("../eventBus");
+        const result = await db.transaction(async (tx) => {
+          const orderCond = and(eq(orders.id, req.params.orderId), eq(orders.orgId, orgId));
+          const [currentOrder] = await tx
+            .select({ status: orders.status })
+            .from(orders)
+            .where(orderCond);
+          if (!currentOrder) return null;
+          const [updated] = await tx
+            .update(orders)
+            .set({ status: validation.data.status, updatedAt: new Date() })
+            .where(orderCond)
+            .returning();
+          const eventId = await publishEventTx(tx, "OrderStatusChanged", req.params.orderId, {
+            orderId: req.params.orderId,
+            from: currentOrder.status,
+            to: validation.data.status,
+            changedAt: new Date().toISOString(),
+          }, { source: "v1-orders" });
+          return { updated, eventId };
+        });
+        if (!result?.updated) return res.status(404).json({ error: "not_found" });
+        res.json({ ...result.updated, eventId: result.eventId });
       } catch (e) {
         console.error("[v1] order patch:", e);
         res.status(500).json({ error: "internal_error" });
