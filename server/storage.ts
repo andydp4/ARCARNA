@@ -1,7 +1,7 @@
 /**
  * Storage Layer - Data Access Interface
  * 
- * This module provides the primary data access layer for the Midnight EPOS system.
+ * This module provides the primary data access layer for the ARCARNA EPOS system.
  * It abstracts database operations and provides a clean interface for the API layer.
  * 
  * IMPORTANT FIELD NAME CONVENTIONS:
