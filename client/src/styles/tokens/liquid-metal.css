@@ -65,6 +65,13 @@
   --input: var(--lm-smoke-chrome);
   --ring: var(--truth-blue-bright);
 
+  /* Charts — single-hue-first, Truth Blue primary series (Design System §10) */
+  --chart-1: var(--truth-blue-bright);
+  --chart-2: hsl(200, 60%, 52%);
+  --chart-3: hsl(190, 35%, 45%);
+  --chart-4: hsl(216, 12%, 55%);
+  --chart-5: hsl(216, 10%, 38%);
+
   color: var(--lm-warm-white);
   background-color: var(--lm-graphite);
 }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartCard } from "@/components/chart-card";
 import { HourHeatmap } from "@/components/charts/HourHeatmap";
 import type { HourOfDayBucket } from "@shared/analytics/hourOfDay";
 import { Skeleton } from "@/components/Skeleton";
@@ -35,18 +35,18 @@ export default function HourOfDayAnalyticsPage() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sales heatmap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : (
-            <HourHeatmap buckets={data?.buckets ?? []} />
-          )}
-        </CardContent>
-      </Card>
+      <ChartCard
+        title="Sales heatmap"
+        question="When are you busiest?"
+        interpretation="Rows = weekday, columns = hour (org timezone); brighter = higher average revenue. Staff and stock the bright cells."
+        action={{ label: "Plan staffing in Shifts", href: "/shifts" }}
+      >
+        {isLoading ? (
+          <Skeleton className="h-64 w-full" />
+        ) : (
+          <HourHeatmap buckets={data?.buckets ?? []} />
+        )}
+      </ChartCard>
     </div>
   );
 }

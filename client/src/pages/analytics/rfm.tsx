@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RfmHeatmap } from "@/components/charts/RfmHeatmap";
+import { ChartCard } from "@/components/chart-card";
 import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 import { Skeleton } from "@/components/Skeleton";
 import { Download, RefreshCw, Users } from "lucide-react";
@@ -139,14 +140,14 @@ export default function RfmAnalyticsPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">R × F heatmap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RfmHeatmap cells={summary?.heatmap ?? []} />
-        </CardContent>
-      </Card>
+      <ChartCard
+        title="R × F heatmap"
+        question="Which customers are loyal, at risk, or lost?"
+        interpretation="Recency (rows) × Frequency (columns); brighter = higher average spend. Top-right are your best customers; bottom-left are lapsing."
+        action={{ label: "Target a segment with a promotion", href: "/promotions" }}
+      >
+        <RfmHeatmap cells={summary?.heatmap ?? []} />
+      </ChartCard>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

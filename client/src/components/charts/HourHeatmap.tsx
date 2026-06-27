@@ -6,9 +6,10 @@ type Props = {
 };
 
 function cellColor(avgRevenue: number, max: number): string {
-  if (max <= 0 || avgRevenue <= 0) return "hsl(var(--muted))";
+  // Single-hue Truth Blue ramp: dark (low) → bright (high) revenue.
+  if (max <= 0 || avgRevenue <= 0) return "var(--muted)";
   const t = Math.min(1, avgRevenue / max);
-  return `hsl(210 80% ${35 + t * 35}%)`;
+  return `hsl(208 90% ${30 + t * 34}%)`;
 }
 
 export function HourHeatmap({ buckets }: Props) {

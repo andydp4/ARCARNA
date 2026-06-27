@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/Skeleton";
 import { PromoLiftChart } from "@/components/charts/PromoLiftChart";
+import { ChartCard } from "@/components/chart-card";
 import { ArrowLeft, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 import type { PromoLiftPercent, PromoWindowMetrics } from "@shared/analytics/promoLift";
@@ -178,17 +179,17 @@ export default function PromotionLiftPage() {
             </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Baseline vs promo period</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PromoLiftChart
-                promoWindow={data.promoWindow}
-                baselineWindow={data.baselineWindow}
-              />
-            </CardContent>
-          </Card>
+          <ChartCard
+            title="Baseline vs promo period"
+            question="Did this promotion pay?"
+            interpretation="Truth Blue bars are the promo window; grey is the baseline. Taller blue means the promo lifted that metric."
+            action={{ label: "Review promotions", href: "/promotions" }}
+          >
+            <PromoLiftChart
+              promoWindow={data.promoWindow}
+              baselineWindow={data.baselineWindow}
+            />
+          </ChartCard>
         </>
       ) : (
         <p className="text-muted-foreground">Promotion not found.</p>

@@ -6,9 +6,10 @@ type Props = {
 };
 
 function cellColor(avgMonetary: number, max: number): string {
-  if (max <= 0 || avgMonetary <= 0) return "hsl(var(--muted))";
+  // Single-hue Truth Blue ramp: dark (low spend) → bright (high spend).
+  if (max <= 0 || avgMonetary <= 0) return "var(--muted)";
   const t = Math.min(1, avgMonetary / max);
-  return `hsl(210 80% ${35 + t * 35}%)`;
+  return `hsl(208 90% ${30 + t * 34}%)`;
 }
 
 export function RfmHeatmap({ cells, onSelect }: Props) {
