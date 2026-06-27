@@ -274,7 +274,7 @@ export async function getFileFromDrive(fileId: string): Promise<Buffer> {
  * Used to organize invoice PDFs in a dedicated folder.
  * Searches for existing folder by name before creating.
  * 
- * @param folderName - Name for the folder (e.g., "Midnight EPOS Invoices")
+ * @param folderName - Name for the folder (e.g., "ARCARNA EPOS Invoices")
  * @returns Folder ID (existing or newly created)
  */
 export async function createFolderIfNotExists(folderName: string): Promise<string> {

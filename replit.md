@@ -36,7 +36,7 @@ Utilizes Drizzle ORM with PostgreSQL. Core tables include `customers`, `products
 Server-side PDF generation uses PDFKit (`server/services/pdfGenerator.ts`) to create professional invoice documents with Viger Assist branding. The InvoiceWorker automatically:
 1. Creates invoice record in database when order is placed
 2. Generates PDF with order details, items, and totals
-3. Uploads PDF to "Midnight EPOS Invoices" folder in Google Drive
+3. Uploads PDF to "ARCARNA EPOS Invoices" folder in Google Drive
 4. Sets public read permissions so customers can access links
 5. Updates invoice record with `googleDriveFileId` and `googleDriveLink`
 
