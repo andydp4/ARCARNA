@@ -41,9 +41,9 @@ function DeltaRow({ label, today, baseline, format = (n) => String(n) }: DeltaPr
   const negative = abs < 0;
   const Icon = positive ? ArrowUp : negative ? ArrowDown : Minus;
   const colorClass = positive
-    ? "text-emerald-600 dark:text-emerald-400"
+    ? "text-success"
     : negative
-      ? "text-red-600 dark:text-red-400"
+      ? "text-danger"
       : "text-muted-foreground";
 
   return (

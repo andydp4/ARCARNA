@@ -44,13 +44,13 @@ export function EmptyState({ title, body, cta, secondary, icon: Icon, className 
   return (
     <div
       className={cn(
-        "mx-auto max-w-md rounded-xl border border-dashed border-[hsl(210,15%,78%/0.18)] lm-card-muted px-6 py-10 text-center",
+        "mx-auto max-w-md rounded-xl border border-dashed border-metal-edge lm-card-muted px-6 py-10 text-center",
         className
       )}
       role="status"
     >
       {Icon && (
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(215,10%,18%)] ring-1 ring-[hsl(210,15%,78%/0.12)]">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-metal-charcoal ring-1 ring-metal-edge">
           <Icon className="h-8 w-8 text-metal-muted" aria-hidden />
         </div>
       )}

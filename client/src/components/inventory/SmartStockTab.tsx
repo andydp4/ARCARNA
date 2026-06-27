@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyStatePanel } from "@/components/empty-state-panel";
+import { EmptyState } from "@/components/EmptyState";
 
 type SmartStockResponse = {
   windowDays: number;
@@ -62,10 +62,11 @@ export function SmartStockTab() {
 
   if (!data?.items?.length) {
     return (
-      <EmptyStatePanel
+      <EmptyState
         icon={Package}
-        title="No products to analyze"
-        description="Add products to your catalog to see velocity, reorder suggestions, and risk scores."
+        title="No products to analyse yet"
+        body="Add products to your catalogue to see velocity, reorder suggestions, and risk scores."
+        cta={{ label: "Add products", href: "/products" }}
       />
     );
   }
