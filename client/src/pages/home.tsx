@@ -10,18 +10,30 @@ import { OnboardingResumeBanner } from "@/components/OnboardingResumeBanner";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { Skeleton } from "@/components/Skeleton";
 import { PageHeader } from "@/components/PageHeader";
+import {
+  ShoppingCart,
+  PlusCircle,
+  Boxes,
+  Users,
+  Award,
+  TrendingUp,
+  Wallet,
+  PieChart,
+  Gift,
+  MapPin,
+} from "lucide-react";
 
 const QUICK_ACTIONS = [
-  { href: "/create-order", icon: "fas fa-cash-register", title: "Create Order", description: "Process sales & orders", testId: "quick-action-pos" },
-  { href: "/products", icon: "fas fa-plus-circle", title: "Add Product", description: "Create a new catalog item", testId: "quick-action-add-product" },
-  { href: "/inventory", icon: "fas fa-boxes", title: "Inventory", description: "Manage products & stock", testId: "quick-action-inventory" },
-  { href: "/customers", icon: "fas fa-users", title: "Customers", description: "Manage customer database", testId: "quick-action-customers" },
-  { href: "/loyalty", icon: "fas fa-award", title: "Loyalty", description: "Rewards & tiers", testId: "quick-action-loyalty" },
-  { href: "/reports", icon: "fas fa-chart-line", title: "Reports", description: "Analytics & insights", testId: "quick-action-reports" },
-  { href: "/expenses", icon: "fas fa-wallet", title: "Expenses", description: "Track business costs", testId: "quick-action-expenses" },
-  { href: "/expense-reports", icon: "fas fa-chart-pie", title: "Profit Analysis", description: "Financial reports", testId: "quick-action-profit" },
-  { href: "/promotions", icon: "fas fa-gift", title: "Promotions", description: "Sales & discounts", testId: "quick-action-promotions" },
-  { href: "/locations", icon: "fas fa-map-marker-alt", title: "Locations", description: "Multi-store management", testId: "quick-action-locations" },
+  { href: "/create-order", icon: ShoppingCart, title: "Create Order", description: "Process sales & orders", testId: "quick-action-pos" },
+  { href: "/products", icon: PlusCircle, title: "Add Product", description: "Create a new catalog item", testId: "quick-action-add-product" },
+  { href: "/inventory", icon: Boxes, title: "Inventory", description: "Manage products & stock", testId: "quick-action-inventory" },
+  { href: "/customers", icon: Users, title: "Customers", description: "Manage customer database", testId: "quick-action-customers" },
+  { href: "/loyalty", icon: Award, title: "Loyalty", description: "Rewards & tiers", testId: "quick-action-loyalty" },
+  { href: "/reports", icon: TrendingUp, title: "Reports", description: "Analytics & insights", testId: "quick-action-reports" },
+  { href: "/expenses", icon: Wallet, title: "Expenses", description: "Track business costs", testId: "quick-action-expenses" },
+  { href: "/expense-reports", icon: PieChart, title: "Profit Analysis", description: "Financial reports", testId: "quick-action-profit" },
+  { href: "/promotions", icon: Gift, title: "Promotions", description: "Sales & discounts", testId: "quick-action-promotions" },
+  { href: "/locations", icon: MapPin, title: "Locations", description: "Multi-store management", testId: "quick-action-locations" },
 ] as const;
 
 export default function Home() {
@@ -70,7 +82,7 @@ export default function Home() {
               <QuickActionCard
                 key={action.href}
                 href={action.href}
-                iconClass={action.icon}
+                icon={action.icon}
                 title={action.title}
                 description={action.description}
                 testId={action.testId}

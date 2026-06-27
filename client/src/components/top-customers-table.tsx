@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function TopCustomersTable() {
   const { data: topCustomers = [], isLoading } = useQuery({
@@ -51,7 +52,7 @@ export default function TopCustomersTable() {
           </div>
           <button className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-secondary transition-colors hover:bg-secondary/10" data-testid="button-viewallcustomers">
             View All
-            <i className="fas fa-arrow-right ml-2"></i>
+            <ArrowRight className="ml-2 inline h-4 w-4" aria-hidden />
           </button>
         </div>
       </CardHeader>
@@ -192,7 +193,7 @@ export default function TopCustomersTable() {
                     disabled
                     data-testid="button-prevpage"
                   >
-                    <i className="fas fa-chevron-left"></i>
+                    <ChevronLeft className="h-4 w-4" aria-hidden />
                   </button>
                   <button className="px-3 py-1 text-sm font-medium text-white bg-secondary rounded-lg" data-testid="button-page1">
                     1
@@ -202,7 +203,7 @@ export default function TopCustomersTable() {
                     disabled
                     data-testid="button-nextpage"
                   >
-                    <i className="fas fa-chevron-right"></i>
+                    <ChevronRight className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               </div>

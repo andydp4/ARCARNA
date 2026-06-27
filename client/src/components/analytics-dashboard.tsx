@@ -1,11 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import MetricCard from "./metric-card";
+import { InsightCard } from "@/components/insight-card";
 import DailyRevenueChart from "./daily-revenue-chart";
 import MonthlyOrdersChart from "./monthly-orders-chart";
 import TopCustomersTable from "./top-customers-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import {
+  DollarSign,
+  ShoppingBag,
+  Users,
+  TrendingUp,
+  PlusCircle,
+  UserPlus,
+  Box,
+  FileText,
+} from "lucide-react";
 
 export default function AnalyticsDashboard() {
   const { data: monthlySummary = [], isLoading: isLoadingMonthly } = useQuery<any[]>({
@@ -57,37 +67,37 @@ export default function AnalyticsDashboard() {
           </>
         ) : (
           <>
-            <MetricCard
+            <InsightCard
+              type="truth"
+              icon={DollarSign}
               title="Total Revenue"
               value={`$${totalRevenue.toLocaleString()}`}
-              change="+12.5%"
-              icon="dollar-sign"
-              iconColor="secondary"
-              subtitle="Last 30 days"
+              trend={{ direction: "up", label: "+12.5%" }}
+              footer="Last 30 days"
             />
-            <MetricCard
+            <InsightCard
+              type="truth"
+              icon={ShoppingBag}
               title="Total Orders"
               value={totalOrders.toLocaleString()}
-              change="+8.2%"
-              icon="shopping-bag"
-              iconColor="accent"
-              subtitle="Last 30 days"
+              trend={{ direction: "up", label: "+8.2%" }}
+              footer="Last 30 days"
             />
-            <MetricCard
+            <InsightCard
+              type="truth"
+              icon={Users}
               title="Active Customers"
               value="847"
-              change="+24.3%"
-              icon="users"
-              iconColor="purple-500"
-              subtitle="Last 30 days"
+              trend={{ direction: "up", label: "+24.3%" }}
+              footer="Last 30 days"
             />
-            <MetricCard
+            <InsightCard
+              type="truth"
+              icon={TrendingUp}
               title="Avg Order Value"
               value={`$${avgOrderValue.toFixed(2)}`}
-              change="+3.7%"
-              icon="chart-line"
-              iconColor="orange-500"
-              subtitle="Last 30 days"
+              trend={{ direction: "up", label: "+3.7%" }}
+              footer="Last 30 days"
             />
           </>
         )}
@@ -110,20 +120,20 @@ export default function AnalyticsDashboard() {
             Quick Actions
           </h3>
           <div className="space-y-2 sm:space-y-3">
-            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-secondary text-white rounded-lg hover:bg-blue-600 transition-colors" data-testid="button-neworder">
-              <i className="fas fa-plus-circle text-lg sm:text-xl"></i>
+            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] lm-btn-metal rounded-lg transition-colors" data-testid="button-neworder">
+              <PlusCircle className="h-5 w-5 shrink-0" aria-hidden />
               <span className="font-medium text-sm sm:text-base">New Order</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addcustomer">
-              <i className="fas fa-user-plus text-lg sm:text-xl text-accent"></i>
+              <UserPlus className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
               <span className="font-medium text-sm sm:text-base">Add Customer</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addproduct">
-              <i className="fas fa-box text-lg sm:text-xl text-orange-500"></i>
+              <Box className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
               <span className="font-medium text-sm sm:text-base">Add Product</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-createinvoice">
-              <i className="fas fa-file-invoice text-lg sm:text-xl text-purple-500"></i>
+              <FileText className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
               <span className="font-medium text-sm sm:text-base">Create Invoice</span>
             </button>
           </div>

@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuthConfig } from "@/components/AuthProviders";
 import { ClerkSignInPanel } from "@/components/ClerkSignInPanel";
 import { AuthShell } from "@/components/AuthShell";
+import { LogIn } from "lucide-react";
 import {
   type AuthRuntime,
   isClerkMode,
@@ -59,7 +60,7 @@ export default function Landing() {
           className="w-full min-h-[44px] lm-btn-metal font-medium"
           data-testid="button-login-replit"
         >
-          <i className="fab fa-codepen text-xl mr-2" />
+          <LogIn className="mr-2 h-5 w-5" aria-hidden />
           Login with Replit
         </Button>
       )}
