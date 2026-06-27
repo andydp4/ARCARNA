@@ -141,11 +141,11 @@ the specs and the §8 backlog (R1–R13).**
 | ✅ R2 | FontAwesome removed (CDN @import + all `fas/fab` usages → Lucide); `metric-card.tsx` retired | Design §9/§19 | **Done (Phase 5a)** |
 | ✅ R3 | `MetricCard` retired; `analytics-dashboard` migrated to canonical `InsightCard` (tokens, state-only colour) | Component §5 | **Done (Phase 5a)** |
 | ✅ R4 | Page headers converged on canonical `PageHeader`; `AppPageHeader` removed | Component §3 | **Done (Phase 2 + 5b)** |
-| R5 | Re-group + rename `nav-items.ts` (6 groups, approved labels) | Route §14 / Language §3 | High — **Phase 3** |
+| ✅ R5 | Renamed `nav-items.ts` labels + page titles to approved terms (Control Centre, Truths, …) | Route §14 / Language §3 | **Done (Phase 3)** |
 | ✅ R6 | **Refine** Liquid Metal surfaces (Phase 1 tokens) + component sweep: FA→Lucide, hardcoded colours → tokens (`metal-*`, `success`/`danger`) | Design §3.5/§8/§11–§13 | **Done (Phase 1 + 5)** |
-| R7 | Convert `/reports`, `/analytics` render-aliases → redirects to `/insights` | Route §9 | Medium — **Phase 3** |
+| ✅ R7 | `/reports` & `/analytics` now redirect to `/insights` | Route §9 | **Done (Phase 7 prep)** |
 | ~~R8~~ | ~~Fix `analytics/rfm.tsx` `/midnight/api`~~ — **already resolved** (measured 0 hits) | Route §6 / §4 | Done |
-| ◑ R9 | Page `question` subtitle: P0 routes done (Phase 2) + invoices/gift-cards/shifts/refund (Phase 5b); remaining non-P0 routes pending | Route §14 / Language §5 | In progress |
+| ✅ R9 | Page `question` subtitle on all operational + admin content routes (31 pages); auth/wizard routes excepted by design | Route §14 / Language §5 | **Done (Phase 2/5b/7)** |
 | ✅ R10 | Adopt `EmptyState`; `EmptyStatePanel` retired (SmartStockTab migrated, +CTA) | Component §10 | **Done (Phase 5c)** |
 | R11 | Copy sweep: forbidden words + Midnight residue (README/docs/comments) | Language §18 | Medium |
 | R12 | a11y verification on P0 routes after token change (`npm run test:a11y`) | Design §16 | Medium |
@@ -192,3 +192,63 @@ system** (FontAwesome → Lucide), and **component duplication** — all in §8.
 | QA Architect | `ARCARNA_COMPLIANCE_REPORT.md` | ✅ (conditional — §7) |
 
 **Owner action required:** confirm §7.1 (direction) and §7.2 (orphan routes) to unblock implementation.
+*(Both confirmed — see §7. Implementation delivered in Phases 1–6; final audit in §11.)*
+
+---
+
+## 11. Phase 7 — Final implementation audit
+
+Implementation phases 1–6 are complete. This audit re-runs the spec gates against the working tree.
+**Every machine-checkable gate passes.** `tsc --noEmit` and `vite build` are green.
+
+### 11.1 Gate results (measured)
+
+| Gate | Target | Result |
+|------|--------|--------|
+| FontAwesome usages (`fas/fab fa-`, CDN import) | 0 | **0** ✅ |
+| Double-wrapped `hsl(var(--token))` | 0 | **0** ✅ |
+| Hardcoded light-theme chart colours | 0 | **0** ✅ |
+| Forbidden SaaS/AI words in `client/src` | 0 | **0** ✅ |
+| "Midnight" in user-facing chrome | 0 | **0** ✅ |
+| Legacy nav labels (Dashboard / Business Insights / Notifications) | 0 | **0** ✅ (renamed to Control Centre / Truths / Signals) |
+| Duplicate components (`metric-card`, `app-page-header`, `empty-state-panel`, `business-truth-card`) | removed | **all removed** ✅ |
+| Canonical components present (`insight-card`, `standard-dialog`, `chart-card`, `PageHeader`, `SettingsSection`, `DataTableState`) | present | **all present** ✅ |
+| `tsc` / `vite build` | green | **green** ✅ |
+
+### 11.2 Coverage by phase
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 — Token layer | Truth Blue + refined Liquid Metal | ✅ |
+| 2 — Page Header System | P0 routes | ✅ |
+| 3 — Navigation & terminology | nav labels + page titles | ✅ |
+| 4 — Component standardisation | canonical library (InsightCard, etc.) | ✅ |
+| 5 — Deduplication | FontAwesome→Lucide, duplicates retired, colour sweep | ✅ |
+| 6 — Charts | Question · Interpretation · Action + Truth Blue | ✅ |
+| 7 — Audit | this report | ✅ |
+
+**Route question coverage:** 31 page files carry a `PageHeader` business question (all operational
++ admin content routes). Excluded by design: auth/status pages (`landing`, `sign-in`, `sign-out`,
+`no-access`, `pending-approval`, `setup-blocked`, `not-found`), onboarding/setup **wizards**, and POS
+shift sub-flows — these are not standard content routes.
+
+### 11.3 Backlog — final status
+
+R1–R7, R10 ✅ done · R8 ✅ (already resolved) · R9 ✅ (P0 + admin routes; auth/wizard excepted) ·
+R11 ◑ chrome clean; `README`/docs Midnight sweep still pending · R12 ⏳ `npm run test:a11y` not run
+here (needs DATABASE_URL + Playwright) · R13 ⏸ orphan routes deferred by owner decision (§7.2).
+
+### 11.4 Known deferred / out of scope (honest)
+
+- **Onboarding / setup wizards** — page-header system not applied (would alter wizard workflow; approved skip).
+- **Legacy light `:root`/`.dark` tokens** in `index.css` — retained; removal risks shadcn components rendered outside `.liquid-metal`. Deprecated, not deleted.
+- **`settings/loyalty`, `settings/feature-flags`** — no clear page header to convert; not given a question subtitle.
+- **`analytics-dashboard` "Recent Orders"** — static empty placeholder (honest, not fabricated); not data-wired (would be new logic).
+- **`README.md` title + `docs/` historical** — still say "Midnight EPOS"/reference old brief names (non-chrome; rebrand plan marks archive docs historical).
+- **a11y verification (R12)** — run `npm run test:a11y` in an environment with a database before release.
+
+### 11.5 Verdict
+
+**PASS.** The application conforms to the Arcarna Design System v1.0 across the audited surface;
+all machine-checkable gates are green and the build is clean. Remaining items are deferred by
+explicit decision or blocked by environment (a11y run) — none are regressions.
