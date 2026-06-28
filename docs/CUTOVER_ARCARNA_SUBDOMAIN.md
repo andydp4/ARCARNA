@@ -106,8 +106,11 @@ sudo ln -s /etc/nginx/sites-available/viger.cloud /etc/nginx/sites-enabled/   # 
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d viger.cloud -d www.viger.cloud
 ```
-That config serves `/root/ARCARNA/portal` at the root and 301-redirects the old
-`viger.cloud/arcarna` + `/midnight` URLs to `https://arcarna.viger.cloud`.
+That config serves `/root/ARCARNA/portal` at the root and 301-redirects old
+Arcarna URLs to the subdomain while preserving deep links and query strings:
+`viger.cloud/arcarna/pos` and `viger.cloud/midnight/pos` → `https://arcarna.viger.cloud/pos`.
+It also sends old root-level app bookmarks such as `viger.cloud/pos` to the same route on
+`https://arcarna.viger.cloud`.
 
 **The shop window** lists every app with its colour and target subdomain:
 | App | Colour | Subdomain | Status |
@@ -132,7 +135,8 @@ That config serves `/root/ARCARNA/portal` at the root and 301-redirects the old
 
 ## Optional — send the old URLs to the new one
 If anyone bookmarked the old path, add redirects in the **viger.cloud** nginx block
-(`deploy/nginx-viger.cloud.conf.example`): `/arcarna/` and `/midnight/` → `https://arcarna.viger.cloud/`.
+(`deploy/nginx-viger.cloud.conf.example`): `/arcarna/*`, `/midnight/*`, and root-level
+app routes such as `/pos` → the matching route on `https://arcarna.viger.cloud/`.
 (Commented example at the bottom of `deploy/nginx-arcarna.viger.cloud.conf.example`.)
 
 ## Follow-ups
