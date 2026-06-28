@@ -4,11 +4,11 @@ import type { Result } from "axe-core";
 import { prepareTenantContext } from "../helpers/e2eTenant";
 
 const CRITICAL_PATHS = [
-  { name: "POS", path: "/arcarna/create-order" },
-  { name: "Customers", path: "/arcarna/customers" },
-  { name: "Products", path: "/arcarna/products" },
-  { name: "Orders", path: "/arcarna/open-orders" },
-  { name: "Settings", path: "/arcarna/settings" },
+  { name: "POS", path: "/create-order" },
+  { name: "Customers", path: "/customers" },
+  { name: "Products", path: "/products" },
+  { name: "Orders", path: "/open-orders" },
+  { name: "Settings", path: "/settings" },
 ] as const;
 
 function seriousOrCritical(violations: Result[]): Result[] {

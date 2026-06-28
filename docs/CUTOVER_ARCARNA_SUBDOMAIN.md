@@ -97,9 +97,10 @@ If anyone bookmarked the old path, add redirects in the **viger.cloud** nginx bl
 (`deploy/nginx-viger.cloud.conf.example`): `/arcarna/` and `/midnight/` → `https://arcarna.viger.cloud/`.
 (Commented example at the bottom of `deploy/nginx-arcarna.viger.cloud.conf.example`.)
 
-## Follow-ups (not blocking — for whoever picks this up)
-- Update `docs/DEPLOY_HOSTINGER_VPS.md` health-check URLs from `…/arcarna/api/health` to
-  `https://arcarna.viger.cloud/api/health`.
-- The e2e/smoke tests (`tests/e2e/smoke.spec.ts`, `playwright.config.ts`) still assume the
-  old path-based setup; update them to the subdomain when convenient (they don't affect the build).
-- UptimeRobot / monitors → point at `https://arcarna.viger.cloud/api/health`.
+## Follow-ups
+- ✅ `docs/DEPLOY_HOSTINGER_VPS.md` updated to the subdomain (URLs, env table, health checks).
+- ✅ e2e / a11y / visual tests updated to the root model (`playwright.config.ts`,
+  `tests/e2e/smoke.spec.ts`, `tests/a11y/critical-paths.spec.ts`, `tests/visual/pos-tablet.spec.ts`,
+  `tests/helpers/e2eTenant.ts`). The `/midnight`→`/arcarna` smoke assertion was removed — at root
+  the app doesn't register that redirect (it's handled at nginx on the old domain).
+- ⏳ **Your action:** point UptimeRobot / any monitor at `https://arcarna.viger.cloud/api/health`.

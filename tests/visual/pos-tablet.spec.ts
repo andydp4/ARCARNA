@@ -7,7 +7,7 @@ test.use({ viewport: { width: 1194, height: 834 } });
 test.describe("POS tablet layout", () => {
   test("shell renders grid and cart rail without horizontal scroll", async ({ page, request }) => {
     await prepareTenantContext(page, request);
-    await page.goto("/arcarna/create-order");
+    await page.goto("/create-order");
     await expect(page.locator(".pos-shell")).toBeVisible({ timeout: 30_000 });
     const shell = page.locator(".pos-tablet-shell");
     await expect(shell).toBeVisible();

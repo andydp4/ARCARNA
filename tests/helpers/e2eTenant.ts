@@ -7,14 +7,14 @@ export async function prepareTenantContext(
   page: Page,
   request: APIRequestContext,
 ): Promise<string> {
-  const orgsRes = await request.get("/arcarna/api/orgs");
+  const orgsRes = await request.get("/api/orgs");
   if (!orgsRes.ok()) throw new Error(`GET /api/orgs failed: ${orgsRes.status()}`);
   const orgs = (await orgsRes.json()) as { id: string }[];
   const orgId = orgs[0]?.id;
   if (!orgId) throw new Error("No organization available for e2e — seed dev DB first");
 
   for (const step of ONBOARDING_STEPS) {
-    const res = await request.patch("/arcarna/api/onboarding/step", {
+    const res = await request.patch("/api/onboarding/step", {
       headers: { "X-Org-Id": orgId },
       data: { step, completed: true },
     });
@@ -23,7 +23,7 @@ export async function prepareTenantContext(
     }
   }
 
-  const saleRes = await request.post("/arcarna/api/onboarding/complete-first-sale", {
+  const saleRes = await request.post("/api/onboarding/complete-first-sale", {
     headers: { "X-Org-Id": orgId },
   });
   if (!saleRes.ok()) {

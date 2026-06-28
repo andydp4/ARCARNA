@@ -8,11 +8,11 @@ const e2eEnv: Record<string, string> = {
   PORT: String(port),
   DEV_AUTH_BYPASS: "1",
   SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-test-session-secret-32chars-min",
-  APP_BASE_PATH: "/arcarna",
-  VITE_BASE_PATH: "/arcarna",
+  APP_BASE_PATH: "/",
+  VITE_BASE_PATH: "/",
 };
 
-const appBasePath = (e2eEnv.APP_BASE_PATH ?? "/arcarna").replace(/\/$/, "");
+const appBasePath = (e2eEnv.APP_BASE_PATH ?? "/").replace(/\/$/, "");
 
 if (process.env.DATABASE_URL) {
   e2eEnv.DATABASE_URL = process.env.DATABASE_URL;
