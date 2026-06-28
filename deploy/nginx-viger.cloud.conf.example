@@ -18,11 +18,17 @@ server {
     root /root/ARCARNA/portal;
     index index.html;
 
-    # Send the old path-based app URLs to the new subdomain (bookmarks).
-    location /arcarna/ { return 301 https://arcarna.viger.cloud$request_uri; }
-    location = /arcarna { return 301 https://arcarna.viger.cloud/; }
-    location /midnight/ { return 301 https://arcarna.viger.cloud/; }
-    location = /midnight { return 301 https://arcarna.viger.cloud/; }
+    # Send old app URLs to the new subdomain while preserving deep links + query strings.
+    location = /arcarna { return 301 https://arcarna.viger.cloud/$is_args$args; }
+    location = /midnight { return 301 https://arcarna.viger.cloud/$is_args$args; }
+    location ~ ^/(?:arcarna|midnight)(?<legacy_path>/.*)$ {
+        return 301 https://arcarna.viger.cloud$legacy_path$is_args$args;
+    }
+
+    # Root-level app bookmarks that used to be handled by Node when viger.cloud proxied it.
+    location ~ ^/(?<epos_path>(?:pos|orders|inventory|products|insights|reports|analytics|locations|customers|loyalty|promotions|expenses|expense-reports|invoices|settings|tick-list|user-access|worker-logs|rules|scheduled-reports|purchase-drafts|sign-in|pending-approval|onboarding|onboarding/wizard|no-access|setup-wizard|setup-blocked))$ {
+        return 301 https://arcarna.viger.cloud/$epos_path$is_args$args;
+    }
 
     # Static portal. try_files lets /files → files.html, /backups → backups.html.
     location / {
