@@ -92,6 +92,44 @@ Then open **https://arcarna.viger.cloud/** in a browser and sign in.
 
 ---
 
+## 9. Viger portal — the shop window at viger.cloud  (≈10 min)
+With Arcarna on its own subdomain, **viger.cloud** becomes a standalone launcher that links out
+to each app. It is now **decoupled** from the Arcarna app:
+- The Arcarna Node app no longer serves the portal in subdomain mode (handled in code).
+- nginx serves the static portal files directly — no Node, no build step.
+
+The portal lives in the repo at `portal/` (`index.html` + `portal-assets/`). Set up nginx:
+```bash
+sudo cp /root/ARCARNA/deploy/nginx-viger.cloud.conf.example \
+        /etc/nginx/sites-available/viger.cloud
+sudo ln -s /etc/nginx/sites-available/viger.cloud /etc/nginx/sites-enabled/   # if not already linked
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d viger.cloud -d www.viger.cloud
+```
+That config serves `/root/ARCARNA/portal` at the root and 301-redirects the old
+`viger.cloud/arcarna` + `/midnight` URLs to `https://arcarna.viger.cloud`.
+
+**The shop window** lists every app with its colour and target subdomain:
+| App | Colour | Subdomain | Status |
+|-----|--------|-----------|--------|
+| Arcarna | Truth Blue | arcarna.viger.cloud | **Live** |
+| Vault (backups) | Stone Grey | vault.viger.cloud | Coming soon |
+| Sanctum (files) | Deep Purple | sanctum.viger.cloud | Coming soon |
+| Email Assistant | Teal Blue | email.viger.cloud | Coming soon |
+| Receipt Maker | Rainforest Green | receipts.viger.cloud | Coming soon |
+| Invoice Generator | Lava Orange | invoice.viger.cloud | Coming soon |
+| Finance Hub | Navy Blue | finance.viger.cloud | Coming soon |
+
+**To take a new app live:** in `portal/index.html`, change that tile's
+`<div class="card card-soon" …>` to `<a class="card" href="https://SUBDOMAIN/">`, swap the
+"Coming soon" tag for "Live", commit, `git pull` on the VPS. (No rebuild — it's static.)
+
+> ⚠️ Confirm the subdomains: you wrote `invoice.arcarna.cloud` once — I used
+> `invoice.viger.cloud` for consistency with the others. Change the table + `portal/index.html`
+> hrefs if you want a different domain.
+
+---
+
 ## Optional — send the old URLs to the new one
 If anyone bookmarked the old path, add redirects in the **viger.cloud** nginx block
 (`deploy/nginx-viger.cloud.conf.example`): `/arcarna/` and `/midnight/` → `https://arcarna.viger.cloud/`.

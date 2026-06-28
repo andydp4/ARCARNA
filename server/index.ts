@@ -104,7 +104,13 @@ process.on("unhandledRejection", (reason) => {
 });
 
 (async () => {
-  registerPortalRoutes(app);
+  // Path-mode (e.g. /arcarna): this Node app also serves the Viger portal at "/".
+  // Subdomain-mode (APP_BASE_PATH=""): the app serves Arcarna at root, so the portal
+  // must NOT be registered here (it would hijack "/"). The portal is then served
+  // statically by nginx on viger.cloud — see docs/CUTOVER_ARCARNA_SUBDOMAIN.md.
+  if (APP_BASE_PATH) {
+    registerPortalRoutes(app);
+  }
   registerLegacyEposRedirects(app, APP_BASE_PATH);
   registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
 

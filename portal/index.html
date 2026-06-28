@@ -14,6 +14,12 @@
     <link rel="stylesheet" href="/portal-assets/portal.css" />
   </head>
   <body>
+    <!--
+      Viger Cloud — shop window. Standalone static site for viger.cloud root.
+      Each app links to its own subdomain. To take an app LIVE: change its
+      <div class="card card-soon"> to <a class="card" href="https://SUBDOMAIN/">
+      and swap the "Coming soon" tag for "Live".
+    -->
     <main class="shell">
       <header class="hero">
         <div class="hero-brand">
@@ -21,39 +27,80 @@
             src="/portal-assets/arcarna-wordmark.png"
             width="240"
             height="72"
-            alt="ARCARNA EPOS"
+            alt="Viger Cloud"
           />
           <p class="eyebrow">viger.cloud</p>
         </div>
         <h1>Viger Cloud</h1>
-        <p class="lead">Choose a workspace. ARCARNA EPOS, files, and backups live here.</p>
+        <p class="lead">Your business tools, in one place. Choose an app to open.</p>
       </header>
 
       <section class="grid" aria-label="Applications">
-        <a class="card card-active" href="/arcarna/">
+        <!-- Arcarna — Truth Blue — LIVE -->
+        <a class="card" href="https://arcarna.viger.cloud/" style="--card-accent: #4ba9fb">
           <span class="card-tag">Live</span>
-          <h2>ARCARNA EPOS</h2>
-          <p>Point of sale, inventory, customers, orders, and reports.</p>
-          <span class="card-cta">Open ARCARNA →</span>
+          <h2>Arcarna</h2>
+          <p>Point of sale, inventory, customers, orders, and the truths behind your numbers.</p>
+          <span class="card-cta">Open Arcarna →</span>
         </a>
 
-        <a class="card" href="/files">
+        <!-- Vault — Stone Grey — backup storage (holding place) -->
+        <div class="card card-soon" style="--card-accent: #8a8f98" role="link" aria-disabled="true">
           <span class="card-tag card-tag-muted">Coming soon</span>
-          <h2>Files</h2>
-          <p>Shared documents and uploads for your business.</p>
-          <span class="card-cta">View files →</span>
-        </a>
+          <h2>Vault</h2>
+          <p>Backup storage — databases and exports, safe and recoverable.</p>
+          <!-- href when ready: https://vault.viger.cloud/ -->
+          <span class="card-domain">vault.viger.cloud</span>
+        </div>
 
-        <a class="card" href="/backups">
+        <!-- Sanctum — Deep Purple — file storage -->
+        <div class="card card-soon" style="--card-accent: #7c3aed" role="link" aria-disabled="true">
           <span class="card-tag card-tag-muted">Coming soon</span>
-          <h2>Backups</h2>
-          <p>Database and export backups in one place.</p>
-          <span class="card-cta">View backups →</span>
-        </a>
+          <h2>Sanctum</h2>
+          <p>File storage — shared documents and uploads for your business.</p>
+          <!-- href when ready: https://sanctum.viger.cloud/ -->
+          <span class="card-domain">sanctum.viger.cloud</span>
+        </div>
+
+        <!-- Email Assistant — Teal Blue -->
+        <div class="card card-soon" style="--card-accent: #14b8a6" role="link" aria-disabled="true">
+          <span class="card-tag card-tag-muted">Coming soon</span>
+          <h2>Email Assistant</h2>
+          <p>Draft, triage, and send business email faster.</p>
+          <!-- href when ready: https://email.viger.cloud/ -->
+          <span class="card-domain">email.viger.cloud</span>
+        </div>
+
+        <!-- Receipt Maker — Rainforest Green -->
+        <div class="card card-soon" style="--card-accent: #16a34a" role="link" aria-disabled="true">
+          <span class="card-tag card-tag-muted">Coming soon</span>
+          <h2>Receipt Maker</h2>
+          <p>Create and send clean, branded receipts in seconds.</p>
+          <!-- href when ready: https://receipts.viger.cloud/ -->
+          <span class="card-domain">receipts.viger.cloud</span>
+        </div>
+
+        <!-- Invoice Generator — Lava Orange -->
+        <div class="card card-soon" style="--card-accent: #f97316" role="link" aria-disabled="true">
+          <span class="card-tag card-tag-muted">Coming soon</span>
+          <h2>Invoice Generator</h2>
+          <p>Generate, send, track, and chase invoices.</p>
+          <!-- href when ready: https://invoice.viger.cloud/ -->
+          <span class="card-domain">invoice.viger.cloud</span>
+        </div>
+
+        <!-- Finance Hub — Navy Blue -->
+        <div class="card card-soon" style="--card-accent: #1e3a8a" role="link" aria-disabled="true">
+          <span class="card-tag card-tag-muted">Coming soon</span>
+          <h2>Finance Hub</h2>
+          <p>Profit, costs, and cash across every app in one view.</p>
+          <!-- href when ready: https://finance.viger.cloud/ -->
+          <span class="card-domain">finance.viger.cloud</span>
+        </div>
       </section>
 
       <footer class="foot">
-        <p>ARCARNA EPOS is at <code>/arcarna</code>. Legacy <code>/midnight</code> redirects automatically.</p>
+        <p>Viger Cloud — one home for every app. New tools appear here as they go live.</p>
       </footer>
     </main>
   </body>

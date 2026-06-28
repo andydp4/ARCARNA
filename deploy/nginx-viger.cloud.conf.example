@@ -1,59 +1,35 @@
-# Example Nginx site for viger.cloud
+# Example Nginx site for viger.cloud — the standalone "shop window" portal.
 # Cloudflare DNS/proxy/cache: see docs/ops/CLOUDFLARE.md
-# - /           → Viger Cloud portal (static, served by Node from dist/portal)
-# - /arcarna   → ARCARNA EPOS (Node on :5000)
-# - Legacy: /midnight → 301 to /arcarna (app-level + optional edge redirect below)
-# - /files, /backups → portal placeholder pages
 #
-# After Certbot: use the HTTPS server block below (or add HSTS to the block Certbot creates).
+# In the subdomain world the portal is DECOUPLED from the Arcarna Node app:
+# - viger.cloud (this file) → serves the static portal directly (no Node).
+# - arcarna.viger.cloud      → the Arcarna Node app (see deploy/nginx-arcarna.viger.cloud.conf.example).
+#
+# The portal is static files in the repo at /root/ARCARNA/portal/
+# (index.html, files.html, backups.html, portal-assets/). No build/runtime needed.
+#
+# After Certbot: `sudo certbot --nginx -d viger.cloud -d www.viger.cloud`
 
 server {
     listen 80;
+    listen [::]:80;
     server_name viger.cloud www.viger.cloud;
 
-    client_max_body_size 25m;
+    root /root/ARCARNA/portal;
+    index index.html;
 
-    location /midnight/ {
-        rewrite ^/midnight/(.*)$ /arcarna/$1 permanent;
-    }
+    # Send the old path-based app URLs to the new subdomain (bookmarks).
+    location /arcarna/ { return 301 https://arcarna.viger.cloud$request_uri; }
+    location = /arcarna { return 301 https://arcarna.viger.cloud/; }
+    location /midnight/ { return 301 https://arcarna.viger.cloud/; }
+    location = /midnight { return 301 https://arcarna.viger.cloud/; }
 
-    location = /midnight {
-        return 301 /arcarna/;
-    }
-
+    # Static portal. try_files lets /files → files.html, /backups → backups.html.
     location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        try_files $uri $uri/ $uri.html =404;
     }
 }
 
-# HTTPS (after `certbot --nginx -d viger.cloud -d www.viger.cloud`)
-# Certbot may merge this into sites-available/viger.cloud — ensure HSTS is present:
-#
-# server {
-#     listen 443 ssl http2;
-#     server_name viger.cloud www.viger.cloud;
-#
-#     client_max_body_size 25m;
-#
-#     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-#
-#     location / {
-#         proxy_pass http://127.0.0.1:5000;
-#         proxy_http_version 1.1;
-#         proxy_set_header Upgrade $http_upgrade;
-#         proxy_set_header Connection 'upgrade';
-#         proxy_set_header Host $host;
-#         proxy_set_header X-Real-IP $remote_addr;
-#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-#         proxy_set_header X-Forwarded-Proto $scheme;
-#         proxy_cache_bypass $http_upgrade;
-#     }
-# }
+# After `certbot --nginx -d viger.cloud -d www.viger.cloud` it adds the 443 block
+# and the HTTP→HTTPS redirect. Add HSTS inside the 443 block:
+#   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
