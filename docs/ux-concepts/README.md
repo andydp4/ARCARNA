@@ -1,4 +1,4 @@
-# UX concepts — Midnight EPOS
+# UX concepts — ARCARNA EPOS
 
 ## Approved direction
 
