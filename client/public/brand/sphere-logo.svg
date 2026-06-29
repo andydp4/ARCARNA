@@ -27,11 +27,16 @@
 
     <!-- Glow for the crescent terminator highlight -->
     <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feGaussianBlur stdDeviation="4" result="b"/>
       <feMerge>
         <feMergeNode in="b"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
+    </filter>
+
+    <!-- Wider, softer bloom for the surrounding glow -->
+    <filter id="bloom" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="14"/>
     </filter>
 
     <clipPath id="ball">
@@ -56,15 +61,20 @@
              C 206 355, 206 165, 262 72 Z"
           fill="url(#shadow)"/>
 
-    <!-- Soft bloom behind the crescent -->
-    <path d="M 262 72 C 206 165, 206 355, 250 440"
-          fill="none" stroke="#bcd4ff" stroke-width="20"
-          stroke-linecap="round" opacity="0.35" filter="url(#glow)"/>
+    <!-- Soft outer bloom around the opening -->
+    <path d="M 262 72 C 190 165, 190 355, 250 440
+             C 220 355, 220 165, 262 72 Z"
+          fill="#aecaff" opacity="0.4" filter="url(#bloom)"/>
 
-    <!-- Bright crescent terminator highlight -->
-    <path d="M 262 72 C 206 165, 206 355, 250 440"
-          fill="none" stroke="#ffffff" stroke-width="7"
-          stroke-linecap="round" filter="url(#glow)"/>
+    <!-- Brightest swell in the middle of the opening -->
+    <ellipse cx="212" cy="256" rx="22" ry="120" fill="#ffffff"
+             opacity="0.55" filter="url(#bloom)"/>
+
+    <!-- The opening: tapered lens, wide and bright in the middle,
+         narrowing to points at top and bottom -->
+    <path d="M 262 72 C 198 165, 198 355, 250 440
+             C 216 355, 216 165, 262 72 Z"
+          fill="#ffffff" filter="url(#glow)"/>
 
     <!-- Faint rim light on the upper-left edge -->
     <path d="M 132 168 A 184 184 0 0 0 110 312"
