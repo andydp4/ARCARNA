@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Sphere Logo</title>
+  <defs>
+    <!-- Lit (blue) hemisphere: light source upper-left -->
+    <radialGradient id="lit" cx="32%" cy="28%" r="82%">
+      <stop offset="0%"  stop-color="#6fa0ff"/>
+      <stop offset="22%" stop-color="#3f74e0"/>
+      <stop offset="52%" stop-color="#234fb0"/>
+      <stop offset="80%" stop-color="#122f72"/>
+      <stop offset="100%" stop-color="#091a3c"/>
+    </radialGradient>
+
+    <!-- Shadow (dark) hemisphere -->
+    <linearGradient id="shadow" x1="40%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%"   stop-color="#0a1838"/>
+      <stop offset="55%"  stop-color="#050b1e"/>
+      <stop offset="100%" stop-color="#03060f"/>
+    </linearGradient>
+
+    <!-- Soft halo around the sphere -->
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#1b3a8a" stop-opacity="0"/>
+      <stop offset="88%" stop-color="#1b3a8a" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#1b3a8a" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Glow for the crescent terminator highlight -->
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <clipPath id="ball">
+      <circle cx="256" cy="256" r="184"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#03050b"/>
+
+  <!-- Ambient halo -->
+  <circle cx="256" cy="256" r="232" fill="url(#halo)"/>
+
+  <!-- Sphere -->
+  <g clip-path="url(#ball)">
+    <!-- Lit base -->
+    <circle cx="256" cy="256" r="184" fill="url(#lit)"/>
+
+    <!-- Dark hemisphere (right of the terminator) -->
+    <path d="M 262 72
+             A 184 184 0 0 1 250 440
+             C 206 355, 206 165, 262 72 Z"
+          fill="url(#shadow)"/>
+
+    <!-- Soft bloom behind the crescent -->
+    <path d="M 262 72 C 206 165, 206 355, 250 440"
+          fill="none" stroke="#bcd4ff" stroke-width="20"
+          stroke-linecap="round" opacity="0.35" filter="url(#glow)"/>
+
+    <!-- Bright crescent terminator highlight -->
+    <path d="M 262 72 C 206 165, 206 355, 250 440"
+          fill="none" stroke="#ffffff" stroke-width="7"
+          stroke-linecap="round" filter="url(#glow)"/>
+
+    <!-- Faint rim light on the upper-left edge -->
+    <path d="M 132 168 A 184 184 0 0 0 110 312"
+          fill="none" stroke="#7ea8ff" stroke-width="4"
+          stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>
