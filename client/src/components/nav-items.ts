@@ -185,6 +185,13 @@ export const navItems: NavItem[] = [
         href: '/scheduled-reports',
         icon: CalendarClock,
         testId: 'nav-scheduled-reports'
+      },
+      {
+        key: 'cashier-payroll',
+        label: 'Cashier Payroll',
+        href: '/cashier-payroll',
+        icon: Wallet,
+        testId: 'nav-cashier-payroll'
       }
     ]
   },

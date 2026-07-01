@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket } from "lucide-react";
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
+import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
@@ -307,7 +308,9 @@ export default function POS() {
         
         if (!response.ok) {
           const text = await response.text() || response.statusText;
-          if (response.status === 409 && text.includes("SHIFT_REQUIRED")) {
+          if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
+            window.dispatchEvent(new CustomEvent("arcarna:cashier-shift-required"));
+          } else if (response.status === 409 && text.includes("SHIFT_REQUIRED")) {
             setShiftOpenModal(true);
           }
           throw new Error(`${response.status}: ${text}`);
@@ -689,6 +692,7 @@ export default function POS() {
               explanation="Search products, build the cart, then check out."
             />
             <div className="flex flex-wrap gap-2">
+              <CashierShiftBadge />
               {shiftId && (
                 <Button
                   variant="outline"
