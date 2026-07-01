@@ -15,6 +15,15 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 
+/** True when a failure is due to Google Drive/Replit connector not being configured in this environment. */
+function isDriveNotConfiguredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /REPLIT_CONNECTORS_HOSTNAME|Replit authentication token|not connected/i.test(message);
+}
+
+const DRIVE_NOT_CONFIGURED_MESSAGE =
+  "PDF storage (Google Drive) isn't configured in this environment. Set REPLIT_CONNECTORS_HOSTNAME/REPL_IDENTITY (Replit) or contact an admin to configure PDF storage.";
+
 export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/invoices", ...scoped, async (req: any, res) => {
     try {
@@ -164,7 +173,11 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
       });
     } catch (error) {
       console.error("Error regenerating invoice PDF:", error);
-      res.status(500).json({ message: "Failed to regenerate invoice PDF" });
+      if (isDriveNotConfiguredError(error)) {
+        return res.status(503).json({ message: DRIVE_NOT_CONFIGURED_MESSAGE, code: "PDF_STORAGE_NOT_CONFIGURED" });
+      }
+      const message = error instanceof Error ? error.message : "Failed to regenerate invoice PDF";
+      res.status(500).json({ message });
     }
   });
 
@@ -279,7 +292,11 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
       });
     } catch (error) {
       console.error("Error regenerating missing invoice PDFs:", error);
-      res.status(500).json({ message: "Failed to regenerate missing invoice PDFs" });
+      if (isDriveNotConfiguredError(error)) {
+        return res.status(503).json({ message: DRIVE_NOT_CONFIGURED_MESSAGE, code: "PDF_STORAGE_NOT_CONFIGURED" });
+      }
+      const message = error instanceof Error ? error.message : "Failed to regenerate missing invoice PDFs";
+      res.status(500).json({ message });
     }
   });
 

@@ -1507,7 +1507,10 @@ export const inventoryMovements = pgTable("inventory_movements", {
   delta: integer("delta").notNull(), // negative for sale, positive for return
   reason: varchar("reason", { length: 50 }).notNull(), // sale, refund, adjustment, order_update
   correlationId: varchar("correlation_id", { length: 100 }).notNull(), // orderId
-  eventId: varchar("event_id", { length: 36 }).notNull(),
+  // Wider than the usual 36-char UUID event id: some callers build composite,
+  // per-line idempotency keys (e.g. goods receipt completion) that combine a
+  // prefix and one or two UUIDs.
+  eventId: varchar("event_id", { length: 160 }).notNull(),
   previousStock: integer("previous_stock"),
   newStock: integer("new_stock"),
   locationId: uuid("location_id").references(() => locations.id),

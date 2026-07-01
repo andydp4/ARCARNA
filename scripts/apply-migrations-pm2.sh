@@ -50,7 +50,11 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
          migrations/033_whatsapp.sql \
          migrations/034_whatsapp_order_intents.sql \
          migrations/035_whatsapp_templates.sql \
-         migrations/036_widen_location_state.sql; do
+         migrations/036_widen_location_state.sql \
+         migrations/037_rename_accent_style_default.sql \
+         migrations/038_cashier_commission.sql \
+         migrations/039_domain_audit_logs.sql \
+         migrations/040_widen_inventory_movement_event_id.sql; do
   if [[ ! -f "$f" ]]; then
     echo "  SKIP missing $f"
     continue

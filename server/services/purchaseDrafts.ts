@@ -1,4 +1,6 @@
 import { db } from "../db";
+
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 import {
   purchaseDrafts,
   purchaseDraftItems,
@@ -37,8 +39,8 @@ const STATUS_FLOW: Record<PurchaseDraftStatus, PurchaseDraftStatus[]> = {
   cancelled: [],
 };
 
-async function loadDraftWithItems(orgId: string, id: string) {
-  const [draft] = await db
+async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | typeof db = db) {
+  const [draft] = await executor
     .select({
       id: purchaseDrafts.id,
       orgId: purchaseDrafts.orgId,
@@ -60,7 +62,7 @@ async function loadDraftWithItems(orgId: string, id: string) {
 
   if (!draft) return null;
 
-  const items = await db
+  const items = await executor
     .select({
       id: purchaseDraftItems.id,
       productId: purchaseDraftItems.productId,
@@ -172,7 +174,7 @@ export async function createPurchaseDraft(
       });
     }
 
-    return loadDraftWithItems(orgId, draft.id);
+    return loadDraftWithItems(orgId, draft.id, tx);
   });
 }
 
