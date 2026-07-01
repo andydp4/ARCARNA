@@ -19,6 +19,7 @@ import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Sm
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
+import { getActiveCashierId, getActiveCashierShiftId } from "@/lib/orgScope";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
@@ -266,11 +267,20 @@ export default function POS() {
       const queueOffline = async () => {
         console.log('[POS] Queueing order mutation offline');
         try {
+          // Snapshot the cashier/shift context now, so a sync that happens after
+          // the shift auto-closes still attributes the sale to the original cashier.
+          const cashierId = getActiveCashierId();
+          const cashierShiftId = getActiveCashierShiftId();
+          const offlineOrderData = {
+            ...orderData,
+            ...(cashierId ? { cashierId } : {}),
+            ...(cashierShiftId ? { cashierShiftId } : {}),
+          };
           await offlineStorage.queueMutation({
             type: 'ORDER_CREATE',
             method: 'POST',
             endpoint: '/api/orders',
-            data: orderData
+            data: offlineOrderData
           });
           console.log('[POS] Order mutation queued successfully');
         } catch (queueError) {

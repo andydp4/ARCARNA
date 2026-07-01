@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { db } from "../db";
-import { organizations } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { organizations, cashierShifts } from "../../shared/schema";
+import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
 
 export type ActiveCashierShiftContext = {
@@ -36,6 +36,23 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .where(eq(organizations.id, ctx.orgId))
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
+
+    // Offline-queued orders carry the original cashier/shift context captured at
+    // the time of sale. Trust it as-is (even if that shift has since closed) so
+    // a late sync still attributes the sale to the cashier who made it.
+    const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
+    const offlineCashierId = req.body?.cashierId as string | undefined;
+    if (offlineCashierShiftId && offlineCashierId) {
+      const [shift] = await db
+        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
+        .limit(1);
+      if (shift && shift.cashierId === offlineCashierId) {
+        req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+        return next();
+      }
+    }
 
     const cashierId =
       (req.headers["x-cashier-id"] as string) ||
