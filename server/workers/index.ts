@@ -213,6 +213,7 @@ let dispatchInterval: NodeJS.Timeout | null = null;
 let processInterval: NodeJS.Timeout | null = null;
 let scheduledReportInterval: NodeJS.Timeout | null = null;
 let rfmInterval: NodeJS.Timeout | null = null;
+let cashierShiftAutoCloseInterval: NodeJS.Timeout | null = null;
 
 // Start the worker runner
 export function startWorkerRunner(options?: {
@@ -277,6 +278,15 @@ export function startWorkerRunner(options?: {
     }
   }, 60_000);
 
+  cashierShiftAutoCloseInterval = setInterval(async () => {
+    try {
+      const { autoCloseInactiveCashierShifts } = await import("../services/cashierShiftEngine");
+      await autoCloseInactiveCashierShifts();
+    } catch (error) {
+      console.error("[WorkerRunner] Cashier shift auto-close tick failed:", error);
+    }
+  }, 60_000);
+
   console.log('[WorkerRunner] Started successfully');
 }
 
@@ -304,6 +314,11 @@ export function stopWorkerRunner(): void {
   if (rfmInterval) {
     clearInterval(rfmInterval);
     rfmInterval = null;
+  }
+
+  if (cashierShiftAutoCloseInterval) {
+    clearInterval(cashierShiftAutoCloseInterval);
+    cashierShiftAutoCloseInterval = null;
   }
 
   isRunning = false;

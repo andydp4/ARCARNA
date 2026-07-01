@@ -6,6 +6,7 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
+import { requireActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -22,7 +23,7 @@ import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, async (req: any, res) => {
+  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId: string | null; role: string };
       if (!ctx?.orgId) {
@@ -48,8 +49,17 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
         const shiftId = req.shift?.id;
-        if (shiftId) {
-          await tx.update(orders).set({ shift_id: shiftId }).where(eq(orders.id, result.orderId));
+        const cashierShift = req.cashierShift;
+        if (shiftId || cashierShift) {
+          await tx
+            .update(orders)
+            .set({
+              ...(shiftId ? { shift_id: shiftId } : {}),
+              ...(cashierShift
+                ? { cashier_id: cashierShift.cashierId, cashier_shift_id: cashierShift.cashierShiftId }
+                : {}),
+            })
+            .where(eq(orders.id, result.orderId));
         }
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));

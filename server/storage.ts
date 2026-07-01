@@ -711,6 +711,9 @@ export class DatabaseStorage implements IStorage {
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
       "receiptTemplateHtml",
       "accentStyle", "businessColors", "setupWizardState", "onboardingState",
+      "receiptLogoEnabled", "invoiceLogoEnabled",
+      "cashierCommissionEnabled", "defaultCashierCommissionRate", "requireCashierForSale",
+      "shiftInactivityCloseAfter", "globalExpenseAllocationMode",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];

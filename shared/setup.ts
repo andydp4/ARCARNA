@@ -1,8 +1,14 @@
 import { z } from "zod";
-import { BUSINESS_TYPES, type Organization } from "./schema";
+import {
+  BUSINESS_TYPES,
+  COMMISSION_RATE_PRESETS,
+  SHIFT_INACTIVITY_OPTIONS,
+  type Organization,
+} from "./schema";
 import { parseImportInteger, parseImportNumber } from "./importValues";
 
 export { BUSINESS_TYPES, type BusinessType } from "./schema";
+export { COMMISSION_RATE_PRESETS, SHIFT_INACTIVITY_OPTIONS } from "./schema";
 export type { Organization };
 
 /** Org profile + setup fields returned by GET/PATCH /api/org/setup */
@@ -14,6 +20,7 @@ export const SETUP_WIZARD_STEPS = [
   "import-products",
   "import-customers",
   "branding",
+  "cashiers-and-commission",
   "review",
 ] as const;
 
@@ -48,8 +55,25 @@ export const orgProfilePatchSchema = z.object({
   receiptStyle: z.string().max(32).optional(),
   accentStyle: z.string().max(32).optional(),
   businessColors: z.record(z.string()).optional().nullable(),
+  receiptLogoEnabled: z.boolean().optional(),
+  invoiceLogoEnabled: z.boolean().optional(),
+  cashierCommissionEnabled: z.boolean().optional(),
+  defaultCashierCommissionRate: z.union([z.string(), z.number()]).optional(),
+  requireCashierForSale: z.boolean().optional(),
+  shiftInactivityCloseAfter: z.enum(SHIFT_INACTIVITY_OPTIONS).optional(),
+  globalExpenseAllocationMode: z.string().max(32).optional(),
   setupWizardState: setupWizardStateSchema.optional(),
 });
+
+/** First cashier profile(s) captured during setup wizard */
+export const setupCashierDraftSchema = z.object({
+  cashierCode: z.string().min(1).max(20),
+  displayName: z.string().min(1).max(255),
+  defaultCommissionRate: z.union([z.string(), z.number()]).optional().nullable(),
+});
+export type SetupCashierDraft = z.infer<typeof setupCashierDraftSchema>;
+
+export const COMMISSION_RATE_PRESET_OPTIONS = COMMISSION_RATE_PRESETS;
 
 export type OrgProfilePatch = z.infer<typeof orgProfilePatchSchema>;
 
