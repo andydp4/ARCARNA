@@ -51,6 +51,8 @@ import { PageHeader, LM_CARD } from '@/components/PageHeader'
 import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
+import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
+import { BrandingSettings } from '@/components/settings/BrandingSettings'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
 import { Link } from "wouter";
@@ -79,6 +81,7 @@ import {
 export default function Settings() {
   const { user } = useAuth()
   const canManageFlags = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
+  const canViewCashiers = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('general')
   const [copiedText, setCopiedText] = useState('')
@@ -212,7 +215,7 @@ export default function Settings() {
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-7 min-h-[48px]">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-8 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="imports">Imports</TabsTrigger>
             <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
@@ -220,6 +223,7 @@ export default function Settings() {
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            {canViewCashiers && <TabsTrigger value="cashiers" data-testid="tab-cashiers">Cashiers</TabsTrigger>}
             <TabsTrigger value="users">Users</TabsTrigger>
             {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
@@ -235,6 +239,12 @@ export default function Settings() {
           <TabsContent value="suppliers" className="space-y-6">
             <SuppliersHub />
           </TabsContent>
+
+          {canViewCashiers && (
+            <TabsContent value="cashiers" className="space-y-6">
+              <CashierCommissionSettings />
+            </TabsContent>
+          )}
 
           {/* General Settings */}
           <TabsContent value="general" className="space-y-6">
@@ -638,6 +648,7 @@ export default function Settings() {
 
           {/* Invoice Settings */}
           <TabsContent value="invoice" className="space-y-6">
+              <BrandingSettings />
               <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
