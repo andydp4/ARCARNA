@@ -15,6 +15,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
+import { touchCashierShiftActivity } from "../services/cashierShiftEngine";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
@@ -259,6 +260,10 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
 
           return { refund, eventId, storeCreditGiftCard };
         });
+
+        if (order.cashierShiftId) {
+          await touchCashierShiftActivity(order.cashierShiftId);
+        }
 
         await recordAdminAudit(req, {
           actorUserId: userId, actorRole: req.orgContext?.role ?? "CASHIER", action: "refund.issued",

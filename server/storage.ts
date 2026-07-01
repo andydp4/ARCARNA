@@ -29,6 +29,7 @@ import {
   productLocationStock,
   orders,
   orderItems,
+  invoices,
   locations,
   loyaltyTiers,
   promotions,
@@ -711,6 +712,9 @@ export class DatabaseStorage implements IStorage {
       "invoiceStartNumber", "paymentTerms", "defaultTaxRate", "receiptFooter", "receiptStyle",
       "receiptTemplateHtml",
       "accentStyle", "businessColors", "setupWizardState", "onboardingState",
+      "receiptLogoEnabled", "invoiceLogoEnabled",
+      "cashierCommissionEnabled", "defaultCashierCommissionRate", "requireCashierForSale",
+      "shiftInactivityCloseAfter", "globalExpenseAllocationMode",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
@@ -1725,16 +1729,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInvoicesWithDetails(orgId: string): Promise<any[]> {
+    const org = await this.getOrganization(orgId);
+    const taxRate = org?.defaultTaxRate != null ? parseFloat(String(org.defaultTaxRate)) / 100 : 0.20;
+
     const ordersData = await db
-      .select({ order: orders, customer: customers })
+      .select({ order: orders, customer: customers, invoice: invoices })
       .from(orders)
       .leftJoin(customers, eq(orders.customerId, customers.id))
+      .leftJoin(invoices, eq(invoices.orderId, orders.id))
       .where(eq(orders.orgId, orgId))
       .orderBy(desc(orders.createdAt));
 
     // For each order, fetch order items with product details
-    const invoices = await Promise.all(
-      ordersData.map(async ({ order, customer }) => {
+    const result = await Promise.all(
+      ordersData.map(async ({ order, customer, invoice }) => {
         const items = await db
           .select({
             item: orderItems,
@@ -1745,10 +1753,14 @@ export class DatabaseStorage implements IStorage {
           .where(eq(orderItems.orderId, order.id));
 
         const createdAt = order.createdAt ?? new Date();
-        const invoiceNumber = `INV-${new Date(createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
         const orderTotal = parseFloat(order.total);
-        const subtotal = orderTotal / 1.2; // Assuming 20% VAT
-        const vat = orderTotal - subtotal;
+        // Prefer the persisted invoice record (real id, actual tax) once the
+        // InvoiceWorker has created one; fall back to a synthetic view (using
+        // the org's configured tax rate) for orders it hasn't reached yet.
+        const invoiceNumber =
+          invoice?.invoiceNumber ?? `INV-${new Date(createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
+        const subtotal = invoice ? parseFloat(invoice.subtotal) : orderTotal / (1 + taxRate);
+        const vat = invoice ? parseFloat(String(invoice.tax ?? "0")) : orderTotal - subtotal;
         const dueDate = new Date(createdAt);
         dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
 
@@ -1763,7 +1775,7 @@ export class DatabaseStorage implements IStorage {
         }
 
         return {
-          id: order.id,
+          id: invoice?.id ?? order.id,
           invoiceNumber,
           orderId: order.id,
           customerId: order.customerId,
@@ -1776,6 +1788,8 @@ export class DatabaseStorage implements IStorage {
           vat,
           status,
           paymentMethod: order.paymentMethod,
+          hasGeneratedInvoice: !!invoice,
+          pdfUrl: invoice?.googleDriveLink ?? null,
           items: items.map(({ item, product }) => ({
             name: product?.name || 'Unknown Product',
             quantity: item.quantity,
@@ -1786,7 +1800,7 @@ export class DatabaseStorage implements IStorage {
       })
     );
 
-    return invoices;
+    return result;
   }
 
   // Allow list operations

@@ -43,6 +43,19 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
         currency: org.currency || "GBP",
         timezone: org.timezone || "Europe/London",
         receiptFooter: org.receiptFooter || "",
+        logoUrl: org.logoUrl || "",
+        receiptLogoEnabled: org.receiptLogoEnabled ?? false,
+        invoiceLogoEnabled: org.invoiceLogoEnabled ?? false,
+        accentStyle: org.accentStyle || "arcarna",
+        businessColors: org.businessColors || null,
+        invoicePrefix: org.invoicePrefix || "INV",
+        invoiceStartNumber: org.invoiceStartNumber ?? 1000,
+        paymentTerms: org.paymentTerms || "Net 30",
+        cashierCommissionEnabled: org.cashierCommissionEnabled ?? false,
+        defaultCashierCommissionRate: org.defaultCashierCommissionRate != null ? parseFloat(String(org.defaultCashierCommissionRate)) : 10,
+        requireCashierForSale: org.requireCashierForSale ?? false,
+        shiftInactivityCloseAfter: org.shiftInactivityCloseAfter || "never",
+        globalExpenseAllocationMode: org.globalExpenseAllocationMode || "daily_percentage",
       });
     } catch (error) {
       console.error("Error fetching settings:", error);
@@ -64,6 +77,19 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
         receiptFooter: body.receiptFooter,
         currency: body.currency,
         timezone: body.timezone,
+        ...(body.logoUrl !== undefined ? { logoUrl: body.logoUrl } : {}),
+        ...(body.receiptLogoEnabled !== undefined ? { receiptLogoEnabled: body.receiptLogoEnabled } : {}),
+        ...(body.invoiceLogoEnabled !== undefined ? { invoiceLogoEnabled: body.invoiceLogoEnabled } : {}),
+        ...(body.accentStyle !== undefined ? { accentStyle: body.accentStyle } : {}),
+        ...(body.businessColors !== undefined ? { businessColors: body.businessColors } : {}),
+        ...(body.invoicePrefix !== undefined ? { invoicePrefix: body.invoicePrefix } : {}),
+        ...(body.invoiceStartNumber !== undefined ? { invoiceStartNumber: body.invoiceStartNumber } : {}),
+        ...(body.paymentTerms !== undefined ? { paymentTerms: body.paymentTerms } : {}),
+        ...(body.cashierCommissionEnabled !== undefined ? { cashierCommissionEnabled: body.cashierCommissionEnabled } : {}),
+        ...(body.defaultCashierCommissionRate !== undefined ? { defaultCashierCommissionRate: body.defaultCashierCommissionRate } : {}),
+        ...(body.requireCashierForSale !== undefined ? { requireCashierForSale: body.requireCashierForSale } : {}),
+        ...(body.shiftInactivityCloseAfter !== undefined ? { shiftInactivityCloseAfter: body.shiftInactivityCloseAfter } : {}),
+        ...(body.globalExpenseAllocationMode !== undefined ? { globalExpenseAllocationMode: body.globalExpenseAllocationMode } : {}),
       });
       res.json({ message: "Settings updated successfully", orgId: org.id });
     } catch (error) {

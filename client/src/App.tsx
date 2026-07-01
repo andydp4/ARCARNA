@@ -47,6 +47,7 @@ import WorkerLogs from "@/pages/worker-logs";
 import RulesPage from "@/pages/rules";
 import AuditLogsPage from "@/pages/audit-logs";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
+import CashierPayrollPage from "@/pages/cashier-payroll";
 import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
@@ -112,6 +113,7 @@ function Router() {
           <Route path="/audit-logs" component={AuditLogsPage} />
           <Route path="/rules" component={RulesPage} />
           <Route path="/scheduled-reports" component={ScheduledReportsPage} />
+          <Route path="/cashier-payroll" component={CashierPayrollPage} />
           <Route path="/purchase-drafts" component={PurchaseDraftsPage} />
         </Layout>
         </AccessGate>

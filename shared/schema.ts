@@ -32,6 +32,16 @@ export const roleEnum = pgEnum('app_role', ROLES);
 export const BUSINESS_TYPES = ['retail', 'hospitality', 'services', 'wholesale', 'other'] as const;
 export type BusinessType = typeof BUSINESS_TYPES[number];
 
+// Cashier commission presets & shift inactivity windows
+export const COMMISSION_RATE_PRESETS = [10, 20, 30] as const;
+export type CommissionRatePreset = typeof COMMISSION_RATE_PRESETS[number];
+
+export const SHIFT_INACTIVITY_OPTIONS = ["1_hour", "12_hours", "1_day", "never"] as const;
+export type ShiftInactivityOption = typeof SHIFT_INACTIVITY_OPTIONS[number];
+
+export const GLOBAL_EXPENSE_ALLOCATION_MODES = ["daily_percentage"] as const;
+export type GlobalExpenseAllocationMode = typeof GLOBAL_EXPENSE_ALLOCATION_MODES[number];
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -58,6 +68,14 @@ export const organizations = pgTable("organizations", {
   receiptTemplateHtml: text("receipt_template_html"),
   accentStyle: varchar("accent_style", { length: 32 }).default("arcarna"),
   businessColors: jsonb("business_colors"),
+  receiptLogoEnabled: boolean("receipt_logo_enabled").default(false).notNull(),
+  invoiceLogoEnabled: boolean("invoice_logo_enabled").default(false).notNull(),
+  // Cashier commission
+  cashierCommissionEnabled: boolean("cashier_commission_enabled").default(false).notNull(),
+  defaultCashierCommissionRate: numeric("default_cashier_commission_rate", { precision: 5, scale: 2 }).default("10.00"),
+  requireCashierForSale: boolean("require_cashier_for_sale").default(false).notNull(),
+  shiftInactivityCloseAfter: varchar("shift_inactivity_close_after", { length: 16 }).default("never"),
+  globalExpenseAllocationMode: varchar("global_expense_allocation_mode", { length: 32 }).default("daily_percentage"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -583,6 +601,155 @@ export const shifts = pgTable(
 export type Shift = typeof shifts.$inferSelect;
 export type InsertShift = typeof shifts.$inferInsert;
 
+// ==================== CASHIER PROFILES & COMMISSION ====================
+// Cashier profiles are business-owned operating profiles (not necessarily
+// login users) identified by a per-org cashier code, e.g. "001". They are
+// distinct from the location-based cash-drawer `shifts` table above, which
+// tracks cash reconciliation per user/location. Cashier shifts track
+// commission-earning activity per cashier code.
+
+export const CASHIER_SHIFT_STATUSES = ["open", "closed", "auto_closed"] as const;
+export type CashierShiftStatus = (typeof CASHIER_SHIFT_STATUSES)[number];
+
+export const cashierProfiles = pgTable(
+  "cashier_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierCode: varchar("cashier_code", { length: 20 }).notNull(),
+    displayName: varchar("display_name", { length: 255 }).notNull(),
+    pinCode: varchar("pin_code", { length: 16 }),
+    defaultCommissionRate: numeric("default_commission_rate", { precision: 5, scale: 2 }),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("cashier_profiles_org_id_idx").on(table.orgId),
+    uniqueIndex("cashier_profiles_org_code_idx").on(table.orgId, table.cashierCode),
+  ],
+);
+
+export type CashierProfile = typeof cashierProfiles.$inferSelect;
+export type InsertCashierProfile = typeof cashierProfiles.$inferInsert;
+export const insertCashierProfileSchema = createInsertSchema(cashierProfiles).omit({
+  id: true,
+  orgId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCashierProfileData = z.infer<typeof insertCashierProfileSchema>;
+
+export const cashierShifts = pgTable(
+  "cashier_shifts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: uuid("cashier_id")
+      .references(() => cashierProfiles.id)
+      .notNull(),
+    openedByUserId: varchar("opened_by_user_id", { length: 255 }).notNull(),
+    closedByUserId: varchar("closed_by_user_id", { length: 255 }),
+    openedAt: timestamp("opened_at").defaultNow().notNull(),
+    closedAt: timestamp("closed_at"),
+    lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    closeReason: varchar("close_reason", { length: 32 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("cashier_shifts_org_id_idx").on(table.orgId),
+    index("cashier_shifts_cashier_id_idx").on(table.cashierId),
+    uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
+      .on(table.orgId, table.cashierId)
+      .where(sql`status = 'open'`),
+  ],
+);
+
+export type CashierShift = typeof cashierShifts.$inferSelect;
+export type InsertCashierShift = typeof cashierShifts.$inferInsert;
+
+export const cashierShiftSummaries = pgTable(
+  "cashier_shift_summaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    shiftId: uuid("shift_id")
+      .references(() => cashierShifts.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: uuid("cashier_id")
+      .references(() => cashierProfiles.id)
+      .notNull(),
+    grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditSales: numeric("credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    unpaidCreditSales: numeric("unpaid_credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    stockCost: numeric("stock_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    orderExpenses: numeric("order_expenses", { precision: 12, scale: 2 }).notNull().default("0"),
+    globalExpenseAllocation: numeric("global_expense_allocation", { precision: 12, scale: 2 }).notNull().default("0"),
+    refunds: numeric("refunds", { precision: 12, scale: 2 }).notNull().default("0"),
+    discounts: numeric("discounts", { precision: 12, scale: 2 }).notNull().default("0"),
+    netSalesProfit: numeric("net_sales_profit", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    commissionAmount: numeric("commission_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    businessRetainedProfit: numeric("business_retained_profit", { precision: 12, scale: 2 }).notNull().default("0"),
+    hasIncompleteCostData: boolean("has_incomplete_cost_data").default(false).notNull(),
+    closedAt: timestamp("closed_at").notNull(),
+    calculatedAt: timestamp("calculated_at").defaultNow().notNull(),
+    calculationVersion: integer("calculation_version").notNull().default(1),
+  },
+  (table) => [
+    index("cashier_shift_summaries_org_id_idx").on(table.orgId),
+    index("cashier_shift_summaries_cashier_id_idx").on(table.cashierId),
+    uniqueIndex("cashier_shift_summaries_shift_id_idx").on(table.shiftId),
+  ],
+);
+
+export type CashierShiftSummary = typeof cashierShiftSummaries.$inferSelect;
+export type InsertCashierShiftSummary = typeof cashierShiftSummaries.$inferInsert;
+
+export const cashierCommissionPayments = pgTable(
+  "cashier_commission_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: uuid("cashier_id")
+      .references(() => cashierProfiles.id)
+      .notNull(),
+    shiftId: uuid("shift_id").references(() => cashierShifts.id),
+    amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }).notNull(),
+    paidAt: timestamp("paid_at").defaultNow().notNull(),
+    confirmedByUserId: varchar("confirmed_by_user_id", { length: 255 }).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("cashier_commission_payments_org_id_idx").on(table.orgId),
+    index("cashier_commission_payments_cashier_id_idx").on(table.cashierId),
+  ],
+);
+
+export type CashierCommissionPayment = typeof cashierCommissionPayments.$inferSelect;
+export type InsertCashierCommissionPayment = typeof cashierCommissionPayments.$inferInsert;
+export const insertCashierCommissionPaymentSchema = createInsertSchema(cashierCommissionPayments).omit({
+  id: true,
+  orgId: true,
+  createdAt: true,
+}).extend({
+  amountPaid: z.coerce.number().positive("Amount paid must be positive"),
+});
+export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCommissionPaymentSchema>;
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -590,6 +757,8 @@ export const orders = pgTable("orders", {
   customerId: uuid("customer_id").references(() => customers.id),
   locationId: uuid("location_id").references(() => locations.id),
   shiftId: uuid("shift_id").references(() => shifts.id),
+  cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+  cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -599,6 +768,7 @@ export const orders = pgTable("orders", {
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
   index("orders_shift_id_idx").on(table.shiftId),
+  index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -1337,7 +1507,10 @@ export const inventoryMovements = pgTable("inventory_movements", {
   delta: integer("delta").notNull(), // negative for sale, positive for return
   reason: varchar("reason", { length: 50 }).notNull(), // sale, refund, adjustment, order_update
   correlationId: varchar("correlation_id", { length: 100 }).notNull(), // orderId
-  eventId: varchar("event_id", { length: 36 }).notNull(),
+  // Wider than the usual 36-char UUID event id: some callers build composite,
+  // per-line idempotency keys (e.g. goods receipt completion) that combine a
+  // prefix and one or two UUIDs.
+  eventId: varchar("event_id", { length: 160 }).notNull(),
   previousStock: integer("previous_stock"),
   newStock: integer("new_stock"),
   locationId: uuid("location_id").references(() => locations.id),

@@ -37,6 +37,8 @@ import { registerAdminRoutes } from "./routes/admin";
 import { registerWorkerAdminRoutes } from "./routes/workers";
 import { registerReceiptRoutes } from "./routes/receipts";
 import { registerShiftRoutes } from "./routes/shifts";
+import { registerCashierRoutes } from "./routes/cashiers";
+import { registerCashierAnalyticsRoutes } from "./routes/cashierAnalytics";
 import { registerRefundRoutes } from "./routes/refunds";
 import { registerGiftCardRoutes } from "./routes/giftCards";
 import { registerSavedViewRoutes } from "./routes/savedViews";
@@ -75,6 +77,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerCustomerRoutes(app, scoped);
   registerOrderRoutes(app, scoped);
   registerShiftRoutes(app, scoped);
+  registerCashierRoutes(app, scoped);
+  registerCashierAnalyticsRoutes(app, scoped);
   registerRefundRoutes(app, scoped);
   registerGiftCardRoutes(app, scoped);
   registerSavedViewRoutes(app, scoped);

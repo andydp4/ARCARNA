@@ -21,7 +21,7 @@
  */
 
 import { db } from "../db";
-import { processedEvents, invoices, customers, orderItems, orders, products } from "../../shared/schema";
+import { processedEvents, invoices, customers, orderItems, orders, products, organizations } from "../../shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
@@ -94,6 +94,7 @@ interface InvoiceTotals {
  */
 interface OrderRecord {
   id: string;
+  orgId: string | null;
   customerId: string | null;
   total: string | null;
   paymentMethod: string | null;
@@ -213,6 +214,7 @@ async function fetchOrder(orderId: string): Promise<OrderRecord | null> {
  * @returns Created invoice or null if duplicate
  */
 async function createInvoiceRecord(invoiceData: {
+  orgId: string | null;
   orderId: string;
   customerId: string | null;
   invoiceNumber: string;
@@ -225,6 +227,7 @@ async function createInvoiceRecord(invoiceData: {
     const result = await db
       .insert(invoices)
       .values({
+        orgId: invoiceData.orgId,
         orderId: invoiceData.orderId,
         customerId: invoiceData.customerId,
         invoiceNumber: invoiceData.invoiceNumber,
@@ -451,7 +454,7 @@ export class InvoiceWorker implements IWorker {
       }
 
       // Step 4: Calculate totals from payload or database
-      const totals = this.extractTotals(payload, order);
+      const totals = await this.extractTotals(payload, order);
       const customerId = payload.order?.customerId || payload.customerId || order.customerId;
 
       // Step 5: Create invoice record
@@ -459,6 +462,7 @@ export class InvoiceWorker implements IWorker {
       const dueDate = calculateDueDate();
 
       const newInvoice = await createInvoiceRecord({
+        orgId: order.orgId,
         orderId,
         customerId: customerId || null,
         invoiceNumber,
@@ -536,25 +540,38 @@ export class InvoiceWorker implements IWorker {
    * @param order - Database order record
    * @returns Normalized totals object
    */
-  private extractTotals(payload: OrderPayload, order: OrderRecord): InvoiceTotals {
+  private async extractTotals(payload: OrderPayload, order: OrderRecord): Promise<InvoiceTotals> {
     const payloadTotals = payload.order?.totals;
     const payloadTotal = payload.order?.total ?? payloadTotals?.total ?? payload.total;
 
     // Use payload values if available and non-zero
     if (payloadTotal && payloadTotal > 0) {
-      return {
-        subtotal: payloadTotals?.subtotal ?? payloadTotal,
-        tax: payloadTotals?.tax ?? 0,
-        total: payloadTotal,
-      };
+      if (payloadTotals?.subtotal != null && payloadTotals?.tax != null) {
+        return { subtotal: payloadTotals.subtotal, tax: payloadTotals.tax, total: payloadTotal };
+      }
+      // The order-created event doesn't carry a tax breakdown; the order total is
+      // tax-inclusive, so split it using the org's configured tax rate rather than
+      // reporting a misleading 0 VAT on every invoice.
+      return { ...this.splitTaxInclusiveTotal(payloadTotal, await this.fetchOrgTaxRate(order.orgId)), total: payloadTotal };
     }
 
     // Fall back to database order total
     const dbTotal = parseFloat(order.total || '0');
-    return {
-      subtotal: dbTotal,
-      tax: 0,
-      total: dbTotal,
-    };
+    return { ...this.splitTaxInclusiveTotal(dbTotal, await this.fetchOrgTaxRate(order.orgId)), total: dbTotal };
+  }
+
+  private splitTaxInclusiveTotal(total: number, taxRate: number): { subtotal: number; tax: number } {
+    const subtotal = total / (1 + taxRate);
+    return { subtotal, tax: total - subtotal };
+  }
+
+  private async fetchOrgTaxRate(orgId: string | null): Promise<number> {
+    if (!orgId) return 0.20;
+    const [org] = await db
+      .select({ defaultTaxRate: organizations.defaultTaxRate })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    return org?.defaultTaxRate != null ? parseFloat(String(org.defaultTaxRate)) / 100 : 0.20;
   }
 }
