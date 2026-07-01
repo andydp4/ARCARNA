@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import path from "path";
 
-const appBase = (process.env.VITE_BASE_PATH || "/arcarna").replace(/\/?$/, "/");
+// Default to site root (subdomain deploy). Override with VITE_BASE_PATH for a
+// path-mounted build (e.g. VITE_BASE_PATH=/arcarna npm run build).
+const appBase = (process.env.VITE_BASE_PATH || "/").replace(/\/?$/, "/");
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
 
 export default defineConfig({

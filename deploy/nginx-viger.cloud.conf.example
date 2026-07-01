@@ -5,8 +5,12 @@
 # - viger.cloud (this file) → serves the static portal directly (no Node).
 # - arcarna.viger.cloud      → the Arcarna Node app (see deploy/nginx-arcarna.viger.cloud.conf.example).
 #
-# The portal is static files in the repo at /root/ARCARNA/portal/
-# (index.html, files.html, backups.html, portal-assets/). No build/runtime needed.
+# The portal is static files. nginx (www-data) CANNOT read under /root (a 700
+# home dir), so copy the portal to a web-readable path and serve from there:
+#   sudo mkdir -p /var/www/viger.cloud
+#   sudo cp -r /root/ARCARNA/portal/* /var/www/viger.cloud/
+#   sudo chmod -R a+rX /var/www/viger.cloud
+# Re-run those two cp/chmod lines after each `git pull` that changes the portal.
 #
 # After Certbot: `sudo certbot --nginx -d viger.cloud -d www.viger.cloud`
 
@@ -15,7 +19,7 @@ server {
     listen [::]:80;
     server_name viger.cloud www.viger.cloud;
 
-    root /root/ARCARNA/portal;
+    root /var/www/viger.cloud;
     index index.html;
 
     # Send the old path-based app URLs to the new subdomain (bookmarks).

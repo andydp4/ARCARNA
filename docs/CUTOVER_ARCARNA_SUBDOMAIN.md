@@ -78,11 +78,12 @@ cd /root/ARCARNA
 git pull origin main
 unset NODE_ENV                 # so the build can use dev tools
 npm ci --include=dev
-npm run build                  # bakes VITE_BASE_PATH=/ into the build
+npm run build                  # client base defaults to site root — no env needed
 pm2 delete arcarna-epos && pm2 start ecosystem.config.cjs && pm2 save
 ```
-> Note: `npm run build` must see `VITE_BASE_PATH=/` from your `.env`. If your current deploy
-> already builds with the right base path, this works the same way.
+> Note: the client build **defaults to site root** now, so `npm run build` produces
+> root-relative asset URLs (`/assets/...`) with no env. For a path-mounted build instead, run
+> `VITE_BASE_PATH=/arcarna npm run build`.
 
 ## 8. Check it worked  ✅
 ```bash
@@ -98,15 +99,23 @@ to each app. It is now **decoupled** from the Arcarna app:
 - The Arcarna Node app no longer serves the portal in subdomain mode (handled in code).
 - nginx serves the static portal files directly — no Node, no build step.
 
-The portal lives in the repo at `portal/` (`index.html` + `portal-assets/`). Set up nginx:
+The portal lives in the repo at `portal/`. **nginx (www-data) can't read under `/root`**, so
+copy the files to a web-readable path, then point nginx at it:
 ```bash
+# 1. Copy the portal out of /root to a web-readable location
+sudo mkdir -p /var/www/viger.cloud
+sudo cp -r /root/ARCARNA/portal/* /var/www/viger.cloud/
+sudo chmod -R a+rX /var/www/viger.cloud
+# (re-run these two cp/chmod lines after any git pull that changes portal/)
+
+# 2. nginx config (serves /var/www/viger.cloud)
 sudo cp /root/ARCARNA/deploy/nginx-viger.cloud.conf.example \
         /etc/nginx/sites-available/viger.cloud
 sudo ln -s /etc/nginx/sites-available/viger.cloud /etc/nginx/sites-enabled/   # if not already linked
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d viger.cloud -d www.viger.cloud
 ```
-That config serves `/root/ARCARNA/portal` at the root and 301-redirects the old
+That config serves `/var/www/viger.cloud` at the root and 301-redirects the old
 `viger.cloud/arcarna` + `/midnight` URLs to `https://arcarna.viger.cloud`.
 
 **The shop window** lists every app with its colour and target subdomain:
