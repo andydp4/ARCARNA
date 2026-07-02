@@ -30,6 +30,10 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  // Without this, Vite's automatic .env loading defaults to `root` (client/)
+  // instead of the repo root where the real .env lives, so import.meta.env.*
+  // vars (like VITE_BASE_PATH) silently resolve to undefined at build time.
+  envDir: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
