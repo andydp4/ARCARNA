@@ -46,17 +46,21 @@ export function registerWhatsappPublicRoutes(app: Express): void {
     const signature = req.get("x-hub-signature-256");
     const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
 
-    // Always verify the signature when an app secret is configured.
-    if (cfg.appSecret) {
-      if (!verifyWebhookSignature(rawBody, signature, cfg.appSecret)) {
-        return res.status(401).send("invalid signature");
-      }
+    if (!cfg.enabled) return res.status(200).send("EVENT_RECEIVED");
+
+    // Reject rather than silently accept unverifiable payloads if the app
+    // secret is missing while the integration is enabled (misconfiguration).
+    if (!cfg.appSecret) {
+      console.error("[whatsapp] webhook enabled but WHATSAPP_APP_SECRET is unset — rejecting");
+      return res.status(401).send("webhook not configured");
+    }
+    if (!verifyWebhookSignature(rawBody, signature, cfg.appSecret)) {
+      return res.status(401).send("invalid signature");
     }
 
     // Acknowledge fast, then process. Errors must never bubble to a non-200.
     res.status(200).send("EVENT_RECEIVED");
 
-    if (!cfg.enabled) return;
     try {
       const summary = await ingestWebhook(req.body);
       if (summary.received > 0 || summary.statusUpdates > 0) {

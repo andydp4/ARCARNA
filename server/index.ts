@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { applySecurityMiddleware, mountTieredApiRateLimits } from "./security";
@@ -40,6 +41,7 @@ if (isProduction) {
 }
 
 applySecurityMiddleware(app, isProduction);
+app.use(compression());
 
 declare module 'http' {
   interface IncomingMessage {

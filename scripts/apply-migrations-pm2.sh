@@ -55,7 +55,8 @@ for f in migrations/001_analytics_org_pk_with_org.sql \
          migrations/038_cashier_commission.sql \
          migrations/039_domain_audit_logs.sql \
          migrations/040_widen_inventory_movement_event_id.sql \
-         migrations/041_org_invoice_payment_details.sql; do
+         migrations/041_org_invoice_payment_details.sql \
+         migrations/042_hot_path_indexes.sql; do
   if [[ ! -f "$f" ]]; then
     echo "  SKIP missing $f"
     continue
