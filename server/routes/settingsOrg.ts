@@ -63,39 +63,4 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
     }
   });
 
-  app.put("/api/settings", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string };
-      const body = req.body ?? {};
-      const org = await storage.updateOrgProfile(ctx.orgId, {
-        tradingName: body.businessName,
-        address: body.businessAddress,
-        phone: body.businessPhone,
-        email: body.businessEmail,
-        vatNumber: body.vatNumber,
-        defaultTaxRate: body.vatRate,
-        receiptFooter: body.receiptFooter,
-        currency: body.currency,
-        timezone: body.timezone,
-        ...(body.logoUrl !== undefined ? { logoUrl: body.logoUrl } : {}),
-        ...(body.receiptLogoEnabled !== undefined ? { receiptLogoEnabled: body.receiptLogoEnabled } : {}),
-        ...(body.invoiceLogoEnabled !== undefined ? { invoiceLogoEnabled: body.invoiceLogoEnabled } : {}),
-        ...(body.accentStyle !== undefined ? { accentStyle: body.accentStyle } : {}),
-        ...(body.businessColors !== undefined ? { businessColors: body.businessColors } : {}),
-        ...(body.invoicePrefix !== undefined ? { invoicePrefix: body.invoicePrefix } : {}),
-        ...(body.invoiceStartNumber !== undefined ? { invoiceStartNumber: body.invoiceStartNumber } : {}),
-        ...(body.paymentTerms !== undefined ? { paymentTerms: body.paymentTerms } : {}),
-        ...(body.cashierCommissionEnabled !== undefined ? { cashierCommissionEnabled: body.cashierCommissionEnabled } : {}),
-        ...(body.defaultCashierCommissionRate !== undefined ? { defaultCashierCommissionRate: body.defaultCashierCommissionRate } : {}),
-        ...(body.requireCashierForSale !== undefined ? { requireCashierForSale: body.requireCashierForSale } : {}),
-        ...(body.shiftInactivityCloseAfter !== undefined ? { shiftInactivityCloseAfter: body.shiftInactivityCloseAfter } : {}),
-        ...(body.globalExpenseAllocationMode !== undefined ? { globalExpenseAllocationMode: body.globalExpenseAllocationMode } : {}),
-      });
-      res.json({ message: "Settings updated successfully", orgId: org.id });
-    } catch (error) {
-      console.error("Error updating settings:", error);
-      res.status(500).json({ message: "Failed to update settings" });
-    }
-  });
-
 }

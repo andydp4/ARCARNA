@@ -1,58 +1,47 @@
 /**
- * PDF Invoice Generator - Viger Assist Branding
- * 
- * Generates professional PDF invoices using PDFKit.
- * All invoices are branded with Viger Assist Ltd company details.
- * 
+ * PDF Invoice Generator
+ *
+ * Generates professional PDF invoices using PDFKit, branded per-organisation
+ * from the details each business configures in Settings/the setup wizard
+ * (name, address, logo, tax rate, bank/payment details) — every org's
+ * invoices look like their own business, not a shared template.
+ *
  * Features:
  * - A4 format with professional layout
- * - Company logo (if available)
+ * - Company logo (if the org has one and enabled it for invoices)
  * - Customer billing details
- * - Line item descriptions with position-based labels
- * - Bank transfer and online payment information
- * - VAT always shown as 0% (Viger Assist policy)
- * - Currency: GBP (£)
- * 
- * Line Description Mapping:
- * - Position 1: "Services rendered"
- * - Position 2: "Services rendered planning"
- * - Position 3: "Services rendered development"
- * - Position 4: "Services rendered implementation"
- * - Position 5: "Services rendered evaluation"
- * - Position 6+: "Expenses reclaimed"
- * 
+ * - Real line item names
+ * - Bank transfer and online payment information (shown only if configured)
+ * - VAT at the org's actual configured rate
+ *
  * @module server/services/pdfGenerator
  */
 
 import PDFDocument from 'pdfkit';
-import path from 'path';
-import fs from 'fs';
-
-// ============================================================================
-// Company Configuration
-// ============================================================================
-
-/**
- * Viger Assist Ltd company information for invoice branding.
- * All invoices are issued under this company identity.
- */
-const COMPANY_INFO = {
-  name: 'Viger Assist Ltd',
-  companyNumber: '16247814',
-  address: '101 Apexlofts 50 Warwick Street',
-  city: 'Birmingham',
-  postcode: 'B12 0BA',
-  email: 'invoices@vigerassist.com',
-  website: 'VigerAssist.com',
-  bankName: 'Viger Assist Ltd',
-  sortCode: '23-08-01',
-  accountNumber: '57623055',
-  paymentLink: 'https://pay.anna.money/p/vigerassistltd/fwv',
-} as const;
 
 // ============================================================================
 // Type Definitions
 // ============================================================================
+
+/**
+ * Issuing organisation's details, as configured in Settings/setup wizard.
+ * Sections with no data (e.g. no bank details) are simply omitted from the PDF.
+ */
+interface InvoiceCompanyInfo {
+  name: string;
+  address?: string;
+  companyNumber?: string;
+  vatNumber?: string;
+  email?: string;
+  /** Logo image bytes, already fetched — pdfGenerator does no network I/O. */
+  logo?: Buffer;
+  bankName?: string;
+  bankSortCode?: string;
+  bankAccountNumber?: string;
+  paymentLink?: string;
+  /** ISO 4217 currency code, e.g. "GBP". Defaults to GBP. */
+  currency?: string;
+}
 
 /**
  * Invoice data required for PDF generation.
@@ -64,6 +53,8 @@ interface InvoiceData {
   createdAt: string;
   /** Payment due date (YYYY-MM-DD) */
   dueDate: string;
+  /** Issuing organisation's details */
+  company: InvoiceCompanyInfo;
   /** Customer name for billing section */
   customerName?: string;
   /** Customer email for billing section */
@@ -76,7 +67,7 @@ interface InvoiceData {
   items: InvoiceLineItem[];
   /** Subtotal before tax */
   subtotal: number;
-  /** Tax amount (displayed as VAT 0%) */
+  /** Tax amount */
   tax: number;
   /** Grand total */
   total: number;
@@ -90,11 +81,11 @@ interface InvoiceData {
  * Individual line item in the invoice.
  */
 interface InvoiceLineItem {
-  /** Product/service name (not displayed - position-based labels used) */
+  /** Product/service name */
   name: string;
   /** Quantity of items */
   quantity: number;
-  /** Price per unit in GBP */
+  /** Price per unit */
   unitPrice: number;
   /** Line total (quantity × unitPrice) */
   total: number;
@@ -155,35 +146,18 @@ const LAYOUT: {
 // ============================================================================
 
 /**
- * Converts line item position to descriptive label.
- * 
- * Business Rule:
- * Products are displayed with generic service descriptions rather
- * than specific product names, based on their position in the order.
- * 
- * @param index - Zero-based position in items array
- * @param totalItems - Total number of items (unused, for future expansion)
- * @returns Description string for PDF display
- */
-function getLineDescription(index: number, totalItems: number): string {
-  switch (index) {
-    case 0: return 'Services rendered';
-    case 1: return 'Services rendered planning';
-    case 2: return 'Services rendered development';
-    case 3: return 'Services rendered implementation';
-    case 4: return 'Services rendered evaluation';
-    default: return 'Expenses reclaimed';
-  }
-}
-
-/**
- * Formats a number as GBP currency string.
- * 
+ * Formats a number as currency for the org's configured currency.
+ *
  * @param amount - Numeric amount
- * @returns Formatted string with £ symbol (e.g., "£125.00")
+ * @param currency - ISO 4217 currency code, defaults to GBP
+ * @returns Formatted currency string (e.g., "£125.00")
  */
-function formatCurrency(amount: number): string {
-  return `£${amount.toFixed(2)}`;
+function formatCurrency(amount: number, currency = 'GBP'): string {
+  try {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(amount);
+  } catch {
+    return `£${amount.toFixed(2)}`;
+  }
 }
 
 /**
@@ -205,11 +179,14 @@ function formatDate(isoDate: string): string {
  * 
  * @param doc - PDFKit document instance
  */
-function renderHeader(doc: PDFKit.PDFDocument): void {
-  // Company logo (left side)
-  const logoPath = path.join(process.cwd(), 'server/assets/viger-logo.png');
-  if (fs.existsSync(logoPath)) {
-    doc.image(logoPath, 50, 40, { width: 80 });
+function renderHeader(doc: PDFKit.PDFDocument, company: InvoiceCompanyInfo): void {
+  // Company logo (left side), if the org has one and enabled it for invoices
+  if (company.logo) {
+    try {
+      doc.image(company.logo, 50, 40, { width: 80 });
+    } catch {
+      // Malformed/unsupported image — skip rather than fail the whole invoice.
+    }
   }
 
   // INVOICE title (right side)
@@ -217,12 +194,24 @@ function renderHeader(doc: PDFKit.PDFDocument): void {
 
   // Company details (next to logo)
   doc.fontSize(9).fillColor('#3E3E3E');
-  doc.text(COMPANY_INFO.name, 140, LAYOUT.HEADER_Y);
-  doc.text(COMPANY_INFO.address, 140, LAYOUT.HEADER_Y + 13);
-  doc.text(`${COMPANY_INFO.city}, ${COMPANY_INFO.postcode}`, 140, LAYOUT.HEADER_Y + 26);
-  doc.text(`Company No: ${COMPANY_INFO.companyNumber}`, 140, LAYOUT.HEADER_Y + 39);
-  doc.text(COMPANY_INFO.email, 140, LAYOUT.HEADER_Y + 52);
-  doc.text(COMPANY_INFO.website, 140, LAYOUT.HEADER_Y + 65);
+  let y = LAYOUT.HEADER_Y;
+  doc.text(company.name, 140, y);
+  y += 13;
+  if (company.address) {
+    doc.text(company.address, 140, y, { width: 250 });
+    y += 13;
+  }
+  if (company.companyNumber) {
+    doc.text(`Company No: ${company.companyNumber}`, 140, y);
+    y += 13;
+  }
+  if (company.vatNumber) {
+    doc.text(`VAT No: ${company.vatNumber}`, 140, y);
+    y += 13;
+  }
+  if (company.email) {
+    doc.text(company.email, 140, y);
+  }
 }
 
 /**
@@ -277,7 +266,7 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData): void 
  * @param items - Array of invoice line items
  * @returns Y position after table for following sections
  */
-function renderItemsTable(doc: PDFKit.PDFDocument, items: InvoiceLineItem[]): number {
+function renderItemsTable(doc: PDFKit.PDFDocument, items: InvoiceLineItem[], currency: string): number {
   const { COL_DESCRIPTION, COL_QUANTITY, COL_UNIT_PRICE, COL_AMOUNT, ROW_HEIGHT, HEADER_HEIGHT } = LAYOUT.TABLE;
   let y = LAYOUT.TABLE_TOP_Y;
 
@@ -293,23 +282,18 @@ function renderItemsTable(doc: PDFKit.PDFDocument, items: InvoiceLineItem[]): nu
   y += 30;
   doc.fillColor('#3E3E3E');
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    
+  for (const item of items) {
     // Page break if needed
     if (y > LAYOUT.PAGE_BREAK_Y) {
       doc.addPage();
       y = 50;
     }
 
-    // Use position-based description instead of product name
-    const description = getLineDescription(i, items.length);
-
     doc.fontSize(9);
-    doc.text(description, COL_DESCRIPTION, y, { width: 240 });
+    doc.text(item.name, COL_DESCRIPTION, y, { width: 240 });
     doc.text(String(item.quantity), COL_QUANTITY, y);
-    doc.text(formatCurrency(item.unitPrice), COL_UNIT_PRICE, y);
-    doc.text(formatCurrency(item.total), COL_AMOUNT, y);
+    doc.text(formatCurrency(item.unitPrice, currency), COL_UNIT_PRICE, y);
+    doc.text(formatCurrency(item.total, currency), COL_AMOUNT, y);
     y += ROW_HEIGHT;
   }
 
@@ -317,9 +301,8 @@ function renderItemsTable(doc: PDFKit.PDFDocument, items: InvoiceLineItem[]): nu
 }
 
 /**
- * Renders the invoice totals section.
- * VAT is always displayed as 0% per Viger Assist policy.
- * 
+ * Renders the invoice totals section, with VAT at the org's actual rate.
+ *
  * @param doc - PDFKit document instance
  * @param data - Invoice data with totals
  * @param startY - Y position to start rendering
@@ -327,6 +310,7 @@ function renderItemsTable(doc: PDFKit.PDFDocument, items: InvoiceLineItem[]): nu
  */
 function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number): number {
   let y = startY + 15;
+  const currency = data.company.currency || 'GBP';
 
   // Separator line
   doc.moveTo(350, y).lineTo(545, y).stroke('#E2E8F0');
@@ -335,12 +319,13 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   // Subtotal
   doc.fontSize(10).fillColor('#3E3E3E');
   doc.text('Subtotal:', 380, y);
-  doc.text(formatCurrency(data.subtotal), 480, y, { align: 'right', width: 65 });
+  doc.text(formatCurrency(data.subtotal, currency), 480, y, { align: 'right', width: 65 });
   y += 18;
 
-  // VAT (always 0%)
-  doc.text('VAT (0%):', 380, y);
-  doc.text('£0.00', 480, y, { align: 'right', width: 65 });
+  // VAT at the org's actual rate
+  const vatRate = data.subtotal > 0 ? Math.round((data.tax / data.subtotal) * 1000) / 10 : 0;
+  doc.text(`VAT (${vatRate}%):`, 380, y);
+  doc.text(formatCurrency(data.tax, currency), 480, y, { align: 'right', width: 65 });
   y += 18;
 
   // Total separator
@@ -350,60 +335,73 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   // Grand total
   doc.fontSize(12).fillColor('#000000');
   doc.text('Total:', 380, y);
-  doc.text(formatCurrency(data.total), 480, y, { align: 'right', width: 65 });
+  doc.text(formatCurrency(data.total, currency), 480, y, { align: 'right', width: 65 });
 
   return y;
 }
 
 /**
- * Renders payment information section with bank details and online payment link.
- * 
+ * Renders the payment information section with bank details and/or an online
+ * payment link — only if the org has configured at least one of them.
+ *
  * @param doc - PDFKit document instance
+ * @param company - Issuing org's details
  * @param startY - Y position to start rendering
  */
-function renderPaymentInfo(doc: PDFKit.PDFDocument, startY: number): void {
-  const y = startY + 50;
+function renderPaymentInfo(doc: PDFKit.PDFDocument, company: InvoiceCompanyInfo, startY: number): void {
+  const hasBankDetails = company.bankName || company.bankSortCode || company.bankAccountNumber;
+  if (!hasBankDetails && !company.paymentLink) return;
+
+  let y = startY + 50;
 
   // Section header
   doc.fontSize(11).fillColor('#000000');
   doc.text('Payment Information', 50, y, { underline: true });
+  y += 18;
 
-  // Payment methods accepted
   doc.fontSize(9).fillColor('#3E3E3E');
-  doc.text('Bank Transfer, Card and Mobile Payments Accepted', 50, y + 18);
 
-  // Bank details
-  doc.text('Bank Details:', 50, y + 38);
-  doc.text(COMPANY_INFO.bankName, 130, y + 38);
-  doc.text('Sort Code:', 50, y + 52);
-  doc.text(COMPANY_INFO.sortCode, 130, y + 52);
-  doc.text('Account No:', 50, y + 66);
-  doc.text(COMPANY_INFO.accountNumber, 130, y + 66);
-
-  // Online payment link
-  doc.text('Pay Online:', 50, y + 86);
-  doc.fillColor('#0066CC').text(COMPANY_INFO.paymentLink, 130, y + 86, {
-    link: COMPANY_INFO.paymentLink,
-    underline: true,
-  });
+  if (company.bankName) {
+    doc.text('Bank Details:', 50, y);
+    doc.text(company.bankName, 130, y);
+    y += 14;
+  }
+  if (company.bankSortCode) {
+    doc.text('Sort Code:', 50, y);
+    doc.text(company.bankSortCode, 130, y);
+    y += 14;
+  }
+  if (company.bankAccountNumber) {
+    doc.text('Account No:', 50, y);
+    doc.text(company.bankAccountNumber, 130, y);
+    y += 14;
+  }
+  if (company.paymentLink) {
+    doc.fillColor('#3E3E3E').text('Pay Online:', 50, y);
+    doc.fillColor('#0066CC').text(company.paymentLink, 130, y, {
+      link: company.paymentLink,
+      underline: true,
+    });
+  }
 }
 
 /**
  * Renders the footer with thank you message and company contact.
- * 
+ *
  * @param doc - PDFKit document instance
+ * @param company - Issuing org's details
  */
-function renderFooter(doc: PDFKit.PDFDocument): void {
+function renderFooter(doc: PDFKit.PDFDocument, company: InvoiceCompanyInfo): void {
   const footerY = doc.page.height - 50;
   const pageWidth = doc.page.width - 100;
 
   doc.fontSize(8).fillColor('#94A3B8');
-  doc.text('Thank you for your business!', 50, footerY, { 
-    align: 'center', 
-    width: pageWidth 
+  doc.text('Thank you for your business!', 50, footerY, {
+    align: 'center',
+    width: pageWidth,
   });
   doc.text(
-    `${COMPANY_INFO.name} | ${COMPANY_INFO.email} | ${COMPANY_INFO.website}`,
+    [company.name, company.email].filter(Boolean).join(' | '),
     50,
     footerY + 12,
     { align: 'center', width: pageWidth }
@@ -415,31 +413,32 @@ function renderFooter(doc: PDFKit.PDFDocument): void {
 // ============================================================================
 
 /**
- * Generates a complete PDF invoice document.
- * 
+ * Generates a complete PDF invoice document, branded for the issuing org.
+ *
  * The PDF includes:
- * - Company header with logo
+ * - Company header with logo (if configured)
  * - Invoice metadata (number, dates, status)
  * - Customer billing address
- * - Line items table with position-based descriptions
- * - Totals with VAT at 0%
- * - Payment information (bank transfer and online)
+ * - Line items table with real product/service names
+ * - Totals with VAT at the org's actual rate
+ * - Payment information (bank transfer and/or online), if configured
  * - Footer with thank you message
- * 
+ *
  * @param data - Invoice data for PDF generation
  * @returns Promise resolving to PDF buffer
  * @throws Error if PDF generation fails
- * 
+ *
  * @example
  * const pdfBuffer = await generateInvoicePdf({
  *   invoiceNumber: 'INV-20231220-ABCD',
  *   createdAt: new Date().toISOString(),
  *   dueDate: '2024-01-19',
+ *   company: { name: 'Acme Coffee Ltd' },
  *   customerName: 'John Smith',
- *   items: [{ name: 'Service', quantity: 1, unitPrice: 100, total: 100 }],
- *   subtotal: 100,
- *   tax: 0,
- *   total: 100,
+ *   items: [{ name: 'Cappuccino', quantity: 1, unitPrice: 3.5, total: 3.5 }],
+ *   subtotal: 3.5,
+ *   tax: 0.7,
+ *   total: 4.2,
  *   status: 'sent',
  * });
  */
@@ -456,12 +455,12 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       doc.on('error', reject);
 
       // Render document sections
-      renderHeader(doc);
+      renderHeader(doc, data.company);
       renderInvoiceDetails(doc, data);
-      const tableEndY = renderItemsTable(doc, data.items);
+      const tableEndY = renderItemsTable(doc, data.items, data.company.currency || 'GBP');
       const totalsEndY = renderTotals(doc, data, tableEndY);
-      renderPaymentInfo(doc, totalsEndY);
-      renderFooter(doc);
+      renderPaymentInfo(doc, data.company, totalsEndY);
+      renderFooter(doc, data.company);
 
       // Finalize document
       doc.end();

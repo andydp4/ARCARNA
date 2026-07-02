@@ -70,6 +70,11 @@ export const organizations = pgTable("organizations", {
   businessColors: jsonb("business_colors"),
   receiptLogoEnabled: boolean("receipt_logo_enabled").default(false).notNull(),
   invoiceLogoEnabled: boolean("invoice_logo_enabled").default(false).notNull(),
+  // Invoice payment details (shown on generated invoice PDFs; blank sections are omitted)
+  invoiceBankName: varchar("invoice_bank_name", { length: 255 }),
+  invoiceBankSortCode: varchar("invoice_bank_sort_code", { length: 20 }),
+  invoiceBankAccountNumber: varchar("invoice_bank_account_number", { length: 30 }),
+  invoicePaymentLink: varchar("invoice_payment_link", { length: 2048 }),
   // Cashier commission
   cashierCommissionEnabled: boolean("cashier_commission_enabled").default(false).notNull(),
   defaultCashierCommissionRate: numeric("default_cashier_commission_rate", { precision: 5, scale: 2 }).default("10.00"),
@@ -235,7 +240,9 @@ export const customers = pgTable("customers", {
   totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("customers_org_id_idx").on(table.orgId),
+]);
 
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;
@@ -844,7 +851,10 @@ export const orderItems = pgTable("order_items", {
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("order_items_order_id_idx").on(table.orderId),
+  index("order_items_org_id_idx").on(table.orgId),
+]);
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
@@ -1009,7 +1019,10 @@ export const invoices = pgTable("invoices", {
   googleDriveLink: varchar("google_drive_link", { length: 1024 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("invoices_org_id_idx").on(table.orgId),
+  index("invoices_order_id_idx").on(table.orderId),
+]);
 
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = typeof invoices.$inferInsert;

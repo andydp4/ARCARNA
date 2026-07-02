@@ -1,28 +1,197 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
-import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
-import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
-import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
-import type { Role } from "@shared/schema";
-import { recordAdminAudit } from "../adminAudit";
-import {
-  insertLoyaltyTierSchema,
-  insertPromotionSchema,
-  insertOrderSchema,
-  insertCustomerSchema,
-  insertProductSchema,
-  insertOverheadExpenseSchema,
-  insertOrderExpenseSchema,
-} from "@shared/schema";
 
-/** True when a failure is due to Google Drive/Replit connector not being configured in this environment. */
-function isDriveNotConfiguredError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /REPLIT_CONNECTORS_HOSTNAME|Replit authentication token|not connected/i.test(message);
+type InvoiceCompany = {
+  name: string;
+  address?: string;
+  companyNumber?: string;
+  vatNumber?: string;
+  email?: string;
+  logo?: Buffer;
+  bankName?: string;
+  bankSortCode?: string;
+  bankAccountNumber?: string;
+  paymentLink?: string;
+  currency?: string;
+};
+
+type InvoicePdfData = {
+  invoiceNumber: string;
+  createdAt: Date;
+  dueDate: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  status: string;
+  paymentMethod: string | null;
+  company: InvoiceCompany;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
+};
+
+/** Fetches the org's logo bytes for invoice branding, if enabled and configured. Never throws. */
+async function loadInvoiceLogo(org: {
+  invoiceLogoEnabled: boolean;
+  logoUrl: string | null;
+}): Promise<Buffer | undefined> {
+  if (!org.invoiceLogoEnabled || !org.logoUrl) return undefined;
+  try {
+    const res = await fetch(org.logoUrl);
+    if (!res.ok) return undefined;
+    return Buffer.from(await res.arrayBuffer());
+  } catch (error) {
+    console.error("[Invoices] Failed to fetch invoice logo:", error);
+    return undefined;
+  }
 }
 
-const DRIVE_NOT_CONFIGURED_MESSAGE =
-  "PDF storage (Google Drive) isn't configured in this environment. Set REPLIT_CONNECTORS_HOSTNAME/REPL_IDENTITY (Replit) or contact an admin to configure PDF storage.";
+function buildCompanyInfo(
+  org: {
+    name: string;
+    tradingName: string | null;
+    address: string | null;
+    companyNumber: string | null;
+    vatNumber: string | null;
+    email: string | null;
+    currency: string | null;
+    invoiceBankName: string | null;
+    invoiceBankSortCode: string | null;
+    invoiceBankAccountNumber: string | null;
+    invoicePaymentLink: string | null;
+  },
+  logo: Buffer | undefined,
+): InvoiceCompany {
+  return {
+    name: org.tradingName || org.name,
+    address: org.address || undefined,
+    companyNumber: org.companyNumber || undefined,
+    vatNumber: org.vatNumber || undefined,
+    email: org.email || undefined,
+    logo,
+    bankName: org.invoiceBankName || undefined,
+    bankSortCode: org.invoiceBankSortCode || undefined,
+    bankAccountNumber: org.invoiceBankAccountNumber || undefined,
+    paymentLink: org.invoicePaymentLink || undefined,
+    currency: org.currency || "GBP",
+  };
+}
+
+/**
+ * Loads everything needed to render an invoice PDF, scoped to the caller's org.
+ * Accepts either a real `invoices.id` or (for orders whose invoice record
+ * hasn't been created by the async InvoiceWorker yet) an `orders.id` — in
+ * that case the data is synthesized from the order directly using the org's
+ * configured tax rate, matching storage.getInvoicesWithDetails.
+ */
+async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise<InvoicePdfData | null> {
+  const { invoices, orders, orderItems, customers, products, organizations } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../db");
+
+  const loadItems = async (orderId: string) =>
+    db
+      .select({
+        quantity: orderItems.quantity,
+        unitPrice: orderItems.unitPrice,
+        totalPrice: orderItems.totalPrice,
+        productName: products.name,
+      })
+      .from(orderItems)
+      .leftJoin(products, eq(orderItems.productId, products.id))
+      .where(eq(orderItems.orderId, orderId));
+
+  const toItems = (rows: Awaited<ReturnType<typeof loadItems>>, fallbackTotal: number) =>
+    rows.length > 0
+      ? rows.map((item) => ({
+          name: item.productName || "Item",
+          quantity: item.quantity,
+          unitPrice: parseFloat(String(item.unitPrice ?? "0")),
+          total: parseFloat(String(item.totalPrice ?? "0")),
+        }))
+      : [{ name: "Order total", quantity: 1, unitPrice: fallbackTotal, total: fallbackTotal }];
+
+  const loadCompany = async (companyOrgId: string | null): Promise<InvoiceCompany> => {
+    if (!companyOrgId) return { name: "Your business" };
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, companyOrgId)).limit(1);
+    if (!org) return { name: "Your business" };
+    const logo = await loadInvoiceLogo(org);
+    return buildCompanyInfo(org, logo);
+  };
+
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  if (invoice?.orderId) {
+    const [order] = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
+    if (!order || (orgId && order.orgId !== orgId)) return null;
+
+    const [customer] = invoice.customerId
+      ? await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1)
+      : [null];
+    const total = parseFloat(invoice.total || "0");
+
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      createdAt: invoice.createdAt ?? new Date(),
+      dueDate: invoice.dueDate || "",
+      subtotal: parseFloat(invoice.subtotal || "0"),
+      tax: parseFloat(String(invoice.tax ?? "0")),
+      total,
+      status: invoice.status || "sent",
+      paymentMethod: order.paymentMethod,
+      company: await loadCompany(order.orgId),
+      customerName: customer?.name || undefined,
+      customerEmail: customer?.email || undefined,
+      customerPhone: customer?.phone || undefined,
+      customerAddress: customer?.address || undefined,
+      items: toItems(await loadItems(invoice.orderId), total),
+    };
+  }
+
+  // No invoice record yet (e.g. InvoiceWorker hasn't processed this order's
+  // event) — synthesize directly from the order so "View PDF" still works.
+  const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+  if (!order || (orgId && order.orgId !== orgId)) return null;
+
+  const [customer] = order.customerId
+    ? await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+    : [null];
+
+  const company = await loadCompany(order.orgId);
+  let taxRate = 0.2;
+  if (order.orgId) {
+    const [org] = await db
+      .select({ defaultTaxRate: organizations.defaultTaxRate })
+      .from(organizations)
+      .where(eq(organizations.id, order.orgId))
+      .limit(1);
+    if (org?.defaultTaxRate != null) taxRate = parseFloat(String(org.defaultTaxRate)) / 100;
+  }
+
+  const total = parseFloat(order.total);
+  const subtotal = total / (1 + taxRate);
+  const createdAt = order.createdAt ?? new Date();
+  const dueDate = new Date(createdAt);
+  dueDate.setDate(dueDate.getDate() + 30);
+
+  return {
+    invoiceNumber: `INV-${createdAt.getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`,
+    createdAt,
+    dueDate: dueDate.toISOString().slice(0, 10),
+    subtotal,
+    tax: total - subtotal,
+    total,
+    status: order.status === "completed" ? "paid" : "pending",
+    paymentMethod: order.paymentMethod,
+    company,
+    customerName: customer?.name || undefined,
+    customerEmail: customer?.email || undefined,
+    customerPhone: customer?.phone || undefined,
+    customerAddress: customer?.address || undefined,
+    items: toItems(await loadItems(order.id), total),
+  };
+}
 
 export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/invoices", ...scoped, async (req: any, res) => {
@@ -36,268 +205,41 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
+  // Generates the invoice PDF on demand and streams it back — no external
+  // storage involved, Neon already has everything the PDF needs.
   app.get("/api/invoices/:id/pdf", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const invoiceId = req.params.id;
-      const { invoices, orders } = await import('@shared/schema');
-      const { eq, and } = await import('drizzle-orm');
-      const { db } = await import('../db');
-      let invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
-      if (ctx?.orgId && invoiceResult[0]) {
-        const [order] = await db.select().from(orders).where(eq(orders.id, invoiceResult[0].orderId!)).limit(1);
-        if (!order || order.orgId !== ctx.orgId) {
-          invoiceResult = [];
-        }
+      const data = await loadInvoiceForPdf(ctx?.orgId, req.params.id);
+      if (!data) {
+        return res.status(404).json({ message: "Invoice not found" });
       }
-      
-      if (invoiceResult.length === 0) {
-        res.status(404).json({ message: "Invoice not found" });
-        return;
-      }
-      
-      const invoice = invoiceResult[0];
-      
-      // If invoice has a Google Drive link, redirect to it
-      if (invoice.googleDriveLink) {
-        res.json({ 
-          pdfUrl: invoice.googleDriveLink,
-          invoiceNumber: invoice.invoiceNumber,
-          googleDriveFileId: invoice.googleDriveFileId,
-        });
-        return;
-      }
-      
-      // If no PDF exists yet, return info to regenerate
-      res.status(202).json({ 
-        message: "PDF not yet generated. It will be created when the order is processed.",
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-      });
-    } catch (error) {
-      console.error("Error fetching invoice PDF:", error);
-      res.status(500).json({ message: "Failed to fetch invoice PDF" });
-    }
-  });
-  
-  // Endpoint to regenerate invoice PDF
-  app.post("/api/invoices/:id/regenerate-pdf", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const invoiceId = req.params.id;
-      const { invoices, orders, orderItems, customers } = await import('@shared/schema');
-      const { eq } = await import('drizzle-orm');
-      const { db } = await import('../db');
-      const { generateInvoicePdf } = await import('../services/pdfGenerator');
-      const { uploadPdfToDrive, createFolderIfNotExists } = await import('../services/googleDrive');
-      let invoiceResult = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
-      if (ctx?.orgId && invoiceResult[0]) {
-        const [order] = await db.select().from(orders).where(eq(orders.id, invoiceResult[0].orderId!)).limit(1);
-        if (!order || order.orgId !== ctx.orgId) invoiceResult = [];
-      }
-      
-      if (invoiceResult.length === 0) {
-        res.status(404).json({ message: "Invoice not found" });
-        return;
-      }
-      
-      const invoice = invoiceResult[0];
-      
-      // Get order and customer details
-      let orderData = null;
-      let customerData = null;
-      let itemsData: any[] = [];
-      
-      if (invoice.orderId) {
-        const orderResult = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
-        if (orderResult.length > 0) {
-          orderData = orderResult[0];
-          
-          // Get order items
-          itemsData = await db.select().from(orderItems).where(eq(orderItems.orderId, invoice.orderId));
-        }
-      }
-      
-      if (invoice.customerId) {
-        const customerResult = await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1);
-        if (customerResult.length > 0) {
-          customerData = customerResult[0];
-        }
-      }
-      
-      // Generate PDF with full customer details
+
+      const { generateInvoicePdf } = await import("../services/pdfGenerator");
       const pdfBuffer = await generateInvoicePdf({
-        invoiceNumber: invoice.invoiceNumber,
-        createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
-        dueDate: invoice.dueDate || '',
-        customerName: customerData?.name || undefined,
-        customerEmail: customerData?.email || undefined,
-        customerPhone: customerData?.phone || undefined,
-        customerAddress: customerData?.address || undefined,
-        items: itemsData.length > 0 ? itemsData.map((item: any) => ({
-          name: item.productName || 'Services rendered',
-          quantity: item.quantity,
-          unitPrice: parseFloat(item.unitPrice || '0'),
-          total: parseFloat(item.lineTotal || '0'),
-        })) : [{
-          name: 'Services rendered',
-          quantity: 1,
-          unitPrice: parseFloat(invoice.total || '0'),
-          total: parseFloat(invoice.total || '0'),
-        }],
-        subtotal: parseFloat(invoice.subtotal || '0'),
-        tax: parseFloat(invoice.tax || '0'),
-        total: parseFloat(invoice.total || '0'),
-        status: invoice.status || 'sent',
-        paymentMethod: orderData?.paymentMethod || undefined,
+        invoiceNumber: data.invoiceNumber,
+        createdAt: data.createdAt.toISOString(),
+        dueDate: data.dueDate,
+        company: data.company,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        customerPhone: data.customerPhone,
+        customerAddress: data.customerAddress,
+        items: data.items,
+        subtotal: data.subtotal,
+        tax: data.tax,
+        total: data.total,
+        status: data.status,
+        paymentMethod: data.paymentMethod || undefined,
       });
-      
-      // Upload to Google Drive
-      const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
-      const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoice.invoiceNumber}.pdf`, folderId);
-      
-      // Update invoice with Google Drive info
-      await db
-        .update(invoices)
-        .set({
-          googleDriveFileId: uploadResult.fileId,
-          googleDriveLink: uploadResult.webViewLink,
-        })
-        .where(eq(invoices.id, invoiceId));
-      
-      res.json({
-        message: "PDF regenerated successfully",
-        invoiceNumber: invoice.invoiceNumber,
-        pdfUrl: uploadResult.webViewLink,
-        googleDriveFileId: uploadResult.fileId,
-      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${data.invoiceNumber}.pdf"`);
+      res.send(pdfBuffer);
     } catch (error) {
-      console.error("Error regenerating invoice PDF:", error);
-      if (isDriveNotConfiguredError(error)) {
-        return res.status(503).json({ message: DRIVE_NOT_CONFIGURED_MESSAGE, code: "PDF_STORAGE_NOT_CONFIGURED" });
-      }
-      const message = error instanceof Error ? error.message : "Failed to regenerate invoice PDF";
+      console.error("Error generating invoice PDF:", error);
+      const message = error instanceof Error ? error.message : "Failed to generate invoice PDF";
       res.status(500).json({ message });
     }
   });
-
-  // Batch regenerate all invoices missing PDFs
-  app.post("/api/invoices/regenerate-all-missing", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const { invoices, orders, orderItems, customers } = await import('@shared/schema');
-      const { eq, and, isNull } = await import('drizzle-orm');
-      const { db } = await import('../db');
-      const { generateInvoicePdf } = await import('../services/pdfGenerator');
-      const { uploadPdfToDrive, createFolderIfNotExists } = await import('../services/googleDrive');
-      let missingPdfInvoices = await db.select().from(invoices).where(isNull(invoices.googleDriveFileId));
-      if (ctx?.orgId) {
-        const orgOrderIds = (await db.select({ id: orders.id }).from(orders).where(eq(orders.orgId, ctx.orgId))).map(r => r.id);
-        missingPdfInvoices = missingPdfInvoices.filter(inv => inv.orderId && orgOrderIds.includes(inv.orderId));
-      }
-      
-      if (missingPdfInvoices.length === 0) {
-        res.json({ 
-          message: "All invoices already have PDFs",
-          processed: 0,
-          total: 0
-        });
-        return;
-      }
-      
-      const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
-      
-      const results: Array<{ invoiceNumber: string; status: string; error?: string }> = [];
-      
-      for (const invoice of missingPdfInvoices) {
-        try {
-          // Get order and customer details
-          let orderData = null;
-          let customerData = null;
-          let itemsData: any[] = [];
-          
-          if (invoice.orderId) {
-            const orderResult = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
-            if (orderResult.length > 0) {
-              orderData = orderResult[0];
-              itemsData = await db.select().from(orderItems).where(eq(orderItems.orderId, invoice.orderId));
-            }
-          }
-          
-          if (invoice.customerId) {
-            const customerResult = await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1);
-            if (customerResult.length > 0) {
-              customerData = customerResult[0];
-            }
-          }
-          
-          // Generate PDF with full customer details
-          const pdfBuffer = await generateInvoicePdf({
-            invoiceNumber: invoice.invoiceNumber,
-            createdAt: invoice.createdAt?.toISOString() || new Date().toISOString(),
-            dueDate: invoice.dueDate || '',
-            customerName: customerData?.name || undefined,
-            customerEmail: customerData?.email || undefined,
-            customerPhone: customerData?.phone || undefined,
-            customerAddress: customerData?.address || undefined,
-            items: itemsData.length > 0 ? itemsData.map((item: any) => ({
-              name: item.productName || 'Services rendered',
-              quantity: item.quantity,
-              unitPrice: parseFloat(item.unitPrice || '0'),
-              total: parseFloat(item.totalPrice || '0'),
-            })) : [{
-              name: 'Services rendered',
-              quantity: 1,
-              unitPrice: parseFloat(invoice.total || '0'),
-              total: parseFloat(invoice.total || '0'),
-            }],
-            subtotal: parseFloat(invoice.subtotal || '0'),
-            tax: parseFloat(invoice.tax || '0'),
-            total: parseFloat(invoice.total || '0'),
-            status: invoice.status || 'sent',
-            paymentMethod: orderData?.paymentMethod || undefined,
-          });
-          
-          // Upload to Google Drive
-          const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoice.invoiceNumber}.pdf`, folderId);
-          
-          // Update invoice with Google Drive info
-          await db
-            .update(invoices)
-            .set({
-              googleDriveFileId: uploadResult.fileId,
-              googleDriveLink: uploadResult.webViewLink,
-            })
-            .where(eq(invoices.id, invoice.id));
-          
-          results.push({ invoiceNumber: invoice.invoiceNumber, status: 'success' });
-        } catch (invoiceError: any) {
-          results.push({ 
-            invoiceNumber: invoice.invoiceNumber, 
-            status: 'failed', 
-            error: invoiceError.message 
-          });
-        }
-      }
-      
-      const successful = results.filter(r => r.status === 'success').length;
-      const failed = results.filter(r => r.status === 'failed').length;
-      
-      res.json({
-        message: `Processed ${successful} invoices successfully, ${failed} failed`,
-        processed: successful,
-        failed,
-        total: missingPdfInvoices.length,
-        results,
-      });
-    } catch (error) {
-      console.error("Error regenerating missing invoice PDFs:", error);
-      if (isDriveNotConfiguredError(error)) {
-        return res.status(503).json({ message: DRIVE_NOT_CONFIGURED_MESSAGE, code: "PDF_STORAGE_NOT_CONFIGURED" });
-      }
-      const message = error instanceof Error ? error.message : "Failed to regenerate missing invoice PDFs";
-      res.status(500).json({ message });
-    }
-  });
-
 }

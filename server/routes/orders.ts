@@ -256,7 +256,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.patch("/api/orders/:id", ...scoped, async (req: any, res) => {
+  app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
@@ -303,7 +303,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.put("/api/orders/:id", ...scoped, async (req: any, res) => {
+  app.put("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { db } = await import('../../apps/server/src/db');
@@ -353,7 +353,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.delete("/api/orders/:id", ...scoped, async (req: any, res) => {
+  app.delete("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
       const { db } = await import('../../apps/server/src/db');

@@ -713,6 +713,7 @@ export class DatabaseStorage implements IStorage {
       "receiptTemplateHtml",
       "accentStyle", "businessColors", "setupWizardState", "onboardingState",
       "receiptLogoEnabled", "invoiceLogoEnabled",
+      "invoiceBankName", "invoiceBankSortCode", "invoiceBankAccountNumber", "invoicePaymentLink",
       "cashierCommissionEnabled", "defaultCashierCommissionRate", "requireCashierForSale",
       "shiftInactivityCloseAfter", "globalExpenseAllocationMode",
     ];

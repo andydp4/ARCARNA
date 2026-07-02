@@ -29,6 +29,10 @@ export function BrandingSettings() {
     invoiceStartNumber: 1000,
     paymentTerms: "",
     defaultTaxRate: "20",
+    invoiceBankName: "",
+    invoiceBankSortCode: "",
+    invoiceBankAccountNumber: "",
+    invoicePaymentLink: "",
   });
 
   useEffect(() => {
@@ -43,6 +47,10 @@ export function BrandingSettings() {
       invoiceStartNumber: org.invoiceStartNumber ?? 1000,
       paymentTerms: org.paymentTerms ?? "",
       defaultTaxRate: String(org.defaultTaxRate ?? "20"),
+      invoiceBankName: org.invoiceBankName ?? "",
+      invoiceBankSortCode: org.invoiceBankSortCode ?? "",
+      invoiceBankAccountNumber: org.invoiceBankAccountNumber ?? "",
+      invoicePaymentLink: org.invoicePaymentLink ?? "",
     });
   }, [org]);
 
@@ -152,6 +160,55 @@ export function BrandingSettings() {
                 onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })}
               />
             </div>
+
+            <div className="pt-2 border-t space-y-1">
+              <p className="text-sm font-medium">Invoice payment details</p>
+              <p className="text-xs text-muted-foreground">
+                Shown on generated invoice PDFs. Leave blank to omit that section.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Bank name</Label>
+                <Input
+                  value={form.invoiceBankName}
+                  onChange={(e) => setForm({ ...form, invoiceBankName: e.target.value })}
+                  className="min-h-[44px]"
+                  data-testid="branding-bank-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Sort code</Label>
+                <Input
+                  value={form.invoiceBankSortCode}
+                  onChange={(e) => setForm({ ...form, invoiceBankSortCode: e.target.value })}
+                  className="min-h-[44px]"
+                  data-testid="branding-bank-sort-code"
+                />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Account number</Label>
+                <Input
+                  value={form.invoiceBankAccountNumber}
+                  onChange={(e) => setForm({ ...form, invoiceBankAccountNumber: e.target.value })}
+                  className="min-h-[44px]"
+                  data-testid="branding-bank-account-number"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Online payment link</Label>
+                <Input
+                  value={form.invoicePaymentLink}
+                  onChange={(e) => setForm({ ...form, invoicePaymentLink: e.target.value })}
+                  placeholder="https://..."
+                  className="min-h-[44px]"
+                  data-testid="branding-payment-link"
+                />
+              </div>
+            </div>
+
             <Button onClick={() => save.mutate()} disabled={save.isPending} className="min-h-[44px]" data-testid="button-save-branding">
               Save branding
             </Button>

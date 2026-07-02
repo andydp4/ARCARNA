@@ -16,7 +16,7 @@ import {
   Eye,
   Printer,
   Mail,
-  Link2,
+  Download,
   ChevronDown,
   CheckCircle,
   Clock,
@@ -67,7 +67,7 @@ export type InvoiceRowProps = {
   onCopyInvoiceNumber: (invoiceNumber: string) => void;
   onViewPdf: (invoiceId: string, invoiceNumber: string) => void;
   onPrint: (invoiceId: string, invoiceNumber: string) => void;
-  onCopyLink: (invoiceId: string, invoiceNumber: string) => void;
+  onDownload: (invoiceId: string, invoiceNumber: string) => void;
   onEmail: (invoiceId: string, customerEmail: string, invoiceNumber: string) => void;
 };
 
@@ -76,7 +76,7 @@ function InvoiceRowInner({
   onCopyInvoiceNumber,
   onViewPdf,
   onPrint,
-  onCopyLink,
+  onDownload,
   onEmail,
 }: InvoiceRowProps) {
   return (
@@ -164,11 +164,11 @@ function InvoiceRowInner({
               Print via browser
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => onCopyLink(invoice.id, invoice.invoiceNumber)}
-              data-testid={`button-link-${invoice.id}`}
+              onClick={() => onDownload(invoice.id, invoice.invoiceNumber)}
+              data-testid={`button-download-${invoice.id}`}
             >
-              <Link2 className="mr-2 h-4 w-4" />
-              Copy PDF link
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -176,7 +176,7 @@ function InvoiceRowInner({
               data-testid={`button-email-${invoice.id}`}
             >
               <Mail className="mr-2 h-4 w-4" />
-              Draft email with link
+              Download & email invoice
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -192,6 +192,6 @@ export const InvoiceRow = memo(
     prev.onCopyInvoiceNumber === next.onCopyInvoiceNumber &&
     prev.onViewPdf === next.onViewPdf &&
     prev.onPrint === next.onPrint &&
-    prev.onCopyLink === next.onCopyLink &&
+    prev.onDownload === next.onDownload &&
     prev.onEmail === next.onEmail
 );

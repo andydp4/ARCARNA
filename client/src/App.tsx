@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { APP_BASE } from "@/lib/appPaths";
 import { queryClient } from "./lib/queryClient";
@@ -9,51 +10,62 @@ import { OrgProvider } from "@/contexts/OrgContext";
 import { AccessGate } from "@/components/AccessGate";
 import { Layout } from "@/components/Layout";
 import NotFound from "@/pages/not-found";
-import Landing from "@/pages/landing";
-import Home from "@/pages/home";
-import POS from "@/pages/pos";
-import Inventory from "@/pages/inventory";
-import Insights from "@/pages/insights";
-import Locations from "@/pages/locations";
-import Loyalty from "@/pages/loyalty";
-import Promotions from "@/pages/promotions";
-import PromotionLiftPage from "@/pages/promotions/lift";
-import { ExpensesPage } from "@/pages/expenses";
-import { ExpenseReportsPage } from "@/pages/expense-reports";
-import Customers from "@/pages/customers";
-import ProductManagement from "@/pages/product-management";
-import Settings from "@/pages/settings";
-import ReceiptSettingsPage from "@/pages/settings/receipts";
-import LoyaltySettingsPage from "@/pages/settings/loyalty";
-import DeveloperSettingsPage from "@/pages/settings/developer";
-import TickList from "@/pages/tick-list";
-import Invoices from "@/pages/invoices";
-import Orders from "@/pages/orders";
-import OrderRefundPage from "@/pages/orders/refund";
-import ShiftsPage from "@/pages/shifts";
-import GiftCardsPage from "@/pages/gift-cards";
-import RfmAnalyticsPage from "@/pages/analytics/rfm";
-import HourOfDayAnalyticsPage from "@/pages/analytics/hour-of-day";
-import ChannelAttributionPage from "@/pages/analytics/channels";
-import StockTurnAnalyticsPage from "@/pages/analytics/stock-turn";
-import UserAccess from "@/pages/user-access";
-import PendingApproval from "@/pages/pending-approval";
-import Onboarding from "@/pages/onboarding";
-import OnboardingWizard from "@/pages/onboarding-wizard";
-import NoAccess from "@/pages/no-access";
-import SetupWizard from "@/pages/setup-wizard";
-import SetupBlocked from "@/pages/setup-blocked";
-import WorkerLogs from "@/pages/worker-logs";
-import RulesPage from "@/pages/rules";
-import AuditLogsPage from "@/pages/audit-logs";
-import ScheduledReportsPage from "@/pages/scheduled-reports";
-import CashierPayrollPage from "@/pages/cashier-payroll";
-import PurchaseDraftsPage from "@/pages/purchase-drafts";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
-import SignInPage from "@/pages/sign-in";
-import SignOutPage from "@/pages/sign-out";
 import { CommandPalette } from "@/components/CommandPalette";
+
+// Route-level code splitting: each page ships as its own chunk, fetched on
+// first navigation, instead of one ~1.5MB bundle loaded up front.
+const Landing = lazy(() => import("@/pages/landing"));
+const Home = lazy(() => import("@/pages/home"));
+const POS = lazy(() => import("@/pages/pos"));
+const Inventory = lazy(() => import("@/pages/inventory"));
+const Insights = lazy(() => import("@/pages/insights"));
+const Locations = lazy(() => import("@/pages/locations"));
+const Loyalty = lazy(() => import("@/pages/loyalty"));
+const Promotions = lazy(() => import("@/pages/promotions"));
+const PromotionLiftPage = lazy(() => import("@/pages/promotions/lift"));
+const ExpensesPage = lazy(() => import("@/pages/expenses").then((m) => ({ default: m.ExpensesPage })));
+const ExpenseReportsPage = lazy(() => import("@/pages/expense-reports").then((m) => ({ default: m.ExpenseReportsPage })));
+const Customers = lazy(() => import("@/pages/customers"));
+const ProductManagement = lazy(() => import("@/pages/product-management"));
+const Settings = lazy(() => import("@/pages/settings"));
+const ReceiptSettingsPage = lazy(() => import("@/pages/settings/receipts"));
+const LoyaltySettingsPage = lazy(() => import("@/pages/settings/loyalty"));
+const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
+const TickList = lazy(() => import("@/pages/tick-list"));
+const Invoices = lazy(() => import("@/pages/invoices"));
+const Orders = lazy(() => import("@/pages/orders"));
+const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
+const ShiftsPage = lazy(() => import("@/pages/shifts"));
+const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
+const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
+const HourOfDayAnalyticsPage = lazy(() => import("@/pages/analytics/hour-of-day"));
+const ChannelAttributionPage = lazy(() => import("@/pages/analytics/channels"));
+const StockTurnAnalyticsPage = lazy(() => import("@/pages/analytics/stock-turn"));
+const UserAccess = lazy(() => import("@/pages/user-access"));
+const PendingApproval = lazy(() => import("@/pages/pending-approval"));
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const OnboardingWizard = lazy(() => import("@/pages/onboarding-wizard"));
+const NoAccess = lazy(() => import("@/pages/no-access"));
+const SetupWizard = lazy(() => import("@/pages/setup-wizard"));
+const SetupBlocked = lazy(() => import("@/pages/setup-blocked"));
+const WorkerLogs = lazy(() => import("@/pages/worker-logs"));
+const RulesPage = lazy(() => import("@/pages/rules"));
+const AuditLogsPage = lazy(() => import("@/pages/audit-logs"));
+const ScheduledReportsPage = lazy(() => import("@/pages/scheduled-reports"));
+const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
+const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
+const SignInPage = lazy(() => import("@/pages/sign-in"));
+const SignOutPage = lazy(() => import("@/pages/sign-out"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+    </div>
+  );
+}
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -61,6 +73,7 @@ function Router() {
   return (
     <WouterRouter base={APP_BASE}>
     <CommandPalette />
+    <Suspense fallback={<RouteLoadingFallback />}>
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-out" component={SignOutPage} />
@@ -120,6 +133,7 @@ function Router() {
       )}
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
     </WouterRouter>
   );
 }

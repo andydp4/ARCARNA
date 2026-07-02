@@ -1,5 +1,5 @@
 import { DomainEngine, InMemoryBus } from '../../../packages/domain/src/index'
-import { InvoicesPortPuppeteer } from './ports/invoices.puppeteer'
+import { InvoicesPortStub } from '../../../server/ports/invoices.stub'
 
 const bus = new InMemoryBus()
 
@@ -20,7 +20,7 @@ async function createEngine() {
       OrdersRepoDrizzle,
       ProductsRepoDrizzle,
       CustomersRepoDrizzle,
-      InvoicesPortPuppeteer,
+      InvoicesPortStub,
       AnalyticsSinkDrizzle,
       AuditPortDrizzle,
       async (fn: any) => withTransaction(async (tx: any)=> fn(tx))
@@ -37,7 +37,7 @@ async function createEngine() {
       OrdersRepoMemory,
       ProductsRepoMemory,
       CustomersRepoMemory,
-      InvoicesPortPuppeteer,
+      InvoicesPortStub,
       AnalyticsSinkMemory,
       AuditPortMemory,
       withTx

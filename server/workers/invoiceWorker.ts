@@ -1,32 +1,27 @@
 /**
- * InvoiceWorker - Order Invoice Generation and Distribution
- * 
- * Handles the complete invoice lifecycle for order events:
- * 1. Create invoice record in database
- * 2. Generate professional PDF with Viger Assist branding
- * 3. Upload to Google Drive with public read access
- * 4. Store Drive link for customer access
- * 
+ * InvoiceWorker - Order Invoice Record Creation
+ *
+ * Creates the invoice DB record for an order. PDFs are generated on-demand
+ * when viewed/printed/downloaded (see server/routes/invoices.ts) rather than
+ * eagerly rendered and uploaded to external storage here — Neon already
+ * holds everything an invoice needs (order lines, totals, customer info).
+ *
  * Supported Events:
  * - OrderCreated: Primary trigger for invoice generation
  * - PaymentCaptured: Secondary trigger if invoice missing
- * 
+ *
  * Key Features:
  * - Idempotent processing via processed_events table
  * - Concurrent-safe with unique constraint handling
- * - Non-blocking PDF/Drive failures (invoice record always created)
- * - Customer details included from database
- * 
+ *
  * @module server/workers/invoiceWorker
  */
 
 import { db } from "../db";
-import { processedEvents, invoices, customers, orderItems, orders, products, organizations } from "../../shared/schema";
+import { processedEvents, invoices, orders, organizations } from "../../shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
-import { generateInvoicePdf } from "../services/pdfGenerator";
-import { uploadPdfToDrive, createFolderIfNotExists } from "../services/googleDrive";
 
 // ============================================================================
 // Type Definitions
@@ -61,26 +56,6 @@ interface OrderPayload {
 }
 
 /**
- * Customer data for invoice personalization.
- */
-interface CustomerInfo {
-  name?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-}
-
-/**
- * Line item for PDF generation.
- */
-interface InvoiceLineItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-/**
  * Invoice totals breakdown.
  */
 interface InvoiceTotals {
@@ -106,7 +81,7 @@ interface OrderRecord {
 
 /**
  * Generates a unique invoice number in format: INV-YYYYMMDD-XXXX
- * 
+ *
  * @returns Formatted invoice number string
  */
 function generateInvoiceNumber(): string {
@@ -118,7 +93,7 @@ function generateInvoiceNumber(): string {
 
 /**
  * Calculates due date as 30 days from now.
- * 
+ *
  * @returns Due date in YYYY-MM-DD format
  */
 function calculateDueDate(): string {
@@ -128,65 +103,9 @@ function calculateDueDate(): string {
 }
 
 /**
- * Fetches customer information for invoice personalization.
- * 
- * @param customerId - Customer UUID, if available
- * @returns Customer info or empty object
- */
-async function fetchCustomerInfo(customerId: string | null | undefined): Promise<CustomerInfo> {
-  if (!customerId) return {};
-
-  const result = await db
-    .select({
-      name: customers.name,
-      email: customers.email,
-      phone: customers.phone,
-      address: customers.address,
-    })
-    .from(customers)
-    .where(eq(customers.id, customerId))
-    .limit(1);
-
-  if (result.length === 0) return {};
-
-  return {
-    name: result[0].name,
-    email: result[0].email || undefined,
-    phone: result[0].phone || undefined,
-    address: result[0].address || undefined,
-  };
-}
-
-/**
- * Fetches order line items with product names for invoice detail.
- * 
- * @param orderId - Order UUID
- * @returns Array of formatted line items
- */
-async function fetchOrderItems(orderId: string): Promise<InvoiceLineItem[]> {
-  const items = await db
-    .select({
-      quantity: orderItems.quantity,
-      unitPrice: orderItems.unitPrice,
-      totalPrice: orderItems.totalPrice,
-      productName: products.name,
-    })
-    .from(orderItems)
-    .leftJoin(products, eq(orderItems.productId, products.id))
-    .where(eq(orderItems.orderId, orderId));
-
-  return items.map((item) => ({
-    name: item.productName || 'Unknown Product',
-    quantity: item.quantity,
-    unitPrice: parseFloat(item.unitPrice || '0'),
-    total: parseFloat(item.totalPrice || '0'),
-  }));
-}
-
-/**
  * Verifies order exists in database.
  * Returns null if not found (synthetic/test event).
- * 
+ *
  * @param orderId - Order UUID to verify
  * @returns Order record or null
  */
@@ -206,10 +125,10 @@ async function fetchOrder(orderId: string): Promise<OrderRecord | null> {
 
 /**
  * Creates invoice record in database with conflict handling.
- * 
+ *
  * Uses try-catch to handle race conditions where multiple workers
  * attempt to create the same invoice concurrently.
- * 
+ *
  * @param invoiceData - Invoice fields to persist
  * @returns Created invoice or null if duplicate
  */
@@ -250,102 +169,13 @@ async function createInvoiceRecord(invoiceData: {
   }
 }
 
-/**
- * Updates invoice record with Google Drive file info.
- * 
- * @param invoiceId - Invoice UUID
- * @param driveInfo - Drive file ID and link
- */
-async function updateInvoiceWithDriveInfo(
-  invoiceId: string,
-  driveInfo: { fileId: string; link: string }
-): Promise<void> {
-  await db
-    .update(invoices)
-    .set({
-      googleDriveFileId: driveInfo.fileId,
-      googleDriveLink: driveInfo.link,
-    })
-    .where(eq(invoices.id, invoiceId));
-}
-
-// ============================================================================
-// Helper Functions - PDF & Drive
-// ============================================================================
-
-/**
- * Generates PDF and uploads to Google Drive.
- * 
- * This is a non-critical operation - failures are logged but don't
- * fail the overall invoice creation.
- * 
- * @param invoiceNumber - Invoice number for filename
- * @param totals - Invoice totals for PDF content
- * @param customerInfo - Customer details for PDF header
- * @param items - Line items for PDF detail section
- * @param paymentMethod - Payment method for PDF footer
- * @returns Drive info or null on failure
- */
-async function generateAndUploadPdf(
-  invoiceNumber: string,
-  totals: InvoiceTotals,
-  customerInfo: CustomerInfo,
-  items: InvoiceLineItem[],
-  paymentMethod?: string
-): Promise<{ fileId: string; link: string } | null> {
-  try {
-    const now = new Date();
-    const dueDate = calculateDueDate();
-
-    // Use provided items or create single-line fallback
-    const pdfItems = items.length > 0 ? items : [{
-      name: 'Order Total',
-      quantity: 1,
-      unitPrice: totals.total,
-      total: totals.total,
-    }];
-
-    // Generate PDF with Viger Assist branding
-    const pdfBuffer = await generateInvoicePdf({
-      invoiceNumber,
-      createdAt: now.toISOString(),
-      dueDate,
-      customerName: customerInfo.name,
-      customerEmail: customerInfo.email,
-      customerPhone: customerInfo.phone,
-      items: pdfItems,
-      subtotal: totals.subtotal,
-      tax: totals.tax,
-      total: totals.total,
-      status: 'sent',
-      paymentMethod,
-    });
-
-    console.log(`[InvoiceWorker] Generated PDF for ${invoiceNumber}, size: ${pdfBuffer.length} bytes`);
-
-    // Upload to Google Drive
-    const folderId = await createFolderIfNotExists('ARCARNA EPOS Invoices');
-    const uploadResult = await uploadPdfToDrive(pdfBuffer, `${invoiceNumber}.pdf`, folderId);
-
-    console.log(`[InvoiceWorker] Uploaded ${invoiceNumber} to Drive: ${uploadResult.webViewLink}`);
-
-    return {
-      fileId: uploadResult.fileId,
-      link: uploadResult.webViewLink,
-    };
-  } catch (error) {
-    console.error(`[InvoiceWorker] PDF generation/upload failed for ${invoiceNumber}:`, error);
-    return null;
-  }
-}
-
 // ============================================================================
 // Helper Functions - Idempotency
 // ============================================================================
 
 /**
  * Checks if this event has already been processed by this worker.
- * 
+ *
  * @param eventId - Event UUID
  * @param workerName - Worker identifier
  * @returns true if already processed
@@ -367,7 +197,7 @@ async function isEventProcessed(eventId: string, workerName: string): Promise<bo
 
 /**
  * Checks if invoice already exists for order.
- * 
+ *
  * @param orderId - Order UUID
  * @returns Existing invoice ID or null
  */
@@ -397,14 +227,12 @@ export class InvoiceWorker implements IWorker {
 
   /**
    * Main event handler for invoice generation.
-   * 
+   *
    * Processing Flow:
    * 1. Check idempotency (skip if already processed)
    * 2. Verify order exists in database
    * 3. Create invoice record
-   * 4. Generate PDF and upload to Drive (non-blocking)
-   * 5. Update invoice with Drive link
-   * 
+   *
    * @param event - Domain event envelope
    * @returns Worker result with status and metadata
    */
@@ -426,7 +254,7 @@ export class InvoiceWorker implements IWorker {
       // Step 2: Extract order identifiers
       const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
       const existingInvoiceId = await getExistingInvoice(orderId);
-      
+
       if (existingInvoiceId) {
         console.log(`[InvoiceWorker] Invoice already exists for order ${orderId}`);
         return {
@@ -487,36 +315,13 @@ export class InvoiceWorker implements IWorker {
 
       console.log(`[InvoiceWorker] Created invoice ${invoiceNumber} for order ${orderId}`);
 
-      // Step 6: Generate PDF and upload (non-blocking)
-      const customerInfo = await fetchCustomerInfo(customerId);
-      const items = await fetchOrderItems(orderId);
-      
-      const driveResult = await generateAndUploadPdf(
-        invoiceNumber,
-        totals,
-        customerInfo,
-        items,
-        order.paymentMethod || undefined
-      );
-
-      // Step 7: Update invoice with Drive info
-      if (driveResult) {
-        await updateInvoiceWithDriveInfo(newInvoice.id, driveResult);
-      }
-
       return {
         worker: this.name,
         eventId: event.eventId,
         correlationId: event.correlationId,
         status: 'success',
-        summary: `Invoice ${invoiceNumber} created${driveResult ? ' (PDF uploaded to Drive)' : ''}`,
-        data: {
-          orderId,
-          invoiceId: newInvoice.id,
-          invoiceNumber,
-          driveFileId: driveResult?.fileId,
-          driveLink: driveResult?.link,
-        },
+        summary: `Invoice ${invoiceNumber} created`,
+        data: { orderId, invoiceId: newInvoice.id, invoiceNumber },
       };
     } catch (error) {
       console.error('[InvoiceWorker] Error:', error);
@@ -533,9 +338,9 @@ export class InvoiceWorker implements IWorker {
 
   /**
    * Extracts invoice totals from payload or database order.
-   * 
+   *
    * Priority: payload.order.total > payload.order.totals > database
-   * 
+   *
    * @param payload - Event payload with optional totals
    * @param order - Database order record
    * @returns Normalized totals object

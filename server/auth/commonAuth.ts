@@ -152,7 +152,7 @@ export const requireOrgContext: RequestHandler = async (req, res, next) => {
 
 export const requireOrgScope: RequestHandler = async (req, res, next) => {
   const ctx = (req as { orgContext?: { orgId: string | null; role: string } }).orgContext;
-  if (!ctx) return next();
+  if (!ctx) return res.status(403).json({ message: "Organization context required." });
   if (!ctx.orgId) {
     return res.status(403).json({
       message:

@@ -79,13 +79,6 @@ export function invalidateAfterOrderMutation(queryClient: QueryClient) {
   });
 }
 
-export function invalidateAfterInvoiceRegeneration(queryClient: QueryClient) {
-  return Promise.all([
-    invalidateEndpointFamily(queryClient, "/api/invoices"),
-    invalidateEndpointFamily(queryClient, "/api/orders"),
-  ]);
-}
-
 export function invalidateAfterInventoryAdjustment(queryClient: QueryClient) {
   return invalidateOperationalData(queryClient, {
     includeOrders: false,
