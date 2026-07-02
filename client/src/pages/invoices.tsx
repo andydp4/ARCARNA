@@ -8,8 +8,6 @@ import {
   startOfWeek,
 } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { invalidateAfterInvoiceRegeneration } from "@/lib/query-invalidation";
 import {
   Card,
   CardContent,
@@ -38,7 +36,6 @@ import { FileText, Search, DollarSign, Clock, AlertCircle } from "lucide-react";
 import { InvoiceRow, type InvoiceListItem } from "@/components/invoice-row";
 import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
 import { PageHeader } from "@/components/PageHeader";
-import { ActionLoader } from "@/components/action-loader";
 import { DataTableShell } from "@/components/data-table-shell";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -60,7 +57,6 @@ export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "pending" | "overdue">("all");
   const [selectedPeriod, setSelectedPeriod] = useState<"all" | "today" | "week" | "month">("month");
-  const [regenerating, setRegenerating] = useState(false);
 
   const {
     data: invoicesData,
@@ -124,176 +120,103 @@ export default function Invoices() {
     [toast]
   );
 
+  /** Fetches the invoice PDF (generated on demand server-side) as a blob. */
+  const fetchInvoicePdfBlob = useCallback(async (invoiceId: string): Promise<Blob | null> => {
+    const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
+      credentials: "include",
+    });
+    if (!response.ok) return null;
+    return response.blob();
+  }, []);
+
   const viewInvoicePdf = useCallback(
     async (invoiceId: string, invoiceNumber: string) => {
       try {
-        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pdfUrl) {
-            window.open(data.pdfUrl, "_blank");
-          } else {
-            toast({
-              title: "PDF Not Available",
-              description:
-                "This invoice PDF has not been generated yet. Click \"Generate Missing PDFs\" to create it.",
-              variant: "destructive",
-            });
-          }
-        } else {
-          toast({
-            title: "Error",
-            description: "Could not retrieve invoice PDF",
-            variant: "destructive",
-          });
+        const blob = await fetchInvoicePdfBlob(invoiceId);
+        if (!blob) {
+          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
+          return;
         }
+        window.open(URL.createObjectURL(blob), "_blank");
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to get invoice PDF",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: "Failed to get invoice PDF", variant: "destructive" });
       }
     },
-    [toast]
+    [fetchInvoicePdfBlob, toast]
   );
 
   const printInvoice = useCallback(
     async (invoiceId: string, invoiceNumber: string) => {
       try {
-        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pdfUrl) {
-            const printWindow = window.open(data.pdfUrl, "_blank");
-            if (printWindow) {
-              printWindow.onload = () => {
-                printWindow.print();
-              };
-            }
-            toast({
-              title: "Print",
-              description: "Opening PDF for printing...",
-            });
-          } else {
-            toast({
-              title: "PDF Not Available",
-              description: "Generate the PDF first before printing",
-              variant: "destructive",
-            });
-          }
+        const blob = await fetchInvoicePdfBlob(invoiceId);
+        if (!blob) {
+          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
+          return;
         }
+        const printWindow = window.open(URL.createObjectURL(blob), "_blank");
+        if (printWindow) {
+          printWindow.onload = () => printWindow.print();
+        }
+        toast({ title: "Print", description: "Opening PDF for printing…" });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to print invoice",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: "Failed to print invoice", variant: "destructive" });
       }
     },
-    [toast]
+    [fetchInvoicePdfBlob, toast]
+  );
+
+  const downloadInvoicePdf = useCallback(
+    async (invoiceId: string, invoiceNumber: string) => {
+      try {
+        const blob = await fetchInvoicePdfBlob(invoiceId);
+        if (!blob) {
+          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${invoiceNumber}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: "Downloaded", description: `${invoiceNumber}.pdf saved to your device` });
+      } catch {
+        toast({ title: "Error", description: "Failed to download invoice", variant: "destructive" });
+      }
+    },
+    [fetchInvoicePdfBlob, toast]
   );
 
   const emailInvoice = useCallback(
     async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
       try {
-        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pdfUrl) {
-            const subject = encodeURIComponent(`Invoice ${invoiceNumber} from Viger Assist Ltd`);
-            const body = encodeURIComponent(
-              `Dear Customer,\n\nPlease find your invoice attached:\n${data.pdfUrl}\n\nThank you for your business.\n\nBest regards,\nViger Assist Ltd`
-            );
-            window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
-            toast({
-              title: "Email Client Opened",
-              description: `Composing email to ${customerEmail}`,
-            });
-          } else {
-            toast({
-              title: "PDF Not Available",
-              description: "Generate the PDF first before emailing",
-              variant: "destructive",
-            });
-          }
+        const blob = await fetchInvoicePdfBlob(invoiceId);
+        if (!blob) {
+          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
+          return;
         }
-      } catch {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${invoiceNumber}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        const subject = encodeURIComponent(`Invoice ${invoiceNumber}`);
+        const body = encodeURIComponent(
+          `Dear Customer,\n\nPlease find your invoice attached (downloaded to your device — attach it to this email).\n\nThank you for your business.`
+        );
+        window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
         toast({
-          title: "Error",
-          description: "Failed to prepare email",
-          variant: "destructive",
+          title: "PDF downloaded",
+          description: "Attach the downloaded file to the email that just opened.",
         });
+      } catch {
+        toast({ title: "Error", description: "Failed to prepare email", variant: "destructive" });
       }
     },
-    [toast]
+    [fetchInvoicePdfBlob, toast]
   );
-
-  const copyInvoiceLink = useCallback(
-    async (invoiceId: string, invoiceNumber: string) => {
-      try {
-        const response = await apiFetch(`/api/invoices/${invoiceId}/pdf`, {
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pdfUrl) {
-            await navigator.clipboard.writeText(data.pdfUrl);
-            toast({
-              title: "Link Copied",
-              description: "Invoice PDF link copied to clipboard",
-            });
-          } else {
-            toast({
-              title: "No Link Available",
-              description: "PDF has not been generated yet",
-              variant: "destructive",
-            });
-          }
-        }
-      } catch {
-        toast({
-          title: "Error",
-          description: "Failed to copy link",
-          variant: "destructive",
-        });
-      }
-    },
-    [toast]
-  );
-
-  const regenerateAllMissing = useCallback(async () => {
-    setRegenerating(true);
-    try {
-      const response = await apiRequest("POST", "/api/invoices/regenerate-all-missing");
-      const data = await response.json();
-
-      toast({
-        title: "PDFs Generated",
-        description: data.message,
-      });
-
-      await invalidateAfterInvoiceRegeneration(queryClient);
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to regenerate PDFs",
-        variant: "destructive",
-      });
-    } finally {
-      setRegenerating(false);
-    }
-  }, [toast]);
 
   if (invoicesInitialLoad) {
     return <InvoicesPageSkeleton />;
@@ -306,7 +229,7 @@ export default function Invoices() {
           icon={FileText}
           title="Invoices"
           question="Who owes you, and is it paid?"
-          explanation="Totals follow your status, search, and date window. PDF actions need a generated file on the server first."
+          explanation="Totals follow your status, search, and date window. PDFs are generated on the fly when you open, print, or download them."
           action={
             invoicesFetching ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -403,25 +326,6 @@ export default function Invoices() {
             </Select>
             </div>
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
-            <Button
-              variant="outline"
-              className="min-h-[44px] gap-2 border-destructive/25 text-destructive hover:bg-destructive/10 sm:flex-none"
-              onClick={regenerateAllMissing}
-              disabled={regenerating}
-              data-testid="button-regenerate-pdfs"
-            >
-              {regenerating ? (
-                <>
-                  <ActionLoader className="text-destructive" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <FileText className="h-4 w-4" />
-                  Generate missing PDFs
-                </>
-              )}
-            </Button>
             <Button className="min-h-[44px] gap-2 sm:flex-none" data-testid="button-create-invoice">
               <FileText className="h-4 w-4" />
               Create invoice
@@ -489,7 +393,7 @@ export default function Invoices() {
                         onCopyInvoiceNumber={copyInvoiceNumber}
                         onViewPdf={viewInvoicePdf}
                         onPrint={printInvoice}
-                        onCopyLink={copyInvoiceLink}
+                        onDownload={downloadInvoicePdf}
                         onEmail={emailInvoice}
                       />
                     ))}
