@@ -63,9 +63,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             .where(eq(orders.id, result.orderId));
           if (cashierShift) {
             await refreshClosedCashierShiftSummary(
-              ctx.orgId,
+              ctx.orgId!,
               cashierShift.cashierShiftId,
-              tx as Parameters<typeof refreshClosedCashierShiftSummary>[2],
+              tx as unknown as Parameters<typeof refreshClosedCashierShiftSummary>[2],
             );
           }
         }

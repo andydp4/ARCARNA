@@ -262,7 +262,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             await refreshClosedCashierShiftSummary(
               ctx.orgId,
               order.cashierShiftId,
-              tx as Parameters<typeof refreshClosedCashierShiftSummary>[2],
+              tx as unknown as Parameters<typeof refreshClosedCashierShiftSummary>[2],
             );
           }
 
