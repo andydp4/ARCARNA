@@ -20,9 +20,11 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  options: { headers?: Record<string, string> } = {},
 ): Promise<Response> {
   const headers = await withClerkAuthHeaders({
     ...orgScopeHeaders(),
+    ...options.headers,
     ...(data ? { "Content-Type": "application/json" } : {}),
   });
   const res = await fetch(resolveApiUrl(url), {

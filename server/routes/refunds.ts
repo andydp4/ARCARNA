@@ -15,7 +15,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
-import { touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { refreshClosedCashierShiftSummary, touchCashierShiftActivity } from "../services/cashierShiftEngine";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
@@ -257,6 +257,14 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             storeCreditGiftCardId: storeCreditGiftCard?.card.id ?? null,
             lines: resolvedLines.map((l) => ({ lineId: l.orderLineId, qty: l.qty, productId: l.productId, sku: l.sku })),
           }, { actor: { type: "user", id: userId }, source: "api-refunds" });
+
+          if (order.cashierShiftId) {
+            await refreshClosedCashierShiftSummary(
+              ctx.orgId,
+              order.cashierShiftId,
+              tx as Parameters<typeof refreshClosedCashierShiftSummary>[2],
+            );
+          }
 
           return { refund, eventId, storeCreditGiftCard };
         });

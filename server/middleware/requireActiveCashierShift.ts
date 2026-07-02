@@ -3,6 +3,7 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { verifyCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -38,27 +39,39 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
     if (!org?.cashierCommissionEnabled) return next();
 
     // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    // the time of sale. Only trust that body context with the server-issued replay
+    // token so online/API clients cannot spoof arbitrary historical shifts.
+    const isOfflineReplay = req.headers["x-offline-replay"] === "1";
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
     const offlineCashierId = req.body?.cashierId as string | undefined;
-    if (offlineCashierShiftId && offlineCashierId) {
+    const offlineToken = req.body?.cashierShiftToken as string | undefined;
+    if (isOfflineReplay && offlineCashierShiftId && offlineCashierId && offlineToken) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({
+          id: cashierShifts.id,
+          orgId: cashierShifts.orgId,
+          cashierId: cashierShifts.cashierId,
+          openedAt: cashierShifts.openedAt,
+        })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
+      if (
+        shift &&
+        shift.cashierId === offlineCashierId &&
+        verifyCashierShiftReplayToken(offlineToken, {
+          orgId: shift.orgId,
+          cashierId: shift.cashierId,
+          shiftId: shift.id,
+          openedAt: shift.openedAt.toISOString(),
+        })
+      ) {
         req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
         return next();
       }
     }
 
-    const cashierId =
-      (req.headers["x-cashier-id"] as string) ||
-      (req.body?.cashierId as string) ||
-      (req.query?.cashierId as string) ||
-      null;
+    const cashierId = (req.headers["x-cashier-id"] as string) || null;
 
     if (!cashierId) {
       if (org.requireCashierForSale) {

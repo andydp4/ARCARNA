@@ -14,6 +14,7 @@ export const STORAGE_SHIFT_ID_LEGACY = "midnight_currentShiftId";
 
 export const STORAGE_CASHIER_ID = "arcarna_activeCashierId";
 export const STORAGE_CASHIER_SHIFT_ID = "arcarna_activeCashierShiftId";
+export const STORAGE_CASHIER_SHIFT_REPLAY_TOKEN = "arcarna_activeCashierShiftReplayToken";
 
 export const STORAGE_WHATSAPP_DRAFT = "arcarna.whatsapp.draftOrder";
 export const STORAGE_WHATSAPP_DRAFT_LEGACY = "midnight.whatsapp.draftOrder";
