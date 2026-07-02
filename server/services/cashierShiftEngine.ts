@@ -23,6 +23,8 @@ import {
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
 
+type DbClient = typeof db;
+
 export class CashierShiftError extends Error {
   status: number;
   code: string;
@@ -100,8 +102,8 @@ type ShiftOrderRow = {
   createdAt: Date | null;
 };
 
-async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
-  return db
+async function loadShiftOrders(shiftId: string, database: DbClient = db): Promise<ShiftOrderRow[]> {
+  return database
     .select({
       id: orders.id,
       total: orders.total,
@@ -113,10 +115,13 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
     .where(eq(orders.cashierShiftId, shiftId));
 }
 
-async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { costPrice: number | null; quantity: number }[]>> {
+async function loadOrdersWithCosts(
+  orderIds: string[],
+  database: DbClient = db,
+): Promise<Map<string, { costPrice: number | null; quantity: number }[]>> {
   const map = new Map<string, { costPrice: number | null; quantity: number }[]>();
   if (orderIds.length === 0) return map;
-  const rows = await db
+  const rows = await database
     .select({
       orderId: orderItems.orderId,
       quantity: orderItems.quantity,
@@ -137,9 +142,9 @@ async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { co
   return map;
 }
 
-async function loadOrderExpensesTotal(orderIds: string[]): Promise<number> {
+async function loadOrderExpensesTotal(orderIds: string[], database: DbClient = db): Promise<number> {
   if (orderIds.length === 0) return 0;
-  const rows = await db
+  const rows = await database
     .select({ amount: orderExpensesTable.amount })
     .from(orderExpensesTable)
     .where(inArray(orderExpensesTable.orderId, orderIds));
@@ -163,8 +168,13 @@ function paidSalesReceivedFor(rows: { total: string; paymentMethod: string; stat
 }
 
 /** Org-wide paid sales received for a single UTC calendar day (all cashiers/channels). */
-async function orgPaidSalesReceivedForDay(orgId: string, dayStart: Date, dayEnd: Date): Promise<number> {
-  const rows = await db
+async function orgPaidSalesReceivedForDay(
+  orgId: string,
+  dayStart: Date,
+  dayEnd: Date,
+  database: DbClient = db,
+): Promise<number> {
+  const rows = await database
     .select({
       total: orders.total,
       paymentMethod: orders.paymentMethod,
@@ -175,8 +185,13 @@ async function orgPaidSalesReceivedForDay(orgId: string, dayStart: Date, dayEnd:
   return paidSalesReceivedFor(rows);
 }
 
-async function dailyGlobalExpensesForDay(orgId: string, dayStart: Date, dayEnd: Date): Promise<number> {
-  const rows = await db
+async function dailyGlobalExpensesForDay(
+  orgId: string,
+  dayStart: Date,
+  dayEnd: Date,
+  database: DbClient = db,
+): Promise<number> {
+  const rows = await database
     .select({ amount: overheadExpenses.amount, frequency: overheadExpenses.frequency })
     .from(overheadExpenses)
     .where(
@@ -202,23 +217,23 @@ function dayBounds(dateKey: string): { start: Date; end: Date } {
  * proportional to this shift's paid sales vs. the org's total paid sales that
  * day — correctly handling overnight/multi-day shifts and no-sales days.
  */
-export async function computeCashierShiftBalanceSheet(orgId: string, shift: CashierShift) {
-  const [cashier] = await db
+export async function computeCashierShiftBalanceSheet(orgId: string, shift: CashierShift, database: DbClient = db) {
+  const [cashier] = await database
     .select()
     .from(cashierProfiles)
     .where(eq(cashierProfiles.id, shift.cashierId))
     .limit(1);
   if (!cashier) throw new CashierShiftError("Cashier profile not found", 404, "CASHIER_NOT_FOUND");
 
-  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
+  const [org] = await database.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) throw new CashierShiftError("Organization not found", 404, "ORG_NOT_FOUND");
 
-  const orderRows = await loadShiftOrders(shift.id);
+  const orderRows = await loadShiftOrders(shift.id, database);
   const orderIds = orderRows.map((o) => o.id);
-  const costsByOrder = await loadOrdersWithCosts(orderIds);
-  const orderExpensesTotal = await loadOrderExpensesTotal(orderIds);
+  const costsByOrder = await loadOrdersWithCosts(orderIds, database);
+  const orderExpensesTotal = await loadOrderExpensesTotal(orderIds, database);
   const refundRows = orderIds.length
-    ? await db.select({ total: refunds.total }).from(refunds).where(inArray(refunds.orderId, orderIds))
+    ? await database.select({ total: refunds.total }).from(refunds).where(inArray(refunds.orderId, orderIds))
     : [];
 
   const shiftOrders: CashierShiftOrder[] = orderRows.map((o) => ({
@@ -241,8 +256,8 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
       orderRows.filter((o) => o.createdAt && utcDateKey(o.createdAt.toISOString()) === dayKey),
     );
     const [orgPaidForDay, dailyExpenses] = await Promise.all([
-      orgPaidSalesReceivedForDay(orgId, start, end),
-      dailyGlobalExpensesForDay(orgId, start, end),
+      orgPaidSalesReceivedForDay(orgId, start, end, database),
+      dailyGlobalExpensesForDay(orgId, start, end, database),
     ]);
     globalExpenseAllocation += allocateGlobalExpenseShare(dailyExpenses, shiftPaidForDay, orgPaidForDay);
   }
@@ -261,6 +276,64 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   return { sheet, cashier, org };
 }
 
+async function upsertCashierShiftSummary(
+  orgId: string,
+  shift: CashierShift,
+  database: DbClient,
+): Promise<CashierShiftSummary> {
+  const closedAt = shift.closedAt ?? new Date();
+  const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt }, database);
+  const values = {
+    orgId,
+    shiftId: shift.id,
+    cashierId: shift.cashierId,
+    grossSales: String(sheet.grossSales),
+    cashSales: String(sheet.cashSales),
+    cardSales: String(sheet.cardSales),
+    creditSales: String(sheet.creditSales),
+    unpaidCreditSales: String(sheet.unpaidCreditSales),
+    stockCost: String(sheet.stockCost),
+    orderExpenses: String(sheet.orderExpenses),
+    globalExpenseAllocation: String(sheet.globalExpenseAllocation),
+    refunds: String(sheet.refunds),
+    discounts: String(sheet.discounts),
+    netSalesProfit: String(sheet.netSalesProfit),
+    commissionRate: String(sheet.commissionRate),
+    commissionAmount: String(sheet.commissionAmount),
+    businessRetainedProfit: String(sheet.businessRetainedProfit),
+    hasIncompleteCostData: sheet.hasIncompleteCostData,
+    closedAt,
+    calculationVersion: sheet.calculationVersion,
+  };
+
+  const [summary] = await database
+    .insert(cashierShiftSummaries)
+    .values(values)
+    .onConflictDoUpdate({
+      target: cashierShiftSummaries.shiftId,
+      set: {
+        ...values,
+        calculatedAt: new Date(),
+      },
+    })
+    .returning();
+  return summary;
+}
+
+export async function refreshClosedCashierShiftSummary(
+  orgId: string,
+  shiftId: string,
+  database: DbClient = db,
+): Promise<CashierShiftSummary | null> {
+  const [shift] = await database
+    .select()
+    .from(cashierShifts)
+    .where(and(eq(cashierShifts.id, shiftId), eq(cashierShifts.orgId, orgId)))
+    .limit(1);
+  if (!shift || shift.status === "open") return null;
+  return upsertCashierShiftSummary(orgId, shift, database);
+}
+
 export async function closeCashierShift(
   orgId: string,
   shiftId: string,
@@ -275,7 +348,6 @@ export async function closeCashierShift(
   if (shift.status !== "open") throw new CashierShiftError("Cashier shift is not open", 400, "SHIFT_NOT_OPEN");
 
   const now = new Date();
-  const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt: now });
 
   const status = opts.closeReason === "inactivity_auto_close" ? "auto_closed" : "closed";
 
@@ -291,31 +363,7 @@ export async function closeCashierShift(
     .where(eq(cashierShifts.id, shiftId))
     .returning();
 
-  const [summary] = await db
-    .insert(cashierShiftSummaries)
-    .values({
-      orgId,
-      shiftId,
-      cashierId: shift.cashierId,
-      grossSales: String(sheet.grossSales),
-      cashSales: String(sheet.cashSales),
-      cardSales: String(sheet.cardSales),
-      creditSales: String(sheet.creditSales),
-      unpaidCreditSales: String(sheet.unpaidCreditSales),
-      stockCost: String(sheet.stockCost),
-      orderExpenses: String(sheet.orderExpenses),
-      globalExpenseAllocation: String(sheet.globalExpenseAllocation),
-      refunds: String(sheet.refunds),
-      discounts: String(sheet.discounts),
-      netSalesProfit: String(sheet.netSalesProfit),
-      commissionRate: String(sheet.commissionRate),
-      commissionAmount: String(sheet.commissionAmount),
-      businessRetainedProfit: String(sheet.businessRetainedProfit),
-      hasIncompleteCostData: sheet.hasIncompleteCostData,
-      closedAt: now,
-      calculationVersion: sheet.calculationVersion,
-    })
-    .returning();
+  const summary = await upsertCashierShiftSummary(orgId, { ...closed, closedAt: now }, db);
 
   return { shift: closed, summary };
 }

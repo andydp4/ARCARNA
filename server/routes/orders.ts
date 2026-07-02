@@ -7,6 +7,7 @@ import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
 import { requireActiveCashierShift } from "../middleware/requireActiveCashierShift";
+import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -60,6 +61,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
                 : {}),
             })
             .where(eq(orders.id, result.orderId));
+          if (cashierShift) {
+            await refreshClosedCashierShiftSummary(
+              ctx.orgId!,
+              cashierShift.cashierShiftId,
+              tx as unknown as Parameters<typeof refreshClosedCashierShiftSummary>[2],
+            );
+          }
         }
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));

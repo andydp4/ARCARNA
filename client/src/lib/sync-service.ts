@@ -47,7 +47,9 @@ export class SyncService {
 
       for (const order of unsyncedOrders) {
         try {
-          await apiRequest('POST', '/api/orders', order.data);
+          await apiRequest('POST', '/api/orders', order.data, {
+            headers: { 'X-Offline-Replay': '1' },
+          });
           
           if (order.id) {
             await offlineStorage.markOrderSynced(order.id);
@@ -61,7 +63,9 @@ export class SyncService {
 
       for (const mutation of unsyncedMutations) {
         try {
-          const response = await apiRequest(mutation.method, mutation.endpoint, mutation.data);
+          const response = await apiRequest(mutation.method, mutation.endpoint, mutation.data, {
+            headers: { 'X-Offline-Replay': '1' },
+          });
           
           if (mutation.id) {
             await offlineStorage.markMutationSynced(mutation.id);

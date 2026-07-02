@@ -20,6 +20,7 @@ import {
   effectiveCommissionRate,
   CashierShiftError,
 } from "../services/cashierShiftEngine";
+import { createCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -56,6 +57,18 @@ function formatMoney(amount: number, currency = "GBP"): string {
   } catch {
     return `£${amount.toFixed(2)}`;
   }
+}
+
+function withOfflineReplayToken<T extends { orgId: string; cashierId: string; id: string; openedAt: Date }>(shift: T) {
+  return {
+    ...shift,
+    offlineReplayToken: createCashierShiftReplayToken({
+      orgId: shift.orgId,
+      cashierId: shift.cashierId,
+      shiftId: shift.id,
+      openedAt: shift.openedAt.toISOString(),
+    }),
+  };
 }
 
 export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -226,7 +239,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         metadata: { cashierId: body.cashierId },
       });
 
-      res.status(201).json(shift);
+      res.status(201).json(withOfflineReplayToken(shift));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
@@ -295,7 +308,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const shift = await getOpenCashierShift(ctx.orgId, req.params.cashierId);
-      res.json({ shift });
+      res.json({ shift: shift ? withOfflineReplayToken(shift) : null });
     } catch (error) {
       console.error("[CashierShifts] current:", error);
       res.status(500).json({ message: "Failed to fetch current cashier shift" });
