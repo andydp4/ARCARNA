@@ -98,6 +98,10 @@ export default function SetupWizard() {
     businessColors: { primary: "#1e293b", accent: "#6366f1" },
     receiptLogoEnabled: false,
     invoiceLogoEnabled: false,
+    invoiceBankName: "",
+    invoiceBankSortCode: "",
+    invoiceBankAccountNumber: "",
+    invoicePaymentLink: "",
     cashierCommissionEnabled: false,
     defaultCashierCommissionRate: "10",
     requireCashierForSale: true,
@@ -133,6 +137,10 @@ export default function SetupWizard() {
         (org.businessColors as { primary: string; accent: string } | null) ?? f.businessColors,
       receiptLogoEnabled: org.receiptLogoEnabled ?? f.receiptLogoEnabled,
       invoiceLogoEnabled: org.invoiceLogoEnabled ?? f.invoiceLogoEnabled,
+      invoiceBankName: org.invoiceBankName ?? f.invoiceBankName,
+      invoiceBankSortCode: org.invoiceBankSortCode ?? f.invoiceBankSortCode,
+      invoiceBankAccountNumber: org.invoiceBankAccountNumber ?? f.invoiceBankAccountNumber,
+      invoicePaymentLink: org.invoicePaymentLink ?? f.invoicePaymentLink,
       cashierCommissionEnabled: org.cashierCommissionEnabled ?? f.cashierCommissionEnabled,
       defaultCashierCommissionRate: String(org.defaultCashierCommissionRate ?? f.defaultCashierCommissionRate),
       requireCashierForSale: org.requireCashierForSale ?? f.requireCashierForSale,
@@ -397,6 +405,32 @@ export default function SetupWizard() {
                     data-testid="wizard-invoice-logo-enabled"
                   />
                 </div>
+                <div className="pt-2 border-t space-y-1">
+                  <p className="text-sm font-medium">Invoice payment details (optional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Shown on generated invoice PDFs. Leave blank to omit — you can add these later in Settings.
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Bank name</Label>
+                    <Input value={form.invoiceBankName} onChange={(e) => setForm({ ...form, invoiceBankName: e.target.value })} className="min-h-[44px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sort code</Label>
+                    <Input value={form.invoiceBankSortCode} onChange={(e) => setForm({ ...form, invoiceBankSortCode: e.target.value })} className="min-h-[44px]" />
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Account number</Label>
+                    <Input value={form.invoiceBankAccountNumber} onChange={(e) => setForm({ ...form, invoiceBankAccountNumber: e.target.value })} className="min-h-[44px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Online payment link</Label>
+                    <Input value={form.invoicePaymentLink} onChange={(e) => setForm({ ...form, invoicePaymentLink: e.target.value })} placeholder="https://..." className="min-h-[44px]" />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -553,6 +587,7 @@ export default function SetupWizard() {
                 <p><strong>Currency:</strong> {form.currency} · {form.timezone}</p>
                 <p><strong>Invoices:</strong> {form.invoicePrefix}-{form.invoiceStartNumber}</p>
                 <p><strong>Branding:</strong> Logo {form.logoUrl ? "set" : "not set"} · Receipt logo {form.receiptLogoEnabled ? "on" : "off"} · Invoice logo {form.invoiceLogoEnabled ? "on" : "off"}</p>
+                <p><strong>Invoice payment details:</strong> {form.invoiceBankName || form.invoiceBankAccountNumber || form.invoicePaymentLink ? "Set" : "Not set"}</p>
                 <p>
                   <strong>Cashier commission:</strong>{" "}
                   {form.cashierCommissionEnabled

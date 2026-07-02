@@ -1,6 +1,20 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 
+type InvoiceCompany = {
+  name: string;
+  address?: string;
+  companyNumber?: string;
+  vatNumber?: string;
+  email?: string;
+  logo?: Buffer;
+  bankName?: string;
+  bankSortCode?: string;
+  bankAccountNumber?: string;
+  paymentLink?: string;
+  currency?: string;
+};
+
 type InvoicePdfData = {
   invoiceNumber: string;
   createdAt: Date;
@@ -10,12 +24,60 @@ type InvoicePdfData = {
   total: number;
   status: string;
   paymentMethod: string | null;
+  company: InvoiceCompany;
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
 };
+
+/** Fetches the org's logo bytes for invoice branding, if enabled and configured. Never throws. */
+async function loadInvoiceLogo(org: {
+  invoiceLogoEnabled: boolean;
+  logoUrl: string | null;
+}): Promise<Buffer | undefined> {
+  if (!org.invoiceLogoEnabled || !org.logoUrl) return undefined;
+  try {
+    const res = await fetch(org.logoUrl);
+    if (!res.ok) return undefined;
+    return Buffer.from(await res.arrayBuffer());
+  } catch (error) {
+    console.error("[Invoices] Failed to fetch invoice logo:", error);
+    return undefined;
+  }
+}
+
+function buildCompanyInfo(
+  org: {
+    name: string;
+    tradingName: string | null;
+    address: string | null;
+    companyNumber: string | null;
+    vatNumber: string | null;
+    email: string | null;
+    currency: string | null;
+    invoiceBankName: string | null;
+    invoiceBankSortCode: string | null;
+    invoiceBankAccountNumber: string | null;
+    invoicePaymentLink: string | null;
+  },
+  logo: Buffer | undefined,
+): InvoiceCompany {
+  return {
+    name: org.tradingName || org.name,
+    address: org.address || undefined,
+    companyNumber: org.companyNumber || undefined,
+    vatNumber: org.vatNumber || undefined,
+    email: org.email || undefined,
+    logo,
+    bankName: org.invoiceBankName || undefined,
+    bankSortCode: org.invoiceBankSortCode || undefined,
+    bankAccountNumber: org.invoiceBankAccountNumber || undefined,
+    paymentLink: org.invoicePaymentLink || undefined,
+    currency: org.currency || "GBP",
+  };
+}
 
 /**
  * Loads everything needed to render an invoice PDF, scoped to the caller's org.
@@ -51,6 +113,14 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
         }))
       : [{ name: "Order total", quantity: 1, unitPrice: fallbackTotal, total: fallbackTotal }];
 
+  const loadCompany = async (companyOrgId: string | null): Promise<InvoiceCompany> => {
+    if (!companyOrgId) return { name: "Your business" };
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, companyOrgId)).limit(1);
+    if (!org) return { name: "Your business" };
+    const logo = await loadInvoiceLogo(org);
+    return buildCompanyInfo(org, logo);
+  };
+
   const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
   if (invoice?.orderId) {
     const [order] = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
@@ -70,6 +140,7 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
       total,
       status: invoice.status || "sent",
       paymentMethod: order.paymentMethod,
+      company: await loadCompany(order.orgId),
       customerName: customer?.name || undefined,
       customerEmail: customer?.email || undefined,
       customerPhone: customer?.phone || undefined,
@@ -87,6 +158,7 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
     ? await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
     : [null];
 
+  const company = await loadCompany(order.orgId);
   let taxRate = 0.2;
   if (order.orgId) {
     const [org] = await db
@@ -112,6 +184,7 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
     total,
     status: order.status === "completed" ? "paid" : "pending",
     paymentMethod: order.paymentMethod,
+    company,
     customerName: customer?.name || undefined,
     customerEmail: customer?.email || undefined,
     customerPhone: customer?.phone || undefined,
@@ -147,6 +220,7 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         invoiceNumber: data.invoiceNumber,
         createdAt: data.createdAt.toISOString(),
         dueDate: data.dueDate,
+        company: data.company,
         customerName: data.customerName,
         customerEmail: data.customerEmail,
         customerPhone: data.customerPhone,
