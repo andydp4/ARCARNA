@@ -22,6 +22,7 @@ import {
   utcDateKey,
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
+import { canActorCloseCashierShift } from "./cashierShiftGuards";
 
 export class CashierShiftError extends Error {
   status: number;
@@ -90,14 +91,6 @@ export async function touchCashierShiftActivity(shiftId: string): Promise<void> 
     .update(cashierShifts)
     .set({ lastActivityAt: new Date(), updatedAt: new Date() })
     .where(and(eq(cashierShifts.id, shiftId), eq(cashierShifts.status, "open")));
-}
-
-export function canActorCloseCashierShift(
-  actorRole: string,
-  actorUserId: string | null | undefined,
-  shift: Pick<CashierShift, "openedByUserId">,
-): boolean {
-  return actorRole !== "CASHIER" || (!!actorUserId && shift.openedByUserId === actorUserId);
 }
 
 type ShiftOrderRow = {

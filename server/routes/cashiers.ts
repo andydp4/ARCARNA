@@ -20,6 +20,7 @@ import {
   effectiveCommissionRate,
   CashierShiftError,
 } from "../services/cashierShiftEngine";
+import { validateShiftCommissionPayment } from "../services/cashierShiftGuards";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -49,35 +50,6 @@ const commissionPaymentSchema = z.object({
   amountPaid: z.coerce.number().positive("Amount paid must be positive"),
   notes: z.string().max(2000).optional().nullable(),
 });
-
-export function validateShiftCommissionPayment(input: {
-  requestedCashierId: string;
-  summaryCashierId: string;
-  commissionAmount: number;
-  alreadyPaid: number;
-  amountPaid: number;
-}): { ok: true } | { ok: false; status: number; message: string; code: string } {
-  if (input.summaryCashierId !== input.requestedCashierId) {
-    return {
-      ok: false,
-      status: 400,
-      message: "Commission shift does not belong to the selected cashier",
-      code: "SHIFT_CASHIER_MISMATCH",
-    };
-  }
-
-  const unpaid = Math.max(0, Math.round((input.commissionAmount - input.alreadyPaid) * 100) / 100);
-  if (input.amountPaid > unpaid + 0.005) {
-    return {
-      ok: false,
-      status: 409,
-      message: "Commission payment exceeds the unpaid amount for this shift",
-      code: "COMMISSION_OVERPAID",
-    };
-  }
-
-  return { ok: true };
-}
 
 function formatMoney(amount: number, currency = "GBP"): string {
   try {

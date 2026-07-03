@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isSubmittedCashierShiftUsable } from "../middleware/requireActiveCashierShift";
-import { canActorCloseCashierShift } from "../services/cashierShiftEngine";
-import { validateShiftCommissionPayment } from "../routes/cashiers";
+import {
+  canActorCloseCashierShift,
+  isSubmittedCashierShiftUsable,
+  validateShiftCommissionPayment,
+} from "../services/cashierShiftGuards";
 
 describe("cashier shift security guards", () => {
   it("does not trust stale submitted cashier shift IDs", () => {

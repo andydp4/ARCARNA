@@ -3,18 +3,12 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { isSubmittedCashierShiftUsable } from "../services/cashierShiftGuards";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
   cashierShiftId: string;
 };
-
-export function isSubmittedCashierShiftUsable(
-  shift: { cashierId: string; status: string } | null | undefined,
-  cashierId: string,
-): boolean {
-  return !!shift && shift.cashierId === cashierId && shift.status === "open";
-}
 
 declare module "express-serve-static-core" {
   interface Request {
