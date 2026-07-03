@@ -50,6 +50,35 @@ const commissionPaymentSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
 });
 
+export function validateShiftCommissionPayment(input: {
+  requestedCashierId: string;
+  summaryCashierId: string;
+  commissionAmount: number;
+  alreadyPaid: number;
+  amountPaid: number;
+}): { ok: true } | { ok: false; status: number; message: string; code: string } {
+  if (input.summaryCashierId !== input.requestedCashierId) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Commission shift does not belong to the selected cashier",
+      code: "SHIFT_CASHIER_MISMATCH",
+    };
+  }
+
+  const unpaid = Math.max(0, Math.round((input.commissionAmount - input.alreadyPaid) * 100) / 100);
+  if (input.amountPaid > unpaid + 0.005) {
+    return {
+      ok: false,
+      status: 409,
+      message: "Commission payment exceeds the unpaid amount for this shift",
+      code: "COMMISSION_OVERPAID",
+    };
+  }
+
+  return { ok: true };
+}
+
 function formatMoney(amount: number, currency = "GBP"): string {
   try {
     return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(amount);
@@ -239,10 +268,12 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const userId = req.user?.id ?? "unknown";
+      const actorRole = req.orgContext?.role ?? "CASHIER";
 
       const { shift, summary } = await closeCashierShift(ctx.orgId, req.params.id, {
         closedByUserId: userId,
         closeReason: "manual",
+        restrictToOpenedByUserId: actorRole === "CASHIER" ? userId : null,
       });
 
       await recordAdminAudit(req, {
@@ -385,6 +416,36 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(eq(cashierProfiles.id, body.cashierId), eq(cashierProfiles.orgId, ctx.orgId)))
         .limit(1);
       if (!cashier) return res.status(404).json({ message: "Cashier profile not found" });
+
+      if (body.shiftId) {
+        const [summary] = await db
+          .select({
+            cashierId: cashierShiftSummaries.cashierId,
+            commissionAmount: cashierShiftSummaries.commissionAmount,
+          })
+          .from(cashierShiftSummaries)
+          .where(and(eq(cashierShiftSummaries.orgId, ctx.orgId), eq(cashierShiftSummaries.shiftId, body.shiftId)))
+          .limit(1);
+        if (!summary) {
+          return res.status(404).json({ message: "Commission summary not found for shift", code: "SHIFT_SUMMARY_NOT_FOUND" });
+        }
+
+        const existingPayments = await db
+          .select({ amountPaid: cashierCommissionPayments.amountPaid })
+          .from(cashierCommissionPayments)
+          .where(and(eq(cashierCommissionPayments.orgId, ctx.orgId), eq(cashierCommissionPayments.shiftId, body.shiftId)));
+        const alreadyPaid = existingPayments.reduce((sum, row) => sum + parseFloat(String(row.amountPaid)), 0);
+        const validation = validateShiftCommissionPayment({
+          requestedCashierId: body.cashierId,
+          summaryCashierId: summary.cashierId,
+          commissionAmount: parseFloat(String(summary.commissionAmount)),
+          alreadyPaid,
+          amountPaid: body.amountPaid,
+        });
+        if (!validation.ok) {
+          return res.status(validation.status).json({ message: validation.message, code: validation.code });
+        }
+      }
 
       const [payment] = await db
         .insert(cashierCommissionPayments)

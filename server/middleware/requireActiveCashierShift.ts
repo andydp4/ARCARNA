@@ -9,6 +9,13 @@ export type ActiveCashierShiftContext = {
   cashierShiftId: string;
 };
 
+export function isSubmittedCashierShiftUsable(
+  shift: { cashierId: string; status: string } | null | undefined,
+  cashierId: string,
+): boolean {
+  return !!shift && shift.cashierId === cashierId && shift.status === "open";
+}
+
 declare module "express-serve-static-core" {
   interface Request {
     cashierShift?: ActiveCashierShiftContext;
@@ -37,18 +44,18 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
 
-    // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    // Offline-queued orders carry cashier/shift context captured at the time of
+    // sale, but a raw request body is not proof that a historical shift should
+    // be reused. Only accept a submitted pair while the shift is still open.
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
     const offlineCashierId = req.body?.cashierId as string | undefined;
     if (offlineCashierShiftId && offlineCashierId) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId, status: cashierShifts.status })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
+      if (isSubmittedCashierShiftUsable(shift, offlineCashierId)) {
         req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
         return next();
       }

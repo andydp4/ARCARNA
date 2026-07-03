@@ -92,6 +92,14 @@ export async function touchCashierShiftActivity(shiftId: string): Promise<void> 
     .where(and(eq(cashierShifts.id, shiftId), eq(cashierShifts.status, "open")));
 }
 
+export function canActorCloseCashierShift(
+  actorRole: string,
+  actorUserId: string | null | undefined,
+  shift: Pick<CashierShift, "openedByUserId">,
+): boolean {
+  return actorRole !== "CASHIER" || (!!actorUserId && shift.openedByUserId === actorUserId);
+}
+
 type ShiftOrderRow = {
   id: string;
   total: string;
@@ -264,7 +272,11 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
 export async function closeCashierShift(
   orgId: string,
   shiftId: string,
-  opts: { closedByUserId: string | null; closeReason: "manual" | "inactivity_auto_close" },
+  opts: {
+    closedByUserId: string | null;
+    closeReason: "manual" | "inactivity_auto_close";
+    restrictToOpenedByUserId?: string | null;
+  },
 ): Promise<{ shift: CashierShift; summary: CashierShiftSummary }> {
   const [shift] = await db
     .select()
@@ -273,6 +285,9 @@ export async function closeCashierShift(
     .limit(1);
   if (!shift) throw new CashierShiftError("Cashier shift not found", 404, "SHIFT_NOT_FOUND");
   if (shift.status !== "open") throw new CashierShiftError("Cashier shift is not open", 400, "SHIFT_NOT_OPEN");
+  if (opts.restrictToOpenedByUserId && !canActorCloseCashierShift("CASHIER", opts.restrictToOpenedByUserId, shift)) {
+    throw new CashierShiftError("Cashier shifts can only be closed by the cashier who opened them", 403, "SHIFT_CLOSE_FORBIDDEN");
+  }
 
   const now = new Date();
   const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt: now });
