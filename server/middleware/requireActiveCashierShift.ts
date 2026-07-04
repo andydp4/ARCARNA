@@ -41,7 +41,8 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
 
-    const actor = { role: ctx.role, userId: req.user?.id ?? null };
+    const user = req.user as { id?: string } | undefined;
+    const actor = { role: ctx.role, userId: user?.id ?? null };
 
     // Offline-queued orders carry a server-signed replay token captured at the
     // time of sale, so a late sync can be attributed after auto-close without
