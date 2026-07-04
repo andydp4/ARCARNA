@@ -20,6 +20,11 @@ import {
   effectiveCommissionRate,
   CashierShiftError,
 } from "../services/cashierShiftEngine";
+import {
+  canCloseCashierShift,
+  canUseCashierShift,
+  signCashierShiftReplayToken,
+} from "../services/cashierShiftGuards";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -56,6 +61,22 @@ function formatMoney(amount: number, currency = "GBP"): string {
   } catch {
     return `£${amount.toFixed(2)}`;
   }
+}
+
+function actorFromRequest(req: any) {
+  return { role: req.orgContext?.role ?? null, userId: req.user?.id ?? null };
+}
+
+function cashierShiftResponse(orgId: string, shift: typeof cashierShifts.$inferSelect) {
+  return {
+    ...shift,
+    offlineReplayToken: signCashierShiftReplayToken({
+      orgId,
+      cashierId: shift.cashierId,
+      shiftId: shift.id,
+      openedAt: shift.openedAt.toISOString(),
+    }),
+  };
 }
 
 export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -226,7 +247,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         metadata: { cashierId: body.cashierId },
       });
 
-      res.status(201).json(shift);
+      res.status(201).json(cashierShiftResponse(ctx.orgId, shift));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
@@ -239,6 +260,16 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const userId = req.user?.id ?? "unknown";
+
+      const [existingShift] = await db
+        .select({ id: cashierShifts.id, openedByUserId: cashierShifts.openedByUserId })
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.id, req.params.id), eq(cashierShifts.orgId, ctx.orgId)))
+        .limit(1);
+      if (!existingShift) return res.status(404).json({ message: "Cashier shift not found" });
+      if (!canCloseCashierShift(actorFromRequest(req), existingShift)) {
+        return res.status(403).json({ message: "Only the cashier who opened this shift or a manager can close it" });
+      }
 
       const { shift, summary } = await closeCashierShift(ctx.orgId, req.params.id, {
         closedByUserId: userId,
@@ -295,7 +326,10 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const shift = await getOpenCashierShift(ctx.orgId, req.params.cashierId);
-      res.json({ shift });
+      if (shift && !canUseCashierShift(actorFromRequest(req), shift)) {
+        return res.status(403).json({ message: "This cashier shift belongs to another user" });
+      }
+      res.json({ shift: shift ? cashierShiftResponse(ctx.orgId, shift) : null });
     } catch (error) {
       console.error("[CashierShifts] current:", error);
       res.status(500).json({ message: "Failed to fetch current cashier shift" });

@@ -3,6 +3,10 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import {
+  canUseCashierShift,
+  verifyCashierShiftReplayToken,
+} from "../services/cashierShiftGuards";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -24,7 +28,7 @@ declare module "express-serve-static-core" {
  */
 export const requireActiveCashierShift: RequestHandler = async (req, res, next) => {
   try {
-    const ctx = (req as { orgContext?: { orgId: string | null } }).orgContext;
+    const ctx = (req as { orgContext?: { orgId: string | null; role?: string | null } }).orgContext;
     if (!ctx?.orgId) return next();
 
     const [org] = await db
@@ -37,20 +41,43 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
 
-    // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    const actor = { role: ctx.role, userId: req.user?.id ?? null };
+
+    // Offline-queued orders carry a server-signed replay token captured at the
+    // time of sale, so a late sync can be attributed after auto-close without
+    // letting clients forge arbitrary closed-shift attribution.
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
     const offlineCashierId = req.body?.cashierId as string | undefined;
+    const offlineReplayToken = req.body?.cashierShiftReplayToken as string | undefined;
     if (offlineCashierShiftId && offlineCashierId) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({
+          id: cashierShifts.id,
+          cashierId: cashierShifts.cashierId,
+          status: cashierShifts.status,
+          openedAt: cashierShifts.openedAt,
+          openedByUserId: cashierShifts.openedByUserId,
+        })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
       if (shift && shift.cashierId === offlineCashierId) {
-        req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
-        return next();
+        if (shift.status === "open" && canUseCashierShift(actor, shift)) {
+          await touchCashierShiftActivity(shift.id);
+          req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+          return next();
+        }
+
+        const replayAllowed = verifyCashierShiftReplayToken(offlineReplayToken, {
+          orgId: ctx.orgId,
+          cashierId: shift.cashierId,
+          shiftId: shift.id,
+          openedAt: shift.openedAt.toISOString(),
+        });
+        if (replayAllowed) {
+          req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+          return next();
+        }
       }
     }
 
@@ -79,6 +106,12 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
         });
       }
       return next();
+    }
+    if (!canUseCashierShift(actor, openShift)) {
+      return res.status(403).json({
+        message: "This cashier shift belongs to another user.",
+        code: "CASHIER_SHIFT_FORBIDDEN",
+      });
     }
 
     await touchCashierShiftActivity(openShift.id);
