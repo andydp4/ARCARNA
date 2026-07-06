@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 4. Monitoring &amp; updating orders</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="monitoring-orders">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">04</div>
+    <div class="chapter-title">Monitoring &amp; updating orders</div>
+    <p class="chapter-lead">Once an order is taken it lives on the Open Orders screen. This is where you check where each order stands, move it along, refund it, and send the customer their invoice.</p>
+  </div>
+
+  <p class="eyebrow">What this screen is for</p>
+  <h2>Open Orders — the work still on the go</h2>
+  <p>Creating an order (Section 3) is only the first step. Some orders are paid and done in
+     seconds; others wait — for stock, for a customer to collect, for a payment to clear.
+     <span class="ui">Open Orders</span> is the single list of everything in progress, so nothing
+     is forgotten. It answers one question: <em>what still needs finishing?</em></p>
+  <p>Everyone can open this screen and read it. What you can <em>change</em> depends on your role:
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <table>
+    <tr><th>Task</th><th>Who can do it</th></tr>
+    <tr><td>View orders and their detail</td><td><span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td>Change an order's status</td><td><span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td>Edit an order's lines (quantities, prices)</td><td><span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td>Refund an order</td><td><span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td>Delete an order</td><td><span class="role role-manager">MANAGER</span></td></tr>
+  </table>
+
+  <figure>
+    <img src="../images/04-open-orders.png" alt="The Open Orders screen with count tiles, filters and orders grouped by status" />
+    <figcaption>Open Orders — count tiles across the top, filters below, and orders grouped by status.</figcaption>
+    <!-- SHOT: route=/open-orders ; show=the count tiles, the status filter and search, and at least one status group with a few order rows ; state=a few orders of different statuses exist -->
+  </figure>
+
+  <h3>Reading the screen</h3>
+  <p>Four count tiles sit across the top so you can see the shape of the day at a glance.</p>
+  <table>
+    <tr><th>Tile</th><th>What it counts</th></tr>
+    <tr><td><strong>Total orders</strong></td><td>Every order, whatever its status.</td></tr>
+    <tr><td><strong>Active</strong></td><td>Orders that are not yet completed — the ones that still need work.</td></tr>
+    <tr><td><strong>Urgent</strong></td><td>Orders flagged as the highest priority. Clear these first.</td></tr>
+    <tr><td><strong>Completed</strong></td><td>Finished orders, ready to be set aside.</td></tr>
+  </table>
+  <p>Below the tiles, the orders themselves are grouped under their status, with the most
+     pressing groups first. Each row shows the customer name (or <span class="ui">Walk-in</span>),
+     a short order number, when it was placed, the total and how it was paid. The list refreshes on
+     its own every few seconds, so a colleague's change on another till appears without you reloading.</p>
+
+  <h3>What each status means</h3>
+  <table>
+    <tr><th>Status</th><th>Plain meaning</th></tr>
+    <tr><td><strong>Pending</strong></td><td>Taken, but not yet finished — the normal starting point.</td></tr>
+    <tr><td><strong>On hold</strong></td><td>Paused for now, e.g. waiting on stock or a decision.</td></tr>
+    <tr><td><strong>Awaiting customer</strong></td><td>Ready — waiting for the customer to collect or reply.</td></tr>
+    <tr><td><strong>Urgent</strong></td><td>Needs attention ahead of everything else.</td></tr>
+    <tr><td><strong>Completed</strong></td><td>Done and handed over. Nothing more to do.</td></tr>
+  </table>
+
+  <p class="eyebrow">Finding one order</p>
+  <h2>Filtering and searching</h2>
+  <p>On a busy day the list is long. Two controls narrow it down.</p>
+  <ol class="steps">
+    <li>Use the <span class="ui">Status</span> menu to choose which orders to show — for example
+        <span class="ui">Active (not completed)</span>, <span class="ui">Completed only</span>,
+        <span class="ui">Urgent only</span>, <span class="ui">On hold</span> or
+        <span class="ui">Awaiting customer</span>. It opens on <span class="ui">Active</span> so completed
+        orders stay out of your way.</li>
+    <li>Type in the <span class="ui">Search</span> box to match by customer name, order number, or
+        payment method. The list filters as you type.</li>
+    <li>Set up a filter you use often? Save it as a view from the selector above the filters, and it
+        will be there next time.</li>
+  </ol>
+  <div class="callout">
+    <strong>Nothing showing?</strong>
+    An empty list usually means the filter is too tight, not that there are no orders. Switch the
+    status to <span class="ui">All orders</span> or clear the search box to see everything again.
+  </div>
+
+  <p class="eyebrow">Looking inside an order</p>
+  <h2>Opening an order to see its detail</h2>
+  <p>Select <span class="ui">View</span> on any row to open the order's detail. This is a read-only
+     summary — safe to open at any time.</p>
+  <table>
+    <tr><th>Part</th><th>What it shows</th></tr>
+    <tr><td><strong>Customer</strong></td><td>Who the order is for, or <span class="ui">Walk-in</span> if none was attached.</td></tr>
+    <tr><td><strong>Placed &amp; payment</strong></td><td>When the order was taken and how it was paid.</td></tr>
+    <tr><td><strong>Status &amp; total</strong></td><td>Its current status and the amount, e.g. £42.50. If any money has been refunded, the refunded amount shows here too.</td></tr>
+    <tr><td><strong>Line items</strong></td><td>Each product on the order — quantity, unit price and line total.</td></tr>
+    <tr><td><strong>Timeline</strong></td><td>Appears once an order has been refunded: when it was created and each refund since, with who did it.</td></tr>
+    <tr><td><strong>Bank details &amp; collection</strong></td><td>Shown when your shop has them set — handy for bank-transfer or collection orders. The small copy button beside a value copies it to the clipboard.</td></tr>
+  </table>
+  <p>From this detail view a manager can also start a refund — see below. Select
+     <span class="ui">Close</span> when you are done; viewing changes nothing.</p>
+
+  <figure>
+    <img src="../images/04-order-detail.png" alt="An order's detail view showing customer, totals and line items" />
+    <figcaption>An order's detail — customer and totals at the top, line items below.</figcaption>
+    <!-- SHOT: route=/open-orders ; show=the order detail dialog open, with customer, status, total and the line items list visible ; state=an order's View has been opened -->
+  </figure>
+
+  <p class="eyebrow">Moving an order along</p>
+  <h2>Updating the status</h2>
+  <p>Changing the status is how you move an order through the day — from
+     <span class="ui">Pending</span> to <span class="ui">Completed</span>, or onto
+     <span class="ui">On hold</span> while you wait for something.
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span>
+     Both cashiers and managers can do this.</p>
+  <ol class="steps">
+    <li>Find the order and select the <span class="ui">More actions</span> button (the three dots) on its row.</li>
+    <li>Choose <span class="ui">Update status</span>.</li>
+    <li>Pick the new status from the menu and select <span class="ui">Update status</span> to confirm.</li>
+  </ol>
+  <p>The list updates straight away. If the connection drops mid-shift, the change is queued on the
+     device and syncs when you are back online — you will see a note that the update was saved offline.</p>
+
+  <p class="eyebrow">Manager tasks</p>
+  <h2>Editing and deleting an order</h2>
+  <p>Correcting the contents of an order, or removing it entirely, is a
+     <span class="role role-manager">MANAGER</span> job. These actions change what was sold and can
+     release stock, so they sit behind the manager role. A cashier who needs one of these should ask a
+     manager.</p>
+
+  <h3>Editing the lines</h3>
+  <p>Use <span class="ui">Edit order</span> from the row's <span class="ui">More actions</span> menu to
+     change quantities or unit prices, or to remove a line the customer no longer wants. The new total
+     recalculates as you type. Remove a line only if you truly mean to drop that item. Save with
+     <span class="ui">Save changes</span>. If the edit affects stock, arcarna may warn you and adjust
+     the order's status.</p>
+
+  <h3>Deleting an order</h3>
+  <p>Deleting is permanent and cannot be undone. Use it only for orders taken in error — not for
+     cancellations or returns, which should be refunded instead so the record stays honest.</p>
+  <div class="callout warn">
+    <strong>Manager — deleting is final</strong>
+    Choose <span class="ui">Delete order</span>, then tick the box to confirm you understand it will be
+    permanently removed, and select <span class="ui">Delete permanently</span>. Any stock reserved for
+    the order is released back to inventory. Customer and payment records kept elsewhere are not affected.
+  </div>
+
+  <p class="eyebrow">Giving money back</p>
+  <h2>Refunding an order</h2>
+  <p>A refund returns money for some or all of an order — a damaged item, the wrong product, or a
+     change of mind. Refunding is a <span class="role role-manager">MANAGER</span> task, and it keeps
+     a full record, so always refund rather than quietly deleting. Open the order with
+     <span class="ui">View</span>, then select <span class="ui">Issue refund</span>.</p>
+
+  <figure>
+    <img src="../images/04-refund.png" alt="The refund screen with order lines and refundable quantities" />
+    <figcaption>The refund screen — choose the lines and quantities to refund.</figcaption>
+    <!-- SHOT: route=/open-orders/:id/refund ; show=the first refund step, listing the order lines with checkboxes, refundable quantities and the running refund total ; state=an existing order id -->
+  </figure>
+
+  <p>The refund runs in three short steps.</p>
+  <ol class="steps">
+    <li><strong>Select lines.</strong> Tick each item you are refunding and set the quantity. Each line
+        shows how many are still <em>refundable</em>, so you cannot refund more than was sold or refund
+        the same item twice. The <span class="ui">Refund total</span> adds up as you go. Select
+        <span class="ui">Continue</span>.</li>
+    <li><strong>Reason &amp; method.</strong> Choose why (see below) and how the money goes back, add any
+        <span class="ui">Notes</span>, then select <span class="ui">Review</span>.</li>
+    <li><strong>Confirm.</strong> Check the amount, method and reason, then select
+        <span class="ui">Confirm refund</span>. You return to the order, and the refund now appears on
+        its timeline.</li>
+  </ol>
+
+  <h3>Reasons</h3>
+  <table>
+    <tr><th>Reason</th><th>When to use it</th></tr>
+    <tr><td><strong>Damaged</strong></td><td>The item arrived or was found damaged.</td></tr>
+    <tr><td><strong>Wrong item</strong></td><td>The customer received the wrong product.</td></tr>
+    <tr><td><strong>Customer changed mind</strong></td><td>A return with nothing wrong with the goods.</td></tr>
+    <tr><td><strong>Defect</strong></td><td>The item is faulty.</td></tr>
+    <tr><td><strong>Other</strong></td><td>Anything else — add a note so the record is clear.</td></tr>
+  </table>
+
+  <h3>Methods</h3>
+  <table>
+    <tr><th>Method</th><th>What it means</th></tr>
+    <tr><td><strong>Original</strong></td><td>Back to how the customer paid — the usual choice.</td></tr>
+    <tr><td><strong>Cash</strong></td><td>Cash from the till.</td></tr>
+    <tr><td><strong>Store credit</strong></td><td>Credit for the customer to spend later.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Refunds can be partial</strong>
+    You do not have to refund the whole order. Refund one line, or part of a line, and come back later
+    for more — the refundable count keeps track of what is left.
+  </div>
+
+  <p class="eyebrow">The paperwork</p>
+  <h2>Invoices</h2>
+  <p>An invoice is the formal record of a sale — the document a customer keeps for their accounts. The
+     <span class="ui">Invoices</span> screen lists them all and answers: <em>who owes you, and is it
+     paid?</em> The PDF for each invoice is produced on the spot when you open, print, download or email
+     it, so it is always up to date.</p>
+
+  <figure>
+    <img src="../images/04-invoices.png" alt="The Invoices screen with totals and a table of invoices" />
+    <figcaption>Invoices — paid, pending and overdue totals above the list.</figcaption>
+    <!-- SHOT: route=/invoices ; show=the summary tiles (paid, pending, overdue, rows shown), the search and filters, and the invoice table ; state=a few invoices exist -->
+  </figure>
+
+  <h3>Finding an invoice</h3>
+  <p>Four tiles summarise the invoices currently shown: <strong>Paid total</strong>,
+     <strong>Pending</strong>, <strong>Overdue</strong> and <strong>Rows shown</strong>. Narrow the list
+     with the search box (by invoice number, customer name or email) and the two menus — a status filter
+     (<span class="ui">Paid</span>, <span class="ui">Pending</span>, <span class="ui">Overdue</span>) and
+     a date window (<span class="ui">Today</span>, <span class="ui">This week</span>,
+     <span class="ui">This month</span> or <span class="ui">All dates</span>). The totals always match
+     whatever the filters are showing.</p>
+
+  <h3>Viewing, downloading and emailing a PDF</h3>
+  <p>Each row has a <span class="ui">PDF</span> menu with everything you need to hand the invoice over.</p>
+  <table>
+    <tr><th>Choice</th><th>What it does</th></tr>
+    <tr><td><strong>Open</strong></td><td>Opens the invoice PDF in a new tab to read on screen.</td></tr>
+    <tr><td><strong>Print</strong></td><td>Opens the PDF and starts your browser's print dialog.</td></tr>
+    <tr><td><strong>Download</strong></td><td>Saves the PDF to the device as <span class="ui">invoice-number.pdf</span>.</td></tr>
+    <tr><td><strong>Email</strong></td><td>Downloads the PDF and opens a pre-written email to the customer. Attach the file that just downloaded, then send.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>The email needs the file attached</strong>
+    Emailing does two things: it saves the PDF to your device and opens a draft message to the customer.
+    The draft is not sent on its own — attach the downloaded file and send it yourself.
+  </div>
+
+</main>
+</body>
+</html>

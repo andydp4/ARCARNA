@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 2. Opening &amp; shifts</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="opening-shifts">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">02</div>
+    <div class="chapter-title">Opening &amp; shifts</div>
+    <p class="chapter-lead">A shift records who was on the till and whether the cash added up. Starting one at the beginning of your time on the till, and closing it properly at the end, is how the business keeps an honest count of its money.</p>
+  </div>
+
+  <p class="eyebrow">The idea · why shifts exist</p>
+  <h2>What a shift is, and why it matters</h2>
+  <p>A shift is a record of one person serving at one till, from the moment they start until the moment they close. It answers two plain questions the business asks every day:
+     <em>who was on, and did the till balance?</em></p>
+  <p>At the start of a shift the drawer holds a known amount of cash — the <strong>opening float</strong>. During the shift, cash sales go in and any cash refunds come out, so arcarna knows how much cash <em>should</em> be in the drawer. At the end you count the drawer and enter what is actually there. If the counted cash does not match, the difference is the <strong>variance</strong>. A shift that balances has a variance of zero.</p>
+  <p>This is a job for both roles: a <span class="role role-cashier">CASHIER</span> starts and closes their own shift; a <span class="role role-manager">MANAGER</span> reviews shifts afterwards to check the tills balanced.</p>
+
+  <table>
+    <tr><th>Term</th><th>What it means</th></tr>
+    <tr><td><strong>Opening float</strong></td><td>The cash placed in the drawer before serving starts — your starting count.</td></tr>
+    <tr><td><strong>Expected cash</strong></td><td>What the drawer should hold now: opening float, plus cash sales, minus cash refunds.</td></tr>
+    <tr><td><strong>Closing count</strong></td><td>The cash you actually count in the drawer when you close the shift.</td></tr>
+    <tr><td><strong>Variance</strong></td><td>Closing count minus expected cash. Zero means it balanced. A signed number (for example −£3.50) means the drawer was short or over.</td></tr>
+    <tr><td><strong>Z-report</strong></td><td>The end-of-shift summary of everything that happened: sales, refunds and the cash drawer. Covered below.</td></tr>
+  </table>
+
+  <p class="eyebrow">At the till · starting</p>
+  <h2>Starting a cashier shift <span class="role role-cashier">CASHIER</span></h2>
+  <p>You start your shift from the till — the <span class="ui">Create Order</span> screen. When your shop tracks cashiers, a <span class="ui">Start cashier shift</span> control sits at the top of the till. It ties every sale you take to your name, so the shift can be balanced against your drawer at the end.</p>
+
+  <figure>
+    <img src="../images/02-start-cashier-shift.png" alt="The Start cashier shift dialog at the till, with a cashier code to select" />
+    <figcaption>Starting a shift — choose your cashier code, then start.</figcaption>
+    <!-- SHOT: route=/create-order ; show=the Start cashier shift button at the top of the till and the "Start cashier shift" dialog open, showing the Cashier code dropdown and the "Start shift" button ; state=cashier commission tracking enabled in Settings, no shift currently open -->
+  </figure>
+
+  <ol class="steps">
+    <li>Count the cash already in the drawer — this is your <strong>opening float</strong>. Make sure it matches the amount your shop starts each till with.</li>
+    <li>On the till, select <span class="ui">Start cashier shift</span>.</li>
+    <li>In the <span class="ui">Start cashier shift</span> window, open the <span class="ui">Cashier</span> list and choose your own cashier code (shown as your code and name, for example <span class="ui">A1 — Priya</span>).</li>
+    <li>Select <span class="ui">Start shift</span>. The control changes to a badge reading <span class="ui">Cashier A1 · Shift open</span> — that badge is your confirmation the shift is running.</li>
+  </ol>
+  <div class="callout">
+    <strong>No cashier codes yet?</strong>
+    If the list is empty, the window says so and points to <span class="ui">Settings → Cashiers</span>. A manager adds cashier profiles there before anyone can start a shift. See Section 9.
+  </div>
+
+  <p class="eyebrow">During the shift · serving</p>
+  <h2>Serving while your shift is open <span class="role role-cashier">CASHIER</span></h2>
+  <p>Once your shift is open there is nothing extra to do — build orders and take payment as normal (Section 3). The <span class="ui">Cashier · Shift open</span> badge stays visible at the top of the till so you can see at a glance that you are on the clock and that sales are being counted against your drawer.</p>
+  <p>Some shops require a shift before any sale can go through. If yours does and no shift is open, the till will prompt you to start one the moment you try to take a payment. Start your shift, then carry on.</p>
+
+  <p class="eyebrow">At the till · closing</p>
+  <h2>Ending your shift <span class="role role-cashier">CASHIER</span></h2>
+  <p>Closing a shift is how the till is balanced. Do it at the end of your time on the till, before you hand over.</p>
+  <ol class="steps">
+    <li>Count all the cash in the drawer — notes and coin — to get your <strong>closing count</strong>.</li>
+    <li>On the till, select <span class="ui">End shift</span> next to your cashier badge.</li>
+    <li>arcarna compares your counted cash against the <strong>expected cash</strong> it worked out from your sales. The difference is the <strong>variance</strong>.</li>
+    <li>A <span class="ui">Shift closed</span> summary appears. Read it, then select <span class="ui">Close</span>. Your badge disappears — the shift is now finished and recorded.</li>
+  </ol>
+  <p>Where your shop tracks commission, the <span class="ui">Shift closed</span> summary also shows the shift's takings broken down — cash, card and credit/tick sales, costs, refunds, the net sales profit, and the cashier commission earned. A manager can confirm any commission owed from that same window.</p>
+  <div class="callout warn">
+    <strong>Manager — a variance is a question, not a crime</strong>
+    A drawer that is a few pence out is normal. A large or repeated variance is worth a quiet word: it usually means miscounted change, a missed float, or a sale rung up wrong — not dishonesty. The point of closing properly is that the question can be asked at all.
+  </div>
+
+  <p class="eyebrow">Evidence · the Z-report</p>
+  <h2>The Z-report</h2>
+  <p>Every closed shift produces a <strong>Z-report</strong> — the single page that says what happened during that shift. It is the evidence behind the day's takings: sales totalled, refunds subtracted, and the cash drawer reconciled from opening float to variance. Check it whenever a till does not balance.</p>
+
+  <figure>
+    <img src="../images/02-z-report.png" alt="A Z-report showing sales totals, payment methods, categories and the cash drawer reconciliation" />
+    <figcaption>A Z-report — sales, refunds and the cash drawer for one closed shift.</figcaption>
+    <!-- SHOT: route=/shifts ; show=the Z-Report dialog open (select the "Z-report" button on any shift row), showing the header with location and cashier, the Orders/Gross/Refunds/Net block, sales by payment method and category, and the Cash drawer section with opening float, expected cash, counted cash and variance ; state=at least one shift exists today -->
+  </figure>
+
+  <h3>What it shows</h3>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>Header</strong></td><td>The location, the cashier who was on, and when the shift opened and closed.</td></tr>
+    <tr><td><strong>Orders · Gross · Refunds · Net</strong></td><td>How many orders were taken, the gross sales total, refunds given, and net sales (gross minus refunds).</td></tr>
+    <tr><td><strong>Sales by payment method</strong></td><td>Takings split by how customers paid — cash, card, credit and so on — with a count of orders each.</td></tr>
+    <tr><td><strong>Sales by category</strong></td><td>Which kinds of product sold, by value. Useful for spotting what a shift actually sold.</td></tr>
+    <tr><td><strong>Top SKUs</strong></td><td>The best-selling individual products in the shift, with quantity and revenue.</td></tr>
+    <tr><td><strong>Cash drawer</strong></td><td>The reconciliation: opening float, cash sales, cash refunds, expected cash, counted cash and the variance. When the variance is not zero it is shown in the loss colour so it stands out.</td></tr>
+  </table>
+  <p>Select <span class="ui">Print</span> at the top of the Z-report to print or keep a copy for the day's paperwork.</p>
+
+  <p class="eyebrow">Back office · reviewing</p>
+  <h2>Where managers review past shifts <span class="role role-manager">MANAGER</span></h2>
+  <p>Managers see every shift on the <span class="ui">Shifts</span> page. It answers the same two questions for the whole team at once: who was on, and did each till balance?</p>
+
+  <figure>
+    <img src="../images/02-shifts.png" alt="The Shifts page listing today's shifts with their status, float and variance" />
+    <figcaption>The Shifts page — today's shifts, each with its float and variance.</figcaption>
+    <!-- SHOT: route=/shifts ; show=the Shifts page with the "Today" table listing shifts by opened time, status badge (open/closed), float and variance, and a "Z-report" button on each row ; state=at least one shift exists today -->
+  </figure>
+
+  <p>Each row is one shift for today:</p>
+  <table>
+    <tr><th>Column</th><th>What it tells you</th></tr>
+    <tr><td><span class="ui">Opened</span></td><td>When the shift started.</td></tr>
+    <tr><td><span class="ui">Status</span></td><td>A badge reading <span class="ui">open</span> (still serving) or <span class="ui">closed</span> (finished and balanced).</td></tr>
+    <tr><td><span class="ui">Float</span></td><td>The opening float the drawer started with.</td></tr>
+    <tr><td><span class="ui">Variance</span></td><td>How far the closing count was from expected. A dash (—) means the shift is still open, so there is nothing to compare yet.</td></tr>
+    <tr><td><span class="ui">Z-report</span></td><td>Opens that shift's full Z-report in a window.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>A daily habit worth keeping</strong>
+    Glance at the <span class="ui">Shifts</span> page at the end of each day. Any variance that is not a dash and not zero is worth opening the Z-report for — the answer is almost always in the cash drawer section.
+  </div>
+
+</main>
+</body>
+</html>
