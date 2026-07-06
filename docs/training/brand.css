@@ -58,11 +58,12 @@ body {
   -webkit-font-smoothing:antialiased;
 }
 
-.section { max-width:860px; margin:0 auto; padding:0 44px 40px; position:relative; }
+.section { max-width:860px; margin:0 auto; padding:0 24px 40px; position:relative; }
 
-/* Branded header band — arcarna wordmark on Deep Shadow, Truth-Blue rule. */
+/* Branded header band — arcarna wordmark on Deep Shadow, Truth-Blue rule.
+   Bleeds only to the section's own padding so page margins stay clear. */
 .brand-band {
-  background:var(--deep-shadow); margin:0 -44px 8px; padding:16px 44px;
+  background:var(--deep-shadow); margin:0 -24px 8px; padding:16px 24px;
   display:flex; align-items:center; justify-content:space-between;
   border-bottom:3px solid var(--truth-blue);
 }
@@ -103,7 +104,7 @@ em { font-style:italic; }
    number in New Astro, the title in soft grey, and a blue intro line. */
 .chapter-open { position:relative; padding:54px 0 30px 0; margin-bottom:14px; }
 .chapter-open::before {          /* the veil — light emerging from the margin */
-  content:""; position:absolute; left:-44px; top:-10px; bottom:-10px; width:44px;
+  content:""; position:absolute; left:-24px; top:-10px; bottom:-10px; width:34px;
   background:linear-gradient(90deg,rgba(93,180,255,0) 0%,rgba(93,180,255,0.10) 45%,rgba(93,180,255,0.28) 72%,rgba(93,180,255,0) 100%);
 }
 .chapter-num {
