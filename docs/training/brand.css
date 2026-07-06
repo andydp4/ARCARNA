@@ -1,179 +1,161 @@
-/* ARCARNA training manual — shared brand styles.
-   Navy + ARCARNA blue drawn from the app theme (client/src/index.css).
-   Print-first: white pages, navy headings, blue accents. */
+/* arcarna training manual — shared brand styles.
+   Built to the arcarna Brand System & Experience Bible (ARC-BB-001, v1.0).
+   Colour, typography and the chapter-opener divider follow Book 03 exactly. */
 
-/* Official brand typography: New Astro.
-   Drop the font file into docs/training/fonts/ and this picks it up.
-   Falls back to a clean sans until the file is supplied. */
-@font-face {
-  font-family: "New Astro";
-  src: url("fonts/NewAstro.woff2") format("woff2"),
-       url("fonts/NewAstro.woff") format("woff"),
-       url("fonts/NewAstro.otf") format("opentype"),
-       url("fonts/NewAstro.ttf") format("truetype");
-  font-weight: 100 900;
-  font-display: swap;
-}
+/* ---- Typefaces (Book 03 · Three typefaces, three jobs) --------------------
+   New Astro       display · chapter numbers · hero
+   New Astro Soft  all headings
+   Inter           all running text / body
+   IBM Plex Mono   eyebrow labels · values · codes
+   New Astro OTFs are embedded in exported PDFs only (never redistributed). */
+@font-face { font-family:"New Astro"; src:url("fonts/NewAstro-Bold.otf") format("opentype"); font-weight:700; font-display:swap; }
+@font-face { font-family:"New Astro"; src:url("fonts/NewAstro-Regular.otf") format("opentype"); font-weight:400; font-display:swap; }
+@font-face { font-family:"New Astro Soft"; src:url("fonts/NewAstroSoft-SemiBold.otf") format("opentype"); font-weight:600; font-display:swap; }
+@font-face { font-family:"New Astro Soft"; src:url("fonts/NewAstroSoft-Medium.otf") format("opentype"); font-weight:500; font-display:swap; }
+@font-face { font-family:"New Astro Soft"; src:url("fonts/NewAstroSoft-Light.otf") format("opentype"); font-weight:300; font-display:swap; }
+@font-face { font-family:"Inter"; src:url("fonts/Inter-Regular.woff2") format("woff2"); font-weight:400; font-display:swap; }
+@font-face { font-family:"Inter"; src:url("fonts/Inter-Medium.woff2") format("woff2"); font-weight:500; font-display:swap; }
+@font-face { font-family:"Inter"; src:url("fonts/Inter-SemiBold.woff2") format("woff2"); font-weight:600; font-display:swap; }
+@font-face { font-family:"Plex Mono"; src:url("fonts/PlexMono-Regular.woff2") format("woff2"); font-weight:400; font-display:swap; }
+@font-face { font-family:"Plex Mono"; src:url("fonts/PlexMono-Medium.woff2") format("woff2"); font-weight:500; font-display:swap; }
 
 :root {
-  --arc-font-brand: "New Astro", "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --arc-navy: #0f172a;
-  --arc-navy-soft: #1d2839;
-  --arc-blue: #1d9bea;
-  --arc-blue-dark: #0d7fc7;
-  --arc-muted: #64748b;
-  --arc-border: #e2e8f0;
-  --arc-bg-tint: #f1f5f9;
-  --arc-amber: #b45309;
-  --arc-amber-bg: #fef3c7;
-  --arc-green: #047857;
-  --arc-green-bg: #d1fae5;
+  /* Book 03 · The Blue Set + Foundations (exact values) */
+  --deep-shadow:#061327;
+  --navy-blue:#0B2E66;
+  --deep-blue:#123B78;
+  --truth-blue:#3C7AC4;   /* primary — the only navigation/primary-action colour */
+  --sky-blue:#5DB4FF;
+  --light-blue:#B6D9FF;
+  --bg900:#0E1A2B;
+  --bg700:#23364D;
+  --bg500:#4A607A;        /* secondary text on light */
+  --bg300:#7D8FA6;
+  --bg100:#E6ECF2;
+  --off-white:#F6F8FB;
+  --ink:#0E1A2B;          /* body text on light — Blue Grey 900, AAA */
+  /* Accents — each with a fixed meaning (Book 03 · The accent palette) */
+  --success:#3CFF7A;
+  --attention:#FFC107;
+  --urgent:#FF8A00;
+  --loss:#E10098;
+
+  --font-display:"New Astro","New Astro Soft",sans-serif;
+  --font-head:"New Astro Soft","Segoe UI",sans-serif;
+  --font-body:"Inter","Segoe UI",-apple-system,Arial,sans-serif;
+  --font-mono:"Plex Mono","IBM Plex Mono",ui-monospace,monospace;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing:border-box; }
 
+/* Book 03 · Body is Inter / Blue Grey 900. New Astro never sets body copy. */
 body {
-  font-family: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
-  color: var(--arc-navy);
-  margin: 0;
-  line-height: 1.55;
-  font-size: 15px;
+  font-family:var(--font-body);
+  color:var(--ink);
+  margin:0;
+  line-height:1.65;
+  font-size:10.5pt;
+  -webkit-font-smoothing:antialiased;
 }
 
-.section { max-width: 860px; margin: 0 auto; padding: 0 40px 32px; }
+.section { max-width:860px; margin:0 auto; padding:0 44px 40px; position:relative; }
 
-/* Branded header band — ARCARNA wordmark on navy, repeated atop each section. */
+/* Branded header band — arcarna wordmark on Deep Shadow, Truth-Blue rule. */
 .brand-band {
-  background: var(--arc-navy);
-  margin: 0 -40px 26px;
-  padding: 18px 40px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 3px solid var(--arc-blue);
+  background:var(--deep-shadow); margin:0 -44px 8px; padding:16px 44px;
+  display:flex; align-items:center; justify-content:space-between;
+  border-bottom:3px solid var(--truth-blue);
 }
-.brand-band img { height: 34px; width: auto; }
+.brand-band img { height:30px; width:auto; }
 .brand-band .band-tag {
-  color: #cbd5e1;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-family: var(--arc-font-brand);
+  font-family:var(--font-mono); color:var(--bg300); font-size:8pt;
+  letter-spacing:0.2em; text-transform:uppercase;
 }
 
-h1, h2, h3 { color: var(--arc-navy); line-height: 1.25; font-family: var(--arc-font-brand); }
-h1 { font-size: 30px; margin: 0 0 4px; }
-h2 {
-  font-size: 21px;
-  margin: 36px 0 10px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--arc-blue);
-}
-h3 { font-size: 16px; margin: 24px 0 6px; }
-
-p { margin: 8px 0; }
-
-.section-kicker {
-  color: var(--arc-blue-dark);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 2px;
+/* ---- Eyebrow labels — IBM Plex Mono, uppercase, letter-spaced (bible style) ---- */
+.eyebrow {
+  font-family:var(--font-mono);
+  font-weight:500;
+  text-transform:uppercase;
+  letter-spacing:0.22em;
+  font-size:8.5pt;
+  color:var(--truth-blue);
+  margin:0 0 10px;
 }
 
-.section-intro { color: var(--arc-muted); font-size: 15px; margin-bottom: 18px; }
+/* ---- Headings — New Astro Soft, sentence case (Book 03 hierarchy) ---- */
+h1,h2,h3 { font-family:var(--font-head); color:var(--ink); line-height:1.25; font-weight:600; }
+h1 { font-size:23pt; margin:0 0 6px; }
+h2 { font-family:var(--font-head); font-weight:600; font-size:15pt; margin:34px 0 8px; color:var(--deep-blue); }
+h3 { font-weight:500; font-size:12pt; margin:22px 0 4px; }
 
-/* Role badges */
-.role {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 10px;
-  border-radius: 999px;
-  vertical-align: middle;
-  letter-spacing: 0.05em;
-}
-.role-cashier { background: var(--arc-green-bg); color: var(--arc-green); }
-.role-manager { background: #dbeafe; color: var(--arc-blue-dark); }
+/* Section H2 gets a quiet Truth-Blue rule, echoing the bible's chapter rules. */
+h2 { padding-bottom:5px; border-bottom:1px solid var(--bg100); }
 
-/* Step-by-step lists */
-ol.steps { counter-reset: step; list-style: none; padding-left: 0; margin: 12px 0; }
-ol.steps > li {
-  counter-increment: step;
-  position: relative;
-  padding: 6px 0 6px 44px;
-  margin-bottom: 4px;
+p { margin:8px 0; }
+strong { font-weight:600; }
+em { font-style:italic; }
+
+.section-intro { color:var(--truth-blue); font-size:11pt; margin:8px 0 20px; max-width:60ch; }
+
+/* ---- Chapter opener (the divider the user asked to match) ------------------
+   Faint vertical "veil" light streak on the left, a large outlined chapter
+   number in New Astro, the title in soft grey, and a blue intro line. */
+.chapter-open { position:relative; padding:54px 0 30px 0; margin-bottom:14px; }
+.chapter-open::before {          /* the veil — light emerging from the margin */
+  content:""; position:absolute; left:-44px; top:-10px; bottom:-10px; width:44px;
+  background:linear-gradient(90deg,rgba(93,180,255,0) 0%,rgba(93,180,255,0.10) 45%,rgba(93,180,255,0.28) 72%,rgba(93,180,255,0) 100%);
 }
+.chapter-num {
+  font-family:var(--font-display); font-weight:700; font-size:64pt; line-height:1;
+  color:transparent; -webkit-text-stroke:1.4px var(--bg300); letter-spacing:0.02em;
+}
+.chapter-title { font-family:var(--font-head); font-weight:600; font-size:30pt; color:var(--bg300); margin:14px 0 12px; }
+.chapter-lead { color:var(--truth-blue); font-size:12pt; max-width:52ch; margin:0; }
+
+/* ---- Role badges (labelled, never colour-only — Book 03 accessibility) ---- */
+.role { display:inline-block; font-family:var(--font-mono); font-size:8pt; font-weight:500;
+        padding:2px 9px; border-radius:999px; vertical-align:middle; letter-spacing:0.08em; }
+.role-cashier { background:var(--bg100); color:var(--deep-blue); }
+.role-manager { background:#dbe8f7; color:var(--navy-blue); }
+
+/* ---- Numbered steps ---- */
+ol.steps { counter-reset:step; list-style:none; padding-left:0; margin:12px 0; }
+ol.steps > li { counter-increment:step; position:relative; padding:6px 0 6px 42px; margin-bottom:4px; }
 ol.steps > li::before {
-  content: counter(step);
-  position: absolute;
-  left: 0;
-  top: 6px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--arc-navy);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  content:counter(step,decimal-leading-zero);
+  position:absolute; left:0; top:5px; width:28px; height:24px;
+  font-family:var(--font-mono); font-weight:500; font-size:10pt;
+  color:var(--truth-blue); display:flex; align-items:center; justify-content:flex-start;
 }
+ol.steps > li { border-bottom:1px solid var(--bg100); }
 
-/* Screenshots */
-figure { margin: 16px 0 20px; }
-figure img {
-  width: 100%;
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
-}
-figcaption {
-  font-size: 12.5px;
-  color: var(--arc-muted);
-  margin-top: 6px;
-  text-align: center;
-}
+/* ---- Screenshots ---- */
+figure { margin:16px 0 20px; }
+figure img { width:100%; border:1px solid var(--bg100); border-radius:8px; }
+figcaption { font-family:var(--font-mono); font-size:8pt; letter-spacing:0.04em;
+             color:var(--bg500); margin-top:7px; text-transform:uppercase; }
 
-/* Callouts */
-.callout {
-  border-left: 4px solid var(--arc-blue);
-  background: var(--arc-bg-tint);
-  padding: 10px 14px;
-  border-radius: 0 8px 8px 0;
-  margin: 14px 0;
-  font-size: 14px;
-}
-.callout.warn { border-left-color: var(--arc-amber); background: var(--arc-amber-bg); color: var(--arc-amber); }
-.callout strong:first-child { display: block; margin-bottom: 2px; }
+/* ---- Callouts (quiet, evidence-led — no alarm styling) ---- */
+.callout { border-left:3px solid var(--truth-blue); background:var(--off-white);
+           padding:10px 14px; border-radius:0 6px 6px 0; margin:14px 0; font-size:10pt; }
+.callout.warn { border-left-color:var(--attention); background:#fff9e8; }
+.callout strong:first-child { display:block; margin-bottom:2px; color:var(--deep-blue); }
 
-/* Tables */
-table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
-th {
-  background: var(--arc-navy);
-  color: #fff;
-  text-align: left;
-  padding: 8px 12px;
-  font-size: 13px;
-}
-td { padding: 8px 12px; border-bottom: 1px solid var(--arc-border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--arc-bg-tint); }
+/* ---- Tables (Book 04 · tabular, right-aligned numbers) ---- */
+table { border-collapse:collapse; width:100%; margin:12px 0; font-size:9.5pt; }
+th { background:var(--deep-blue); color:#fff; text-align:left; padding:8px 12px;
+     font-family:var(--font-mono); font-weight:500; font-size:8pt;
+     text-transform:uppercase; letter-spacing:0.06em; }
+td { padding:8px 12px; border-bottom:1px solid var(--bg100); vertical-align:top; }
+tr:nth-child(even) td { background:var(--off-white); }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 
-kbd, .ui {
-  background: var(--arc-bg-tint);
-  border: 1px solid var(--arc-border);
-  border-radius: 5px;
-  padding: 1px 7px;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
+kbd,.ui { font-family:var(--font-mono); background:var(--bg100); border-radius:4px;
+          padding:1px 6px; font-size:9pt; white-space:nowrap; color:var(--deep-blue); }
 
 @media print {
-  .section { padding: 0; max-width: none; }
-  figure img { box-shadow: none; }
-  h2 { break-after: avoid; }
-  figure, .callout, ol.steps > li { break-inside: avoid; }
+  .section { padding:0; max-width:none; }
+  h2 { break-after:avoid; }
+  figure,.callout,ol.steps > li,.chapter-open { break-inside:avoid; }
 }
