@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 3. Creating orders (the till)</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="creating-orders">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">03</div>
+    <div class="chapter-title">Creating orders</div>
+    <p class="chapter-lead">The till — how to build a basket, attach a customer, take payment and complete a sale, one calm step at a time.</p>
+  </div>
+
+  <p class="eyebrow">What this screen is for</p>
+  <h2>The till, in one screen</h2>
+  <p>The <span class="ui">Create Order</span> screen is the till. It is where you ring up
+     everything a customer is buying and take their money. It is built for cashiers
+     and used all day: <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <p>arcarna walks you through a sale in four numbered steps, shown along the top of each
+     panel: <strong>add items</strong>, <strong>review the cart</strong>, then
+     <strong>choose payment</strong> and <strong>confirm</strong>. You never have to
+     remember the order — the screen tells you where you are.</p>
+  <div class="callout warn">
+    <strong>You need an open shift first</strong>
+    The till will not take a sale until your shift is open. If no shift is running,
+    arcarna shows the <span class="ui">Open shift</span> box the moment you arrive —
+    open it, and you can start serving. Shifts are covered in Section 2.
+  </div>
+
+  <figure>
+    <img src="../images/03-till-empty.png" alt="The Create Order screen with the product grid on the left and an empty cart on the right" />
+    <figcaption>The till — products on the left, the cart and order summary on the right.</figcaption>
+    <!-- SHOT: route=/create-order ; show=the full till with the product grid on the left and the empty cart panel (Step 2, "Your cart is empty") on the right ; state=a shift must be open; cart empty -->
+  </figure>
+
+  <h3>The four parts of the screen</h3>
+  <table>
+    <tr><th>Part</th><th>What it does</th></tr>
+    <tr><td><strong>Product grid</strong></td>
+        <td>Every product you can sell, shown as tiles. Each tile has the name, its code, the price, a stock badge (e.g. <span class="ui">12 in stock</span>, <span class="ui">Low</span> or <span class="ui">Out of Stock</span>) and an <span class="ui">Add</span> button.</td></tr>
+    <tr><td><strong>Search</strong></td>
+        <td>The box above the grid. Type to filter by name, SKU (product code) or barcode. The placeholder reads <span class="ui">Search by name, SKU, or barcode…</span></td></tr>
+    <tr><td><strong>Cart</strong></td>
+        <td>The panel on the right (on a phone, tap the round cart button, bottom right). It lists what you've added, with quantity and price you can adjust, and holds the customer and any discount.</td></tr>
+    <tr><td><strong>Order summary</strong></td>
+        <td>The box near the bottom of the cart. It adds everything up live: subtotal, any discounts, tax and the total the customer pays.</td></tr>
+  </table>
+
+  <p class="eyebrow">Step 1 · Add items</p>
+  <h2>Building a basket</h2>
+  <p>A basket is just the list of items in the cart. Build it by adding products, then
+     adjusting quantities and prices if you need to.</p>
+  <ol class="steps">
+    <li>Find the product in the grid. Type in the <span class="ui">Search</span> box to
+        narrow it down if there are many tiles.</li>
+    <li>Select the tile, or its <span class="ui">Add</span> button. The item drops into
+        the cart and a short <em>Added to cart</em> message confirms it.</li>
+    <li>Add the same product again to increase its quantity, or use the
+        <span class="ui">–</span> and <span class="ui">+</span> buttons on the cart line.
+        You can also type a number straight into the quantity box.</li>
+    <li>To change what a line costs on this sale, type over the figure in the
+        <span class="ui">Price</span> box on that line. The line's default price is shown
+        just underneath as a reminder.</li>
+    <li>To take an item off, use the bin icon on its cart line. Setting a quantity to
+        zero removes it too.</li>
+  </ol>
+  <div class="callout">
+    <strong>Barcode scanners just work</strong>
+    If a scanner is connected, scan an item and it drops straight into the cart with a
+    short beep. If the barcode isn't recognised you'll hear a different tone and the
+    search box fills in with the code so you can find the item by hand.
+  </div>
+  <div class="callout">
+    <strong>Out-of-stock items</strong>
+    A tile marked <span class="ui">Out of Stock</span> cannot be added — its
+    <span class="ui">Add</span> button is greyed out until stock is replenished.
+  </div>
+
+  <p class="eyebrow">Step 1 · Who is buying</p>
+  <h2>Attaching a customer</h2>
+  <p>Every sale is either to a walk-in or to a named customer. A walk-in is the default
+     and needs no details. Attach a named customer when they are a regular, when they
+     want an email receipt, or when they collect loyalty points.</p>
+  <ol class="steps">
+    <li>At the top of the cart, open the <span class="ui">Walk-in Customer</span> picker.</li>
+    <li>Leave it on <span class="ui">Walk-in Customer</span> for an anonymous sale — nothing else to do.</li>
+    <li>For a named customer, type their name, phone or email into the search box inside
+        the picker, then choose them from the list.</li>
+    <li>Once attached, their name shows on the cart. If they belong to a loyalty tier, a
+        small membership card appears with their points and any tier discount.</li>
+  </ol>
+  <div class="callout">
+    <strong>Adding a customer you can't find</strong>
+    If the person isn't in the list yet, create them first under <span class="ui">Customers</span>
+    (Section 6), then come back to the till and attach them.
+  </div>
+
+  <p class="eyebrow">Step 2 · Review the cart</p>
+  <h2>Applying a discount</h2>
+  <p>Discounts only apply once a customer is attached — a walk-in sale is rung at full
+     price. Three kinds may be available, and each shows as its own line in the order summary.</p>
+  <table>
+    <tr><th>Discount</th><th>How it works</th></tr>
+    <tr><td><strong>Promo code</strong></td>
+        <td>With a customer attached, a <span class="ui">Enter promo code…</span> box appears. Type the code and select the tag button to apply it. A valid code confirms and takes money off; an invalid or expired one is refused.</td></tr>
+    <tr><td><strong>Loyalty tier</strong></td>
+        <td>If the customer's tier carries a discount, arcarna applies it on its own — you don't do anything. It shows as a <span class="ui">Loyalty</span> line in the summary.</td></tr>
+    <tr><td><strong>Points redeemed</strong></td>
+        <td>On the membership card, <span class="ui">Redeem points</span> lets a customer spend loyalty points for money off, once they have enough. See the brief note at the end of this section.</td></tr>
+  </table>
+
+  <figure>
+    <img src="../images/03-cart-items.png" alt="The cart with several items added and the order summary showing a subtotal, tax and total" />
+    <figcaption>The cart with items added — the order summary adds up the total the customer pays.</figcaption>
+    <!-- SHOT: route=/create-order ; show=the cart panel with 2–3 items added, quantities visible, and the Order Summary showing subtotal, tax and a bold Total ; state=items in cart -->
+  </figure>
+
+  <h3>Reading the order summary</h3>
+  <table>
+    <tr><th>Line</th><th>What it means</th></tr>
+    <tr><td><strong>Subtotal</strong></td><td>The items added up, before any discount or tax.</td></tr>
+    <tr><td><strong>Loyalty / Promo / Points</strong></td><td>Any money off. These lines only appear when a discount applies.</td></tr>
+    <tr><td><strong>Tax</strong></td><td>Tax on the discounted subtotal.</td></tr>
+    <tr><td><strong>Total</strong></td><td>In bold — the amount the customer pays.</td></tr>
+    <tr><td><strong>Earn … points</strong></td><td>For a named customer, how many loyalty points this sale will add to their balance.</td></tr>
+  </table>
+
+  <p class="eyebrow">Steps 3 &amp; 4 · Payment and confirm</p>
+  <h2>Taking payment and completing the sale</h2>
+  <p>When the basket is right, take the customer's money and finish the sale.</p>
+  <ol class="steps">
+    <li>Select <span class="ui">Checkout → Choose payment</span> at the bottom of the cart.
+        The <span class="ui">Payment &amp; confirm</span> box opens. (An empty cart cannot
+        be checked out.)</li>
+    <li>Choose the <span class="ui">Payment Method</span> — see the table below.</li>
+    <li>Check the order summary at the foot of the box: customer, number of items and the total.</li>
+    <li>Select <span class="ui">Confirm payment</span>. arcarna records the sale, the cart
+        clears, and you're ready for the next customer.</li>
+  </ol>
+
+  <h3>The payment methods</h3>
+  <table>
+    <tr><th>Method</th><th>Use it when</th></tr>
+    <tr><td><span class="ui">Cash</span></td><td>The customer pays with notes and coins.</td></tr>
+    <tr><td><span class="ui">Card</span></td><td>Payment taken on a card machine.</td></tr>
+    <tr><td><span class="ui">Transfer</span></td><td>The customer pays by bank transfer.</td></tr>
+    <tr><td><span class="ui">On Credit (Tick)</span></td><td>The customer buys on account and settles later. Their balance appears on the Tick List.</td></tr>
+    <tr><td><span class="ui">Gift card</span></td><td>Paid with a gift card. Look up the card and enter the amount to apply; if it doesn't cover the whole total, choose how the rest is paid.</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>Order expenses and the email receipt</strong>
+    Inside the payment box you can add optional <span class="ui">Order Expenses</span> —
+    costs like shipping or packaging tied to this sale — so profit stays honest.
+    Tick <span class="ui">Email receipt</span> to send a receipt to a customer who has an
+    email address on file; the box is greyed out for a walk-in or anyone without an email.
+  </div>
+
+  <p class="eyebrow">After the sale</p>
+  <h2>What arcarna records, and what if you're offline</h2>
+  <p>Confirming a sale saves an order against your open shift: the items and quantities,
+     the price of each line, the discount and total, the payment method, the customer (or
+     <em>Walk-in</em>), and any loyalty points earned or redeemed. Stock for each item
+     drops automatically. The saved order can be found and, if needed, amended or refunded
+     under <span class="ui">Open Orders</span> (Section 4).</p>
+  <div class="callout warn">
+    <strong>Orders on hold</strong>
+    If stock runs short as you confirm, arcarna still takes the sale but places the order
+    <em>on hold</em> and tells you so. A manager can sort it out from Open Orders.
+  </div>
+  <div class="callout">
+    <strong>It keeps working offline</strong>
+    If the connection drops mid-sale, keep serving. A confirmed order is saved on the
+    device and syncs on its own when you're back online — you'll see an
+    <em>Order saved offline</em> message so you know it's safe.
+  </div>
+
+  <p class="eyebrow">In brief</p>
+  <h2>Gift cards, tick and loyalty points</h2>
+  <p>These three come up occasionally at the till and are covered in full elsewhere:</p>
+  <table>
+    <tr><th>Feature</th><th>At the till</th></tr>
+    <tr><td><strong>Gift card</strong></td><td>A payment method. Look up the card, apply its balance, and pay any remainder another way.</td></tr>
+    <tr><td><strong>Tick (on credit)</strong></td><td>A payment method for account customers. What they owe shows on the <span class="ui">Tick List</span>.</td></tr>
+    <tr><td><strong>Loyalty points</strong></td><td>Named customers earn points on every sale and can redeem them for money off with <span class="ui">Redeem points</span>, once they reach the minimum.</td></tr>
+  </table>
+
+</main>
+</body>
+</html>

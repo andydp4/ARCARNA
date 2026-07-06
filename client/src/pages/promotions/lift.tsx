@@ -144,7 +144,7 @@ export default function PromotionLiftPage() {
                   {formatLift(data.lift.revenueLiftPct)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ${data.promoWindow.revenue} vs ${data.baselineWindow.revenue} baseline
+                  £{data.promoWindow.revenue} vs £{data.baselineWindow.revenue} baseline
                 </p>
               </CardContent>
             </Card>

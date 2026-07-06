@@ -80,7 +80,7 @@ export default function GiftCardsPage() {
           <Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Balance</TableHead><TableHead>Original</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
             <TableBody>{(listData?.giftCards ?? []).map((card: any) => (
               <TableRow key={card.id}><TableCell className="font-mono">{card.maskedCode}</TableCell>
-                <TableCell>${card.balance.toFixed(2)}</TableCell><TableCell>${card.originalAmount.toFixed(2)}</TableCell>
+                <TableCell>£{card.balance.toFixed(2)}</TableCell><TableCell>£{card.originalAmount.toFixed(2)}</TableCell>
                 <TableCell><Badge variant={card.status === "active" ? "default" : "secondary"}>{card.status}</Badge></TableCell></TableRow>
             ))}</TableBody></Table>}</CardContent></Card>
       {detailData && lookupCode && (
@@ -88,11 +88,11 @@ export default function GiftCardsPage() {
           <CardTitle className="text-base">Card ****{detailData.codeLast4}</CardTitle>
           {detailData.status === "active" && <Button variant="destructive" size="sm" onClick={() => voidMutation.mutate(lookupCode)}><Ban className="mr-2 h-4 w-4" />Void</Button>}
         </CardHeader><CardContent>
-          <p className="mb-4 text-sm">Balance: <strong>${detailData.balance.toFixed(2)}</strong> · {detailData.status}</p>
+          <p className="mb-4 text-sm">Balance: <strong>£{detailData.balance.toFixed(2)}</strong> · {detailData.status}</p>
           {detailData.movements?.length > 0 && <Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Balance after</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
             <TableBody>{detailData.movements.map((m: any) => (
-              <TableRow key={m.id}><TableCell>{m.type}</TableCell><TableCell>${m.amount.toFixed(2)}</TableCell>
-                <TableCell>${m.balanceAfter.toFixed(2)}</TableCell><TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell></TableRow>
+              <TableRow key={m.id}><TableCell>{m.type}</TableCell><TableCell>£{m.amount.toFixed(2)}</TableCell>
+                <TableCell>£{m.balanceAfter.toFixed(2)}</TableCell><TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell></TableRow>
             ))}</TableBody></Table>}
         </CardContent></Card>
       )}

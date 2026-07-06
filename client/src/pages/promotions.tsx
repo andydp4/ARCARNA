@@ -332,7 +332,7 @@ export default function PromotionsPage() {
                       <p className="text-sm text-muted-foreground">Type & Value</p>
                       <p className="font-semibold" data-testid={`text-value-${promo.id}`}>
                         {promo.type === "percentage" && `${promo.value}% OFF`}
-                        {promo.type === "fixed" && `$${promo.value} OFF`}
+                        {promo.type === "fixed" && `£${promo.value} OFF`}
                         {promo.type === "bogo" && "Buy One Get One"}
                         {promo.type === "points" && `${promo.value}x Points`}
                       </p>
@@ -353,7 +353,7 @@ export default function PromotionsPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Min Purchase</p>
                       <p className="font-semibold" data-testid={`text-min-${promo.id}`}>
-                        {promo.minPurchase ? `$${promo.minPurchase}` : "No minimum"}
+                        {promo.minPurchase ? `£${promo.minPurchase}` : "No minimum"}
                       </p>
                     </div>
                   </div>

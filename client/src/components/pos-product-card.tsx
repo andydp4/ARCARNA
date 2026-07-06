@@ -20,7 +20,7 @@ function formatProductPrice(p: PosProduct) {
     typeof p.defaultSalePrice === "string"
       ? parseFloat(p.defaultSalePrice) || 0
       : p.defaultSalePrice || 0;
-  return `$${n.toFixed(2)}`;
+  return `£${n.toFixed(2)}`;
 }
 
 function stockBadge(product: PosProduct) {

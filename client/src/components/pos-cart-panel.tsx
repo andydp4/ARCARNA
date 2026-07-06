@@ -475,7 +475,7 @@ export function PosCartPanel({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
-                    <span className="shrink-0 text-lg font-bold">${item.subtotal.toFixed(2)}</span>
+                    <span className="shrink-0 text-lg font-bold">£{item.subtotal.toFixed(2)}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -492,34 +492,34 @@ export function PosCartPanel({
           <div className="space-y-2 text-sm text-metal-warm-white">
             <div className="flex justify-between">
               <span className="text-metal-muted">Subtotal</span>
-              <span data-testid="cart-subtotal">${subtotal.toFixed(2)}</span>
+              <span data-testid="cart-subtotal">£{subtotal.toFixed(2)}</span>
             </div>
             {loyaltyDiscountAmount > 0 && (
               <div className="pos-status-emerald flex justify-between">
                 <span>Loyalty ({loyaltyDiscount}%)</span>
-                <span data-testid="loyalty-discount">-${loyaltyDiscountAmount.toFixed(2)}</span>
+                <span data-testid="loyalty-discount">-£{loyaltyDiscountAmount.toFixed(2)}</span>
               </div>
             )}
             {promoDiscountAmount > 0 && (
               <div className="pos-status-emerald flex justify-between">
                 <span>Promo: {appliedPromo?.name}</span>
-                <span data-testid="promo-discount">-${promoDiscountAmount.toFixed(2)}</span>
+                <span data-testid="promo-discount">-£{promoDiscountAmount.toFixed(2)}</span>
               </div>
             )}
             {pointsRedemptionAmount > 0 && (
               <div className="pos-status-emerald flex justify-between">
                 <span>Points redeemed ({redeemPoints})</span>
-                <span data-testid="points-redemption">-${pointsRedemptionAmount.toFixed(2)}</span>
+                <span data-testid="points-redemption">-£{pointsRedemptionAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-metal-muted">Tax (10%)</span>
-              <span data-testid="cart-tax">${tax.toFixed(2)}</span>
+              <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
             </div>
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
-              <span data-testid="cart-total">${total.toFixed(2)}</span>
+              <span data-testid="cart-total">£{total.toFixed(2)}</span>
             </div>
             {selectedCustomer && pointsEarned > 0 && (
               <div className="border-t border-metal-edge pt-2 text-center text-xs text-metal-muted">

@@ -48,7 +48,7 @@ export default function DailyRevenueChart() {
               <YAxis
                 tick={{ fill: "var(--muted-foreground)" }}
                 tickLine={false}
-                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                tickFormatter={(value) => `£${(value / 1000).toFixed(0)}k`}
               />
               <Tooltip
                 contentStyle={{
@@ -57,7 +57,7 @@ export default function DailyRevenueChart() {
                   borderRadius: "8px",
                   color: "var(--popover-foreground)",
                 }}
-                formatter={(value: any) => [`$${value.toLocaleString()}`, "Revenue"]}
+                formatter={(value: any) => [`£${value.toLocaleString()}`, "Revenue"]}
               />
               <Line
                 type="monotone"

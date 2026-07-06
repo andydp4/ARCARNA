@@ -414,7 +414,7 @@ export default function Insights() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-2xl font-bold tabular-nums tracking-tight">${summaryStats.revenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight">£{summaryStats.revenue.toFixed(2)}</p>
                 <DollarSign className="h-5 w-5 shrink-0 text-muted-foreground" />
               </div>
             </CardContent>
@@ -450,7 +450,7 @@ export default function Insights() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-2xl font-bold tabular-nums tracking-tight">${summaryStats.avgOrder.toFixed(2)}</p>
+                <p className="text-2xl font-bold tabular-nums tracking-tight">£{summaryStats.avgOrder.toFixed(2)}</p>
                 <TrendingUp className="h-5 w-5 shrink-0 text-muted-foreground" />
               </div>
             </CardContent>
@@ -581,7 +581,7 @@ export default function Insights() {
                               <TableCell className="font-medium">{method.method}</TableCell>
                               <TableCell className="text-right tabular-nums">{method.count}</TableCell>
                               <TableCell className="text-right tabular-nums font-medium">
-                                ${toNum(method.revenue).toFixed(2)}
+                                £{toNum(method.revenue).toFixed(2)}
                               </TableCell>
                             </TableRow>
                           ))
@@ -670,7 +670,7 @@ export default function Insights() {
                                 <TableCell className="font-medium">{product.name}</TableCell>
                                 <TableCell className="text-right tabular-nums">{product.quantity}</TableCell>
                                 <TableCell className="text-right tabular-nums font-medium">
-                                  ${toNum(product.revenue).toFixed(2)}
+                                  £{toNum(product.revenue).toFixed(2)}
                                 </TableCell>
                               </TableRow>
                             ))
@@ -763,7 +763,7 @@ export default function Insights() {
                                 <TableCell className="font-medium">{customer.name}</TableCell>
                                 <TableCell className="text-right tabular-nums">{customer.orders}</TableCell>
                                 <TableCell className="text-right tabular-nums font-medium">
-                                  ${toNum(customer.revenue).toFixed(2)}
+                                  £{toNum(customer.revenue).toFixed(2)}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">{customer.loyalty}</TableCell>
                               </TableRow>
@@ -800,7 +800,7 @@ export default function Insights() {
                                 <TableCell className="font-medium">{segment.segment}</TableCell>
                                 <TableCell className="text-right tabular-nums">{segment.count}</TableCell>
                                 <TableCell className="text-right tabular-nums font-medium">
-                                  ${toNum(segment.avgRevenue).toFixed(2)}
+                                  £{toNum(segment.avgRevenue).toFixed(2)}
                                 </TableCell>
                               </TableRow>
                             ))
@@ -856,7 +856,7 @@ export default function Insights() {
                   <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3 shadow-sm">
                     <p className="text-sm font-medium text-muted-foreground">Stock value</p>
                     <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight">
-                      ${inventoryKpi.totalValue.toFixed(2)}
+                      £{inventoryKpi.totalValue.toFixed(2)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3 shadow-sm">

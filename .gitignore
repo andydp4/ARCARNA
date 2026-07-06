@@ -9,3 +9,9 @@ vite.config.ts.*
 .env.production
 .env.local
 .env.*.local
+# Rendered training-manual PDFs (regenerated from docs/training/sections/*.html)
+docs/training/*.pdf
+
+# New Astro brand fonts — licensed desktop files, embedded in exported PDFs only.
+# Never commit/redistribute (arcarna Brand Bible, Book 06, Font licensing).
+docs/training/fonts/*.otf

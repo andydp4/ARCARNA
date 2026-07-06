@@ -561,7 +561,7 @@ export default function POS() {
     
     toast({
       title: "Expense Added",
-      description: `Added ${expenseCategory} expense: $${(isNaN(amount) ? 0 : amount).toFixed(2)}`,
+      description: `Added ${expenseCategory} expense: £${(isNaN(amount) ? 0 : amount).toFixed(2)}`,
     });
   };
 
@@ -639,7 +639,7 @@ export default function POS() {
   };
 
   const formatPrice = (p: Product) =>
-    `$${(typeof p.defaultSalePrice === "string" ? parseFloat(p.defaultSalePrice) || 0 : p.defaultSalePrice || 0).toFixed(2)}`;
+    `£${(typeof p.defaultSalePrice === "string" ? parseFloat(p.defaultSalePrice) || 0 : p.defaultSalePrice || 0).toFixed(2)}`;
 
   const safeAreaBottom = "env(safe-area-inset-bottom, 0px)";
   const mobileGridPaddingBottom = isMobile
@@ -818,7 +818,7 @@ export default function POS() {
                 <CardContent className="flex items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
                     <div className="text-xs text-metal-muted">{cartItemCount} items</div>
-                    <div className="text-lg font-bold text-metal-warm-white">${total.toFixed(2)}</div>
+                    <div className="text-lg font-bold text-metal-warm-white">£{total.toFixed(2)}</div>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button
@@ -967,7 +967,7 @@ export default function POS() {
                           {expense.category}: {expense.description}
                         </span>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="font-medium">${expense.amount.toFixed(2)}</span>
+                          <span className="font-medium">£{expense.amount.toFixed(2)}</span>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -983,7 +983,7 @@ export default function POS() {
                     <Separator />
                     <div className="flex justify-between font-medium pt-1">
                       <span>Total Expenses</span>
-                      <span>${orderExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</span>
+                      <span>£{orderExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</span>
                     </div>
                   </div>
                 )}
@@ -1028,7 +1028,7 @@ export default function POS() {
                   <Separator />
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total</span>
-                    <span>${total.toFixed(2)}</span>
+                    <span>£{total.toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>

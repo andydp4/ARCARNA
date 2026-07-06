@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 6. Adding, editing &amp; removing customers</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="customers">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">06</div>
+    <div class="chapter-title">Adding, editing &amp; removing customers</div>
+    <p class="chapter-lead">How to keep customer records tidy — so every regular is recognised, every receipt reaches the right inbox, and you can see at a glance what someone is worth.</p>
+  </div>
+
+  <p class="eyebrow">What this screen is for</p>
+  <h2>The Customers screen</h2>
+  <p>The Customers screen is your address book and your memory. It holds one record per
+     person who buys from you: their name, how to reach them, which loyalty group they sit in,
+     and a running picture of how much they have spent and how recently. At the till you attach
+     a customer to an order so their spend and loyalty points keep building.</p>
+  <p>Everyone can open Customers and look someone up.
+     <span class="role role-cashier">CASHIER</span>
+     Adding, editing and removing records is a manager job.
+     <span class="role role-manager">MANAGER</span></p>
+
+  <figure>
+    <img src="../images/06-customers-list.png" alt="The Customers screen listing records with contact details, category and spend" />
+    <figcaption>The Customers screen — a searchable list, with count tiles for each loyalty category across the top.</figcaption>
+    <!-- SHOT: route=/customers ; show=the customer list with the four category count tiles, the search box and at least a few customer rows ; state=none -->
+  </figure>
+
+  <h3>What you see across the top</h3>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>Count tiles</strong></td>
+        <td>Four small tiles — total customers, and how many sit in <span class="ui">Gold</span>, <span class="ui">Silver</span> and <span class="ui">Bronze</span>.</td></tr>
+    <tr><td><strong>Search customers</strong></td>
+        <td>Type a name, email or phone number to filter the list as you go. This is the fastest way to find someone.</td></tr>
+    <tr><td><span class="ui">Add Customer</span></td>
+        <td>Opens the form to create a new record. <span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td><span class="ui">Import from Contacts</span></td>
+        <td>Brings in many people at once from a phone-contacts export (a <span class="ui">.vcf</span> file) or a spreadsheet (<span class="ui">CSV</span>). Useful when first setting up. <span class="role role-manager">MANAGER</span></td></tr>
+  </table>
+
+  <p class="eyebrow">Creating a record</p>
+  <h2>Adding a customer</h2>
+  <p>Add someone once and arcarna remembers them for good. Only the name is required — everything
+     else can be filled in now or added later.</p>
+
+  <figure>
+    <img src="../images/06-add-customer.png" alt="The Add New Customer form with fields for name, phone, email, billing address and category" />
+    <figcaption>The add-customer form — name is the only field you must fill in.</figcaption>
+    <!-- SHOT: route=/customers ; show=the "Add New Customer" dialog open over the list, showing the Name, Phone, Email, Billing Address and Category fields ; state=add form open (click "Add Customer") -->
+  </figure>
+
+  <ol class="steps">
+    <li>Select <span class="ui">Add Customer</span> at the top right. The <span class="ui">Add New Customer</span> form opens.</li>
+    <li><strong>Name</strong> — type the person's name. This is the only required field, marked with a <span class="ui">*</span>.</li>
+    <li><strong>Phone</strong> — their contact number, for example <span class="ui">+44 1234 567890</span>. Leave blank if you don't have it.</li>
+    <li><strong>Email</strong> — their email address. This is also where emailed receipts and invoices go, so take care to get it right.</li>
+    <li><strong>Billing address</strong> — the address that appears on their invoices. Optional.</li>
+    <li><strong>Category</strong> — the loyalty group this customer belongs to. New records start at <span class="ui">Bronze</span>; you can choose <span class="ui">Silver</span>, <span class="ui">Gold</span> or <span class="ui">Platinum</span> instead.</li>
+    <li>Select <span class="ui">Create Customer</span>. The record is saved and appears in the list.</li>
+  </ol>
+
+  <div class="callout">
+    <strong>Emailed receipts are on by default</strong>
+    A new customer is set to receive receipts by email. If someone would rather not be emailed, note it and a manager can adjust their preference. An empty email field means there is nowhere to send a receipt in any case.
+  </div>
+
+  <div class="callout">
+    <strong>Two quicker ways to fill the form</strong>
+    <span class="ui">Pick from device</span> pulls a name, email and phone straight from your phone's contacts (where the device supports it). <span class="ui">Import .vcf / CSV</span> loads a whole file of contacts at once. Either way you can check the details before saving.
+  </div>
+
+  <div class="callout">
+    <strong>It works offline</strong>
+    If the connection drops while you are adding someone, save anyway — the record queues on the device and syncs automatically when you are back online. The form also keeps a draft, so a half-finished record isn't lost if you step away.
+  </div>
+
+  <p class="eyebrow">Keeping details current</p>
+  <h2>Editing a customer's details</h2>
+  <p>Details change — people move house, swap phone numbers, or earn their way into a higher
+     loyalty group. Keep the record honest so receipts arrive and spend is credited to the right person.</p>
+  <ol class="steps">
+    <li>Find the customer using the search box.</li>
+    <li>Select the <span class="ui">Edit</span> (pencil) button on their row. On a phone this is the <span class="ui">Edit</span> button on their card.</li>
+    <li>Change any of the fields — name, phone, email, billing address or category.</li>
+    <li>Select <span class="ui">Update Customer</span> to save, or <span class="ui">Cancel</span> to leave the record untouched.</li>
+  </ol>
+  <p>Moving someone to a higher category — say Bronze up to Gold — is done here, in the
+     <span class="ui">Category</span> field. Spend, loyalty points and store credit are worked out by
+     arcarna from real orders, so you don't edit those by hand.</p>
+
+  <p class="eyebrow">Reading a customer at a glance</p>
+  <h2>Viewing a customer's history</h2>
+  <p>Each row carries the story of that customer without you having to open anything. It is the
+     answer to <em>“who is this, and are they worth looking after?”</em></p>
+  <table>
+    <tr><th>Column</th><th>What it means</th></tr>
+    <tr><td><strong>Contact</strong></td><td>Their phone and email, for reaching them.</td></tr>
+    <tr><td><strong>Category</strong></td><td>Their loyalty group — Bronze, Silver, Gold or Platinum.</td></tr>
+    <tr><td><strong>Intelligence</strong></td><td>A short read on the customer: their segment, how likely they are to drift away (their inactivity risk), lifetime value, average order value, number of orders and the date they last bought. A <span class="ui">Manual</span> tag means someone has fixed their grouping by hand.</td></tr>
+    <tr><td><strong>Loyalty points</strong></td><td>Points earned so far, which can be redeemed against future spend.</td></tr>
+    <tr><td><strong>Total spent</strong></td><td>Everything they have spent with you, for example £1,240.50.</td></tr>
+    <tr><td><strong>Store credit</strong></td><td>Any credit or gift-card balance they hold, ready to spend.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Where these numbers come from</strong>
+    Spend, points, last-order date and the intelligence read are all built from real orders as they happen. They update on their own — there is nothing to fill in. If a figure looks wrong, the fix is usually in the order behind it, not the customer record.
+  </div>
+
+  <p class="eyebrow">Handle with care</p>
+  <h2>Removing a customer</h2>
+  <p>Removing a customer is for genuine mistakes — a duplicate record, or a test entry. It is not
+     the way to deal with someone who simply hasn't been in for a while.</p>
+  <ol class="steps">
+    <li>Find the customer and select the <span class="ui">Delete</span> (bin) button on their row.</li>
+    <li>arcarna asks you to confirm. Read the name, then confirm only if you are sure.</li>
+  </ol>
+  <div class="callout warn">
+    <strong>Manager — deleting is permanent</strong>
+    Removing a customer deletes their record and cannot be undone. Before you delete, check they don't owe anything on the <span class="ui">Tick List</span> and that you are not about to lose a real history of spend. When in doubt, keep the record and simply stop using it — an unused record costs nothing.
+  </div>
+
+  <p class="eyebrow">Buying on account</p>
+  <h2>The Tick List</h2>
+  <p>Some customers take goods now and settle up later — buying “on tick”. The <span class="ui">Tick List</span>
+     is the single place that answers <em>“who owes us money, and how much?”</em> Everyone can open it to check;
+     recording payments and chasing debts is a manager job.
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+
+  <figure>
+    <img src="../images/06-tick-list.png" alt="The Tick List showing credit customers, their outstanding debt and payment actions" />
+    <figcaption>The Tick List — total outstanding at the top, then each credit customer and what they owe.</figcaption>
+    <!-- SHOT: route=/tick-list ; show=the summary tiles (total outstanding, customers with debt, average debt) and the credit-customer table with Payment / Remind / Delete actions ; state=none -->
+  </figure>
+
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>Total outstanding</strong></td><td>The sum owed across all credit customers, for example £480.00.</td></tr>
+    <tr><td><strong>Customers with debt</strong></td><td>How many people currently owe something.</td></tr>
+    <tr><td><strong>Total debt</strong> (per row)</td><td>What that customer owes right now. A <span class="ui">Pending</span> badge means there is still a balance; <span class="ui">Paid</span> means they are clear.</td></tr>
+    <tr><td><span class="ui">Payment</span></td><td>Records that a customer has settled their balance. <span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td><span class="ui">Remind</span></td><td>Sends the customer a payment reminder by email. <span class="role role-manager">MANAGER</span></td></tr>
+  </table>
+  <div class="callout">
+    <strong>A quick daily glance</strong>
+    You can search the list, filter by status, and export it to a spreadsheet with <span class="ui">Export CSV</span>. A short look each morning keeps small debts from being forgotten.
+  </div>
+
+</main>
+</body>
+</html>

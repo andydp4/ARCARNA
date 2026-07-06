@@ -377,7 +377,7 @@ export default function Inventory() {
                               <div>
                                 <div className="text-xs text-muted-foreground">Cost Price</div>
                                 <div className="font-medium">
-                                  ${typeof product.costPrice === 'string' 
+                                  £{typeof product.costPrice === 'string' 
                                     ? parseFloat(product.costPrice).toFixed(2) 
                                     : (product.costPrice || 0).toFixed(2)}
                                 </div>
@@ -385,7 +385,7 @@ export default function Inventory() {
                               <div>
                                 <div className="text-xs text-muted-foreground">Sale Price</div>
                                 <div className="font-medium">
-                                  ${typeof product.defaultSalePrice === 'string' 
+                                  £{typeof product.defaultSalePrice === 'string' 
                                     ? parseFloat(product.defaultSalePrice).toFixed(2) 
                                     : product.defaultSalePrice.toFixed(2)}
                                 </div>
@@ -461,12 +461,12 @@ export default function Inventory() {
                             </TableCell>
                             <TableCell>{product.productId}</TableCell>
                             <TableCell>
-                              ${typeof product.costPrice === 'string' 
+                              £{typeof product.costPrice === 'string' 
                                 ? parseFloat(product.costPrice).toFixed(2) 
                                 : (product.costPrice || 0).toFixed(2)}
                             </TableCell>
                             <TableCell>
-                              ${typeof product.defaultSalePrice === 'string' 
+                              £{typeof product.defaultSalePrice === 'string' 
                                 ? parseFloat(product.defaultSalePrice).toFixed(2) 
                                 : product.defaultSalePrice.toFixed(2)}
                             </TableCell>

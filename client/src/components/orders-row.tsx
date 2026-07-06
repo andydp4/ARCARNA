@@ -122,7 +122,7 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
         </p>
         <div className="flex flex-wrap items-center gap-2 sm:hidden">
           <span className="text-lg font-bold tabular-nums tracking-tight text-foreground">
-            ${totalNum.toFixed(2)}
+            £{totalNum.toFixed(2)}
           </span>
           <Badge variant="secondary" className="max-w-full truncate font-normal capitalize">
             {formatPaymentLabel(order.paymentMethod)}
@@ -133,7 +133,7 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
       <div className="flex flex-col gap-3 sm:min-w-[11rem] sm:items-end sm:justify-between sm:text-right">
         <div className="hidden flex-col items-end gap-1 sm:flex">
           <span className="text-lg font-bold tabular-nums tracking-tight text-foreground">
-            ${totalNum.toFixed(2)}
+            £{totalNum.toFixed(2)}
           </span>
           <Badge variant="secondary" className="font-normal capitalize">
             {formatPaymentLabel(order.paymentMethod)}
