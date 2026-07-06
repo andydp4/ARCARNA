@@ -2,7 +2,21 @@
    Navy + ARCARNA blue drawn from the app theme (client/src/index.css).
    Print-first: white pages, navy headings, blue accents. */
 
+/* Official brand typography: New Astro.
+   Drop the font file into docs/training/fonts/ and this picks it up.
+   Falls back to a clean sans until the file is supplied. */
+@font-face {
+  font-family: "New Astro";
+  src: url("fonts/NewAstro.woff2") format("woff2"),
+       url("fonts/NewAstro.woff") format("woff"),
+       url("fonts/NewAstro.otf") format("opentype"),
+       url("fonts/NewAstro.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 :root {
+  --arc-font-brand: "New Astro", "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
   --arc-navy: #0f172a;
   --arc-navy-soft: #1d2839;
   --arc-blue: #1d9bea;
@@ -26,9 +40,28 @@ body {
   font-size: 15px;
 }
 
-.section { max-width: 860px; margin: 0 auto; padding: 32px 40px; }
+.section { max-width: 860px; margin: 0 auto; padding: 0 40px 32px; }
 
-h1, h2, h3 { color: var(--arc-navy); line-height: 1.25; }
+/* Branded header band — ARCARNA wordmark on navy, repeated atop each section. */
+.brand-band {
+  background: var(--arc-navy);
+  margin: 0 -40px 26px;
+  padding: 18px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--arc-blue);
+}
+.brand-band img { height: 34px; width: auto; }
+.brand-band .band-tag {
+  color: #cbd5e1;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: var(--arc-font-brand);
+}
+
+h1, h2, h3 { color: var(--arc-navy); line-height: 1.25; font-family: var(--arc-font-brand); }
 h1 { font-size: 30px; margin: 0 0 4px; }
 h2 {
   font-size: 21px;
