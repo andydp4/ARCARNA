@@ -9,3 +9,5 @@ vite.config.ts.*
 .env.production
 .env.local
 .env.*.local
+# Rendered training-manual PDFs (regenerated from docs/training/sections/*.html)
+docs/training/*.pdf
