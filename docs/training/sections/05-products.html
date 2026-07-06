@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 5. Adding, editing &amp; removing products</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="products">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">05</div>
+    <div class="chapter-title">Products</div>
+    <p class="chapter-lead">Building and keeping the product list — the things you sell, their prices, and how much you have. Get this right and the till, stock and Truths all follow. <span class="role role-manager">MANAGER</span></p>
+  </div>
+
+  <p class="eyebrow">The screen</p>
+  <h2>The Products screen</h2>
+  <p>Open <span class="ui">Products</span> from the menu. Every product you sell lives here: its name, its code, its price, and how many you have in stock. The till (Section 3) can only sell what has been set up here, so this is where the working day really begins.</p>
+
+  <figure>
+    <img src="../images/05-products-list.png" alt="The Products screen listing products with their code, price and stock" />
+    <figcaption>The Products screen — one row per product, with code, price and stock in view.</figcaption>
+    <!-- SHOT: route=/products ; show=the product list with several products, their SKU/code, sale price and stock level ; state=none -->
+  </figure>
+
+  <p class="eyebrow">Adding stock lines</p>
+  <h2>Adding a product</h2>
+  <p>Each product is defined by a few fields. Take a moment over the price fields — they are what make your profit numbers honest later.</p>
+  <ol class="steps">
+    <li>On the Products screen, select <span class="ui">Add product</span>.</li>
+    <li><strong>Name</strong> — what staff and customers will recognise, e.g. "Cappuccino".</li>
+    <li><strong>Product code</strong> — your own short code (also called a SKU), e.g. "COF-003". It must be unique. It's how the product is found by scan or search.</li>
+    <li><strong>Cost price</strong> — what the product costs <em>you</em> to buy or make. This is used to work out profit, so enter it honestly even if it's an estimate.</li>
+    <li><strong>Sale price</strong> — what the customer pays. The difference between sale and cost is your margin.</li>
+    <li><strong>Stock</strong> — how many you have right now.</li>
+    <li><strong>Reorder level</strong> — the point at which arcarna should flag the line as running low, so it can warn you before you sell out.</li>
+    <li><strong>Barcode</strong> (optional) — if the product has one, add it so it can be scanned at the till.</li>
+    <li>Save. The product is now sellable at the till.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/05-add-product.png" alt="The add product form showing name, code, cost price, sale price, stock and barcode fields" />
+    <figcaption>Adding a product — name, code, the two prices, stock and reorder level.</figcaption>
+    <!-- SHOT: route=/products ; show=the add/edit product dialog or form open with its fields visible ; state=add form open (describe the button that opens it in review) -->
+  </figure>
+
+  <div class="callout">
+    <strong>Why two prices?</strong>
+    Cost price and sale price are separate on purpose. Revenue tells you what came in; only the gap between cost and sale tells you what you <em>kept</em>. If cost prices are blank or wrong, the profit Truths in Section 8 can't be trusted — so they're worth keeping up to date.
+  </div>
+
+  <p class="eyebrow">Keeping it current</p>
+  <h2>Editing a product</h2>
+  <p>Prices change, suppliers change, and stock moves. To update a product, open it from the list and change the field you need.</p>
+  <ol class="steps">
+    <li><strong>Price change</strong> — open the product, edit the sale (or cost) price, and save. New sales use the new price straight away; past orders keep the price they were sold at.</li>
+    <li><strong>Stock adjustment</strong> — where you've counted stock and it differs from the figure on screen, correct it here so the shelf and the system agree.</li>
+  </ol>
+  <div class="callout warn">
+    <strong>Manager — stock is also changed automatically</strong>
+    You don't normally hand-edit stock down for sales — the till does that for you as items sell, and goods receiving adds stock in when a delivery arrives (see <span class="ui">Inventory</span>). Manual stock edits are for corrections and counts, not day-to-day movement.
+  </div>
+
+  <p class="eyebrow">Retiring lines</p>
+  <h2>Removing a product</h2>
+  <p>When you stop selling something, retire it rather than worrying about losing its history. Removing a product takes it off the till, but the orders that already contained it — and the Truths built from them — stay intact.</p>
+  <ol class="steps">
+    <li>Open the product from the list.</li>
+    <li>Choose to remove or retire it.</li>
+    <li>It disappears from the till. Its past sales remain in the record, so your history and reporting are unaffected.</li>
+  </ol>
+
+  <p class="eyebrow">Doing it in bulk</p>
+  <h2>Importing many products at once</h2>
+  <p>Setting up for the first time, or adding a big delivery of new lines? arcarna can import a spreadsheet of products rather than typing them one by one. Prepare a file with a column per field (name, code, cost price, sale price, stock, barcode), then use the import option on the Products screen and match your columns to the fields. Check the preview before confirming — it's much easier to fix a spreadsheet than to unpick a bad import.</p>
+
+  <div class="callout">
+    <strong>Where products connect</strong>
+    A product set up well here feeds four other places: the <strong>till</strong> can sell it, <strong>Inventory</strong> tracks its stock, <strong>Truths</strong> measure how fast it sells and what it earns, and the <strong>Control Centre</strong> flags it if it becomes dead stock. One tidy product list keeps all of them honest.
+  </div>
+
+</main>
+</body>
+</html>
