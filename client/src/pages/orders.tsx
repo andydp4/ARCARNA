@@ -728,11 +728,11 @@ export default function Orders() {
                       <div className="text-right">
                         <p className="text-xs text-muted-foreground">Total</p>
                         <p className="text-2xl font-bold tabular-nums text-primary">
-                          ${parseFloat(orderDetails.total || "0").toFixed(2)}
+                          £{parseFloat(orderDetails.total || "0").toFixed(2)}
                         </p>
                         {(orderDetails.refundedTotal ?? 0) > 0 && (
                           <p className="text-xs text-destructive mt-1">
-                            Refunded ${orderDetails.refundedTotal!.toFixed(2)}
+                            Refunded £{orderDetails.refundedTotal!.toFixed(2)}
                           </p>
                         )}
                       </div>
@@ -767,7 +767,7 @@ export default function Orders() {
                               {refund.refundMethod})
                             </span>
                             <span className="font-medium tabular-nums shrink-0">
-                              −${parseFloat(refund.total).toFixed(2)}
+                              −£{parseFloat(refund.total).toFixed(2)}
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -791,10 +791,10 @@ export default function Orders() {
                         <div className="min-w-0 flex-1">
                           <p className="font-medium">{item.productName || "Unknown product"}</p>
                           <p className="text-sm text-muted-foreground tabular-nums">
-                            {item.quantity} × ${Number(item?.unitPrice ?? 0).toFixed(2)}
+                            {item.quantity} × £{Number(item?.unitPrice ?? 0).toFixed(2)}
                           </p>
                         </div>
-                        <p className="font-semibold tabular-nums sm:text-right">${Number(item?.total ?? 0).toFixed(2)}</p>
+                        <p className="font-semibold tabular-nums sm:text-right">£{Number(item?.total ?? 0).toFixed(2)}</p>
                       </div>
                     ))}
                   </div>
@@ -974,7 +974,7 @@ export default function Orders() {
               <div className="rounded-lg border bg-muted/50 p-3 text-sm">
                 <p className="font-medium">{orderToDelete?.customerName?.trim() || "Walk-in"}</p>
                 <p className="mt-1 text-muted-foreground tabular-nums">
-                  Total ${orderToDelete?.total ? parseFloat(orderToDelete.total).toFixed(2) : "0.00"} ·{" "}
+                  Total £{orderToDelete?.total ? parseFloat(orderToDelete.total).toFixed(2) : "0.00"} ·{" "}
                   {formatPaymentLabel(orderToDelete?.paymentMethod || "")}
                 </p>
               </div>
@@ -1065,7 +1065,7 @@ export default function Orders() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground tabular-nums">
-                        Line total: ${(line.quantity * line.unitPrice).toFixed(2)}
+                        Line total: £{(line.quantity * line.unitPrice).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex justify-end border-t pt-3 sm:border-t-0 sm:border-l sm:pl-3 sm:pt-0">
@@ -1096,7 +1096,7 @@ export default function Orders() {
               <div className="flex justify-between items-center">
                 <span className="font-semibold">New Total:</span>
                 <span className="text-xl font-bold text-primary">
-                  ${editLines.reduce((sum, line) => sum + (line.quantity * line.unitPrice), 0).toFixed(2)}
+                  £{editLines.reduce((sum, line) => sum + (line.quantity * line.unitPrice), 0).toFixed(2)}
                 </span>
               </div>
             </div>

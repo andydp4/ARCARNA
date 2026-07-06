@@ -308,7 +308,7 @@ export function ExpenseReportsPage() {
                     dataKey="date" 
                     tickFormatter={(date) => format(new Date(date), 'MMM d')}
                   />
-                  <YAxis tickFormatter={(value) => `$${value}`} />
+                  <YAxis tickFormatter={(value) => `£${value}`} />
                   <Tooltip 
                     formatter={(value: any) => formatCurrency(value)}
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
@@ -420,7 +420,7 @@ export function ExpenseReportsPage() {
                   <BarChart data={expenseReport?.orderExpensesByCategory || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="category" />
-                    <YAxis tickFormatter={(value) => `$${value}`} />
+                    <YAxis tickFormatter={(value) => `£${value}`} />
                     <Tooltip formatter={(value: any) => formatCurrency(value)} />
                     <Bar dataKey="total" fill="#3B82F6" />
                   </BarChart>
@@ -445,7 +445,7 @@ export function ExpenseReportsPage() {
                     dataKey="date" 
                     tickFormatter={(date) => format(new Date(date), 'MMM d')}
                   />
-                  <YAxis tickFormatter={(value) => `$${value}`} />
+                  <YAxis tickFormatter={(value) => `£${value}`} />
                   <Tooltip 
                     formatter={(value: any) => formatCurrency(value)}
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}

@@ -873,7 +873,7 @@ export default function ProductManagement() {
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
                                 <div className="text-xs text-muted-foreground">Price</div>
-                                <div className="font-medium">${(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</div>
+                                <div className="font-medium">£{(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</div>
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">Stock</div>
@@ -888,7 +888,7 @@ export default function ProductManagement() {
                               {(product.tax || product.costPrice) && (
                                 <div>
                                   <div className="text-xs text-muted-foreground">Cost</div>
-                                  <div className="font-medium">${parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</div>
+                                  <div className="font-medium">£{parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</div>
                                 </div>
                               )}
                             </div>
@@ -1073,8 +1073,8 @@ export default function ProductManagement() {
                         <TableCell className="font-mono text-sm">{product.productId || '-'}</TableCell>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
-                        <TableCell>${(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
-                        <TableCell>${parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</TableCell>
+                        <TableCell>£{(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
+                        <TableCell>£{parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>

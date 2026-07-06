@@ -74,7 +74,7 @@ export function SpatialInsightsShell({
           <aside className="order-2 flex flex-col gap-3 lg:order-1 lg:pt-14">
             <SatelliteKpi
               label="Revenue"
-              value={`$${summaryStats.revenue.toFixed(2)}`}
+              value={`£${summaryStats.revenue.toFixed(2)}`}
               icon={DollarSign}
             />
             <SatelliteKpi
@@ -89,7 +89,7 @@ export function SpatialInsightsShell({
             />
             <SatelliteKpi
               label="Avg order"
-              value={`$${summaryStats.avgOrder.toFixed(2)}`}
+              value={`£${summaryStats.avgOrder.toFixed(2)}`}
               icon={TrendingUp}
             />
           </aside>

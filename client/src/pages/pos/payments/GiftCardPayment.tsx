@@ -65,7 +65,7 @@ export function GiftCardPayment({ orderTotal, value, onChange }: GiftCardPayment
       </div>
       {balance != null && (
         <div className="space-y-3 text-sm">
-          <p className="text-muted-foreground">Balance: <span className="font-medium text-foreground">${balance.toFixed(2)}</span> · ****{codeInput.slice(-4)}</p>
+          <p className="text-muted-foreground">Balance: <span className="font-medium text-foreground">£{balance.toFixed(2)}</span> · ****{codeInput.slice(-4)}</p>
           <div className="grid gap-2">
             <Label htmlFor="gift-card-amount">Amount to apply</Label>
             <Input id="gift-card-amount" type="number" min={0.01} step="0.01" max={Math.min(balance, orderTotal)}
@@ -78,7 +78,7 @@ export function GiftCardPayment({ orderTotal, value, onChange }: GiftCardPayment
           </div>
           {needsRemainder && (
             <>
-              <p className="text-muted-foreground">Remaining due: <span className="font-medium">${remainder.toFixed(2)}</span></p>
+              <p className="text-muted-foreground">Remaining due: <span className="font-medium">£{remainder.toFixed(2)}</span></p>
               <Select value={remainderMethod} onValueChange={(method) => {
                 setRemainderMethod(method);
                 onChange({ code: codeInput.trim(), balance, amountToApply: applyAmount, remainderPaymentMethod: method });
