@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadInvoiceLogo } from "../services/invoiceLogo";
 
 const publicLookup = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
@@ -12,6 +12,16 @@ function imageResponse(body: Uint8Array, init: ResponseInit = {}) {
 }
 
 describe("invoice logo fetching", () => {
+  let consoleError: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
   it("fetches a public HTTPS logo within the byte limit", async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]);
     const fetchMock = vi.fn(async () => imageResponse(bytes));
