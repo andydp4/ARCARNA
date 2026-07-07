@@ -4,8 +4,10 @@ import { Wallet, LogOut } from "lucide-react";
 import { apiRequest, getJson, queryClient as globalQueryClient } from "@/lib/queryClient";
 import {
   getActiveCashierId,
+  clearActiveCashierContext,
   setActiveCashierId,
   setActiveCashierShiftId,
+  setActiveCashierShiftReplayToken,
 } from "@/lib/orgScope";
 import {
   Dialog,
@@ -40,6 +42,7 @@ type CashierShift = {
   id: string;
   cashierId: string;
   status: string;
+  cashierShiftReplayToken?: string;
 };
 
 type CashierShiftBalanceSheet = {
@@ -98,10 +101,10 @@ export function CashierShiftBadge() {
     if (!cashierId || !current) return;
     if (current.shift) {
       setActiveCashierShiftId(current.shift.id);
+      setActiveCashierShiftReplayToken(current.shift.cashierShiftReplayToken ?? null);
     } else {
       // Stored cashier no longer has an open shift (closed elsewhere / auto-closed).
-      setActiveCashierId(null);
-      setActiveCashierShiftId(null);
+      clearActiveCashierContext();
       setCashierId(null);
     }
   }, [cashierId, current]);
@@ -121,6 +124,7 @@ export function CashierShiftBadge() {
     onSuccess: (shift) => {
       setActiveCashierId(shift.cashierId);
       setActiveCashierShiftId(shift.id);
+      setActiveCashierShiftReplayToken(shift.cashierShiftReplayToken ?? null);
       setCashierId(shift.cashierId);
       setStartOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/cashier-shifts/current"] });
@@ -137,8 +141,7 @@ export function CashierShiftBadge() {
       return res.json() as Promise<{ shift: CashierShift; summary: CashierShiftBalanceSheet }>;
     },
     onSuccess: (data) => {
-      setActiveCashierId(null);
-      setActiveCashierShiftId(null);
+      clearActiveCashierContext();
       setCashierId(null);
       setClosedSummary(data);
       globalQueryClient.invalidateQueries({ queryKey: ["/api/cashier-shifts/current"] });

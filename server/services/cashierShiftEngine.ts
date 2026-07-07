@@ -320,6 +320,46 @@ export async function closeCashierShift(
   return { shift: closed, summary };
 }
 
+export async function refreshClosedCashierShiftSummary(
+  orgId: string,
+  shiftId: string,
+): Promise<CashierShiftSummary | null> {
+  const [shift] = await db
+    .select()
+    .from(cashierShifts)
+    .where(and(eq(cashierShifts.id, shiftId), eq(cashierShifts.orgId, orgId)))
+    .limit(1);
+  if (!shift || shift.status === "open") return null;
+
+  const { sheet } = await computeCashierShiftBalanceSheet(orgId, shift);
+  const closedAt = shift.closedAt ?? new Date();
+  const [summary] = await db
+    .update(cashierShiftSummaries)
+    .set({
+      grossSales: String(sheet.grossSales),
+      cashSales: String(sheet.cashSales),
+      cardSales: String(sheet.cardSales),
+      creditSales: String(sheet.creditSales),
+      unpaidCreditSales: String(sheet.unpaidCreditSales),
+      stockCost: String(sheet.stockCost),
+      orderExpenses: String(sheet.orderExpenses),
+      globalExpenseAllocation: String(sheet.globalExpenseAllocation),
+      refunds: String(sheet.refunds),
+      discounts: String(sheet.discounts),
+      netSalesProfit: String(sheet.netSalesProfit),
+      commissionRate: String(sheet.commissionRate),
+      commissionAmount: String(sheet.commissionAmount),
+      businessRetainedProfit: String(sheet.businessRetainedProfit),
+      hasIncompleteCostData: sheet.hasIncompleteCostData,
+      closedAt,
+      calculationVersion: sheet.calculationVersion,
+    })
+    .where(and(eq(cashierShiftSummaries.shiftId, shiftId), eq(cashierShiftSummaries.orgId, orgId)))
+    .returning();
+
+  return summary ?? null;
+}
+
 /** Sweeps all orgs for cashier shifts that have exceeded their configured inactivity window. */
 export async function autoCloseInactiveCashierShifts(): Promise<number> {
   const openShifts = await db

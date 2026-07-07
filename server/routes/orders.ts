@@ -21,6 +21,7 @@ import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
@@ -46,7 +47,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         body.giftCardAmount = giftCardAmount;
       }
 
-      const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
+      const { result, eventId, createdOrder, items, cashierShift } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
         const shiftId = req.shift?.id;
         const cashierShift = req.cashierShift;
@@ -112,8 +113,19 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           sendEmailReceipt,
         }, { source: 'api-orders' });
 
-        return { result, eventId, createdOrder, items };
+        return { result, eventId, createdOrder, items, cashierShift };
       });
+
+      if (cashierShift?.replayedFromSignedSnapshot) {
+        try {
+          await refreshClosedCashierShiftSummary(ctx.orgId!, cashierShift.cashierShiftId);
+        } catch (refreshError) {
+          console.error("[Orders] Failed to refresh cashier shift summary after offline replay", {
+            cashierShiftId: cashierShift.cashierShiftId,
+            error: refreshError,
+          });
+        }
+      }
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
       

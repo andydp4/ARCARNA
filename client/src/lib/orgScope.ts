@@ -4,6 +4,7 @@ import {
   STORAGE_ORG_ID_LEGACY,
   STORAGE_CASHIER_ID,
   STORAGE_CASHIER_SHIFT_ID,
+  STORAGE_CASHIER_SHIFT_REPLAY_TOKEN,
 } from "@shared/storageKeys";
 
 export function getSelectedOrgId(): string | null {
@@ -13,8 +14,12 @@ export function getSelectedOrgId(): string | null {
 
 export function setSelectedOrgId(orgId: string | null): void {
   if (typeof window === "undefined") return;
+  const previousOrgId = localStorage.getItem(STORAGE_ORG_ID);
   if (orgId) localStorage.setItem(STORAGE_ORG_ID, orgId);
   else localStorage.removeItem(STORAGE_ORG_ID);
+  if (previousOrgId !== orgId) {
+    clearActiveCashierContext();
+  }
 }
 
 /** Active cashier profile id for the current POS session, if cashier commission is enabled. */
@@ -57,6 +62,31 @@ export function setActiveCashierShiftId(cashierShiftId: string | null): void {
   } catch {
     /* ignore */
   }
+}
+
+export function getActiveCashierShiftReplayToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN);
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveCashierShiftReplayToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) localStorage.setItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN, token);
+    else localStorage.removeItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearActiveCashierContext(): void {
+  setActiveCashierId(null);
+  setActiveCashierShiftId(null);
+  setActiveCashierShiftReplayToken(null);
 }
 
 export function orgScopeHeaders(): Record<string, string> {

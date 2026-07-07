@@ -1,4 +1,5 @@
 import { resolveAppPath } from "@/lib/appPaths";
+import { clearActiveCashierContext } from "@/lib/orgScope";
 import {
   legacyOfflineDbNameForOrg,
   offlineDbNameForOrg,
@@ -40,6 +41,7 @@ export async function wipeOrgOfflineData(orgId: string): Promise<void> {
 
 /** Logout / session end — drop legacy DB and every org-scoped offline DB. */
 export async function wipeAllOfflineData(): Promise<void> {
+  clearActiveCashierContext();
   const names = new Set<string>([OFFLINE_DB_PREFIX_LEGACY, OFFLINE_DB_PREFIX]);
   if (typeof indexedDB.databases === "function") {
     const listed = await indexedDB.databases();
