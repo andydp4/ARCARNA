@@ -31,8 +31,13 @@ class MemoryStorage {
 
 describe("org scoped cashier context", () => {
   const originalLocalStorage = globalThis.localStorage;
+  const originalWindow = globalThis.window;
 
   beforeEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: globalThis,
+    });
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: new MemoryStorage(),
@@ -43,6 +48,10 @@ describe("org scoped cashier context", () => {
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: originalLocalStorage,
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
     });
   });
 
