@@ -267,8 +267,8 @@ export default function POS() {
       const queueOffline = async () => {
         console.log('[POS] Queueing order mutation offline');
         try {
-          // Snapshot the cashier/shift context now, so a sync that happens after
-          // the shift auto-closes still attributes the sale to the original cashier.
+          // Snapshot the cashier/shift context so queued orders can keep their
+          // original attribution when they sync while that shift is still open.
           const cashierId = getActiveCashierId();
           const cashierShiftId = getActiveCashierShiftId();
           const offlineOrderData = {
