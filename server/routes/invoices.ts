@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
+import { loadInvoiceLogo } from "../services/invoiceLogo";
 
 type InvoiceCompany = {
   name: string;
@@ -31,22 +32,6 @@ type InvoicePdfData = {
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
 };
-
-/** Fetches the org's logo bytes for invoice branding, if enabled and configured. Never throws. */
-async function loadInvoiceLogo(org: {
-  invoiceLogoEnabled: boolean;
-  logoUrl: string | null;
-}): Promise<Buffer | undefined> {
-  if (!org.invoiceLogoEnabled || !org.logoUrl) return undefined;
-  try {
-    const res = await fetch(org.logoUrl);
-    if (!res.ok) return undefined;
-    return Buffer.from(await res.arrayBuffer());
-  } catch (error) {
-    console.error("[Invoices] Failed to fetch invoice logo:", error);
-    return undefined;
-  }
-}
 
 function buildCompanyInfo(
   org: {
