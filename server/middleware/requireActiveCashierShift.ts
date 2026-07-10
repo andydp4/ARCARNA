@@ -3,6 +3,7 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { validateSubmittedCashierShift } from "../services/cashierShiftGuards";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -37,19 +38,28 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
 
-    // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
-    const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
-    const offlineCashierId = req.body?.cashierId as string | undefined;
-    if (offlineCashierShiftId && offlineCashierId) {
+    // Offline-queued orders carry the cashier/shift context captured at sale
+    // time, but only open shifts can be trusted for new attribution. A stale
+    // closed shift would corrupt the already-frozen commission summary.
+    const submittedCashierShiftId = req.body?.cashierShiftId as string | undefined;
+    const submittedCashierId = req.body?.cashierId as string | undefined;
+    if (submittedCashierShiftId && submittedCashierId) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId, status: cashierShifts.status })
         .from(cashierShifts)
-        .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
+        .where(and(eq(cashierShifts.id, submittedCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
-        req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+
+      const submittedShift = validateSubmittedCashierShift(submittedCashierId, submittedCashierShiftId, shift ?? null);
+      if (submittedShift.kind === "invalid") {
+        return res.status(submittedShift.status).json({
+          message: submittedShift.message,
+          code: submittedShift.code,
+        });
+      }
+      if (submittedShift.kind === "valid") {
+        await touchCashierShiftActivity(submittedShift.context.cashierShiftId);
+        req.cashierShift = submittedShift.context;
         return next();
       }
     }
