@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
+import { OFFLINE_ORDER_QUEUED_AT, OFFLINE_ORDER_REPLAY_FLAG } from "@shared/cashierShiftReplay";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -275,6 +276,12 @@ export default function POS() {
             ...orderData,
             ...(cashierId ? { cashierId } : {}),
             ...(cashierShiftId ? { cashierShiftId } : {}),
+            ...(cashierShiftId
+              ? {
+                  [OFFLINE_ORDER_REPLAY_FLAG]: true,
+                  [OFFLINE_ORDER_QUEUED_AT]: new Date().toISOString(),
+                }
+              : {}),
           };
           await offlineStorage.queueMutation({
             type: 'ORDER_CREATE',
