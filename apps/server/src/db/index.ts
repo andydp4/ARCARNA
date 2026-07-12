@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import pkg from 'pg'
-const { Pool } = pkg
+import { Pool } from 'pg'
 
 /** Active Drizzle transaction client when inside `withTransaction`. */
 const txStore = new AsyncLocalStorage<ReturnType<typeof drizzle>>()
@@ -18,7 +17,7 @@ export const pool = new Pool({
 })
 
 // Handle pool errors to prevent crashes
-pool.on('error', (err) => {
+pool.on('error', (err: Error) => {
   console.error('Unexpected error on idle client', err)
   // Don't throw - just log it
 })

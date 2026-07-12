@@ -11,11 +11,9 @@ export type OpenShiftContext = {
   openingFloat: string;
 };
 
-declare module "express-serve-static-core" {
-  interface Request {
-    shift?: OpenShiftContext;
-  }
-}
+type RequestWithOpenShift = Parameters<RequestHandler>[0] & {
+  shift?: OpenShiftContext;
+};
 
 /**
  * Requires an open shift for the current user at the org location. When the
@@ -24,7 +22,9 @@ declare module "express-serve-static-core" {
  */
 export const requireOpenShift: RequestHandler = async (req, res, next) => {
   try {
-    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } }).orgContext;
+    const request = req as RequestWithOpenShift;
+    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } })
+      .orgContext;
     const user = req.user as { id?: string } | undefined;
     if (!ctx?.orgId || !user?.id) {
       return res.status(400).json({ message: "Org context and authenticated user required" });
@@ -70,7 +70,7 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
         code: "SHIFT_REQUIRED",
       });
     }
-    req.shift = {
+    request.shift = {
       id: open.id,
       orgId: open.orgId,
       locationId: open.locationId,
