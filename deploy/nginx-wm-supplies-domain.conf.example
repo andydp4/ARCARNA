@@ -1,30 +1,21 @@
-# Example Nginx site for a WM Supplies customer domain on the same VPS.
+# Example Nginx site for the WM Supplies customer website on the same VPS.
 #
-# Replace orders.example.co.uk with the real GoDaddy-hosted domain/subdomain.
-# DNS should point that name to this VPS public IP with an A record.
+# DNS should point wmsupplies.com and www.wmsupplies.com to the website host.
+# Arcana remains the backend/admin app at https://arcarna.viger.cloud.
 #
-# Current single-process launch:
-# - Existing app process: 127.0.0.1:5000
-# - Existing build/mount: /arcarna
-# - Customer URL becomes: https://orders.example.co.uk/arcarna/
-#
-# Clean-root launch:
-# - Add a second PM2 process: 127.0.0.1:5001
+# Customer website launch:
+# - Website process: 127.0.0.1:5001
 # - Build it with VITE_BASE_PATH= and APP_BASE_PATH=
-# - Customer URL becomes: https://orders.example.co.uk/
+# - Customer URL: https://wmsupplies.com/
 
 server {
     listen 80;
-    server_name orders.example.co.uk;
+    server_name wmsupplies.com www.wmsupplies.com;
 
     client_max_body_size 25m;
 
-    location = / {
-        return 302 /arcarna/;
-    }
-
-    location /arcarna/ {
-        proxy_pass http://127.0.0.1:5000;
+    location / {
+        proxy_pass http://127.0.0.1:5001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -36,41 +27,15 @@ server {
     }
 }
 
-# HTTPS for the current single-process launch, after:
-# certbot --nginx -d orders.example.co.uk
+# HTTPS after:
+# certbot --nginx -d wmsupplies.com -d www.wmsupplies.com
 #
 # server {
 #     listen 443 ssl http2;
-#     server_name orders.example.co.uk;
+#     server_name wmsupplies.com www.wmsupplies.com;
 #
 #     client_max_body_size 25m;
 #     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-#
-#     location = / {
-#         return 302 /arcarna/;
-#     }
-#
-#     location /arcarna/ {
-#         proxy_pass http://127.0.0.1:5000;
-#         proxy_http_version 1.1;
-#         proxy_set_header Upgrade $http_upgrade;
-#         proxy_set_header Connection 'upgrade';
-#         proxy_set_header Host $host;
-#         proxy_set_header X-Real-IP $remote_addr;
-#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-#         proxy_set_header X-Forwarded-Proto $scheme;
-#         proxy_cache_bypass $http_upgrade;
-#     }
-# }
-
-# Clean-root target after the second website process exists on :5001.
-# Keep this disabled until that process has been built with blank base paths.
-#
-# server {
-#     listen 80;
-#     server_name orders.example.co.uk;
-#
-#     client_max_body_size 25m;
 #
 #     location / {
 #         proxy_pass http://127.0.0.1:5001;

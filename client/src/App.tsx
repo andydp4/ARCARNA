@@ -93,6 +93,24 @@ function RouteLoadingFallback() {
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const isCustomerOnly = user?.role === "CUSTOMER";
+  const isWmSuppliesCustomerSite = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
+
+  if (isWmSuppliesCustomerSite) {
+    return (
+      <WouterRouter base={APP_BASE}>
+      <Switch>
+        <Route path="/sign-in" component={SignInPage} />
+        <Route path="/sign-out" component={SignOutPage} />
+        <Route path="/order" component={WmSuppliesOrderPage} />
+        <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
+        <Route path="/pending-approval" component={PendingApproval} />
+        <Route path="/no-access" component={NoAccess} />
+        <Route path="/" component={WmSuppliesHomePage} />
+        <Route component={NotFound} />
+      </Switch>
+      </WouterRouter>
+    );
+  }
 
   return (
     <WouterRouter base={APP_BASE}>

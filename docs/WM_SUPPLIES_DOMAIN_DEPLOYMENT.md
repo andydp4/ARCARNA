@@ -1,99 +1,118 @@
-# WM Supplies Domain Deployment
+# WM Supplies Website Domain Deployment
 
-The WM Supplies website can run on the same VPS as `viger.cloud`. The domain does not need to move away from GoDaddy just to host the site.
+The WM Supplies customer website should live at `https://wmsupplies.com`.
+
+Arcana remains the backend/admin app at `https://arcarna.viger.cloud`. The WM Supplies website uses Arcana for live stock data, approved customer access, website content, and order submission.
 
 Recommended production shape:
 
-- keep the domain registered at GoDaddy for now
-- point a WM Supplies domain or subdomain at the VPS IP with DNS
-- terminate HTTPS in Nginx on the VPS
-- proxy traffic to the existing Node/PM2 app
+- keep `wmsupplies.com` registered at its current registrar unless there is a separate reason to move it
+- point `wmsupplies.com` and `www.wmsupplies.com` at the customer website host with DNS
+- keep `arcarna.viger.cloud` as the Arcana app/backend endpoint
 - keep Clerk in front of the customer website, with Arcana account approval required before any website content loads
+- submit website orders into Arcana so staff manage them in the Arcana order tray
 
-## GoDaddy DNS
+## DNS
 
-Add an `A` record for the domain or subdomain that customers should use.
+Add DNS records for the customer website domain.
 
-Examples:
+For the current target:
 
 | Customer URL | DNS host | DNS value |
 | --- | --- | --- |
-| `https://orders.example.co.uk` | `orders` | VPS public IPv4 |
-| `https://www.example.co.uk` | `www` | VPS public IPv4 |
-| `https://example.co.uk` | `@` | VPS public IPv4 |
+| `https://wmsupplies.com` | `@` | Website host public IPv4 |
+| `https://www.wmsupplies.com` | `www` | Website host public IPv4 or CNAME |
 
 Use a low TTL while cutting over. DNS can appear quickly, but allow up to 48 hours globally.
 
-Do not point the domain to GoDaddy hosting unless GoDaddy is also hosting the Node app. In this setup, GoDaddy is only the registrar/DNS provider and the VPS is the host.
+Do not point `wmsupplies.com` at `arcarna.viger.cloud` as the customer URL. Arcana is the backend/admin system; customers should interact with `wmsupplies.com`.
 
-## Current App Mount
+## Arcana Backend Link
 
-The current production app is built and mounted at:
-
-```env
-VITE_BASE_PATH=/arcarna
-APP_BASE_PATH=/arcarna
-```
-
-Because of that, the customer website currently works inside the Arcana app mount:
+Arcana is the live operations app:
 
 ```text
-https://viger.cloud/arcarna/
-https://viger.cloud/arcarna/order
-https://viger.cloud/arcarna/order/success
+https://arcarna.viger.cloud
 ```
 
-The same mount can be exposed on the WM Supplies domain first:
+The website should pull approved website content, live stock/product data, and order settings from Arcana APIs. Website orders should submit back into Arcana and appear in the existing order tray with channel `Website`.
+
+## Customer Website URL
+
+The customer-facing website target is:
 
 ```text
-https://orders.example.co.uk/arcarna/
+https://wmsupplies.com/
+https://wmsupplies.com/order
+https://wmsupplies.com/order/success
 ```
 
-That is the lowest-risk first deployment because it uses the same PM2 process, the same build, the same database, and the same Clerk configuration pattern.
+If the website is hosted on the same VPS as Arcana, run it as a separate customer-site process rather than exposing the Arcana app mount as the public shop URL.
 
-## Clean Customer Domain
-
-For the polished customer URL:
-
-```text
-https://orders.example.co.uk/
-```
-
-use a separate production build/process for the website domain, or add host-aware routing. Do not simply proxy `/` to the `/arcarna` build and assume it is complete: the React router and generated asset/API paths are base-path aware.
-
-Clean-root target process:
+Customer-site process target:
 
 ```env
 NODE_ENV=production
 PORT=5001
+WM_SUPPLIES_CUSTOMER_SITE=1
+VITE_WM_SUPPLIES_CUSTOMER_SITE=1
 VITE_BASE_PATH=
 APP_BASE_PATH=
-VITE_APP_URL=https://orders.example.co.uk
+VITE_APP_URL=https://wmsupplies.com
+WORKERS_ENABLED=0
 AUTH_PROVIDER=clerk
 ```
 
-Keep it connected to the same production database only if the WM Supplies website is intended to share Arcana products, customers, approval state, website content, and order tray.
+Use the same production database as Arcana so website orders, products, stock, website content, and customer approvals are shared with the backend/admin app.
+
+## VPS Load Steps
+
+These steps assume the Arcana app already runs from its own folder on the VPS. Create a second folder for the customer website so the two builds do not overwrite each other.
+
+1. Open the VPS terminal.
+2. Create a new folder such as `/var/www/wm-supplies-website`.
+3. Clone the same GitHub repo into that folder.
+4. Copy `.env.wm-supplies.example` to `.env`.
+5. Fill in the same production `DATABASE_URL`, Clerk keys, and `SESSION_SECRET`.
+6. Confirm these website-only values are present:
+
+```env
+PORT=5001
+WM_SUPPLIES_CUSTOMER_SITE=1
+VITE_WM_SUPPLIES_CUSTOMER_SITE=1
+VITE_APP_URL=https://wmsupplies.com
+VITE_BASE_PATH=
+APP_BASE_PATH=
+WORKERS_ENABLED=0
+```
+
+7. Install dependencies.
+8. Build the app.
+9. Start it with `ecosystem.wm-supplies.config.cjs`.
+10. Add the Nginx config from `deploy/nginx-wm-supplies-domain.conf.example`.
+11. Add HTTPS with Certbot once DNS points at the VPS.
+
+The one-command deploy path for the website folder is:
+
+```bash
+npm run deploy:wm-supplies
+```
+
+Success looks like this in the terminal:
+
+```text
+OK: WM Supplies website process is responding.
+SUCCESS: Deploy finished.
+```
 
 ## Clerk URLs
 
-Add the final customer URL in Clerk before the domain is made live.
-
-Required values depend on whether the first launch uses the `/arcarna` mount or the clean root domain.
-
-Current mount launch:
+Add the final customer URL in Clerk before the domain is made live:
 
 ```text
-https://orders.example.co.uk/arcarna/
-https://orders.example.co.uk/arcarna/sign-in
-https://orders.example.co.uk/arcarna/pending-approval
-```
-
-Clean root launch:
-
-```text
-https://orders.example.co.uk/
-https://orders.example.co.uk/sign-in
-https://orders.example.co.uk/pending-approval
+https://wmsupplies.com/
+https://wmsupplies.com/sign-in
+https://wmsupplies.com/pending-approval
 ```
 
 Keep public sign-up invite-only in Clerk and continue approving accounts inside Arcana before assigning the `CUSTOMER` role.
@@ -108,18 +127,17 @@ deploy/nginx-wm-supplies-domain.conf.example
 
 The example includes:
 
-- a same-process `/arcarna` launch block
-- a clean-root launch block for a second PM2 process on port `5001`
+- a customer website server block for `wmsupplies.com`
+- proxying to a separate website process on port `5001`
 
 ## Smoke Test
 
 Before giving the URL to customers:
 
-1. Confirm the GoDaddy DNS record resolves to the VPS IP.
-2. Confirm Certbot has issued HTTPS for the WM Supplies domain.
+1. Confirm `wmsupplies.com` DNS resolves to the website host.
+2. Confirm Certbot has issued HTTPS for `wmsupplies.com`.
 3. Open the website signed out and confirm no products/content are visible.
 4. Sign in with an unapproved test account and confirm it lands on pending approval.
 5. Approve that account as `CUSTOMER` in Arcana.
 6. Sign in again and confirm the customer homepage appears.
 7. Submit a small website order and confirm it appears in the Arcana order tray with channel `Website`.
-

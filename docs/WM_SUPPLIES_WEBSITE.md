@@ -282,14 +282,12 @@ Nginx example:
 
 `deploy/nginx-wm-supplies-domain.conf.example`
 
-The domain can stay registered at GoDaddy. GoDaddy DNS should point the chosen WM Supplies domain or subdomain to the same VPS IP, and Nginx should proxy the traffic to the app.
+Arcana lives at `https://arcarna.viger.cloud` and acts as the backend/admin app for stock, website content, account approval, and order intake.
 
-The existing production app is still mounted at `/arcarna`, so the lowest-risk first customer-domain launch is:
+Customers should interact with the WM Supplies website at:
 
-`https://orders.example.co.uk/arcarna/`
+`https://wmsupplies.com/`
 
-A clean root URL such as:
+The website can sit on the same VPS as a separate process, or on another host, but it should submit orders into Arcana and pull live stock/content from Arcana.
 
-`https://orders.example.co.uk/`
-
-requires a second website build/process with blank `VITE_BASE_PATH` and `APP_BASE_PATH`, or an explicit host-aware routing change. Do not treat `viger.cloud/wmsupplies` as the final customer URL unless it is only a temporary test path.
+Do not treat `arcarna.viger.cloud`, `viger.cloud/arcarna`, or `viger.cloud/wmsupplies` as the final customer URL.
