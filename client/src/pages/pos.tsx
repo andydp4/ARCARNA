@@ -271,10 +271,13 @@ export default function POS() {
           // the shift auto-closes still attributes the sale to the original cashier.
           const cashierId = getActiveCashierId();
           const cashierShiftId = getActiveCashierShiftId();
+          const offlineQueuedAt = new Date().toISOString();
           const offlineOrderData = {
             ...orderData,
             ...(cashierId ? { cashierId } : {}),
             ...(cashierShiftId ? { cashierShiftId } : {}),
+            _offlineOrderReplay: true,
+            _offlineQueuedAt: offlineQueuedAt,
           };
           await offlineStorage.queueMutation({
             type: 'ORDER_CREATE',

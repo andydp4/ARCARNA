@@ -3,6 +3,7 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { evaluateSubmittedCashierShift } from "../services/cashierShiftGuards";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -38,19 +39,33 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
     if (!org?.cashierCommissionEnabled) return next();
 
     // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    // the time of sale. Closed shifts are accepted only when the request is
+    // explicitly marked as offline replay and the queued timestamp falls inside
+    // that shift window.
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
-    const offlineCashierId = req.body?.cashierId as string | undefined;
-    if (offlineCashierShiftId && offlineCashierId) {
+    if (offlineCashierShiftId) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({
+          id: cashierShifts.id,
+          cashierId: cashierShifts.cashierId,
+          status: cashierShifts.status,
+          openedAt: cashierShifts.openedAt,
+          closedAt: cashierShifts.closedAt,
+        })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
-        req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+      const decision = evaluateSubmittedCashierShift(req.body, shift);
+      if (decision.accepted) {
+        if (decision.shouldTouchShift) await touchCashierShiftActivity(decision.cashierShiftId);
+        req.cashierShift = { cashierId: decision.cashierId, cashierShiftId: decision.cashierShiftId };
         return next();
+      }
+      if (org.requireCashierForSale) {
+        return res.status(409).json({
+          message: "No active shift for this cashier. Start a cashier shift before taking sales.",
+          code: "CASHIER_SHIFT_REQUIRED",
+        });
       }
     }
 
