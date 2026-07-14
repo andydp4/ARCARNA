@@ -3,6 +3,7 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { resolveTrustedOfflineCashierShiftSnapshot } from "../services/cashierShiftGuards";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -38,18 +39,30 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
     if (!org?.cashierCommissionEnabled) return next();
 
     // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    // the time of sale. Only accept that snapshot for an authenticated replay
+    // whose queued timestamp falls inside the shift that this user opened.
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
     const offlineCashierId = req.body?.cashierId as string | undefined;
-    if (offlineCashierShiftId && offlineCashierId) {
+    if (offlineCashierShiftId && offlineCashierId && req.body?._offlineOrderReplay === true) {
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({
+          id: cashierShifts.id,
+          cashierId: cashierShifts.cashierId,
+          openedByUserId: cashierShifts.openedByUserId,
+          openedAt: cashierShifts.openedAt,
+          closedAt: cashierShifts.closedAt,
+          status: cashierShifts.status,
+        })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
-        req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
+      const snapshot = resolveTrustedOfflineCashierShiftSnapshot(
+        req.body,
+        shift,
+        (req.user as { id?: string } | undefined)?.id,
+      );
+      if (snapshot.trusted) {
+        req.cashierShift = { cashierId: snapshot.cashierId, cashierShiftId: snapshot.cashierShiftId };
         return next();
       }
     }

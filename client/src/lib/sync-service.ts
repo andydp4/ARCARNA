@@ -1,6 +1,14 @@
 import { offlineStorage } from './offline-storage';
 import { apiRequest } from './queryClient';
 
+function withOfflineOrderReplayMetadata(data: any, timestamp: number): any {
+  return {
+    ...data,
+    _offlineOrderReplay: true,
+    _offlineQueuedAt: timestamp,
+  };
+}
+
 export class SyncService {
   private syncing = false;
   private syncInterval: number | null = null;
@@ -47,7 +55,7 @@ export class SyncService {
 
       for (const order of unsyncedOrders) {
         try {
-          await apiRequest('POST', '/api/orders', order.data);
+          await apiRequest('POST', '/api/orders', withOfflineOrderReplayMetadata(order.data, order.timestamp));
           
           if (order.id) {
             await offlineStorage.markOrderSynced(order.id);
@@ -61,7 +69,11 @@ export class SyncService {
 
       for (const mutation of unsyncedMutations) {
         try {
-          const response = await apiRequest(mutation.method, mutation.endpoint, mutation.data);
+          const data =
+            mutation.type === 'ORDER_CREATE'
+              ? withOfflineOrderReplayMetadata(mutation.data, mutation.timestamp)
+              : mutation.data;
+          const response = await apiRequest(mutation.method, mutation.endpoint, data);
           
           if (mutation.id) {
             await offlineStorage.markMutationSynced(mutation.id);
