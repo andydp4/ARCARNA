@@ -261,6 +261,38 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   return { sheet, cashier, org };
 }
 
+type CashierShiftSummarySheet = Awaited<ReturnType<typeof computeCashierShiftBalanceSheet>>["sheet"];
+
+function cashierShiftSummaryValues(
+  orgId: string,
+  shift: CashierShift,
+  sheet: CashierShiftSummarySheet,
+  closedAt: Date,
+) {
+  return {
+    orgId,
+    shiftId: shift.id,
+    cashierId: shift.cashierId,
+    grossSales: String(sheet.grossSales),
+    cashSales: String(sheet.cashSales),
+    cardSales: String(sheet.cardSales),
+    creditSales: String(sheet.creditSales),
+    unpaidCreditSales: String(sheet.unpaidCreditSales),
+    stockCost: String(sheet.stockCost),
+    orderExpenses: String(sheet.orderExpenses),
+    globalExpenseAllocation: String(sheet.globalExpenseAllocation),
+    refunds: String(sheet.refunds),
+    discounts: String(sheet.discounts),
+    netSalesProfit: String(sheet.netSalesProfit),
+    commissionRate: String(sheet.commissionRate),
+    commissionAmount: String(sheet.commissionAmount),
+    businessRetainedProfit: String(sheet.businessRetainedProfit),
+    hasIncompleteCostData: sheet.hasIncompleteCostData,
+    closedAt,
+    calculationVersion: sheet.calculationVersion,
+  };
+}
+
 export async function closeCashierShift(
   orgId: string,
   shiftId: string,
@@ -293,31 +325,56 @@ export async function closeCashierShift(
 
   const [summary] = await db
     .insert(cashierShiftSummaries)
-    .values({
-      orgId,
-      shiftId,
-      cashierId: shift.cashierId,
-      grossSales: String(sheet.grossSales),
-      cashSales: String(sheet.cashSales),
-      cardSales: String(sheet.cardSales),
-      creditSales: String(sheet.creditSales),
-      unpaidCreditSales: String(sheet.unpaidCreditSales),
-      stockCost: String(sheet.stockCost),
-      orderExpenses: String(sheet.orderExpenses),
-      globalExpenseAllocation: String(sheet.globalExpenseAllocation),
-      refunds: String(sheet.refunds),
-      discounts: String(sheet.discounts),
-      netSalesProfit: String(sheet.netSalesProfit),
-      commissionRate: String(sheet.commissionRate),
-      commissionAmount: String(sheet.commissionAmount),
-      businessRetainedProfit: String(sheet.businessRetainedProfit),
-      hasIncompleteCostData: sheet.hasIncompleteCostData,
-      closedAt: now,
-      calculationVersion: sheet.calculationVersion,
-    })
+    .values(cashierShiftSummaryValues(orgId, shift, sheet, now))
     .returning();
 
   return { shift: closed, summary };
+}
+
+export async function refreshClosedCashierShiftSummary(
+  orgId: string,
+  shiftId: string,
+): Promise<CashierShiftSummary> {
+  const [shift] = await db
+    .select()
+    .from(cashierShifts)
+    .where(and(eq(cashierShifts.id, shiftId), eq(cashierShifts.orgId, orgId)))
+    .limit(1);
+  if (!shift) throw new CashierShiftError("Cashier shift not found", 404, "SHIFT_NOT_FOUND");
+  if (shift.status === "open") throw new CashierShiftError("Cashier shift is still open", 400, "SHIFT_STILL_OPEN");
+
+  const closedAt = shift.closedAt ?? new Date();
+  const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt });
+  const values = cashierShiftSummaryValues(orgId, shift, sheet, closedAt);
+
+  const [summary] = await db
+    .insert(cashierShiftSummaries)
+    .values(values)
+    .onConflictDoUpdate({
+      target: cashierShiftSummaries.shiftId,
+      set: {
+        grossSales: values.grossSales,
+        cashSales: values.cashSales,
+        cardSales: values.cardSales,
+        creditSales: values.creditSales,
+        unpaidCreditSales: values.unpaidCreditSales,
+        stockCost: values.stockCost,
+        orderExpenses: values.orderExpenses,
+        globalExpenseAllocation: values.globalExpenseAllocation,
+        refunds: values.refunds,
+        discounts: values.discounts,
+        netSalesProfit: values.netSalesProfit,
+        commissionRate: values.commissionRate,
+        commissionAmount: values.commissionAmount,
+        businessRetainedProfit: values.businessRetainedProfit,
+        hasIncompleteCostData: values.hasIncompleteCostData,
+        closedAt: values.closedAt,
+        calculatedAt: new Date(),
+        calculationVersion: values.calculationVersion,
+      },
+    })
+    .returning();
+  return summary;
 }
 
 /** Sweeps all orgs for cashier shifts that have exceeded their configured inactivity window. */

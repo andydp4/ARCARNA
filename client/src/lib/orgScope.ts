@@ -4,6 +4,7 @@ import {
   STORAGE_ORG_ID_LEGACY,
   STORAGE_CASHIER_ID,
   STORAGE_CASHIER_SHIFT_ID,
+  STORAGE_CASHIER_SHIFT_REPLAY_TOKEN,
 } from "@shared/storageKeys";
 
 export function getSelectedOrgId(): string | null {
@@ -54,6 +55,25 @@ export function setActiveCashierShiftId(cashierShiftId: string | null): void {
   try {
     if (cashierShiftId) localStorage.setItem(STORAGE_CASHIER_SHIFT_ID, cashierShiftId);
     else localStorage.removeItem(STORAGE_CASHIER_SHIFT_ID);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getActiveCashierShiftReplayToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN);
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveCashierShiftReplayToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) localStorage.setItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN, token);
+    else localStorage.removeItem(STORAGE_CASHIER_SHIFT_REPLAY_TOKEN);
   } catch {
     /* ignore */
   }

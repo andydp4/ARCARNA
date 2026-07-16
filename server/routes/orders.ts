@@ -7,6 +7,7 @@ import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
 import { requireActiveCashierShift } from "../middleware/requireActiveCashierShift";
+import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -56,7 +57,11 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             .set({
               ...(shiftId ? { shift_id: shiftId } : {}),
               ...(cashierShift
-                ? { cashier_id: cashierShift.cashierId, cashier_shift_id: cashierShift.cashierShiftId }
+                ? {
+                    cashier_id: cashierShift.cashierId,
+                    cashier_shift_id: cashierShift.cashierShiftId,
+                    ...(cashierShift.queuedAt ? { created_at: cashierShift.queuedAt } : {}),
+                  }
                 : {}),
             })
             .where(eq(orders.id, result.orderId));
@@ -116,6 +121,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       });
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
+      if (req.cashierShift?.replayedToClosedShift && ctx.orgId) {
+        await refreshClosedCashierShiftSummary(ctx.orgId, req.cashierShift.cashierShiftId);
+      }
       
       res.status(201).json({ 
         ...result, 

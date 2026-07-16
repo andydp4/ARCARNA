@@ -3,10 +3,13 @@ import { db } from "../db";
 import { organizations, cashierShifts } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import { getOpenCashierShift, touchCashierShiftActivity } from "../services/cashierShiftEngine";
+import { validateCashierShiftReplay } from "../services/cashierShiftReplayToken";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
   cashierShiftId: string;
+  queuedAt?: Date;
+  replayedToClosedShift?: boolean;
 };
 
 declare module "express-serve-static-core" {
@@ -37,18 +40,66 @@ export const requireActiveCashierShift: RequestHandler = async (req, res, next) 
       .limit(1);
     if (!org?.cashierCommissionEnabled) return next();
 
-    // Offline-queued orders carry the original cashier/shift context captured at
-    // the time of sale. Trust it as-is (even if that shift has since closed) so
-    // a late sync still attributes the sale to the cashier who made it.
+    // Offline-queued orders carry signed cashier/shift context captured at the
+    // time of sale. Only accept closed-shift attribution when the replay token
+    // and queued timestamp match the original shift; direct API body fields must
+    // not bypass the active-shift requirement.
     const offlineCashierShiftId = req.body?.cashierShiftId as string | undefined;
     const offlineCashierId = req.body?.cashierId as string | undefined;
-    if (offlineCashierShiftId && offlineCashierId) {
+    const offlineReplay = req.body?._offlineOrderReplay === true;
+    if (offlineReplay && offlineCashierShiftId && offlineCashierId) {
+      const userId = (req.user as { id?: string } | undefined)?.id;
       const [shift] = await db
-        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .select({
+          id: cashierShifts.id,
+          orgId: cashierShifts.orgId,
+          cashierId: cashierShifts.cashierId,
+          openedAt: cashierShifts.openedAt,
+          closedAt: cashierShifts.closedAt,
+          status: cashierShifts.status,
+          openedByUserId: cashierShifts.openedByUserId,
+        })
         .from(cashierShifts)
         .where(and(eq(cashierShifts.id, offlineCashierShiftId), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
-      if (shift && shift.cashierId === offlineCashierId) {
+      if (shift && userId) {
+        const replay = validateCashierShiftReplay({
+          orgId: ctx.orgId,
+          userId,
+          cashierId: offlineCashierId,
+          cashierShiftId: offlineCashierShiftId,
+          token: req.body?._cashierShiftReplayToken,
+          queuedAt: req.body?._offlineQueuedAt,
+          shift,
+        });
+        if (replay.ok) {
+          req.cashierShift = {
+            cashierId: offlineCashierId,
+            cashierShiftId: offlineCashierShiftId,
+            queuedAt: replay.queuedAt,
+            replayedToClosedShift: replay.replayedToClosedShift,
+          };
+          if (shift.status === "open") await touchCashierShiftActivity(shift.id);
+          return next();
+        }
+        console.warn("[requireActiveCashierShift] Rejected offline cashier shift replay:", replay.reason);
+      }
+    }
+
+    if (offlineCashierShiftId && offlineCashierId) {
+      const [openShift] = await db
+        .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+        .from(cashierShifts)
+        .where(
+          and(
+            eq(cashierShifts.id, offlineCashierShiftId),
+            eq(cashierShifts.orgId, ctx.orgId),
+            eq(cashierShifts.status, "open"),
+          ),
+        )
+        .limit(1);
+      if (openShift && openShift.cashierId === offlineCashierId) {
+        await touchCashierShiftActivity(openShift.id);
         req.cashierShift = { cashierId: offlineCashierId, cashierShiftId: offlineCashierShiftId };
         return next();
       }

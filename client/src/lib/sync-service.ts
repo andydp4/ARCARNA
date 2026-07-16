@@ -6,6 +6,14 @@ export class SyncService {
   private syncInterval: number | null = null;
   private boundSyncOnline = this.syncOnline.bind(this);
 
+  private replayPayload(data: any, timestamp: number): any {
+    return {
+      ...data,
+      _offlineOrderReplay: true,
+      _offlineQueuedAt: new Date(timestamp).toISOString(),
+    };
+  }
+
   start() {
     if (this.syncInterval) return;
 
@@ -47,7 +55,7 @@ export class SyncService {
 
       for (const order of unsyncedOrders) {
         try {
-          await apiRequest('POST', '/api/orders', order.data);
+          await apiRequest('POST', '/api/orders', this.replayPayload(order.data, order.timestamp));
           
           if (order.id) {
             await offlineStorage.markOrderSynced(order.id);
@@ -61,7 +69,11 @@ export class SyncService {
 
       for (const mutation of unsyncedMutations) {
         try {
-          const response = await apiRequest(mutation.method, mutation.endpoint, mutation.data);
+          const payload =
+            mutation.type === "ORDER_CREATE"
+              ? this.replayPayload(mutation.data, mutation.timestamp)
+              : mutation.data;
+          const response = await apiRequest(mutation.method, mutation.endpoint, payload);
           
           if (mutation.id) {
             await offlineStorage.markMutationSynced(mutation.id);
