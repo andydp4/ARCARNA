@@ -1,15 +1,19 @@
 /*
  * Viger Cloud portal — Clerk configuration.
  *
- * Set this to your Clerk *publishable* key (starts with `pk_live_` in
- * production or `pk_test_` for testing). This is the SAME key the Arcarna app
- * uses (Clerk Dashboard -> API Keys -> Publishable key, i.e. the value in
- * VITE_CLERK_PUBLISHABLE_KEY). Using the same key means a session created here
- * is shared with arcarna.viger.cloud automatically (same Clerk app, and
- * viger.cloud is the primary domain).
+ * The portal has its OWN, SEPARATE Clerk application from Arcarna. Signing in
+ * to viger.cloud is independent of arcarna.viger.cloud — different Clerk apps
+ * issue different sessions, so the two never share a login.
  *
- * The publishable key is NOT a secret — it is safe to expose in the browser
- * and to commit. NEVER put the secret key (sk_live_...) in this file.
+ * Use the publishable key of the PORTAL's Clerk app
+ * (app_3GLEBLVvvcv8m5KJxFuEfsZy6PP) — Clerk Dashboard -> that application ->
+ * API Keys -> Publishable key. It starts with `pk_live_` (production) or
+ * `pk_test_`.
+ *
+ * DO NOT use the Arcarna app's key here — that would merge the two logins.
+ *
+ * The publishable key is NOT a secret; it is safe to expose and commit.
+ * NEVER put a secret key (sk_...) in this file.
  *
  * The portal stays locked (grid hidden) until this is a real key.
  */

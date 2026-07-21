@@ -3,8 +3,9 @@
  *
  * The portal is a static site (no server). This script gates it on the client:
  * the sign-in card is the first thing shown, and the app grid is revealed only
- * after a user is signed in. Sessions are shared with arcarna.viger.cloud
- * automatically (same Clerk app; viger.cloud is the primary Clerk domain).
+ * after a user is signed in. The portal uses its OWN Clerk application, kept
+ * SEPARATE from Arcarna, so a viger.cloud login is independent of a login on
+ * arcarna.viger.cloud (see portal-assets/clerk-config.js).
  *
  * NOTE: client-side gating is a UX gate for the launcher, not a security
  * boundary. Real access control lives on each app subdomain (e.g.

@@ -7,13 +7,16 @@ they sign in.
 
 ## How the auth gate works
 
-- `portal-assets/clerk-config.js` — set your Clerk **publishable** key here.
+- `portal-assets/clerk-config.js` — set the portal's Clerk **publishable** key.
 - `portal-assets/auth-gate.js` — loads Clerk (browser SDK, from your Clerk
   Frontend API host), shows the sign-in card, and reveals the page once a
-  session exists. Sessions are shared with `arcarna.viger.cloud` automatically
-  (same Clerk app; `viger.cloud` is the primary Clerk domain).
+  session exists.
 - Every page starts with `<body class="gate-locked">`, so there is no flash of
   the grid before auth resolves.
+
+The portal uses its **own, separate Clerk application** from Arcarna. A
+`viger.cloud` login is **independent** of `arcarna.viger.cloud` — different Clerk
+apps issue different sessions, so the two never share a login.
 
 This is a **UX gate for the launcher, not a security boundary** — real access
 control is enforced server-side on each app subdomain. Do not put secrets in the
@@ -21,9 +24,10 @@ static portal.
 
 ### Configure the key
 
-Edit `portal-assets/clerk-config.js` and set the **same** publishable key the
-Arcarna app uses (Clerk Dashboard → API Keys → Publishable key, i.e.
-`VITE_CLERK_PUBLISHABLE_KEY`):
+Edit `portal-assets/clerk-config.js` and set the publishable key of the
+**portal's own** Clerk application (`app_3GLEBLVvvcv8m5KJxFuEfsZy6PP` →
+Dashboard → API Keys → Publishable key). **Do not** reuse the Arcarna app's key
+— that would merge the two logins.
 
 ```js
 window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_live_xxxxxxxxxxxxxxxxxxxx";
@@ -33,8 +37,10 @@ The publishable key is public and safe to commit. **Never** put the secret key
 (`sk_live_...`) here. Until a real key is set, the portal stays locked and shows
 a "not configured" message.
 
-In the Clerk Dashboard, make sure `https://viger.cloud/` and
-`https://www.viger.cloud/` are allowed redirect origins.
+In the portal's Clerk application, make sure `https://viger.cloud/` and
+`https://www.viger.cloud/` are allowed origins. Because it is a distinct Clerk
+instance from Arcarna, it needs its own Frontend API domain (e.g.
+`clerk.viger.cloud`) — do not point it at the Arcarna instance.
 
 ## Branding assets
 
