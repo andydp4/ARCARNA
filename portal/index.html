@@ -11,23 +11,56 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" href="/portal-assets/viger-v-mark.png" />
     <link rel="stylesheet" href="/portal-assets/portal.css" />
   </head>
-  <body>
+  <!-- gate-locked hides the app grid until a Clerk session is present. -->
+  <body class="gate-locked">
     <!--
       Viger Cloud — shop window. Standalone static site for viger.cloud root.
       Each app links to its own subdomain. To take an app LIVE: change its
       <div class="card card-soon"> to <a class="card" href="https://SUBDOMAIN/">
       and swap the "Coming soon" tag for "Live".
     -->
-    <main class="shell">
+    <!-- Auth gate: shown first, before the app grid, until the user signs in. -->
+    <div class="auth-gate">
+      <div class="auth-gate-card">
+        <div class="auth-gate-brand">
+          <img
+            src="/portal-assets/viger-cloud-wordmark.png"
+            alt="Viger Cloud"
+            onerror="this.onerror=null;this.src='/portal-assets/viger-v-mark.png';this.classList.add('is-mark')"
+          />
+          <p class="eyebrow">viger.cloud</p>
+        </div>
+        <div>
+          <h1 class="auth-gate-title">Sign in to Viger Cloud</h1>
+          <p class="auth-gate-sub">Your business apps, in one place.</p>
+        </div>
+        <div id="clerk-signin"></div>
+        <p id="auth-gate-status" class="auth-gate-status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <noscript>
+      <p class="gate-noscript">
+        Viger Cloud needs JavaScript enabled to sign you in. Please enable
+        JavaScript and reload this page.
+      </p>
+    </noscript>
+
+    <main class="shell gate-content">
+      <div class="topbar">
+        <div id="user-button" aria-label="Account"></div>
+      </div>
       <header class="hero">
         <div class="hero-brand">
           <img
-            src="/portal-assets/arcarna-wordmark.png"
+            src="/portal-assets/viger-cloud-wordmark.png"
             width="240"
             height="72"
             alt="Viger Cloud"
+            onerror="this.onerror=null;this.src='/portal-assets/arcarna-wordmark.png'"
           />
           <p class="eyebrow">viger.cloud</p>
         </div>
@@ -103,5 +136,8 @@
         <p>Viger Cloud — one home for every app. New tools appear here as they go live.</p>
       </footer>
     </main>
+
+    <script src="/portal-assets/clerk-config.js"></script>
+    <script src="/portal-assets/auth-gate.js" defer></script>
   </body>
 </html>

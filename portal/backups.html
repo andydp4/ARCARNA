@@ -4,14 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Backups — Viger Cloud</title>
+    <link rel="icon" href="/portal-assets/viger-v-mark.png" />
     <link rel="stylesheet" href="/portal-assets/portal.css" />
   </head>
-  <body>
-    <main class="shell shell-narrow">
+  <body class="gate-locked">
+    <div class="auth-gate">
+      <div class="auth-gate-card">
+        <div class="auth-gate-brand">
+          <img
+            src="/portal-assets/viger-cloud-wordmark.png"
+            alt="Viger Cloud"
+            onerror="this.onerror=null;this.src='/portal-assets/viger-v-mark.png';this.classList.add('is-mark')"
+          />
+          <p class="eyebrow">viger.cloud</p>
+        </div>
+        <div>
+          <h1 class="auth-gate-title">Sign in to Viger Cloud</h1>
+          <p class="auth-gate-sub">Your business apps, in one place.</p>
+        </div>
+        <div id="clerk-signin"></div>
+        <p id="auth-gate-status" class="auth-gate-status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <noscript>
+      <p class="gate-noscript">
+        Viger Cloud needs JavaScript enabled to sign you in. Please enable
+        JavaScript and reload this page.
+      </p>
+    </noscript>
+
+    <main class="shell shell-narrow gate-content">
       <a class="back" href="/">← Viger Cloud</a>
       <h1>Backups</h1>
       <p class="lead">This area is not set up yet. It will list database and export backups.</p>
       <p class="muted">Until then, use your hosting panel or Neon dashboard for database backups.</p>
     </main>
+
+    <script src="/portal-assets/clerk-config.js"></script>
+    <script src="/portal-assets/auth-gate.js" defer></script>
   </body>
 </html>
