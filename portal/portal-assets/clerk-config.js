@@ -17,4 +17,4 @@
  *
  * The portal stays locked (grid hidden) until this is a real key.
  */
-window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_live_CHANGE_ME";
+window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_test_ZmFzdC1kb2dmaXNoLTE2LmNsZXJrLmFjY291bnRzLmRldiQ";
