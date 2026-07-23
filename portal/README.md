@@ -62,6 +62,10 @@ or from an Arcarna admin screen via the Clerk API later. This is a **UX filter**
 — each app must still enforce access in its own backend (Arcarna already does
 this via `allowed_users` + roles; see `RBAC.md`).
 
+To make a **new** subdomain app (Mail, Vault, …) join this shared login and
+enforce the same access rules, hand its developer/agent
+`docs/VIGER_SSO_INTEGRATION.md` — copy-paste env + middleware snippets.
+
 ## Branding assets
 
 Drop these image files into `portal-assets/` (PNG with transparent background).

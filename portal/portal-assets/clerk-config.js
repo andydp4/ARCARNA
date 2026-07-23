@@ -20,4 +20,4 @@
  *
  * The portal stays locked until this is a real key.
  */
-window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_live_CHANGE_ME_TO_ARCARNA_KEY";
+window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_live_Y2xlcmsudmlnZXIuY2xvdWQk";
