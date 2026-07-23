@@ -12,6 +12,7 @@
 
 import { db } from "./db";
 import { withRetries } from "./lib/dbUtils";
+import { wakeWorkers } from "./workers/wakeSignal";
 import { 
   eventOutbox, 
   jobQueue, 
@@ -86,6 +87,12 @@ export async function publishEvent<TPayload>(
   }
 
   console.log(`[EventBus] Published event: ${eventType} (${eventId}) for ${correlationId}`);
+  // Nudge the worker runner so it leaves its dormant/idle state and drains this
+  // event promptly. Best-effort: a no-op if the runner is not active, and it never
+  // throws (see wakeSignal). For transactional publishes (publishEventTx) the row
+  // is not committed yet, so the immediate poll may miss it; the runner's short
+  // post-wake backoff re-checks within ~1s and picks it up after commit.
+  wakeWorkers();
   return eventId;
 }
 
@@ -262,6 +269,21 @@ export async function acquireJob(workerId: string): Promise<typeof jobQueue.$inf
     createdAt: row.created_at as Date | null,
     updatedAt: now,
   };
+}
+
+/**
+ * Earliest run_at among queued jobs, or null if none are queued.
+ * Lets the worker runner schedule a precise wake for a future retry (failed jobs
+ * are re-queued with exponential backoff up to 15 min) instead of busy-polling.
+ */
+export async function nextQueuedRunAt(): Promise<Date | null> {
+  const res = await db.execute(
+    sql`SELECT MIN(run_at) AS next FROM job_queue WHERE status = 'queued'`,
+  );
+  const row = res.rows?.[0] as { next?: string | Date | null } | undefined;
+  const val = row?.next;
+  if (!val) return null;
+  return val instanceof Date ? val : new Date(val as string);
 }
 
 /**
