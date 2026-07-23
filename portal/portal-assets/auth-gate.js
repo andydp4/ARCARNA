@@ -3,9 +3,14 @@
  *
  * The portal is a static site (no server). This script gates it on the client:
  * the sign-in card is the first thing shown, and the app grid is revealed only
- * after a user is signed in. The portal uses its OWN Clerk application, kept
- * SEPARATE from Arcarna, so a viger.cloud login is independent of a login on
- * arcarna.viger.cloud (see portal-assets/clerk-config.js).
+ * after a user is signed in. It uses the SAME Clerk application as Arcarna, so
+ * one login is shared across viger.cloud and every *.viger.cloud subdomain
+ * (see portal-assets/clerk-config.js).
+ *
+ * Per-user access: if a signed-in user has an "apps" array in their Clerk
+ * publicMetadata, only the tiles whose data-app key is in that list are shown
+ * (SUPER_ADMIN sees all; no list = all tiles shown). This is a UX filter — real
+ * enforcement lives in each app's own backend.
  *
  * NOTE: client-side gating is a UX gate for the launcher, not a security
  * boundary. Real access control lives on each app subdomain (e.g.
@@ -51,9 +56,30 @@
     document.body.classList.toggle("gate-locked", !signedIn);
   }
 
+  /**
+   * Hide app tiles the signed-in user is not permitted to see. Access is driven
+   * by the user's Clerk publicMetadata:
+   *   - publicMetadata.apps: array of allowed app keys (e.g. ["arcarna","mail"])
+   *   - publicMetadata.role === "SUPER_ADMIN": sees everything
+   * If no `apps` array is set, nothing is hidden (all tiles shown) — so access
+   * control is opt-in and never accidentally locks the whole grid.
+   */
+  function applyAppPermissions(clerk) {
+    var meta = (clerk.user && clerk.user.publicMetadata) || {};
+    var allowed = meta.apps;
+    var isSuperAdmin = meta.role === "SUPER_ADMIN" || meta.superAdmin === true;
+    var tiles = document.querySelectorAll("[data-app]");
+    for (var i = 0; i < tiles.length; i++) {
+      var key = tiles[i].getAttribute("data-app");
+      var permitted = isSuperAdmin || !Array.isArray(allowed) || allowed.indexOf(key) !== -1;
+      tiles[i].hidden = !permitted;
+    }
+  }
+
   function applyAuthState(clerk) {
     if (clerk.user) {
       reveal(true);
+      applyAppPermissions(clerk);
       var ub = byId("user-button");
       if (ub && !ub.dataset.mounted) {
         clerk.mountUserButton(ub, { afterSignOutUrl: window.location.origin + "/" });

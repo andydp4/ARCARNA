@@ -1,20 +1,23 @@
 /*
  * Viger Cloud portal — Clerk configuration.
  *
- * The portal has its OWN, SEPARATE Clerk application from Arcarna. Signing in
- * to viger.cloud is independent of arcarna.viger.cloud — different Clerk apps
- * issue different sessions, so the two never share a login.
+ * ONE login across everything. The portal uses the SAME Clerk application as
+ * Arcarna (the app that owns viger.cloud as its primary Clerk domain). Clerk
+ * shares that session across viger.cloud and every *.viger.cloud subdomain
+ * (portal home, arcarna., mail., vault., ...), so a user signs in once and is
+ * recognised everywhere.
  *
- * Use the publishable key of the PORTAL's Clerk app
- * (app_3GLEBLVvvcv8m5KJxFuEfsZy6PP) — Clerk Dashboard -> that application ->
- * API Keys -> Publishable key. It starts with `pk_live_` (production) or
- * `pk_test_`.
+ * Set this to the ARCARNA app's *publishable* key — the same value as the
+ * Arcarna deployment's VITE_CLERK_PUBLISHABLE_KEY (Clerk Dashboard -> the
+ * Arcarna application -> API Keys -> Publishable key). Use the production
+ * key (pk_live_...) so the shared session works on the real subdomains.
  *
- * DO NOT use the Arcarna app's key here — that would merge the two logins.
+ * Do NOT use a separate Clerk app's key here — that would create a second,
+ * independent login instead of the shared one.
  *
  * The publishable key is NOT a secret; it is safe to expose and commit.
  * NEVER put a secret key (sk_...) in this file.
  *
- * The portal stays locked (grid hidden) until this is a real key.
+ * The portal stays locked until this is a real key.
  */
-window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_test_ZmFzdC1kb2dmaXNoLTE2LmNsZXJrLmFjY291bnRzLmRldiQ";
+window.__VIGER_CLERK_PUBLISHABLE_KEY__ = "pk_live_CHANGE_ME_TO_ARCARNA_KEY";
