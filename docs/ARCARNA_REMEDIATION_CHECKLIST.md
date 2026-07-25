@@ -29,7 +29,8 @@ Approved direction (owner, this session): implement **everything**, including th
 
 ## Batch 2 — Chart colour tokens (T-P1-02..06)
 
-- [ ] **T-P1-02/03** Replace scattered `COLORS = ['#3B82F6', …]` / inline hex in `insights.tsx`, `expense-reports.tsx`, `daily-revenue-chart.tsx`, `monthly-orders-chart.tsx` with a shared brand palette (`client/src/lib/chartColors.ts`, mirroring `--chart-*` Truth Blue tokens)
+- [x] **T-P1-02/03** Shared brand palette `client/src/lib/chartColors.ts`; replaced all hardcoded `COLORS`/hex in `insights.tsx` + `expense-reports.tsx` (other two chart files were already hex-free)
+- [x] **C-P1-03 (extra)** Fixed 4 more `en-US`/`USD` currency formatters missed by the audit → `en-GB`/`GBP` (`expense-reports.tsx`, `expenses.tsx`, `expense-row.tsx`) + `daily-revenue-chart` date locale
 - [ ] **T-P1-04** RFM / stock-turn badge colours → semantic brand tokens (not `emerald-500/15`)
 - [ ] **T-P1-05** `metric-card` remove light gradient on dark shell
 - [ ] **T-P1-06** `offline-indicator` dark tokens (no `green-50/orange-50`)

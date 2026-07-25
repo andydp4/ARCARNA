@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { COLORS, CHART_SERIES, CHART_PRIMARY, CHART_POSITIVE, CHART_NEGATIVE, CHART_WARNING } from "@/lib/chartColors";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B'];
+// Chart palette lives in @/lib/chartColors (brand Truth Blue + semantic tokens).
 
 export function ExpenseReportsPage() {
   const { toast } = useToast();
@@ -85,9 +86,9 @@ export function ExpenseReportsPage() {
   });
   
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-GB', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'GBP',
     }).format(amount);
   };
   
@@ -314,9 +315,9 @@ export function ExpenseReportsPage() {
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="revenue" stroke="#3B82F6" name="Revenue" strokeWidth={2} />
-                  <Line type="monotone" dataKey="grossProfit" stroke="#10B981" name="Gross Profit" strokeWidth={2} />
-                  <Line type="monotone" dataKey="netProfit" stroke="#8B5CF6" name="Net Profit" strokeWidth={2} />
+                  <Line type="monotone" dataKey="revenue" stroke={CHART_PRIMARY} name="Revenue" strokeWidth={2} />
+                  <Line type="monotone" dataKey="grossProfit" stroke={CHART_POSITIVE} name="Gross Profit" strokeWidth={2} />
+                  <Line type="monotone" dataKey="netProfit" stroke={CHART_SERIES[5]} name="Net Profit" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
               </div>
@@ -397,7 +398,7 @@ export function ExpenseReportsPage() {
                       labelLine={false}
                       label={(entry) => `${entry.category}: ${formatPercent(entry.percentage)}`}
                       outerRadius={80}
-                      fill="#8884d8"
+                      fill={CHART_PRIMARY}
                       dataKey="total"
                     >
                       {(expenseReport?.overheadByCategory || []).map((entry: any, index: number) => (
@@ -422,7 +423,7 @@ export function ExpenseReportsPage() {
                     <XAxis dataKey="category" />
                     <YAxis tickFormatter={(value) => `£${value}`} />
                     <Tooltip formatter={(value: any) => formatCurrency(value)} />
-                    <Bar dataKey="total" fill="#3B82F6" />
+                    <Bar dataKey="total" fill={CHART_PRIMARY} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -451,9 +452,9 @@ export function ExpenseReportsPage() {
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="orderExpenses" stroke="#F59E0B" name="Order Expenses" strokeWidth={2} />
-                  <Line type="monotone" dataKey="overhead" stroke="#EF4444" name="Daily Overhead" strokeWidth={2} />
-                  <Line type="monotone" dataKey="total" stroke="#8B5CF6" name="Total" strokeWidth={2} />
+                  <Line type="monotone" dataKey="orderExpenses" stroke={CHART_WARNING} name="Order Expenses" strokeWidth={2} />
+                  <Line type="monotone" dataKey="overhead" stroke={CHART_NEGATIVE} name="Daily Overhead" strokeWidth={2} />
+                  <Line type="monotone" dataKey="total" stroke={CHART_SERIES[5]} name="Total" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
               </div>
@@ -596,8 +597,8 @@ export function ExpenseReportsPage() {
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="grossMargin" stroke="#10B981" name="Gross Margin %" strokeWidth={2} />
-                  <Line type="monotone" dataKey="netMargin" stroke="#8B5CF6" name="Net Margin %" strokeWidth={2} />
+                  <Line type="monotone" dataKey="grossMargin" stroke={CHART_POSITIVE} name="Gross Margin %" strokeWidth={2} />
+                  <Line type="monotone" dataKey="netMargin" stroke={CHART_SERIES[5]} name="Net Margin %" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
               </div>
