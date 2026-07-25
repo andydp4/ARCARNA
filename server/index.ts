@@ -201,29 +201,26 @@ process.on("unhandledRejection", (reason) => {
     if (process.env.DATABASE_URL) {
       // domain_outbox / analytics.worker deprecated — use event_outbox + server/workers/*
       
-      // Start event-driven worker runner
+      // Start event-driven worker runner.
+      // The runner is now idle-aware: it polls fast while there is work and backs
+      // off toward WORKER_IDLE_CEILING_MS when idle so Neon compute can scale to
+      // zero. Reconciliation and the scheduled-report / RFM / cashier auto-close
+      // tasks run as coarse housekeeping inside the same loop (no separate timers).
       try {
         const { startWorkerRunner } = await import('./workers');
-        const dispatchMs = Number(process.env.WORKER_DISPATCH_INTERVAL_MS ?? 1000);
-        const processMs = Number(process.env.WORKER_PROCESS_INTERVAL_MS ?? 200);
+        const processMs = Number(process.env.WORKER_PROCESS_INTERVAL_MS ?? 250);
         const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 3);
+        const idleCeilingMs = Number(process.env.WORKER_IDLE_CEILING_MS ?? 15 * 60 * 1000);
+        const housekeepingMs = Number(process.env.WORKER_HOUSEKEEPING_INTERVAL_MS ?? 15 * 60 * 1000);
         startWorkerRunner({
-          dispatchIntervalMs: dispatchMs > 0 ? dispatchMs : 1000,
-          processIntervalMs: processMs > 0 ? processMs : 200,
+          processIntervalMs: processMs > 0 ? processMs : 250,
           concurrency: concurrency > 0 ? concurrency : 3,
+          idleCeilingMs: idleCeilingMs > 0 ? idleCeilingMs : 15 * 60 * 1000,
+          housekeepingIntervalMs: housekeepingMs > 0 ? housekeepingMs : 15 * 60 * 1000,
         });
-        log('Event-driven worker runner started');
+        log('Event-driven worker runner started (idle-aware)');
       } catch (error) {
         log('Event-driven worker runner not available (non-critical)');
-      }
-      
-      // Start reconciliation job for stuck events
-      try {
-        const { startReconciliationJob } = await import('./eventBus');
-        startReconciliationJob(5 * 60 * 1000); // Every 5 minutes
-        log('Reconciliation job started');
-      } catch (error) {
-        log('Reconciliation job not available (non-critical)');
       }
     }
   });

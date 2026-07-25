@@ -30,6 +30,15 @@ export function getSession() {
     createTableIfMissing: false,
     ttl: sessionTtl,
     tableName: "sessions",
+    // connect-pg-simple prunes expired sessions on a timer (library default is
+    // ~every 15 min). On Neon that recurring DELETE wakes the serverless compute
+    // and helps prevent scale-to-zero. Sessions live for 7 days, so pruning stale
+    // rows is not time-sensitive — do it a few times a day instead. Override with
+    // SESSION_PRUNE_INTERVAL_SECONDS (0/false disables the internal pruner).
+    pruneSessionInterval:
+      process.env.SESSION_PRUNE_INTERVAL_SECONDS === "0"
+        ? false
+        : Number(process.env.SESSION_PRUNE_INTERVAL_SECONDS ?? 6 * 60 * 60),
   });
   const isProd = process.env.NODE_ENV === "production";
   const cookieSecure =

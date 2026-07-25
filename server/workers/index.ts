@@ -9,14 +9,17 @@
  * a factory registered in WORKER_FACTORIES below.
  */
 
-import { 
-  acquireJob, 
-  completeJob, 
-  failJob, 
-  isEventProcessed, 
+import {
+  acquireJob,
+  completeJob,
+  failJob,
+  isEventProcessed,
   getEvent,
-  dispatchPendingEvents 
+  dispatchPendingEvents,
+  nextQueuedRunAt,
+  runReconciliation,
 } from "../eventBus";
+import { setWorkerWaker } from "./wakeSignal";
 import { EventEnvelope, EventType, WorkerName, WorkerResult, REQUIRED_WORKERS } from "../../shared/schema";
 import { InventoryWorker } from "./inventoryWorker";
 import { CustomerWorker } from "./customerWorker";
@@ -207,87 +210,191 @@ async function processJob(workerId: string): Promise<boolean> {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Adaptive worker loop
+//
+// Previously the runner used fixed-rate setInterval timers (process jobs every
+// ~200ms x3, dispatch every 1s, plus three 60s service timers and a 5-min
+// reconciliation). That issued ~16 DB queries/second around the clock, which
+// kept Neon's serverless compute permanently awake and defeated scale-to-zero —
+// so the database billed for ~730 compute-hours/month even with zero orders.
+//
+// The loop below instead self-schedules with exponential backoff. When there is
+// work it polls fast; when idle it backs off toward a long ceiling and stops
+// touching the DB, letting Neon suspend. `publishEvent` calls wakeWorkers() to
+// pull the loop back to fast polling the instant an event is written, and future
+// retries are scheduled precisely via nextQueuedRunAt() instead of busy-polling.
+// The former 60s service timers and reconciliation now run as coarse
+// "housekeeping" folded into the same loop.
+// ---------------------------------------------------------------------------
+
 // Worker runner state
 let isRunning = false;
-let dispatchInterval: NodeJS.Timeout | null = null;
-let processInterval: NodeJS.Timeout | null = null;
-let scheduledReportInterval: NodeJS.Timeout | null = null;
-let rfmInterval: NodeJS.Timeout | null = null;
-let cashierShiftAutoCloseInterval: NodeJS.Timeout | null = null;
+let workerId = "";
+let loopTimer: NodeJS.Timeout | null = null;
+let nextTickAt = Number.POSITIVE_INFINITY; // epoch ms of the currently-scheduled tick
+let idleDelayMs = 0; // current backoff delay while idle
+let lastHousekeepingAt = 0;
+let ticking = false;
+
+// Tunables (set from startWorkerRunner options)
+let activeBaseMs = 250; // gap between polls while actively draining work
+let idleCeilingMs = 15 * 60 * 1000; // max gap between polls when fully idle
+let housekeepingIntervalMs = 15 * 60 * 1000; // scheduled reports / RFM / auto-close / reconcile
+let concurrency = 3;
+
+const MAX_DRAIN_ITERATIONS = 100; // cap work per tick so the loop stays responsive
+
+function scheduleTick(delayMs: number): void {
+  if (!isRunning) return;
+  const when = Date.now() + Math.max(0, delayMs);
+  // Keep an already-scheduled tick if it is sooner than the requested one.
+  if (loopTimer && when >= nextTickAt) return;
+  if (loopTimer) {
+    clearTimeout(loopTimer);
+    loopTimer = null;
+  }
+  nextTickAt = when;
+  loopTimer = setTimeout(() => {
+    void runTick();
+  }, Math.max(0, delayMs));
+}
+
+/** External kick (from publishEvent): reset backoff and run as soon as possible. */
+function wake(): void {
+  idleDelayMs = 0;
+  scheduleTick(0);
+}
+
+/** Coarse background tasks that used to have their own 60s / 5-min timers. */
+async function runHousekeeping(): Promise<void> {
+  const tasks: Array<[string, () => Promise<unknown>]> = [
+    ["scheduled-reports", async () =>
+      (await import("../services/scheduledReportsRunner")).processScheduledReports()],
+    ["rfm-nightly", async () =>
+      (await import("../services/rfmRunner")).processRfmNightly()],
+    ["cashier-shift-autoclose", async () =>
+      (await import("../services/cashierShiftEngine")).autoCloseInactiveCashierShifts()],
+    ["reconciliation", async () => runReconciliation()],
+  ];
+  for (const [name, fn] of tasks) {
+    try {
+      await fn();
+    } catch (error) {
+      console.error(`[WorkerRunner] Housekeeping (${name}) failed:`, error);
+    }
+  }
+}
+
+async function runTick(): Promise<void> {
+  loopTimer = null;
+  nextTickAt = Number.POSITIVE_INFINITY;
+  if (!isRunning) return;
+  if (ticking) {
+    // A tick is already in flight (e.g. a wake landed mid-tick); retry shortly.
+    scheduleTick(activeBaseMs);
+    return;
+  }
+
+  ticking = true;
+  let didWork = false;
+  try {
+    // Housekeeping piggybacks on ticks; runs at most once per housekeeping window.
+    if (Date.now() - lastHousekeepingAt >= housekeepingIntervalMs) {
+      lastHousekeepingAt = Date.now();
+      await runHousekeeping();
+    }
+
+    // Turn pending outbox events into jobs.
+    const dispatched = await dispatchPendingEvents();
+    if (dispatched > 0) didWork = true;
+
+    // Drain ready jobs until none remain (bounded per tick).
+    for (let i = 0; i < MAX_DRAIN_ITERATIONS; i++) {
+      const results = await Promise.all(
+        Array.from({ length: concurrency }, () => processJob(workerId)),
+      );
+      if (!results.some(Boolean)) break;
+      didWork = true;
+    }
+  } catch (error) {
+    console.error("[WorkerRunner] Tick error:", error);
+  } finally {
+    ticking = false;
+  }
+
+  if (!isRunning) return;
+
+  if (didWork) {
+    // Stay hot while there is activity.
+    idleDelayMs = activeBaseMs;
+    scheduleTick(activeBaseMs);
+    return;
+  }
+
+  // Idle: back off exponentially toward the ceiling.
+  idleDelayMs = idleDelayMs > 0 ? Math.min(idleDelayMs * 2, idleCeilingMs) : activeBaseMs * 4;
+  let delay = idleDelayMs;
+
+  // If a retry is queued for the future, wake exactly then (bounded by the ceiling).
+  try {
+    const next = await nextQueuedRunAt();
+    if (next) {
+      const untilNext = next.getTime() - Date.now();
+      delay = untilNext <= 0 ? 0 : Math.min(delay, Math.max(activeBaseMs, untilNext));
+    }
+  } catch {
+    // Ignore lookahead failures; the ceiling still bounds the next poll.
+  }
+
+  scheduleTick(delay);
+}
 
 // Start the worker runner
 export function startWorkerRunner(options?: {
+  // dispatchIntervalMs is kept for backward compatibility; the adaptive loop no
+  // longer uses a separate dispatch timer (dispatch runs every tick).
   dispatchIntervalMs?: number;
   processIntervalMs?: number;
   concurrency?: number;
+  idleCeilingMs?: number;
+  housekeepingIntervalMs?: number;
 }): void {
   if (isRunning) {
     console.log('[WorkerRunner] Already running');
     return;
   }
 
-  const {
-    dispatchIntervalMs = 1000,
-    processIntervalMs = 100,
-    concurrency = 3,
-  } = options || {};
+  activeBaseMs = options?.processIntervalMs && options.processIntervalMs > 0
+    ? options.processIntervalMs
+    : 250;
+  concurrency = options?.concurrency && options.concurrency > 0 ? options.concurrency : 3;
+  idleCeilingMs = options?.idleCeilingMs && options.idleCeilingMs > 0
+    ? options.idleCeilingMs
+    : 15 * 60 * 1000;
+  housekeepingIntervalMs = options?.housekeepingIntervalMs && options.housekeepingIntervalMs > 0
+    ? options.housekeepingIntervalMs
+    : 15 * 60 * 1000;
 
   registerWorkers();
   isRunning = true;
+  idleDelayMs = 0;
+  lastHousekeepingAt = 0; // force housekeeping on the first tick
 
-  const workerId = `worker-${process.pid}-${Date.now()}`;
+  workerId = `worker-${process.pid}-${Date.now()}`;
   console.log(`[WorkerRunner] Starting with ID: ${workerId}`);
 
-  // Dispatch pending events periodically
-  dispatchInterval = setInterval(async () => {
-    try {
-      await dispatchPendingEvents();
-    } catch (error) {
-      console.error('[WorkerRunner] Dispatch error:', error);
-    }
-  }, dispatchIntervalMs);
+  // Let publishEvent nudge us out of the idle/dormant state.
+  setWorkerWaker(wake);
 
-  // Process jobs concurrently
-  processInterval = setInterval(async () => {
-    try {
-      const promises = [];
-      for (let i = 0; i < concurrency; i++) {
-        promises.push(processJob(workerId));
-      }
-      await Promise.all(promises);
-    } catch (error) {
-      console.error('[WorkerRunner] Process error:', error);
-    }
-  }, processIntervalMs);
+  // Kick off immediately to drain any backlog left from a previous run.
+  scheduleTick(0);
 
-  scheduledReportInterval = setInterval(async () => {
-    try {
-      const { processScheduledReports } = await import("../services/scheduledReportsRunner");
-      await processScheduledReports();
-    } catch (error) {
-      console.error("[WorkerRunner] Scheduled reports tick failed:", error);
-    }
-  }, 60_000);
-
-  rfmInterval = setInterval(async () => {
-    try {
-      const { processRfmNightly } = await import("../services/rfmRunner");
-      await processRfmNightly();
-    } catch (error) {
-      console.error("[WorkerRunner] RFM nightly tick failed:", error);
-    }
-  }, 60_000);
-
-  cashierShiftAutoCloseInterval = setInterval(async () => {
-    try {
-      const { autoCloseInactiveCashierShifts } = await import("../services/cashierShiftEngine");
-      await autoCloseInactiveCashierShifts();
-    } catch (error) {
-      console.error("[WorkerRunner] Cashier shift auto-close tick failed:", error);
-    }
-  }, 60_000);
-
-  console.log('[WorkerRunner] Started successfully');
+  console.log(
+    `[WorkerRunner] Started (active ${activeBaseMs}ms, idle ceiling ${Math.round(
+      idleCeilingMs / 1000,
+    )}s, concurrency ${concurrency})`,
+  );
 }
 
 // Stop the worker runner
@@ -296,32 +403,15 @@ export function stopWorkerRunner(): void {
     return;
   }
 
-  if (dispatchInterval) {
-    clearInterval(dispatchInterval);
-    dispatchInterval = null;
-  }
-
-  if (processInterval) {
-    clearInterval(processInterval);
-    processInterval = null;
-  }
-
-  if (scheduledReportInterval) {
-    clearInterval(scheduledReportInterval);
-    scheduledReportInterval = null;
-  }
-
-  if (rfmInterval) {
-    clearInterval(rfmInterval);
-    rfmInterval = null;
-  }
-
-  if (cashierShiftAutoCloseInterval) {
-    clearInterval(cashierShiftAutoCloseInterval);
-    cashierShiftAutoCloseInterval = null;
-  }
-
   isRunning = false;
+  setWorkerWaker(null);
+
+  if (loopTimer) {
+    clearTimeout(loopTimer);
+    loopTimer = null;
+  }
+  nextTickAt = Number.POSITIVE_INFINITY;
+
   console.log('[WorkerRunner] Stopped');
 }
 
