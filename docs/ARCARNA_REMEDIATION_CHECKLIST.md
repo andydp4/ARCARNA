@@ -69,9 +69,18 @@ Centralise vocabulary in one module, then apply to nav + page headers.
 
 ## Dependencies (fix all except vite 5→8)
 
-- [ ] `postcss`, `js-yaml`, `brace-expansion` — via targeted `overrides` (NOT `npm audit fix`, which regresses 33→62)
-- [ ] `vitest →4`, `exceljs/uuid` — breaking, do with test run
-- [ ] **DEFERRED** `vite 5→8` — separate task, after the above
+**Finding (verified twice):** this lockfile is at a *local minimum* of advisories.
+Any refresh churns newer transitive deps that ADD advisories:
+- `npm audit fix` → 33 → 62
+- manual scoped overrides + `postcss` bump + install → 33 → 63
+
+Piecemeal fixing is counter-productive. All critical/high are **dev/build/test
+tooling** (vite, vitest, postcss, eslint's js-yaml/brace-expansion) — **no
+production-runtime exposure**. Correct fix = one deliberate, holistic dev-tooling
+upgrade with a full test run, i.e. bundle these INTO the deferred vite/vitest work.
+
+- [~] `postcss`, `js-yaml`, `brace-expansion` — do NOT patch piecemeal (regresses); fold into the upgrade below
+- [ ] `vitest →4`, `exceljs/uuid`, `vite 5→8` — **one** deliberate upgrade batch, on its own branch, with `npm test` + build verification. **DEFERRED** per owner.
 
 ---
 
