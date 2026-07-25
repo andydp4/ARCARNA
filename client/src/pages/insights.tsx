@@ -523,7 +523,7 @@ export default function Insights() {
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3B82F6" name="Revenue ($)" />
+                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3B82F6" name="Revenue (£)" />
                     <Line yAxisId="right" type="monotone" dataKey="orders" stroke="#10B981" name="Orders" />
                   </LineChart>
                 </ResponsiveContainer>

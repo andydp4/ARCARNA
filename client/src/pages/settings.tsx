@@ -289,7 +289,7 @@ export default function Settings() {
                         id="businessAddress"
                         value={settings.businessAddress}
                         onChange={(e) => handleSettingChange('general', 'businessAddress', e.target.value)}
-                        placeholder="123 Main Street, City, State, ZIP"
+                        placeholder="123 High Street, City, County, Postcode"
                         rows={2}
                       />
                     </div>
@@ -303,7 +303,7 @@ export default function Settings() {
                           id="businessPhone"
                           value={settings.businessPhone}
                           onChange={(e) => handleSettingChange('general', 'businessPhone', e.target.value)}
-                          placeholder="+1 234 567 8900"
+                          placeholder="+44 20 7946 0958"
                           className="min-h-[44px]"
                         />
                       </div>
@@ -582,7 +582,7 @@ export default function Settings() {
                               id="collectionAddress"
                               value={settings.collectionAddress}
                               onChange={(e) => handleSettingChange('payment', 'collectionAddress', e.target.value)}
-                              placeholder="123 Pickup Street, City, State, ZIP"
+                              placeholder="123 Pickup Street, City, County, Postcode"
                               rows={2}
                             />
                             <Button
