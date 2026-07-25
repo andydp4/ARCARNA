@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
+import { fetchInvoiceLogo } from "../services/invoiceLogo";
 
 type InvoiceCompany = {
   name: string;
@@ -39,9 +40,7 @@ async function loadInvoiceLogo(org: {
 }): Promise<Buffer | undefined> {
   if (!org.invoiceLogoEnabled || !org.logoUrl) return undefined;
   try {
-    const res = await fetch(org.logoUrl);
-    if (!res.ok) return undefined;
-    return Buffer.from(await res.arrayBuffer());
+    return await fetchInvoiceLogo(org.logoUrl);
   } catch (error) {
     console.error("[Invoices] Failed to fetch invoice logo:", error);
     return undefined;
