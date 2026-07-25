@@ -7,7 +7,6 @@ import { serveStatic, log } from "./static";
 import { validateProductionEnv } from "./validateProductionEnv";
 import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
 import { APP_BASE_PATH } from "./appBase";
-import { registerPortalRoutes } from "./portal";
 import { registerLegacyEposRedirects, registerDefaultLegacyBasePathRedirects } from "./legacyRedirects";
 import { withAppBase } from "@shared/appPaths";
 import { BRAND_PRODUCT_NAME } from "@shared/brand";
@@ -106,13 +105,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 (async () => {
-  // Path-mode (e.g. /arcarna): this Node app also serves the Viger portal at "/".
-  // Subdomain-mode (APP_BASE_PATH=""): the app serves Arcarna at root, so the portal
-  // must NOT be registered here (it would hijack "/"). The portal is then served
-  // statically by nginx on viger.cloud — see docs/CUTOVER_ARCARNA_SUBDOMAIN.md.
-  if (APP_BASE_PATH) {
-    registerPortalRoutes(app);
-  }
+  // The Viger portal is a separate project (repo: andydp4/VigerPortal), served
+  // statically by nginx on viger.cloud — it is no longer served by this app.
   registerLegacyEposRedirects(app, APP_BASE_PATH);
   registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
 
@@ -196,7 +190,7 @@ process.on("unhandledRejection", (reason) => {
     host: "0.0.0.0",
     reusePort: true,
   }, async () => {
-    log(`serving on port ${port} (portal at /, ${BRAND_PRODUCT_NAME} at ${mount || "/"})`);
+    log(`serving on port ${port} (${BRAND_PRODUCT_NAME} at ${mount || "/"})`);
     
     if (process.env.DATABASE_URL) {
       // domain_outbox / analytics.worker deprecated — use event_outbox + server/workers/*
