@@ -5,12 +5,12 @@
 # - viger.cloud (this file) → serves the static portal directly (no Node).
 # - arcarna.viger.cloud      → the Arcarna Node app (see deploy/nginx-arcarna.viger.cloud.conf.example).
 #
-# The portal is static files. nginx (www-data) CANNOT read under /root (a 700
-# home dir), so copy the portal to a web-readable path and serve from there:
-#   sudo mkdir -p /var/www/viger.cloud
-#   sudo cp -r /root/ARCARNA/portal/* /var/www/viger.cloud/
-#   sudo chmod -R a+rX /var/www/viger.cloud
-# Re-run those two cp/chmod lines after each `git pull` that changes the portal.
+# The portal now lives in its OWN repo: andydp4/VigerPortal. Clone it on the VPS
+# and publish with its deploy script (copies static files to a web-readable path
+# that nginx/www-data can read — it cannot read under /root):
+#   git clone git@github.com:andydp4/VigerPortal.git /root/VigerPortal
+#   cd /root/VigerPortal && git pull && ./deploy.sh   # -> /var/www/viger.cloud
+# Re-run `git pull && ./deploy.sh` after each portal change.
 #
 # After Certbot: `sudo certbot --nginx -d viger.cloud -d www.viger.cloud`
 

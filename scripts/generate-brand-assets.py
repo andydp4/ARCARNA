@@ -29,12 +29,8 @@ def main() -> None:
         resized.save(path, format="PNG", optimize=True)
         print(f"wrote {path.relative_to(ROOT)} ({size}x{size})")
 
-    if WORDMARK_SRC.is_file():
-        portal_dest = ROOT / "portal/portal-assets/arcarna-wordmark.png"
-        portal_dest.parent.mkdir(parents=True, exist_ok=True)
-        wordmark = Image.open(WORDMARK_SRC).convert("RGBA")
-        wordmark.save(portal_dest, format="PNG", optimize=True)
-        print(f"wrote {portal_dest.relative_to(ROOT)}")
+    # Note: the Viger portal (formerly portal/) is now a separate repo
+    # (andydp4/VigerPortal) and carries its own brand assets.
 
 
 if __name__ == "__main__":
