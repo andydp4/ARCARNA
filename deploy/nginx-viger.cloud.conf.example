@@ -8,7 +8,7 @@
 # The portal now lives in its OWN repo: andydp4/VigerPortal. Clone it on the VPS
 # and publish with its deploy script (copies static files to a web-readable path
 # that nginx/www-data can read — it cannot read under /root):
-#   git clone git@github.com:andydp4/VigerPortal.git /root/VigerPortal
+#   git clone https://github.com/andydp4/VigerPortal.git /root/VigerPortal
 #   cd /root/VigerPortal && git pull && ./deploy.sh   # -> /var/www/viger.cloud
 # Re-run `git pull && ./deploy.sh` after each portal change.
 #
