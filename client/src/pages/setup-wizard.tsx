@@ -180,6 +180,9 @@ export default function SetupWizard() {
     mutationFn: async () => {
       if (!form.cashierCommissionEnabled) return;
       const valid = cashierDrafts.filter((d) => d.cashierCode.trim() && d.displayName.trim());
+      if (form.requireCashierForSale && valid.length === 0) {
+        throw new Error("Add at least one cashier profile before requiring shifts for sales.");
+      }
       for (const draft of valid) {
         await apiRequest("POST", "/api/cashiers", {
           cashierCode: draft.cashierCode.trim(),
@@ -192,6 +195,23 @@ export default function SetupWizard() {
       }
     },
   });
+
+  const handleFinishSetup = () => {
+    saveMutation.mutate(form, {
+      onSuccess: () => {
+        createCashiersMutation.mutate(undefined, {
+          onSuccess: () => completeMutation.mutate(),
+          onError: (error) => {
+            toast({
+              title: "Cashier setup failed",
+              description: error instanceof Error ? error.message : "Fix the cashier profiles and try again.",
+              variant: "destructive",
+            });
+          },
+        });
+      },
+    });
+  };
 
   const currentStep = SETUP_WIZARD_STEPS[stepIndex];
   const progress = ((stepIndex + 1) / SETUP_WIZARD_STEPS.length) * 100;
@@ -622,17 +642,8 @@ export default function SetupWizard() {
           </Button>
           {currentStep === "review" ? (
             <Button
-              onClick={() => {
-                saveMutation.mutate(form, {
-                  onSuccess: () => {
-                    createCashiersMutation.mutate(undefined, {
-                      onSuccess: () => completeMutation.mutate(),
-                      onError: () => completeMutation.mutate(),
-                    });
-                  },
-                });
-              }}
-              disabled={completeMutation.isPending || createCashiersMutation.isPending}
+              onClick={handleFinishSetup}
+              disabled={saveMutation.isPending || completeMutation.isPending || createCashiersMutation.isPending}
               className="min-h-[44px]"
               data-testid="wizard-finish"
             >
