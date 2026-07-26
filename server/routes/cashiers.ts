@@ -251,12 +251,14 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
 
   app.post("/api/cashier-shifts/:id/end", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role?: string };
       const userId = req.user?.id ?? "unknown";
 
       const { shift, summary } = await closeCashierShift(ctx.orgId, req.params.id, {
         closedByUserId: userId,
         closeReason: "manual",
+        // Cashiers may only close their own shift; managers/admins can close any.
+        requireOwnerUserId: ctx.role === "CASHIER" ? userId : null,
       });
 
       await recordAdminAudit(req, {
