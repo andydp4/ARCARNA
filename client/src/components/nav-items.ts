@@ -24,6 +24,7 @@ import {
   Layers,
   Code2,
 } from 'lucide-react'
+import { VOCAB } from '@/lib/vocabulary'
 
 export interface NavItem {
   key: string
@@ -88,7 +89,7 @@ export const navItems: NavItem[] = [
   },
   {
     key: 'inventory',
-    label: 'Inventory',
+    label: VOCAB.stockTruths,
     href: '/inventory',
     icon: Boxes,
     testId: 'nav-inventory'
@@ -132,7 +133,7 @@ export const navItems: NavItem[] = [
   },
   {
     key: 'insights',
-    label: 'Truths',
+    label: VOCAB.truthsHub,
     href: '/insights',
     icon: TrendingUp,
     testId: 'nav-insights',
@@ -146,7 +147,7 @@ export const navItems: NavItem[] = [
       },
       {
         key: 'rfm',
-        label: 'Customer Segments',
+        label: VOCAB.customerTruths,
         href: '/analytics/rfm',
         icon: PieChart,
         testId: 'nav-rfm'
@@ -174,7 +175,7 @@ export const navItems: NavItem[] = [
       },
       {
         key: 'profit',
-        label: 'Profit Analysis',
+        label: VOCAB.profitTruths,
         href: '/expense-reports',
         icon: PieChart,
         testId: 'nav-profit'

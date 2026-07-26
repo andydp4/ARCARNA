@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
+import { VOCAB } from "@/lib/vocabulary";
 import { invalidateAfterInventoryAdjustment } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -183,7 +184,7 @@ export default function Inventory() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <PageHeader
           icon={Package}
-          title="Inventory"
+          title={VOCAB.stockTruths}
           question="What's in stock, and what's running out?"
           explanation="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
         />

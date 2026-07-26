@@ -97,7 +97,7 @@ export default function Home() {
         </div>
 
         <div className="mt-12">
-          <h2 className="text-2xl font-semibold text-metal-warm-white mb-6">Analytics Overview</h2>
+          <h2 className="text-2xl font-semibold text-metal-warm-white mb-6">Truths Overview</h2>
           <AnalyticsDashboard />
         </div>
       </div>

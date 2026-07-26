@@ -97,7 +97,7 @@ export function SpatialInsightsShell({
           {/* Core hull */}
           <div className="order-1 min-w-0 lg:order-2">
             <HullPanel
-              title="Business insights"
+              title="Business Truths"
               subtitle="Operational core — pick a period, explore revenue and inventory, export when ready."
               showLogo
               headerSlot={homeButton}

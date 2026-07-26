@@ -49,11 +49,17 @@ Approved direction (owner, this session): implement **everything**, including th
 - [ ] **K-P0-02** EmptyState context-specific copy on P0 pages
 - [ ] **K-P0-03** ConfirmDestructive: title + consequence + specific verb
 
-## Batch 5 — "Truths" lexicon rebrand (DECISION: approved)
+## Batch 5 — "Truths" lexicon rebrand (DECISION: approved; "Signals" rejected → Notifications stays)
 
 Centralise vocabulary in one module, then apply to nav + page headers.
 
-- [ ] **C-P0-01** Vocabulary constants module (single source)
+- [x] **C-P0-01** Vocabulary module `client/src/lib/vocabulary.ts` (single source)
+- [x] **R-P0-07 / K-P0-04** Applied: nav + page headers → Control Centre, Truths Hub, Stock Truths, Customer Truths, Profit Truths, Business Truths (home/insights/inventory/rfm/expense-reports/BusinessHealthSection/SpatialInsightsShell)
+- [x] **C-P0-02/03 / C-P1-09** Command palette: "Open POS terminal"→"Create Order", "Open business insights"→"Open Truths Hub"; home "Analytics Overview"→"Truths Overview"
+- [ ] **K-P0-05** Notifications→Signals — **DROPPED** by owner (keep "Notifications")
+- [ ] **R-P0-04** 6-group sidebar IA — deferred (larger reorg, separate from renames)
+- [ ] **O-P0-01/02** Onboarding → "Discovery Journey" (next)
+- [ ] **P1 renames** shifts/channels/hour-of-day/promotions/scheduled-reports/tick-list/developer, assistant voice rules (next)
 - [ ] **R-P0-04** Sidebar into 6 groups (Control Centre · Sell · Stock · Understand · Operate · Administer)
 - [ ] **R-P0-03/07, K-P0-01/04/05** Rename surfaces: Dashboard→Control Centre, Insights→Truths Hub, Inventory→Stock Truths, RFM→Customer Truths, Expense reports→Profit Truths, Notifications→Signals, Business Health→Business Truths
 - [ ] **C-P0-02/03** Home quick-action "Reports"→Truths Hub; POS wording → "Create Order" only

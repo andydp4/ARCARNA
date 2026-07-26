@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { COLORS, CHART_SERIES, CHART_PRIMARY, CHART_POSITIVE, CHART_NEGATIVE, CHART_WARNING } from "@/lib/chartColors";
+import { VOCAB } from "@/lib/vocabulary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,7 @@ export function ExpenseReportsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
           className="!mb-0"
-          title="Profit Analysis"
+          title={VOCAB.profitTruths}
           question="Are you actually making money?"
           explanation="Revenue, costs, and the profit you actually keep for the period."
         />
