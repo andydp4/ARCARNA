@@ -98,7 +98,7 @@ export default function TickList() {
     },
     onError: (error: any) => {
       toast({
-        title: 'Delete Failed',
+        title: 'Delete failed',
         description: error.message || 'Failed to remove customer',
         variant: 'destructive',
       })

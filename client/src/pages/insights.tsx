@@ -266,7 +266,7 @@ export default function Insights() {
       });
     } catch (error: any) {
       toast({
-        title: "Export Failed",
+        title: "Export failed",
         description: error.message || "Failed to export report",
         variant: "destructive",
       });

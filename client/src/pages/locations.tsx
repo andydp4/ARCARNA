@@ -168,7 +168,7 @@ export default function Locations() {
     },
     onError: (error: any) => {
       toast({
-        title: "Operation Failed",
+        title: "Operation failed",
         description: error.message || "Failed to save location",
         variant: "destructive",
       });
@@ -190,7 +190,7 @@ export default function Locations() {
     },
     onError: (error: any) => {
       toast({
-        title: "Delete Failed",
+        title: "Delete failed",
         description: error.message || "Failed to delete location",
         variant: "destructive",
       });
@@ -211,7 +211,7 @@ export default function Locations() {
     },
     onError: (error: any) => {
       toast({
-        title: "Operation Failed",
+        title: "Operation failed",
         description: error.message || "Failed to set default location",
         variant: "destructive",
       });
