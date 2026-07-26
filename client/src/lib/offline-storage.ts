@@ -15,6 +15,7 @@ type QueueStoreName = 'offline-orders' | 'mutations-queue';
 type OfflineQueueRecord = (OfflineOrder | QueuedMutation) & Record<string, unknown>;
 
 const QUEUE_STORE_NAMES: QueueStoreName[] = ['offline-orders', 'mutations-queue'];
+const CACHE_STORE_NAMES = ['products-cache', 'customers-cache'] as const;
 
 function upgradeOfflineDbSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains('offline-orders')) {
@@ -137,6 +138,34 @@ async function copyUnsyncedQueue(
   return recordsToCopy.length;
 }
 
+/** Copy a cache store (products/customers) from the legacy DB into the current
+ *  DB, but only when the current cache is empty — so offline POS keeps working
+ *  after the rebrand DB switch without clobbering freshly-cached data. */
+async function copyCacheStoreIfEmpty(
+  sourceDb: IDBDatabase,
+  targetDb: IDBDatabase,
+  storeName: string,
+): Promise<number> {
+  if (
+    !sourceDb.objectStoreNames.contains(storeName) ||
+    !targetDb.objectStoreNames.contains(storeName)
+  ) {
+    return 0;
+  }
+  const targetRecords = await getAllFromStore<{ id: string }>(targetDb, storeName);
+  if (targetRecords.length > 0) return 0;
+  const sourceRecords = await getAllFromStore<{ id: string }>(sourceDb, storeName);
+  if (sourceRecords.length === 0) return 0;
+
+  const tx = targetDb.transaction(storeName, 'readwrite');
+  const store = tx.objectStore(storeName);
+  for (const record of sourceRecords) {
+    store.put(record);
+  }
+  await transactionDone(tx);
+  return sourceRecords.length;
+}
+
 async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
   const legacyName = legacyOfflineDbNameForOrg(orgId);
   if (!(await dbExists(legacyName))) return;
@@ -144,9 +173,12 @@ async function migrateLegacyQueuesToCurrentDb(orgId: string): Promise<void> {
   const currentDb = await openOfflineDb(offlineDbNameForOrg(orgId));
   const legacyDb = await openOfflineDb(legacyName);
   try {
-    await Promise.all(
-      QUEUE_STORE_NAMES.map((storeName) => copyUnsyncedQueue(legacyDb, currentDb, storeName)),
-    );
+    await Promise.all([
+      ...QUEUE_STORE_NAMES.map((storeName) => copyUnsyncedQueue(legacyDb, currentDb, storeName)),
+      // Also carry over cached products/customers so offline POS still works
+      // after the rebrand DB switch (copied only when the new cache is empty).
+      ...CACHE_STORE_NAMES.map((storeName) => copyCacheStoreIfEmpty(legacyDb, currentDb, storeName)),
+    ]);
   } finally {
     currentDb.close();
     legacyDb.close();

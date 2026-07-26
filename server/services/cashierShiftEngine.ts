@@ -296,7 +296,13 @@ function cashierShiftSummaryValues(
 export async function closeCashierShift(
   orgId: string,
   shiftId: string,
-  opts: { closedByUserId: string | null; closeReason: "manual" | "inactivity_auto_close" },
+  opts: {
+    closedByUserId: string | null;
+    closeReason: "manual" | "inactivity_auto_close";
+    /** When set, only the user who opened the shift may close it (cashiers).
+     *  Leave undefined/null for manager/admin override and auto-close. */
+    requireOwnerUserId?: string | null;
+  },
 ): Promise<{ shift: CashierShift; summary: CashierShiftSummary }> {
   const [shift] = await db
     .select()
@@ -305,6 +311,9 @@ export async function closeCashierShift(
     .limit(1);
   if (!shift) throw new CashierShiftError("Cashier shift not found", 404, "SHIFT_NOT_FOUND");
   if (shift.status !== "open") throw new CashierShiftError("Cashier shift is not open", 400, "SHIFT_NOT_OPEN");
+  if (opts.requireOwnerUserId && shift.openedByUserId !== opts.requireOwnerUserId) {
+    throw new CashierShiftError("You can only close a shift you opened", 403, "SHIFT_NOT_OWNER");
+  }
 
   const now = new Date();
   const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt: now });
