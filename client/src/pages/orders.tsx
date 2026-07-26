@@ -234,7 +234,7 @@ export default function Orders() {
         queryClient.setQueryData(["/api/orders", context.orderId], context.previousOrderDetail);
       }
       toast({
-        title: "Update Failed",
+        title: "Update failed",
         description: error.message || "Failed to update order status",
         variant: "destructive",
       });
@@ -275,7 +275,7 @@ export default function Orders() {
     },
     onError: (error: any) => {
       toast({
-        title: "Delete Failed",
+        title: "Delete failed",
         description: error.message || "Failed to delete order",
         variant: "destructive",
       });
@@ -312,7 +312,7 @@ export default function Orders() {
     },
     onError: (error: any) => {
       toast({
-        title: "Update Failed",
+        title: "Update failed",
         description: error.message || "Failed to update order",
         variant: "destructive",
       });

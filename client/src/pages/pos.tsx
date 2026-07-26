@@ -371,7 +371,7 @@ export default function POS() {
     },
     onError: (error: any) => {
       toast({
-        title: "Order Failed",
+        title: "Order failed",
         description: error.message || "Failed to process the order",
         variant: "destructive",
       });

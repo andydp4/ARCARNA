@@ -332,7 +332,7 @@ export default function Customers() {
     } catch (err) {
       console.error('Contact import failed:', err)
       toast({
-        title: 'Import Failed',
+        title: 'Import failed',
         description: 'Unable to import contact. Please try again.',
         variant: 'destructive',
       })

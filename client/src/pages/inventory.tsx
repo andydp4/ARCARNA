@@ -113,7 +113,7 @@ export default function Inventory() {
         queryClient.setQueryData(["/api/inventory"], context.previousProducts);
       }
       toast({
-        title: "Update Failed",
+        title: "Update failed",
         description: error.message || "Failed to update stock",
         variant: "destructive",
       });
