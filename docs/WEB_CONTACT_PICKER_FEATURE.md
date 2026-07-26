@@ -1,7 +1,7 @@
 # Web Contact Picker Feature
 
 ## Overview
-The Midnight EPOS customer creation form now includes a Web Contact Picker integration, allowing users to import contact information directly from their device's phonebook into the customer form.
+The Arcarna customer creation form now includes a Web Contact Picker integration, allowing users to import contact information directly from their device's phonebook into the customer form.
 
 ## Implementation Details
 

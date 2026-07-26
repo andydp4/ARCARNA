@@ -75,7 +75,7 @@ Operators use this runbook when rotating credentials for ARCARNA EPOS on **https
 
 Configured in `POST /api/webhooks` (see [CHANNEL_INGEST.md](./CHANNEL_INGEST.md)).
 
-1. In MidnightEPOS, create a new webhook endpoint with a new `secret` (or update per future API).
+1. In Arcarna, create a new webhook endpoint with a new `secret` (or update per future API).
 2. Coordinate with the receiver to accept both secrets during overlap if supported.
 3. Disable old endpoint.
 4. **Blast radius:** Missed outbound events for that integration until receiver updates.

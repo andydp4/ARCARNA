@@ -1,4 +1,4 @@
-# Cloudflare edge — viger.cloud / Midnight EPOS
+# Cloudflare edge — viger.cloud / Arcarna
 
 Operator runbook for DNS, TLS, caching, and common failures when Cloudflare sits in front of the VPS nginx → Node stack.
 

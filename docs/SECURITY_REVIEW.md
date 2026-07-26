@@ -1,6 +1,6 @@
-# MidnightEPOS — Security review (living document)
+# Arcarna — Security review (living document)
 
-This document tracks **high-level security posture** for MidnightEPOS. It complements `ARCHITECTURE.md` (system shape) and `RBAC.md` (roles). Update it when auth, tenancy, or exposure boundaries change.
+This document tracks **high-level security posture** for Arcarna. It complements `ARCHITECTURE.md` (system shape) and `RBAC.md` (roles). Update it when auth, tenancy, or exposure boundaries change.
 
 ## Threat model (retail EPOS)
 

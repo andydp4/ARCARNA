@@ -1,6 +1,6 @@
 # Channel ingest & external adapters (C5)
 
-This document describes how **non-POS channels** (web checkout, WhatsApp, phone orders) should integrate with MidnightEPOS without duplicating pricing or stock rules inside each channel.
+This document describes how **non-POS channels** (web checkout, WhatsApp, phone orders) should integrate with Arcarna without duplicating pricing or stock rules inside each channel.
 
 ## Principles (see `ARCHITECTURE.md`)
 

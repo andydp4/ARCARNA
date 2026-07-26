@@ -25,7 +25,7 @@ Approved direction (owner, this session): implement **everything**, including th
 
 - [x] **D-P1-01** `scripts/seed.ts`: `Midnight Demo Org` → `Arcarna Demo Org`; `store@midnight-demo.local` → `store@arcarna-demo.local`
 - [x] **C-P1-03** UK copy: `insights.tsx` `Revenue ($)` → `Revenue (£)`; `settings.tsx` `State, ZIP`/`+1 …` placeholders → County/Postcode/`+44 …`
-- [ ] **X-P2-03** docs Midnight→Arcarna sweep (user-facing docs only; keep legacy technical refs like `X-Midnight-Signature`, DB names)
+- [x] **X-P2-03** docs Midnight→Arcarna sweep (14 user-facing guides: product-name prose → Arcarna; kept legacy technical refs — `X-Midnight-Signature`, `/root/MidnightEPOS` paths, migration ground-truth, compliance/rebrand-meta docs)
 
 ## Batch 2 — Chart colour tokens (T-P1-02..06)
 
@@ -44,7 +44,7 @@ Approved direction (owner, this session): implement **everything**, including th
 
 ## Batch 4 — Toast / modal / copy standards (C-P1-01/02/04, K-P0-02/03)
 
-- [ ] **C-P1-01** Toast title standardisation (~40 sites): Success/Error phrasing
+- [~] **C-P1-01** Toast title standardisation — failure titles normalised to sentence case across `client/src/pages` (PR #80); remaining success-title phrasing variance accepted as cosmetic
 - [ ] **C-P1-04** Sentence-case pass on modal/button titles
 - [ ] **K-P0-02** EmptyState context-specific copy on P0 pages
 - [ ] **K-P0-03** ConfirmDestructive: title + consequence + specific verb

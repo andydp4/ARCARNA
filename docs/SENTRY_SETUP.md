@@ -1,4 +1,4 @@
-# Sentry setup (Midnight EPOS) — simple steps
+# Sentry setup (Arcarna) — simple steps
 
 The app **already includes** `@sentry/react`. You do **not** need to paste Sentry’s “install SDK” code from the wizard.
 

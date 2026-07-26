@@ -1,6 +1,6 @@
 # Clerk login setup (for Andy / site owner)
 
-This guide explains how to turn on **Clerk** login for MidnightEPOS on your Hostinger VPS. You do not need to write code.
+This guide explains how to turn on **Clerk** login for Arcarna on your Hostinger VPS. You do not need to write code.
 
 ---
 
@@ -15,7 +15,7 @@ This guide explains how to turn on **Clerk** login for MidnightEPOS on your Host
 ## Step 1 — Create a Clerk account
 
 1. Open [https://clerk.com](https://clerk.com) and sign up (free tier is fine to start).
-2. Create an **Application** named e.g. `Midnight EPOS Production`.
+2. Create an **Application** named e.g. `Arcarna EPOS Production`.
 3. Stay on the Clerk dashboard — you will copy keys from here.
 
 **Success:** You see a dashboard with **API Keys** in the sidebar.
