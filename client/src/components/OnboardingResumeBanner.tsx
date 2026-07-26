@@ -35,7 +35,7 @@ export function OnboardingResumeBanner() {
         <Sparkles className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" aria-hidden />
         <div>
           <p className="font-medium text-foreground">
-            Finish setting up your shop ({data.completedCount} of {data.totalSteps} done)
+            Continue your Discovery Journey ({data.completedCount} of {data.totalSteps} done)
           </p>
           <p className="text-sm text-muted-foreground">
             {remaining} step{remaining === 1 ? "" : "s"} left — takes about 5 minutes.
@@ -44,7 +44,7 @@ export function OnboardingResumeBanner() {
       </div>
       <Button asChild className="min-h-[44px] shrink-0" variant="default">
         <Link href="/onboarding/wizard">
-          Resume setup
+          Resume journey
           <ArrowRight className="ml-2 h-4 w-4" />
         </Link>
       </Button>

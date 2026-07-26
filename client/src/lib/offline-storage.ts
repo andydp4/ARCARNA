@@ -93,7 +93,7 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-async function getAllFromStore<T>(db: IDBDatabase, storeName: QueueStoreName): Promise<T[]> {
+async function getAllFromStore<T>(db: IDBDatabase, storeName: string): Promise<T[]> {
   if (!db.objectStoreNames.contains(storeName)) return [];
   const tx = db.transaction(storeName, 'readonly');
   const records = await requestToPromise<T[]>(tx.objectStore(storeName).getAll());
