@@ -1,6 +1,6 @@
 # POS barcode scanner setup
 
-Midnight EPOS treats USB and Bluetooth **keyboard-wedge** scanners as a fast keyboard that types a barcode and sends Enter.
+Arcarna treats USB and Bluetooth **keyboard-wedge** scanners as a fast keyboard that types a barcode and sends Enter.
 
 ## Configure the scanner
 

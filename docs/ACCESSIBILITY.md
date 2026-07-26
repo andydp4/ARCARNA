@@ -1,6 +1,6 @@
 # Accessibility (WCAG AA)
 
-Midnight EPOS targets **WCAG 2.1 Level AA** on cashier-critical surfaces: POS, customers, products, orders, and settings.
+Arcarna targets **WCAG 2.1 Level AA** on cashier-critical surfaces: POS, customers, products, orders, and settings.
 
 ## Automated checks
 

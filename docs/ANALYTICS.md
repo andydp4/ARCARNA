@@ -1,6 +1,6 @@
 # Product analytics (Plausible)
 
-Midnight EPOS can send **privacy-conscious page analytics** to [Plausible](https://plausible.io) when configured. No third-party scripts load when env vars are unset (production builds remain no-op).
+Arcarna can send **privacy-conscious page analytics** to [Plausible](https://plausible.io) when configured. No third-party scripts load when env vars are unset (production builds remain no-op).
 
 ## Configuration
 

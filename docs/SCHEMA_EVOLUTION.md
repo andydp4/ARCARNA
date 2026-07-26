@@ -1,6 +1,6 @@
 # Schema Evolution
 
-How MidnightEPOS database schema changes are authored, reviewed, and applied. All contributors must read [ARCHITECTURAL_PRINCIPLES.md](./ARCHITECTURAL_PRINCIPLES.md) before changing schema.
+How Arcarna database schema changes are authored, reviewed, and applied. All contributors must read [ARCHITECTURAL_PRINCIPLES.md](./ARCHITECTURAL_PRINCIPLES.md) before changing schema.
 
 ---
 

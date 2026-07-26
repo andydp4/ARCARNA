@@ -1,6 +1,6 @@
 # Object storage strategy (Files / Backups)
 
-Written ahead of the **Viger portal** Files and Backups UX (`portal/`). Defines how MidnightEPOS will use object storage so tenant uploads, exports, and platform backups stay isolated and operable.
+Written ahead of the **Viger portal** Files and Backups UX (`portal/`). Defines how Arcarna will use object storage so tenant uploads, exports, and platform backups stay isolated and operable.
 
 ## Provider choice
 

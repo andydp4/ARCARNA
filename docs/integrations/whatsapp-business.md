@@ -1,6 +1,6 @@
 # WhatsApp Business Integration
 
-MidnightEPOS integrates the **official WhatsApp Business Platform (Cloud API)** as an
+Arcarna integrates the **official WhatsApp Business Platform (Cloud API)** as an
 org-scoped communication channel: receive customer messages, reply, link contacts to
 customers, turn messages into draft orders, and send approved templates.
 

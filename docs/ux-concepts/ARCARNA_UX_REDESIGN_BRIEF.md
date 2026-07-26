@@ -10,7 +10,7 @@
 
 ## Core design philosophy
 
-Midnight should feel like:
+Arcarna should feel like:
 
 - precision industrial equipment
 - luxury engineering hardware
@@ -163,7 +163,7 @@ Dashboard = **premium operations control centre** — NOT a finance-bro analytic
 
 ## PWA requirements
 
-Midnight should behave like a real installed app.
+Arcarna should behave like a real installed app.
 
 **Required:** installable · standalone mode · responsive · offline-safe shell · persistent login · splash screen · proper icons  
 
@@ -187,7 +187,7 @@ Must maintain: readable contrast · scalable text · touch accessibility · keyb
 
 ## Brand personality
 
-Midnight should feel like:
+Arcarna should feel like:
 
 > *Mission-critical retail infrastructure with luxury industrial design.*
 
