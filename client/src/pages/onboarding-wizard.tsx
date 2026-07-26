@@ -128,7 +128,7 @@ export default function OnboardingWizard() {
     await completeFirstSale.mutateAsync();
     await patchStep.mutateAsync({ step: "first-sale", completed: true });
     toast({
-      title: "Setup complete",
+      title: "Discovery Journey complete",
       description: "Your £0.01 test sale is recorded. Open POS anytime for real sales.",
     });
     setLocation("/");

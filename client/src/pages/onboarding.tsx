@@ -47,7 +47,7 @@ export default function Onboarding() {
           <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
             <Building2 className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Set up your business</CardTitle>
+          <CardTitle className="text-2xl">Start your Discovery Journey</CardTitle>
           <CardDescription>
             Create your first organization to start using {BRAND_PRODUCT_NAME}.
           </CardDescription>
