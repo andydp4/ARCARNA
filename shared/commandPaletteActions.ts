@@ -18,8 +18,8 @@ export const commandPaletteActions: CommandPaletteAction[] = [
   },
   {
     id: "action-open-pos",
-    label: "Open POS terminal",
-    keywords: ["pos", "terminal", "register"],
+    label: "Create Order",
+    keywords: ["pos", "terminal", "register", "create order", "sell", "till"],
     href: "/create-order",
   },
   {
@@ -43,8 +43,8 @@ export const commandPaletteActions: CommandPaletteAction[] = [
   },
   {
     id: "action-insights",
-    label: "Open business insights",
-    keywords: ["reports", "analytics", "dashboard", "revenue"],
+    label: "Open Truths Hub",
+    keywords: ["reports", "analytics", "dashboard", "revenue", "insights", "truths"],
     href: "/insights",
     minRole: "MANAGER",
   },

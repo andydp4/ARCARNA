@@ -9,7 +9,7 @@ export default function DailyRevenueChart() {
   });
 
   const chartData = (dailyRevenue as any[])?.map((day: any) => ({
-    date: new Date(day.date).toLocaleDateString("en-US", {
+    date: new Date(day.date).toLocaleDateString("en-GB", {
       month: "short",
       day: "numeric",
     }),

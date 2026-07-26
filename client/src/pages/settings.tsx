@@ -289,7 +289,7 @@ export default function Settings() {
                         id="businessAddress"
                         value={settings.businessAddress}
                         onChange={(e) => handleSettingChange('general', 'businessAddress', e.target.value)}
-                        placeholder="123 Main Street, City, State, ZIP"
+                        placeholder="123 High Street, City, County, Postcode"
                         rows={2}
                       />
                     </div>
@@ -303,7 +303,7 @@ export default function Settings() {
                           id="businessPhone"
                           value={settings.businessPhone}
                           onChange={(e) => handleSettingChange('general', 'businessPhone', e.target.value)}
-                          placeholder="+1 234 567 8900"
+                          placeholder="+44 20 7946 0958"
                           className="min-h-[44px]"
                         />
                       </div>
@@ -383,8 +383,8 @@ export default function Settings() {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="darkMode">Dark Mode</Label>
-                      <p className="text-sm text-muted-foreground">Toggle between light and dark themes</p>
+                      <Label htmlFor="darkMode">Interface theme</Label>
+                      <p className="text-sm text-muted-foreground">Arcarna uses a dark “Liquid Metal” interface by default. This switches the few remaining light screens.</p>
                     </div>
                     <Button
                       variant="outline"
@@ -582,7 +582,7 @@ export default function Settings() {
                               id="collectionAddress"
                               value={settings.collectionAddress}
                               onChange={(e) => handleSettingChange('payment', 'collectionAddress', e.target.value)}
-                              placeholder="123 Pickup Street, City, State, ZIP"
+                              placeholder="123 Pickup Street, City, County, Postcode"
                               rows={2}
                             />
                             <Button

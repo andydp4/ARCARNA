@@ -1,8 +1,10 @@
 const SW_BASE = self.location.pathname.replace(/\/sw\.js$/i, "") || "";
 const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
 
-/** Bump when cache layout changes; activate deletes older arcarna-epos-* and midnight-epos-* caches. */
-const CACHE_VERSION = "5";
+/** Bump when cache layout changes; activate deletes older arcarna-epos-* and midnight-epos-* caches.
+ *  Bumped 5 -> 6 to force stale clients to drop cached app shell / API responses
+ *  (fixes "saved but no change shown" caused by an old cached bundle). */
+const CACHE_VERSION = "6";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;

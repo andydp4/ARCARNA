@@ -17,7 +17,7 @@ import {
   allowedUsers,
 } from "../shared/schema";
 
-const SEED_ORG_NAME = "Midnight Demo Org";
+const SEED_ORG_NAME = "Arcarna Demo Org";
 const SEED_LOCATION_NAME = "Main Store";
 const SEED_PRODUCTS = [
   { productId: "COF-001", name: "Espresso", defaultSalePrice: "2.50", costPrice: "0.80", stock: 100 },
@@ -50,7 +50,7 @@ async function seed() {
       state: "LD",
       zipCode: "SW1A 1AA",
       phone: "+44 20 7946 0958",
-      email: "store@midnight-demo.local",
+      email: "store@arcarna-demo.local",
     })
     .returning();
 

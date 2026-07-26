@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch, resolveApiUrl } from "@/lib/appPaths";
 import { queryClient } from "@/lib/queryClient";
+import { VOCAB } from "@/lib/vocabulary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
@@ -103,7 +104,7 @@ export default function RfmAnalyticsPage() {
         <div>
           <PageHeader
             className="!mb-0"
-            title="Customer Segments"
+            title={VOCAB.customerTruths}
             question="Which customers are loyal, at risk, or lost?"
             explanation="Recency, frequency, and monetary scores — updated nightly."
           />

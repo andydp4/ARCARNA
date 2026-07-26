@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/appPaths";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { COLORS, CHART_PRIMARY, CHART_POSITIVE } from "@/lib/chartColors";
+import { VOCAB } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -74,7 +76,7 @@ interface ReportData {
   };
 }
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+// Chart palette lives in @/lib/chartColors (brand Truth Blue + semantic tokens).
 
 function toNum(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -523,8 +525,8 @@ export default function Insights() {
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3B82F6" name="Revenue ($)" />
-                    <Line yAxisId="right" type="monotone" dataKey="orders" stroke="#10B981" name="Orders" />
+                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke={CHART_PRIMARY} name="Revenue (£)" />
+                    <Line yAxisId="right" type="monotone" dataKey="orders" stroke={CHART_POSITIVE} name="Orders" />
                   </LineChart>
                 </ResponsiveContainer>
                 </div>
@@ -546,7 +548,7 @@ export default function Insights() {
                         cx="50%"
                         cy="50%"
                         outerRadius={80}
-                        fill="#8884d8"
+                        fill={CHART_PRIMARY}
                         dataKey="revenue"
                         label
                       >
@@ -644,7 +646,7 @@ export default function Insights() {
                         <XAxis dataKey="hour" />
                         <YAxis />
                         <Tooltip />
-                        <Bar dataKey="count" fill="#3B82F6" />
+                        <Bar dataKey="count" fill={CHART_PRIMARY} />
                       </BarChart>
                     </ResponsiveContainer>
                     </div>
@@ -940,7 +942,7 @@ export default function Insights() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <PageHeader
           icon={BarChart3}
-          title="Truths"
+          title={VOCAB.truthsHub}
           question="What should you know about your business right now?"
           explanation="Pick a period, explore revenue and operations, then export when you need to share."
         />
