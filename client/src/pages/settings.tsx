@@ -383,8 +383,8 @@ export default function Settings() {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="darkMode">Dark Mode</Label>
-                      <p className="text-sm text-muted-foreground">Toggle between light and dark themes</p>
+                      <Label htmlFor="darkMode">Interface theme</Label>
+                      <p className="text-sm text-muted-foreground">Arcarna uses a dark “Liquid Metal” interface by default. This switches the few remaining light screens.</p>
                     </div>
                     <Button
                       variant="outline"
