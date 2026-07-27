@@ -50,6 +50,11 @@ const StockRunwayReport = lazy(() => import("@/pages/reports/stock-runway"));
 const RfmReport = lazy(() => import("@/pages/reports/rfm"));
 const ChurnRiskReport = lazy(() => import("@/pages/reports/churn-risk"));
 const AffinityReport = lazy(() => import("@/pages/reports/affinity"));
+const OrderStatusReport = lazy(() => import("@/pages/reports/order-status"));
+const DelayLogReport = lazy(() => import("@/pages/reports/delay-log"));
+const StaffKpiReport = lazy(() => import("@/pages/reports/staff-kpi"));
+const SatisfactionReport = lazy(() => import("@/pages/reports/satisfaction"));
+const ResellerCreditReport = lazy(() => import("@/pages/reports/reseller-credit"));
 const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
 const HourOfDayAnalyticsPage = lazy(() => import("@/pages/analytics/hour-of-day"));
 const ChannelAttributionPage = lazy(() => import("@/pages/analytics/channels"));
@@ -124,6 +129,11 @@ function Router() {
           <Route path="/reports/rfm" component={RfmReport} />
           <Route path="/reports/churn-risk" component={ChurnRiskReport} />
           <Route path="/reports/affinity" component={AffinityReport} />
+          <Route path="/reports/order-status" component={OrderStatusReport} />
+          <Route path="/reports/delay-log" component={DelayLogReport} />
+          <Route path="/reports/staff-kpi" component={StaffKpiReport} />
+          <Route path="/reports/satisfaction" component={SatisfactionReport} />
+          <Route path="/reports/reseller-credit" component={ResellerCreditReport} />
           <Route path="/analytics"><Redirect to="/insights" /></Route>
           <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
           <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />

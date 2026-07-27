@@ -54,7 +54,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Live view of every order right now — what's queued, being prepped, ready, and delayed. The primary working screen during a shift.",
     route: "/reports/order-status",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T1-004",
@@ -76,7 +76,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Every delay today — what caused it, how long it lasted, and whether the customer was proactively notified. Use it to eliminate recurring causes.",
     route: "/reports/delay-log",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   // ── Tier 2 — Operational intelligence ─────────────────────────────────────
   {
@@ -99,7 +99,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Measures each staff member's performance against the 7 core KPIs every week — for bonus calculation and weekly check-ins.",
     route: "/reports/staff-kpi",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T2-003",
@@ -110,7 +110,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Tracks every satisfaction score after a collection, and flags individual customers who had a poor experience so they can be followed up.",
     route: "/reports/satisfaction",
     formats: ALL,
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T2-004",
@@ -121,7 +121,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Every reseller partner's balance, payment history, and overdue amounts. Any balance over 14 days old triggers a supply hold.",
     route: "/reports/reseller-credit",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   // ── Tier 3 — Customer intelligence ────────────────────────────────────────
   {
