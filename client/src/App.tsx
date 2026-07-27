@@ -43,6 +43,13 @@ const ReportsHub = lazy(() => import("@/pages/reports/index"));
 const DailySalesReport = lazy(() => import("@/pages/reports/daily-sales"));
 const CurrentStockReport = lazy(() => import("@/pages/reports/current-stock"));
 const WeeklySalesReport = lazy(() => import("@/pages/reports/weekly-sales"));
+const WeeklyMarginReport = lazy(() => import("@/pages/reports/weekly-margin"));
+const LapseRetentionReport = lazy(() => import("@/pages/reports/lapse-retention"));
+const ClvReport = lazy(() => import("@/pages/reports/clv"));
+const StockRunwayReport = lazy(() => import("@/pages/reports/stock-runway"));
+const RfmReport = lazy(() => import("@/pages/reports/rfm"));
+const ChurnRiskReport = lazy(() => import("@/pages/reports/churn-risk"));
+const AffinityReport = lazy(() => import("@/pages/reports/affinity"));
 const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
 const HourOfDayAnalyticsPage = lazy(() => import("@/pages/analytics/hour-of-day"));
 const ChannelAttributionPage = lazy(() => import("@/pages/analytics/channels"));
@@ -110,6 +117,13 @@ function Router() {
           <Route path="/reports/daily-sales" component={DailySalesReport} />
           <Route path="/reports/current-stock" component={CurrentStockReport} />
           <Route path="/reports/weekly-sales" component={WeeklySalesReport} />
+          <Route path="/reports/weekly-margin" component={WeeklyMarginReport} />
+          <Route path="/reports/lapse-retention" component={LapseRetentionReport} />
+          <Route path="/reports/clv" component={ClvReport} />
+          <Route path="/reports/stock-runway" component={StockRunwayReport} />
+          <Route path="/reports/rfm" component={RfmReport} />
+          <Route path="/reports/churn-risk" component={ChurnRiskReport} />
+          <Route path="/reports/affinity" component={AffinityReport} />
           <Route path="/analytics"><Redirect to="/insights" /></Route>
           <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
           <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />

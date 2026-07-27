@@ -12,8 +12,17 @@
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
 import { db } from "../db";
-import { orders, orderItems, products } from "@shared/schema";
-import { and, eq, sql, gte, lte } from "drizzle-orm";
+import {
+  orders,
+  orderItems,
+  products,
+  customers,
+  customerMetrics,
+  customerRfm,
+  suppliers,
+  productSuppliers,
+} from "@shared/schema";
+import { and, eq, sql, gte, lte, desc } from "drizzle-orm";
 
 /** Statuses that count as realised revenue. Model uses "completed"; spec says COLLECTED. */
 const COMPLETED_STATUSES = ["completed", "COLLECTED", "collected"] as const;
@@ -294,6 +303,453 @@ export async function currentStockLevels(orgId: string): Promise<ReportPayload> 
   };
 }
 
+/** ARC-T2-001 Weekly Margin Summary — realised margin per product for a week. */
+export async function weeklyMarginSummary(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(weekEnd);
+  end.setHours(23, 59, 59, 999);
+  const cond = and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end));
+
+  const grp = await db
+    .select({
+      name: products.name,
+      costPrice: products.costPrice,
+      units: sql<number>`SUM(${orderItems.quantity})`,
+      revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
+      minSell: sql<number>`MIN(CAST(${orderItems.unitPrice} AS DECIMAL))`,
+      maxSell: sql<number>`MAX(CAST(${orderItems.unitPrice} AS DECIMAL))`,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(products, eq(orderItems.productId, products.id))
+    .where(cond)
+    .groupBy(products.name, products.costPrice);
+
+  const redFlags: string[] = [];
+  let totalMarginAll = 0;
+  const rows = grp.map((g) => {
+    const units = num(g.units);
+    const revenue = num(g.revenue);
+    const cost = num(g.costPrice);
+    const avgSell = units ? revenue / units : 0;
+    const grossMargin = avgSell - cost;
+    const marginPct = avgSell ? (grossMargin / avgSell) * 100 : 0;
+    const totalMargin = grossMargin * units;
+    totalMarginAll += totalMargin;
+    if (marginPct < 20) redFlags.push(`${g.name} margin ${marginPct.toFixed(1)}% is below 20% — review pricing.`);
+    return {
+      product: g.name,
+      unitsSold: units,
+      costPrice: cost,
+      avgSellPrice: avgSell,
+      minSellPrice: num(g.minSell),
+      maxSellPrice: num(g.maxSell),
+      grossMargin,
+      marginPct,
+      totalMargin,
+    };
+  });
+  rows.sort((a, b) => b.totalMargin - a.totalMargin);
+
+  return {
+    ref: "ARC-T2-001",
+    title: "Weekly Margin Summary",
+    generatedAt: new Date().toISOString(),
+    period: { from: start.toISOString(), to: end.toISOString() },
+    summary: {
+      products: rows.length,
+      totalMargin: totalMarginAll,
+      avgMarginPct: rows.length ? rows.reduce((s, r) => s + r.marginPct, 0) / rows.length : 0,
+    },
+    rows,
+    redFlags,
+  };
+}
+
+/** Lapse status from days since last order. */
+function lapseStatus(days: number): "ACTIVE" | "AT RISK" | "LAPSED" | "LOST" {
+  if (days <= 13) return "ACTIVE";
+  if (days <= 29) return "AT RISK";
+  if (days <= 59) return "LAPSED";
+  return "LOST";
+}
+const VIP_TIERS = ["gold", "platinum", "vip"];
+function isVip(tier: string | null): boolean {
+  return VIP_TIERS.some((t) => (tier || "").toLowerCase().includes(t));
+}
+
+/** ARC-T3-001 Customer Lapse & Retention Report. */
+export async function customerLapseRetention(orgId: string): Promise<ReportPayload> {
+  const rows = await db
+    .select({
+      name: customers.name,
+      tier: customers.category,
+      lastOrder: sql<string>`MAX(${orders.createdAt})`,
+      firstOrder: sql<string>`MIN(${orders.createdAt})`,
+      orderCount: sql<number>`COUNT(${orders.id})`,
+      lifetimeValue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)`,
+    })
+    .from(customers)
+    .innerJoin(orders, and(eq(orders.customerId, customers.id), completedCond))
+    .where(eq(customers.orgId, orgId))
+    .groupBy(customers.id, customers.name, customers.category);
+
+  const now = Date.now();
+  const redFlags: string[] = [];
+  const mapped = rows
+    .map((r) => {
+      const last = r.lastOrder ? new Date(r.lastOrder) : null;
+      const days = last ? Math.floor((now - last.getTime()) / 86400000) : 9999;
+      const status = lapseStatus(days);
+      if (status !== "ACTIVE" && isVip(r.tier)) redFlags.push(`VIP ${r.name} is ${status} — personal outreach today.`);
+      else if (status === "LOST") redFlags.push(`${r.name} is LOST (60+ days) — win-back only.`);
+      return {
+        customer: r.name,
+        tier: r.tier,
+        lastOrderDate: last ? last.toISOString() : null,
+        daysSinceLastOrder: days,
+        lapseStatus: status,
+        lifetimeOrders: num(r.orderCount),
+        lifetimeValue: num(r.lifetimeValue),
+      };
+    })
+    .filter((r) => r.lapseStatus !== "ACTIVE")
+    .sort((a, b) => b.lifetimeValue - a.lifetimeValue);
+
+  return {
+    ref: "ARC-T3-001",
+    title: "Customer Lapse & Retention Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      atRisk: mapped.filter((r) => r.lapseStatus === "AT RISK").length,
+      lapsed: mapped.filter((r) => r.lapseStatus === "LAPSED").length,
+      lost: mapped.filter((r) => r.lapseStatus === "LOST").length,
+      valueAtRisk: mapped.reduce((s, r) => s + r.lifetimeValue, 0),
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T3-002 Customer Lifetime Value (CLV) Report. */
+export async function customerLifetimeValue(orgId: string): Promise<ReportPayload> {
+  const rows = await db
+    .select({
+      name: customers.name,
+      tier: customers.category,
+      lifetimeSpend: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)`,
+      totalOrders: sql<number>`COUNT(${orders.id})`,
+      firstOrder: sql<string>`MIN(${orders.createdAt})`,
+    })
+    .from(customers)
+    .innerJoin(orders, and(eq(orders.customerId, customers.id), completedCond))
+    .where(eq(customers.orgId, orgId))
+    .groupBy(customers.id, customers.name, customers.category);
+
+  const now = Date.now();
+  const mapped = rows
+    .map((r) => {
+      const spend = num(r.lifetimeSpend);
+      const count = num(r.totalOrders);
+      const first = r.firstOrder ? new Date(r.firstOrder) : null;
+      const tenureMonths = first ? Math.max(1, Math.round((now - first.getTime()) / (30 * 86400000))) : 1;
+      return {
+        customer: r.name,
+        tier: r.tier,
+        lifetimeSpend: spend,
+        totalOrders: count,
+        avgOrderValue: count ? spend / count : 0,
+        firstOrderDate: first ? first.toISOString() : null,
+        tenureMonths,
+        monthlySpendRate: spend / tenureMonths,
+        tierChangeFlag: count >= 10 && !isVip(r.tier) ? "PROMOTE TO VIP" : "",
+      };
+    })
+    .sort((a, b) => b.lifetimeSpend - a.lifetimeSpend)
+    .map((r, i) => ({ ...r, clvRank: i + 1 }));
+
+  const redFlags: string[] = [];
+  for (const r of mapped) if (r.tierChangeFlag) redFlags.push(`${r.customer}: ${r.tierChangeFlag} (${r.totalOrders} orders).`);
+
+  return {
+    ref: "ARC-T3-002",
+    title: "Customer Lifetime Value (CLV) Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      customers: mapped.length,
+      totalLifetimeSpend: mapped.reduce((s, r) => s + r.lifetimeSpend, 0),
+      promoteCandidates: mapped.filter((r) => r.tierChangeFlag).length,
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T3-003 Stock Runway & Demand Forecast. */
+export async function stockRunwayForecast(orgId: string): Promise<ReportPayload> {
+  const prod = await db
+    .select({ id: products.id, name: products.name, stock: products.stock })
+    .from(products)
+    .where(eq(products.orgId, orgId));
+
+  const since = new Date(Date.now() - 28 * 86400000);
+  const velRows = await db
+    .select({ productId: orderItems.productId, units: sql<number>`SUM(${orderItems.quantity})` })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since)))
+    .groupBy(orderItems.productId);
+  const vel = new Map<string, number>();
+  for (const v of velRows) vel.set(v.productId as string, num(v.units) / 4);
+
+  // Preferred supplier lead time per product.
+  const leadRows = await db
+    .select({
+      productId: productSuppliers.productId,
+      override: productSuppliers.leadTimeOverrideDays,
+      supplierLead: suppliers.leadTimeDays,
+      preferred: productSuppliers.isPreferred,
+    })
+    .from(productSuppliers)
+    .leftJoin(suppliers, eq(productSuppliers.supplierId, suppliers.id))
+    .where(eq(productSuppliers.orgId, orgId));
+  const lead = new Map<string, number>();
+  for (const l of leadRows) {
+    const days = num(l.override) || num(l.supplierLead);
+    const prev = lead.get(l.productId as string);
+    if (prev === undefined || l.preferred) lead.set(l.productId as string, days);
+  }
+
+  const redFlags: string[] = [];
+  const rows = prod.map((p) => {
+    const stock = num(p.stock);
+    const weekly = vel.get(p.id) || 0;
+    const leadDays = lead.get(p.id) || 7;
+    const leadWeeks = leadDays / 7;
+    const weeksRemaining = weekly > 0 ? stock / weekly : stock > 0 ? 999 : 0;
+    const reorderQty = Math.ceil(weekly * (leadWeeks + 2));
+    const reorderByMs = Date.now() + weeksRemaining * 7 * 86400000 - leadDays * 86400000 - 7 * 86400000;
+    let urgency: "ORDER NOW" | "ORDER THIS WEEK" | "MONITOR" | "STOCK OK";
+    if (weeksRemaining <= leadWeeks) urgency = "ORDER NOW";
+    else if (weeksRemaining <= leadWeeks + 1) urgency = "ORDER THIS WEEK";
+    else if (weeksRemaining <= 4) urgency = "MONITOR";
+    else urgency = "STOCK OK";
+    if (urgency === "ORDER NOW") redFlags.push(`${p.name}: ORDER NOW — ${weeksRemaining.toFixed(1)} weeks of stock left.`);
+    return {
+      product: p.name,
+      currentStock: stock,
+      avgWeeklySales: weekly,
+      weeksRemaining,
+      reorderBy: weekly > 0 ? new Date(reorderByMs).toISOString() : null,
+      leadTimeDays: leadDays,
+      reorderQty,
+      urgency,
+    };
+  });
+  const ord = { "ORDER NOW": 0, "ORDER THIS WEEK": 1, MONITOR: 2, "STOCK OK": 3 } as const;
+  rows.sort((a, b) => ord[a.urgency] - ord[b.urgency] || a.weeksRemaining - b.weeksRemaining);
+
+  return {
+    ref: "ARC-T3-003",
+    title: "Stock Runway & Demand Forecast",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      products: rows.length,
+      orderNow: rows.filter((r) => r.urgency === "ORDER NOW").length,
+      orderThisWeek: rows.filter((r) => r.urgency === "ORDER THIS WEEK").length,
+    },
+    rows,
+    redFlags,
+  };
+}
+
+const RFM_ACTION: Record<string, string> = {
+  Champions: "Maintain VIP service; offer an exclusive loyalty benefit.",
+  Loyal: "Upsell relevant products; keep engagement high.",
+  "New Customer": "Onboard well; encourage a second order.",
+  "At Risk": "Reactivation campaign — owner approves copy.",
+  Hibernating: "Low-cost win-back message.",
+  Lost: "Win-back only; do not over-invest.",
+};
+
+/** ARC-T4-001 RFM Customer Segmentation — from precomputed customer_rfm. */
+export async function rfmSegmentation(orgId: string): Promise<ReportPayload> {
+  const rows = await db
+    .select({
+      name: customers.name,
+      tier: customers.category,
+      r: customerRfm.recencyScore,
+      f: customerRfm.frequencyScore,
+      m: customerRfm.monetaryScore,
+      segment: customerRfm.segment,
+    })
+    .from(customerRfm)
+    .innerJoin(customers, eq(customerRfm.customerId, customers.id))
+    .where(eq(customerRfm.orgId, orgId));
+
+  const redFlags: string[] = [];
+  const mapped = rows
+    .map((r) => {
+      const combined = num(r.r) + num(r.f) + num(r.m);
+      if (r.segment === "At Risk" && isVip(r.tier)) redFlags.push(`VIP ${r.name} is At Risk — owner outreach this week.`);
+      return {
+        customer: r.name,
+        recency: num(r.r),
+        frequency: num(r.f),
+        monetary: num(r.m),
+        combined,
+        segment: r.segment,
+        recommendedAction: RFM_ACTION[r.segment] || "Review manually.",
+      };
+    })
+    .sort((a, b) => b.combined - a.combined);
+
+  const bySeg: Record<string, number> = {};
+  for (const r of mapped) bySeg[r.segment] = (bySeg[r.segment] || 0) + 1;
+
+  return {
+    ref: "ARC-T4-001",
+    title: "RFM Customer Segmentation",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      customers: mapped.length,
+      champions: bySeg["Champions"] || 0,
+      atRisk: bySeg["At Risk"] || 0,
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T4-002 Churn Risk Score — heuristic early-warning from recency + activity. */
+export async function churnRiskScore(orgId: string): Promise<ReportPayload> {
+  const rows = await db
+    .select({
+      name: customers.name,
+      tier: customers.category,
+      lastOrder: sql<string>`MAX(${orders.createdAt})`,
+      orderCount: sql<number>`COUNT(${orders.id})`,
+      spend: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)`,
+      firstOrder: sql<string>`MIN(${orders.createdAt})`,
+    })
+    .from(customers)
+    .innerJoin(orders, and(eq(orders.customerId, customers.id), completedCond))
+    .where(eq(customers.orgId, orgId))
+    .groupBy(customers.id, customers.name, customers.category);
+
+  const now = Date.now();
+  const redFlags: string[] = [];
+  const mapped = rows
+    .map((r) => {
+      const last = r.lastOrder ? new Date(r.lastOrder) : null;
+      const days = last ? Math.floor((now - last.getTime()) / 86400000) : 9999;
+      const first = r.firstOrder ? new Date(r.firstOrder) : null;
+      const tenureMonths = first ? Math.max(1, Math.round((now - first.getTime()) / (30 * 86400000))) : 1;
+      const spend = num(r.spend);
+      const monthlyRate = spend / tenureMonths;
+      // Recency dominates (40% weight, saturating at 45 days), thinner order
+      // history raises risk, higher monthly value lowers "safety".
+      const recencyRisk = Math.min(1, days / 45) * 40;
+      const freqRisk = num(r.orderCount) <= 2 ? 30 : num(r.orderCount) <= 5 ? 15 : 0;
+      const valueGuard = monthlyRate > 50 ? -10 : 0;
+      const score = Math.max(0, Math.min(100, Math.round(recencyRisk + freqRisk + valueGuard + 20)));
+      const revenueAtRisk = (monthlyRate * score) / 100;
+      let action = "Monitor.";
+      if (score >= 80 && isVip(r.tier)) action = "Owner personal contact — same day.";
+      else if (score >= 80) action = "Reactivation message within 48 hours.";
+      else if (score >= 50) action = "Proactive relevant product message.";
+      if (score >= 80 && isVip(r.tier)) redFlags.push(`VIP ${r.name}: churn risk ${score} — owner contact today.`);
+      else if (score >= 80) redFlags.push(`${r.name}: churn risk ${score} — reactivate within 48h.`);
+      return {
+        customer: r.name,
+        tier: r.tier,
+        churnScore: score,
+        daysSinceLastOrder: days,
+        revenueAtRisk,
+        recommendedAction: action,
+      };
+    })
+    .filter((r) => r.churnScore >= 50)
+    .sort((a, b) => b.churnScore * b.revenueAtRisk - a.churnScore * a.revenueAtRisk);
+
+  return {
+    ref: "ARC-T4-002",
+    title: "Churn Risk Score",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      atRisk: mapped.length,
+      highRisk: mapped.filter((r) => r.churnScore >= 80).length,
+      revenueAtRisk: mapped.reduce((s, r) => s + r.revenueAtRisk, 0),
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T4-003 Product Affinity & Cross-Sell — products frequently bought together. */
+export async function productAffinity(orgId: string): Promise<ReportPayload> {
+  // Self-join order_items within the same completed order to count co-purchases.
+  const pairRows = await db.execute(sql`
+    WITH oi AS (
+      SELECT ${orderItems.orderId} AS order_id, ${orderItems.productId} AS product_id
+      FROM ${orderItems}
+      JOIN ${orders} ON ${orders.id} = ${orderItems.orderId}
+      WHERE ${orders.orgId} = ${orgId} AND ${completedCond}
+    ),
+    pairs AS (
+      SELECT a.product_id AS a_id, b.product_id AS b_id, COUNT(*) AS co
+      FROM oi a JOIN oi b ON a.order_id = b.order_id AND a.product_id <> b.product_id
+      GROUP BY a.product_id, b.product_id
+    ),
+    totals AS (
+      SELECT product_id, COUNT(DISTINCT order_id) AS orders_with
+      FROM oi GROUP BY product_id
+    )
+    SELECT pa.name AS product_a, pb.name AS product_b,
+           p.co AS co_count, t.orders_with AS a_orders
+    FROM pairs p
+    JOIN totals t ON t.product_id = p.a_id
+    JOIN ${products} pa ON pa.id = p.a_id
+    JOIN ${products} pb ON pb.id = p.b_id
+    WHERE t.orders_with > 0 AND (p.co::decimal / t.orders_with) >= 0.15
+    ORDER BY (p.co::decimal / t.orders_with) DESC
+    LIMIT 100
+  `);
+
+  const raw: any[] = (pairRows as any).rows ?? (pairRows as any);
+  const redFlags: string[] = [];
+  const rows = raw.map((r: any) => {
+    const co = num(r.co_count);
+    const aOrders = num(r.a_orders);
+    const rate = aOrders ? (co / aOrders) * 100 : 0;
+    return {
+      productA: r.product_a,
+      productB: r.product_b,
+      coPurchaseRate: rate,
+      recommendationScore: rate, // proportional to co-purchase strength
+    };
+  });
+
+  return {
+    ref: "ARC-T4-003",
+    title: "Product Affinity & Cross-Sell Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      pairs: rows.length,
+      strongPairs: rows.filter((r) => r.coPurchaseRate >= 40).length,
+    },
+    rows,
+    redFlags,
+  };
+}
+
 export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004";
 
 /** Dispatch a report by reference. */
@@ -312,6 +768,23 @@ export async function runReport(
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
       return weeklySalesSummary(orgId, from, to);
     }
+    case "ARC-T2-001": {
+      const to = opts.to ?? new Date();
+      const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
+      return weeklyMarginSummary(orgId, from, to);
+    }
+    case "ARC-T3-001":
+      return customerLapseRetention(orgId);
+    case "ARC-T3-002":
+      return customerLifetimeValue(orgId);
+    case "ARC-T3-003":
+      return stockRunwayForecast(orgId);
+    case "ARC-T4-001":
+      return rfmSegmentation(orgId);
+    case "ARC-T4-002":
+      return churnRiskScore(orgId);
+    case "ARC-T4-003":
+      return productAffinity(orgId);
     default:
       throw Object.assign(new Error(`Report ${ref} is not available yet`), { statusCode: 404 });
   }

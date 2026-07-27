@@ -88,7 +88,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Shows the actual realised margin per product based on what you genuinely sold this week — real margin under dynamic pricing.",
     route: "/reports/weekly-margin",
     formats: ALL,
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T2-002",
@@ -133,7 +133,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Identifies customers showing early signs of churning before they disappear. Use it to decide who gets a reactivation message this week.",
     route: "/reports/lapse-retention",
     formats: ALL,
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T3-002",
@@ -144,7 +144,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Ranks every customer by total value — spend, order frequency, and margin combined. Use it to ensure top customers get VIP service.",
     route: "/reports/clv",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T3-003",
@@ -155,7 +155,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Predicts how many weeks of stock remain at the current pace and recommends when to reorder, accounting for supplier lead times.",
     route: "/reports/stock-runway",
     formats: ALL,
-    status: "planned",
+    status: "available",
   },
   // ── Tier 4 — Advanced & predictive ────────────────────────────────────────
   {
@@ -167,7 +167,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Scores every customer on Recency, Frequency and Monetary value and places them in an action segment. Know exactly who to contact and how.",
     route: "/reports/rfm",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T4-002",
@@ -178,7 +178,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Predicts which customers are likely to stop ordering before the standard 14-day lapse flag fires — an early warning system.",
     route: "/reports/churn-risk",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
   {
     ref: "ARC-T4-003",
@@ -189,7 +189,7 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Identifies which products are most frequently bought together — for cross-sell training, bundles, and personalised messages.",
     route: "/reports/affinity",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    status: "available",
   },
 ];
 
