@@ -39,6 +39,10 @@ const Orders = lazy(() => import("@/pages/orders"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
 const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
+const ReportsHub = lazy(() => import("@/pages/reports/index"));
+const DailySalesReport = lazy(() => import("@/pages/reports/daily-sales"));
+const CurrentStockReport = lazy(() => import("@/pages/reports/current-stock"));
+const WeeklySalesReport = lazy(() => import("@/pages/reports/weekly-sales"));
 const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
 const HourOfDayAnalyticsPage = lazy(() => import("@/pages/analytics/hour-of-day"));
 const ChannelAttributionPage = lazy(() => import("@/pages/analytics/channels"));
@@ -102,7 +106,10 @@ function Router() {
           <Route path="/inventory" component={Inventory} />
           <Route path="/products" component={ProductManagement} />
           <Route path="/insights" component={Insights} />
-          <Route path="/reports"><Redirect to="/insights" /></Route>
+          <Route path="/reports" component={ReportsHub} />
+          <Route path="/reports/daily-sales" component={DailySalesReport} />
+          <Route path="/reports/current-stock" component={CurrentStockReport} />
+          <Route path="/reports/weekly-sales" component={WeeklySalesReport} />
           <Route path="/analytics"><Redirect to="/insights" /></Route>
           <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
           <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />

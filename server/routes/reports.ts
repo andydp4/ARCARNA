@@ -95,4 +95,43 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
     }
   });
 
+  // Spec API endpoint: GET /api/reports/[ref]?from=&to=  → JSON report payload.
+  // Registered AFTER the exact "/export" route so it only catches ARC-* refs.
+  // (Express 5 dropped inline regex params, so the ARC- guard lives in-handler.)
+  app.get("/api/reports/:ref", ...scoped, async (req: any, res, next) => {
+    const { ref } = req.params;
+    if (!/^ARC-/i.test(ref)) return next();
+    try {
+      const { from, to } = req.query;
+      const opts: { from?: Date; to?: Date } = {};
+      if (from) {
+        const d = new Date(from);
+        if (!isNaN(d.getTime())) opts.from = d;
+      }
+      if (to) {
+        const d = new Date(to);
+        if (!isNaN(d.getTime())) opts.to = d;
+      }
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const { runReport } = await import("../services/reportsEngine");
+      const payload = await runReport(ref, ctx.orgId, opts);
+
+      // DEVELOPER NOTE (spec): every red-flag condition writes a notification.
+      if (payload.redFlags.length) {
+        try {
+          const { notifyReportRedFlags } = await import("../services/reportNotifications");
+          await notifyReportRedFlags(ctx.orgId, payload);
+        } catch (e) {
+          console.error("report red-flag notification failed:", e);
+        }
+      }
+      res.json(payload);
+    } catch (error: any) {
+      const status = error?.statusCode ?? 500;
+      if (status === 404) return res.status(404).json({ message: error.message });
+      console.error("Error running report:", error);
+      res.status(500).json({ message: "Failed to run report" });
+    }
+  });
+
 }
