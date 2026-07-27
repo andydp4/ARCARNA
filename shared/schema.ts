@@ -770,12 +770,24 @@ export const orders = pgTable("orders", {
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
   channel: varchar("channel", { length: 32 }).notNull().default("pos"),
+  // Operational fields for the Order Status Dashboard (ARC-T1-003) and Delay
+  // Log (ARC-T1-005). All optional so existing orders are unaffected.
+  queuePosition: integer("queue_position"),
+  etaGiven: timestamp("eta_given"),
+  delayFlag: boolean("delay_flag").default(false).notNull(),
+  delayReason: varchar("delay_reason", { length: 255 }),
+  delayCause: varchar("delay_cause", { length: 32 }), // Stock/Queue/System/Prep/Other
+  originalEta: timestamp("original_eta"),
+  revisedEta: timestamp("revised_eta"),
+  delayNotificationSentAt: timestamp("delay_notification_sent_at"),
+  delayResolution: varchar("delay_resolution", { length: 32 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
+  index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -1002,6 +1014,82 @@ export const customerRfm = pgTable(
   ],
 );
 export type CustomerRfm = typeof customerRfm.$inferSelect;
+
+// ── Exportable Reports schema (ARC-RPT-SPEC-001) ──────────────────────────────
+
+// Post-collection satisfaction scores (ARC-T2-003 Customer Satisfaction Report).
+export const satisfactionScores = pgTable(
+  "satisfaction_scores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+    customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+    staffId: uuid("staff_id").references(() => cashierProfiles.id, { onDelete: "set null" }),
+    score: integer("score").notNull(), // 1–5
+    comment: text("comment"),
+    scoreDate: timestamp("score_date").defaultNow().notNull(),
+    followedUpAt: timestamp("followed_up_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("satisfaction_scores_org_date_idx").on(table.orgId, table.scoreDate),
+    index("satisfaction_scores_customer_idx").on(table.customerId),
+  ],
+);
+export type SatisfactionScore = typeof satisfactionScores.$inferSelect;
+export const insertSatisfactionScoreSchema = createInsertSchema(satisfactionScores).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Reseller partners (PPP-01..PPP-11) — ARC-T2-004 Reseller Credit & Payment.
+export const resellerPartners = pgTable(
+  "reseller_partners",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    partnerCode: varchar("partner_code", { length: 20 }).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [index("reseller_partners_org_idx").on(table.orgId)],
+);
+export type ResellerPartner = typeof resellerPartners.$inferSelect;
+export const insertResellerPartnerSchema = createInsertSchema(resellerPartners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Reseller ledger: SUPPLY increases balance owed, PAYMENT decreases it.
+export const resellerTransactions = pgTable(
+  "reseller_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    partnerId: uuid("partner_id").references(() => resellerPartners.id, { onDelete: "cascade" }).notNull(),
+    type: varchar("type", { length: 16 }).notNull(), // SUPPLY | PAYMENT
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    // For SUPPLY rows: when the invoice was raised (drives ageing / supply hold).
+    invoiceDate: timestamp("invoice_date"),
+    paid: boolean("paid").default(false).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("reseller_tx_partner_idx").on(table.partnerId),
+    index("reseller_tx_org_idx").on(table.orgId),
+  ],
+);
+export type ResellerTransaction = typeof resellerTransactions.$inferSelect;
+export const insertResellerTransactionSchema = createInsertSchema(resellerTransactions).omit({
+  id: true,
+  createdAt: true,
+});
 
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {

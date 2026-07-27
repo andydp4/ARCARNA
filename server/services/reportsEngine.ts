@@ -21,8 +21,13 @@ import {
   customerRfm,
   suppliers,
   productSuppliers,
+  satisfactionScores,
+  resellerPartners,
+  resellerTransactions,
+  cashierProfiles,
+  refunds,
 } from "@shared/schema";
-import { and, eq, sql, gte, lte, desc } from "drizzle-orm";
+import { and, eq, sql, gte, lte, inArray } from "drizzle-orm";
 
 /** Statuses that count as realised revenue. Model uses "completed"; spec says COLLECTED. */
 const COMPLETED_STATUSES = ["completed", "COLLECTED", "collected"] as const;
@@ -750,6 +755,376 @@ export async function productAffinity(orgId: string): Promise<ReportPayload> {
   };
 }
 
+/** ARC-T1-003 Order Status Dashboard — live view of in-flight orders today. */
+export async function orderStatusDashboard(orgId: string): Promise<ReportPayload> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const rows = await db
+    .select({
+      id: orders.id,
+      customer: customers.name,
+      tier: customers.category,
+      total: orders.total,
+      status: orders.status,
+      channel: orders.channel,
+      paymentMethod: orders.paymentMethod,
+      queuePosition: orders.queuePosition,
+      etaGiven: orders.etaGiven,
+      delayFlag: orders.delayFlag,
+      createdAt: orders.createdAt,
+    })
+    .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        sql`${orders.status} NOT IN ('completed','COLLECTED','collected')`,
+        gte(orders.createdAt, startOfDay),
+      ),
+    );
+
+  const now = Date.now();
+  const redFlags: string[] = [];
+  const mapped = rows
+    .map((r) => {
+      const created = r.createdAt ? new Date(r.createdAt).getTime() : now;
+      const timeInQueue = Math.floor((now - created) / 60000);
+      const stalled = timeInQueue > 45;
+      if (r.delayFlag) redFlags.push(`Order for ${r.customer || "customer"} is DELAYED.`);
+      return {
+        orderId: r.id.slice(0, 8),
+        customer: r.customer,
+        tier: r.tier,
+        orderValue: num(r.total),
+        status: r.delayFlag ? "DELAYED" : (r.status || "PENDING").toUpperCase(),
+        queuePosition: r.queuePosition ?? null,
+        etaGiven: r.etaGiven ? new Date(r.etaGiven).toISOString() : null,
+        timeInQueue,
+        stalled,
+        channel: channelOf(r.paymentMethod, r.channel),
+      };
+    })
+    .sort((a, b) => {
+      const vip = (t: string | null) => (VIP_TIERS.some((v) => (t || "").toLowerCase().includes(v)) ? 0 : 1);
+      return vip(a.tier) - vip(b.tier) || (a.queuePosition ?? 999) - (b.queuePosition ?? 999);
+    });
+
+  return {
+    ref: "ARC-T1-003",
+    title: "Order Status Dashboard",
+    generatedAt: new Date().toISOString(),
+    period: { from: startOfDay.toISOString(), to: new Date().toISOString() },
+    summary: {
+      active: mapped.length,
+      delayed: mapped.filter((r) => r.status === "DELAYED").length,
+      stalled: mapped.filter((r) => r.stalled).length,
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T1-005 Delay Log — every delayed order today, causes and comms. */
+export async function delayLog(orgId: string, day: Date): Promise<ReportPayload> {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(day);
+  end.setHours(23, 59, 59, 999);
+
+  const rows = await db
+    .select({
+      id: orders.id,
+      customer: customers.name,
+      tier: customers.category,
+      originalEta: orders.originalEta,
+      revisedEta: orders.revisedEta,
+      delayCause: orders.delayCause,
+      delayReason: orders.delayReason,
+      delayNotificationSentAt: orders.delayNotificationSentAt,
+      delayResolution: orders.delayResolution,
+    })
+    .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(and(eq(orders.orgId, orgId), eq(orders.delayFlag, true), gte(orders.createdAt, start), lte(orders.createdAt, end)));
+
+  const redFlags: string[] = [];
+  const mapped = rows.map((r) => {
+    const orig = r.originalEta ? new Date(r.originalEta) : null;
+    const rev = r.revisedEta ? new Date(r.revisedEta) : null;
+    const duration = orig && rev ? Math.round((rev.getTime() - orig.getTime()) / 60000) : 0;
+    const proactive = orig && r.delayNotificationSentAt ? new Date(r.delayNotificationSentAt) < orig : false;
+    if (!proactive) redFlags.push(`Delay for ${r.customer || "customer"} was not proactively communicated.`);
+    if (duration > 60) redFlags.push(`Delay for ${r.customer || "customer"} exceeded 60 minutes.`);
+    return {
+      orderId: r.id.slice(0, 8),
+      customer: r.customer,
+      tier: r.tier,
+      originalEta: orig ? orig.toISOString() : null,
+      revisedEta: rev ? rev.toISOString() : null,
+      delayDuration: duration,
+      delayCause: r.delayCause,
+      proactiveComms: proactive,
+      resolution: r.delayResolution,
+    };
+  });
+
+  return {
+    ref: "ARC-T1-005",
+    title: "Delay Log",
+    generatedAt: new Date().toISOString(),
+    period: { from: start.toISOString(), to: end.toISOString() },
+    summary: {
+      delays: mapped.length,
+      noProactiveComms: mapped.filter((r) => !r.proactiveComms).length,
+      over60min: mapped.filter((r) => r.delayDuration > 60).length,
+    },
+    rows: mapped,
+    redFlags,
+  };
+}
+
+/** ARC-T2-003 Customer Satisfaction Report — weekly scores + low-score follow-ups. */
+export async function customerSatisfaction(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(weekEnd);
+  end.setHours(23, 59, 59, 999);
+
+  const scores = await db
+    .select({
+      score: satisfactionScores.score,
+      customer: customers.name,
+      orderId: satisfactionScores.orderId,
+      scoreDate: satisfactionScores.scoreDate,
+    })
+    .from(satisfactionScores)
+    .leftJoin(customers, eq(satisfactionScores.customerId, customers.id))
+    .where(and(eq(satisfactionScores.orgId, orgId), gte(satisfactionScores.scoreDate, start), lte(satisfactionScores.scoreDate, end)));
+
+  // Collections this week (completed orders) → response rate denominator.
+  const coll = await db
+    .select({ n: sql<number>`COUNT(*)` })
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end)));
+  const collections = num(coll[0]?.n);
+
+  const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let sum = 0;
+  const lowScoreRows: Record<string, unknown>[] = [];
+  const redFlags: string[] = [];
+  for (const s of scores) {
+    const sc = num(s.score);
+    if (sc >= 1 && sc <= 5) dist[sc] += 1;
+    sum += sc;
+    if (sc <= 3) {
+      lowScoreRows.push({
+        customer: s.customer,
+        orderId: s.orderId ? String(s.orderId).slice(0, 8) : null,
+        score: sc,
+        scoreDate: s.scoreDate ? new Date(s.scoreDate).toISOString() : null,
+      });
+      if (sc <= 2) redFlags.push(`${s.customer || "Customer"} rated ${sc}/5 — personal follow-up today.`);
+    }
+  }
+  const collected = scores.length;
+  const avg = collected ? sum / collected : 0;
+  const responseRate = collections ? (collected / collections) * 100 : 0;
+  if (collected && avg < 4.5) redFlags.push(`Weekly average satisfaction ${avg.toFixed(2)} is below 4.5.`);
+
+  return {
+    ref: "ARC-T2-003",
+    title: "Customer Satisfaction Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: start.toISOString(), to: end.toISOString() },
+    summary: {
+      scoresCollected: collected,
+      responseRate,
+      averageScore: avg,
+      scoresOf3OrBelow: lowScoreRows.length,
+      distribution: `1:${dist[1]} 2:${dist[2]} 3:${dist[3]} 4:${dist[4]} 5:${dist[5]}`,
+    },
+    rows: lowScoreRows,
+    redFlags,
+  };
+}
+
+/** ARC-T2-004 Reseller Credit & Payment Report — partner balances + ageing. */
+export async function resellerCredit(orgId: string): Promise<ReportPayload> {
+  const partners = await db
+    .select({ id: resellerPartners.id, name: resellerPartners.name, code: resellerPartners.partnerCode })
+    .from(resellerPartners)
+    .where(eq(resellerPartners.orgId, orgId));
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const redFlags: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+  for (const p of partners) {
+    const txns = await db
+      .select({
+        type: resellerTransactions.type,
+        amount: resellerTransactions.amount,
+        occurredAt: resellerTransactions.occurredAt,
+        invoiceDate: resellerTransactions.invoiceDate,
+        paid: resellerTransactions.paid,
+      })
+      .from(resellerTransactions)
+      .where(and(eq(resellerTransactions.orgId, orgId), eq(resellerTransactions.partnerId, p.id)));
+
+    let supplyMtd = 0;
+    let paymentsMtd = 0;
+    let balance = 0;
+    let lastPayment: Date | null = null;
+    let lastSupply: Date | null = null;
+    let oldestUnpaid: Date | null = null;
+    for (const t of txns) {
+      const amt = num(t.amount);
+      const when = t.occurredAt ? new Date(t.occurredAt) : null;
+      if (t.type === "SUPPLY") {
+        balance += amt;
+        if (when && when >= monthStart) supplyMtd += amt;
+        if (when && (!lastSupply || when > lastSupply)) lastSupply = when;
+        if (!t.paid) {
+          const inv = t.invoiceDate ? new Date(t.invoiceDate) : when;
+          if (inv && (!oldestUnpaid || inv < oldestUnpaid)) oldestUnpaid = inv;
+        }
+      } else if (t.type === "PAYMENT") {
+        balance -= amt;
+        if (when && when >= monthStart) paymentsMtd += amt;
+        if (when && (!lastPayment || when > lastPayment)) lastPayment = when;
+      }
+    }
+    const oldestDays = oldestUnpaid ? Math.floor((Date.now() - oldestUnpaid.getTime()) / 86400000) : 0;
+    let status: "CLEAR" | "OUTSTANDING" | "OVERDUE" | "SUPPLY HOLD";
+    if (balance <= 0) status = "CLEAR";
+    else if (oldestDays <= 7) status = "OUTSTANDING";
+    else if (oldestDays <= 13) status = "OVERDUE";
+    else status = "SUPPLY HOLD";
+    if (status === "SUPPLY HOLD") redFlags.push(`${p.name}: SUPPLY HOLD — ${oldestDays} days overdue.`);
+
+    rows.push({
+      partner: p.name,
+      partnerCode: p.code,
+      stockSuppliedMtd: supplyMtd,
+      paymentsReceivedMtd: paymentsMtd,
+      currentBalance: balance,
+      oldestUnpaidDays: oldestDays,
+      accountStatus: status,
+      lastPaymentDate: lastPayment ? lastPayment.toISOString() : null,
+      lastSupplyDate: lastSupply ? lastSupply.toISOString() : null,
+    });
+  }
+  rows.sort((a, b) => num(b.currentBalance) - num(a.currentBalance));
+
+  return {
+    ref: "ARC-T2-004",
+    title: "Reseller Credit & Payment Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: null, to: null },
+    summary: {
+      partners: rows.length,
+      totalOutstanding: rows.reduce((s, r) => s + num(r.currentBalance), 0),
+      supplyHolds: rows.filter((r) => r.accountStatus === "SUPPLY HOLD").length,
+    },
+    rows,
+    redFlags,
+  };
+}
+
+/** ARC-T2-002 Staff KPI Performance Report — weekly KPIs from available signals. */
+export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(weekEnd);
+  end.setHours(23, 59, 59, 999);
+
+  const staff = await db
+    .select({ id: cashierProfiles.id, name: cashierProfiles.displayName })
+    .from(cashierProfiles)
+    .where(and(eq(cashierProfiles.orgId, orgId), eq(cashierProfiles.isActive, true)));
+
+  const redFlags: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+  for (const st of staff) {
+    // Orders handled this week by this cashier.
+    const ord = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.orgId, orgId), eq(orders.cashierId, st.id), gte(orders.createdAt, start), lte(orders.createdAt, end)));
+    const orderIds = ord.map((o) => o.id);
+    const ordersHandled = orderIds.length;
+
+    // Order accuracy: orders without a refund / total.
+    let refunded = 0;
+    if (orderIds.length) {
+      const rf = await db
+        .select({ n: sql<number>`COUNT(DISTINCT ${refunds.orderId})` })
+        .from(refunds)
+        .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)));
+      refunded = num(rf[0]?.n);
+    }
+    const accuracy = ordersHandled ? ((ordersHandled - refunded) / ordersHandled) * 100 : null;
+
+    // Satisfaction average attributed to this staff member.
+    const sat = await db
+      .select({ avg: sql<number>`AVG(${satisfactionScores.score})`, n: sql<number>`COUNT(*)` })
+      .from(satisfactionScores)
+      .where(and(eq(satisfactionScores.orgId, orgId), eq(satisfactionScores.staffId, st.id), gte(satisfactionScores.scoreDate, start), lte(satisfactionScores.scoreDate, end)));
+    const satisfaction = num(sat[0]?.n) ? num(sat[0]?.avg) : null;
+
+    // KPIs at target from what we can measure (accuracy ≥98, satisfaction ≥4.8).
+    let atTarget = 0;
+    let measured = 0;
+    if (accuracy !== null) {
+      measured++;
+      if (accuracy >= 98) atTarget++;
+    }
+    if (satisfaction !== null) {
+      measured++;
+      if (satisfaction >= 4.8) atTarget++;
+    }
+    // Scale to the 7-KPI bonus bands proportionally to what's measured.
+    const projected = measured ? Math.round((atTarget / measured) * 7) : 0;
+    let bonusTier: "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD";
+    if (projected === 7) bonusTier = "PLATINUM";
+    else if (projected >= 5) bonusTier = "GOLD";
+    else if (projected >= 3) bonusTier = "SILVER";
+    else bonusTier = "BELOW STANDARD";
+    const bonusPayable = bonusTier === "PLATINUM" ? 150 : bonusTier === "GOLD" ? 100 : bonusTier === "SILVER" ? 50 : 0;
+    if (bonusTier === "BELOW STANDARD" && ordersHandled > 0) redFlags.push(`${st.name} is BELOW STANDARD this week — review.`);
+
+    rows.push({
+      staff: st.name,
+      ordersHandled,
+      orderAccuracyRate: accuracy,
+      satisfactionScore: satisfaction,
+      kpisAtTarget: atTarget,
+      kpisMeasured: measured,
+      bonusTier,
+      bonusPayable,
+    });
+  }
+  rows.sort((a, b) => num(b.bonusPayable) - num(a.bonusPayable));
+
+  return {
+    ref: "ARC-T2-002",
+    title: "Staff KPI Performance Report",
+    generatedAt: new Date().toISOString(),
+    period: { from: start.toISOString(), to: end.toISOString() },
+    summary: {
+      staff: rows.length,
+      platinum: rows.filter((r) => r.bonusTier === "PLATINUM").length,
+      belowStandard: rows.filter((r) => r.bonusTier === "BELOW STANDARD").length,
+      totalBonus: rows.reduce((s, r) => s + num(r.bonusPayable), 0),
+    },
+    rows,
+    redFlags,
+  };
+}
+
 export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004";
 
 /** Dispatch a report by reference. */
@@ -768,11 +1143,27 @@ export async function runReport(
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
       return weeklySalesSummary(orgId, from, to);
     }
+    case "ARC-T1-003":
+      return orderStatusDashboard(orgId);
+    case "ARC-T1-005":
+      return delayLog(orgId, opts.from ?? new Date());
     case "ARC-T2-001": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
       return weeklyMarginSummary(orgId, from, to);
     }
+    case "ARC-T2-002": {
+      const to = opts.to ?? new Date();
+      const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
+      return staffKpiPerformance(orgId, from, to);
+    }
+    case "ARC-T2-003": {
+      const to = opts.to ?? new Date();
+      const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
+      return customerSatisfaction(orgId, from, to);
+    }
+    case "ARC-T2-004":
+      return resellerCredit(orgId);
     case "ARC-T3-001":
       return customerLapseRetention(orgId);
     case "ARC-T3-002":
