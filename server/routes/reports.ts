@@ -83,10 +83,15 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
         res.setHeader('Content-Disposition', `attachment; filename="${type}_report.csv"`);
         res.send(csv);
       } else {
-        // Generate PDF
-        const pdf = await storage.generatePDFReport(reportData, type);
+        // Real branded PDF (pdfkit) — previously this shipped CSV bytes as
+        // application/pdf, producing a file that would not open.
+        const period = `${fromDate.toISOString().slice(0, 10)} to ${toDate.toISOString().slice(0, 10)}`;
+        const pdf = await storage.generatePDFReport(reportData, type, period);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${type}_report.pdf"`);
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="arcarna-${type}-${toDate.toISOString().slice(0, 10)}.pdf"`,
+        );
         res.send(pdf);
       }
     } catch (error) {

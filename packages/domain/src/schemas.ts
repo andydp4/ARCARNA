@@ -5,7 +5,13 @@ export const OrderLineInput = z.object({
   unitPrice: z.number().nonnegative().finite().refine(val => val >= 0 && val < 1000000, { message: "Price must be non-negative and less than 1,000,000" })
 })
 export const PlaceOrderInput = z.object({
-  customerId: z.string().optional(),
+  // Must be a uuid when present. Walk-in orders send "" / null, which we
+  // normalise to undefined rather than reject. Validating here keeps
+  // unvalidated strings out of downstream queries (see CustomersRepo.updateMetrics).
+  customerId: z
+    .union([z.string().uuid(), z.literal(''), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v === null ? undefined : v)),
   lines: z.array(OrderLineInput).min(1),
   paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
   orgId: z.string().uuid().optional(),

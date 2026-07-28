@@ -372,8 +372,12 @@ export const CustomersRepoDrizzle: CustomersRepo = {
     // This is called after orders to update metrics
     const customerId = c as any
     
-    // Calculate RFM score
-    const rfmQuery = `
+    // Calculate RFM score.
+    // SECURITY: built with drizzle's `sql` template so `customerId` is bound as
+    // a query parameter. This previously interpolated the value into the SQL
+    // string (`rfmQuery.replace('$1', `'${customerId}'`)` + `sql.raw`), which is
+    // injectable whenever the value is not a well-formed uuid.
+    const rfmQuery = sql`
       WITH customer_orders AS (
         SELECT 
           customer_id,
@@ -381,7 +385,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
           MAX(created_at) as last_order_date,
           SUM(total) as monetary
         FROM orders
-        WHERE customer_id = $1
+        WHERE customer_id = ${customerId}
         GROUP BY customer_id
       ),
       rfm_calc AS (
@@ -421,8 +425,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       FROM rfm_calc
     `
     
-    const rfmQueryWithId = rfmQuery.replace('$1', `'${customerId}'`)
-    const rfmRaw = await getDb().execute(sql.raw(rfmQueryWithId))
+    const rfmRaw = await getDb().execute(rfmQuery)
     const rows = 'rows' in rfmRaw && Array.isArray((rfmRaw as { rows: unknown[] }).rows)
       ? (rfmRaw as { rows: Record<string, unknown>[] }).rows
       : Array.isArray(rfmRaw)
