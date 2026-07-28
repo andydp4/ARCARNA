@@ -38,9 +38,9 @@ Approved direction (owner, this session): implement **everything**, including th
 
 ## Batch 3 — Settings trust (S-P0-01/02, T-P1-07)
 
-- [ ] **S-P0-01** Label localStorage-only settings vs API-backed
-- [ ] **S-P0-02** Remove/hard-gate mock Users tab (real path = User Access)
-- [ ] **T-P1-07** Remove or fix the Dark Mode toggle (always-dark app)
+- [x] **S-P0-01** Browser-local vs account-backed settings labelled; button reads "Save to this browser" (PR #88)
+- [x] **S-P0-02** Mock Users tab removed — it toasted "User approved successfully" while doing nothing; now links to User Access (PR #88)
+- [x] **T-P1-07** Dead light/dark toggle removed (Liquid Metal tokens live on :root, so it changed nothing) (PR #88)
 
 ## Batch 4 — Toast / modal / copy standards (C-P1-01/02/04, K-P0-02/03)
 
@@ -85,8 +85,9 @@ tooling** (vite, vitest, postcss, eslint's js-yaml/brace-expansion) — **no
 production-runtime exposure**. Correct fix = one deliberate, holistic dev-tooling
 upgrade with a full test run, i.e. bundle these INTO the deferred vite/vitest work.
 
-- [~] `postcss`, `js-yaml`, `brace-expansion` — do NOT patch piecemeal (regresses); fold into the upgrade below
-- [ ] `vitest →4`, `exceljs/uuid`, `vite 5→8` — **one** deliberate upgrade batch, on its own branch, with `npm test` + build verification. **DEFERRED** per owner.
+- [x] `postcss`, `js-yaml`, `brace-expansion` — resolved by the vite 8 upgrade
+- [x] `vitest →4`, `vite 5→8` — **DONE**: vite@8.1.5 + plugin-react@5 + vitest@4 (+ esbuild 0.28, @types/node ^22 peers). Audit 33 → 28, critical cleared, build 13s → 2.4s. See `docs/VITE_UPGRADE_PLAN.md`.
+- [ ] `exceljs/uuid`, Sentry/OpenTelemetry cluster, `drizzle-kit` — remaining 28 advisories, each its own upgrade.
 
 ---
 
