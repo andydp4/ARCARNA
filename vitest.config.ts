@@ -1,7 +1,12 @@
 import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
+  // tsconfig sets `jsx: "preserve"` (correct for the Vite build), so tests that
+  // import .tsx modules need an explicit JSX transform. Vitest 2 applied one
+  // implicitly; Vitest 4 does not, and fails import analysis without this.
+  plugins: [react()],
   test: {
     environment: "node",
     include: [

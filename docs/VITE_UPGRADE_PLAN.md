@@ -1,5 +1,52 @@
 # Vite 5 → 8 upgrade plan
 
+**Status: ✅ DONE.** Executed on `chore/vite-8-upgrade`. Landed `vite@8.1.5`,
+`@vitejs/plugin-react@5`, `vitest@4.1.10`, plus two peer bumps the plan missed
+(see "What the plan got wrong" below). Audit went **33 → 28**, and the lone
+**critical was cleared**. Build, typecheck and all tests green.
+
+## Outcome
+
+| | Before | After |
+|---|---|---|
+| Advisories | 33 (1 critical, 4 high) | **28 (0 critical, 2 high)** |
+| Client build | ~13 s | **~2.4 s** (Vite 8 uses Rolldown) |
+| Tests | 182 passing | 182 passing (on Vitest 4) |
+
+## What the plan got wrong (worth remembering)
+
+1. **`esbuild` was NOT independent.** The plan said esbuild "is used only for
+   the server bundle … leave as-is". Wrong: Vite 8 declares a peer of
+   `esbuild@^0.27 || ^0.28`, so it had to go `0.25 → 0.28` too. The server
+   bundle step still builds fine.
+2. **`@types/node` blocked the install.** Vite 8 peers on
+   `@types/node@^20.19 || >=22.12`; the repo pinned `20.16.11`. Bumped to `^22.12`
+   to match the Node 22 runtime.
+3. **Vitest 4 needs an explicit JSX transform.** `tsconfig` sets
+   `jsx: "preserve"` (right for the Vite build). Vitest 2 transformed `.tsx`
+   implicitly; Vitest 4 does not, and failed import analysis on any test that
+   imports a `.tsx` module. Fixed by adding `plugins: [react()]` to
+   `vitest.config.ts`.
+
+The two de-risking facts *were* right: no DOM test env to keep in sync, and no
+config rewrite was needed beyond the JSX plugin.
+
+## Verified after the upgrade
+- `npm run build` green; `dist/index.js` server bundle unchanged in shape.
+- Safari chunking rule still holds — `vendor-radix` and `vendor-query` split,
+  no separate React/Clerk/Recharts vendor chunks.
+- Path-mounted build (`VITE_BASE_PATH=/arcarna`) emits `/arcarna/assets/…`.
+- `tsc --noEmit` 0 errors; 182 tests pass.
+
+## Remaining advisories (28) — out of scope, as planned
+The Sentry/OpenTelemetry cluster (~25 moderate), `exceljs → uuid`, and
+`drizzle-kit → @esbuild-kit/*`. Each is its own upgrade; none is in the
+vite/vitest chain.
+
+---
+
+_Original plan retained below for reference._
+
 **Status:** planned, not started. Deferred per owner; this is the execution plan for when we take the batch.
 **Motivation:** clear the build-chain security advisories (1 critical + several high/moderate) that regress a plain `npm audit fix` on this lockfile, by doing the majors deliberately on one branch with build + test verification.
 
