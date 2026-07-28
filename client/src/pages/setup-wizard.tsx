@@ -95,7 +95,8 @@ export default function SetupWizard() {
     receiptFooter: "Thank you for your business",
     receiptStyle: "standard",
     accentStyle: "arcarna",
-    businessColors: { primary: "#1e293b", accent: "#6366f1" },
+    // Truth Blue, not the stock indigo — this is the default a new org sees.
+    businessColors: { primary: "#1e293b", accent: "#1A56DB" },
     receiptLogoEnabled: false,
     invoiceLogoEnabled: false,
     invoiceBankName: "",

@@ -22,13 +22,15 @@ import { Skeleton } from "@/components/Skeleton";
 import { Download, RefreshCw, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// Semantic badge classes (styles/tokens/arcarna.css) rather than raw Tailwind
+// steps — the -700/-300 light/dark pairs assumed a light mode this app lacks.
 const SEGMENT_COLORS: Record<RfmSegment, string> = {
-  Champions: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  Loyal: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  Promising: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
-  "At-Risk": "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  Lost: "bg-red-500/15 text-red-700 dark:text-red-300",
-  New: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300",
+  Champions: "badge-success",
+  Loyal: "badge-info",
+  Promising: "badge-info",
+  "At-Risk": "badge-warning",
+  Lost: "badge-danger",
+  New: "badge-neutral",
 };
 
 type RfmSummary = {
