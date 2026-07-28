@@ -19,14 +19,6 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -61,14 +53,8 @@ import {
   CreditCard,
   Users,
   Moon,
-  Sun,
   Copy,
   Check,
-  Plus,
-  Edit,
-  Trash2,
-  UserCheck,
-  UserX,
   MapPin,
   Building,
   Phone,
@@ -83,8 +69,7 @@ export default function Settings() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('general')
   const [copiedText, setCopiedText] = useState('')
-  const [isDarkMode, setIsDarkMode] = useState(false)
-  
+
   // Load settings from localStorage or API
   const [settings, setSettings] = useState({
     // General Settings
@@ -135,39 +120,18 @@ export default function Settings() {
     defaultLocation: '',
   })
 
-  // Mock users data - would come from API
-  const [users] = useState([
-    { id: 1, name: 'Admin User', email: 'admin@example.com', role: 'admin', status: 'active' },
-    { id: 2, name: 'John Doe', email: 'john@example.com', role: 'manager', status: 'active' },
-    { id: 3, name: 'Jane Smith', email: 'jane@example.com', role: 'cashier', status: 'pending' },
-  ])
-
   useEffect(() => {
-    // Check system theme preference
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      setIsDarkMode(true)
-      document.documentElement.classList.add('dark')
-    }
-    
-    // Load saved settings
+    // Load saved settings. These are browser-local only — see saveSettings.
     const savedSettings = localStorage.getItem('settings')
     if (savedSettings) {
-      setSettings(JSON.parse(savedSettings))
+      try {
+        setSettings(JSON.parse(savedSettings))
+      } catch {
+        // Corrupt payload: keep defaults rather than crash the page.
+        localStorage.removeItem('settings')
+      }
     }
   }, [])
-
-  const toggleTheme = () => {
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-      setIsDarkMode(false)
-    } else {
-      document.documentElement.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-      setIsDarkMode(true)
-    }
-  }
 
   const handleSettingChange = (section: string, field: string, value: any) => {
     setSettings(prev => ({
@@ -178,9 +142,11 @@ export default function Settings() {
 
   const saveSettings = () => {
     localStorage.setItem('settings', JSON.stringify(settings))
+    // Be explicit about where this landed. These preferences are stored in this
+    // browser only — they do not sync to the server or to other devices.
     toast({
-      title: 'Success',
-      description: 'Settings saved successfully',
+      title: 'Saved to this browser',
+      description: 'These preferences apply on this device only. They are not synced to your account.',
     })
   }
 
@@ -194,13 +160,6 @@ export default function Settings() {
     })
   }
 
-  const handleUserAction = (userId: number, action: 'approve' | 'delete' | 'suspend') => {
-    // Would call API here
-    toast({
-      title: 'Success',
-      description: `User ${action}d successfully`,
-    })
-  }
 
   return (
     <div className="w-full">
@@ -209,7 +168,7 @@ export default function Settings() {
           icon={Settings2}
           title="Settings"
           question="How is Arcarna set up for your business?"
-          explanation="Configure your system options below; they save to this browser unless your environment syncs them server-side."
+          explanation="Business name, branding, suppliers, cashiers and feature flags save to your account. The preference fields on General, Payment, Invoice and System save to this browser only."
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -381,24 +340,19 @@ export default function Settings() {
                   <CardDescription>Customize the look and feel</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between">
+                  {/* The light/dark toggle was removed: Arcarna's Liquid Metal
+                      tokens are defined on :root, so flipping the `dark` class
+                      changed nothing users could rely on — a control that
+                      appeared to work but didn't. */}
+                  <div className="flex items-start gap-3">
+                    <Moon className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     <div>
-                      <Label htmlFor="darkMode">Interface theme</Label>
-                      <p className="text-sm text-muted-foreground">Arcarna uses a dark “Liquid Metal” interface by default. This switches the few remaining light screens.</p>
+                      <Label>Interface theme</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
+                        and shop-floor lighting. There is no light mode.
+                      </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={toggleTheme}
-                      data-testid="button-toggle-theme"
-                      aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-                    >
-                      {isDarkMode ? (
-                        <Moon className="h-4 w-4" aria-hidden="true" />
-                      ) : (
-                        <Sun className="h-4 w-4" aria-hidden="true" />
-                      )}
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -837,91 +791,35 @@ export default function Settings() {
                   User Management
                 </CardTitle>
                 <CardDescription>
-                  Demo list for UI only — use <strong>User Access</strong> in the nav for real approvals and org access.
+                  User accounts, approvals and org access are managed in User Access.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <Button className="gap-2" data-testid="button-add-user">
-                    <Plus className="h-4 w-4" />
-                    Add User
-                  </Button>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="font-mono text-xs uppercase">
-                            {user.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
-                            {user.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                            {user.status === 'pending' && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                className="min-h-[40px] w-full sm:w-auto"
-                                onClick={() => handleUserAction(user.id, 'approve')}
-                                data-testid={`button-approve-${user.id}`}
-                              >
-                                <UserCheck className="mr-2 h-4 w-4 text-green-600" />
-                                Approve
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="min-h-[40px] w-full border-amber-600/40 text-amber-800 hover:bg-amber-50 dark:text-amber-200 sm:w-auto"
-                              onClick={() => handleUserAction(user.id, 'suspend')}
-                              data-testid={`button-suspend-${user.id}`}
-                            >
-                              <UserX className="mr-2 h-4 w-4" />
-                              Suspend
-                            </Button>
-                            <div className="border-t border-destructive/20 pt-2 sm:border-0 sm:pt-0 sm:pl-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="min-h-[40px] w-full border-destructive/40 text-destructive hover:bg-destructive/10 sm:w-auto"
-                                onClick={() => handleUserAction(user.id, 'delete')}
-                                data-testid={`button-delete-user-${user.id}`}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Remove
-                              </Button>
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  This tab previously showed an example list that could not actually change
+                  anything. Real approvals, role changes and suspensions all happen on the
+                  User Access page.
+                </p>
+                <Button asChild className="gap-2" data-testid="button-open-user-access">
+                  <Link href="/user-access">
+                    <Users className="h-4 w-4" />
+                    Open User Access
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
 
-        <div className="sticky bottom-0 z-10 mt-8 flex justify-end border-t bg-background/95 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="sticky bottom-0 z-10 mt-8 flex flex-col items-end gap-2 border-t bg-background/95 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:flex-row sm:items-center sm:justify-between">
+          {/* Say plainly where this saves — these fields are browser-local, and
+              a bare "Saved successfully" previously implied account-wide sync. */}
+          <p className="text-xs text-muted-foreground">
+            Saves the preference fields to this browser only. Business name, branding, suppliers,
+            cashiers and flags save to your account from their own sections.
+          </p>
           <Button onClick={saveSettings} size="lg" className="min-h-[48px] w-full sm:w-auto" data-testid="button-save-settings">
-            Save settings
+            Save to this browser
           </Button>
         </div>
       </div>
