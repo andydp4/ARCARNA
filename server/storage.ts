@@ -165,7 +165,7 @@ export interface IStorage {
   // Reports operations
   getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
   generateCSVReport(data: any, type: string): Promise<string>;
-  generatePDFReport(data: any, type: string): Promise<Buffer>;
+  generatePDFReport(data: any, type: string, period?: string): Promise<Buffer>;
 
   // Locations operations
   getLocations(orgId: string): Promise<Location[]>;
@@ -1192,11 +1192,11 @@ export class DatabaseStorage implements IStorage {
     return csv;
   }
 
-  async generatePDFReport(data: any, type: string): Promise<Buffer> {
-    // For now, return a simple buffer with CSV content
-    // In production, you would use Puppeteer to generate actual PDF
-    const csvContent = await this.generateCSVReport(data, type);
-    return Buffer.from(csvContent);
+  async generatePDFReport(data: any, type: string, period?: string): Promise<Buffer> {
+    // Real, branded PDF via pdfkit. This previously returned CSV bytes under a
+    // .pdf filename, producing a file that would not open.
+    const { buildInsightsPdf } = await import("./services/reportPdf");
+    return buildInsightsPdf(data, type, period);
   }
 
   async getLocations(orgId: string): Promise<Location[]> {
