@@ -42,19 +42,33 @@ export function OfflineIndicator() {
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4" data-testid="offline-indicator-alert">
-      <Alert className={isOnline ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}>
+      {/* Semantic tokens, not light-mode Tailwind steps: bg-green-50 on the
+          always-dark Liquid Metal shell rendered as a near-white slab. */}
+      <Alert
+        className="border backdrop-blur"
+        style={{
+          // These tokens are complete colour values (e.g. `hsl(158 64% 45%)`),
+          // so they are used bare — wrapping them in hsl() would be invalid.
+          backgroundColor: isOnline
+            ? "color-mix(in srgb, var(--success) 14%, var(--card))"
+            : "color-mix(in srgb, var(--warning) 14%, var(--card))",
+          borderColor: isOnline
+            ? "color-mix(in srgb, var(--success) 45%, transparent)"
+            : "color-mix(in srgb, var(--warning) 45%, transparent)",
+        }}
+      >
         <div className="flex items-center gap-2">
           {isOnline ? (
             <>
-              <Cloud className="h-5 w-5 text-green-600" />
-              <AlertDescription className="text-green-800 font-medium">
+              <Cloud className="h-5 w-5" style={{ color: "hsl(var(--success))" }} />
+              <AlertDescription className="font-medium text-foreground">
                 Back online! Data will sync automatically.
               </AlertDescription>
             </>
           ) : (
             <>
-              <CloudOff className="h-5 w-5 text-orange-600" />
-              <AlertDescription className="text-orange-800 font-medium">
+              <CloudOff className="h-5 w-5" style={{ color: "hsl(var(--warning))" }} />
+              <AlertDescription className="font-medium text-foreground">
                 You're offline. Orders will be saved and synced when connection returns.
               </AlertDescription>
             </>

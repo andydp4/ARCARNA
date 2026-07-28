@@ -22,3 +22,15 @@
   --warning: hsl(38 92% 52%);
   --danger: hsl(2 78% 56%);
 }
+
+/* ── Semantic status badges ───────────────────────────────────────────────
+ * Shared by any status pill (RFM segments, stock-turn health, etc.) so state
+ * reads the same everywhere and follows the brand tokens rather than raw
+ * Tailwind colour steps. The `-700/-300` light/dark pairs these replace
+ * assumed a light mode this app does not have.
+ */
+.badge-success { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.badge-warning { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+.badge-danger  { background: color-mix(in srgb, var(--danger) 16%, transparent);  color: var(--danger); }
+.badge-info    { background: var(--truth-blue-subtle); color: var(--truth-blue-bright); }
+.badge-neutral { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--muted-foreground); }

@@ -21,10 +21,11 @@ type StockTurnResponse = {
   windowDays: number;
 };
 
+// Semantic badge classes — see styles/tokens/arcarna.css.
 const STATUS_STYLES: Record<StockTurnStatus, string> = {
-  healthy: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  watch: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  slow: "bg-red-500/15 text-red-700 dark:text-red-300",
+  healthy: "badge-success",
+  watch: "badge-warning",
+  slow: "badge-danger",
 };
 
 type SortKey = keyof Pick<
