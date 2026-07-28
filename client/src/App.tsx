@@ -40,6 +40,7 @@ const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
 const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
 const ReportsHub = lazy(() => import("@/pages/reports/index"));
+const ResellerPartnersPage = lazy(() => import("@/pages/reseller-partners"));
 const DailySalesReport = lazy(() => import("@/pages/reports/daily-sales"));
 const CurrentStockReport = lazy(() => import("@/pages/reports/current-stock"));
 const WeeklySalesReport = lazy(() => import("@/pages/reports/weekly-sales"));
@@ -119,6 +120,7 @@ function Router() {
           <Route path="/products" component={ProductManagement} />
           <Route path="/insights" component={Insights} />
           <Route path="/reports" component={ReportsHub} />
+          <Route path="/reseller-partners" component={ResellerPartnersPage} />
           <Route path="/reports/daily-sales" component={DailySalesReport} />
           <Route path="/reports/current-stock" component={CurrentStockReport} />
           <Route path="/reports/weekly-sales" component={WeeklySalesReport} />

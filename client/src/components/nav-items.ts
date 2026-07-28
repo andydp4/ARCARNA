@@ -23,6 +23,8 @@ import {
   Radio,
   Layers,
   Code2,
+  FileBarChart,
+  Handshake,
 } from 'lucide-react'
 import { VOCAB } from '@/lib/vocabulary'
 
@@ -146,6 +148,13 @@ export const navItems: NavItem[] = [
         testId: 'nav-insights-main'
       },
       {
+        key: 'reports-hub',
+        label: 'Reports',
+        href: '/reports',
+        icon: FileBarChart,
+        testId: 'nav-reports-hub'
+      },
+      {
         key: 'rfm',
         label: VOCAB.customerTruths,
         href: '/analytics/rfm',
@@ -186,6 +195,13 @@ export const navItems: NavItem[] = [
         href: '/scheduled-reports',
         icon: CalendarClock,
         testId: 'nav-scheduled-reports'
+      },
+      {
+        key: 'reseller-partners',
+        label: 'Reseller Partners',
+        href: '/reseller-partners',
+        icon: Handshake,
+        testId: 'nav-reseller-partners'
       },
       {
         key: 'cashier-payroll',
