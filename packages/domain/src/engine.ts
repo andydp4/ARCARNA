@@ -236,6 +236,20 @@ export class DomainEngine {
       const existingOrder = await this.orders.findById(orderId)
       if (!existingOrder) throw new Error('Order not found')
 
+      // SECURITY: once an order is settled ("completed"), its financials are
+      // frozen. Without this, a client could re-post lines at inflated
+      // unitPrice, which rewrites orders.total + order_items, and then refund
+      // the difference as cash or store credit — paying out more than was ever
+      // collected. Non-financial edits must go through their own routes.
+      if (existingOrder.status === 'completed') {
+        const err: any = new Error(
+          'This order is already completed. Its items and prices are locked. Refund or reopen the order instead.',
+        )
+        err.statusCode = 409
+        err.code = 'ORDER_SETTLED_IMMUTABLE'
+        throw err
+      }
+
       const stockCtx = {
         orgId: (existingOrder as any).orgId as string,
         locationId: (existingOrder as any).locationId as string | undefined,

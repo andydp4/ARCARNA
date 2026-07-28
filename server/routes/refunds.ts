@@ -191,7 +191,15 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           return res.status(400).json({ message: "Refund total must be positive" });
         }
 
-        const orderTotal = parseFloat(String(order.total));
+        // SECURITY: cap against the IMMUTABLE settlement snapshot (what was
+        // actually collected when the order completed), not `orders.total`,
+        // which post-payment line edits could inflate. Falls back to `total`
+        // for orders that never recorded a settlement (pre-migration rows).
+        const settled = (order as any).settledTotal;
+        const refundCeiling =
+          settled != null && String(settled) !== ""
+            ? parseFloat(String(settled))
+            : parseFloat(String(order.total));
         const priorRefunds = await db
           .select({ total: refunds.total })
           .from(refunds)
@@ -200,9 +208,9 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           (s, r) => s + parseFloat(String(r.total)),
           0,
         );
-        if (priorTotal + refundTotal > orderTotal + 0.01) {
+        if (priorTotal + refundTotal > refundCeiling + 0.01) {
           return res.status(400).json({
-            message: "Refund total exceeds order total",
+            message: "Refund total exceeds the amount collected for this order",
           });
         }
 
@@ -212,9 +220,11 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         );
         const shiftId = req.shift?.id ?? null;
         const earnedPoints = await pointsEarnedOnOrder(order.id);
+        // Reverse points proportionally against what was actually collected —
+        // an inflated `orders.total` would otherwise under-reverse them.
         const pointsToReverse = proportionalPointsToReverse(
           refundTotal,
-          orderTotal,
+          refundCeiling,
           earnedPoints,
         );
 
@@ -253,7 +263,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
 
           const eventId = await publishEventTx(tx as unknown as typeof db, "RefundIssued", refund.id, {
             refundId: refund.id, orderId: order.id, customerId: order.customerId, total: refundTotal,
-            orderTotal, pointsToReverse, method: refundMethod,
+            orderTotal: refundCeiling, pointsToReverse, method: refundMethod,
             storeCreditGiftCardId: storeCreditGiftCard?.card.id ?? null,
             lines: resolvedLines.map((l) => ({ lineId: l.orderLineId, qty: l.qty, productId: l.productId, sku: l.sku })),
           }, { actor: { type: "user", id: userId }, source: "api-refunds" });
