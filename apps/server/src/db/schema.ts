@@ -47,6 +47,11 @@ export const orders = pgTable('orders', {
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),
   status: varchar('status',{length:20}).default('pending'),
+  // Immutable settlement snapshot — see shared/schema.ts and migration 044.
+  // Refunds cap against this, not `total`, so post-payment line edits cannot
+  // inflate the refundable amount.
+  settled_total: numeric('settled_total',{precision:10,scale:2}),
+  settled_at: timestamp('settled_at'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

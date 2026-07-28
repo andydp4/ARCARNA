@@ -284,9 +284,19 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       
       const [currentOrder] = await db.select().from(orders).where(orderCond);
       const previousStatus = currentOrder?.status;
-      
+
+      // SECURITY: snapshot the settlement total the FIRST time this order
+      // reaches "completed". Never overwrite it — otherwise reopening an
+      // order, inflating line prices and re-completing would raise the
+      // refundable ceiling. Refunds cap against this frozen figure.
+      const isSettling =
+        validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
+      const settlementPatch = isSettling
+        ? { settled_total: (currentOrder as any)?.total, settled_at: new Date() }
+        : {};
+
       const [updated] = await db.update(orders)
-        .set({ status: validation.data.status, updated_at: new Date() })
+        .set({ status: validation.data.status, updated_at: new Date(), ...settlementPatch })
         .where(orderCond)
         .returning();
         
@@ -356,8 +366,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     } catch (error: any) {
       console.error("Error updating order:", error);
       const message = error.message || "Failed to update order";
-      const status = error.name === 'ZodError' ? 400 : 500;
-      res.status(status).json({ message, errors: error.errors });
+      // Settled-order edits are a client error (409), not a server fault.
+      const status = error.name === 'ZodError' ? 400 : (error.statusCode ?? 500);
+      res.status(status).json({ message, code: error.code, errors: error.errors });
     }
   });
 

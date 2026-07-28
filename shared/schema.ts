@@ -770,6 +770,12 @@ export const orders = pgTable("orders", {
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
   channel: varchar("channel", { length: 32 }).notNull().default("pos"),
+  // Immutable settlement snapshot: the order total at the moment it FIRST
+  // reached "completed" (i.e. what was actually collected). Never overwritten
+  // on later status changes. Refunds are capped against this, not `total`,
+  // so post-payment line edits can never raise the refundable ceiling.
+  settledTotal: numeric("settled_total", { precision: 10, scale: 2 }),
+  settledAt: timestamp("settled_at"),
   // Operational fields for the Order Status Dashboard (ARC-T1-003) and Delay
   // Log (ARC-T1-005). All optional so existing orders are unaffected.
   queuePosition: integer("queue_position"),
