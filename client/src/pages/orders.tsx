@@ -28,7 +28,10 @@ import {
   Building,
   MapPin,
   Search,
+  Star,
 } from "lucide-react";
+import { OrderOpsDialog } from "@/components/reports/OrderOpsDialog";
+import { SatisfactionDialog } from "@/components/reports/SatisfactionDialog";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
 import { ViewSelector } from "@/components/ViewSelector";
 import { useSavedViews, useApplyDefaultView } from "@/hooks/useSavedViews";
@@ -82,6 +85,8 @@ export default function Orders() {
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<string>("active");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [opsDialogOpen, setOpsDialogOpen] = useState(false);
+  const [satisfactionOpen, setSatisfactionOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -892,11 +897,57 @@ export default function Orders() {
                 )}
               </div>
             )}
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:justify-between">
+              {/* Capture points for the operational reports: collection/queue/
+                  delay details (ARC-T1-003/005) and the post-collection rating
+                  (ARC-T2-003). Without these the reports have nothing to show. */}
+              <div className="flex flex-wrap gap-2">
+                {selectedOrder && (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="min-h-[44px]"
+                      onClick={() => setOpsDialogOpen(true)}
+                      data-testid="button-order-ops"
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
+                      Collection &amp; delays
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="min-h-[44px]"
+                      onClick={() => setSatisfactionOpen(true)}
+                      data-testid="button-order-rating"
+                    >
+                      <Star className="mr-2 h-4 w-4" />
+                      Rate collection
+                    </Button>
+                  </>
+                )}
+              </div>
               <Button onClick={closeDetailsDialog} className="min-h-[44px]">Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Report capture: collection/queue/delay (ARC-T1-003/005) and the
+            post-collection rating (ARC-T2-003). */}
+        {selectedOrder && (
+          <>
+            <OrderOpsDialog
+              open={opsDialogOpen}
+              onOpenChange={setOpsDialogOpen}
+              orderId={selectedOrder.id}
+              customerName={selectedOrder.customerName}
+            />
+            <SatisfactionDialog
+              open={satisfactionOpen}
+              onOpenChange={setSatisfactionOpen}
+              orderId={selectedOrder.id}
+              customerName={selectedOrder.customerName ?? undefined}
+            />
+          </>
+        )}
 
         {/* Status Update Dialog */}
         <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>

@@ -26,6 +26,7 @@ import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
 import { registerInventoryRoutes } from "./routes/inventory";
 import { registerReportRoutes } from "./routes/reports";
+import { registerReportCaptureRoutes } from "./routes/reportCapture";
 import { registerLocationRoutes } from "./routes/locations";
 import { registerLoyaltyRoutes } from "./routes/loyalty";
 import { registerPromotionRoutes } from "./routes/promotions";
@@ -87,6 +88,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerAssistantRoutes(app, scoped);
   registerInventoryRoutes(app, scoped);
   registerReportRoutes(app, scoped);
+  registerReportCaptureRoutes(app, scoped);
   registerLocationRoutes(app, scoped);
   registerLoyaltyRoutes(app, scoped);
   registerPromotionRoutes(app, scoped);
