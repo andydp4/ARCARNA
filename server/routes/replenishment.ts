@@ -4,6 +4,7 @@ import {
   getReplenishmentRecommendations,
   createTransferDraftFromRecommendation,
   createPurchaseDraftFromRecommendation,
+  createPurchaseDraftsFromRecommendations,
   type ReplenishmentRisk,
 } from "../services/replenishment";
 import { REPLENISHMENT_ACTION_TYPES } from "@shared/schema";
@@ -41,6 +42,23 @@ const purchaseDraftSchema = z.object({
     )
     .min(1),
   sourceRecommendationJson: z.unknown().optional(),
+});
+
+const purchaseDraftBatchSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        supplierId: z.string().uuid(),
+        locationId: z.string().uuid(),
+        productId: z.string().uuid(),
+        quantity: z.number().int().positive(),
+        estimatedCost: z.number().min(0).optional(),
+        supplierSku: z.string().max(100).optional(),
+        recommendation: z.unknown().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
 });
 
 export function registerReplenishmentRoutes(app: Express) {
@@ -120,6 +138,36 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(400).json({
           code: "PURCHASE_DRAFT_ERROR",
           message: e instanceof Error ? e.message : "Failed to create purchase draft",
+        });
+      }
+    },
+  );
+
+  app.post(
+    "/api/replenishment/create-purchase-drafts",
+    ...scoped,
+    mutateRoles,
+    async (req: any, res) => {
+      try {
+        const parsed = purchaseDraftBatchSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            code: "VALIDATION_ERROR",
+            message: "Invalid body",
+            details: parsed.error.errors,
+          });
+        }
+        const ctx = req.orgContext as { orgId: string };
+        const result = await createPurchaseDraftsFromRecommendations(ctx.orgId, {
+          ...parsed.data,
+          createdBy: req.user?.claims?.sub,
+        });
+        res.status(201).json(result);
+      } catch (e) {
+        console.error(e);
+        res.status(400).json({
+          code: "PURCHASE_DRAFT_ERROR",
+          message: e instanceof Error ? e.message : "Failed to create purchase drafts",
         });
       }
     },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
@@ -12,7 +12,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Package, Plus, Minus, Search, TrendingDown, AlertCircle } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import {
+  isInventoryTab,
+  readQueryParam,
+  withQuery,
+  type InventoryTab,
+} from "@/lib/deepLink";
 import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -44,6 +50,29 @@ export default function Inventory() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [adjustmentValue, setAdjustmentValue] = useState("");
   const [adjustmentType, setAdjustmentType] = useState<"add" | "set">("add");
+
+  // `?tab=` lets other pages (purchase drafts, replenishment) link straight to
+  // the Receiving tab instead of dropping the user on Stock levels.
+  const [routeLocation, setRouteLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState<InventoryTab>(() => {
+    const requested = readQueryParam("tab");
+    return isInventoryTab(requested) ? requested : "stock";
+  });
+
+  useEffect(() => {
+    const requested = readQueryParam("tab");
+    if (isInventoryTab(requested) && requested !== activeTab) {
+      setActiveTab(requested);
+    }
+  }, [routeLocation]);
+
+  const handleTabChange = (value: string) => {
+    if (!isInventoryTab(value)) return;
+    setActiveTab(value);
+    // Preserve any record-level deep link only while its own tab is showing.
+    const receipt = value === "receiving" ? readQueryParam("receipt") : null;
+    setRouteLocation(withQuery("/inventory", { tab: value, receipt }), { replace: true });
+  };
 
   // Fetch products with real-time updates
   const { data: products = [], isLoading, refetch } = useQuery<Product[]>({
@@ -188,7 +217,7 @@ export default function Inventory() {
           question="What's in stock, and what's running out?"
           explanation="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
         />
-        <Tabs defaultValue="stock" className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-5 mb-6 min-h-[48px]">
             <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
             <TabsTrigger value="smart" data-testid="tab-smart-stock" className="gap-1">

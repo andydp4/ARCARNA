@@ -3,7 +3,11 @@ import type { Query, QueryClient, QueryKey } from "@tanstack/react-query";
 function isEndpointFamilyMatch(queryKey: QueryKey, endpoint: string): boolean {
   const [head] = queryKey;
   if (typeof head !== "string") return false;
-  return head === endpoint || head.startsWith(`${endpoint}/`);
+  // Keys are full request URLs, so a filtered list ("/api/x?status=pending")
+  // belongs to the same family as "/api/x" and must invalidate with it.
+  return (
+    head === endpoint || head.startsWith(`${endpoint}/`) || head.startsWith(`${endpoint}?`)
+  );
 }
 
 /**
@@ -88,6 +92,32 @@ export function invalidateAfterInventoryAdjustment(queryClient: QueryClient) {
     includeReports: true,
     includeAnalytics: false,
   });
+}
+
+/**
+ * Refresh after any step of the replenishment → purchase draft → receiving
+ * flow. The stages read each other's state — recommendations net off open
+ * drafts, drafts track received quantity — so a mutation in one stage makes the
+ * others stale. `includeStock` additionally refreshes stock-derived views,
+ * which only a completed goods receipt changes.
+ */
+export function invalidatePurchasingPipeline(
+  queryClient: QueryClient,
+  options?: { includeStock?: boolean },
+) {
+  const tasks = [
+    invalidateEndpointFamily(queryClient, "/api/replenishment/recommendations"),
+    invalidateEndpointFamily(queryClient, "/api/purchase-drafts"),
+    invalidateEndpointFamily(queryClient, "/api/goods-receipts"),
+    invalidateEndpointFamily(queryClient, "/api/inventory/transfers"),
+  ];
+
+  if (options?.includeStock) {
+    tasks.push(invalidateEndpointFamily(queryClient, "/api/products"));
+    tasks.push(invalidateEndpointFamily(queryClient, "/api/inventory"));
+  }
+
+  return Promise.all(tasks);
 }
 
 export function invalidateAfterCatalogMutation(queryClient: QueryClient) {

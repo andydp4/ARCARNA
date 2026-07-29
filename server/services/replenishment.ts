@@ -10,7 +10,19 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { getSmartStock } from "./operationalIntelligence";
 import { createTransfer } from "./inventoryTransfers";
-import { createPurchaseDraft } from "./purchaseDrafts";
+import {
+  createPurchaseDraft,
+  createPurchaseDraftsBatch,
+  findOpenDraftsForPairs,
+  getOnOrderQuantities,
+  onOrderKey,
+  type PurchaseDraftGroupInput,
+} from "./purchaseDrafts";
+import {
+  computeRequiredQty,
+  groupPurchaseLinesBySupplier,
+  type PurchaseLineRequest,
+} from "./replenishmentMath";
 
 export type ReplenishmentRisk = "low" | "medium" | "high" | "critical";
 
@@ -44,6 +56,10 @@ export type ReplenishmentRecommendation = {
   velocityPerDay: number;
   daysToDepletion: number | null;
   targetCoverageDays: number;
+  /** Gap to target coverage before on-order stock is taken into account. */
+  grossRequiredQty: number;
+  /** Outstanding quantity on open purchase drafts for this product+location. */
+  onOrderQty: number;
   requiredQty: number;
   transferableQty: number;
   buyQty: number;
@@ -56,6 +72,12 @@ export type ReplenishmentRecommendation = {
     warnings: string[];
   };
 };
+
+export {
+  computeRequiredQty,
+  groupPurchaseLinesBySupplier,
+  type PurchaseLineRequest,
+} from "./replenishmentMath";
 
 function roundUpToPack(qty: number, packSize: number) {
   if (packSize <= 1) return qty;
@@ -181,6 +203,8 @@ export async function getReplenishmentRecommendations(
     suppliersByProduct.set(row.productId, list);
   }
 
+  const onOrderByKey = await getOnOrderQuantities(orgId);
+
   const recommendations: ReplenishmentRecommendation[] = [];
 
   for (const row of plsRows) {
@@ -189,8 +213,13 @@ export async function getReplenishmentRecommendations(
     const risk = (smartItem?.riskLevel ?? "low") as ReplenishmentRisk;
     const daysToDepletion = smartItem?.daysToDepletion ?? null;
 
-    const targetStock = Math.ceil(velocity * targetCoverageDays);
-    const requiredQty = Math.max(0, targetStock - row.stock);
+    const onOrderQty = onOrderByKey.get(onOrderKey(row.productId, row.locationId)) ?? 0;
+    const { grossRequiredQty, requiredQty } = computeRequiredQty({
+      stock: row.stock,
+      velocityPerDay: velocity,
+      targetCoverageDays,
+      onOrderQty,
+    });
 
     const transferSources: TransferSourceSuggestion[] = [];
     let transferableQty = 0;
@@ -255,11 +284,20 @@ export async function getReplenishmentRecommendations(
       warnings.push("No supplier mapping — configure product-supplier in Settings");
     }
 
+    if (onOrderQty > 0) {
+      packNotes.push(
+        `${onOrderQty} unit(s) already on order for this location — counted towards target coverage`,
+      );
+    }
+
     let actionType: ReplenishmentActionType = "NO_ACTION";
     let whyAction = "Stock meets target coverage";
 
     if (requiredQty <= 0) {
       actionType = "NO_ACTION";
+      if (onOrderQty > 0 && grossRequiredQty > 0) {
+        whyAction = `Shortfall of ${grossRequiredQty} unit(s) is already covered by ${onOrderQty} on order`;
+      }
     } else if (transferableQty >= requiredQty && roundedBuyQty === 0) {
       actionType = "TRANSFER";
       whyAction = `Can cover ${requiredQty} units from internal surplus before purchasing`;
@@ -290,6 +328,8 @@ export async function getReplenishmentRecommendations(
       velocityPerDay: velocity,
       daysToDepletion,
       targetCoverageDays,
+      grossRequiredQty,
+      onOrderQty,
       requiredQty,
       transferableQty,
       buyQty,
@@ -319,6 +359,7 @@ export async function getReplenishmentRecommendations(
     buy: recommendations.filter((r) => r.actionType === "BUY").length,
     transferPlusBuy: recommendations.filter((r) => r.actionType === "TRANSFER_PLUS_BUY").length,
     highRisk: recommendations.filter((r) => r.risk === "high" || r.risk === "critical").length,
+    onOrder: recommendations.filter((r) => r.onOrderQty > 0).length,
   };
 
   return { targetCoverageDays, summary, items: page, offset, limit };
@@ -360,18 +401,51 @@ export async function createTransferDraftFromRecommendation(
 
 export async function createPurchaseDraftFromRecommendation(
   orgId: string,
-  body: {
-    supplierId: string;
-    locationId: string;
-    createdBy?: string;
-    sourceRecommendationJson?: unknown;
-    items: {
-      productId: string;
-      quantity: number;
-      estimatedCost?: string | number;
-      supplierSku?: string;
-    }[];
-  },
+  body: PurchaseDraftGroupInput,
 ) {
   return createPurchaseDraft(orgId, body);
+}
+
+/**
+ * Turns a selection of BUY recommendations into the smallest set of purchase
+ * drafts that covers them — one per supplier+location.
+ */
+export async function createPurchaseDraftsFromRecommendations(
+  orgId: string,
+  body: {
+    lines: PurchaseLineRequest[];
+    createdBy?: string;
+  },
+) {
+  if (!body.lines.length) {
+    throw new Error("At least one purchase line required");
+  }
+
+  const grouped = groupPurchaseLinesBySupplier(body.lines);
+  const existingOpenDrafts = await findOpenDraftsForPairs(
+    orgId,
+    grouped.map((g) => ({ supplierId: g.supplierId, locationId: g.locationId })),
+  );
+
+  const drafts = await createPurchaseDraftsBatch(
+    orgId,
+    grouped.map<PurchaseDraftGroupInput>((g) => ({
+      supplierId: g.supplierId,
+      locationId: g.locationId,
+      items: g.items,
+      createdBy: body.createdBy,
+      // Each draft records only the recommendations that produced its own lines.
+      sourceRecommendationJson: g.recommendations.length
+        ? { recommendations: g.recommendations }
+        : null,
+    })),
+  );
+
+  return {
+    drafts,
+    created: drafts.length,
+    lineCount: body.lines.length,
+    /** Pre-existing open drafts for the same supplier+location, for UI warning. */
+    existingOpenDrafts,
+  };
 }
