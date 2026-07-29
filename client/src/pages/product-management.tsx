@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient'
 import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/PageHeader'
+import { VOCAB } from '@/lib/vocabulary'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -275,12 +276,17 @@ export default function ProductManagement() {
       .split(',')
       .map((a) => a.trim())
       .filter((a) => a.length > 0)
-    const { aliases: _aliases, ...rest } = formData
+    // `stock` is deliberately NOT sent. It maps to products.stock, a legacy
+    // display-only column; real stock lives per-location in
+    // product_location_stock and is edited from Stock Truths. Sending it wrote
+    // a value nothing reads back, so saves reported success while the stock
+    // figure on screen never moved. stockLimit (par level) IS on products and
+    // is still saved here.
+    const { aliases: _aliases, stock: _stock, ...rest } = formData
     const productData = {
       ...rest,
       costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
       salePrice: parseFloat(formData.salePrice),
-      stock: formData.stock ? parseInt(formData.stock) : 0,
       stockLimit: formData.stockLimit ? parseInt(formData.stockLimit) : 100,
     }
 
@@ -581,21 +587,15 @@ export default function ProductManagement() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
+                      {/* Stock is authoritative in product_location_stock, per
+                          location. products.stock is a legacy display-only column,
+                          so an input here wrote a value nothing reads back. */}
                       <div className="grid gap-2">
-                        <Label htmlFor="stock">Initial Stock</Label>
-                        <Input
-                          id="stock"
-                          type="number"
-                          value={formData.stock}
-                          onChange={(e) => {
-                            const updated = { ...formData, stock: e.target.value }
-                            setFormData(updated)
-                          }}
-                          onBlur={() => autoSaveFormData(formData)}
-                          placeholder="100"
-                          className="min-h-[44px]"
-                          data-testid="input-product-stock"
-                        />
+                        <Label>Stock</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Set stock in {VOCAB.stockTruths} once the product is saved — stock is
+                          tracked per location.
+                        </p>
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="stockLimit">Stock Limit</Label>
@@ -987,15 +987,10 @@ export default function ProductManagement() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="grid gap-2">
-                                        <Label htmlFor="edit-stock-mobile">Stock</Label>
-                                        <Input
-                                          id="edit-stock-mobile"
-                                          type="number"
-                                          value={formData.stock}
-                                          onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                                          placeholder="100"
-                                          className="min-h-[44px]"
-                                        />
+                                        <Label>Stock</Label>
+                                        <p className="text-sm text-muted-foreground">
+                                          Change stock in {VOCAB.stockTruths}.
+                                        </p>
                                       </div>
                                       <div className="grid gap-2">
                                         <Label htmlFor="edit-stockLimit-mobile">Stock Limit</Label>
