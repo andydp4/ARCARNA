@@ -447,10 +447,10 @@ export default function TickList() {
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove Customer from Tick List</DialogTitle>
+              <DialogTitle>Remove {customerToDelete?.name} from the tick list?</DialogTitle>
               <DialogDescription>
-                Are you sure you want to remove {customerToDelete?.name} from the tick list? 
-                This will clear their credit history.
+                Their running credit balance and its history are cleared. Any amount they
+                currently owe stops being tracked here. This cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -468,7 +468,7 @@ export default function TickList() {
                 className="min-h-[44px]"
                 data-testid="button-confirm-delete"
               >
-                {deleteMutation.isPending ? 'Removing...' : 'Remove'}
+                {deleteMutation.isPending ? 'Removing…' : 'Remove from tick list'}
               </Button>
             </DialogFooter>
           </DialogContent>

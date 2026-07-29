@@ -129,7 +129,7 @@ export default function OnboardingWizard() {
     await patchStep.mutateAsync({ step: "first-sale", completed: true });
     toast({
       title: "Discovery Journey complete",
-      description: "Your £0.01 test sale is recorded. Open POS anytime for real sales.",
+      description: "Your £0.01 test sale is recorded. Use Create Order anytime for real sales.",
     });
     setLocation("/");
   };
@@ -153,7 +153,7 @@ export default function OnboardingWizard() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Button asChild className="min-h-[44px]">
-              <Link href="/create-order">Open POS</Link>
+              <Link href="/create-order">Create Order</Link>
             </Button>
             <Button asChild variant="outline" className="min-h-[44px]">
               <Link href="/">Go to dashboard</Link>
@@ -321,7 +321,7 @@ export default function OnboardingWizard() {
                   <Check className="ml-2 h-4 w-4" />
                 </Button>
                 <Button asChild variant="outline" className="w-full min-h-[44px]">
-                  <Link href="/create-order">Open POS instead</Link>
+                  <Link href="/create-order">Create Order instead</Link>
                 </Button>
               </>
             )}

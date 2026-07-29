@@ -632,7 +632,7 @@ export default function Orders() {
                   icon={PackageCheck}
                   title="No orders yet"
                   body="New orders from POS and other channels will show up here when they are created."
-                  cta={{ label: "Open POS", href: "/create-order" }}
+                  cta={{ label: "Create Order", href: "/create-order" }}
                 />
               ) : searchQuery.trim() ? (
                 <EmptyState
