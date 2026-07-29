@@ -46,8 +46,8 @@ Approved direction (owner, this session): implement **everything**, including th
 
 - [~] **C-P1-01** Toast title standardisation — failure titles normalised to sentence case across `client/src/pages` (PR #80); remaining success-title phrasing variance accepted as cosmetic
 - [ ] **C-P1-04** Sentence-case pass on modal/button titles
-- [ ] **K-P0-02** EmptyState context-specific copy on P0 pages
-- [ ] **K-P0-03** ConfirmDestructive: title + consequence + specific verb
+- [x] **K-P0-02** VERIFIED ALREADY DONE — P0 empty states already distinguish empty vs filtered vs no-match, each with icon, body copy and (where useful) a CTA
+- [x] **K-P0-03** Two native browser `confirm()` deletes (customers, products) replaced with branded ConfirmDestructive naming the record and its consequence; tick-list copy de-vagued; `requireTyping`/`confirmLabel` added so single deletes get a verb button without type-to-confirm friction
 
 ## Batch 5 — "Truths" lexicon rebrand (DECISION: approved; "Signals" rejected → Notifications stays)
 
@@ -56,15 +56,11 @@ Centralise vocabulary in one module, then apply to nav + page headers.
 - [x] **C-P0-01** Vocabulary module `client/src/lib/vocabulary.ts` (single source)
 - [x] **R-P0-07 / K-P0-04** Applied: nav + page headers → Control Centre, Truths Hub, Stock Truths, Customer Truths, Profit Truths, Business Truths (home/insights/inventory/rfm/expense-reports/BusinessHealthSection/SpatialInsightsShell)
 - [x] **C-P0-02/03 / C-P1-09** Command palette: "Open POS terminal"→"Create Order", "Open business insights"→"Open Truths Hub"; home "Analytics Overview"→"Truths Overview"
-- [ ] **K-P0-05** Notifications→Signals — **DROPPED** by owner (keep "Notifications")
+- [x] **K-P0-05** Notifications→Signals — **DROPPED** by owner; "Notifications" stays. No action.
 - [ ] **R-P0-04** 6-group sidebar IA — deferred (larger reorg, separate from renames)
-- [ ] **O-P0-01/02** Onboarding → "Discovery Journey" (next)
-- [ ] **P1 renames** shifts/channels/hour-of-day/promotions/scheduled-reports/tick-list/developer, assistant voice rules (next)
-- [ ] **R-P0-04** Sidebar into 6 groups (Control Centre · Sell · Stock · Understand · Operate · Administer)
-- [ ] **R-P0-03/07, K-P0-01/04/05** Rename surfaces: Dashboard→Control Centre, Insights→Truths Hub, Inventory→Stock Truths, RFM→Customer Truths, Expense reports→Profit Truths, Notifications→Signals, Business Health→Business Truths
-- [ ] **C-P0-02/03** Home quick-action "Reports"→Truths Hub; POS wording → "Create Order" only
-- [ ] **O-P0-01/02** Onboarding → "Discovery Journey"; step labels to spec
-- [ ] **P1 renames** shifts/channels/hour-of-day/promotions/scheduled-reports/tick-list/developer, command palette, assistant voice rules
+- [x] **O-P0-01/02** Onboarding → "Discovery Journey" (PR #79)
+- [ ] **P1 renames** shifts/channels/hour-of-day/promotions/scheduled-reports/tick-list/developer, assistant voice rules
+- [x] **C-P0-02/03** Last five user-facing "Open POS" labels → "Create Order" (insights + orders empty-state CTAs, onboarding wizard x3)
 - [ ] **PageHeader contract (K-P0-01)** title + question subtitle + action slot, applied to P0 routes
 
 ## Batch 6 — Docs / repo hygiene (X-P2-01/03) + branches

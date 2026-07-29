@@ -11,12 +11,19 @@ type Props = {
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  /**
+   * Type-to-confirm. Right for bulk deletes, needless friction for a single
+   * record — set false there and the primary action reads as the verb instead.
+   */
+  requireTyping?: boolean;
+  /** Primary button label. Use a specific verb ("Delete customer"), not "Confirm". */
+  confirmLabel?: string;
 };
 
 /**
  * Destructive confirmation, built on the standard dialog layout
  * (Question · Explanation · Primary · Secondary). The consequence is spelled
- * out in `description`; the user must type `confirmText` to enable the action.
+ * out in `description`; for bulk actions the user must also type `confirmText`.
  */
 export function ConfirmDestructive({
   open,
@@ -26,6 +33,8 @@ export function ConfirmDestructive({
   onConfirm,
   onCancel,
   busy,
+  requireTyping = true,
+  confirmLabel,
 }: Props) {
   const [typed, setTyped] = useState("");
 
@@ -46,25 +55,27 @@ export function ConfirmDestructive({
       explanation={description}
       secondaryAction={{ label: "Cancel", onClick: onCancel }}
       primaryAction={{
-        label: "Confirm",
-        disabled: typed !== confirmText,
+        label: confirmLabel ?? (requireTyping ? "Confirm" : "Delete"),
+        disabled: requireTyping && typed !== confirmText,
         onClick: () => {
           onConfirm();
           setTyped("");
         },
       }}
     >
-      <div className="space-y-2">
-        <Label htmlFor="confirm-destructive">
-          Type <span className="font-mono font-semibold">{confirmText}</span> to confirm
-        </Label>
-        <Input
-          id="confirm-destructive"
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          autoComplete="off"
-        />
-      </div>
+      {requireTyping && (
+        <div className="space-y-2">
+          <Label htmlFor="confirm-destructive">
+            Type <span className="font-mono font-semibold">{confirmText}</span> to confirm
+          </Label>
+          <Input
+            id="confirm-destructive"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+      )}
     </StandardDialog>
   );
 }

@@ -292,10 +292,11 @@ export default function Customers() {
     })
   }
 
+  // Branded confirm rather than the native browser dialog, which showed no
+  // consequence and no customer name.
   const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this customer?')) {
-      deleteMutation.mutate(id)
-    }
+    const customer = customers.find((c: Customer) => c.id === id) ?? null
+    setCustomerToDelete(customer ? { id, name: customer.name } : { id, name: 'this customer' })
   }
 
   const handleImportContact = async () => {
@@ -351,6 +352,7 @@ export default function Customers() {
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [customerToDelete, setCustomerToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const runBulk = async (action: BulkActionId, payload?: Record<string, unknown>) => {
     setBulkBusy(true)
@@ -1083,6 +1085,19 @@ export default function Customers() {
             setPendingBulkAction(null)
           }}
           busy={bulkBusy}
+        />
+        <ConfirmDestructive
+          open={customerToDelete !== null}
+          title={`Delete ${customerToDelete?.name ?? 'this customer'}?`}
+          description="Their contact details, order history link and loyalty balance are removed. Past orders stay, but will no longer show a customer. This cannot be undone."
+          requireTyping={false}
+          confirmLabel="Delete customer"
+          busy={deleteMutation.isPending}
+          onConfirm={() => {
+            if (customerToDelete) deleteMutation.mutate(customerToDelete.id)
+            setCustomerToDelete(null)
+          }}
+          onCancel={() => setCustomerToDelete(null)}
         />
       </div>
     </div>

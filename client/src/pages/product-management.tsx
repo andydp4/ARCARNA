@@ -319,10 +319,11 @@ export default function ProductManagement() {
     })
   }
 
+  // Branded confirm rather than the native browser dialog, which showed no
+  // consequence and no product name.
   const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      deleteMutation.mutate(id)
-    }
+    const product = products.find((p: any) => p.id === id)
+    setProductToDelete({ id, name: product?.name ?? 'this product' })
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -384,6 +385,7 @@ export default function ProductManagement() {
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const runBulk = async (action: BulkActionId) => {
     setBulkBusy(true)
@@ -1249,6 +1251,19 @@ export default function ProductManagement() {
             setPendingBulkAction(null)
           }}
           busy={bulkBusy}
+        />
+        <ConfirmDestructive
+          open={productToDelete !== null}
+          title={`Delete ${productToDelete?.name ?? 'this product'}?`}
+          description="The product is removed from the catalogue and can no longer be sold or restocked. Past orders keep their line items. This cannot be undone."
+          requireTyping={false}
+          confirmLabel="Delete product"
+          busy={deleteMutation.isPending}
+          onConfirm={() => {
+            if (productToDelete) deleteMutation.mutate(productToDelete.id)
+            setProductToDelete(null)
+          }}
+          onCancel={() => setProductToDelete(null)}
         />
       </div>
     </div>
