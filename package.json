@@ -157,6 +157,7 @@
     "bufferutil": "^4.0.8"
   },
   "overrides": {
-    "undici": "^7.27.1"
+    "undici": "^7.27.1",
+    "uuid": "^11.1.1"
   }
 }
