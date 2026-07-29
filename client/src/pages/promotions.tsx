@@ -206,7 +206,7 @@ export default function PromotionsPage() {
         />
         <Button onClick={() => openPromoDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-promotion">
           <Plus className="mr-2 h-4 w-4" />
-          New Campaign
+          New campaign
         </Button>
       </div>
 
@@ -396,7 +396,7 @@ export default function PromotionsPage() {
       <Dialog open={showPromoDialog} onOpenChange={setShowPromoDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingPromo ? "Edit Campaign" : "Create Campaign"}</DialogTitle>
+            <DialogTitle>{editingPromo ? "Edit campaign" : "Create campaign"}</DialogTitle>
           </DialogHeader>
           <Form {...promoForm}>
             <form onSubmit={promoForm.handleSubmit((data) => promoMutation.mutate(data))} className="space-y-4">

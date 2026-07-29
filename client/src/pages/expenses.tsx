@@ -260,12 +260,12 @@ export function ExpensesPage() {
           <a href="/expense-reports" className="flex-1 sm:flex-initial">
             <Button variant="outline" className="min-h-[44px] w-full" data-testid="button-view-reports">
               <FileText className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">View Reports</span>
+              <span className="hidden sm:inline">View reports</span>
             </Button>
           </a>
           <Button onClick={openCreateDialog} className="min-h-[44px] flex-1 sm:flex-initial" data-testid="button-add-expense">
             <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Add Expense</span>
+            <span className="hidden sm:inline">Add expense</span>
           </Button>
         </div>
       </div>
@@ -364,7 +364,7 @@ export function ExpensesPage() {
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>
-              {editingExpense ? "Edit Overhead Expense" : "Add Overhead Expense"}
+              {editingExpense ? "Edit overhead expense" : "Add overhead expense"}
             </DialogTitle>
           </DialogHeader>
           <Form {...form}>

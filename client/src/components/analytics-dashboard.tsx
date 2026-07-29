@@ -109,19 +109,19 @@ export default function AnalyticsDashboard() {
           <div className="space-y-2 sm:space-y-3">
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] lm-btn-metal rounded-lg transition-colors" data-testid="button-neworder">
               <PlusCircle className="h-5 w-5 shrink-0" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">New Order</span>
+              <span className="font-medium text-sm sm:text-base">New order</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addcustomer">
               <UserPlus className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Add Customer</span>
+              <span className="font-medium text-sm sm:text-base">Add customer</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addproduct">
               <Box className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Add Product</span>
+              <span className="font-medium text-sm sm:text-base">Add product</span>
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-createinvoice">
               <FileText className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Create Invoice</span>
+              <span className="font-medium text-sm sm:text-base">Create invoice</span>
             </button>
           </div>
         </div>

@@ -63,7 +63,7 @@ export default function ShiftsPage() {
       <PageHeader
         title="Shifts"
         question="Who was on, and did the till balance?"
-        explanation="Today's shifts, cash variances, and Z-reports"
+        explanation="Today's shifts, cash variances, and Z-reports."
       />
 
       <Card>

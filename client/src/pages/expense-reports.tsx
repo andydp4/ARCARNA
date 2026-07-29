@@ -146,7 +146,7 @@ export function ExpenseReportsPage() {
           <p className="text-destructive font-semibold mb-2">Failed to load reports</p>
           <p className="text-muted-foreground">Please try refreshing the page</p>
           <Button onClick={() => window.location.reload()} className="mt-4">
-            Refresh Page
+            Refresh page
           </Button>
         </div>
       </div>

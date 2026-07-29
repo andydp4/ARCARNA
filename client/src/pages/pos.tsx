@@ -695,36 +695,36 @@ export default function POS() {
       {/* Products Panel - Step 1: Add items (~62% on tablet landscape) */}
       <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6 lg:max-w-[62%] lg:flex-[1.62]">
         <div className="pos-section-header mb-6 pb-6">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 4 · Add items</p>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <PageHeader
-              className="!mb-0"
-              title="Create Order"
-              question="What is this customer buying?"
-              explanation="Search products, build the cart, then check out."
-            />
-            <div className="flex flex-wrap gap-2">
-              <CashierShiftBadge />
-              {shiftId && (
-                <Button
-                  variant="outline"
-                  className="lm-btn-outline min-h-[44px] shrink-0"
-                  onClick={() => setShiftCloseOpen(true)}
-                >
-                  <Clock className="mr-2 h-4 w-4" />
-                  Close shift
-                </Button>
-              )}
-              {!isMobile && (
-                <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
-                  <Link href="/">
-                    <Package className="mr-2 h-4 w-4" />
-                    Dashboard
-                  </Link>
-                </Button>
-              )}
-            </div>
-          </div>
+          <PageHeader
+            className="mb-4"
+            eyebrow="Step 1 of 4 · Add items"
+            title="Create Order"
+            question="What is this customer buying?"
+            explanation="Search products, build the cart, then check out."
+            action={
+              <>
+                <CashierShiftBadge />
+                {shiftId && (
+                  <Button
+                    variant="outline"
+                    className="lm-btn-outline min-h-[44px] shrink-0"
+                    onClick={() => setShiftCloseOpen(true)}
+                  >
+                    <Clock className="mr-2 h-4 w-4" />
+                    Close shift
+                  </Button>
+                )}
+                {!isMobile && (
+                  <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
+                    <Link href="/">
+                      <Package className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </Link>
+                  </Button>
+                )}
+              </>
+            }
+          />
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-metal-muted" />
             <Input

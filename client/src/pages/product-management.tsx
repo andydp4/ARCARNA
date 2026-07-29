@@ -434,206 +434,206 @@ export default function ProductManagement() {
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col gap-4 mb-4 sm:mb-6">
-          <PageHeader
-            className="!mb-0"
-            title="Products"
-            question="What you sell — and is it set up right?"
-            explanation="Add, edit, and manage your product catalogue."
-          />
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              className="gap-2 min-h-[44px]"
-              onClick={downloadTemplate}
-              data-testid="button-download-template"
-            >
-              <Download className="h-4 w-4" />
-              CSV Template
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 min-h-[44px]"
-              onClick={() => fileInputRef.current?.click()}
-              data-testid="button-import-csv"
-            >
-              <Upload className="h-4 w-4" />
-              Import CSV
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
-              <DialogTrigger asChild>
-                <Button className="gap-2 min-h-[44px]" data-testid="button-add-product">
-                  <Plus className="h-4 w-4" />
-                  Add Product
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Add New Product</DialogTitle>
-                  <DialogDescription>
-                    Enter product information to add to your catalog
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="productId">Product ID</Label>
-                    <Input
-                      id="productCode"
-                      value={formData.productCode}
-                      onChange={(e) => {
-                        const updated = { ...formData, productCode: e.target.value }
-                        setFormData(updated)
-                      }}
-                      onBlur={() => autoSaveFormData(formData)}
-                      placeholder="PRD001 (optional)"
-                      className="min-h-[44px]"
-                      data-testid="input-product-id"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Name *</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => {
-                        const updated = { ...formData, name: e.target.value }
-                        setFormData(updated)
-                      }}
-                      onBlur={() => autoSaveFormData(formData)}
-                      placeholder="Product Name"
-                      className="min-h-[44px]"
-                      data-testid="input-product-name"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="barcode">Barcode</Label>
-                    <Input
-                      id="barcode"
-                      value={formData.barcode}
-                      onChange={(e) => {
-                        const updated = { ...formData, barcode: e.target.value }
-                        setFormData(updated)
-                      }}
-                      onBlur={() => autoSaveFormData(formData)}
-                      placeholder="123456789"
-                      className="min-h-[44px]"
-                      data-testid="input-product-barcode"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="aliases">Aliases (WhatsApp / order matching)</Label>
-                    <Input
-                      id="aliases"
-                      value={formData.aliases}
-                      onChange={(e) => {
-                        const updated = { ...formData, aliases: e.target.value }
-                        setFormData(updated)
-                      }}
-                      onBlur={() => autoSaveFormData(formData)}
-                      placeholder="coke, large coke, coca cola"
-                      className="min-h-[44px]"
-                      data-testid="input-product-aliases"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Comma-separated shorthand names customers might use in WhatsApp messages.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="costPrice">Cost Price</Label>
-                      <Input
-                        id="costPrice"
-                        type="number"
-                        step="0.01"
-                        value={formData.costPrice}
-                        onChange={(e) => {
-                          const updated = { ...formData, costPrice: e.target.value }
-                          setFormData(updated)
-                        }}
-                        onBlur={() => autoSaveFormData(formData)}
-                        placeholder="5.00"
-                        className="min-h-[44px]"
-                        data-testid="input-product-cost-price"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="salePrice">Sale Price *</Label>
-                      <Input
-                        id="salePrice"
-                        type="number"
-                        step="0.01"
-                        value={formData.salePrice}
-                        onChange={(e) => {
-                          const updated = { ...formData, salePrice: e.target.value }
-                          setFormData(updated)
-                        }}
-                        onBlur={() => autoSaveFormData(formData)}
-                        placeholder="9.99"
-                        className="min-h-[44px]"
-                        data-testid="input-product-sale-price"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="stock">Initial Stock</Label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stock}
-                        onChange={(e) => {
-                          const updated = { ...formData, stock: e.target.value }
-                          setFormData(updated)
-                        }}
-                        onBlur={() => autoSaveFormData(formData)}
-                        placeholder="100"
-                        className="min-h-[44px]"
-                        data-testid="input-product-stock"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="stockLimit">Stock Limit</Label>
-                      <Input
-                        id="stockLimit"
-                        type="number"
-                        value={formData.stockLimit}
-                        onChange={(e) => {
-                          const updated = { ...formData, stockLimit: e.target.value }
-                          setFormData(updated)
-                        }}
-                        onBlur={() => autoSaveFormData(formData)}
-                        placeholder="500"
-                        className="min-h-[44px]"
-                        data-testid="input-product-stock-limit"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter className="gap-2">
-                  <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
-                    Cancel
+        <PageHeader
+          className="mb-4 sm:mb-6"
+          title="Products"
+          question="What do you sell, and is it priced right?"
+          explanation="Add, edit, and manage your product catalogue."
+          action={
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                className="gap-2 min-h-[44px]"
+                onClick={downloadTemplate}
+                data-testid="button-download-template"
+              >
+                <Download className="h-4 w-4" />
+                CSV template
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2 min-h-[44px]"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-import-csv"
+              >
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2 min-h-[44px]" data-testid="button-add-product">
+                    <Plus className="h-4 w-4" />
+                    Add product
                   </Button>
-                  <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">
-                    {createMutation.isPending ? 'Creating...' : 'Create Product'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add new product</DialogTitle>
+                    <DialogDescription>
+                      Enter product information to add to your catalog
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="productId">Product ID</Label>
+                      <Input
+                        id="productCode"
+                        value={formData.productCode}
+                        onChange={(e) => {
+                          const updated = { ...formData, productCode: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
+                        placeholder="PRD001 (optional)"
+                        className="min-h-[44px]"
+                        data-testid="input-product-id"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="name">Name *</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => {
+                          const updated = { ...formData, name: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
+                        placeholder="Product Name"
+                        className="min-h-[44px]"
+                        data-testid="input-product-name"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="barcode">Barcode</Label>
+                      <Input
+                        id="barcode"
+                        value={formData.barcode}
+                        onChange={(e) => {
+                          const updated = { ...formData, barcode: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
+                        placeholder="123456789"
+                        className="min-h-[44px]"
+                        data-testid="input-product-barcode"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="aliases">Aliases (WhatsApp / order matching)</Label>
+                      <Input
+                        id="aliases"
+                        value={formData.aliases}
+                        onChange={(e) => {
+                          const updated = { ...formData, aliases: e.target.value }
+                          setFormData(updated)
+                        }}
+                        onBlur={() => autoSaveFormData(formData)}
+                        placeholder="coke, large coke, coca cola"
+                        className="min-h-[44px]"
+                        data-testid="input-product-aliases"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Comma-separated shorthand names customers might use in WhatsApp messages.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="costPrice">Cost Price</Label>
+                        <Input
+                          id="costPrice"
+                          type="number"
+                          step="0.01"
+                          value={formData.costPrice}
+                          onChange={(e) => {
+                            const updated = { ...formData, costPrice: e.target.value }
+                            setFormData(updated)
+                          }}
+                          onBlur={() => autoSaveFormData(formData)}
+                          placeholder="5.00"
+                          className="min-h-[44px]"
+                          data-testid="input-product-cost-price"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="salePrice">Sale Price *</Label>
+                        <Input
+                          id="salePrice"
+                          type="number"
+                          step="0.01"
+                          value={formData.salePrice}
+                          onChange={(e) => {
+                            const updated = { ...formData, salePrice: e.target.value }
+                            setFormData(updated)
+                          }}
+                          onBlur={() => autoSaveFormData(formData)}
+                          placeholder="9.99"
+                          className="min-h-[44px]"
+                          data-testid="input-product-sale-price"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="stock">Initial Stock</Label>
+                        <Input
+                          id="stock"
+                          type="number"
+                          value={formData.stock}
+                          onChange={(e) => {
+                            const updated = { ...formData, stock: e.target.value }
+                            setFormData(updated)
+                          }}
+                          onBlur={() => autoSaveFormData(formData)}
+                          placeholder="100"
+                          className="min-h-[44px]"
+                          data-testid="input-product-stock"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="stockLimit">Stock Limit</Label>
+                        <Input
+                          id="stockLimit"
+                          type="number"
+                          value={formData.stockLimit}
+                          onChange={(e) => {
+                            const updated = { ...formData, stockLimit: e.target.value }
+                            setFormData(updated)
+                          }}
+                          onBlur={() => autoSaveFormData(formData)}
+                          placeholder="500"
+                          className="min-h-[44px]"
+                          data-testid="input-product-stock-limit"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter className="gap-2">
+                    <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">
+                      {createMutation.isPending ? 'Creating...' : 'Create Product'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          }
+        />
 
         {/* CSV Import Dialog */}
         <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Import Products from CSV</DialogTitle>
+              <DialogTitle>Import products from CSV</DialogTitle>
               <DialogDescription>
                 Review and confirm the products to import
               </DialogDescription>
@@ -911,7 +911,7 @@ export default function ProductManagement() {
                                 </DialogTrigger>
                                 <DialogContent className="max-w-md">
                                   <DialogHeader>
-                                    <DialogTitle>Edit Product</DialogTitle>
+                                    <DialogTitle>Edit product</DialogTitle>
                                     <DialogDescription>Update product information</DialogDescription>
                                   </DialogHeader>
                                   <div className="grid gap-4 py-4">
@@ -1103,7 +1103,7 @@ export default function ProductManagement() {
                               </DialogTrigger>
                               <DialogContent className="max-w-md">
                                 <DialogHeader>
-                                  <DialogTitle>Edit Product</DialogTitle>
+                                  <DialogTitle>Edit product</DialogTitle>
                                   <DialogDescription>
                                     Update product information
                                   </DialogDescription>

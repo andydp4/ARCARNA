@@ -403,151 +403,151 @@ export default function Customers() {
   return (
     <div className="w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6">
-          <PageHeader
-            className="!mb-0"
-            title="Customers"
-            question="Who buys from you, and what are they worth?"
-            explanation="Manage your customer records and recent activity."
-          />
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Button
-              variant="outline"
-              className="gap-2 min-h-[44px] w-full sm:w-auto"
-              onClick={() => setShowContactsImport(true)}
-              data-testid="button-bulk-import-contacts"
-            >
-              <FileUp className="h-4 w-4" />
-              Import from Contacts
-            </Button>
-            <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
-            <DialogTrigger asChild>
-              <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
-                <UserPlus className="h-4 w-4" />
-                Add Customer
+        <PageHeader
+          className="mb-4 sm:mb-6"
+          title="Customers"
+          question="Who buys from you, and what are they worth?"
+          explanation="Manage your customer records and recent activity."
+          action={
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <Button
+                variant="outline"
+                className="gap-2 min-h-[44px] w-full sm:w-auto"
+                onClick={() => setShowContactsImport(true)}
+                data-testid="button-bulk-import-contacts"
+              >
+                <FileUp className="h-4 w-4" />
+                Import from Contacts
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Customer</DialogTitle>
-                <DialogDescription>
-                  Enter customer information to create a new record
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-3 border-b grid gap-2 sm:grid-cols-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleImportContact}
-                  className="w-full gap-2 min-h-[44px]"
-                  data-testid="button-import-contact"
-                >
-                  <Contact className="h-4 w-4" />
-                  Pick from device
+              <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
+                  <UserPlus className="h-4 w-4" />
+                  Add customer
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddDialog(false)
-                    setShowContactsImport(true)
-                  }}
-                  className="w-full gap-2 min-h-[44px]"
-                >
-                  <FileUp className="h-4 w-4" />
-                  Import .vcf / CSV
-                </Button>
-              </div>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => {
-                      const updated = { ...formData, name: e.target.value }
-                      setFormData(updated)
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add new customer</DialogTitle>
+                  <DialogDescription>
+                    Enter customer information to create a new record
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-3 border-b grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleImportContact}
+                    className="w-full gap-2 min-h-[44px]"
+                    data-testid="button-import-contact"
+                  >
+                    <Contact className="h-4 w-4" />
+                    Pick from device
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddDialog(false)
+                      setShowContactsImport(true)
                     }}
-                    onBlur={() => autoSaveFormData(formData)}
-                    placeholder="John Doe"
-                    className="min-h-[44px]"
-                    data-testid="input-customer-name"
-                  />
+                    className="w-full gap-2 min-h-[44px]"
+                  >
+                    <FileUp className="h-4 w-4" />
+                    Import .vcf / CSV
+                  </Button>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => {
-                      const updated = { ...formData, phone: e.target.value }
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="name">Name *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => {
+                        const updated = { ...formData, name: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
+                      placeholder="John Doe"
+                      className="min-h-[44px]"
+                      data-testid="input-customer-name"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => {
+                        const updated = { ...formData, phone: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
+                      placeholder="+44 1234 567890"
+                      className="min-h-[44px]"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => {
+                        const updated = { ...formData, email: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
+                      placeholder="customer@example.com"
+                      className="min-h-[44px]"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="address">Billing Address</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => {
+                        const updated = { ...formData, address: e.target.value }
+                        setFormData(updated)
+                      }}
+                      onBlur={() => autoSaveFormData(formData)}
+                      placeholder="123 Main Street, City"
+                      className="min-h-[44px]"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="category">Category</Label>
+                    <Select value={formData.category} onValueChange={(value) => {
+                      const updated = { ...formData, category: value }
                       setFormData(updated)
-                    }}
-                    onBlur={() => autoSaveFormData(formData)}
-                    placeholder="+44 1234 567890"
-                    className="min-h-[44px]"
-                  />
+                      autoSaveFormData(updated)
+                    }}>
+                      <SelectTrigger className="min-h-[44px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Bronze">Bronze</SelectItem>
+                        <SelectItem value="Silver">Silver</SelectItem>
+                        <SelectItem value="Gold">Gold</SelectItem>
+                        <SelectItem value="Platinum">Platinum</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => {
-                      const updated = { ...formData, email: e.target.value }
-                      setFormData(updated)
-                    }}
-                    onBlur={() => autoSaveFormData(formData)}
-                    placeholder="customer@example.com"
-                    className="min-h-[44px]"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="address">Billing Address</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => {
-                      const updated = { ...formData, address: e.target.value }
-                      setFormData(updated)
-                    }}
-                    onBlur={() => autoSaveFormData(formData)}
-                    placeholder="123 Main Street, City"
-                    className="min-h-[44px]"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={formData.category} onValueChange={(value) => {
-                    const updated = { ...formData, category: value }
-                    setFormData(updated)
-                    autoSaveFormData(updated)
-                  }}>
-                    <SelectTrigger className="min-h-[44px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Bronze">Bronze</SelectItem>
-                      <SelectItem value="Silver">Silver</SelectItem>
-                      <SelectItem value="Gold">Gold</SelectItem>
-                      <SelectItem value="Platinum">Platinum</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
-                  Cancel
-                </Button>
-                <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]">
-                  {createMutation.isPending ? 'Creating...' : 'Create Customer'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          </div>
-        </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]">
+                    {createMutation.isPending ? 'Creating...' : 'Create Customer'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            </div>
+          }
+        />
 
         <Dialog
           open={showContactsImport}
@@ -784,7 +784,7 @@ export default function Customers() {
                               </DialogTrigger>
                               <DialogContent>
                                 <DialogHeader>
-                                  <DialogTitle>Edit Customer</DialogTitle>
+                                  <DialogTitle>Edit customer</DialogTitle>
                                   <DialogDescription>Update customer information</DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
@@ -983,7 +983,7 @@ export default function Customers() {
                                 </DialogTrigger>
                                 <DialogContent>
                                   <DialogHeader>
-                                    <DialogTitle>Edit Customer</DialogTitle>
+                                    <DialogTitle>Edit customer</DialogTitle>
                                     <DialogDescription>Update customer information</DialogDescription>
                                   </DialogHeader>
                                   <div className="grid gap-4 py-4">
