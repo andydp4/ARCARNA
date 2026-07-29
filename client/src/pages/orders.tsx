@@ -494,7 +494,7 @@ export default function Orders() {
         <PageHeader
           title="Open Orders"
           question="What still needs finishing?"
-          explanation="Track and manage orders from creation through completion. Filter by status or search by customer, ID, or payment."
+          explanation="Every order from creation to completion — filter by status, or search by customer, ID, or payment."
           action={
             ordersFetching ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -953,7 +953,7 @@ export default function Orders() {
         <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Update Order Status</DialogTitle>
+              <DialogTitle>Update order status</DialogTitle>
               <DialogDescription>
                 Change the status of order #{selectedOrder?.id.slice(0, 8)}
               </DialogDescription>

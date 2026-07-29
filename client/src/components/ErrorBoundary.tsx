@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={() => window.location.reload()}
                 className="w-full"
               >
-                Reload Application
+                Reload application
               </Button>
             </CardContent>
           </Card>

@@ -151,7 +151,7 @@ export default function LoyaltyPage() {
         />
         <Button onClick={() => openTierDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-tier">
           <Plus className="mr-2 h-4 w-4" />
-          Add Tier
+          Add tier
         </Button>
       </div>
 
@@ -401,7 +401,7 @@ export default function LoyaltyPage() {
       <Dialog open={showTierDialog} onOpenChange={setShowTierDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingTier ? "Edit Loyalty Tier" : "Create Loyalty Tier"}</DialogTitle>
+            <DialogTitle>{editingTier ? "Edit loyalty tier" : "Create loyalty tier"}</DialogTitle>
           </DialogHeader>
           <Form {...tierForm}>
             <form onSubmit={tierForm.handleSubmit((data) => tierMutation.mutate(data))} className="space-y-4">

@@ -385,7 +385,7 @@ export default function WorkerLogsPage() {
                               </DialogTrigger>
                               <DialogContent className="max-w-2xl">
                                 <DialogHeader>
-                                  <DialogTitle>Log Details</DialogTitle>
+                                  <DialogTitle>Log details</DialogTitle>
                                   <DialogDescription>
                                     {log.workerName} - {log.eventType}
                                   </DialogDescription>
@@ -496,7 +496,7 @@ export default function WorkerLogsPage() {
                 <div className="flex items-end">
                   <Button variant="outline" onClick={() => refetchJobs()} data-testid="btn-refresh-jobs">
                     <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh Jobs
+                    Refresh jobs
                   </Button>
                 </div>
               </div>

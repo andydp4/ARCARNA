@@ -412,7 +412,7 @@ export default function Inventory() {
                                 data-testid={`button-add-stock-${product.id}`}
                               >
                                 <Plus className="h-4 w-4 mr-2" />
-                                Add Stock
+                                Add stock
                               </Button>
                               <Button
                                 size="sm"
@@ -421,7 +421,7 @@ export default function Inventory() {
                                 className="flex-1 min-h-[44px]"
                                 data-testid={`button-set-stock-${product.id}`}
                               >
-                                Set Level
+                                Set level
                               </Button>
                             </div>
                           </div>
@@ -523,7 +523,7 @@ export default function Inventory() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {adjustmentType === "add" ? "Adjust Stock" : "Set Stock Level"}
+              {adjustmentType === "add" ? "Adjust stock" : "Set stock level"}
             </DialogTitle>
             <DialogDescription>
               {selectedProduct && (

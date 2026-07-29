@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -273,6 +273,20 @@ export default function Locations() {
           title="Locations"
           question="How is each location performing?"
           explanation="Manage multiple store locations, defaults, and per-site stats."
+          action={
+            <Button
+              onClick={() => {
+                setEditingLocation(null);
+                form.reset();
+                setDialogOpen(true);
+              }}
+              className="min-h-[44px]"
+              data-testid="button-add-location"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add location
+            </Button>
+          }
         />
         {locations.length > 0 && (
           <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -365,18 +379,9 @@ export default function Locations() {
                 </CardDescription>
               </div>
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button onClick={() => {
-                    setEditingLocation(null);
-                    form.reset();
-                  }} className="min-h-[44px]" data-testid="button-add-location">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Location
-                  </Button>
-                </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle>{editingLocation ? "Edit Location" : "Add New Location"}</DialogTitle>
+                    <DialogTitle>{editingLocation ? "Edit location" : "Add new location"}</DialogTitle>
                     <DialogDescription>
                       {editingLocation 
                         ? "Update the location details below."
@@ -902,7 +907,7 @@ export default function Locations() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Stock Levels - {stockLocationName}
+              Stock levels - {stockLocationName}
             </DialogTitle>
             <DialogDescription>
               View current inventory stock at this location
