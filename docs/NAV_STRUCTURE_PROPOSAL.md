@@ -1,6 +1,16 @@
-# Proposed sidebar structure — 6 groups (R-P0-04)
+# Sidebar structure — 6 groups (R-P0-04) — **SHIPPED**
 
-**For review before it lands.** Built from the approved table in
+**Owner decisions, now implemented:**
+- **Truths lexicon kept.** `ARCARNA_LANGUAGE_SPECIFICATION.md` §3 is **stale** —
+  its "current label" column says `/inventory` is "Inventory" when the app has
+  shipped "Stock Truths", proving the table predates the rebrand. Where the two
+  disagree, `vocabulary.ts` wins: **Truths Hub · Stock Truths · Customer Truths ·
+  Profit Truths**.
+- **`/reports` stays "Reports"**, not "Evidence" — it's the word staff and
+  ARC-RPT-SPEC-001 both use, and all 15 report pages say Reports.
+- Grouping (the six sections) still follows §3. Only the labels diverge.
+
+**Original review notes below.** Built from the approved table in
 `docs/specs/ARCARNA_LANGUAGE_SPECIFICATION.md` §3, cross-checked against every
 route actually registered in `client/src/App.tsx`.
 

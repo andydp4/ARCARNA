@@ -14,6 +14,7 @@ import {
   type CommandPaletteAction,
 } from "@shared/commandPaletteActions";
 import type { OrdersListOrder } from "@/components/orders-row";
+import { VOCAB } from "@/lib/vocabulary";
 import {
   STORAGE_COMMAND_PALETTE_RECENT,
   STORAGE_COMMAND_PALETTE_RECENT_LEGACY,
@@ -31,10 +32,12 @@ export type CommandPaletteItem = {
   recentBoost?: number;
 };
 
+// Labels mirror the sidebar (nav-items.ts) — both read from VOCAB so the
+// palette and the nav can never drift apart.
 const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: LucideIcon }> = [
-  { id: "page-home", label: "Dashboard", href: "/", icon: Home },
-  { id: "page-pos", label: "Create Order", href: "/create-order", icon: ShoppingCart },
-  { id: "page-orders", label: "Open Orders", href: "/open-orders", icon: PackageCheck },
+  { id: "page-home", label: VOCAB.controlCentre, href: "/", icon: Home },
+  { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart },
+  { id: "page-orders", label: VOCAB.openOrders, href: "/open-orders", icon: PackageCheck },
   { id: "page-products", label: "Products", href: "/products", icon: Package },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings },
