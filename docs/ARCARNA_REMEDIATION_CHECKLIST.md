@@ -66,7 +66,7 @@ Centralise vocabulary in one module, then apply to nav + page headers.
 ## Batch 6 — Docs / repo hygiene (X-P2-01/03) + branches
 
 - [x] **X-P2-01** Commit audit + this checklist to `docs/`
-- [ ] Aggressive stale-branch cleanup (merged + closed-PR + dead cursor/* investigation branches; verify no open PR first)
+- [~] Stale-branch cleanup — the 3 last open cursor drafts (#50/#52/#53) reviewed and closed as superseded by #77/#86, so all 20 `cursor/critical-bug-*` branches are now PR-free. Deletion itself must run outside the agent (branch deletes are blocked through the git proxy): run `scripts/cleanup-stale-branches.sh`. 67 remote branches today.
 - [x] `attached_assets/` + `handoff/` — archived to `archive/legacy/2026-07-pre-arcarna/` with 6 dead scripts (PR #90)
 
 ## Dependencies (fix all except vite 5→8)
