@@ -20,8 +20,14 @@ git checkout "$BRANCH"
 git pull origin "$BRANCH"
 echo "On commit: $(git log -1 --oneline)"
 
-echo "=== npm install ==="
-npm install
+echo "=== npm ci (lockfile-exact) ==="
+# `npm install` MUTATES whatever tree is already on the box — a production
+# deploy once reported "added 16, removed 62, changed 17 packages", so the
+# built artifact did not match the committed lockfile (a local `npm ci` at the
+# same commit produced a 390kB entry chunk; this box produced 649kB).
+# `npm ci` installs the lockfile exactly and fails loudly if package.json and
+# package-lock.json have drifted apart, which is what a deploy should do.
+npm ci
 
 echo "=== build ==="
 npm run build
