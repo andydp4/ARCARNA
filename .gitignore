@@ -15,3 +15,7 @@ docs/training/*.pdf
 # New Astro brand fonts — licensed desktop files, embedded in exported PDFs only.
 # Never commit/redistribute (arcarna Brand Bible, Book 06, Font licensing).
 docs/training/fonts/*.otf
+
+# Agent worktrees + local agent state. Ephemeral scratch (each worktree is a
+# full repo copy) — never commit these.
+.claude/
