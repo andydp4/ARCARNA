@@ -21,6 +21,7 @@
     "phase2d:seed": "tsx scripts/phase2d-seed.ts",
     "phase2d:test": "tsx scripts/phase2d-test.ts",
     "auth:link-clerk": "tsx scripts/link-clerk-auth-by-email.ts",
+    "audit:wiring": "node scripts/audit-ui-wiring.mjs",
     "gate": "tsx scripts/release-gate.ts",
     "db:migrate": "bash scripts/apply-migrations-pm2.sh",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",

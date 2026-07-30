@@ -30,6 +30,9 @@ jobs:
       - name: Audit storage orgId usage
         run: node scripts/audit-storage-orgid.mjs
 
+      - name: Audit UI wiring (dead links, unparsed mutation results)
+        run: node scripts/audit-ui-wiring.mjs
+
       - name: Run tests
         run: npm test
 

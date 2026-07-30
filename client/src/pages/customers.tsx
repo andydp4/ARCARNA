@@ -148,7 +148,8 @@ export default function Customers() {
         });
         return { offline: true };
       }
-      return apiRequest('POST', '/api/customers', data);
+      await apiRequest('POST', '/api/customers', data);
+      return { offline: false };
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
@@ -185,7 +186,8 @@ export default function Customers() {
         });
         return { offline: true };
       }
-      return apiRequest('PUT', `/api/customers/${id}`, data);
+      await apiRequest('PUT', `/api/customers/${id}`, data);
+      return { offline: false };
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })

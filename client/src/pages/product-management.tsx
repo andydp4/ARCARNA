@@ -195,12 +195,14 @@ export default function ProductManagement() {
 
   // Import products mutation
   const importMutation = useMutation({
-    mutationFn: (rows: Record<string, unknown>[]) =>
-      apiRequest('POST', '/api/products/import', {
+    mutationFn: async (rows: Record<string, unknown>[]) => {
+      const res = await apiRequest('POST', '/api/products/import', {
         rows,
         confirmed: true,
         duplicateMode: 'skip',
-      }),
+      })
+      return res.json()
+    },
     onSuccess: async (data: any) => {
       await refreshAfterProductMutation()
       setImportResults(data)
