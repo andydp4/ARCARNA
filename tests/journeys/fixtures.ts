@@ -125,3 +125,114 @@ export function looksLikePdf(buf: Buffer): boolean {
 export function uniqueSuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
+
+// ------------------------------------------------------- money-path helpers
+
+/** Fails with the response body included — a bare status code is not debuggable. */
+export async function okJson<T = any>(res: {
+  ok(): boolean;
+  status(): number;
+  json(): Promise<any>;
+  text(): Promise<string>;
+  url(): string;
+}): Promise<T> {
+  if (!res.ok()) {
+    throw new Error(`${res.status()} from ${res.url()}: ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function firstLocationId(api: APIRequestContext): Promise<string> {
+  const locations = await okJson<{ id: string }[]>(await api.get("/api/locations"));
+  if (!locations.length) throw new Error("No locations — database not seeded?");
+  return locations[0].id;
+}
+
+/**
+ * POST /api/orders is gated by requireOpenShift, so any order journey must open
+ * a shift first. Reuses the caller's existing open shift when there is one,
+ * because a second open for the same user+location is rejected.
+ */
+export async function ensureOpenShift(
+  api: APIRequestContext,
+  locationId: string,
+  openingFloat = 100,
+): Promise<string> {
+  const current = await api.get("/api/shifts/current", {
+    headers: { "x-location-id": locationId },
+  });
+  if (current.ok()) {
+    const body = await current.json();
+    const existing = body?.id ?? body?.shift?.id;
+    if (existing && (body?.status ?? body?.shift?.status) === "open") return existing;
+  }
+  const opened = await okJson<{ id: string }>(
+    await api.post("/api/shifts/open", {
+      headers: { "x-location-id": locationId },
+      data: { locationId, openingFloat },
+    }),
+  );
+  return opened.id;
+}
+
+export type OrderLine = { productId: string; quantity: number; unitPrice: number };
+
+export async function placeOrder(
+  api: APIRequestContext,
+  locationId: string,
+  lines: OrderLine[],
+  paymentMethod: "cash" | "card" | "transfer" | "tick" | "gift_card" = "cash",
+  extra: Record<string, unknown> = {},
+) {
+  return api.post("/api/orders", {
+    headers: { "x-location-id": locationId },
+    data: { lines, paymentMethod, ...extra },
+  });
+}
+
+/**
+ * Stock for a product at a location, as the API reports it.
+ *
+ * There is no dedicated location-stock endpoint; `GET /api/products` resolves
+ * stock against the active location (see locationStockScope.test.ts), so the
+ * location is passed as a header rather than a query param.
+ */
+export async function locationStock(
+  api: APIRequestContext,
+  productId: string,
+  locationId: string,
+): Promise<number> {
+  const products = await okJson<{ id: string; stock: number }[]>(
+    await api.get("/api/products", { headers: { "x-location-id": locationId } }),
+  );
+  const row = products.find((p) => p.id === productId);
+  if (!row) throw new Error(`Product ${productId} not visible at location ${locationId}`);
+  return row.stock;
+}
+
+/**
+ * Waits for stock to reach `expected`.
+ *
+ * Sale stock movements are NOT applied inside the order transaction: the order
+ * publishes an event to `domain_outbox` and `server/workers/inventoryWorker.ts`
+ * applies the delta when the worker runner next dispatches. Measured latency is
+ * a few seconds, so any assertion on post-sale stock must poll rather than read
+ * once — reading immediately returns the pre-sale value and looks like a
+ * missing decrement.
+ */
+export async function waitForStock(
+  api: APIRequestContext,
+  productId: string,
+  locationId: string,
+  expected: number,
+  timeoutMs = 30_000,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let last = await locationStock(api, productId, locationId);
+  while (Date.now() < deadline) {
+    if (last === expected) return last;
+    await new Promise((r) => setTimeout(r, 500));
+    last = await locationStock(api, productId, locationId);
+  }
+  return last;
+}
