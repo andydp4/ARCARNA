@@ -31,6 +31,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=e2e",
     "test:a11y": "playwright test --project=a11y",
+    "test:journeys": "playwright test --project=journeys",
     "dev:e2e": "NODE_ENV=development DEV_AUTH_BYPASS=1 tsx server/index.ts"
   },
   "dependencies": {
