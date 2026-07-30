@@ -85,6 +85,15 @@ beyond the replenishment flow, found in minutes once looked for:
       where offline returned an object and online a `Response`.
 - [x] Replenishment flow itself: netting, grouping, deep links, provenance,
       invalidation — 17 integration tests + 22 unit tests.
+- [x] `.claude/hooks/session-start.sh` — the web container has no init system
+      (PID 1 is `process_api`, `systemctl` reports `offline`), so PostgreSQL died
+      whenever the container suspended and every DB-backed test failed with
+      `ECONNREFUSED`. The hook restarts Postgres, applies schema + migrations,
+      seeds only an empty database, and exports `DATABASE_URL` for the session.
+      Phases 2–6 all need a live database, so this unblocks them.
+      *Evidence:* validated from a stopped server and from a dropped database;
+      three consecutive runs leave exactly one org (the seed script inserts
+      unconditionally, so a naive re-run would duplicate).
 
 > **Calibration note:** the detector's first version reported 47 hits. Manual
 > inspection showed most were false positives (a `mutationFn` that already calls
