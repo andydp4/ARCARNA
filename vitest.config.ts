@@ -19,6 +19,7 @@ export default defineConfig({
       : [
           "server/__tests__/orderOutboxAtomicity.test.ts",
           "server/__tests__/whatsappStore.integration.test.ts",
+          "server/__tests__/purchasingPipeline.integration.test.ts",
         ],
     testTimeout: 30_000,
   },

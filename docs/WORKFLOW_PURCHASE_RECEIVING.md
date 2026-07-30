@@ -89,6 +89,20 @@ via `history.replaceState` so closing the dialog does not re-open it.
 - Transfer completion moves stock between locations (separate path)
 - Damaged quantity on receipts is recorded but does **not** add to sellable stock
 
+## Tests
+
+| File | Needs DB | Covers |
+|------|----------|--------|
+| `server/__tests__/replenishmentPipeline.test.ts` | No | `computeRequiredQty` netting/clamping, supplier+location grouping, per-group provenance |
+| `server/__tests__/purchasingPipeline.integration.test.ts` | Yes | on-order aggregation (statuses, location keying, received netting, org scoping), open-draft lookup, batch atomicity, receive cycle |
+| `client/src/lib/__tests__/deepLink.test.ts` | No | cross-stage link construction and tab validation |
+
+The integration test is listed in `vitest.config.ts` `exclude` when `DATABASE_URL`
+is unset (its module-level `db` import throws otherwise), matching
+`orderOutboxAtomicity.test.ts`. It creates and tears down its own orgs — several
+tables reference `organizations` without `ON DELETE CASCADE`, so teardown deletes
+in explicit dependency order.
+
 ## Out of scope (confirmed)
 
 - Supplier email / PO send
