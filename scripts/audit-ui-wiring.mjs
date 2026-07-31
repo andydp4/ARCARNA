@@ -184,6 +184,61 @@ for (const file of clientFiles) {
   }
 }
 
+// ---------------------------------------------------- orphan pages
+/**
+ * A <Route> no link or programmatic navigation reaches. The mirror of an
+ * orphan endpoint, and the same defect class: a page can be fully built and
+ * simply unreachable, which is how a finished flow ships unusable.
+ *
+ * Advisory: some routes are legitimately entered only by redirect, by deep
+ * link from outside the app, or as a route parameter built at runtime.
+ */
+const navTargets = new Set();
+for (const file of clientFiles) {
+  const src = readFileSync(file, "utf8");
+  for (const pattern of LINK_PATTERNS) {
+    for (const m of src.matchAll(pattern)) navTargets.add(m[1].split("?")[0]);
+  }
+  // Template-literal navigation: capture the static prefix before the first ${.
+  for (const m of src.matchAll(/(?:href|to)=\{`(\/[^`]*?)\$\{/g)) navTargets.add(m[1]);
+  for (const m of src.matchAll(/(?:setLocation|navigate)\(\s*`(\/[^`]*?)\$\{/g)) navTargets.add(m[1]);
+  // Sidebar/menu config entries — nav-items.ts uses single quotes, so both
+  // quote styles must be matched or every sidebar destination looks orphaned.
+  for (const m of src.matchAll(/(?:path|href|to|url|route):\s*["'`](\/[^"'`]*)["'`]/g)) {
+    navTargets.add(m[1]);
+  }
+}
+
+for (const m of appSrc.matchAll(/<Redirect\s+to="([^"]+)"/g)) navTargets.add(m[1]);
+
+function isReached(routePath) {
+  if (routePath === "/") return true;
+  const staticPrefix = routePath.split("/:")[0];
+  for (const target of navTargets) {
+    if (target === routePath || target === staticPrefix) return true;
+    // A template-literal prefix like "/open-orders/" reaches "/open-orders/:id".
+    if (staticPrefix && target.startsWith(staticPrefix + "/")) return true;
+    if (target.startsWith(staticPrefix) && staticPrefix.length > 1) return true;
+  }
+  return false;
+}
+
+// Routes that only redirect (kept so old URLs keep working) are unreachable by
+// link on purpose and are not orphans.
+const redirectOnlyRoutes = new Set(
+  [...appSrc.matchAll(/<Route\s+path="([^"]+)"\s*>\s*<Redirect/g)].map((m) => m[1]),
+);
+
+const orphanPages = [];
+for (const routePath of routePaths) {
+  // Auth/onboarding routes are entered by redirect from the server or guards.
+  if (/^\/(sign-in|sign-out|no-access|pending-approval|setup-blocked|callback)/.test(routePath)) {
+    continue;
+  }
+  if (redirectOnlyRoutes.has(routePath)) continue;
+  if (!isReached(routePath)) orphanPages.push(routePath);
+}
+
 // ------------------------------------------------- orphan endpoints
 const serverRoutes = new Set();
 for (const file of serverFiles) {
@@ -225,6 +280,11 @@ console.log(`  client routes: ${routePaths.size}   server API routes: ${serverRo
 
 section("Dead client links (navigation to a path with no route)", deadLinks, true);
 section("Mutation result read as JSON without .json()", responseMisuse, true);
+section(
+  "Client routes nothing navigates to (advisory — some are redirect-only)",
+  orphanPages,
+  STRICT,
+);
 section(
   "Server API routes with no client reference (advisory — many are server-to-server)",
   orphans,

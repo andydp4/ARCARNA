@@ -24,10 +24,13 @@ async function sellableProduct(api: any, locationId: string): Promise<Product> {
   const products = await okJson<Product[]>(
     await api.get("/api/products", { headers: { "x-location-id": locationId } }),
   );
-  const candidate = products.find((p) => p.stock > 5);
+  // Price must be positive: a zero-priced product yields a zero total and
+  // makes every downstream money assertion vacuous.
+  const candidate = products.find((p) => p.stock > 5 && Number(p.defaultSalePrice) > 0);
   if (!candidate) {
     throw new Error(
-      `No product with stock > 5 at location ${locationId}. Seed/backfill the database first.`,
+      `No product with stock > 5 and a positive price at location ${locationId}. ` +
+        `Seed/backfill the database first.`,
     );
   }
   return candidate;
