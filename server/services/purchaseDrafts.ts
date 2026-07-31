@@ -27,7 +27,10 @@ export function purchaseDraftErrorPayload(err: unknown) {
   if (err instanceof PurchaseDraftError) {
     return { code: err.code, message: err.message, details: err.details };
   }
-  return { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Unknown error" };
+  // Never echo the raw error: unhandled failures here are Drizzle/pg errors
+  // whose message contains the full SQL statement and column list. The real
+  // error is logged server-side by the caller.
+  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred" };
 }
 
 const STATUS_FLOW: Record<PurchaseDraftStatus, PurchaseDraftStatus[]> = {

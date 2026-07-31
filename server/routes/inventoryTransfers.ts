@@ -20,7 +20,8 @@ const createSchema = z.object({
   items: z.array(
     z.object({
       productId: z.string().uuid(),
-      quantity: z.number().int().positive(),
+      // Upper bound too: an unbounded int overflows the column and 500s.
+      quantity: z.number().int().positive().max(100_000_000),
     }),
   ).min(1),
 });

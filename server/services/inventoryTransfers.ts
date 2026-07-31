@@ -44,7 +44,10 @@ export function transferErrorPayload(err: unknown) {
   if (err instanceof StockError) {
     return stockErrorPayload(err);
   }
-  return { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Unknown error" };
+  // Never echo the raw error: unhandled failures here are Drizzle/pg errors
+  // whose message contains the full SQL statement and column list. The real
+  // error is logged server-side by the caller.
+  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred" };
 }
 
 async function assertLocationInOrg(orgId: string, locationId: string) {

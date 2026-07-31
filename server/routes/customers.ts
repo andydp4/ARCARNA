@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
@@ -15,6 +16,15 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+
+/** Bounds mirror the customers table column widths in shared/schema.ts. */
+const createCustomerBody = z.object({
+  name: z.string().min(1).max(255),
+  phone: z.string().max(50).optional().nullable(),
+  email: z.string().max(255).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  category: z.string().max(50).optional().nullable(),
+}).passthrough();
 
 export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
@@ -76,9 +86,18 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
 
   app.post("/api/customers", ...scoped, async (req: any, res) => {
     try {
+      // No schema here previously: req.body went straight to the engine, so an
+      // empty body or an oversized field failed at the database as a 500.
+      const parsed = createCustomerBody.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Invalid customer",
+          errors: parsed.error.errors,
+        });
+      }
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const customer = await engine.createCustomer({ ...req.body, orgId: ctx.orgId });
+      const customer = await engine.createCustomer({ ...parsed.data, orgId: ctx.orgId });
       res.json(customer);
     } catch (error) {
       console.error("Error creating customer:", error);
