@@ -1464,7 +1464,10 @@ export type InsertJobQueue = typeof jobQueue.$inferInsert;
 
 // Processed Events - worker idempotency tracking
 export const processedEvents = pgTable("processed_events", {
-  eventId: varchar("event_id", { length: 36 }).notNull(),
+  // Wider than a UUID on purpose: this column backs the workers' atomic
+  // idempotency claim, and a length overflow there would turn a duplicate
+  // delivery into a failed event. See migrations/045.
+  eventId: varchar("event_id", { length: 255 }).notNull(),
   workerName: varchar("worker_name", { length: 50 }).notNull(),
   processedAt: timestamp("processed_at").defaultNow(),
   resultSummary: varchar("result_summary", { length: 500 }),

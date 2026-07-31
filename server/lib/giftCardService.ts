@@ -71,8 +71,14 @@ export async function redeemGiftCardInTx(tx: Tx, params: {
       .where(and(eq(giftCards.orgId, params.orgId), eq(giftCards.code, normalized))).limit(1);
     return { card, idempotent: true as const };
   }
+  // Lock the card row for the rest of the transaction: the balance is a
+  // read-modify-write, so concurrent redemptions on different orders would
+  // otherwise both read the same balance and the later write would clobber the
+  // earlier one, redeeming the card twice.
   const [card] = await tx.select().from(giftCards)
-    .where(and(eq(giftCards.orgId, params.orgId), eq(giftCards.code, normalized))).limit(1);
+    .where(and(eq(giftCards.orgId, params.orgId), eq(giftCards.code, normalized)))
+    .for("update")
+    .limit(1);
   if (!card) throw new Error("Gift card not found");
   const check = canRedeemAmount(parseFloat(String(card.balance)), amount,
     card.status as "active" | "redeemed" | "expired" | "void", card.expiresAt);

@@ -193,6 +193,7 @@ async function completeTransfer(
       .select()
       .from(inventoryTransfers)
       .where(and(eq(inventoryTransfers.id, transfer.id), eq(inventoryTransfers.orgId, orgId)))
+      .for("update")
       .limit(1);
 
     if (!locked || locked.status === "completed") {
