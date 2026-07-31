@@ -1,0 +1,45 @@
+# Example Nginx site for viger.cloud — corporate website + app portal.
+# Cloudflare DNS/proxy/cache: see Arcarna repo docs/ops/CLOUDFLARE.md
+#
+# This site replaces the legacy VigerPortal static launcher with the full
+# Viger Cloud corporate website (Astro build). The signed-in app grid lives
+# at /apps (Clerk auth gate).
+#
+# Arcarna EPOS runs on its own subdomain:
+#   arcarna.viger.cloud → see deploy/nginx-arcarna.viger.cloud.conf.example
+#
+# Deploy:
+#   git clone https://github.com/andydp4/VigerCloudWebsite.git /root/VigerCloudWebsite
+#   cd /root/VigerCloudWebsite && git pull && ./deploy.sh
+#
+# After Certbot: `sudo certbot --nginx -d viger.cloud -d www.viger.cloud`
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name viger.cloud www.viger.cloud;
+
+    root /var/www/viger.cloud;
+    index index.html;
+
+    # Legacy path-based app URLs → subdomain (bookmarks).
+    location /arcarna/ { return 301 https://arcarna.viger.cloud$request_uri; }
+    location = /arcarna { return 301 https://arcarna.viger.cloud/; }
+    location /midnight/ { return 301 https://arcarna.viger.cloud/; }
+    location = /midnight { return 301 https://arcarna.viger.cloud/; }
+
+    # Astro static site (directory format: /about/index.html → /about).
+    location / {
+        try_files $uri $uri/ $uri/index.html =404;
+    }
+
+    # Cache static assets aggressively.
+    location /assets/ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+
+# After `certbot --nginx -d viger.cloud -d www.viger.cloud` it adds the 443 block
+# and the HTTP→HTTPS redirect. Add HSTS inside the 443 block:
+#   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

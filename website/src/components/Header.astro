@@ -1,0 +1,105 @@
+---
+const nav = [
+  { href: "/products", label: "Products" },
+  { href: "/products/arcarna", label: "arcarna" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/about", label: "About" },
+  { href: "/contact", label: "Contact" },
+];
+
+const currentPath = Astro.url.pathname;
+---
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="/" class="logo-link" aria-label="Viger Cloud home">
+      <img src="/assets/viger-cloud-wordmark.png" alt="Viger Cloud" class="logo" />
+    </a>
+    <nav class="nav" aria-label="Main">
+      {
+        nav.map((item) => (
+          <a
+            href={item.href}
+            class:list={["nav-link", { active: currentPath.startsWith(item.href) }]}
+          >
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+    <div class="header-actions">
+      <a href="/apps" class="btn btn-ghost btn-sm">Sign in</a>
+      <a href="/contact" class="btn btn-primary btn-sm">Get started</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    height: var(--nav-height);
+    border-bottom: 1px solid var(--border);
+    background: hsl(220, 10%, 7% / 0.92);
+    backdrop-filter: blur(12px);
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+    gap: 1.5rem;
+  }
+
+  .logo-link {
+    flex-shrink: 0;
+    text-decoration: none;
+  }
+
+  .logo {
+    height: 2rem;
+    width: auto;
+    display: block;
+  }
+
+  .nav {
+    display: none;
+    gap: 0.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .nav {
+      display: flex;
+    }
+  }
+
+  .nav-link {
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.4rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .nav-link:hover,
+  .nav-link.active {
+    color: var(--text);
+    background: hsl(218, 9%, 17%);
+    text-decoration: none;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .btn-sm {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+  }
+</style>

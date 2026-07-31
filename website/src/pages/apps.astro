@@ -1,0 +1,113 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+import { getCollection } from "astro:content";
+
+const products = (await getCollection("products")).sort((a, b) => a.data.order - b.data.order);
+---
+
+<PageLayout
+  title="App portal"
+  description="Sign in to Viger Cloud and open your business apps — arcarna, Vault, Sanctum and more."
+  noIndex={true}
+>
+  <div id="portal-root" class="portal-page gate-locked">
+    <div class="auth-gate">
+      <div class="auth-gate-card">
+        <div class="auth-gate-brand">
+          <img class="auth-gate-mark" src="/assets/viger-v-mark.png" alt="Viger" />
+          <p class="eyebrow">viger.cloud</p>
+        </div>
+        <div>
+          <h1 class="auth-gate-title">Sign in to Viger Cloud</h1>
+          <p class="auth-gate-sub">Your business apps, in one place.</p>
+        </div>
+        <div id="clerk-signin"></div>
+        <p id="auth-gate-status" class="auth-gate-status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <section class="section container gate-content">
+      <div class="topbar">
+        <div id="user-button" aria-label="Account"></div>
+      </div>
+      <header class="text-center" style="margin-bottom: 2rem">
+        <div class="brand-plate" style="margin-inline: auto; display: inline-flex">
+          <img src="/assets/viger-cloud-wordmark.png" alt="Viger Cloud" style="height: 3rem" />
+        </div>
+        <p class="lead" style="margin: 1rem auto 0">Choose an app to open.</p>
+      </header>
+
+      <div class="app-grid" aria-label="Applications">
+        {
+          products.map((product) => {
+            const isLive = product.data.status === "live" && product.data.url;
+            if (isLive) {
+              return (
+                <a
+                  href={product.data.url}
+                  class="app-card"
+                  style={`--card-accent: ${product.data.accent}`}
+                  data-app={product.data.appKey}
+                >
+                  <span class="app-tag">Live</span>
+                  {product.data.appKey === "arcarna" && (
+                    <img class="app-logo" src="/assets/arcarna-mark.png" alt="" aria-hidden="true" />
+                  )}
+                  <h2>{product.data.title}</h2>
+                  <p>{product.data.description}</p>
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--card-accent)">
+                    Open {product.data.title} →
+                  </span>
+                </a>
+              );
+            }
+            return (
+              <div
+                class="app-card app-card-soon"
+                style={`--card-accent: ${product.data.accent}`}
+                data-app={product.data.appKey}
+                aria-disabled="true"
+              >
+                <span class="app-tag app-tag-muted">Coming soon</span>
+                <h2>{product.data.title}</h2>
+                <p>{product.data.description}</p>
+                <span style="font-size: 0.82rem; color: var(--muted)">
+                  {product.data.appKey}.viger.cloud
+                </span>
+              </div>
+            );
+          })
+        }
+      </div>
+
+      <p class="muted text-center" style="margin-top: 2rem">
+        New tools appear here as they go live. <a href="/">Back to viger.cloud</a>
+      </p>
+    </section>
+  </div>
+
+  <script is:inline src="/assets/clerk-config.js"></script>
+  <script is:inline src="/assets/portal-auth.js" defer></script>
+</PageLayout>
+
+<style>
+  .portal-page.gate-locked .gate-content {
+    display: none;
+  }
+
+  .portal-page.gate-locked .auth-gate {
+    display: flex;
+    min-height: calc(100vh - var(--nav-height) - 12rem);
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .portal-page.gate-open .auth-gate {
+    display: none;
+  }
+
+  .portal-page .auth-gate {
+    display: none;
+  }
+</style>

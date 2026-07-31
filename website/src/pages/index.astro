@@ -1,0 +1,126 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+---
+
+<PageLayout
+  title="Viger Cloud"
+  description="Business software that reveals the truth behind your numbers. Point of sale, inventory, finance and more — one login across every app."
+>
+  <section class="hero container">
+    <div class="brand-plate">
+      <img src="/assets/viger-cloud-wordmark.png" alt="Viger Cloud" />
+    </div>
+    <p class="eyebrow" style="margin-top: 1.5rem">Business software suite</p>
+    <h1>See the truth in your numbers</h1>
+    <p class="lead">
+      Viger Cloud gives independent businesses calm, honest tools — from point of sale to
+      finance. One login. Every app. Evidence you can act on.
+    </p>
+    <div class="hero-actions">
+      <a href="/products/arcarna" class="btn btn-primary">Explore arcarna</a>
+      <a href="/contact" class="btn btn-secondary">Request a demo</a>
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-header">
+      <p class="eyebrow">Why Viger Cloud</p>
+      <h2>Built for operators who want evidence, not hype</h2>
+      <p class="lead">
+        Most business software impresses in a demo and disappoints on a Tuesday afternoon. We
+        build instruments you can trust when the numbers don't add up.
+      </p>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="feature-icon">1</div>
+        <h3>One login, every app</h3>
+        <p class="muted">
+          Sign in once at viger.cloud. Your session works across arcarna, Vault, Sanctum and
+          every tool in the suite.
+        </p>
+      </div>
+      <div class="card">
+        <div class="feature-icon">2</div>
+        <h3>Truths, not dashboards</h3>
+        <p class="muted">
+          arcarna converts your sales, stock and costs into evidence with next moves — not
+          charts that look good and explain nothing.
+        </p>
+      </div>
+      <div class="card">
+        <div class="feature-icon">3</div>
+        <h3>Calm by design</h3>
+        <p class="muted">
+          Plain language, plain visuals, British English. No revolutionary AI. No exclamation
+          marks. Just the number and what to do about it.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-header">
+      <p class="eyebrow">Products</p>
+      <h2>The Viger Cloud suite</h2>
+      <p class="lead">New tools appear as they go live. arcarna is available today.</p>
+    </div>
+    <div class="grid-3">
+      <a href="/products/arcarna" class="card product-card" style="--card-accent: #4ba9fb">
+        <span class="app-tag">Live</span>
+        <h3>arcarna</h3>
+        <p class="muted">Point of sale, inventory, customers and the truths behind your numbers.</p>
+      </a>
+      <div class="card product-card" style="--card-accent: #8a8f98">
+        <span class="app-tag app-tag-muted">Coming soon</span>
+        <h3>Vault</h3>
+        <p class="muted">Backup storage — databases and exports, safe and recoverable.</p>
+      </div>
+      <div class="card product-card" style="--card-accent: #7c3aed">
+        <span class="app-tag app-tag-muted">Coming soon</span>
+        <h3>Sanctum</h3>
+        <p class="muted">File storage — shared documents and uploads for your business.</p>
+      </div>
+    </div>
+    <p style="margin-top: 1.5rem; text-align: center">
+      <a href="/products">View all products →</a>
+    </p>
+  </section>
+
+  <section class="cta-band">
+    <div class="container">
+      <h2>Ready to reveal your truth?</h2>
+      <p class="lead" style="margin-inline: auto; margin-bottom: 1.5rem">
+        Start with arcarna — or talk to us about the right plan for your business.
+      </p>
+      <div class="hero-actions">
+        <a href="https://arcarna.viger.cloud/" class="btn btn-primary">Open arcarna</a>
+        <a href="/pricing" class="btn btn-secondary">View pricing</a>
+      </div>
+    </div>
+  </section>
+</PageLayout>
+
+<style>
+  .product-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    padding-top: 2rem;
+  }
+
+  .product-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--card-accent);
+    border-radius: 0.75rem 0.75rem 0 0;
+  }
+
+  .product-card:hover {
+    border-color: var(--card-accent);
+    text-decoration: none;
+  }
+</style>

@@ -1,0 +1,115 @@
+---
+import PageLayout from "../../layouts/PageLayout.astro";
+import { getEntry } from "astro:content";
+
+const entry = await getEntry("products", "arcarna");
+if (!entry) throw new Error("arcarna product content not found");
+const { Content } = await entry.render();
+---
+
+<PageLayout title="arcarna EPOS" description={entry.data.description}>
+  <section class="container product-hero">
+    <div>
+      <p class="eyebrow">Product · Live</p>
+      <h1>{entry.data.title}</h1>
+      <p class="lead">{entry.data.tagline} — {entry.data.description}</p>
+      <div class="hero-actions" style="justify-content: flex-start">
+        <a href="https://arcarna.viger.cloud/" class="btn btn-primary">Open arcarna</a>
+        <a href="/contact" class="btn btn-secondary">Request access</a>
+      </div>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-value">POS</div>
+          <div class="stat-label">Till, tablet &amp; phone</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Truths</div>
+          <div class="stat-label">Evidence with next moves</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">PWA</div>
+          <div class="stat-label">Works offline</div>
+        </div>
+      </div>
+    </div>
+    <div class="product-screenshot">
+      <img src="/assets/arcarna-wordmark.png" alt="arcarna" style="max-height: 4rem; opacity: 0.7" />
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="legal-content">
+      <Content />
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="section-header">
+      <p class="eyebrow">Capabilities</p>
+      <h2>What you get with arcarna</h2>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Point of sale</h3>
+        <p class="muted">
+          Fast checkout with cash, card and split payments. Barcode scanning, discounts and
+          receipts — on the hardware you already have.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Inventory by location</h3>
+        <p class="muted">
+          Stock levels per shop or warehouse. Transfers between locations. Low-stock signals
+          before you run out on a busy Saturday.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Customers &amp; loyalty</h3>
+        <p class="muted">
+          Profiles, purchase history and loyalty rewards that bring people back. Know who your
+          regulars are and what they buy.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Control Centre &amp; Truths</h3>
+        <p class="muted">
+          Daily business health, margin trends and evidence reports. Not vanity metrics — truths
+          with next moves you can act on today.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="container">
+      <h2>Start with arcarna</h2>
+      <p class="lead" style="margin-inline: auto; margin-bottom: 1.5rem">
+        See pricing or request access for your business.
+      </p>
+      <div class="hero-actions">
+        <a href="/pricing" class="btn btn-primary">View pricing</a>
+        <a href="/contact" class="btn btn-secondary">Contact us</a>
+      </div>
+    </div>
+  </section>
+</PageLayout>
+
+<style>
+  .legal-content :global(h2) {
+    margin-top: 2rem;
+    font-size: 1.35rem;
+  }
+
+  .legal-content :global(p),
+  .legal-content :global(blockquote) {
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .legal-content :global(blockquote) {
+    border-left: 3px solid var(--truth-blue);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+  }
+</style>

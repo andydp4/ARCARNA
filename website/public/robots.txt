@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+Disallow: /apps
+
+Sitemap: https://viger.cloud/sitemap-index.xml

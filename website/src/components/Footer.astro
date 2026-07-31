@@ -1,0 +1,112 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <img src="/assets/viger-cloud-wordmark.png" alt="Viger Cloud" class="footer-logo" />
+      <p class="footer-tagline">Business software that reveals the truth behind your numbers.</p>
+    </div>
+    <div>
+      <h3 class="footer-heading">Products</h3>
+      <ul class="footer-links">
+        <li><a href="/products/arcarna">arcarna EPOS</a></li>
+        <li><a href="/products">All products</a></li>
+        <li><a href="/apps">App portal</a></li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="footer-heading">Company</h3>
+      <ul class="footer-links">
+        <li><a href="/about">About</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/contact">Contact</a></li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="footer-heading">Legal</h3>
+      <ul class="footer-links">
+        <li><a href="/privacy">Privacy policy</a></li>
+        <li><a href="/terms">Terms of service</a></li>
+        <li><a href="/cookies">Cookie policy</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <p>&copy; {year} Viger Cloud. All rights reserved.</p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: auto;
+    padding: 3.5rem 0 2rem;
+    border-top: 1px solid var(--border);
+    background: hsl(218, 9%, 8%);
+  }
+
+  .footer-grid {
+    display: grid;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .footer-grid {
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+    }
+  }
+
+  .footer-logo {
+    height: 1.75rem;
+    width: auto;
+    margin-bottom: 0.75rem;
+  }
+
+  .footer-tagline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0;
+    max-width: 18rem;
+  }
+
+  .footer-heading {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+  }
+
+  .footer-links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .footer-links a {
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+
+  .footer-links a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  .footer-bottom {
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer-bottom p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+</style>

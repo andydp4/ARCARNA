@@ -1,0 +1,40 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+import { getEntry } from "astro:content";
+
+const entry = await getEntry("pages", "about");
+if (!entry) throw new Error("About page content not found");
+const { Content } = await entry.render();
+---
+
+<PageLayout title="About" description={entry.data.description}>
+  <section class="section container">
+    <p class="eyebrow">Company</p>
+    <h1>{entry.data.title}</h1>
+    <div class="legal-content">
+      <Content />
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="container">
+      <h2>Want to know more?</h2>
+      <p class="lead" style="margin-inline: auto; margin-bottom: 1.5rem">
+        We are happy to walk you through arcarna or discuss plans for your business.
+      </p>
+      <a href="/contact" class="btn btn-primary">Contact us</a>
+    </div>
+  </section>
+</PageLayout>
+
+<style>
+  .legal-content :global(h2) {
+    margin-top: 2rem;
+    font-size: 1.35rem;
+  }
+
+  .legal-content :global(p) {
+    color: var(--muted);
+    line-height: 1.65;
+  }
+</style>

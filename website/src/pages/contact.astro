@@ -1,0 +1,158 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+
+const plan = Astro.url.searchParams.get("plan") ?? "";
+const formEndpoint = import.meta.env.PUBLIC_FORM_ENDPOINT ?? "";
+---
+
+<PageLayout
+  title="Contact"
+  description="Request a demo, ask about pricing, or get help with your Viger Cloud account."
+>
+  <section class="section container">
+    <div class="contact-grid">
+      <div>
+        <p class="eyebrow">Contact</p>
+        <h1>Get in touch</h1>
+        <p class="lead">
+          Request access to arcarna, ask about pricing, or tell us what you need from the Viger
+          Cloud suite. We reply within one working day.
+        </p>
+        <div class="contact-info">
+          <p><strong>Email</strong><br /><a href="mailto:hello@viger.cloud">hello@viger.cloud</a></p>
+          <p><strong>App portal</strong><br /><a href="/apps">Sign in at viger.cloud/apps</a></p>
+          <p><strong>arcarna</strong><br /><a href="https://arcarna.viger.cloud/">arcarna.viger.cloud</a></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <form
+          id="contact-form"
+          method="POST"
+          action={formEndpoint || "#"}
+          data-endpoint={formEndpoint}
+        >
+          <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required autocomplete="name" />
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="business">Business name</label>
+            <input type="text" id="business" name="business" autocomplete="organization" />
+          </div>
+          <div class="form-group">
+            <label for="plan">Interested in</label>
+            <select id="plan" name="plan">
+              <option value="">Select a plan</option>
+              <option value="starter" selected={plan === "starter"}>Starter</option>
+              <option value="growth" selected={plan === "growth"}>Growth</option>
+              <option value="enterprise" selected={plan === "enterprise"}>Enterprise</option>
+              <option value="general" selected={plan === "general" || !plan}>General enquiry</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="message">Message</label>
+            <textarea id="message" name="message" required placeholder="Tell us about your business and what you need."></textarea>
+          </div>
+          <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off" />
+          <button type="submit" class="btn btn-primary" style="width: 100%">Send message</button>
+          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+</PageLayout>
+
+<script>
+  const form = document.getElementById("contact-form") as HTMLFormElement | null;
+  const status = document.getElementById("form-status");
+
+  form?.addEventListener("submit", async (e) => {
+    const endpoint = form.dataset.endpoint;
+    if (!endpoint) {
+      e.preventDefault();
+      if (status) {
+        status.textContent =
+          "Form endpoint not configured. Email hello@viger.cloud or set PUBLIC_FORM_ENDPOINT.";
+        status.className = "form-status error";
+      }
+      return;
+    }
+
+    e.preventDefault();
+    if (status) status.textContent = "Sending…";
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        body: new FormData(form),
+        headers: { Accept: "application/json" },
+      });
+      if (res.ok) {
+        form.reset();
+        if (status) {
+          status.textContent = "Thank you — we will reply within one working day.";
+          status.className = "form-status success";
+        }
+      } else {
+        throw new Error("Request failed");
+      }
+    } catch {
+      if (status) {
+        status.textContent = "Something went wrong. Please email hello@viger.cloud directly.";
+        status.className = "form-status error";
+      }
+    }
+  });
+</script>
+
+<style>
+  .contact-grid {
+    display: grid;
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  @media (min-width: 768px) {
+    .contact-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .contact-info {
+    margin-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .contact-info p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .contact-info strong {
+    color: var(--text);
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .form-status {
+    margin: 0.75rem 0 0;
+    font-size: 0.875rem;
+    min-height: 1.2em;
+  }
+
+  .form-status.success {
+    color: var(--lm-emerald);
+  }
+
+  .form-status.error {
+    color: hsl(6, 78%, 68%);
+  }
+</style>

@@ -1,0 +1,58 @@
+---
+import PageLayout from "../../layouts/PageLayout.astro";
+import { getCollection } from "astro:content";
+
+const products = (await getCollection("products")).sort((a, b) => a.data.order - b.data.order);
+---
+
+<PageLayout
+  title="Products"
+  description="The Viger Cloud suite — business tools for point of sale, backups, files, email, receipts, invoicing and finance."
+>
+  <section class="section container">
+    <p class="eyebrow">Suite</p>
+    <h1>Every app, one home</h1>
+    <p class="lead">
+      Viger Cloud is a growing suite of business tools. Each app runs on its own subdomain with
+      a shared login. New tools appear here as they go live.
+    </p>
+
+    <div class="app-grid" style="margin-top: 2.5rem">
+      {
+        products.map((product) => {
+          const Tag = product.data.status === "live" && product.data.url ? "a" : "div";
+          const tagProps =
+            product.data.status === "live" && product.data.url
+              ? { href: product.data.url, class: "app-card" }
+              : { class: "app-card app-card-soon" };
+
+          return (
+            <Tag {...tagProps} style={`--card-accent: ${product.data.accent}`}>
+              <span class:list={["app-tag", { "app-tag-muted": product.data.status !== "live" }]}>
+                {product.data.status === "live" ? "Live" : "Coming soon"}
+              </span>
+              {product.data.appKey === "arcarna" && (
+                <img class="app-logo" src="/assets/arcarna-mark.png" alt="" aria-hidden="true" />
+              )}
+              <h2>{product.data.title}</h2>
+              <p>{product.data.description}</p>
+              {product.data.status === "live" && product.data.url ? (
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--card-accent)">
+                  Open {product.data.title} →
+                </span>
+              ) : (
+                <span style="font-size: 0.82rem; color: var(--muted)">
+                  {product.data.appKey}.viger.cloud
+                </span>
+              )}
+            </Tag>
+          );
+        })
+      }
+    </div>
+
+    <p style="margin-top: 2rem">
+      Signed-in users can open apps from the <a href="/apps">app portal</a>.
+    </p>
+  </section>
+</PageLayout>

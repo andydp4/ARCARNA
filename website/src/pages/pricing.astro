@@ -1,0 +1,53 @@
+---
+import PageLayout from "../layouts/PageLayout.astro";
+import { getCollection } from "astro:content";
+
+const tiers = (await getCollection("pricing")).sort((a, b) => a.data.order - b.data.order);
+---
+
+<PageLayout
+  title="Pricing"
+  description="Simple, transparent pricing for arcarna and the Viger Cloud suite. Starter, Growth and Enterprise plans for independent businesses."
+>
+  <section class="section container">
+    <div class="section-header text-center" style="margin-inline: auto">
+      <p class="eyebrow">Pricing</p>
+      <h1>Plans that grow with your business</h1>
+      <p class="lead" style="margin-inline: auto">
+        All plans include arcarna EPOS. Additional Viger Cloud apps are included as they launch.
+        No hidden fees. Cancel any time.
+      </p>
+    </div>
+
+    <div class="grid-3" style="margin-top: 2rem">
+      {
+        tiers.map((tier) => (
+          <div class:list={["card", "pricing-card", { featured: tier.data.featured }]}>
+            {tier.data.featured && <span class="pricing-badge">Most popular</span>}
+            <div>
+              <h2>{tier.data.name}</h2>
+              <p class="muted">{tier.data.description}</p>
+            </div>
+            <div class="price">
+              {tier.data.price}
+              {tier.data.period && <span>{tier.data.period}</span>}
+            </div>
+            <ul class="feature-list">
+              {tier.data.features.map((feature) => (
+                <li>{feature}</li>
+              ))}
+            </ul>
+            <a href={tier.data.ctaHref} class:list={["btn", tier.data.featured ? "btn-primary" : "btn-secondary"]}>
+              {tier.data.cta}
+            </a>
+          </div>
+        ))
+      }
+    </div>
+
+    <p class="muted text-center" style="margin-top: 2.5rem; max-width: 36rem; margin-inline: auto">
+      Prices shown are indicative for UK businesses. Final pricing confirmed during onboarding.
+      VAT may apply. <a href="/contact">Contact us</a> for multi-site or bespoke requirements.
+    </p>
+  </section>
+</PageLayout>
