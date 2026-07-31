@@ -72,6 +72,8 @@ export type PosCartPanelProps = {
   loyaltyDiscountAmount: number;
   promoDiscountAmount: number;
   tax: number;
+  /** Org VAT/sales-tax rate as a percentage, for the label. */
+  taxRatePercent?: number;
   total: number;
   pointsEarned: number;
   tierProgress: TierProgress | null;
@@ -111,6 +113,7 @@ export function PosCartPanel({
   loyaltyDiscountAmount,
   promoDiscountAmount,
   tax,
+  taxRatePercent,
   total,
   pointsEarned,
   tierProgress,
@@ -333,7 +336,7 @@ export function PosCartPanel({
                   <div className="mb-3 flex items-center gap-2">
                     <Label className="shrink-0 text-xs">Price</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-sm">$</span>
+                      <span className="text-sm">£</span>
                       <Input
                         type="text"
                         inputMode="decimal"
@@ -513,7 +516,7 @@ export function PosCartPanel({
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-metal-muted">Tax (10%)</span>
+              <span className="text-metal-muted">Tax{taxRatePercent != null ? ` (${taxRatePercent}%)` : ""}</span>
               <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
             </div>
             <Separator />

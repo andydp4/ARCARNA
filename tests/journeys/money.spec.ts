@@ -284,3 +284,42 @@ test.describe("money: shifts", () => {
     }
   });
 });
+
+test.describe("money: tax agreement", () => {
+  /**
+   * Regression guard for the worst defect found in this programme: the POS
+   * displayed `subtotal * 0.1` (pos.tsx) while the order engine charged
+   * `subtotal * 0.20` (packages/domain/src/engine.ts). A customer was quoted
+   * £110 on a £100 basket and charged £120 — on every sale.
+   *
+   * Both sides now derive from organizations.default_tax_rate, surfaced to the
+   * client as settings.vatRate. This asserts the charged total matches the rate
+   * the till would show, so the two can never silently diverge again.
+   */
+  test("2.9 the total charged matches the org's configured tax rate", async ({ api }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+
+    const settings = await okJson<any>(await api.get("/api/settings"));
+    const ratePercent = settings.vatEnabled === false ? 0 : Number(settings.vatRate ?? 20);
+    expect(Number.isFinite(ratePercent), "settings must expose a usable vatRate").toBeTruthy();
+
+    // A round subtotal keeps the arithmetic unambiguous.
+    const unitPrice = 10;
+    const quantity = 3;
+    const subtotal = unitPrice * quantity;
+    const expectedTotal = Number((subtotal * (1 + ratePercent / 100)).toFixed(2));
+
+    const created = await okJson<any>(
+      await placeOrder(api, locationId, [{ productId: product.id, quantity, unitPrice }]),
+    );
+    const charged = Number(created.order?.total ?? created.total);
+
+    expect(
+      charged,
+      `£${subtotal} basket at ${ratePercent}% must total £${expectedTotal}, not £${charged}. ` +
+        `A mismatch means the till and the engine disagree on tax again.`,
+    ).toBeCloseTo(expectedTotal, 2);
+  });
+});

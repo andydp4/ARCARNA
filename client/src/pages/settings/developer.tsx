@@ -371,7 +371,7 @@ export default function DeveloperSettingsPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-h-[48px]">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 min-h-[48px]">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           {canSeeLogs && <TabsTrigger value="audit-log">Audit Log</TabsTrigger>}
           {canSeeLogs && <TabsTrigger value="worker-logs">Worker Logs</TabsTrigger>}

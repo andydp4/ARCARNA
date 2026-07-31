@@ -35,7 +35,25 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { eq } = await import('drizzle-orm');
       const { publishEventTx } = await import('../eventBus');
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const body = { ...req.body, orgId: ctx.orgId ?? undefined, locationId: ctx.locationId ?? undefined };
+      // The engine used to hardcode 20% while the POS displayed 10%, so the
+      // customer was quoted one total and charged another. Both now derive
+      // from the org's configured rate.
+      const { organizations: orgTable } = await import("@shared/schema");
+      const { eq: eqOrg } = await import("drizzle-orm");
+      const { db: settingsDb } = await import("../db");
+      const [orgRow] = await settingsDb
+        .select({ defaultTaxRate: orgTable.defaultTaxRate })
+        .from(orgTable)
+        .where(eqOrg(orgTable.id, ctx.orgId))
+        .limit(1);
+      const orgTaxRate = orgRow?.defaultTaxRate != null ? Number(orgRow.defaultTaxRate) : undefined;
+
+      const body = {
+        ...req.body,
+        orgId: ctx.orgId ?? undefined,
+        locationId: ctx.locationId ?? undefined,
+        ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
+      };
       const userId = req.user?.id ?? "unknown";
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
@@ -148,16 +166,20 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
-      const { orders } = await import('../../apps/server/src/db/schema');
+      const { orders, customers } = await import('../../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
+      // The list selected customerId but never resolved the name, so every row
+      // rendered the "Walk-in" fallback while the detail view — which does join
+      // customers — showed the real name.
       const baseQuery = db.select({
         id: orders.id,
         customerId: orders.customer_id,
+        customerName: customers.name,
         total: orders.total,
         paymentMethod: orders.payment_method,
         status: orders.status,
         createdAt: orders.created_at,
-      }).from(orders);
+      }).from(orders).leftJoin(customers, eq(orders.customer_id, customers.id));
       const allOrders = ctx?.orgId
         ? await baseQuery.where(eq(orders.org_id, ctx.orgId)).orderBy(orders.created_at)
         : await baseQuery.orderBy(orders.created_at);

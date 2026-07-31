@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/appPaths";
 import { offlineStorage } from "@/lib/offline-storage";
@@ -198,6 +199,13 @@ export default function POS() {
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
   // Fetch loyalty tiers
+  // Tax rate must come from the org, not a constant: the till previously
+  // showed 10% while the server charged 20%, so the customer was quoted one
+  // total and charged another.
+  const { data: orgSettings } = useQuery<{ vatEnabled?: boolean; vatRate?: number }>({
+    queryKey: ["/api/settings"],
+  });
+
   const { data: loyaltyTiers = [] } = useQuery<any[]>({
     queryKey: ["/api/loyalty-tiers"],
   });
@@ -507,8 +515,11 @@ export default function POS() {
     : 0;
   const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
   const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
-  const tax = discountedSubtotal * 0.1; // 10% tax
-  const total = discountedSubtotal + tax;
+  // Mirrors the server: organizations.default_tax_rate, surfaced as vatRate.
+  const taxRatePercent =
+    orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
+  const tax = +(discountedSubtotal * (taxRatePercent / 100)).toFixed(2);
+  const total = +(discountedSubtotal + tax).toFixed(2);
   
   // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
   const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
@@ -673,6 +684,7 @@ export default function POS() {
     loyaltyDiscountAmount,
     promoDiscountAmount,
     tax,
+    taxRatePercent,
     total,
     pointsEarned,
     tierProgress,
@@ -793,7 +805,7 @@ export default function POS() {
                 </div>
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="pos-cart-rail flex w-full flex-col p-4 sm:w-96">
+            <SheetContent side="right" className="liquid-metal pos-cart-rail flex w-full flex-col p-4 sm:w-96">
               <SheetHeader className="mb-4">
                 <SheetTitle>
                   <div className="flex items-center gap-2">
@@ -859,7 +871,7 @@ export default function POS() {
 
       {/* Checkout Dialog - Steps 3 & 4: Choose payment → Confirm */}
       <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="lm-card max-h-[90vh] max-w-lg overflow-y-auto border-metal-edge bg-metal-gunmetal">
+        <DialogContent className="liquid-metal lm-card max-h-[90vh] max-w-lg overflow-y-auto border-metal-edge bg-metal-gunmetal">
           <DialogHeader className="space-y-1 text-left">
             <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 3 &amp; 4 of 4</p>
             <DialogTitle className="text-xl font-semibold tracking-tight text-metal-warm-white">Payment &amp; confirm</DialogTitle>

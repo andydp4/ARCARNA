@@ -218,7 +218,7 @@ export default function Inventory() {
           explanation="Real-time stock levels, smart stock, replenishment, receiving, and transfers."
         />
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-5 mb-6 min-h-[48px]">
+          <TabsList className="grid h-auto w-full max-w-3xl grid-cols-2 gap-1 sm:grid-cols-5 mb-6 min-h-[48px]">
             <TabsTrigger value="stock" data-testid="tab-inventory-stock">Stock levels</TabsTrigger>
             <TabsTrigger value="smart" data-testid="tab-smart-stock" className="gap-1">
               <Sparkles className="h-4 w-4" />
@@ -299,7 +299,7 @@ export default function Inventory() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">
-                ${products.reduce((sum, p) => {
+                £{products.reduce((sum, p) => {
                   const price = typeof p.costPrice === 'string' ? parseFloat(p.costPrice) : p.costPrice || 0;
                   const stockValue = (isNaN(price) ? 0 : price) * (p.stock || 0);
                   return sum + (isNaN(stockValue) ? 0 : stockValue);

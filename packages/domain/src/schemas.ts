@@ -16,6 +16,10 @@ export const PlaceOrderInput = z.object({
   paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
+  // Org's configured VAT/sales-tax rate as a percentage (e.g. 20 for 20%).
+  // Injected by the route from organizations.default_tax_rate. Optional so
+  // existing callers keep the previous fixed 20% behaviour.
+  taxRatePercent: z.number().min(0).max(100).optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
 export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })
