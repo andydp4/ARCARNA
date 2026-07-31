@@ -120,4 +120,9 @@ else
   log "database already seeded (${org_count} org(s)) — skipping seed"
 fi
 
+# scripts/seed.ts leaves setup_complete = 0, so the SPA redirects every
+# navigation to /setup-wizard. Browser tests then silently exercise the wizard
+# instead of the app. Idempotent, so it runs on every start.
+psql "$DB_URL" -qtAc 'UPDATE organizations SET setup_complete = 1 WHERE setup_complete IS DISTINCT FROM 1;' >/dev/null 2>&1 || true
+
 log "ready"

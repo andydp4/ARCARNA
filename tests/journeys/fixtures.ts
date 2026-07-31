@@ -10,6 +10,7 @@
  * localhost-only PHASE2D impersonation headers, so one server serves every
  * role without restarting.
  */
+import zlib from "node:zlib";
 import {
   test as base,
   expect,
@@ -119,6 +120,49 @@ export async function expectToast(page: Page, text: string | RegExp, timeout = 1
  *  page with a 200, which a status-only assertion would miss. */
 export function looksLikePdf(buf: Buffer): boolean {
   return buf.length > 500 && buf.subarray(0, 5).toString("latin1") === "%PDF-";
+}
+
+/**
+ * Extracts visible text from a PDFKit-generated PDF.
+ *
+ * Content streams are Flate-compressed and PDFKit emits text as hex strings
+ * inside TJ arrays (`[<48656c6c6f> -25 <21>] TJ`), so neither a raw byte search
+ * nor a naive `(literal)` scan finds anything. Without this, a "PDF is branded"
+ * assertion can only check the file size — which passes just as happily when
+ * the branding is missing.
+ */
+export function extractPdfText(buf: Buffer): string {
+  const parts: string[] = [];
+  let idx = 0;
+
+  while (true) {
+    const start = buf.indexOf("stream", idx);
+    if (start === -1) break;
+    let dataStart = start + "stream".length;
+    while (buf[dataStart] === 0x0d || buf[dataStart] === 0x0a) dataStart++;
+    const end = buf.indexOf("endstream", dataStart);
+    if (end === -1) break;
+    let dataEnd = end;
+    while (dataEnd > dataStart && (buf[dataEnd - 1] === 0x0d || buf[dataEnd - 1] === 0x0a)) {
+      dataEnd--;
+    }
+    try {
+      parts.push(zlib.inflateSync(buf.subarray(dataStart, dataEnd)).toString("latin1"));
+    } catch {
+      // Not a Flate stream (font data, images) — skip.
+    }
+    idx = end + "endstream".length;
+  }
+
+  const content = parts.join("\n");
+  let text = "";
+  for (const tjArray of content.matchAll(/\[(.*?)\]\s*TJ/gs)) {
+    for (const hex of tjArray[1].matchAll(/<([0-9A-Fa-f]+)>/g)) {
+      text += Buffer.from(hex[1], "hex").toString("latin1");
+    }
+    text += " ";
+  }
+  return text;
 }
 
 /** Unique suffix so parallel runs and reruns never collide on names/SKUs. */

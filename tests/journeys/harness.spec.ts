@@ -59,9 +59,16 @@ test.describe("harness", () => {
   }) => {
     const page = await pageAs(browser, "ADMIN", orgId);
     await page.goto("/");
-    await expect(page.locator("#root")).toBeVisible({ timeout: 30_000 });
-    // Landing on sign-in would mean the impersonation headers never reached the app.
-    await expect(page).not.toHaveURL(/\/sign-in/);
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+    // Landing on sign-in would mean the impersonation headers never reached the
+    // app. Landing on the setup wizard is just as bad and less obvious: the org
+    // renders a real #root there, so an earlier version of this assertion passed
+    // while every browser journey was silently driving the wizard instead of the
+    // app. seed.ts leaves setup_complete = 0; the SessionStart hook now fixes it.
+    await expect(page, "must not be bounced to sign-in").not.toHaveURL(/\/sign-in/);
+    await expect(page, "must not be bounced to the setup wizard").not.toHaveURL(
+      /\/(setup-wizard|onboarding|setup-blocked)/,
+    );
     await page.context().close();
   });
 

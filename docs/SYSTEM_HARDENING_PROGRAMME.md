@@ -1,6 +1,7 @@
 # System hardening programme
 
-Status: **Phase 0 complete.** Phases 1–7 not started.
+Status: **Phases 0–3 substantially complete; 5–6 have findings pending triage.**
+See "Progress log" at the end for what is proven and what is open.
 
 This document exists because a fully-built backend flow (replenishment →
 purchase draft → receiving) shipped with every link between its stages broken,
@@ -257,3 +258,84 @@ Done is reported when, and only when:
 
 Until then this document states the current phase, and nothing is described as
 finished that has not been walked.
+
+
+---
+
+## Progress log
+
+### Phases complete
+
+**Phase 0** — wiring audit + programme doc. **Phase 1** — journey harness, with both
+mutation gates shown red. **Phase 2** — 11 money-path journeys. **Phase 3 / Part 5** —
+receipt PDF endpoint, download buttons, 8 document journeys including the branding gate.
+
+Journey suite: **57 passing, 4 failing, 11 skipped.** The 4 failures are deliberate
+finding-tests from the Phase 5 work (below) — they assert the invariant that *should*
+hold, so each goes green when its defect is fixed.
+
+### Environment defects found and fixed
+
+- **PostgreSQL had no supervisor.** Container PID 1 is `process_api`; `systemctl` is
+  `offline`. Fixed by the SessionStart hook.
+- **`seed.ts` leaves `setup_complete = 0`,** so the SPA redirected every browser
+  navigation to `/setup-wizard`. Browser journeys were silently driving the wizard
+  instead of the app — and the harness's original "not on sign-in" assertion passed
+  right through it, because the wizard renders a real `#root`. Hook now sets the flag;
+  harness now rejects the wizard explicitly.
+- **Playwright could not launch a browser at all** in this image (pinned Chromium 1194
+  vs the 1223 the resolved @playwright/test wants). Baseline smoke was 1 failed / 2
+  passed and is now 3 passed.
+- **`reuseExistingServer` served stale code.** Server-side edits appeared to work or
+  not depending on which server was running; results flip-flopped until the process was
+  killed by port. Restart the app server after touching `server/` before trusting a run.
+
+### Product findings — Phase 2 (money)
+
+1. **Stock decrement is asynchronous.** `POST /api/orders` returns before stock moves;
+   the outbox → `inventoryWorker` applies it ~6s later. Verified against the database.
+   Read-after-write on `/api/products` is stale, and the oversell check reads
+   pre-decrement stock.
+2. **Overselling is accepted, not rejected** — order is created `on-hold` and the
+   worker logs a `StockError`. Stock is never moved. Deliberate; now pinned by test.
+3. **`POST /api/gift-cards/:code/redeem` does not redeem.** It validates the amount,
+   looks the card up and returns it — no balance change, no ledger movement. Real
+   redemption only happens via `redeemGiftCardInTx` on the order path. A caller
+   treating its 200 as "redeemed" would be wrong.
+4. Inconsistent shapes on one resource: `POST /api/gift-cards` returns
+   `{giftCard, code}`; `GET /api/gift-cards/:code` returns the card flat.
+
+### Product findings — Phase 6 (data integrity), all with mutation-test evidence
+
+| # | Severity | Defect |
+|---|----------|--------|
+| 1 | **HIGH** | `completeTransfer` takes no row lock (`inventoryTransfers.ts:191`). Two concurrent completions both apply: a 10-unit transfer moved 20 units out and 20 in. The loser's `UPDATE` matches 0 rows and it commits its stock changes anyway. |
+| 2 | **HIGH (money)** | Refund ceiling is checked **outside** the transaction (`refunds.ts:152`, `:203`) with no lock on the order. Three parallel refunds on a £30 order all returned 201 — **£90 refunded**. The `settledTotal` cap is correct but not enforced atomically. |
+| 3 | **HIGH (money)** | Gift card read without `.for("update")` and balance written absolutely (`giftCardService.ts:74`). The idempotency guard keys on `orderId`, so two different orders bypass it: a £50 card redeemed £100. |
+| 4 | MED-HIGH | `InventoryWorker`'s idempotency guard is a plain `SELECT` on `eventId` with **no unique constraint** behind it. Serial replay is safe; concurrent duplicate delivery is not. A unique index on `(event_id, product_id, location_id)` would close it. |
+| 5 | MEDIUM | `setStock` is an unlocked read-modify-write (`productLocationStock.ts:205`) and records a delta from a stale read, corrupting the ledger. The relative-delta paths are safe (proved). |
+| 6 | LOW (tooling) | `apply-migrations-pm2.sh` sources `.env` with `set -a` **after** startup, so an exported `DATABASE_URL` is overridden. Anyone following the Phase 6 setup migrates the wrong database while the script reports success. |
+
+Proved green in the same work: idempotency of goods-receipt completion, void, transfer
+re-completion and serial worker replay; transaction rollback across six paths; ledger
+reconciliation (`opening + Σdelta == stock`) DB-wide; and **zero schema drift** between
+a fresh database and the working one (67 tables, 708 columns, 190 indexes, 573
+constraints).
+
+### Open — Phase 5 (permissions, tenancy, validation)
+
+Agent work was still running when this was written; 4 of its tests are red and are the
+authoritative record. Directly observed from running them:
+
+- **Input validation:** some routes answer **500 with a Drizzle error surfaced to the
+  client** rather than a structured 400. Database error text reaching a client is both a
+  robustness and an information-disclosure problem.
+- **Unauthenticated access:** 13 routes returned 200 to a caller with no credentials
+  **in this configuration**. The test server runs `DEV_AUTH_BYPASS=1`, which promotes
+  anonymous callers by design, so this is not yet evidence of a production hole — it
+  needs re-running with the bypass off before any conclusion is drawn. Not yet done.
+
+### Next
+
+Phase 4 (cross-stage flows) not started. Phase 7 (UX completeness) not started.
+Triage order should be findings 2 and 3 first — both lose money.

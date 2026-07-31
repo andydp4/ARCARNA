@@ -73,6 +73,8 @@ export default defineConfig({
     { name: "a11y", testDir: "tests/a11y" },
     { name: "visual", testDir: "tests/visual" },
     // Full user journeys: money paths, documents, cross-stage flows, tenancy.
-    { name: "journeys", testDir: "tests/journeys" },
+    // Generous timeout: the dev server compiles the SPA on first navigation,
+    // which alone takes ~25s here, and browser journeys then do real work.
+    { name: "journeys", testDir: "tests/journeys", timeout: 120_000 },
   ],
 });
