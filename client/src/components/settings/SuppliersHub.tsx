@@ -132,6 +132,14 @@ export function SuppliersHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       toast({ title: "Supplier deactivated" });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const saveMapping = useMutation({
@@ -160,11 +168,27 @@ export function SuppliersHub() {
     mutationFn: (m: ProductSupplier) =>
       apiRequest("PATCH", `/api/product-suppliers/${m.id}`, { isPreferred: m.isPreferred !== 1 }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/product-suppliers"] }),
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const deleteMapping = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/product-suppliers/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/product-suppliers"] }),
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const openEditSupplier = (s: Supplier) => {

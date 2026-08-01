@@ -184,6 +184,27 @@ for (const file of clientFiles) {
   }
 }
 
+// ------------------------------------------- silent mutation failures
+/**
+ * A useMutation with no onError: when the request fails the user sees nothing
+ * at all — no toast, no inline message, and the optimistic UI may still look
+ * like it worked. Checkpoint 7.1.
+ *
+ * Advisory: a few mutations are genuinely fire-and-forget (analytics pings,
+ * best-effort telemetry).
+ */
+const silentFailures = [];
+for (const file of clientFiles) {
+  const src = readFileSync(file, "utf8");
+  for (const um of src.matchAll(/useMutation(?:<[^>]*>)?\(\s*\{/g)) {
+    const open = src.indexOf("{", um.index + um[0].length - 1);
+    const { body: block } = balancedBody(src, open);
+    if (/\bonError\b/.test(block)) continue;
+    const line = src.slice(0, open).split("\n").length;
+    silentFailures.push(`${file}:${line}  →  useMutation with no onError (failure is invisible)`);
+  }
+}
+
 // ---------------------------------------------------- orphan pages
 /**
  * A <Route> no link or programmatic navigation reaches. The mirror of an
@@ -280,6 +301,11 @@ console.log(`  client routes: ${routePaths.size}   server API routes: ${serverRo
 
 section("Dead client links (navigation to a path with no route)", deadLinks, true);
 section("Mutation result read as JSON without .json()", responseMisuse, true);
+section(
+  "Mutations with no onError (advisory — the user never sees the failure)",
+  silentFailures,
+  STRICT,
+);
 section(
   "Client routes nothing navigates to (advisory — some are redirect-only)",
   orphanPages,

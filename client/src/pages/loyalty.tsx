@@ -93,6 +93,14 @@ export default function LoyaltyPage() {
         description: "Loyalty tier has been removed.",
       });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const tierForm = useForm<TierFormValues>({

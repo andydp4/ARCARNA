@@ -217,6 +217,14 @@ export function WhatsAppPanel() {
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/conversations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/whatsapp/status"] });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const sendReply = useMutation({

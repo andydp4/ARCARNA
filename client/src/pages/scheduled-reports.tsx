@@ -95,6 +95,14 @@ export default function ScheduledReportsPage() {
       return apiRequest("PUT", `/api/scheduled-reports/${r.id}`, { isEnabled: r.isEnabled ? 0 : 1 });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/scheduled-reports"] }),
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   return (

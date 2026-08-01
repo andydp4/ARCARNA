@@ -99,6 +99,14 @@ export default function PromotionsPage() {
         description: "Promotional campaign has been removed.",
       });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const promoForm = useForm<PromoFormValues>({

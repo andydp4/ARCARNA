@@ -62,6 +62,14 @@ export default function OnboardingWizard() {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const completeFirstSale = useMutation({
@@ -72,6 +80,14 @@ export default function OnboardingWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
