@@ -26,6 +26,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PosProductCard } from "@/components/pos-product-card";
+import { PosOrderLines } from "@/components/pos-order-lines";
+import { STORAGE_POS_ENTRY_MODE } from "@shared/storageKeys";
 import type { PosProduct } from "@/components/pos-product-card";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,6 +91,26 @@ export default function POS() {
   const [cartOpen, setCartOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  /**
+   * Entry mode. "tiles" is the original till-style grid; "lines" is the order
+   * line editor, which suits a coded catalogue and lets price and quantity be
+   * corrected in place instead of bouncing to checkout and back. Remembered per
+   * device so a till keeps whichever the staff there prefer.
+   */
+  const [entryMode, setEntryMode] = useState<"tiles" | "lines">(() => {
+    if (typeof window === "undefined") return "tiles";
+    return window.localStorage.getItem(STORAGE_POS_ENTRY_MODE) === "lines" ? "lines" : "tiles";
+  });
+
+  const changeEntryMode = useCallback((mode: "tiles" | "lines") => {
+    setEntryMode(mode);
+    try {
+      window.localStorage.setItem(STORAGE_POS_ENTRY_MODE, mode);
+    } catch {
+      /* private browsing — mode simply is not remembered */
+    }
+  }, []);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
@@ -749,7 +771,37 @@ export default function POS() {
           </div>
         </div>
 
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-metal-muted">Entry</span>
+          <div className="flex rounded-md border border-metal-edge p-0.5">
+            {(["tiles", "lines"] as const).map((mode) => (
+              <Button
+                key={mode}
+                size="sm"
+                variant={entryMode === mode ? "default" : "ghost"}
+                className="h-8 px-3 text-xs"
+                onClick={() => changeEntryMode(mode)}
+                data-testid={`pos-entry-mode-${mode}`}
+              >
+                {mode === "tiles" ? "Tiles" : "Order lines"}
+              </Button>
+            ))}
+          </div>
+        </div>
+
         <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-156px)]">
+          {entryMode === "lines" ? (
+            <div
+              className="p-1"
+              style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
+            >
+              <PosOrderLines
+                products={filteredProducts}
+                lines={cart}
+                onChange={setCart}
+              />
+            </div>
+          ) : (
           <div
             className="pos-product-grid grid grid-cols-2 gap-3 p-1 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-3 lg:gap-3 lg:pb-4 min-[1194px]:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5"
             style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
@@ -773,6 +825,7 @@ export default function POS() {
               ))
             )}
           </div>
+          )}
         </ScrollArea>
       </div>
 
