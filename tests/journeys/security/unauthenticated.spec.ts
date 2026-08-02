@@ -198,6 +198,17 @@ test.describe("5.4 unauthenticated access", () => {
     // from allowed_users it defaults to SUPER_ADMIN, and requireOrgContext will
     // auto-select the org when exactly one exists — i.e. on a single-tenant dev
     // database an unauthenticated caller gets full super-admin scope.
+    //
+    // OPEN FINDING, dev-only. That default is fail-open in the wrong direction:
+    // an *unrecognised* id should get less access than a known one, not
+    // unscoped super-admin over every tenant. CI proved it — with no .env to
+    // supply DEV_AUTH_USER_ID the bypass became an unscoped SUPER_ADMIN, and
+    // the two cross-tenant assertions in this suite failed exactly as they
+    // should. playwright.config.ts now pins the id so the mode is the same
+    // everywhere, which makes those assertions meaningful again but does not
+    // change the default. It never runs in production (isDevAuthBypassEnabled
+    // requires DEV_AUTH_BYPASS=1 and NODE_ENV !== production), so it is
+    // recorded here rather than changed inside a purchasing branch.
     const api = await apiAnonymous();
     const who = await api.get("/api/auth/user");
     const body = await who.text();

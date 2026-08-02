@@ -18,6 +18,22 @@ const e2eEnv: Record<string, string> = {
   NODE_ENV: "development",
   PORT: String(port),
   DEV_AUTH_BYPASS: "1",
+  /**
+   * Pin the identity the bypass authenticates as. This was the one auth input
+   * left to ambient config, and it decided whether the tenancy journeys meant
+   * anything: `tryDevAuthBypass` falls back to the id "dev-user", and an id
+   * absent from allowed_users defaults to SUPER_ADMIN with no org — an
+   * anonymous caller that can select any tenant with x-org-id.
+   *
+   * The SessionStart hook writes DEV_AUTH_USER_ID=seed-cashier into .env, so
+   * locally the bypass was a cashier scoped to one org and the cross-tenant
+   * assertions passed. CI has no .env, got the unscoped super-admin, and those
+   * same assertions correctly failed. Pinning it here makes the mode identical
+   * everywhere. The fail-open default is dev-only (DEV_AUTH_BYPASS=1 and
+   * NODE_ENV !== production) and is recorded by the bypass characterisation
+   * test in tests/journeys/security/unauthenticated.spec.ts.
+   */
+  DEV_AUTH_USER_ID: "seed-cashier",
   SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-test-session-secret-32chars-min",
   APP_BASE_PATH: "/",
   VITE_BASE_PATH: "/",
