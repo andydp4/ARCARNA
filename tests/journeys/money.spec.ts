@@ -20,20 +20,56 @@ import {
 
 type Product = { id: string; name: string; defaultSalePrice: string; stock: number };
 
+const SEEDED_STOCK = 50;
+const SEEDED_PRICE = 10;
+
+/**
+ * A product this test alone owns.
+ *
+ * This used to return the first seeded product with stock, which meant every
+ * money test in every parallel worker sold the same row. The exact-value
+ * assertions then depended on scheduling: 2.7 asserts stock is *unchanged*
+ * after an oversell, and a neighbouring test's sale of the same product broke
+ * it. Owning the row is what makes those assertions mean what they say.
+ */
 async function sellableProduct(api: any, locationId: string): Promise<Product> {
-  const products = await okJson<Product[]>(
-    await api.get("/api/products", { headers: { "x-location-id": locationId } }),
+  const suffix = uniqueSuffix();
+  const created = await okJson<any>(
+    await api.post("/api/products", {
+      data: {
+        name: `Money Widget ${suffix}`,
+        productCode: `MW-${suffix}`.slice(0, 40),
+        costPrice: 4,
+        // The engine reads `salePrice`; sending only defaultSalePrice creates
+        // the product at zero and makes every money assertion vacuous.
+        salePrice: SEEDED_PRICE,
+        defaultSalePrice: SEEDED_PRICE,
+        stock: 0,
+        stockLimit: 1000,
+      },
+    }),
   );
-  // Price must be positive: a zero-priced product yields a zero total and
-  // makes every downstream money assertion vacuous.
-  const candidate = products.find((p) => p.stock > 5 && Number(p.defaultSalePrice) > 0);
-  if (!candidate) {
-    throw new Error(
-      `No product with stock > 5 and a positive price at location ${locationId}. ` +
-        `Seed/backfill the database first.`,
-    );
-  }
-  return candidate;
+
+  const seeded = await api.patch(`/api/inventory/${created.id}`, {
+    headers: { "x-location-id": locationId },
+    data: { adjustment: SEEDED_STOCK, type: "set" },
+  });
+  expect(
+    seeded.status(),
+    `could not seed stock at ${locationId}. Body: ${await seeded.text()}`,
+  ).toBeLessThan(400);
+
+  const stock = await locationStock(api, created.id, locationId);
+  expect(stock, "a freshly seeded product must hold its stock at this location").toBe(
+    SEEDED_STOCK,
+  );
+
+  return {
+    id: created.id,
+    name: created.name,
+    defaultSalePrice: String(SEEDED_PRICE),
+    stock: SEEDED_STOCK,
+  };
 }
 
 test.describe("money: sale", () => {
