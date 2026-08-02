@@ -29,7 +29,10 @@ const createSchema = z.object({
         notes: z.string().max(500).optional(),
       }),
     )
-    .min(1),
+    .min(1)
+    // A real receipt has one line per draft line. The 25 MB global body limit
+    // was the only ceiling, so a payload could carry an unbounded array.
+    .max(1000),
 });
 
 function sendError(res: any, err: unknown) {

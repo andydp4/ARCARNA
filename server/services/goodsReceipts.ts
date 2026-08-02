@@ -253,6 +253,13 @@ async function validateReceiptLines(
     );
   }
 
+  // Aggregate before checking. The ceiling was applied line by line, so the
+  // same draft line repeated across a payload was measured against `remaining`
+  // once per line and never in total: 400 lines of one unit each passed against
+  // a line with 7 remaining and produced a 201. Completion re-checks and would
+  // have rejected it, but by then the receipt exists and its units count as
+  // pending, blocking every legitimate receipt against that line.
+  const requested = new Map<string, { productId: string; quantity: number }>();
   for (const line of lines) {
     if (line.quantityReceived <= 0) {
       throw new GoodsReceiptError("VALIDATION_ERROR", "quantityReceived must be > 0");
@@ -260,13 +267,23 @@ async function validateReceiptLines(
     if ((line.quantityDamaged ?? 0) < 0) {
       throw new GoodsReceiptError("VALIDATION_ERROR", "quantityDamaged must be >= 0");
     }
+    const prior = requested.get(line.purchaseDraftItemId);
+    if (prior && prior.productId !== line.productId) {
+      throw new GoodsReceiptError("PRODUCT_MISMATCH", "Product does not match draft line");
+    }
+    requested.set(line.purchaseDraftItemId, {
+      productId: line.productId,
+      quantity: (prior?.quantity ?? 0) + line.quantityReceived,
+    });
+  }
 
+  for (const [purchaseDraftItemId, want] of requested) {
     const [draftItem] = await tx
       .select()
       .from(purchaseDraftItems)
       .where(
         and(
-          eq(purchaseDraftItems.id, line.purchaseDraftItemId),
+          eq(purchaseDraftItems.id, purchaseDraftItemId),
           eq(purchaseDraftItems.purchaseDraftId, purchaseDraftId),
           eq(purchaseDraftItems.orgId, orgId),
         ),
@@ -275,27 +292,27 @@ async function validateReceiptLines(
 
     if (!draftItem) {
       throw new GoodsReceiptError("LINE_NOT_FOUND", "Purchase draft line not found", {
-        purchaseDraftItemId: line.purchaseDraftItemId,
+        purchaseDraftItemId,
       });
     }
-    if (draftItem.productId !== line.productId) {
+    if (draftItem.productId !== want.productId) {
       throw new GoodsReceiptError("PRODUCT_MISMATCH", "Product does not match draft line");
     }
 
     const already = draftItem.quantityReceived ?? 0;
-    const pending = await pendingQtyForDraftItem(line.purchaseDraftItemId, excludeReceiptId, tx);
+    const pending = await pendingQtyForDraftItem(purchaseDraftItemId, excludeReceiptId, tx);
     const remaining = draftItem.quantity - already - pending;
 
-    if (line.quantityReceived > remaining) {
+    if (want.quantity > remaining) {
       throw new GoodsReceiptError(
         "OVER_RECEIVE",
         "Quantity exceeds remaining on purchase line",
         {
-          purchaseDraftItemId: line.purchaseDraftItemId,
+          purchaseDraftItemId,
           ordered: draftItem.quantity,
           alreadyReceived: already,
           pendingOnOtherReceipts: pending,
-          requested: line.quantityReceived,
+          requested: want.quantity,
           remaining,
         },
       );

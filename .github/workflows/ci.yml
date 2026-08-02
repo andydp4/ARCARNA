@@ -188,6 +188,14 @@ jobs:
               -v ON_ERROR_STOP=0 -f "$f"
           done
 
+      - name: Seed the database
+        # The journey fixtures impersonate seeded role users (seed-admin,
+        # seed-cashier, ...) and resolve the seeded org. Against a schema-only
+        # database every journey fails at fixture setup.
+        run: npm run seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

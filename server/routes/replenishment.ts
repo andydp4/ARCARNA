@@ -7,11 +7,27 @@ import {
   createPurchaseDraftsFromRecommendations,
   type ReplenishmentRisk,
 } from "../services/replenishment";
+import { PurchaseDraftError, purchaseDraftErrorPayload } from "../services/purchaseDrafts";
+import {
+  StockError,
+  TransferError,
+  transferErrorPayload,
+} from "../services/inventoryTransfers";
 import { REPLENISHMENT_ACTION_TYPES } from "@shared/schema";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Upper bound for a line quantity. The columns behind these routes are int4,
+ * so an unbounded `z.number().int()` let a quantity the column cannot hold
+ * through validation and turned it into a Drizzle insert failure — which was
+ * then echoed to the caller with the statement and its parameters. Bounding it
+ * here makes the schema mirror the storage and keeps the answer a 400.
+ */
+const PG_INT4_MAX = 2_147_483_647;
+const lineQuantity = z.number().int().positive().max(PG_INT4_MAX);
 
 const transferDraftSchema = z.object({
   toLocationId: z.string().uuid(),
@@ -21,7 +37,7 @@ const transferDraftSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         fromLocationId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: lineQuantity,
       }),
     )
     .min(1),
@@ -35,7 +51,7 @@ const purchaseDraftSchema = z.object({
     .array(
       z.object({
         productId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: lineQuantity,
         estimatedCost: z.number().min(0).optional(),
         supplierSku: z.string().optional(),
       }),
@@ -51,7 +67,7 @@ const purchaseDraftBatchSchema = z.object({
         supplierId: z.string().uuid(),
         locationId: z.string().uuid(),
         productId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: lineQuantity,
         estimatedCost: z.number().min(0).optional(),
         supplierSku: z.string().max(100).optional(),
         recommendation: z.unknown().optional(),
@@ -105,10 +121,10 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(201).json(transfer);
       } catch (e) {
         console.error(e);
-        res.status(400).json({
-          code: "TRANSFER_DRAFT_ERROR",
-          message: e instanceof Error ? e.message : "Failed to create transfer draft",
-        });
+        // Same leak as the purchase-draft routes below: e.message on a Drizzle
+        // failure is the SQL statement and its bound parameters.
+        const known = e instanceof TransferError || e instanceof StockError;
+        res.status(known ? 400 : 500).json(transferErrorPayload(e));
       }
     },
   );
@@ -135,10 +151,10 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(201).json(draft);
       } catch (e) {
         console.error(e);
-        res.status(400).json({
-          code: "PURCHASE_DRAFT_ERROR",
-          message: e instanceof Error ? e.message : "Failed to create purchase draft",
-        });
+        // Echoing e.message handed the caller the Drizzle error verbatim —
+        // "Failed query: insert into purchase_draft_items (...) values ($1...)"
+        // plus the bound parameters, i.e. the schema and the tenant id.
+        res.status(e instanceof PurchaseDraftError ? 400 : 500).json(purchaseDraftErrorPayload(e));
       }
     },
   );
@@ -165,10 +181,7 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(201).json(result);
       } catch (e) {
         console.error(e);
-        res.status(400).json({
-          code: "PURCHASE_DRAFT_ERROR",
-          message: e instanceof Error ? e.message : "Failed to create purchase drafts",
-        });
+        res.status(e instanceof PurchaseDraftError ? 400 : 500).json(purchaseDraftErrorPayload(e));
       }
     },
   );
