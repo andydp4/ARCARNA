@@ -18,6 +18,7 @@ export default defineConfig({
       ? []
       : [
           "server/__tests__/orderOutboxAtomicity.test.ts",
+          "server/__tests__/devAuthBypass.integration.test.ts",
           "server/__tests__/whatsappStore.integration.test.ts",
           "server/__tests__/purchasingPipeline.integration.test.ts",
           // Phase 6 integrity suites — all import ../db at module level.
