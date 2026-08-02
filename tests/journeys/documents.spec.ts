@@ -14,20 +14,48 @@ import {
   looksLikePdf,
   okJson,
   placeOrder,
+  uniqueSuffix,
 } from "./fixtures";
 
-type Product = { id: string; name: string; defaultSalePrice: string; stock: number };
-
+/**
+ * An order against a product this test alone owns.
+ *
+ * This used to sell whichever seeded product still had stock. Against the dev
+ * database that always found one; against a freshly seeded CI database the
+ * tests above it had already sold the seeded stock down, and the last test in
+ * the file failed with "No sellable product" — a starved fixture reported as a
+ * branding defect.
+ */
 async function orderForDocuments(api: any, locationId: string) {
-  const products = await okJson<Product[]>(
-    await api.get("/api/products", { headers: { "x-location-id": locationId } }),
+  const suffix = uniqueSuffix();
+  const product = await okJson<any>(
+    await api.post("/api/products", {
+      data: {
+        name: `Document Widget ${suffix}`,
+        productCode: `DW-${suffix}`.slice(0, 40),
+        costPrice: 4,
+        // The engine reads `salePrice`; sending only defaultSalePrice creates
+        // the product at zero and makes the totals on the paperwork vacuous.
+        salePrice: 10,
+        defaultSalePrice: 10,
+        stock: 0,
+        stockLimit: 1000,
+      },
+    }),
   );
-  const product = products.find((p) => p.stock > 3);
-  if (!product) throw new Error("No sellable product — seed the database");
+
+  const seeded = await api.patch(`/api/inventory/${product.id}`, {
+    headers: { "x-location-id": locationId },
+    data: { adjustment: 25, type: "set" },
+  });
+  expect(
+    seeded.status(),
+    `could not seed stock for the document product. Body: ${await seeded.text()}`,
+  ).toBeLessThan(400);
 
   const created = await okJson<any>(
     await placeOrder(api, locationId, [
-      { productId: product.id, quantity: 1, unitPrice: Number(product.defaultSalePrice) },
+      { productId: product.id, quantity: 1, unitPrice: 10 },
     ]),
   );
   const orderId = created.orderId ?? created.id;

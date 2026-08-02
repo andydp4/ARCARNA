@@ -16,6 +16,7 @@ import {
   products,
   allowedUsers,
 } from "../shared/schema";
+import { ONBOARDING_STEPS } from "../shared/onboarding";
 
 const SEED_ORG_NAME = "Arcarna Demo Org";
 const SEED_LOCATION_NAME = "Main Store";
@@ -32,7 +33,19 @@ async function seed() {
 
   const [org] = await db
     .insert(organizations)
-    .values({ name: SEED_ORG_NAME })
+    // This seed produces a complete org — location, products, role users, and
+    // the first sale below — so leaving it "not set up" sent the SPA to a
+    // wizard on every navigation: setup_complete = 0 to /setup-wizard, and an
+    // empty onboarding_state to /onboarding/wizard. Locally that was masked
+    // (the SessionStart hook patches setup_complete, and this dev database had
+    // onboarding clicked through by hand long ago), so the browser journeys
+    // passed here while testing a wizard on a fresh CI database. The seed owns
+    // the state it creates.
+    .values({
+      name: SEED_ORG_NAME,
+      setupComplete: 1,
+      onboardingState: { completedSteps: [...ONBOARDING_STEPS] },
+    })
     .returning();
 
   if (!org) {
