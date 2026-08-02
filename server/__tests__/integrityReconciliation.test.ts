@@ -76,7 +76,10 @@ async function reconcile(scopeOrgId?: string): Promise<Pair[]> {
       SELECT
         m.product_id,
         m.location_id,
-        SUM(m.delta)::int                          AS ledger,
+        -- numeric, not ::int: quantities are numeric(14,3) now, and casting
+        -- the sum to an integer rounded a ledger of 49.6 to 50 and then
+        -- reported the 0.4 difference as drift.
+        SUM(m.delta)::numeric(14,3)                AS ledger,
         COUNT(*)::int                              AS moves,
         (ARRAY_AGG(m.previous_stock ORDER BY m.created_at ASC, m.movement_id ASC))[1]  AS opening,
         (ARRAY_AGG(m.new_stock      ORDER BY m.created_at DESC, m.movement_id DESC))[1] AS closing
@@ -358,13 +361,22 @@ describe.skipIf(!hasDb)("6.6 database-wide reconciliation audit", () => {
   const isForeignBreakage = (p: Pair) =>
     (p.orgName ?? "").startsWith("Integrity Concurrency");
 
+  /**
+   * Quantities are numeric(14,3) and read back as JS numbers, so exact `!==`
+   * on a sum is the wrong test: 0.1 + 0.2 is not 0.3 in binary floating point.
+   * Half of the smallest stored step is the largest difference that can be
+   * rounding rather than a real discrepancy — anything bigger is drift.
+   */
+  const QUANTITY_EPSILON = 0.0005;
+  const differs = (a: number, b: number) => Math.abs(a - b) > QUANTITY_EPSILON;
+
   it("stock == opening + sum(delta) for every product+location with a ledger", async () => {
     // The generalised invariant. `opening` is previous_stock on the earliest
     // movement, which captures any balance that predates the ledger (seeds,
     // imports, backfills) without excusing arithmetic drift.
     const broken = (await reconcile())
       .filter((p) => p.moves > 0 && !isForeignBreakage(p))
-      .filter((p) => (p.opening ?? 0) + p.ledger !== p.stock)
+      .filter((p) => differs((p.opening ?? 0) + p.ledger, p.stock))
       .map((p) => ({
         product: p.productId,
         location: p.locationId,
@@ -384,7 +396,7 @@ describe.skipIf(!hasDb)("6.6 database-wide reconciliation audit", () => {
     // without going through adjustProductLocationStock.
     const broken = (await reconcile())
       .filter((p) => p.moves > 0 && !isForeignBreakage(p))
-      .filter((p) => p.closing !== p.stock)
+      .filter((p) => p.closing == null || differs(p.closing, p.stock))
       .map((p) => ({
         product: p.productId,
         location: p.locationId,
@@ -412,13 +424,18 @@ describe.skipIf(!hasDb)("6.6 database-wide reconciliation audit", () => {
     expect(rows.length).toBeGreaterThan(0);
 
     const breaks = rows.filter(
-      (r) => r.prior_new != null && Number(r.prior_new) !== Number(r.previous_stock),
+      (r) =>
+        r.prior_new != null &&
+        Math.abs(Number(r.prior_new) - Number(r.previous_stock)) > 0.0005,
     );
     expect(breaks).toEqual([]);
 
     // And every row's own arithmetic must add up.
     const badArithmetic = rows.filter(
-      (r) => Number(r.previous_stock) + Number(r.delta) !== Number(r.new_stock),
+      (r) =>
+        Math.abs(
+          Number(r.previous_stock) + Number(r.delta) - Number(r.new_stock),
+        ) > 0.0005,
     );
     expect(badArithmetic).toEqual([]);
   });

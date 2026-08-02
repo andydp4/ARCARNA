@@ -55,6 +55,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getBulkActionsForRole, type BulkActionId } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { executeBulkAction, downloadBlob } from "@/lib/bulkActionsClient";
+import { parseQuantityInput } from "@shared/quantity";
 
 type Order = OrdersListOrder;
 
@@ -1173,9 +1174,16 @@ export default function Orders() {
                           <Input
                             id={`edit-qty-${index}`}
                             type="number"
-                            min="1"
+                            min="0.001"
+                            step="0.001"
                             value={line.quantity}
-                            onChange={(e) => handleEditLineChange(index, "quantity", parseInt(e.target.value) || 1)}
+                            onChange={(e) =>
+                              handleEditLineChange(
+                                index,
+                                "quantity",
+                                parseQuantityInput(e.target.value) ?? line.quantity,
+                              )
+                            }
                             className="min-h-[44px]"
                             data-testid={`input-edit-quantity-${index}`}
                           />

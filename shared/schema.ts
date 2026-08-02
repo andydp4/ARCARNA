@@ -268,8 +268,12 @@ export const products = pgTable("products", {
     precision: 10,
     scale: 2,
   }).notNull(),
-  stock: integer("stock").default(0),
-  stockLimit: integer("stock_limit").default(10),
+  // numeric, not integer: shops selling by weight or length need 0.4 of a
+  // product. mode:"number" keeps these JS numbers, so the arithmetic that
+  // reads them is unchanged — string-mode numeric would have turned every
+  // `stock - qty` into silent string concatenation.
+  stock: numeric("stock", { precision: 14, scale: 3, mode: "number" }).default(0),
+  stockLimit: numeric("stock_limit", { precision: 14, scale: 3, mode: "number" }).default(10),
   barcode: varchar("barcode", { length: 255 }),
   // Optional shorthand names used for WhatsApp/order-intent matching, e.g. ["coke", "large coke"].
   aliases: jsonb("aliases").$type<string[]>(),
@@ -304,8 +308,10 @@ export const productLocationStock = pgTable(
     locationId: uuid("location_id")
       .references(() => locations.id, { onDelete: "cascade" })
       .notNull(),
-    stock: integer("stock").notNull().default(0),
-    stockLimit: integer("stock_limit").notNull().default(10),
+    stock: numeric("stock", { precision: 14, scale: 3, mode: "number" }).notNull().default(0),
+    stockLimit: numeric("stock_limit", { precision: 14, scale: 3, mode: "number" })
+      .notNull()
+      .default(10),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -370,7 +376,7 @@ export const inventoryTransferItems = pgTable(
     productId: uuid("product_id")
       .references(() => products.id)
       .notNull(),
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [index("inventory_transfer_items_transfer_idx").on(table.transferId)],
@@ -484,8 +490,10 @@ export const purchaseDraftItems = pgTable(
     productId: uuid("product_id")
       .references(() => products.id)
       .notNull(),
-    quantity: integer("quantity").notNull(),
-    quantityReceived: integer("quantity_received").notNull().default(0),
+    quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+    quantityReceived: numeric("quantity_received", { precision: 14, scale: 3, mode: "number" })
+      .notNull()
+      .default(0),
     estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
     supplierSku: varchar("supplier_sku", { length: 100 }),
     createdAt: timestamp("created_at").defaultNow(),
@@ -543,8 +551,10 @@ export const goodsReceiptItems = pgTable(
     productId: uuid("product_id")
       .references(() => products.id)
       .notNull(),
-    quantityReceived: integer("quantity_received").notNull(),
-    quantityDamaged: integer("quantity_damaged").notNull().default(0),
+    quantityReceived: numeric("quantity_received", { precision: 14, scale: 3, mode: "number" }).notNull(),
+    quantityDamaged: numeric("quantity_damaged", { precision: 14, scale: 3, mode: "number" })
+      .notNull()
+      .default(0),
     notes: varchar("notes", { length: 500 }),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -865,7 +875,7 @@ export const orderItems = pgTable("order_items", {
   orgId: uuid("org_id").references(() => organizations.id),
   orderId: uuid("order_id").references(() => orders.id),
   productId: uuid("product_id").references(() => products.id),
-  quantity: integer("quantity").notNull(),
+  quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1614,15 +1624,15 @@ export const inventoryMovements = pgTable("inventory_movements", {
   orgId: uuid("org_id").references(() => organizations.id),
   sku: varchar("sku", { length: 100 }).notNull(),
   productId: uuid("product_id").references(() => products.id),
-  delta: integer("delta").notNull(), // negative for sale, positive for return
+  delta: numeric("delta", { precision: 14, scale: 3, mode: "number" }).notNull(), // negative for sale, positive for return
   reason: varchar("reason", { length: 50 }).notNull(), // sale, refund, adjustment, order_update
   correlationId: varchar("correlation_id", { length: 100 }).notNull(), // orderId
   // Wider than the usual 36-char UUID event id: some callers build composite,
   // per-line idempotency keys (e.g. goods receipt completion) that combine a
   // prefix and one or two UUIDs.
   eventId: varchar("event_id", { length: 160 }).notNull(),
-  previousStock: integer("previous_stock"),
-  newStock: integer("new_stock"),
+  previousStock: numeric("previous_stock", { precision: 14, scale: 3, mode: "number" }),
+  newStock: numeric("new_stock", { precision: 14, scale: 3, mode: "number" }),
   locationId: uuid("location_id").references(() => locations.id),
   transferId: uuid("transfer_id"),
   fromLocationId: uuid("from_location_id").references(() => locations.id),

@@ -1,7 +1,10 @@
 import { z } from 'zod'
+import { positiveQuantity } from '../../../shared/quantity'
 export const OrderLineInput = z.object({ 
   productId: z.string().min(1), 
-  quantity: z.number().int().positive().finite().refine(val => val > 0 && val < 10000, { message: "Quantity must be between 1 and 9999" }), 
+  // Decimal, not integer: a shop selling by weight needs 0.4 of a product.
+  // The 10000 ceiling is a per-line sanity bound, kept from the original.
+  quantity: positiveQuantity.refine(val => val < 10000, { message: "Quantity must be less than 10,000" }),
   unitPrice: z.number().nonnegative().finite().refine(val => val >= 0 && val < 1000000, { message: "Price must be non-negative and less than 1,000,000" })
 })
 export const PlaceOrderInput = z.object({

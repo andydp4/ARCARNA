@@ -30,6 +30,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { formatQuantity, parseQuantityInput } from "@shared/quantity";
 import type { PosProduct } from "@/components/pos-product-card";
 
 export interface OrderLine {
@@ -200,16 +201,18 @@ export function PosOrderLines({
 
               <Input
                 type="text"
-                inputMode="numeric"
+                // Decimal, not numeric: the numeric keypad has no decimal point,
+                // and parseInt("0.4") was 0 — between them a fractional quantity
+                // could be neither typed nor entered.
+                inputMode="decimal"
                 aria-label={`Quantity for ${line.product.name}`}
                 className="h-11 w-20 text-center sm:w-full"
-                value={line.quantityInput ?? String(line.quantity)}
+                value={line.quantityInput ?? formatQuantity(line.quantity)}
                 data-testid={`line-qty-${index}`}
                 onChange={(e) => update(index, { quantityInput: e.target.value })}
                 onBlur={() => {
-                  const parsed = parseInt(line.quantityInput ?? "", 10);
-                  const quantity = Number.isFinite(parsed) && parsed > 0 ? parsed : line.quantity;
-                  update(index, { quantity, quantityInput: undefined });
+                  const parsed = parseQuantityInput(line.quantityInput ?? "");
+                  update(index, { quantity: parsed ?? line.quantity, quantityInput: undefined });
                 }}
               />
 

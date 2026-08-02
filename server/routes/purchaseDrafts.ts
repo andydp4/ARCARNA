@@ -14,6 +14,7 @@ import {
 } from "../services/purchaseDrafts";
 import { PURCHASE_DRAFT_STATUSES } from "@shared/schema";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { positiveQuantity } from "@shared/quantity";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
@@ -35,7 +36,7 @@ function sendError(res: any, err: unknown) {
 
 const itemSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().positive(),
+  quantity: positiveQuantity,
   estimatedCost: z.number().min(0).optional(),
   supplierSku: z.string().optional(),
 });

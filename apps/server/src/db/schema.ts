@@ -29,8 +29,11 @@ export const products = pgTable('products', {
   product_id: varchar('product_id',{length:100}).notNull().unique(), // SKU
   cost_price: numeric('cost_price', { precision: 10, scale: 2 }),
   default_sale_price: numeric('default_sale_price',{precision:10,scale:2}).notNull(),
-  stock: integer('stock').default(0),
-  stock_limit: integer('stock_limit').default(10),
+  // Must match shared/schema.ts: these are the same physical columns, and
+  // drizzle's integer mapper runs parseInt on what numeric returns, so a
+  // declaration left as integer reads 0.400 as 0.
+  stock: numeric('stock', { precision: 14, scale: 3, mode: 'number' }).default(0),
+  stock_limit: numeric('stock_limit', { precision: 14, scale: 3, mode: 'number' }).default(10),
   barcode: varchar('barcode',{length:255}),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
@@ -61,7 +64,7 @@ export const order_items = pgTable('order_items', {
   org_id: uuid('org_id').references(() => organizations.id),
   order_id: uuid('order_id').references(()=>orders.id),
   product_id: uuid('product_id').references(()=>products.id),
-  quantity: integer('quantity').notNull(),
+  quantity: numeric('quantity', { precision: 14, scale: 3, mode: 'number' }).notNull(),
   unit_price: numeric('unit_price',{precision:10,scale:2}).notNull(),
   total_price: numeric('total_price',{precision:10,scale:2}).notNull(),
   created_at: timestamp('created_at').defaultNow(),
@@ -76,7 +79,11 @@ export const invoices = pgTable('invoices', {
   tax: numeric('tax',{precision:10,scale:2}).default('0'),
   total: numeric('total',{precision:10,scale:2}).notNull(),
   status: varchar('status',{length:20}).default('sent'),
-  due_date: date('due_date'),
+  // varchar(10), not date: the column is character varying and
+  // shared/schema.ts declares it as such. Reading it through a `date`
+  // declaration hands the caller a Date where the rest of the codebase
+  // expects a 'YYYY-MM-DD' string.
+  due_date: varchar('due_date', { length: 10 }),
   google_drive_file_id: varchar('google_drive_file_id',{length:255}),
   google_drive_link: varchar('google_drive_link',{length:1024}),
   created_at: timestamp('created_at').defaultNow(),

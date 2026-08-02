@@ -29,6 +29,7 @@ import { Download, Trash2, PackageCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
+import { parseQuantityInput } from "@shared/quantity";
 
 type DraftListItem = {
   id: string;
@@ -449,10 +450,10 @@ export default function PurchaseDraftsPage() {
                                     updateLine.mutate({
                                       draftId: detail.id,
                                       itemId: line.id,
-                                      quantity: parseInt(
-                                        editQty[line.id] ?? String(line.quantity),
-                                        10,
-                                      ),
+                                      quantity:
+                                        parseQuantityInput(
+                                          editQty[line.id] ?? String(line.quantity),
+                                        ) ?? line.quantity,
                                     })
                                   }
                                 >

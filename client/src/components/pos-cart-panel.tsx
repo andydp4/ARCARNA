@@ -2,6 +2,7 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatQuantity, parseQuantityInput } from "@shared/quantity";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -405,8 +406,10 @@ export function PosCartPanel({
                       </Button>
                       <Input
                         type="text"
-                        inputMode="numeric"
-                        value={item.quantityInput ?? item.quantity.toString()}
+                        // "numeric" shows a keypad with no decimal point, so a
+                        // fractional quantity could not even be typed on a phone.
+                        inputMode="decimal"
+                        value={item.quantityInput ?? formatQuantity(item.quantity)}
                         onChange={(e) =>
                           setCart((prev) =>
                             prev.map((cartItem) =>
@@ -431,8 +434,11 @@ export function PosCartPanel({
                             );
                             return;
                           }
-                          const newQty = parseInt(raw, 10);
-                          if (Number.isNaN(newQty) || newQty < 1) {
+                          // parseInt("0.4") is 0, so a fractional quantity
+                          // silently removed the line — the reported bug.
+                          const parsedQty = parseQuantityInput(raw);
+                          const newQty = parsedQty ?? Number.NaN;
+                          if (parsedQty === null) {
                             setCart((prev) =>
                               prev.map((cartItem) =>
                                 cartItem.product.id === item.product.id
@@ -440,11 +446,11 @@ export function PosCartPanel({
                                   : cartItem
                               )
                             );
-                            if (newQty === 0) removeFromCart(item.product.id);
+                            if (Number(raw) === 0) removeFromCart(item.product.id);
                             else
                               toast({
-                                title: "Invalid Quantity",
-                                description: "Enter 1 or higher",
+                                title: "Invalid quantity",
+                                description: "Enter a number greater than zero, e.g. 1 or 0.4",
                                 variant: "destructive",
                               });
                             return;

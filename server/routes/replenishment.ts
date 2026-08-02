@@ -14,20 +14,20 @@ import {
   transferErrorPayload,
 } from "../services/inventoryTransfers";
 import { REPLENISHMENT_ACTION_TYPES } from "@shared/schema";
+import { positiveQuantity } from "@shared/quantity";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 
 /**
- * Upper bound for a line quantity. The columns behind these routes are int4,
- * so an unbounded `z.number().int()` let a quantity the column cannot hold
- * through validation and turned it into a Drizzle insert failure — which was
- * then echoed to the caller with the statement and its parameters. Bounding it
- * here makes the schema mirror the storage and keeps the answer a 400.
+ * Line quantities come from the shared contract, which bounds them to what the
+ * column can hold. Unbounded, a quantity past the column's range passed
+ * validation and became a Drizzle insert failure — echoed to the caller with
+ * the statement and its parameters. The columns are numeric(14,3) now, so this
+ * also carries the decimal rules rather than restating them.
  */
-const PG_INT4_MAX = 2_147_483_647;
-const lineQuantity = z.number().int().positive().max(PG_INT4_MAX);
+const lineQuantity = positiveQuantity;
 
 const transferDraftSchema = z.object({
   toLocationId: z.string().uuid(),

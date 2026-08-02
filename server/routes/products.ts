@@ -16,6 +16,7 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import { nonNegativeQuantity } from "@shared/quantity";
 
 /** Bounds mirror the products table column widths in shared/schema.ts. */
 const createProductBody = z.object({
@@ -25,8 +26,8 @@ const createProductBody = z.object({
   costPrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   salePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   defaultSalePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
-  stock: z.coerce.number().int().min(0).max(100_000_000).optional(),
-  stockLimit: z.coerce.number().int().min(0).max(100_000_000).optional(),
+  stock: z.coerce.number().pipe(nonNegativeQuantity).optional(),
+  stockLimit: z.coerce.number().pipe(nonNegativeQuantity).optional(),
   locationId: z.string().uuid().optional().nullable(),
 }).passthrough();
 

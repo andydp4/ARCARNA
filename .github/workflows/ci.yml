@@ -33,6 +33,9 @@ jobs:
       - name: Audit UI wiring (dead links, unparsed mutation results)
         run: node scripts/audit-ui-wiring.mjs
 
+      - name: Audit schema drift (two schema files, same tables)
+        run: node scripts/audit-schema-drift.mjs
+
       - name: Run tests
         run: npm test
 

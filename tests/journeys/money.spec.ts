@@ -131,6 +131,66 @@ test.describe("money: sale", () => {
     void orderId;
   });
 
+  /**
+   * Decimal quantities.
+   *
+   * Every quantity column was integer and the till parsed input with parseInt,
+   * so a shop selling by weight could not put 0.4 of anything through: the
+   * value read as 0 and the line vanished off the screen with no error. This
+   * walks a fractional sale all the way to the ledger.
+   */
+  test("2.10 a fractional quantity sells, totals correctly and moves exactly that much stock", async ({
+    api,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+    const before = await locationStock(api, product.id, locationId);
+
+    const settings = await okJson<any>(await api.get("/api/settings"));
+    const ratePercent = settings.vatEnabled === false ? 0 : Number(settings.vatRate ?? 20);
+
+    const quantity = 0.4;
+    const unitPrice = 10;
+    const expectedTotal = Number((quantity * unitPrice * (1 + ratePercent / 100)).toFixed(2));
+
+    const created = await okJson<any>(
+      await placeOrder(api, locationId, [{ productId: product.id, quantity, unitPrice }]),
+    );
+    const charged = Number(created.order?.total ?? created.total);
+    expect(
+      charged,
+      `0.4 x £10 at ${ratePercent}% must total £${expectedTotal}, not £${charged}`,
+    ).toBeCloseTo(expectedTotal, 2);
+
+    const after = await waitForStock(api, product.id, locationId, before - quantity);
+    expect(after, "selling 0.4 must reduce stock by exactly 0.4").toBeCloseTo(before - quantity, 3);
+
+    // And the quantity must survive the round trip rather than being rounded
+    // back to a whole number on the way in or out.
+    const fetched = await okJson<any>(await api.get(`/api/orders/${created.orderId ?? created.id}`));
+    const line = (fetched.items ?? fetched.orderItems ?? fetched.lines ?? [])[0];
+    if (line) {
+      expect(Number(line.quantity), "the stored line quantity must still be 0.4").toBeCloseTo(0.4, 3);
+    }
+  });
+
+  test("2.10 a quantity finer than the stored scale is refused, not silently rounded", async ({
+    api,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+
+    // numeric(14,3) holds thousandths. A fourth decimal place would be rounded
+    // by the column, so the price charged would not match the quantity sold.
+    const res = await placeOrder(api, locationId, [
+      { productId: product.id, quantity: 1.2345, unitPrice: 10 },
+    ]);
+    expect(res.ok(), "an over-precise quantity must be rejected").toBeFalsy();
+    expect(res.status(), "and rejected as a client error, not a 500").toBeLessThan(500);
+  });
+
   test("2.7 a sale with zero quantity is rejected by validation", async ({ api }) => {
     const locationId = await firstLocationId(api);
     await ensureOpenShift(api, locationId);
