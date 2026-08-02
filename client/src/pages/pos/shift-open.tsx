@@ -102,12 +102,15 @@ export function ShiftOpenModal({ open, onShiftOpened }: ShiftOpenModalProps) {
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label>Location</Label>
+            <Label htmlFor="shift-open-location">Location</Label>
             <Select
               value={effectiveLocation}
               onValueChange={setLocationId}
             >
-              <SelectTrigger>
+              {/* Radix renders the trigger as a bare combobox button: without
+                  this the control has no accessible name at all (axe
+                  button-name, critical). */}
+              <SelectTrigger id="shift-open-location" aria-label="Location">
                 <SelectValue placeholder="Select location" />
               </SelectTrigger>
               <SelectContent>

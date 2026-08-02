@@ -259,12 +259,18 @@ export function SuppliersHub() {
                   </TableCell>
                   {canMutate && (
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEditSupplier(s)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit supplier ${s.name}`}
+                        onClick={() => openEditSupplier(s)}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Delete supplier ${s.name}`}
                         onClick={() => deleteSupplier.mutate(s.id)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -324,6 +330,7 @@ export function SuppliersHub() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Remove this product-supplier mapping"
                         onClick={() => deleteMapping.mutate(m.id)}
                       >
                         <Trash2 className="h-4 w-4" />

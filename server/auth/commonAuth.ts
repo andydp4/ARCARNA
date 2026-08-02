@@ -53,16 +53,37 @@ export async function tryDevAuthBypass(
 ): Promise<boolean> {
   if (!isDevAuthBypassEnabled()) return false;
   const devUserId = process.env.DEV_AUTH_USER_ID || "dev-user";
-  let role = "SUPER_ADMIN";
+
+  let role: string;
   let orgId: string | null = null;
-  try {
-    const roleAndOrg = await storage.getUserRoleAndOrg(devUserId);
-    if (roleAndOrg) {
-      role = roleAndOrg.role;
-      orgId = roleAndOrg.orgId;
+
+  const roleAndOrg = await storage.getUserRoleAndOrg(devUserId).catch(() => null);
+  if (roleAndOrg) {
+    role = roleAndOrg.role;
+    orgId = roleAndOrg.orgId;
+  } else {
+    /**
+     * An id that is not in allowed_users used to default to SUPER_ADMIN with
+     * no org — and requireOrgContext then let x-org-id select any tenant, so
+     * an unauthenticated caller on a bypass server read every org's data. An
+     * unrecognised id must get *less* access than a known one, not more.
+     *
+     * The one case that genuinely needs elevation is a brand-new install with
+     * nobody in allowed_users yet: something has to be able to create the
+     * first user. That is also the state the unseeded e2e and a11y CI jobs run
+     * in. Anywhere else, an unknown id is a misconfigured DEV_AUTH_USER_ID,
+     * and the honest answer is to refuse and say so.
+     */
+    const existingUsers = await storage.countAllowedUsers().catch(() => 1);
+    if (existingUsers > 0) {
+      console.warn(
+        `[Auth] DEV_AUTH_BYPASS is on but DEV_AUTH_USER_ID="${devUserId}" is not in ` +
+          `allowed_users, and ${existingUsers} user(s) exist. Refusing rather than granting ` +
+          `super-admin. Set DEV_AUTH_USER_ID to a seeded id (e.g. seed-admin).`,
+      );
+      return false;
     }
-  } catch {
-    /* SUPER_ADMIN defaults */
+    role = "SUPER_ADMIN";
   }
   req.user = req.user || {
     id: devUserId,

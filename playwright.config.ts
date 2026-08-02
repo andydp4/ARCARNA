@@ -86,7 +86,13 @@ export default defineConfig({
   },
   projects: [
     { name: "e2e", testDir: "tests/e2e" },
-    { name: "a11y", testDir: "tests/a11y" },
+    // Same generous timeout as the journeys, for a related reason: axe walks
+    // the whole rendered tree, and against a seeded database (which this suite
+    // now requires — see the CI job) that is thousands of nodes. At the 30s
+    // default it timed out inside axe.analyze() and reported a *timeout*, not
+    // the 155 violations it had already found, which read as flakiness rather
+    // than as the failure it was.
+    { name: "a11y", testDir: "tests/a11y", timeout: 120_000 },
     { name: "visual", testDir: "tests/visual" },
     // Full user journeys: money paths, documents, cross-stage flows, tenancy.
     // Generous timeout: the dev server compiles the SPA on first navigation,

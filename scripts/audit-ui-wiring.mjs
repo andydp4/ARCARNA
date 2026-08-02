@@ -282,6 +282,50 @@ for (const route of serverRoutes) {
   orphans.push(route);
 }
 
+// -------------------------------------------- icon buttons with no name
+/**
+ * `size="icon"` renders a square button whose only child is an icon, so it has
+ * no text for a screen reader to announce — axe reports `button-name`, which is
+ * a *critical* violation. The a11y suite found 155 of these across the five
+ * critical paths, and did not report them in CI because that job runs against
+ * an empty database: no rows, so no per-row action buttons exist to fail.
+ *
+ * The rule is narrow on purpose. `size="icon"` means icon-only by definition,
+ * so requiring a name on it has no judgement call in it and cannot cry wolf
+ * the way a general "does this button render text?" heuristic would.
+ */
+const unnamedIconButtons = [];
+const NAME_ATTRS = /\b(aria-label|aria-labelledby|title)\s*=/;
+
+for (const file of clientFiles) {
+  if (!file.endsWith(".tsx")) continue;
+  const src = readFileSync(file, "utf8");
+  let idx = 0;
+  while ((idx = src.indexOf('size="icon"', idx)) !== -1) {
+    // Walk back to the opening `<`, then forward to the end of the tag, so the
+    // attribute list is read as a whole rather than by proximity.
+    const open = src.lastIndexOf("<", idx);
+    let end = idx;
+    let depth = 0;
+    for (; end < src.length; end++) {
+      const c = src[end];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) break;
+    }
+    const tag = src.slice(open, end + 1);
+    // An sr-only span inside the button also gives it a name, but that lives
+    // after the opening tag — check a little of the body too.
+    const body = src.slice(end + 1, end + 400);
+    if (!NAME_ATTRS.test(tag) && !/sr-only/.test(body)) {
+      unnamedIconButtons.push(
+        `${file}:${src.slice(0, open).split("\n").length}  →  size="icon" with no aria-label/title/sr-only`,
+      );
+    }
+    idx = end;
+  }
+}
+
 // ------------------------------------------------------------- report
 let failed = false;
 
@@ -301,6 +345,7 @@ console.log(`  client routes: ${routePaths.size}   server API routes: ${serverRo
 
 section("Dead client links (navigation to a path with no route)", deadLinks, true);
 section("Mutation result read as JSON without .json()", responseMisuse, true);
+section('Icon-only buttons with no accessible name (axe button-name, critical)', unnamedIconButtons, true);
 section(
   "Mutations with no onError (advisory — the user never sees the failure)",
   silentFailures,

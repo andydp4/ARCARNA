@@ -886,6 +886,7 @@ export default function Orders() {
                                 variant="ghost" 
                                 size="icon" 
                                 className="h-6 w-6"
+                                aria-label="Copy account number"
                                 onClick={() => copyToClipboard(settings.accountNumber, 'Account Number')}
                                 data-testid="button-copy-account-number"
                               >
@@ -903,6 +904,7 @@ export default function Orders() {
                                 variant="ghost" 
                                 size="icon" 
                                 className="h-6 w-6"
+                                aria-label="Copy sort code"
                                 onClick={() => copyToClipboard(settings.sortCode, 'Sort Code')}
                                 data-testid="button-copy-sort-code"
                               >
@@ -932,6 +934,7 @@ export default function Orders() {
                             variant="ghost" 
                             size="icon" 
                             className="h-8 w-8 flex-shrink-0"
+                            aria-label="Copy collection address"
                             onClick={() => copyToClipboard(settings.collectionAddress, 'Collection Address')}
                             data-testid="button-copy-collection-address"
                           >

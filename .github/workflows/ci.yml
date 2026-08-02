@@ -134,6 +134,16 @@ jobs:
               -v ON_ERROR_STOP=0 -f "$f"
           done
 
+      - name: Seed the database
+        # Without this the job was vacuous: an empty database renders empty
+        # tables, so the per-row action buttons and status badges that carry
+        # every one of the violations simply did not exist. It passed here
+        # while the same suite found 155 button-name and 70 colour-contrast
+        # failures against a database with rows in it.
+        run: npm run seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

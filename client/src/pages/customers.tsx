@@ -395,10 +395,10 @@ export default function Customers() {
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'Gold': return 'bg-yellow-500'
-      case 'Silver': return 'bg-gray-400'
-      case 'Bronze': return 'bg-amber-600'
-      default: return 'bg-blue-500'
+      case 'Gold': return 'bg-yellow-700'
+      case 'Silver': return 'bg-gray-500'
+      case 'Bronze': return 'bg-amber-700'
+      default: return 'bg-blue-600'
     }
   }
 
@@ -977,6 +977,7 @@ export default function Customers() {
                                   <Button
                                     variant="ghost"
                                     size="icon"
+                                    aria-label={`Edit ${customer.name}`}
                                     onClick={() => handleEdit(customer)}
                                     data-testid={`button-edit-${customer.id}`}
                                   >
@@ -1054,6 +1055,7 @@ export default function Customers() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label={`Delete ${customer.name}`}
                                 onClick={() => handleDelete(customer.id)}
                                 data-testid={`button-delete-${customer.id}`}
                               >

@@ -256,6 +256,7 @@ export default function LoyaltyPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Edit tier ${tier.name}`}
                             onClick={() => openTierDialog(tier)}
                             data-testid={`button-edit-tier-${tier.id}`}
                           >
@@ -264,6 +265,7 @@ export default function LoyaltyPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Delete tier ${tier.name}`}
                             onClick={() => deleteTier.mutate(tier.id)}
                             data-testid={`button-delete-tier-${tier.id}`}
                           >

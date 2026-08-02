@@ -64,16 +64,16 @@ type Job = {
 };
 
 const statusColors: Record<string, string> = {
-  success: 'bg-green-500',
-  failed: 'bg-red-500',
-  retrying: 'bg-yellow-500',
+  success: 'bg-green-700',
+  failed: 'bg-red-600',
+  retrying: 'bg-yellow-700',
   dead_letter: 'bg-red-700',
-  already_processed: 'bg-blue-500',
+  already_processed: 'bg-blue-600',
   queued: 'bg-gray-500',
-  running: 'bg-blue-400',
-  matched_action_success: 'bg-emerald-500',
+  running: 'bg-blue-600',
+  matched_action_success: 'bg-emerald-700',
   matched_action_failed: 'bg-orange-600',
-  not_matched: 'bg-slate-400',
+  not_matched: 'bg-slate-500',
   skipped: 'bg-amber-500',
 };
 

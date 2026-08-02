@@ -38,16 +38,16 @@ export const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; border: string; icon: LucideIcon }
 > = {
-  pending: { label: "Pending", color: "bg-yellow-500", border: "border-l-yellow-500", icon: Clock },
-  "on-hold": { label: "On Hold", color: "bg-orange-500", border: "border-l-orange-500", icon: AlertCircle },
+  pending: { label: "Pending", color: "bg-yellow-700", border: "border-l-yellow-700", icon: Clock },
+  "on-hold": { label: "On Hold", color: "bg-orange-700", border: "border-l-orange-700", icon: AlertCircle },
   "awaiting-customer": {
     label: "Awaiting Customer",
-    color: "bg-blue-500",
-    border: "border-l-blue-500",
+    color: "bg-blue-600",
+    border: "border-l-blue-600",
     icon: Truck,
   },
-  urgent: { label: "Urgent", color: "bg-red-500", border: "border-l-red-500", icon: AlertCircle },
-  completed: { label: "Completed", color: "bg-green-500", border: "border-l-green-500", icon: CheckCircle2 },
+  urgent: { label: "Urgent", color: "bg-red-600", border: "border-l-red-600", icon: AlertCircle },
+  completed: { label: "Completed", color: "bg-green-700", border: "border-l-green-700", icon: CheckCircle2 },
 };
 
 export function formatPaymentLabel(method: string) {

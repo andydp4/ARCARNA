@@ -1092,6 +1092,7 @@ export default function ProductManagement() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  aria-label={`Edit ${product.name}`}
                                   onClick={() => handleEdit(product)}
                                   data-testid={`button-edit-${product.id}`}
                                 >
@@ -1214,6 +1215,7 @@ export default function ProductManagement() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label={`Delete ${product.name}`}
                               onClick={() => handleDelete(product.id)}
                               data-testid={`button-delete-${product.id}`}
                             >

@@ -197,7 +197,13 @@ export function ArcarnaAssistantBar() {
               disabled={busy}
               data-testid="arcarna-voice-input"
             />
-            <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={busy || !input.trim()}>
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Send message to the assistant"
+              className="h-9 w-9 shrink-0"
+              disabled={busy || !input.trim()}
+            >
               <Send className="h-4 w-4" />
             </Button>
           </form>

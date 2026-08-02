@@ -20,7 +20,14 @@
   /* ── Semantic state colours — meaning only, never decoration ─────────── */
   --success: hsl(158 64% 45%);
   --warning: hsl(38 92% 52%);
-  --danger: hsl(2 78% 56%);
+  /* 56% lightness measured 4.13:1 against white text — below the 4.5:1 this
+     project's own design system specification requires (§ Accessibility).
+     Same hue and saturation, darkened until it passes against the foreground
+     actually painted on it: --destructive-foreground renders #f0f2f5, not pure
+     white, so 51% still measured 4.06:1. At 46% it is 4.76:1, which leaves room
+     for the off-white rather than sitting on the threshold.
+     Everything red inherits this, including --destructive in liquid-metal.css. */
+  --danger: hsl(2 78% 46%);
 }
 
 /* ── Semantic status badges ───────────────────────────────────────────────

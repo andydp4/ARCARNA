@@ -18,10 +18,16 @@
   --secondary: hsl(217, 91%, 60%);
   --secondary-foreground: hsl(0, 0%, 100%);
   --muted: hsl(214, 32%, 91%);
-  --muted-foreground: hsl(215, 16%, 47%);
+  /* 47% measured 4.49:1 on the light card surface — two hundredths under
+     AA for body text. 45% gives 4.83:1. */
+  --muted-foreground: hsl(215, 16%, 45%);
   --accent: hsl(160, 84%, 39%);
   --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 84%, 60%);
+  /* Darkened from 60% lightness: white on the old red measured 3.78:1, below
+     the 4.5:1 the design system specification itself requires for text
+     (docs/specs/ARCARNA_DESIGN_SYSTEM_SPECIFICATION.md:205). Same hue and
+     saturation; this is the lightest value that passes, now 4.53:1. */
+  --destructive: hsl(0, 84%, 50%);
   --destructive-foreground: hsl(0, 0%, 100%);
   --border: hsl(214, 32%, 91%);
   --input: hsl(214, 32%, 91%);
@@ -60,7 +66,9 @@
   --muted-foreground: hsl(210, 3.3898%, 46.2745%);
   --accent: hsl(205.7143, 70%, 7.8431%);
   --accent-foreground: hsl(203.7736, 87.6033%, 52.549%);
-  --destructive: hsl(356.3033, 90.5579%, 54.3137%);
+  /* Was 54.3% lightness = 4.11:1 with white; now 4.63:1. See the light-mode
+     note above. */
+  --destructive: hsl(356.3033, 90.5579%, 48%);
   --destructive-foreground: hsl(0, 0%, 100%);
   --border: hsl(210, 5.2632%, 14.902%);
   --input: hsl(207.6923, 27.6596%, 18.4314%);
