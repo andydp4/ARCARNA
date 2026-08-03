@@ -1176,15 +1176,11 @@ export default function ProductManagement() {
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-stock">Stock</Label>
-                                      <Input
-                                        id="edit-stock"
-                                        type="number"
-                                        value={formData.stock}
-                                        onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                                        placeholder="100"
-                                        className="min-h-[44px]"
-                                      />
+                                      <Label>Stock</Label>
+                                      <p className="text-sm text-muted-foreground">
+                                        Set stock in {VOCAB.stockTruths} — stock is tracked per
+                                        location.
+                                      </p>
                                     </div>
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-stockLimit">Stock Limit</Label>
