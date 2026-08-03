@@ -992,9 +992,9 @@ export default function Locations() {
                             {product.stock === 0 ? (
                               <Badge variant="destructive">Out of Stock</Badge>
                             ) : product.stock <= 5 ? (
-                              <Badge className="bg-orange-500">{product.stock}</Badge>
+                              <Badge className="bg-orange-700">{product.stock}</Badge>
                             ) : product.stock <= 20 ? (
-                              <Badge className="bg-yellow-500">{product.stock}</Badge>
+                              <Badge className="bg-yellow-700">{product.stock}</Badge>
                             ) : (
                               <span className="font-medium">{product.stock}</span>
                             )}

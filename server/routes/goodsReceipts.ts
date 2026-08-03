@@ -11,6 +11,7 @@ import {
   goodsReceiptErrorPayload,
 } from "../services/goodsReceipts";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { nonNegativeQuantity, positiveQuantity } from "@shared/quantity";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
@@ -24,12 +25,15 @@ const createSchema = z.object({
       z.object({
         purchaseDraftItemId: z.string().uuid(),
         productId: z.string().uuid(),
-        quantityReceived: z.number().int().positive(),
-        quantityDamaged: z.number().int().min(0).optional(),
+        quantityReceived: positiveQuantity,
+        quantityDamaged: nonNegativeQuantity.optional(),
         notes: z.string().max(500).optional(),
       }),
     )
-    .min(1),
+    .min(1)
+    // A real receipt has one line per draft line. The 25 MB global body limit
+    // was the only ceiling, so a payload could carry an unbounded array.
+    .max(1000),
 });
 
 function sendError(res: any, err: unknown) {

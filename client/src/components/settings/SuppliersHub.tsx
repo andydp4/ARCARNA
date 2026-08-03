@@ -132,6 +132,14 @@ export function SuppliersHub() {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
       toast({ title: "Supplier deactivated" });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const saveMapping = useMutation({
@@ -160,11 +168,27 @@ export function SuppliersHub() {
     mutationFn: (m: ProductSupplier) =>
       apiRequest("PATCH", `/api/product-suppliers/${m.id}`, { isPreferred: m.isPreferred !== 1 }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/product-suppliers"] }),
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const deleteMapping = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/product-suppliers/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/product-suppliers"] }),
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const openEditSupplier = (s: Supplier) => {
@@ -235,12 +259,18 @@ export function SuppliersHub() {
                   </TableCell>
                   {canMutate && (
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEditSupplier(s)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Edit supplier ${s.name}`}
+                        onClick={() => openEditSupplier(s)}
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Delete supplier ${s.name}`}
                         onClick={() => deleteSupplier.mutate(s.id)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -300,6 +330,7 @@ export function SuppliersHub() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label="Remove this product-supplier mapping"
                         onClick={() => deleteMapping.mutate(m.id)}
                       >
                         <Trash2 className="h-4 w-4" />

@@ -204,8 +204,23 @@
   transform: scale(0.98);
 }
 
+/**
+ * Unavailable product card.
+ *
+ * This was `opacity: 0.65`, which dimmed the whole subtree — including the
+ * stock badge, whose text then measured 3.64:1 against its own background.
+ * Opacity creates a stacking context, so no child can opt back out: the only
+ * values that keep the badge readable are 0.95 and up, which dims nothing.
+ *
+ * The state is already carried by the badge itself, the "Unavailable until
+ * stock is replenished" line, the not-allowed cursor and the disabled button,
+ * so it is signalled here by the surface instead and every label stays at full
+ * contrast.
+ */
 .liquid-metal .pos-product-card-disabled {
-  opacity: 0.65;
+  background: linear-gradient(155deg, hsl(215, 8%, 12%) 0%, hsl(220, 7%, 10%) 100%);
+  border-color: hsl(215, 8%, 20%);
+  box-shadow: none;
 }
 
 .liquid-metal .pos-price {

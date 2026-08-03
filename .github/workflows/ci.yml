@@ -30,6 +30,12 @@ jobs:
       - name: Audit storage orgId usage
         run: node scripts/audit-storage-orgid.mjs
 
+      - name: Audit UI wiring (dead links, unparsed mutation results)
+        run: node scripts/audit-ui-wiring.mjs
+
+      - name: Audit schema drift (two schema files, same tables)
+        run: node scripts/audit-schema-drift.mjs
+
       - name: Run tests
         run: npm test
 
@@ -131,6 +137,16 @@ jobs:
               -v ON_ERROR_STOP=0 -f "$f"
           done
 
+      - name: Seed the database
+        # Without this the job was vacuous: an empty database renders empty
+        # tables, so the per-row action buttons and status badges that carry
+        # every one of the violations simply did not exist. It passed here
+        # while the same suite found 155 button-name and 70 colour-contrast
+        # failures against a database with rows in it.
+        run: npm run seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
@@ -140,6 +156,68 @@ jobs:
           CI: "true"
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
           SESSION_SECRET: ci-a11y-session-secret-32chars-minimum
+
+  journeys:
+    name: Playwright journeys (money, documents, tenancy)
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midnight_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Push schema
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Apply SQL migrations (raw)
+        run: |
+          shopt -s nullglob
+          for f in migrations/*.sql; do
+            echo "→ $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d midnight_test \
+              -v ON_ERROR_STOP=0 -f "$f"
+          done
+
+      - name: Seed the database
+        # The journey fixtures impersonate seeded role users (seed-admin,
+        # seed-cashier, ...) and resolve the seeded org. Against a schema-only
+        # database every journey fails at fixture setup.
+        run: npm run seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright journeys
+        run: npm run test:journeys
+        env:
+          CI: "true"
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+          SESSION_SECRET: ci-journeys-session-secret-32chars-min
 
   migration-sanity:
     name: Migration sanity (fresh DB)

@@ -27,7 +27,10 @@ export function purchaseDraftErrorPayload(err: unknown) {
   if (err instanceof PurchaseDraftError) {
     return { code: err.code, message: err.message, details: err.details };
   }
-  return { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Unknown error" };
+  // Never echo the raw error: unhandled failures here are Drizzle/pg errors
+  // whose message contains the full SQL statement and column list. The real
+  // error is logged server-side by the caller.
+  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred" };
 }
 
 const STATUS_FLOW: Record<PurchaseDraftStatus, PurchaseDraftStatus[]> = {
@@ -38,6 +41,104 @@ const STATUS_FLOW: Record<PurchaseDraftStatus, PurchaseDraftStatus[]> = {
   fully_received: [],
   cancelled: [],
 };
+
+/**
+ * Statuses where ordered quantity is still expected to arrive. Replenishment
+ * subtracts the outstanding quantity on these drafts so a product that has
+ * already been ordered is not recommended for purchase a second time.
+ */
+export const OPEN_PURCHASE_DRAFT_STATUSES: PurchaseDraftStatus[] = [
+  "draft",
+  "reviewed",
+  "approved",
+  "partially_received",
+];
+
+export type PurchaseDraftLineInput = {
+  productId: string;
+  quantity: number;
+  estimatedCost?: string | number;
+  supplierSku?: string;
+};
+
+export type PurchaseDraftGroupInput = {
+  supplierId: string;
+  locationId: string;
+  createdBy?: string;
+  sourceRecommendationJson?: unknown;
+  items: PurchaseDraftLineInput[];
+};
+
+export function onOrderKey(productId: string, locationId: string) {
+  return `${productId}:${locationId}`;
+}
+
+/**
+ * Outstanding (ordered but not yet received) quantity per product+location
+ * across all open purchase drafts, keyed by `onOrderKey`.
+ */
+export async function getOnOrderQuantities(orgId: string) {
+  const rows = await db
+    .select({
+      productId: purchaseDraftItems.productId,
+      locationId: purchaseDrafts.locationId,
+      outstanding: sql<number>`COALESCE(SUM(GREATEST(${purchaseDraftItems.quantity} - ${purchaseDraftItems.quantityReceived}, 0)), 0)::int`.as(
+        "outstanding",
+      ),
+    })
+    .from(purchaseDraftItems)
+    .innerJoin(purchaseDrafts, eq(purchaseDraftItems.purchaseDraftId, purchaseDrafts.id))
+    .where(
+      and(
+        eq(purchaseDraftItems.orgId, orgId),
+        inArray(purchaseDrafts.status, OPEN_PURCHASE_DRAFT_STATUSES),
+      ),
+    )
+    .groupBy(purchaseDraftItems.productId, purchaseDrafts.locationId);
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(onOrderKey(row.productId, row.locationId), Number(row.outstanding) || 0);
+  }
+  return map;
+}
+
+/**
+ * Open drafts for the given supplier+location pairs, so callers can warn that a
+ * new draft would sit alongside an existing one rather than extending it.
+ */
+export async function findOpenDraftsForPairs(
+  orgId: string,
+  pairs: { supplierId: string; locationId: string }[],
+) {
+  if (!pairs.length) return [];
+  const supplierIds = Array.from(new Set(pairs.map((p) => p.supplierId)));
+  const locationIds = Array.from(new Set(pairs.map((p) => p.locationId)));
+
+  const rows = await db
+    .select({
+      id: purchaseDrafts.id,
+      supplierId: purchaseDrafts.supplierId,
+      locationId: purchaseDrafts.locationId,
+      status: purchaseDrafts.status,
+      supplierName: suppliers.name,
+      locationName: locations.name,
+    })
+    .from(purchaseDrafts)
+    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
+    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .where(
+      and(
+        eq(purchaseDrafts.orgId, orgId),
+        inArray(purchaseDrafts.supplierId, supplierIds),
+        inArray(purchaseDrafts.locationId, locationIds),
+        inArray(purchaseDrafts.status, OPEN_PURCHASE_DRAFT_STATUSES),
+      ),
+    );
+
+  const wanted = new Set(pairs.map((p) => `${p.supplierId}:${p.locationId}`));
+  return rows.filter((r) => wanted.has(`${r.supplierId}:${r.locationId}`));
+}
 
 async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | typeof db = db) {
   const [draft] = await executor
@@ -128,53 +229,63 @@ export async function getPurchaseDraft(orgId: string, id: string) {
   return loadDraftWithItems(orgId, id);
 }
 
-export async function createPurchaseDraft(
-  orgId: string,
-  body: {
-    supplierId: string;
-    locationId: string;
-    createdBy?: string;
-    sourceRecommendationJson?: unknown;
-    items: {
-      productId: string;
-      quantity: number;
-      estimatedCost?: string | number;
-      supplierSku?: string;
-    }[];
-  },
-) {
+async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraftGroupInput) {
   if (!body.items.length) {
     throw new PurchaseDraftError("VALIDATION_ERROR", "At least one line item required");
   }
 
-  return db.transaction(async (tx) => {
-    const [draft] = await tx
-      .insert(purchaseDrafts)
-      .values({
-        orgId,
-        supplierId: body.supplierId,
-        locationId: body.locationId,
-        status: "draft",
-        createdBy: body.createdBy,
-        sourceRecommendationJson: body.sourceRecommendationJson ?? null,
-      })
-      .returning();
+  const [draft] = await tx
+    .insert(purchaseDrafts)
+    .values({
+      orgId,
+      supplierId: body.supplierId,
+      locationId: body.locationId,
+      status: "draft",
+      createdBy: body.createdBy,
+      sourceRecommendationJson: body.sourceRecommendationJson ?? null,
+    })
+    .returning();
 
-    for (const line of body.items) {
-      if (line.quantity <= 0) {
-        throw new PurchaseDraftError("VALIDATION_ERROR", "Quantity must be positive");
-      }
-      await tx.insert(purchaseDraftItems).values({
-        purchaseDraftId: draft.id,
-        orgId,
-        productId: line.productId,
-        quantity: line.quantity,
-        estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
-        supplierSku: line.supplierSku,
-      });
+  for (const line of body.items) {
+    if (line.quantity <= 0) {
+      throw new PurchaseDraftError("VALIDATION_ERROR", "Quantity must be positive");
     }
+    await tx.insert(purchaseDraftItems).values({
+      purchaseDraftId: draft.id,
+      orgId,
+      productId: line.productId,
+      quantity: line.quantity,
+      estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
+      supplierSku: line.supplierSku,
+    });
+  }
 
-    return loadDraftWithItems(orgId, draft.id, tx);
+  return loadDraftWithItems(orgId, draft.id, tx);
+}
+
+export async function createPurchaseDraft(orgId: string, body: PurchaseDraftGroupInput) {
+  return db.transaction(async (tx) => insertDraftWithItems(tx, orgId, body));
+}
+
+/**
+ * Creates one draft per group in a single transaction — a partially created
+ * batch would leave the buyer reconciling drafts by hand, so all groups commit
+ * together or none do.
+ */
+export async function createPurchaseDraftsBatch(
+  orgId: string,
+  groups: PurchaseDraftGroupInput[],
+) {
+  if (!groups.length) {
+    throw new PurchaseDraftError("VALIDATION_ERROR", "At least one draft group required");
+  }
+
+  return db.transaction(async (tx) => {
+    const created = [];
+    for (const group of groups) {
+      created.push(await insertDraftWithItems(tx, orgId, group));
+    }
+    return created;
   });
 }
 

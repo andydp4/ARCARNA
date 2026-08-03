@@ -172,7 +172,7 @@ export default function Settings() {
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-8 min-h-[48px]">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-8 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="imports">Imports</TabsTrigger>
             <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
@@ -444,6 +444,7 @@ export default function Settings() {
                         <Button
                           variant="outline"
                           size="icon"
+                          aria-label="Copy account number"
                           onClick={() => copyToClipboard(settings.accountNumber, 'Account Number')}
                           data-testid="button-copy-account"
                         >
@@ -463,6 +464,7 @@ export default function Settings() {
                         <Button
                           variant="outline"
                           size="icon"
+                          aria-label="Copy sort code"
                           onClick={() => copyToClipboard(settings.sortCode, 'Sort Code')}
                         >
                           {copiedText === 'Sort Code' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -480,6 +482,7 @@ export default function Settings() {
                         <Button
                           variant="outline"
                           size="icon"
+                          aria-label="Copy IBAN"
                           onClick={() => copyToClipboard(settings.iban, 'IBAN')}
                         >
                           {copiedText === 'IBAN' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -497,6 +500,7 @@ export default function Settings() {
                         <Button
                           variant="outline"
                           size="icon"
+                          aria-label="Copy SWIFT code"
                           onClick={() => copyToClipboard(settings.swift, 'SWIFT')}
                         >
                           {copiedText === 'SWIFT' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -542,6 +546,7 @@ export default function Settings() {
                             <Button
                               variant="outline"
                               size="icon"
+                              aria-label="Copy collection address"
                               onClick={() => copyToClipboard(settings.collectionAddress, 'Collection Address')}
                             >
                               {copiedText === 'Collection Address' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

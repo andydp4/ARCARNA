@@ -106,7 +106,18 @@ export const clerkIsAuthenticated: RequestHandler = async (req, res, next) => {
     if (await tryPhase2dTestAuth(req, res, next)) return;
     if (await tryDevAuthBypass(req, res, next)) return;
 
-    const { userId } = getAuth(req);
+    // getAuth throws if clerkMiddleware never registered (e.g. Clerk keys
+    // absent or misconfigured). That propagated as a 500 carrying Clerk's
+    // internal message, so an auth misconfiguration failed open to an error
+    // rather than closed to 401 — every route answered 500 to anonymous
+    // callers instead of refusing them.
+    let userId: string | null = null;
+    try {
+      ({ userId } = getAuth(req));
+    } catch (authError) {
+      console.error("[Auth] Clerk getAuth failed — refusing request:", authError);
+      return res.status(401).json({ message: "Unauthorized" });
+    }
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }

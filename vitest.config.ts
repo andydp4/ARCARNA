@@ -18,7 +18,15 @@ export default defineConfig({
       ? []
       : [
           "server/__tests__/orderOutboxAtomicity.test.ts",
+          "server/__tests__/devAuthBypass.integration.test.ts",
           "server/__tests__/whatsappStore.integration.test.ts",
+          "server/__tests__/purchasingPipeline.integration.test.ts",
+          // Phase 6 integrity suites — all import ../db at module level.
+          "server/__tests__/integrityIdempotency.test.ts",
+          "server/__tests__/integrityConcurrency.test.ts",
+          "server/__tests__/integrityRollback.test.ts",
+          "server/__tests__/integrityReconciliation.test.ts",
+          "server/__tests__/integrityMigration.test.ts",
         ],
     testTimeout: 30_000,
   },

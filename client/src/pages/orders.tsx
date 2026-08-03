@@ -29,6 +29,7 @@ import {
   MapPin,
   Search,
   Star,
+  Download,
 } from "lucide-react";
 import { OrderOpsDialog } from "@/components/reports/OrderOpsDialog";
 import { SatisfactionDialog } from "@/components/reports/SatisfactionDialog";
@@ -54,6 +55,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getBulkActionsForRole, type BulkActionId } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { executeBulkAction, downloadBlob } from "@/lib/bulkActionsClient";
+import { parseQuantityInput } from "@shared/quantity";
 
 type Order = OrdersListOrder;
 
@@ -89,6 +91,7 @@ export default function Orders() {
   const [satisfactionOpen, setSatisfactionOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [downloadingDoc, setDownloadingDoc] = useState<"receipt" | "invoice" | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
@@ -416,6 +419,54 @@ export default function Orders() {
     setDetailsDialogOpen(false);
     setOrderDetailsId(null);
   }, []);
+
+  /**
+   * Downloads an order's paperwork.
+   *
+   * The receipt has a dedicated order route; the invoice endpoint already
+   * accepts an order id and synthesises the document when the async invoice
+   * worker has not written a record yet, so both work straight from an order.
+   */
+  const downloadOrderDocument = useCallback(
+    async (orderId: string, kind: "receipt" | "invoice") => {
+      setDownloadingDoc(kind);
+      try {
+        const path =
+          kind === "receipt"
+            ? `/api/orders/${orderId}/receipt.pdf`
+            : `/api/invoices/${orderId}/pdf`;
+        const response = await apiFetch(path, { credentials: "include" });
+        if (!response.ok) {
+          // Surface the server's reason rather than a generic failure.
+          let reason = `${response.status}`;
+          try {
+            const body = await response.json();
+            if (body?.message) reason = body.message;
+          } catch {
+            /* non-JSON error body */
+          }
+          throw new Error(reason);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${kind}-${orderId.slice(0, 8)}.pdf`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        toast({
+          title: `Could not download ${kind}`,
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "destructive",
+        });
+      } finally {
+        setDownloadingDoc(null);
+      }
+    },
+    [toast],
+  );
 
   const openDeleteDialog = useCallback((order: Order) => {
     setOrderToDelete(order);
@@ -836,6 +887,7 @@ export default function Orders() {
                                 variant="ghost" 
                                 size="icon" 
                                 className="h-6 w-6"
+                                aria-label="Copy account number"
                                 onClick={() => copyToClipboard(settings.accountNumber, 'Account Number')}
                                 data-testid="button-copy-account-number"
                               >
@@ -853,6 +905,7 @@ export default function Orders() {
                                 variant="ghost" 
                                 size="icon" 
                                 className="h-6 w-6"
+                                aria-label="Copy sort code"
                                 onClick={() => copyToClipboard(settings.sortCode, 'Sort Code')}
                                 data-testid="button-copy-sort-code"
                               >
@@ -882,6 +935,7 @@ export default function Orders() {
                             variant="ghost" 
                             size="icon" 
                             className="h-8 w-8 flex-shrink-0"
+                            aria-label="Copy collection address"
                             onClick={() => copyToClipboard(settings.collectionAddress, 'Collection Address')}
                             data-testid="button-copy-collection-address"
                           >
@@ -921,6 +975,34 @@ export default function Orders() {
                     >
                       <Star className="mr-2 h-4 w-4" />
                       Rate collection
+                    </Button>
+                  </>
+                )}
+                {/* Paperwork for this order, without leaving it. Keyed off the
+                    fetched detail rather than `selectedOrder`, which is only set
+                    by the status/actions menu — opening the dialog with View
+                    leaves it null. */}
+                {orderDetails && (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="min-h-[44px]"
+                      disabled={downloadingDoc !== null}
+                      onClick={() => downloadOrderDocument(orderDetails.id, "receipt")}
+                      data-testid="button-download-receipt"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {downloadingDoc === "receipt" ? "Preparing…" : "Receipt"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="min-h-[44px]"
+                      disabled={downloadingDoc !== null}
+                      onClick={() => downloadOrderDocument(orderDetails.id, "invoice")}
+                      data-testid="button-download-invoice"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {downloadingDoc === "invoice" ? "Preparing…" : "Invoice"}
                     </Button>
                   </>
                 )}
@@ -1092,9 +1174,16 @@ export default function Orders() {
                           <Input
                             id={`edit-qty-${index}`}
                             type="number"
-                            min="1"
+                            min="0.001"
+                            step="0.001"
                             value={line.quantity}
-                            onChange={(e) => handleEditLineChange(index, "quantity", parseInt(e.target.value) || 1)}
+                            onChange={(e) =>
+                              handleEditLineChange(
+                                index,
+                                "quantity",
+                                parseQuantityInput(e.target.value) ?? line.quantity,
+                              )
+                            }
                             className="min-h-[44px]"
                             data-testid={`input-edit-quantity-${index}`}
                           />

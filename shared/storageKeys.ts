@@ -49,3 +49,4 @@ export function migrateStorageKey(legacyKey: string, newKey: string): string | n
   }
   return null;
 }
+export const STORAGE_POS_ENTRY_MODE = "arcarna.posEntryMode";

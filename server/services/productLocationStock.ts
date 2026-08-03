@@ -48,7 +48,10 @@ export function stockErrorPayload(err: unknown): { code: string; message: string
   if (err instanceof StockError) {
     return { code: err.code, message: err.message, details: err.details };
   }
-  return { code: "INTERNAL_ERROR", message: err instanceof Error ? err.message : "Unknown error" };
+  // Never echo the raw error: unhandled failures here are Drizzle/pg errors
+  // whose message contains the full SQL statement and column list. The real
+  // error is logged server-side by the caller.
+  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred" };
 }
 
 /** Legacy compatibility — not authoritative. */
@@ -201,6 +204,23 @@ export async function adjustProductLocationStock(
 ): Promise<AdjustResult> {
   const run = async (client: DbTx) => {
     await ensureProductLocationStockRow(args.orgId, args.productId, args.locationId, 0, 10, client);
+
+    // Lock the stock row for the rest of the transaction. `previousStock` below
+    // feeds both the absolute setStock write and the delta recorded on the
+    // movement, so a stale read here corrupts the ledger as well as the row.
+    const [lockedRow] = await client
+      .select({ id: productLocationStock.id })
+      .from(productLocationStock)
+      .where(
+        and(
+          eq(productLocationStock.orgId, args.orgId),
+          eq(productLocationStock.productId, args.productId),
+          eq(productLocationStock.locationId, args.locationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    void lockedRow;
 
     const before = await getProductLocationStock(args.orgId, args.productId, args.locationId, client);
     if (!before) throw new StockError("STOCK_ROW_MISSING", "Product location stock row not found");

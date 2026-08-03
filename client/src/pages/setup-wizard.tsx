@@ -164,6 +164,14 @@ export default function SetupWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/setup"] });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const completeMutation = useMutation({
@@ -174,6 +182,14 @@ export default function SetupWizard() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Setup complete", description: "Your organization is ready." });
       setLocation("/");
+    },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -194,6 +210,14 @@ export default function SetupWizard() {
               : undefined,
         });
       }
+    },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 

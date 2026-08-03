@@ -87,7 +87,8 @@ export function ExpensesPage() {
         });
         return { offline: true };
       }
-      return apiRequest("POST", "/api/overhead-expenses", data);
+      await apiRequest("POST", "/api/overhead-expenses", data);
+      return { offline: false };
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/overhead-expenses"] });

@@ -236,6 +236,7 @@ export interface IStorage {
   createOrganization(name: string): Promise<Organization>;
   updateOrganizationName(id: string, name: string): Promise<Organization>;
   countOrganizations(): Promise<number>;
+  countAllowedUsers(): Promise<number>;
 
   // Approval request operations
   getPendingApprovals(): Promise<UserApprovalRequest[]>;
@@ -2038,6 +2039,16 @@ export class DatabaseStorage implements IStorage {
 
   async countOrganizations(): Promise<number> {
     const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(organizations);
+    return row?.count ?? 0;
+  }
+
+  /**
+   * Used by the dev auth bypass to tell a genuinely empty install (where it
+   * must grant enough access to create the first user) from a populated one
+   * (where an unrecognised id is a misconfiguration, not a bootstrap).
+   */
+  async countAllowedUsers(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(allowedUsers);
     return row?.count ?? 0;
   }
 

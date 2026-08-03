@@ -1,20 +1,11 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
-import { fetchInvoiceLogo } from "../services/invoiceLogo";
-
-type InvoiceCompany = {
-  name: string;
-  address?: string;
-  companyNumber?: string;
-  vatNumber?: string;
-  email?: string;
-  logo?: Buffer;
-  bankName?: string;
-  bankSortCode?: string;
-  bankAccountNumber?: string;
-  paymentLink?: string;
-  currency?: string;
-};
+import {
+  buildCompanyInfo,
+  loadCompanyInfo,
+  loadOrgLogo,
+  type CompanyInfo as InvoiceCompany,
+} from "../services/companyBranding";
 
 type InvoicePdfData = {
   invoiceNumber: string;
@@ -32,51 +23,6 @@ type InvoicePdfData = {
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
 };
-
-/** Fetches the org's logo bytes for invoice branding, if enabled and configured. Never throws. */
-async function loadInvoiceLogo(org: {
-  invoiceLogoEnabled: boolean;
-  logoUrl: string | null;
-}): Promise<Buffer | undefined> {
-  if (!org.invoiceLogoEnabled || !org.logoUrl) return undefined;
-  try {
-    return await fetchInvoiceLogo(org.logoUrl);
-  } catch (error) {
-    console.error("[Invoices] Failed to fetch invoice logo:", error);
-    return undefined;
-  }
-}
-
-function buildCompanyInfo(
-  org: {
-    name: string;
-    tradingName: string | null;
-    address: string | null;
-    companyNumber: string | null;
-    vatNumber: string | null;
-    email: string | null;
-    currency: string | null;
-    invoiceBankName: string | null;
-    invoiceBankSortCode: string | null;
-    invoiceBankAccountNumber: string | null;
-    invoicePaymentLink: string | null;
-  },
-  logo: Buffer | undefined,
-): InvoiceCompany {
-  return {
-    name: org.tradingName || org.name,
-    address: org.address || undefined,
-    companyNumber: org.companyNumber || undefined,
-    vatNumber: org.vatNumber || undefined,
-    email: org.email || undefined,
-    logo,
-    bankName: org.invoiceBankName || undefined,
-    bankSortCode: org.invoiceBankSortCode || undefined,
-    bankAccountNumber: org.invoiceBankAccountNumber || undefined,
-    paymentLink: org.invoicePaymentLink || undefined,
-    currency: org.currency || "GBP",
-  };
-}
 
 /**
  * Loads everything needed to render an invoice PDF, scoped to the caller's org.
@@ -112,13 +58,8 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
         }))
       : [{ name: "Order total", quantity: 1, unitPrice: fallbackTotal, total: fallbackTotal }];
 
-  const loadCompany = async (companyOrgId: string | null): Promise<InvoiceCompany> => {
-    if (!companyOrgId) return { name: "Your business" };
-    const [org] = await db.select().from(organizations).where(eq(organizations.id, companyOrgId)).limit(1);
-    if (!org) return { name: "Your business" };
-    const logo = await loadInvoiceLogo(org);
-    return buildCompanyInfo(org, logo);
-  };
+  const loadCompany = (companyOrgId: string | null): Promise<InvoiceCompany> =>
+    loadCompanyInfo(companyOrgId);
 
   const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
   if (invoice?.orderId) {

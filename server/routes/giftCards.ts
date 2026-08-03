@@ -13,7 +13,7 @@ import {
 import { roundMoney } from "@shared/giftCards/balance";
 
 const issueSchema = z.object({
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().positive().finite().max(1_000_000),
   customerId: z.string().uuid().optional(),
   expiresAt: z.coerce.date().optional(),
 });

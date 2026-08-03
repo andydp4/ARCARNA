@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { invalidatePurchasingPipeline } from "@/lib/query-invalidation";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { clearQueryParams, purchaseDraftLink, readQueryParam } from "@/lib/deepLink";
 import { PackageCheck, Eye } from "lucide-react";
 
 type ReceiptListItem = {
@@ -71,7 +73,7 @@ export function ReceivingTab() {
     user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => readQueryParam("receipt"));
   const [completeTarget, setCompleteTarget] = useState<ReceiptDetail | null>(null);
   const [createDraftId, setCreateDraftId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -112,14 +114,23 @@ export function ReceivingTab() {
     enabled: !!createDraftId && createOpen,
   });
 
+  // A deep-linked receipt opens once; drop the param so closing the dialog (or
+  // refreshing) does not immediately re-open it.
+  useEffect(() => {
+    if (readQueryParam("receipt")) clearQueryParams(["receipt"]);
+  }, []);
+
+  const closeDetail = () => {
+    setDetailId(null);
+    clearQueryParams(["receipt"]);
+  };
+
   const completeMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/goods-receipts/${id}/complete`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/goods-receipts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-drafts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      invalidatePurchasingPipeline(queryClient, { includeStock: true });
       setCompleteTarget(null);
-      setDetailId(null);
+      closeDetail();
       toast({
         title: "Receipt completed",
         description: "Stock has been increased at the receiving location.",
@@ -131,10 +142,12 @@ export function ReceivingTab() {
   const voidMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/goods-receipts/${id}/void`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/goods-receipts"] });
-      setDetailId(null);
+      invalidatePurchasingPipeline(queryClient);
+      closeDetail();
       toast({ title: "Receipt voided" });
     },
+    onError: (e: Error) =>
+      toast({ title: "Void failed", description: e.message, variant: "destructive" }),
   });
 
   const createMutation = useMutation({
@@ -160,10 +173,15 @@ export function ReceivingTab() {
     },
     onSuccess: async (res: Response) => {
       const body = (await res.json()) as { id: string };
-      queryClient.invalidateQueries({ queryKey: ["/api/goods-receipts"] });
+      invalidatePurchasingPipeline(queryClient);
       setCreateOpen(false);
       setCreateDraftId("");
-      toast({ title: "Pending receipt created", description: `Receipt ${body.id.slice(0, 8)}…` });
+      // Land on the new receipt — completing it is the next step in the flow.
+      setDetailId(body.id);
+      toast({
+        title: "Pending receipt created",
+        description: `Receipt ${body.id.slice(0, 8)}… — complete it to increase stock.`,
+      });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -208,8 +226,13 @@ export function ReceivingTab() {
                 <div>
                   <CardTitle className="text-base">{r.locationName}</CardTitle>
                   <CardDescription>
-                    Draft {r.purchaseDraftId.slice(0, 8)}… ·{" "}
-                    {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                    <Link
+                      href={purchaseDraftLink(r.purchaseDraftId)}
+                      className="text-primary underline"
+                    >
+                      Draft {r.purchaseDraftId.slice(0, 8)}…
+                    </Link>{" "}
+                    · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
                   </CardDescription>
                 </div>
                 <Badge variant={statusVariant[r.status] ?? "outline"}>{r.status}</Badge>
@@ -230,7 +253,7 @@ export function ReceivingTab() {
         ))}
       </div>
 
-      <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
+      <Dialog open={!!detailId} onOpenChange={(open) => !open && closeDetail()}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Goods receipt</DialogTitle>
@@ -245,8 +268,11 @@ export function ReceivingTab() {
               <Badge variant={statusVariant[detail.status] ?? "outline"}>{detail.status}</Badge>
               <p>
                 Purchase draft:{" "}
-                <Link href="/purchase-drafts" className="text-primary underline">
-                  {detail.purchaseDraftId.slice(0, 8)}… (view drafts)
+                <Link
+                  href={purchaseDraftLink(detail.purchaseDraftId)}
+                  className="text-primary underline"
+                >
+                  {detail.purchaseDraftId.slice(0, 8)}…
                 </Link>
               </p>
               <p className="text-xs text-muted-foreground">

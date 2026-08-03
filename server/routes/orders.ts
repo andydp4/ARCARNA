@@ -35,7 +35,25 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { eq } = await import('drizzle-orm');
       const { publishEventTx } = await import('../eventBus');
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const body = { ...req.body, orgId: ctx.orgId ?? undefined, locationId: ctx.locationId ?? undefined };
+      // The engine used to hardcode 20% while the POS displayed 10%, so the
+      // customer was quoted one total and charged another. Both now derive
+      // from the org's configured rate.
+      const { organizations: orgTable } = await import("@shared/schema");
+      const { eq: eqOrg } = await import("drizzle-orm");
+      const { db: settingsDb } = await import("../db");
+      const [orgRow] = await settingsDb
+        .select({ defaultTaxRate: orgTable.defaultTaxRate })
+        .from(orgTable)
+        .where(eqOrg(orgTable.id, ctx.orgId))
+        .limit(1);
+      const orgTaxRate = orgRow?.defaultTaxRate != null ? Number(orgRow.defaultTaxRate) : undefined;
+
+      const body = {
+        ...req.body,
+        orgId: ctx.orgId ?? undefined,
+        locationId: ctx.locationId ?? undefined,
+        ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
+      };
       const userId = req.user?.id ?? "unknown";
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
@@ -148,16 +166,20 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
-      const { orders } = await import('../../apps/server/src/db/schema');
+      const { orders, customers } = await import('../../apps/server/src/db/schema');
       const { eq } = await import('drizzle-orm');
+      // The list selected customerId but never resolved the name, so every row
+      // rendered the "Walk-in" fallback while the detail view — which does join
+      // customers — showed the real name.
       const baseQuery = db.select({
         id: orders.id,
         customerId: orders.customer_id,
+        customerName: customers.name,
         total: orders.total,
         paymentMethod: orders.payment_method,
         status: orders.status,
         createdAt: orders.created_at,
-      }).from(orders);
+      }).from(orders).leftJoin(customers, eq(orders.customer_id, customers.id));
       const allOrders = ctx?.orgId
         ? await baseQuery.where(eq(orders.org_id, ctx.orgId)).orderBy(orders.created_at)
         : await baseQuery.orderBy(orders.created_at);
@@ -261,6 +283,94 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     } catch (error) {
       console.error("Error fetching order details:", error);
       res.status(500).json({ message: "Failed to fetch order details" });
+    }
+  });
+
+  /**
+   * Customer receipt for an order, generated on demand.
+   *
+   * Complements GET /api/invoices/:id/pdf, which already accepts an order id.
+   * Both are reachable from a completed order so staff never have to leave the
+   * order to produce paperwork.
+   */
+  app.get("/api/orders/:id/receipt.pdf", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const { orders, orderItems, products, customers, organizations } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const { db } = await import("../db");
+
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
+        .limit(1);
+      // Scoped by org, so another tenant's order is indistinguishable from a
+      // missing one.
+      if (!order) return res.status(404).json({ message: "Order not found" });
+
+      const itemRows = await db
+        .select({
+          quantity: orderItems.quantity,
+          unitPrice: orderItems.unitPrice,
+          totalPrice: orderItems.totalPrice,
+          productName: products.name,
+        })
+        .from(orderItems)
+        .leftJoin(products, eq(orderItems.productId, products.id))
+        .where(eq(orderItems.orderId, order.id));
+
+      const total = parseFloat(String(order.total ?? "0"));
+      const items = itemRows.length
+        ? itemRows.map((row) => ({
+            name: row.productName || "Item",
+            quantity: row.quantity,
+            unitPrice: parseFloat(String(row.unitPrice ?? "0")),
+            total: parseFloat(String(row.totalPrice ?? "0")),
+          }))
+        : [{ name: "Order total", quantity: 1, unitPrice: total, total }];
+
+      const [customer] = order.customerId
+        ? await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+        : [null];
+
+      const [org] = await db
+        .select({
+          defaultTaxRate: organizations.defaultTaxRate,
+          receiptFooter: organizations.receiptFooter,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, ctx.orgId))
+        .limit(1);
+
+      // Order totals are gross; derive the tax component from the org's rate so
+      // the receipt reconciles with the invoice for the same order.
+      const taxRate = parseFloat(String(org?.defaultTaxRate ?? "0")) || 0;
+      const subtotal = taxRate > 0 ? total / (1 + taxRate / 100) : total;
+      const tax = Math.round((total - subtotal) * 100) / 100;
+
+      const { loadCompanyInfo } = await import("../services/companyBranding");
+      const { generateReceiptPdf } = await import("../services/pdfGenerator");
+
+      const pdfBuffer = await generateReceiptPdf({
+        receiptNumber: `R-${String(order.id).slice(0, 8).toUpperCase()}`,
+        createdAt: (order.createdAt ?? new Date()).toISOString(),
+        company: await loadCompanyInfo(ctx.orgId),
+        items,
+        subtotal: Math.round(subtotal * 100) / 100,
+        tax,
+        total,
+        paymentMethod: order.paymentMethod ?? undefined,
+        customerName: customer?.name ?? undefined,
+        footerNote: org?.receiptFooter ?? undefined,
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="receipt-${String(order.id).slice(0, 8)}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating receipt PDF:", error);
+      res.status(500).json({ message: "Failed to generate receipt PDF" });
     }
   });
 

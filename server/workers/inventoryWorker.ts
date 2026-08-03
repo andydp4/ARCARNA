@@ -20,8 +20,8 @@
  */
 
 import { db } from "../db";
-import { products, inventoryMovements, orders } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { products, inventoryMovements, orders, processedEvents } from "../../shared/schema";
+import { and, eq } from "drizzle-orm";
 import {
   adjustProductLocationStock,
   resolveStockLocationId,
@@ -258,6 +258,14 @@ export class InventoryWorker implements IWorker {
       }
     } catch (error) {
       console.error(`[InventoryWorker] Error processing event ${event.eventId}:`, error);
+      // Release the claim so a retry is not silently skipped as "already
+      // processed". Best-effort: a failure here must not mask the real error.
+      await this.releaseEvent(event.eventId).catch((releaseError) => {
+        console.error(
+          `[InventoryWorker] Failed to release claim for ${event.eventId}:`,
+          releaseError,
+        );
+      });
       return {
         worker: this.name,
         eventId: event.eventId,
@@ -284,6 +292,37 @@ export class InventoryWorker implements IWorker {
    * @param event - Event envelope with metadata
    * @param payload - Order data containing items array
    */
+  /**
+   * Claims an event for this worker, atomically.
+   *
+   * The previous guard was a plain SELECT on inventory_movements.eventId with
+   * no unique constraint behind it (inventory_movements_event_sku_idx is not
+   * unique), so two concurrent deliveries of the same event both saw no
+   * movement and both deducted stock. processed_events has a composite primary
+   * key on (event_id, worker_name) — it was defined for exactly this and never
+   * wired up. Inserting the claim lets the database arbitrate: whoever inserts
+   * the row owns the event, everyone else is a no-op.
+   *
+   * Returns false when the event is already claimed.
+   */
+  private async claimEvent(eventId: string, summary: string): Promise<boolean> {
+    const inserted = await db
+      .insert(processedEvents)
+      .values({ eventId, workerName: this.name, resultSummary: summary })
+      .onConflictDoNothing()
+      .returning({ eventId: processedEvents.eventId });
+    return inserted.length > 0;
+  }
+
+  /** Releases a claim so a failed event can be retried. */
+  private async releaseEvent(eventId: string): Promise<void> {
+    await db
+      .delete(processedEvents)
+      .where(
+        and(eq(processedEvents.eventId, eventId), eq(processedEvents.workerName, this.name)),
+      );
+  }
+
   private async handleOrderCreated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
@@ -292,14 +331,9 @@ export class InventoryWorker implements IWorker {
       throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
     }
     
-    // Idempotency check - prevent duplicate stock deductions
-    const existingMovements = await db
-      .select()
-      .from(inventoryMovements)
-      .where(eq(inventoryMovements.eventId, event.eventId))
-      .limit(1);
-    
-    if (existingMovements.length > 0) {
+    // Atomic claim — see claimEvent(). Replaces a SELECT-then-insert guard that
+    // two concurrent deliveries could both pass.
+    if (!(await this.claimEvent(event.eventId, "OrderCreated stock deduction"))) {
       return {
         worker: this.name,
         eventId: event.eventId,
@@ -436,14 +470,8 @@ export class InventoryWorker implements IWorker {
       throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
     }
     
-    // Idempotency check
-    const existingMovements = await db
-      .select()
-      .from(inventoryMovements)
-      .where(eq(inventoryMovements.eventId, event.eventId))
-      .limit(1);
-    
-    if (existingMovements.length > 0) {
+    // Atomic claim — see claimEvent().
+    if (!(await this.claimEvent(event.eventId, "RefundIssued stock return"))) {
       return {
         worker: this.name,
         eventId: event.eventId,

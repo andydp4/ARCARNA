@@ -9,6 +9,7 @@ import {
   transferErrorPayload,
 } from "../services/inventoryTransfers";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { positiveQuantity } from "@shared/quantity";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
@@ -20,7 +21,8 @@ const createSchema = z.object({
   items: z.array(
     z.object({
       productId: z.string().uuid(),
-      quantity: z.number().int().positive(),
+      // Upper bound too: an unbounded int overflows the column and 500s.
+      quantity: positiveQuantity,
     }),
   ).min(1),
 });

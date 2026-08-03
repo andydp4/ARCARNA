@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
@@ -15,6 +16,20 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import { nonNegativeQuantity } from "@shared/quantity";
+
+/** Bounds mirror the products table column widths in shared/schema.ts. */
+const createProductBody = z.object({
+  name: z.string().min(1).max(255),
+  productCode: z.string().max(100).optional(),
+  barcode: z.string().max(255).optional().nullable(),
+  costPrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
+  salePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
+  defaultSalePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
+  stock: z.coerce.number().pipe(nonNegativeQuantity).optional(),
+  stockLimit: z.coerce.number().pipe(nonNegativeQuantity).optional(),
+  locationId: z.string().uuid().optional().nullable(),
+}).passthrough();
 
 export function registerProductRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/products", ...scoped, async (req: any, res) => {
@@ -67,9 +82,19 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
 
   app.post("/api/products", ...scoped, async (req: any, res) => {
     try {
+      // The route had no schema: req.body went straight to the engine, so a
+      // missing name or an oversized field failed at the database and came back
+      // as a 500 carrying the SQL statement. Bounds mirror the column widths.
+      const parsed = createProductBody.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Invalid product",
+          errors: parsed.error.errors,
+        });
+      }
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const product = await engine.createProduct({ ...req.body, orgId: ctx.orgId });
+      const product = await engine.createProduct({ ...parsed.data, orgId: ctx.orgId });
       res.json(product);
     } catch (error: any) {
       console.error("Error creating product:", error);
@@ -87,7 +112,8 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       }
       
       // Generic error
-      res.status(500).json({ message: error.message || "Failed to create product" });
+      // Do not echo the driver error — it contains the SQL statement.
+      res.status(500).json({ message: "Failed to create product" });
     }
   });
 

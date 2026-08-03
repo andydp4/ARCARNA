@@ -134,6 +134,14 @@ export function CashierCommissionSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cashiers", "all"] });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const openEdit = (cashier: CashierProfile) => {

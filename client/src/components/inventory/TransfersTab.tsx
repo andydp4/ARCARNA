@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, ArrowRightLeft } from "lucide-react";
+import { parseQuantityInput } from "@shared/quantity";
 
 type Location = { id: string; name: string };
 type Product = { id: string; name: string; productId: string };
@@ -89,9 +90,13 @@ export function TransfersTab() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      // parseInt dropped any fractional transfer quantity to a whole number,
+      // or to 0 for values below 1 — which the filter then silently discarded.
       const items = lines
-        .filter((l) => l.productId && parseInt(l.quantity, 10) > 0)
-        .map((l) => ({ productId: l.productId, quantity: parseInt(l.quantity, 10) }));
+        .map((l) => ({ productId: l.productId, quantity: parseQuantityInput(l.quantity) }))
+        .filter((l): l is { productId: string; quantity: number } =>
+          Boolean(l.productId) && l.quantity !== null,
+        );
       return apiRequest("POST", "/api/inventory/transfers", {
         fromLocationId,
         toLocationId,

@@ -149,6 +149,14 @@ export default function RulesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rules"] });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   return (

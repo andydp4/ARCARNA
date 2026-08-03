@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { invalidatePurchasingPipeline } from "@/lib/query-invalidation";
+import { clearQueryParams, readQueryParam, receiptLink, withQuery } from "@/lib/deepLink";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +29,7 @@ import { Download, Trash2, PackageCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
+import { parseQuantityInput } from "@shared/quantity";
 
 type DraftListItem = {
   id: string;
@@ -39,6 +42,7 @@ type DraftListItem = {
 };
 
 type DraftDetail = DraftListItem & {
+  sourceRecommendationJson?: SourceRecommendationJson | null;
   items: {
     id: string;
     productId: string;
@@ -50,6 +54,39 @@ type DraftDetail = DraftListItem & {
     supplierSku?: string | null;
   }[];
 };
+
+/** Provenance recorded when a draft is raised from a replenishment recommendation. */
+type SourceRecommendation = {
+  productName?: string;
+  locationName?: string;
+  actionType?: string;
+  risk?: string;
+  stock?: number;
+  velocityPerDay?: number;
+  targetCoverageDays?: number;
+  onOrderQty?: number;
+  requiredQty?: number;
+  roundedBuyQty?: number;
+  explain?: { whyAction?: string; packNotes?: string[]; warnings?: string[] };
+};
+
+/**
+ * Batch-created drafts store `{ recommendations: [...] }`; drafts raised one at
+ * a time store a single recommendation. Both shapes are read here.
+ */
+type SourceRecommendationJson =
+  | SourceRecommendation
+  | { recommendations?: SourceRecommendation[] };
+
+function readSourceRecommendations(
+  source: SourceRecommendationJson | null | undefined,
+): SourceRecommendation[] {
+  if (!source) return [];
+  if ("recommendations" in source && Array.isArray(source.recommendations)) {
+    return source.recommendations;
+  }
+  return [source as SourceRecommendation];
+}
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   draft: "secondary",
@@ -84,10 +121,21 @@ export default function PurchaseDraftsPage() {
   const canMutate =
     user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => readQueryParam("draft"));
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
+
+  // A deep-linked draft opens once; drop the param so closing the dialog (or
+  // refreshing) does not immediately re-open it.
+  useEffect(() => {
+    if (readQueryParam("draft")) clearQueryParams(["draft"]);
+  }, []);
+
+  const closeDetail = () => {
+    setDetailId(null);
+    clearQueryParams(["draft"]);
+  };
 
   const { data: drafts = [], isLoading } = useQuery<DraftListItem[]>({
     queryKey: ["/api/purchase-drafts"],
@@ -136,14 +184,24 @@ export default function PurchaseDraftsPage() {
         items,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/goods-receipts"] });
-      if (detailId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}/receiving`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}`] });
-      }
+    onSuccess: async (res) => {
+      const body = res ? ((await res.json()) as { id: string }) : null;
+      invalidatePurchasingPipeline(queryClient);
       setReceiveOpen(false);
-      toast({ title: "Pending receipt created — complete it in Receiving" });
+      setReceiveQty({});
+      toast({
+        title: "Pending receipt created",
+        description: body ? (
+          <span>
+            Stock increases when you complete it —{" "}
+            <Link href={receiptLink(body.id)} className="underline">
+              open receipt {body.id.slice(0, 8)}…
+            </Link>
+          </span>
+        ) : (
+          "Complete it in Receiving to increase stock."
+        ),
+      });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -152,28 +210,33 @@ export default function PurchaseDraftsPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       apiRequest("PATCH", `/api/purchase-drafts/${id}/status`, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-drafts"] });
-      if (detailId) queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}`] });
+      invalidatePurchasingPipeline(queryClient);
       toast({ title: "Status updated" });
     },
+    onError: (e: Error) =>
+      toast({ title: "Status change failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/purchase-drafts/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-drafts"] });
-      setDetailId(null);
+      invalidatePurchasingPipeline(queryClient);
+      closeDetail();
       toast({ title: "Draft deleted" });
     },
+    onError: (e: Error) =>
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const updateLine = useMutation({
     mutationFn: ({ draftId, itemId, quantity }: { draftId: string; itemId: string; quantity: number }) =>
       apiRequest("PATCH", `/api/purchase-drafts/${draftId}/items/${itemId}`, { quantity }),
     onSuccess: () => {
-      if (detailId) queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}`] });
+      invalidatePurchasingPipeline(queryClient);
       toast({ title: "Line updated" });
     },
+    onError: (e: Error) =>
+      toast({ title: "Line update failed", description: e.message, variant: "destructive" }),
   });
 
   const exportCsv = (d: DraftDetail) => {
@@ -241,7 +304,7 @@ export default function PurchaseDraftsPage() {
           </CardContent>
         </Card>
 
-        <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
+        <Dialog open={!!detailId} onOpenChange={(open) => !open && closeDetail()}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Purchase draft</DialogTitle>
@@ -278,7 +341,7 @@ export default function PurchaseDraftsPage() {
                       </Button>
                     )}
                   <Button size="sm" variant="ghost" asChild>
-                    <Link href="/inventory">Receiving tab</Link>
+                    <Link href={withQuery("/inventory", { tab: "receiving" })}>Receiving tab</Link>
                   </Button>
                   {canMutate && detail.status !== "cancelled" && detail.status !== "fully_received" && (
                     <Button
@@ -291,6 +354,41 @@ export default function PurchaseDraftsPage() {
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">{STATUS_HELP[detail.status]}</p>
+                {(() => {
+                  const sources = readSourceRecommendations(detail.sourceRecommendationJson);
+                  if (!sources.length) return null;
+                  const cover = sources.find(
+                    (s) => typeof s.targetCoverageDays === "number",
+                  )?.targetCoverageDays;
+                  return (
+                    <div className="rounded border bg-muted/40 p-3 space-y-2">
+                      <p className="text-xs font-medium uppercase text-muted-foreground">
+                        Why this was ordered
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Raised from {sources.length} replenishment recommendation
+                        {sources.length === 1 ? "" : "s"}
+                        {typeof cover === "number" ? ` · ${cover}-day target cover` : ""}
+                      </p>
+                      <ul className="space-y-1">
+                        {sources.map((s, idx) => (
+                          <li key={`${s.productName ?? "line"}-${idx}`} className="text-sm">
+                            {s.productName && (
+                              <span className="font-medium">{s.productName}: </span>
+                            )}
+                            {s.explain?.whyAction ?? "No rationale recorded"}
+                            {typeof s.onOrderQty === "number" && s.onOrderQty > 0 && (
+                              <span className="text-muted-foreground">
+                                {" "}
+                                ({s.onOrderQty} already on order at the time)
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
                 {receiving && (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">
@@ -309,11 +407,7 @@ export default function PurchaseDraftsPage() {
                             <span>
                               {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
                             </span>
-                            <Link
-                              href="/inventory"
-                              className="text-primary underline text-xs"
-                              title="Open Inventory → Receiving tab and view receipt detail"
-                            >
+                            <Link href={receiptLink(r.id)} className="text-primary underline text-xs">
                               Receipt {r.id.slice(0, 8)}…
                             </Link>
                           </li>
@@ -356,10 +450,10 @@ export default function PurchaseDraftsPage() {
                                     updateLine.mutate({
                                       draftId: detail.id,
                                       itemId: line.id,
-                                      quantity: parseInt(
-                                        editQty[line.id] ?? String(line.quantity),
-                                        10,
-                                      ),
+                                      quantity:
+                                        parseQuantityInput(
+                                          editQty[line.id] ?? String(line.quantity),
+                                        ) ?? line.quantity,
                                     })
                                   }
                                 >

@@ -442,6 +442,121 @@ function renderFooter(doc: PDFKit.PDFDocument, company: InvoiceCompanyInfo): voi
  *   status: 'sent',
  * });
  */
+/**
+ * Customer receipt for a completed order.
+ *
+ * Distinct from an invoice: a receipt evidences payment already taken, so it
+ * carries no due date, no bank/payment instructions, and no VAT breakdown
+ * beyond the tax actually charged. Branding (logo, trading name, contact block)
+ * is the same as the invoice so both documents read as the same business.
+ */
+export interface ReceiptData {
+  /** Human-facing reference, e.g. the order number or short id. */
+  receiptNumber: string;
+  /** ISO 8601 timestamp of the sale. */
+  createdAt: string;
+  company: InvoiceCompanyInfo;
+  items: InvoiceLineItem[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  paymentMethod?: string;
+  customerName?: string;
+  /** Free-text footer configured per org (organizations.receipt_footer). */
+  footerNote?: string;
+}
+
+/** Branded header for a receipt — same company block as an invoice, different title. */
+function renderReceiptHeader(doc: PDFKit.PDFDocument, company: InvoiceCompanyInfo): void {
+  if (company.logo) {
+    try {
+      doc.image(company.logo, 50, 40, { width: 80 });
+    } catch {
+      // Malformed/unsupported image — skip rather than fail the whole receipt.
+    }
+  }
+
+  doc.fontSize(24).fillColor('#000000').text('RECEIPT', 400, 50, { align: 'right' });
+
+  doc.fontSize(9).fillColor('#3E3E3E');
+  let y = LAYOUT.HEADER_Y;
+  doc.text(company.name, 140, y);
+  y += 13;
+  if (company.address) {
+    doc.text(company.address, 140, y, { width: 240 });
+    y += 13;
+  }
+  if (company.vatNumber) {
+    doc.text(`VAT: ${company.vatNumber}`, 140, y);
+    y += 13;
+  }
+  if (company.email) {
+    doc.text(company.email, 140, y);
+  }
+}
+
+export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: LAYOUT.MARGIN, size: 'A4' });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const currency = data.company.currency || 'GBP';
+
+      renderReceiptHeader(doc, data.company);
+
+      // Sale details block
+      let y = LAYOUT.DETAILS_Y;
+      doc.fontSize(10).fillColor('#000000');
+      doc.text(`Receipt: ${data.receiptNumber}`, LAYOUT.MARGIN, y);
+      y += 15;
+      doc.fillColor('#3E3E3E').fontSize(9);
+      doc.text(`Date: ${formatDate(data.createdAt)}`, LAYOUT.MARGIN, y);
+      y += 13;
+      if (data.paymentMethod) {
+        doc.text(`Paid by: ${data.paymentMethod}`, LAYOUT.MARGIN, y);
+        y += 13;
+      }
+      if (data.customerName) {
+        doc.text(`Customer: ${data.customerName}`, LAYOUT.MARGIN, y);
+      }
+
+      const tableEndY = renderItemsTable(doc, data.items, currency);
+
+      // Totals — no payment instructions, the money is already taken.
+      let totalsY = tableEndY + 15;
+      const labelX = 350;
+      const valueX = 450;
+      doc.fontSize(10).fillColor('#3E3E3E');
+      doc.text('Subtotal', labelX, totalsY);
+      doc.text(formatCurrency(data.subtotal, currency), valueX, totalsY, { align: 'right', width: 95 });
+      totalsY += 15;
+      if (data.tax > 0) {
+        doc.text('Tax', labelX, totalsY);
+        doc.text(formatCurrency(data.tax, currency), valueX, totalsY, { align: 'right', width: 95 });
+        totalsY += 15;
+      }
+      doc.fontSize(12).fillColor('#000000');
+      doc.text('Total paid', labelX, totalsY);
+      doc.text(formatCurrency(data.total, currency), valueX, totalsY, { align: 'right', width: 95 });
+
+      if (data.footerNote) {
+        doc.fontSize(9).fillColor('#3E3E3E').text(data.footerNote, LAYOUT.MARGIN, totalsY + 40, {
+          width: 495,
+          align: 'center',
+        });
+      }
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {

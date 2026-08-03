@@ -195,12 +195,14 @@ export default function ProductManagement() {
 
   // Import products mutation
   const importMutation = useMutation({
-    mutationFn: (rows: Record<string, unknown>[]) =>
-      apiRequest('POST', '/api/products/import', {
+    mutationFn: async (rows: Record<string, unknown>[]) => {
+      const res = await apiRequest('POST', '/api/products/import', {
         rows,
         confirmed: true,
         duplicateMode: 'skip',
-      }),
+      })
+      return res.json()
+    },
     onSuccess: async (data: any) => {
       await refreshAfterProductMutation()
       setImportResults(data)
@@ -1090,6 +1092,7 @@ export default function ProductManagement() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  aria-label={`Edit ${product.name}`}
                                   onClick={() => handleEdit(product)}
                                   data-testid={`button-edit-${product.id}`}
                                 >
@@ -1212,6 +1215,7 @@ export default function ProductManagement() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label={`Delete ${product.name}`}
                               onClick={() => handleDelete(product.id)}
                               data-testid={`button-delete-${product.id}`}
                             >

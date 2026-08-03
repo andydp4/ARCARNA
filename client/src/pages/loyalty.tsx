@@ -93,6 +93,14 @@ export default function LoyaltyPage() {
         description: "Loyalty tier has been removed.",
       });
     },
+    // Without this the request can fail and the user sees nothing at all.
+    onError: (error: unknown) => {
+      toast({
+        title: "Something went wrong",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const tierForm = useForm<TierFormValues>({
@@ -248,6 +256,7 @@ export default function LoyaltyPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Edit tier ${tier.name}`}
                             onClick={() => openTierDialog(tier)}
                             data-testid={`button-edit-tier-${tier.id}`}
                           >
@@ -256,6 +265,7 @@ export default function LoyaltyPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Delete tier ${tier.name}`}
                             onClick={() => deleteTier.mutate(tier.id)}
                             data-testid={`button-delete-tier-${tier.id}`}
                           >

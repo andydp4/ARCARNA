@@ -17,5 +17,16 @@ docs/training/*.pdf
 docs/training/fonts/*.otf
 
 # Agent worktrees + local agent state. Ephemeral scratch (each worktree is a
-# full repo copy) — never commit these.
-.claude/
+# full repo copy) — never commit these. Shared project config is excepted
+# below: the SessionStart hook must be committed or web sessions start with no
+# database.
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
+# Personal overrides stay local.
+.claude/settings.local.json
+
+# Playwright run artifacts (traces, screenshots, last-run state). Regenerated
+# on every run and worthless in a diff.
+test-results/
+playwright-report/

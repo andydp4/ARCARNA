@@ -20,6 +20,9 @@ import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
 
+/** Raised when the in-transaction ceiling re-check rejects a concurrent refund. */
+class RefundCeilingExceeded extends Error {}
+
 const refundLineSchema = z.object({
   orderLineId: z.string().uuid(),
   qty: z.coerce.number().int().positive(),
@@ -229,6 +232,33 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         );
 
         const result = await db.transaction(async (tx) => {
+          // The ceiling check above runs outside this transaction and takes no
+          // lock, so two simultaneous refunds both read zero prior refunds and
+          // both pass it — a £30 order could be refunded £90. Lock the order
+          // row to serialise concurrent refunds, then re-check against the
+          // prior total as it stands inside this transaction. The earlier check
+          // is kept only as a fast rejection for the common case.
+          await tx
+            .select({ id: orders.id })
+            .from(orders)
+            .where(eq(orders.id, order.id))
+            .for("update")
+            .limit(1);
+
+          const priorInTx = await tx
+            .select({ total: refunds.total })
+            .from(refunds)
+            .where(eq(refunds.orderId, order.id));
+          const priorTotalInTx = priorInTx.reduce(
+            (sum, r) => sum + parseFloat(String(r.total)),
+            0,
+          );
+          if (priorTotalInTx + refundTotal > refundCeiling + 0.01) {
+            throw new RefundCeilingExceeded(
+              "Refund total exceeds the amount collected for this order",
+            );
+          }
+
           const [refund] = await tx
             .insert(refunds)
             .values({
@@ -294,6 +324,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         });
       } catch (error) {
         if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
+        if (error instanceof RefundCeilingExceeded) return res.status(400).json({ message: error.message });
         const message = error instanceof Error ? error.message : "Failed to issue refund";
         console.error("[Refunds] create:", error);
         res.status(/store credit|customer/i.test(message) ? 400 : 500).json({ message });

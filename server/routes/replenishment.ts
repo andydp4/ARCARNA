@@ -4,13 +4,30 @@ import {
   getReplenishmentRecommendations,
   createTransferDraftFromRecommendation,
   createPurchaseDraftFromRecommendation,
+  createPurchaseDraftsFromRecommendations,
   type ReplenishmentRisk,
 } from "../services/replenishment";
+import { PurchaseDraftError, purchaseDraftErrorPayload } from "../services/purchaseDrafts";
+import {
+  StockError,
+  TransferError,
+  transferErrorPayload,
+} from "../services/inventoryTransfers";
 import { REPLENISHMENT_ACTION_TYPES } from "@shared/schema";
+import { positiveQuantity } from "@shared/quantity";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Line quantities come from the shared contract, which bounds them to what the
+ * column can hold. Unbounded, a quantity past the column's range passed
+ * validation and became a Drizzle insert failure — echoed to the caller with
+ * the statement and its parameters. The columns are numeric(14,3) now, so this
+ * also carries the decimal rules rather than restating them.
+ */
+const lineQuantity = positiveQuantity;
 
 const transferDraftSchema = z.object({
   toLocationId: z.string().uuid(),
@@ -20,7 +37,7 @@ const transferDraftSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         fromLocationId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: lineQuantity,
       }),
     )
     .min(1),
@@ -34,13 +51,30 @@ const purchaseDraftSchema = z.object({
     .array(
       z.object({
         productId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: lineQuantity,
         estimatedCost: z.number().min(0).optional(),
         supplierSku: z.string().optional(),
       }),
     )
     .min(1),
   sourceRecommendationJson: z.unknown().optional(),
+});
+
+const purchaseDraftBatchSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        supplierId: z.string().uuid(),
+        locationId: z.string().uuid(),
+        productId: z.string().uuid(),
+        quantity: lineQuantity,
+        estimatedCost: z.number().min(0).optional(),
+        supplierSku: z.string().max(100).optional(),
+        recommendation: z.unknown().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
 });
 
 export function registerReplenishmentRoutes(app: Express) {
@@ -87,10 +121,10 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(201).json(transfer);
       } catch (e) {
         console.error(e);
-        res.status(400).json({
-          code: "TRANSFER_DRAFT_ERROR",
-          message: e instanceof Error ? e.message : "Failed to create transfer draft",
-        });
+        // Same leak as the purchase-draft routes below: e.message on a Drizzle
+        // failure is the SQL statement and its bound parameters.
+        const known = e instanceof TransferError || e instanceof StockError;
+        res.status(known ? 400 : 500).json(transferErrorPayload(e));
       }
     },
   );
@@ -117,10 +151,37 @@ export function registerReplenishmentRoutes(app: Express) {
         res.status(201).json(draft);
       } catch (e) {
         console.error(e);
-        res.status(400).json({
-          code: "PURCHASE_DRAFT_ERROR",
-          message: e instanceof Error ? e.message : "Failed to create purchase draft",
+        // Echoing e.message handed the caller the Drizzle error verbatim —
+        // "Failed query: insert into purchase_draft_items (...) values ($1...)"
+        // plus the bound parameters, i.e. the schema and the tenant id.
+        res.status(e instanceof PurchaseDraftError ? 400 : 500).json(purchaseDraftErrorPayload(e));
+      }
+    },
+  );
+
+  app.post(
+    "/api/replenishment/create-purchase-drafts",
+    ...scoped,
+    mutateRoles,
+    async (req: any, res) => {
+      try {
+        const parsed = purchaseDraftBatchSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            code: "VALIDATION_ERROR",
+            message: "Invalid body",
+            details: parsed.error.errors,
+          });
+        }
+        const ctx = req.orgContext as { orgId: string };
+        const result = await createPurchaseDraftsFromRecommendations(ctx.orgId, {
+          ...parsed.data,
+          createdBy: req.user?.claims?.sub,
         });
+        res.status(201).json(result);
+      } catch (e) {
+        console.error(e);
+        res.status(e instanceof PurchaseDraftError ? 400 : 500).json(purchaseDraftErrorPayload(e));
       }
     },
   );

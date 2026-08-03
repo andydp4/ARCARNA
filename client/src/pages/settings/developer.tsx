@@ -110,7 +110,7 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <Button variant="ghost" size="icon" onClick={copy} className="h-8 w-8">
+    <Button variant="ghost" size="icon" aria-label="Copy to clipboard" onClick={copy} className="h-8 w-8">
       {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
     </Button>
   );
@@ -192,6 +192,7 @@ function NewKeyDialog() {
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 shrink-0"
+                  aria-label={showKey ? "Hide the API key" : "Show the API key"}
                   onClick={() => setShowKey((v) => !v)}
                 >
                   {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -309,7 +310,12 @@ function RevokeButton({ id }: { id: string }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Revoke this API key"
+          className="h-8 w-8 text-destructive hover:text-destructive"
+        >
           <Trash2 className="h-4 w-4" />
         </Button>
       </AlertDialogTrigger>
@@ -371,7 +377,7 @@ export default function DeveloperSettingsPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 min-h-[48px]">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 min-h-[48px]">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           {canSeeLogs && <TabsTrigger value="audit-log">Audit Log</TabsTrigger>}
           {canSeeLogs && <TabsTrigger value="worker-logs">Worker Logs</TabsTrigger>}

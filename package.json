@@ -21,6 +21,7 @@
     "phase2d:seed": "tsx scripts/phase2d-seed.ts",
     "phase2d:test": "tsx scripts/phase2d-test.ts",
     "auth:link-clerk": "tsx scripts/link-clerk-auth-by-email.ts",
+    "audit:wiring": "node scripts/audit-ui-wiring.mjs",
     "gate": "tsx scripts/release-gate.ts",
     "db:migrate": "bash scripts/apply-migrations-pm2.sh",
     "migration:sanity": "tsx scripts/migration-sanity-check.ts",
@@ -30,6 +31,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=e2e",
     "test:a11y": "playwright test --project=a11y",
+    "test:journeys": "playwright test --project=journeys",
     "dev:e2e": "NODE_ENV=development DEV_AUTH_BYPASS=1 tsx server/index.ts"
   },
   "dependencies": {

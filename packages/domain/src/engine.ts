@@ -3,6 +3,9 @@ import type { OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSi
 import type { EventBus } from './bus'
 import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
 
+/** Fallback when no org rate is supplied. Matches the historic fixed rate. */
+export const DEFAULT_TAX_RATE_PERCENT = 20
+
 export class DomainEngine {
   constructor(
     private readonly bus: EventBus,
@@ -18,7 +21,10 @@ export class DomainEngine {
   async placeOrder(input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = PlaceOrderInput.parse(input)
     const subtotal = +dto.lines.reduce((s: number, l: any)=> s + l.quantity*l.unitPrice, 0).toFixed(2)
-    const vat = +(subtotal * 0.20).toFixed(2)
+    // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
+    // applies when a caller supplies none.
+    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
+    const vat = +(subtotal * taxRate).toFixed(2)
     const total = +(subtotal + vat).toFixed(2)
 
     const result = await this.withTransaction(async () => {
@@ -270,7 +276,10 @@ export class DomainEngine {
 
       // Calculate new totals
       const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
-      const vat = +(subtotal * 0.20).toFixed(2)
+      // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
+    // applies when a caller supplies none.
+    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
+    const vat = +(subtotal * taxRate).toFixed(2)
       const total = +(subtotal + vat).toFixed(2)
 
       // Determine order status: 

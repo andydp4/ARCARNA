@@ -13,9 +13,6 @@ module.exports = {
   ignorePatterns: [
     "dist/**",
     "node_modules/**",
-    "client/src/pages/pos.tsx",
-    "client/src/pages/pos/**",
-    "client/src/components/pos-*.tsx",
   ],
   overrides: [
     {
