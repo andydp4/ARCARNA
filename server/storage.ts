@@ -331,7 +331,16 @@ export class DatabaseStorage implements IStorage {
           customerMetrics,
           eq(customers.id, customerMetrics.customerId)
         );
-      const results = await base.where(eq(customers.orgId, orgId)).orderBy(desc(customerMetrics.clv)).limit(limit);
+      // NULLS LAST is load-bearing, not tidiness. Postgres sorts NULLs FIRST
+      // under DESC, and this is a LEFT JOIN, so every customer who has never
+      // bought anything has clv = NULL and was ranked ABOVE the paying ones.
+      // On a real dataset the "Top Customers" table showed nothing but people
+      // who had never placed an order, and the actual best customers fell off
+      // the end of the limit.
+      const results = await base
+        .where(eq(customers.orgId, orgId))
+        .orderBy(sql`${customerMetrics.clv} DESC NULLS LAST`)
+        .limit(limit);
       return results;
     });
   }
