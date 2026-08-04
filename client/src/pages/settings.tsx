@@ -60,6 +60,7 @@ import {
   Phone,
   Mail,
   Globe,
+  Award,
 } from 'lucide-react'
 
 export default function Settings() {
@@ -599,6 +600,29 @@ export default function Settings() {
                       </div>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* /settings/loyalty was registered in App.tsx but nothing linked
+                  to it, so the only way to reach it was to type the URL. It is
+                  not the same page as /loyalty, which manages tiers — this one
+                  sets what a point is worth at checkout. */}
+              <Card className={LM_CARD}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    Loyalty redemption
+                  </CardTitle>
+                  <CardDescription>
+                    What a point is worth at checkout, and the minimum a customer can redeem.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/settings/loyalty">
+                    <Button variant="outline" data-testid="link-loyalty-settings">
+                      Open loyalty redemption settings
+                    </Button>
+                  </Link>
                 </CardContent>
               </Card>
           </TabsContent>

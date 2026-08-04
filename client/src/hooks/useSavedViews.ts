@@ -1,11 +1,35 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
+import { useToast } from "@/hooks/use-toast";
 import type { SavedViewPage, SavedViewRow, ViewState } from "@shared/savedViews/state";
+
+/**
+ * Matches the `${status}: ${body}` shape thrown by `throwIfResNotOk` in
+ * queryClient.ts, so a saved-view failure reads the same as every other API
+ * failure in the app. The bare "Save failed" these used to throw told the user
+ * nothing, and without an onError they never saw even that.
+ */
+async function errorFromResponse(res: Response, fallback: string): Promise<Error> {
+  const text = await res.text().catch(() => "");
+  return new Error(`${res.status}: ${text || res.statusText || fallback}`);
+}
 
 export function useSavedViews(page: SavedViewPage) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const queryKey = ["/api/saved-views", page];
+
+  const reportFailure = useCallback(
+    (action: string) => (error: unknown) => {
+      toast({
+        title: `Could not ${action} the view`,
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    },
+    [toast],
+  );
 
   const { data, isLoading } = useQuery<{ views: SavedViewRow[] }>({
     queryKey,
@@ -35,10 +59,11 @@ export function useSavedViews(page: SavedViewPage) {
           isDefault: payload.isDefault ?? false,
         }),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) throw await errorFromResponse(res, "Save failed");
       return res.json();
     },
     onSuccess: invalidate,
+    onError: reportFailure("save"),
   });
 
   const updateView = useMutation({
@@ -52,19 +77,21 @@ export function useSavedViews(page: SavedViewPage) {
           ...(payload.isDefault !== undefined ? { isDefault: payload.isDefault } : {}),
         }),
       });
-      if (!res.ok) throw new Error("Update failed");
+      if (!res.ok) throw await errorFromResponse(res, "Update failed");
       return res.json();
     },
     onSuccess: invalidate,
+    onError: reportFailure("rename"),
   });
 
   const deleteView = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiFetch(`/api/saved-views/${id}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) throw await errorFromResponse(res, "Delete failed");
       return res.json();
     },
     onSuccess: invalidate,
+    onError: reportFailure("delete"),
   });
 
   const applyView = useCallback((view: SavedViewRow): ViewState => {
