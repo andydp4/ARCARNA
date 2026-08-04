@@ -120,13 +120,16 @@ npm install
 npm run build
 ```
 
-Apply SQL migrations (runs `001`–`014` in order, including `admin_audit_logs` and `feature_flags`):
+Apply SQL migrations (every file in `migrations/`, in version order — the script globs the directory, so new migrations are picked up with no edit):
 
 ```bash
-sudo apt install -y postgresql-client   # once, if psql is missing
 source .env
 bash scripts/apply-migrations-pm2.sh
 ```
+
+> **Install the client that matches your server's major version, not `postgresql-client`.** Ubuntu 22.04's default package is client **14**, and while `psql` 14 talks to a newer server fine, `pg_dump` refuses outright — `aborting because of server version mismatch`. Neon currently serves **17.10**. See [§9b](#9b-backup-cron-neon--r2) for the PGDG repo setup that installs `postgresql-client-17`.
+
+> **Releases that change the schema:** build first, *then* stop the app, migrate, and start the new build. Pulling and building while the old process keeps serving is safe — old code against the old schema is a consistent pair — and it keeps the outage to the few seconds the `ALTER`s take. Never leave a migration applied with the previous build running.
 
 Or `npm run db:migrate` if you use that path — but **raw SQL under `migrations/` is not always applied by `db:push` alone**. If `014` failed with `relation "admin_audit_logs" does not exist`, run `bash scripts/apply-migrations-pm2.sh` (014 now creates the table if missing).
 
@@ -314,7 +317,19 @@ Nightly logical dumps are optional but recommended. See [DISASTER_RECOVERY.md](.
 
 1. Install AWS CLI on the VPS (`apt install awscli` or pip).
 2. Add `R2_*` variables to `.env` (see [`.env.production.example`](../.env.production.example)).
-3. Ensure `pg_dump` 16+ is available (`postgresql-client-16`).
+3. Ensure `pg_dump`'s major version is **>= the server's** (Neon currently serves 17.10). Ubuntu 22.04 ships client 14, which aborts with `server version mismatch`, so install from the PGDG repo:
+
+   ```bash
+   install -d /usr/share/postgresql-common/pgdg
+   curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+     -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+   echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+     > /etc/apt/sources.list.d/pgdg.list
+   apt-get update && apt-get install -y postgresql-client-17
+   /usr/lib/postgresql/17/bin/pg_dump --version
+   ```
+
+   Note this upgrades `libpq5` system-wide as a dependency, so `needrestart` will defer a few service restarts until the next reboot.
 4. Install cron from [`scripts/cron.example`](../scripts/cron.example):
 
 ```bash

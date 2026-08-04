@@ -18,6 +18,20 @@ export default defineConfig({
             org: process.env.SENTRY_ORG,
             project: process.env.SENTRY_PROJECT,
             authToken: sentryAuthToken,
+            // `sourcemap: "hidden"` below writes .map files into dist/public and
+            // omits the //# sourceMappingURL comment — browsers never fetch them,
+            // but the server still hosts that directory statically and the .map
+            // filenames are derivable from the public .js filenames.
+            //
+            // The build does not fail when the upload does: an expired
+            // SENTRY_AUTH_TOKEN returns 401, the plugin logs it, and the build
+            // continues to exit 0. That happened on the 6a020e3 deploy and left
+            // every sourcemap fetchable in production. Deleting them after the
+            // upload step means the only copy that survives a build is the one
+            // in Sentry, where it belongs.
+            sourcemaps: {
+              filesToDeleteAfterUpload: ["dist/public/**/*.map"],
+            },
           }),
         ]
       : []),
