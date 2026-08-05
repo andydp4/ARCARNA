@@ -13,7 +13,7 @@ function patchHistory() {
 
   for (const method of ["pushState", "replaceState"] as const) {
     const original = window.history[method];
-    window.history[method] = function patchedHistoryMethod(...args: Parameters<typeof original>) {
+    window.history[method] = function patchedHistoryMethod(this: History, ...args: unknown[]) {
       const result = original.apply(this, args);
       emitQueryChange();
       return result;
