@@ -10,7 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Link } from "wouter";
 
 export default function TopCustomersTable() {
   const { data: topCustomers = [], isLoading } = useQuery({
@@ -50,10 +51,14 @@ export default function TopCustomersTable() {
               Ranked by lifetime value (CLV); RFM score summarizes recency, frequency, and spend.
             </p>
           </div>
-          <button className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-secondary transition-colors hover:bg-secondary/10" data-testid="button-viewallcustomers">
+          <Link
+            href="/customers"
+            className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium text-secondary transition-colors hover:bg-secondary/10"
+            data-testid="button-viewallcustomers"
+          >
             View All
             <ArrowRight className="ml-2 inline h-4 w-4" aria-hidden />
-          </button>
+          </Link>
         </div>
       </CardHeader>
       <CardContent className="p-0">
@@ -187,25 +192,13 @@ export default function TopCustomersTable() {
                   </span>{" "}
                   customers
                 </p>
-                <div className="flex gap-2">
-                  <button
-                    className="px-3 py-1 text-sm font-medium text-muted-foreground bg-card border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
-                    disabled
-                    data-testid="button-prevpage"
-                  >
-                    <ChevronLeft className="h-4 w-4" aria-hidden />
-                  </button>
-                  <button className="px-3 py-1 text-sm font-medium text-white bg-secondary rounded-lg" data-testid="button-page1">
-                    1
-                  </button>
-                  <button
-                    className="px-3 py-1 text-sm font-medium text-muted-foreground bg-card border border-border rounded-lg hover:bg-muted transition-colors"
-                    disabled
-                    data-testid="button-nextpage"
-                  >
-                    <ChevronRight className="h-4 w-4" aria-hidden />
-                  </button>
-                </div>
+                {/* No pagination control here: this card is a fixed top-N
+                    leaderboard, not a browsable list. The previous version
+                    rendered a permanently-disabled prev/next either side of a
+                    hardcoded "1", which read as a paginated table that had
+                    exactly one page — so a long customer list looked complete
+                    when it was truncated. "View All" above goes to the real
+                    list. */}
               </div>
             </div>
           </>

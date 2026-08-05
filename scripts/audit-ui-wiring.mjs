@@ -341,6 +341,81 @@ for (const file of clientFiles) {
   }
 }
 
+// ------------------------------------------- fields the form never submits
+/**
+ * A controlled input bound to form state whose key is destructured away before
+ * the payload is built. The operator types a value, the save reports success,
+ * and the edit was dropped on the floor — indistinguishable from a backend that
+ * ignored it, which is why this class costs a support round-trip every time.
+ *
+ * This is the product Edit dialog's Stock field: `const { stock: _stock, ...rest }
+ * = formData` sat 900 lines above `value={formData.stock}`, so editing stock did
+ * nothing while the toast still said "Product updated successfully".
+ *
+ * The discriminator is whether the key is ever READ for anything other than
+ * painting the input. A key that is stripped from the body but read elsewhere is
+ * the deliberate "persists through its own endpoint" pattern (aliases, and stock
+ * once it routes through /api/inventory). A key whose only appearance is
+ * `value={state.key}` has no path to the server at all.
+ */
+const droppedFields = [];
+for (const file of clientFiles) {
+  if (!file.endsWith(".tsx")) continue;
+  const src = readFileSync(file, "utf8");
+  for (const m of src.matchAll(/const\s*\{([^}]*?)\.\.\.\w+\s*\}\s*=\s*(\w+)/g)) {
+    const [, discarded, stateVar] = m;
+    for (const part of discarded.split(",")) {
+      const key = part.split(":")[0].trim();
+      if (!key || !/^[A-Za-z_$][\w$]*$/.test(key)) continue;
+      const reads = [...src.matchAll(new RegExp(`\\b${stateVar}\\.${key}\\b`, "g"))].length;
+      if (!reads) continue;
+      const painted = [...src.matchAll(new RegExp(`value=\\{${stateVar}\\.${key}\\}`, "g"))]
+        .length;
+      if (!painted || reads > painted) continue;
+      droppedFields.push(
+        `${file}:${src.slice(0, m.index).split("\n").length}  →  ${stateVar}.${key} is rendered as an input but never submitted`,
+      );
+    }
+  }
+}
+
+// ----------------------------------------------- controls with no behaviour
+/**
+ * A button with no onClick, no submit role, and no trigger/link wrapper to
+ * supply one. It renders, it hovers, it depresses, and nothing happens — the
+ * mock-UI failure behind the four dead Quick Actions and the dead "View All".
+ *
+ * Advisory: a `<button>` inside a <form> defaults to type="submit", and static
+ * analysis cannot always see the form boundary, so this reports for triage
+ * rather than failing the build.
+ */
+const inertButtons = [];
+const HAS_BEHAVIOUR = /\bonClick\b|\bonSubmit\b|\btype\s*=\s*["']submit["']|\basChild\b|\bhref\b|\bdisabled\b/;
+for (const file of clientFiles) {
+  if (!file.endsWith(".tsx")) continue;
+  const src = readFileSync(file, "utf8");
+  for (const m of src.matchAll(/<(?:Button|button)[\s>]/g)) {
+    const open = m.index;
+    let end = open;
+    let depth = 0;
+    for (; end < src.length; end++) {
+      const c = src[end];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) break;
+    }
+    const tag = src.slice(open, end + 1);
+    if (HAS_BEHAVIOUR.test(tag)) continue;
+    // shadcn's <XTrigger asChild><Button/></XTrigger> supplies the handler from
+    // the wrapper, as does a <Link> around the control.
+    const before = src.slice(Math.max(0, open - 240), open);
+    if (/(Trigger|<Link|<a)\b[^<>]*>\s*$/.test(before)) continue;
+    inertButtons.push(
+      `${file}:${src.slice(0, open).split("\n").length}  →  button with no onClick, submit role, or trigger/link wrapper`,
+    );
+  }
+}
+
 // ------------------------------------------------------------- report
 let failed = false;
 
@@ -361,6 +436,12 @@ console.log(`  client routes: ${routePaths.size}   server API routes: ${serverRo
 section("Dead client links (navigation to a path with no route)", deadLinks, true);
 section("Mutation result read as JSON without .json()", responseMisuse, true);
 section('Icon-only buttons with no accessible name (axe button-name, critical)', unnamedIconButtons, true);
+section("Form fields rendered but never submitted", droppedFields, true);
+section(
+  "Buttons with no behaviour (advisory — form-submit buttons can read as inert)",
+  inertButtons,
+  STRICT,
+);
 section(
   "Mutations with no onError (advisory — the user never sees the failure)",
   silentFailures,

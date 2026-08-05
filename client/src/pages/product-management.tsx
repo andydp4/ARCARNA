@@ -263,6 +263,54 @@ export default function ProductManagement() {
     localStorage.removeItem(AUTOSAVE_KEY)
   }
 
+  /**
+   * Applies an edited Stock figure through the per-location inventory endpoint.
+   *
+   * Stock is not a column on products — it lives in product_location_stock, so
+   * it cannot ride along in the product body. Previously the field was rendered,
+   * stripped before the request, and the save still reported success, so editing
+   * stock appeared to work and never did.
+   *
+   * Only fires when the figure actually changed: an untouched field must not
+   * rewrite stock or stamp an inventory movement just because someone corrected
+   * a product name. The endpoint resolves the location from the caller's context
+   * (resolveStockLocationId), matching Stock Truths' behaviour.
+   */
+  const applyStockEdit = async (product: any) => {
+    const next = formData.stock.trim()
+    if (next === '') return
+    const previous = (product.stock ?? '').toString()
+    if (next === previous) return
+
+    const parsed = Number(next)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast({
+        title: 'Stock not updated',
+        description: `"${next}" is not a valid stock figure. The rest of the product was saved.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Deliberately not inside handleSubmit's catch: that one swallows errors on
+    // the grounds that mutation onError handlers already toast, and this is a
+    // bare apiRequest with no such handler. Silently dropping it here would
+    // recreate exactly the bug this function exists to fix.
+    try {
+      await apiRequest('PATCH', `/api/inventory/${product.id}`, {
+        adjustment: parsed,
+        type: 'set',
+      })
+    } catch {
+      toast({
+        title: 'Stock not updated',
+        description:
+          'The product details saved, but the stock figure could not be written. Check permissions and try again from Stock Truths.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.salePrice) {
       toast({
@@ -278,24 +326,26 @@ export default function ProductManagement() {
       .split(',')
       .map((a) => a.trim())
       .filter((a) => a.length > 0)
-    // `stock` is deliberately NOT sent. It maps to products.stock, a legacy
-    // display-only column; real stock lives per-location in
-    // product_location_stock and is edited from Stock Truths. Sending it wrote
-    // a value nothing reads back, so saves reported success while the stock
-    // figure on screen never moved. stockLimit (par level) IS on products and
-    // is still saved here.
+    // `stock` is not sent in the product body: it maps to products.stock, a
+    // legacy display-only column that syncLegacyProductStockPlaceholder zeroes.
+    // Real stock is per-location in product_location_stock, so an edited figure
+    // is applied below through /api/inventory — the same endpoint Stock Truths
+    // writes through. stockLimit (par level) IS on products and is saved here.
     const { aliases: _aliases, stock: _stock, ...rest } = formData
     const productData = {
       ...rest,
       costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
       salePrice: parseFloat(formData.salePrice),
-      stockLimit: formData.stockLimit ? parseInt(formData.stockLimit) : 100,
+      // parseFloat, not parseInt: 046_decimal_quantities widened stock_limit to
+      // numeric(14,3), so a 2.5 kg par level must not silently truncate to 2.
+      stockLimit: formData.stockLimit ? parseFloat(formData.stockLimit) : 100,
     }
 
     try {
       if (editingProduct) {
         await updateMutation.mutateAsync({ id: editingProduct.id, data: productData })
         await apiRequest('PATCH', `/api/products/${editingProduct.id}/aliases`, { aliases: aliasesArr })
+        await applyStockEdit(editingProduct)
       } else {
         const res = await createMutation.mutateAsync(productData)
         const created = await res.json().catch(() => null)
@@ -989,9 +1039,21 @@ export default function ProductManagement() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="grid gap-2">
-                                        <Label>Stock</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                          Change stock in {VOCAB.stockTruths}.
+                                        <Label htmlFor="edit-stock-mobile">Stock</Label>
+                                        <Input
+                                          id="edit-stock-mobile"
+                                          type="number"
+                                          inputMode="decimal"
+                                          step="any"
+                                          min="0"
+                                          value={formData.stock}
+                                          onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                                          placeholder="100"
+                                          className="min-h-[44px]"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                          Applies to this location. Move stock between locations in{' '}
+                                          {VOCAB.stockTruths}.
                                         </p>
                                       </div>
                                       <div className="grid gap-2">
@@ -1183,11 +1245,18 @@ export default function ProductManagement() {
                                       <Input
                                         id="edit-stock"
                                         type="number"
+                                        inputMode="decimal"
+                                        step="any"
+                                        min="0"
                                         value={formData.stock}
                                         onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                                         placeholder="100"
                                         className="min-h-[44px]"
                                       />
+                                      <p className="text-xs text-muted-foreground">
+                                        Applies to this location. Move stock between locations in{' '}
+                                        {VOCAB.stockTruths}.
+                                      </p>
                                     </div>
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-stockLimit">Stock Limit</Label>
