@@ -29,6 +29,8 @@ import {
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -105,12 +107,15 @@ function isValidUUID(str: string): boolean {
  * @param identifier - Either a product UUID or SKU string
  * @returns Resolved product with stock info, or null if not found
  */
-async function resolveProduct(identifier: string): Promise<ResolvedProduct | null> {
+async function resolveProduct(
+  identifier: string,
+  tx: DbTx | typeof db = db,
+): Promise<ResolvedProduct | null> {
   const isUuid = isValidUUID(identifier);
   
   // Step 1: If it looks like a UUID, try primary key lookup first
   if (isUuid) {
-    const byIdResult = await db
+    const byIdResult = await tx
       .select({
         id: products.id,
         productId: products.productId,
@@ -135,7 +140,7 @@ async function resolveProduct(identifier: string): Promise<ResolvedProduct | nul
   }
   
   // Step 2: Try SKU field lookup (works for both UUID and non-UUID identifiers)
-  const bySkuResult = await db
+  const bySkuResult = await tx
     .select({
       id: products.id,
       productId: products.productId,
@@ -203,8 +208,9 @@ export class InventoryWorker implements IWorker {
   private async resolveOrderStockContext(
     correlationId: string,
     payload?: OrderPayload,
+    tx: DbTx | typeof db = db,
   ): Promise<{ orgId: string; locationId: string } | null> {
-    const [order] = await db.select().from(orders).where(eq(orders.id, correlationId)).limit(1);
+    const [order] = await tx.select().from(orders).where(eq(orders.id, correlationId)).limit(1);
     const orgId =
       order?.orgId ??
       (typeof (payload as { orgId?: string })?.orgId === "string"
@@ -215,7 +221,7 @@ export class InventoryWorker implements IWorker {
       orgId,
       locationId: order?.locationId ?? null,
       orderId: correlationId,
-    });
+    }, tx);
     return { orgId, locationId };
   }
 
@@ -258,14 +264,6 @@ export class InventoryWorker implements IWorker {
       }
     } catch (error) {
       console.error(`[InventoryWorker] Error processing event ${event.eventId}:`, error);
-      // Release the claim so a retry is not silently skipped as "already
-      // processed". Best-effort: a failure here must not mask the real error.
-      await this.releaseEvent(event.eventId).catch((releaseError) => {
-        console.error(
-          `[InventoryWorker] Failed to release claim for ${event.eventId}:`,
-          releaseError,
-        );
-      });
       return {
         worker: this.name,
         eventId: event.eventId,
@@ -305,8 +303,12 @@ export class InventoryWorker implements IWorker {
    *
    * Returns false when the event is already claimed.
    */
-  private async claimEvent(eventId: string, summary: string): Promise<boolean> {
-    const inserted = await db
+  private async claimEvent(
+    eventId: string,
+    summary: string,
+    tx: DbTx | typeof db = db,
+  ): Promise<boolean> {
+    const inserted = await tx
       .insert(processedEvents)
       .values({ eventId, workerName: this.name, resultSummary: summary })
       .onConflictDoNothing()
@@ -314,78 +316,73 @@ export class InventoryWorker implements IWorker {
     return inserted.length > 0;
   }
 
-  /** Releases a claim so a failed event can be retried. */
-  private async releaseEvent(eventId: string): Promise<void> {
-    await db
-      .delete(processedEvents)
-      .where(
-        and(eq(processedEvents.eventId, eventId), eq(processedEvents.workerName, this.name)),
-      );
-  }
-
   private async handleOrderCreated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
-    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
-    if (!stockCtx) {
-      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
-    }
-    
-    // Atomic claim — see claimEvent(). Replaces a SELECT-then-insert guard that
-    // two concurrent deliveries could both pass.
-    if (!(await this.claimEvent(event.eventId, "OrderCreated stock deduction"))) {
+
+    return db.transaction(async (tx) => {
+      const stockCtx = await this.resolveOrderStockContext(orderId, payload, tx);
+      if (!stockCtx) {
+        throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
+      }
+
+      // The claim and all stock movements share one transaction: a mid-event
+      // failure rolls back already-applied line movements and leaves the event
+      // claim absent so the retry starts from a clean slate.
+      if (!(await this.claimEvent(event.eventId, "OrderCreated stock deduction", tx))) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'success',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
+      let updatedProducts = 0;
+      const lowStockWarnings: string[] = [];
+
+      for (const item of items) {
+        const qty = extractQuantity(item);
+        if (qty <= 0) continue;
+
+        // Resolve product by UUID or SKU
+        const identifier = item.productId || item.sku;
+        if (!identifier) continue;
+
+        const product = await resolveProduct(identifier, tx);
+        if (!product) continue;
+
+        const result = await adjustProductLocationStock({
+          orgId: stockCtx.orgId,
+          productId: product.id,
+          locationId: stockCtx.locationId,
+          delta: -qty,
+          allowNegative: false,
+          movement: {
+            reason: "sale",
+            correlationId: orderId,
+            eventId: event.eventId,
+            sku: product.productId,
+          },
+        }, tx);
+
+        updatedProducts++;
+
+        if (result.newStock <= product.stockLimit) {
+          lowStockWarnings.push(product.name);
+        }
+      }
+
       return {
         worker: this.name,
         eventId: event.eventId,
         correlationId: event.correlationId,
         status: 'success',
-        summary: 'Already processed (idempotent skip)',
+        summary: `Inventory updated for ${updatedProducts} products`,
+        data: { updatedProducts, lowStockWarnings },
       };
-    }
-    
-    let updatedProducts = 0;
-    const lowStockWarnings: string[] = [];
-
-    for (const item of items) {
-      const qty = extractQuantity(item);
-      if (qty <= 0) continue;
-
-      // Resolve product by UUID or SKU
-      const identifier = item.productId || item.sku;
-      if (!identifier) continue;
-
-      const product = await resolveProduct(identifier);
-      if (!product) continue;
-
-      const result = await adjustProductLocationStock({
-        orgId: stockCtx.orgId,
-        productId: product.id,
-        locationId: stockCtx.locationId,
-        delta: -qty,
-        allowNegative: false,
-        movement: {
-          reason: "sale",
-          correlationId: orderId,
-          eventId: event.eventId,
-          sku: product.productId,
-        },
-      });
-
-      updatedProducts++;
-
-      if (result.newStock <= product.stockLimit) {
-        lowStockWarnings.push(product.name);
-      }
-    }
-
-    return {
-      worker: this.name,
-      eventId: event.eventId,
-      correlationId: event.correlationId,
-      status: 'success',
-      summary: `Inventory updated for ${updatedProducts} products`,
-      data: { updatedProducts, lowStockWarnings },
-    };
+    });
   }
 
   /**
@@ -400,60 +397,78 @@ export class InventoryWorker implements IWorker {
   private async handleOrderUpdated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
-    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
-    if (!stockCtx) {
-      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
-    }
-    
-    let adjustedProducts = 0;
 
-    for (const item of items) {
-      const qty = extractQuantity(item);
-      const identifier = item.productId || item.sku;
-      if (!identifier) continue;
+    return db.transaction(async (tx) => {
+      const stockCtx = await this.resolveOrderStockContext(orderId, payload, tx);
+      if (!stockCtx) {
+        throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
+      }
 
-      const product = await resolveProduct(identifier);
-      if (!product) continue;
-
-      // Get previous movements for this order+product to calculate delta
-      const previousMovements = await db
-        .select()
-        .from(inventoryMovements)
-        .where(eq(inventoryMovements.correlationId, orderId));
-
-      const previousQty = previousMovements
-        .filter(m => m.productId === product.id)
-        .reduce((sum, m) => sum + Math.abs(m.delta), 0);
-
-      // Delta: positive = return stock, negative = deduct more
-      const delta = previousQty - qty;
-      if (delta === 0) continue;
-
-      await adjustProductLocationStock({
-        orgId: stockCtx.orgId,
-        productId: product.id,
-        locationId: stockCtx.locationId,
-        delta,
-        allowNegative: false,
-        movement: {
-          reason: "order_update",
-          correlationId: orderId,
+      if (!(await this.claimEvent(event.eventId, "OrderUpdated stock adjustment", tx))) {
+        return {
+          worker: this.name,
           eventId: event.eventId,
-          sku: product.productId,
-        },
-      });
+          correlationId: event.correlationId,
+          status: 'success',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
 
-      adjustedProducts++;
-    }
+      let adjustedProducts = 0;
 
-    return {
-      worker: this.name,
-      eventId: event.eventId,
-      correlationId: event.correlationId,
-      status: 'success',
-      summary: `Inventory adjusted for ${adjustedProducts} products`,
-      data: { adjustedProducts },
-    };
+      for (const item of items) {
+        const qty = extractQuantity(item);
+        const identifier = item.productId || item.sku;
+        if (!identifier) continue;
+
+        const product = await resolveProduct(identifier, tx);
+        if (!product) continue;
+
+        // Sale and prior update movements describe the order's current stock
+        // commitment. Summing absolute deltas treats a previous return as extra
+        // sold quantity, so repeated edits inflate stock.
+        const previousMovements = await tx
+          .select()
+          .from(inventoryMovements)
+          .where(eq(inventoryMovements.correlationId, orderId));
+
+        const previousQty = -previousMovements
+          .filter((m) =>
+            m.productId === product.id &&
+            (m.reason === "sale" || m.reason === "order_update")
+          )
+          .reduce((sum, m) => sum + (m.delta ?? 0), 0);
+
+        // Delta: positive = return stock, negative = deduct more.
+        const delta = previousQty - qty;
+        if (delta === 0) continue;
+
+        await adjustProductLocationStock({
+          orgId: stockCtx.orgId,
+          productId: product.id,
+          locationId: stockCtx.locationId,
+          delta,
+          allowNegative: false,
+          movement: {
+            reason: "order_update",
+            correlationId: orderId,
+            eventId: event.eventId,
+            sku: product.productId,
+          },
+        }, tx);
+
+        adjustedProducts++;
+      }
+
+      return {
+        worker: this.name,
+        eventId: event.eventId,
+        correlationId: event.correlationId,
+        status: 'success',
+        summary: `Inventory adjusted for ${adjustedProducts} products`,
+        data: { adjustedProducts },
+      };
+    });
   }
 
   /**
@@ -465,55 +480,58 @@ export class InventoryWorker implements IWorker {
   private async handleStockReturn(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const lines = payload.lines || [];
     const orderId = payload.orderId || event.correlationId;
-    const stockCtx = await this.resolveOrderStockContext(orderId, payload);
-    if (!stockCtx) {
-      throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
-    }
-    
-    // Atomic claim — see claimEvent().
-    if (!(await this.claimEvent(event.eventId, "RefundIssued stock return"))) {
+
+    return db.transaction(async (tx) => {
+      const stockCtx = await this.resolveOrderStockContext(orderId, payload, tx);
+      if (!stockCtx) {
+        throw new Error(`InventoryWorker: missing org/location context for order ${orderId}`);
+      }
+
+      // Atomic claim — see claimEvent().
+      if (!(await this.claimEvent(event.eventId, `${event.eventType} stock return`, tx))) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'success',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+
+      let returnedProducts = 0;
+
+      for (const line of lines) {
+        const qty = line.qty || 0;
+        const identifier = line.productId || line.sku;
+        if (!identifier || qty <= 0) continue;
+
+        const product = await resolveProduct(identifier, tx);
+        if (!product) continue;
+
+        await adjustProductLocationStock({
+          orgId: stockCtx.orgId,
+          productId: product.id,
+          locationId: stockCtx.locationId,
+          delta: qty,
+          movement: {
+            reason: event.eventType === "RefundIssued" ? "refund" : "cancellation",
+            correlationId: orderId,
+            eventId: event.eventId,
+            sku: product.productId,
+          },
+        }, tx);
+
+        returnedProducts++;
+      }
+
       return {
         worker: this.name,
         eventId: event.eventId,
         correlationId: event.correlationId,
         status: 'success',
-        summary: 'Already processed (idempotent skip)',
+        summary: `Stock returned for ${returnedProducts} products`,
+        data: { returnedProducts },
       };
-    }
-    
-    let returnedProducts = 0;
-
-    for (const line of lines) {
-      const qty = line.qty || 0;
-      const identifier = line.productId || line.sku;
-      if (!identifier || qty <= 0) continue;
-
-      const product = await resolveProduct(identifier);
-      if (!product) continue;
-
-      await adjustProductLocationStock({
-        orgId: stockCtx.orgId,
-        productId: product.id,
-        locationId: stockCtx.locationId,
-        delta: qty,
-        movement: {
-          reason: event.eventType === "RefundIssued" ? "refund" : "cancellation",
-          correlationId: orderId,
-          eventId: event.eventId,
-          sku: product.productId,
-        },
-      });
-
-      returnedProducts++;
-    }
-
-    return {
-      worker: this.name,
-      eventId: event.eventId,
-      correlationId: event.correlationId,
-      status: 'success',
-      summary: `Stock returned for ${returnedProducts} products`,
-      data: { returnedProducts },
-    };
+    });
   }
 }

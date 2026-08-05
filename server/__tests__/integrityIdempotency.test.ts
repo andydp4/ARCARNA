@@ -86,6 +86,21 @@ async function makeProduct(org: string, loc: string, name: string, sku: string) 
   return p.id;
 }
 
+async function makeProductWithStock(name: string, stock: number) {
+  const product = await makeProduct(
+    orgId,
+    locationId,
+    name,
+    `${name.toUpperCase().replace(/[^A-Z0-9]+/g, "-")}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 7)}`,
+  );
+  await db
+    .insert(productLocationStock)
+    .values({ orgId, productId: product, locationId, stock, stockLimit: 500 });
+  return product;
+}
+
 async function stockAt(product: string, loc: string) {
   const [row] = await db
     .select({ stock: productLocationStock.stock })
@@ -431,6 +446,100 @@ describe.skipIf(!hasDb)("6.1 InventoryWorker event replay", () => {
       .from(inventoryMovements)
       .where(eq(inventoryMovements.eventId, event.eventId));
     expect(moves).toHaveLength(1);
+  });
+
+  it("rolls back all line movements when one line fails, so retry cannot double-apply earlier lines", async () => {
+    const firstProduct = await makeProductWithStock("Atomic Success", 10);
+    const failingProduct = await makeProductWithStock("Atomic Failure", 0);
+    const orderId = await makeOrderRow("19.98");
+
+    const worker = new InventoryWorker();
+    const event = {
+      eventId: `idem-order-created-partial-failure-${orderId}`,
+      eventType: "OrderCreated",
+      occurredAt: new Date().toISOString(),
+      correlationId: orderId,
+      actor: { type: "system" as const, id: "test" },
+      source: "test",
+      version: 1,
+      payload: {
+        orderId,
+        orgId,
+        items: [
+          { productId: firstProduct, name: "Atomic Success", qty: 2, unitPrice: 9.99 },
+          { productId: failingProduct, name: "Atomic Failure", qty: 1, unitPrice: 9.99 },
+        ],
+      },
+    } as unknown as EventEnvelope;
+
+    const before = (await stockAt(firstProduct, locationId))!;
+    const first = await worker.handle(event);
+    expect(first.status).toBe("failed");
+    expect(await stockAt(firstProduct, locationId)).toBe(before);
+
+    const second = await worker.handle(event);
+    expect(second.status).toBe("failed");
+    expect(await stockAt(firstProduct, locationId)).toBe(before);
+
+    const moves = await db
+      .select()
+      .from(inventoryMovements)
+      .where(eq(inventoryMovements.eventId, event.eventId));
+    expect(moves).toHaveLength(0);
+  });
+
+  it("OrderUpdated uses net prior sale quantity across repeated edits and skips replays", async () => {
+    const editedProduct = await makeProductWithStock("Repeated Edit", 100);
+    const orderId = await makeOrderRow("49.95");
+    const worker = new InventoryWorker();
+    const createdEvent = {
+      eventId: `idem-order-created-before-updates-${orderId}`,
+      eventType: "OrderCreated",
+      occurredAt: new Date().toISOString(),
+      correlationId: orderId,
+      actor: { type: "system" as const, id: "test" },
+      source: "test",
+      version: 1,
+      payload: {
+        orderId,
+        orgId,
+        items: [{ productId: editedProduct, name: "Repeated Edit", qty: 5, unitPrice: 9.99 }],
+      },
+    } as unknown as EventEnvelope;
+
+    const before = (await stockAt(editedProduct, locationId))!;
+    expect((await worker.handle(createdEvent)).status).toBe("success");
+    expect(await stockAt(editedProduct, locationId)).toBe(before - 5);
+
+    const firstUpdate = {
+      ...createdEvent,
+      eventId: `idem-order-updated-first-${orderId}`,
+      eventType: "OrderUpdated",
+      payload: {
+        orderId,
+        orgId,
+        items: [{ productId: editedProduct, name: "Repeated Edit", qty: 3, unitPrice: 9.99 }],
+      },
+    } as unknown as EventEnvelope;
+    expect((await worker.handle(firstUpdate)).status).toBe("success");
+    expect(await stockAt(editedProduct, locationId)).toBe(before - 3);
+
+    const replay = await worker.handle(firstUpdate);
+    expect(replay.summary).toMatch(/idempotent/i);
+    expect(await stockAt(editedProduct, locationId)).toBe(before - 3);
+
+    const secondUpdate = {
+      ...createdEvent,
+      eventId: `idem-order-updated-second-${orderId}`,
+      eventType: "OrderUpdated",
+      payload: {
+        orderId,
+        orgId,
+        items: [{ productId: editedProduct, name: "Repeated Edit", qty: 2, unitPrice: 9.99 }],
+      },
+    } as unknown as EventEnvelope;
+    expect((await worker.handle(secondUpdate)).status).toBe("success");
+    expect(await stockAt(editedProduct, locationId)).toBe(before - 2);
   });
 
   it("a re-delivered RefundIssued event returns stock exactly once", async () => {
