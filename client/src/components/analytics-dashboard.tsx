@@ -5,58 +5,53 @@ import DailyRevenueChart from "./daily-revenue-chart";
 import MonthlyOrdersChart from "./monthly-orders-chart";
 import TopCustomersTable from "./top-customers-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import {
-  DollarSign,
-  ShoppingBag,
-  TrendingUp,
-  PlusCircle,
-  UserPlus,
-  Box,
-  FileText,
-} from "lucide-react";
+import { DollarSign, ShoppingBag, TrendingUp } from "lucide-react";
 
+/**
+ * The trend half of the Control Centre: 30-day totals, charts, top customers.
+ *
+ * Three things used to live here and no longer do:
+ *
+ *   - Its own "Analytics Dashboard" <h2> and intro paragraph, nested inside
+ *     home.tsx's own header and section heading. Three heading levels and two
+ *     page intros stood between opening the page and reading a number.
+ *   - A second Quick Actions block duplicating home.tsx's, whose four buttons
+ *     had no onClick and never did anything.
+ *   - A "Recent Orders" panel hardcoded to "No recent orders available", with no
+ *     query behind it. Real recent orders are now in dashboard/RecentOrders.
+ *
+ * Section framing belongs to whoever renders this, not to this component.
+ */
 export default function AnalyticsDashboard() {
   const { data: monthlySummary = [], isLoading: isLoadingMonthly } = useQuery<any[]>({
     queryKey: ["/api/analytics/monthly-summary"],
   });
 
-  const totalRevenue = Array.isArray(monthlySummary) 
+  const totalRevenue = Array.isArray(monthlySummary)
     ? monthlySummary.reduce(
         (sum: number, month: any) => sum + parseFloat(month.totalRevenue || "0"),
-        0
+        0,
       )
     : 0;
   const totalOrders = Array.isArray(monthlySummary)
-    ? monthlySummary.reduce(
-        (sum: number, month: any) => sum + (month.totalOrders || 0),
-        0
-      )
+    ? monthlySummary.reduce((sum: number, month: any) => sum + (month.totalOrders || 0), 0)
     : 0;
-  const avgOrderValue =
-    totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6">
-      {/* Page Header */}
-      <div className="mb-6 sm:mb-8">
-        <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
-          Analytics Dashboard
-        </h2>
-        <p className="max-w-3xl text-sm sm:text-base text-muted-foreground">
-          Revenue, orders, and averages below come from your analytics APIs. For a
-          chosen date range, charts, and CSV/PDF exports, open{" "}
-          <Link href="/insights" className="font-medium text-primary underline-offset-4 hover:underline">
-            Truths
-          </Link>
-          .
-        </p>
-      </div>
+    <div className="space-y-6 sm:space-y-8">
+      <p className="max-w-3xl text-sm text-muted-foreground">
+        Last 30 days. For a chosen date range, charts, and CSV/PDF exports, open{" "}
+        <Link
+          href="/insights"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Truths
+        </Link>
+        .
+      </p>
 
-      <Separator className="mb-6 sm:mb-8" />
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 xl:grid-cols-3">
         {isLoadingMonthly ? (
           <>
             <Skeleton className="h-40 rounded-xl" />
@@ -90,59 +85,12 @@ export default function AnalyticsDashboard() {
         )}
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 mb-6 sm:mb-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
         <DailyRevenueChart />
         <MonthlyOrdersChart />
       </div>
 
-      {/* Top Customers Table */}
       <TopCustomersTable />
-
-      {/* Recent Activity Section */}
-      <div className="mt-6 sm:mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Quick Actions */}
-        <div className="bg-card rounded-xl p-4 sm:p-6 border border-border shadow-sm">
-          <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">
-            Quick Actions
-          </h3>
-          <div className="space-y-2 sm:space-y-3">
-            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] lm-btn-metal rounded-lg transition-colors" data-testid="button-neworder">
-              <PlusCircle className="h-5 w-5 shrink-0" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">New order</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addcustomer">
-              <UserPlus className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Add customer</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-addproduct">
-              <Box className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Add product</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 min-h-[48px] bg-card border border-border rounded-lg hover:bg-muted transition-colors text-foreground" data-testid="button-createinvoice">
-              <FileText className="h-5 w-5 shrink-0 text-metal-muted" aria-hidden />
-              <span className="font-medium text-sm sm:text-base">Create invoice</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Recent Orders - Placeholder */}
-        <div className="bg-card rounded-xl p-6 border border-border shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              Recent Orders
-            </h3>
-            <Link href="/open-orders" className="text-sm text-truth-bright hover:underline" data-testid="link-viewallorders">
-              View All
-            </Link>
-          </div>
-          <div className="space-y-3">
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No recent orders available</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

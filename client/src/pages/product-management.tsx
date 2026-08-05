@@ -948,137 +948,25 @@ export default function ProductManagement() {
                             </div>
 
                             <div className="flex gap-2 pt-2 border-t">
-                              <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEdit(product)}
-                                    className="flex-1 min-h-[44px]"
-                                    data-testid={`button-edit-${product.id}`}
-                                  >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Edit product</DialogTitle>
-                                    <DialogDescription>Update product information</DialogDescription>
-                                  </DialogHeader>
-                                  <div className="grid gap-4 py-4">
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-productId-mobile">Product ID</Label>
-                                      <Input
-                                        id="edit-productId-mobile"
-                                        value={formData.productCode}
-                                        onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
-                                        placeholder="PRD001"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-name-mobile">Name *</Label>
-                                      <Input
-                                        id="edit-name-mobile"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Product Name"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-barcode-mobile">Barcode</Label>
-                                      <Input
-                                        id="edit-barcode-mobile"
-                                        value={formData.barcode}
-                                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                                        placeholder="123456789"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-aliases-mobile">Aliases (WhatsApp / order matching)</Label>
-                                      <Input
-                                        id="edit-aliases-mobile"
-                                        value={formData.aliases}
-                                        onChange={(e) => setFormData({ ...formData, aliases: e.target.value })}
-                                        placeholder="coke, large coke, coca cola"
-                                        className="min-h-[44px]"
-                                        data-testid="input-edit-product-aliases-mobile"
-                                      />
-                                      <p className="text-xs text-muted-foreground">
-                                        Comma-separated shorthand names customers might use.
-                                      </p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-costPrice-mobile">Cost Price</Label>
-                                        <Input
-                                          id="edit-costPrice-mobile"
-                                          type="number"
-                                          step="0.01"
-                                          value={formData.costPrice}
-                                          onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                                          placeholder="5.00"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-salePrice-mobile">Sale Price *</Label>
-                                        <Input
-                                          id="edit-salePrice-mobile"
-                                          type="number"
-                                          step="0.01"
-                                          value={formData.salePrice}
-                                          onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
-                                          placeholder="9.99"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-stock-mobile">Stock</Label>
-                                        <Input
-                                          id="edit-stock-mobile"
-                                          type="number"
-                                          inputMode="decimal"
-                                          step="any"
-                                          min="0"
-                                          value={formData.stock}
-                                          onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                                          placeholder="100"
-                                          className="min-h-[44px]"
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                          Applies to this location. Move stock between locations in{' '}
-                                          {VOCAB.stockTruths}.
-                                        </p>
-                                      </div>
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-stockLimit-mobile">Stock Limit</Label>
-                                        <Input
-                                          id="edit-stockLimit-mobile"
-                                          type="number"
-                                          value={formData.stockLimit}
-                                          onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
-                                          placeholder="500"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <DialogFooter className="gap-2">
-                                    <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
-                                      Cancel
-                                    </Button>
-                                    <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
-                                      {updateMutation.isPending ? 'Updating...' : 'Update Product'}
-                                    </Button>
-                                  </DialogFooter>
-                                </DialogContent>
-                              </Dialog>
+                              {/* Trigger only. The Edit dialog is declared once, in
+                                  the desktop table below. Radix portals dialog
+                                  content to document.body, which escapes this
+                                  wrapper's `lg:hidden` — so a second copy declared
+                                  here opened *alongside* the desktop one at every
+                                  breakpoint: two stacked overlays, two Save
+                                  buttons, and two inputs bound to the same
+                                  formData. One declaration serves both layouts. */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEdit(product)}
+                                className="flex-1 min-h-[44px]"
+                                data-testid={`button-edit-${product.id}`}
+                                aria-label={`Edit ${product.name}`}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1275,7 +1163,12 @@ export default function ProductManagement() {
                                   <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
                                     Cancel
                                   </Button>
-                                  <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
+                                  <Button
+                                    onClick={handleSubmit}
+                                    disabled={updateMutation.isPending}
+                                    className="min-h-[44px]"
+                                    data-testid="button-update-product"
+                                  >
                                     {updateMutation.isPending ? 'Updating...' : 'Update Product'}
                                   </Button>
                                 </DialogFooter>
