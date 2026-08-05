@@ -158,7 +158,7 @@ jobs:
           SESSION_SECRET: ci-a11y-session-secret-32chars-minimum
 
   journeys:
-    name: Playwright journeys (money, documents, tenancy)
+    name: Playwright journeys (money, documents, tenancy, UI seams)
     runs-on: ubuntu-latest
     needs: check
     services:

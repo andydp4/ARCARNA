@@ -422,3 +422,60 @@ test.describe("money: tax agreement", () => {
     ).toBeCloseTo(expectedTotal, 2);
   });
 });
+
+/**
+ * Fulfilment is a reporting dimension the Control Centre counts on, and every
+ * stage between the till and the tile is an explicit field list — the checkout
+ * payload, storage.createOrder's values object, and the /api/orders select.
+ * Each of those drops an unthreaded field silently, which is exactly how the
+ * product Stock input came to report success while writing nothing.
+ *
+ * So this asserts the whole seam rather than any one stage: what the till sends
+ * is what the API hands back.
+ */
+test.describe("fulfilment method", () => {
+  test("4.4 a delivery sale is stored and read back as a delivery", async ({ api }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+
+    const res = await placeOrder(
+      api,
+      locationId,
+      [{ productId: product.id, quantity: 1, unitPrice: Number(product.defaultSalePrice) }],
+      "cash",
+      { fulfilmentMethod: "delivery" },
+    );
+    const order = await okJson<any>(res);
+    const orderId = order.orderId ?? order.id ?? order.order?.id;
+    expect(orderId, "order response should carry an id").toBeTruthy();
+
+    const list = await okJson<any[]>(await api.get("/api/orders"));
+    const stored = list.find((o) => o.id === orderId);
+    expect(stored, "the order must appear in the list").toBeTruthy();
+    expect(
+      stored.fulfilmentMethod,
+      "a sale placed as a delivery must read back as a delivery — if this is " +
+        "'collection', a field list between the till and the API dropped it",
+    ).toBe("delivery");
+  });
+
+  test("4.5 a sale that says nothing about fulfilment defaults to collection", async ({ api }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+
+    const res = await placeOrder(api, locationId, [
+      { productId: product.id, quantity: 1, unitPrice: Number(product.defaultSalePrice) },
+    ]);
+    const order = await okJson<any>(res);
+    const orderId = order.orderId ?? order.id ?? order.order?.id;
+
+    const list = await okJson<any[]>(await api.get("/api/orders"));
+    const stored = list.find((o) => o.id === orderId);
+    expect(
+      stored.fulfilmentMethod,
+      "an omitted fulfilment must default to collection, matching the backfill",
+    ).toBe("collection");
+  });
+});

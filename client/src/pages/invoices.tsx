@@ -325,12 +325,12 @@ export default function Invoices() {
               </SelectContent>
             </Select>
             </div>
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
-            <Button className="min-h-[44px] gap-2 sm:flex-none" data-testid="button-create-invoice">
-              <FileText className="h-4 w-4" />
-              Create invoice
-            </Button>
-            </div>
+            {/* No "Create invoice" action: invoices are raised automatically by
+                invoiceWorker when an order settles, and there is no
+                POST /api/invoices to call. The button that used to sit here had
+                no onClick and never could have had one — it advertised a manual
+                flow this system does not have, so operators clicked it, nothing
+                happened, and the page looked broken rather than automatic. */}
           </CardContent>
         </Card>
 

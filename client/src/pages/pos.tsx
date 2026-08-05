@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck } from "lucide-react";
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
@@ -114,6 +114,11 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  // Defaults to collection: the overwhelming majority of till sales are handed
+  // over at the counter, so the common path stays a single tap.
+  const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
+    "collection",
+  );
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -394,6 +399,9 @@ export default function POS() {
       setCart([]);
       setSelectedCustomer(null);
       setCheckoutDialogOpen(false);
+      // Back to the default, or one delivery quietly marks every later sale on
+      // this till as a delivery too.
+      setFulfilmentMethod("collection");
       setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
@@ -654,6 +662,7 @@ export default function POS() {
         unitPrice: item.customPrice,
       })),
       paymentMethod: paymentMethod,
+      fulfilmentMethod,
     };
     if (paymentMethod === "gift_card" && giftCardPayment) {
       orderData.giftCardCode = giftCardPayment.code;
@@ -973,6 +982,37 @@ export default function POS() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <span className="text-sm font-medium mb-2 block" id="fulfilment-label">
+                Fulfilment
+              </span>
+              <div
+                className="grid grid-cols-2 gap-2"
+                role="radiogroup"
+                aria-labelledby="fulfilment-label"
+              >
+                {(["collection", "delivery"] as const).map((method) => (
+                  <Button
+                    key={method}
+                    type="button"
+                    role="radio"
+                    aria-checked={fulfilmentMethod === method}
+                    variant={fulfilmentMethod === method ? "default" : "outline"}
+                    className="min-h-[44px] capitalize"
+                    onClick={() => setFulfilmentMethod(method)}
+                    data-testid={`select-fulfilment-${method}`}
+                  >
+                    {method === "collection" ? (
+                      <ShoppingBag className="mr-2 h-4 w-4" aria-hidden />
+                    ) : (
+                      <Truck className="mr-2 h-4 w-4" aria-hidden />
+                    )}
+                    {method}
+                  </Button>
+                ))}
+              </div>
             </div>
 
             {paymentMethod === "gift_card" && (

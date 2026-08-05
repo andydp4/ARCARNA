@@ -3,6 +3,67 @@ import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
 
+/**
+ * Columns an order insert must name explicitly.
+ *
+ * Drizzle's `$inferInsert` marks any column carrying a database default as
+ * OPTIONAL, so a values object that omits one still type-checks — the row is
+ * written with the default and whatever the caller actually chose disappears
+ * without an error anywhere. That is exactly how a till set to "delivery"
+ * persisted as "collection": `fulfilment_method` has a default, so leaving it
+ * out of the object below compiled cleanly and lost the operator's choice.
+ *
+ * `Required<Pick<...>>` strips that optionality back off for the columns that
+ * carry a decision rather than a convention. Adding a column here makes every
+ * insert site fail to compile until it is threaded, which turns a silent runtime
+ * drop into a build error. Columns genuinely happy with their default
+ * (created_at, updated_at) stay out of this list on purpose.
+ */
+type DecisionCarryingOrderColumns = Required<
+  Pick<
+    typeof s.orders.$inferInsert,
+    | "org_id"
+    | "location_id"
+    | "customer_id"
+    | "total"
+    | "payment_method"
+    | "status"
+    | "fulfilment_method"
+  >
+>;
+
+type OrderInsert = typeof s.orders.$inferInsert & DecisionCarryingOrderColumns;
+
+/**
+ * Same guard for order lines. `org_id` is the one that matters most here: it is
+ * nullable, so omitting it writes a line with no tenant, which then belongs to
+ * nobody and is invisible to every org-scoped query. quantity/unit_price/
+ * total_price are the money, and none of them should ever fall back to a default.
+ *
+ * These two inserts previously used `as typeof s.order_items.$inferInsert`, and a
+ * cast is weaker than an annotation — `as` will accept an object that is missing
+ * required properties when the types overlap enough. An annotation will not.
+ */
+type OrderItemInsert = typeof s.order_items.$inferInsert &
+  Required<
+    Pick<
+      typeof s.order_items.$inferInsert,
+      "order_id" | "product_id" | "quantity" | "unit_price" | "total_price" | "org_id"
+    >
+  >;
+
+/**
+ * What the engine carries alongside the domain Order purely so it can be
+ * persisted. These are not domain concepts — no engine rule reads them — but
+ * they must survive the trip to the repo, and `as any` on both sides is what let
+ * fulfilmentMethod fall through the gap unnoticed.
+ */
+export type OrderPersistenceCarrier = {
+  orgId?: string | null;
+  locationId?: string | null;
+  fulfilmentMethod?: "collection" | "delivery";
+};
+
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
     // Check if order exists
@@ -23,18 +84,21 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       await getDb().delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
       const orgId = (o as any).orgId ?? existing[0]?.org_id;
       for (const l of o.lines) {
-        await getDb().insert(s.order_items).values({
+        const line: OrderItemInsert = {
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
-        } as typeof s.order_items.$inferInsert)
+        }
+        await getDb().insert(s.order_items).values(line)
       }
     } else {
-      const orderWithOrg = o as any
-      await getDb().insert(s.orders).values({
+      const orderWithOrg = o as Order & OrderPersistenceCarrier
+      // Typed as OrderInsert, so omitting any decision-carrying column is a
+      // compile error rather than a row quietly written with defaults.
+      const values: OrderInsert = {
         id: o.id as any,
         org_id: orderWithOrg.orgId ?? null,
         location_id: orderWithOrg.locationId ?? null,
@@ -42,17 +106,25 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         total: String(o.total),
         payment_method: o.paymentMethod,
         status: o.status,
-      })
-      const orgId = orderWithOrg.orgId;
+        // Anything other than "delivery" becomes "collection" so a malformed
+        // value cannot hit the CHECK constraint and fail an otherwise good sale.
+        fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
+      }
+      await getDb().insert(s.orders).values(values)
+      // `?? null` to match the order row above. PlaceOrderInput marks orgId
+      // optional, so without this a line could be written with no tenant —
+      // a row belonging to nobody and invisible to every org-scoped query.
+      const orgId = orderWithOrg.orgId ?? null;
       for (const l of o.lines) {
-        await getDb().insert(s.order_items).values({
+        const line: OrderItemInsert = {
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
-        } as typeof s.order_items.$inferInsert)
+        }
+        await getDb().insert(s.order_items).values(line)
       }
     }
   },

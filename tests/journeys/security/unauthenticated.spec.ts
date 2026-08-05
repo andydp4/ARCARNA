@@ -231,18 +231,22 @@ test.describe("5.4 unauthenticated access", () => {
   });
 
   /**
-   * OPEN FINDING — unmatched `/api/*` paths fall through to the SPA shell.
+   * CLOSED — was an open finding; both fallbacks now guard /api.
    *
-   * Both the dev fallback (server/vite.ts:36-54) and the production one
-   * (server/static.ts:48-54) are pathless middleware that answer every
-   * unmatched request with `200 text/html`. So an unknown API path — or a known
-   * path with the wrong verb — returns the React index page with a 200, without
-   * ever passing through `isAuthenticated`. No tenant data escapes, but a
-   * client typo becomes an invisible success, which is precisely the defect
-   * class this programme exists to catch: the caller's `res.json()` then fails
-   * on HTML rather than on a 404 anyone can see.
+   * The dev fallback (server/vite.ts) and the production one (server/static.ts)
+   * are pathless middleware that answer every unmatched request with
+   * `200 text/html`, so the client router can boot on any URL. That is right for
+   * page routes and was wrong for /api: an unknown path — or a known path with
+   * the wrong verb, as PATCH /api/rules/:id is, since it registers as PUT —
+   * returned the React index page with a 200. A client typo became an invisible
+   * success, and the caller's res.json() then threw on "<!doctype html>"
+   * somewhere unrelated instead of on a status anyone could read.
+   *
+   * Both now delegate to isUnmatchedApiPath/sendApiNotFound (server/apiNotFound.ts)
+   * and answer 404 JSON. Kept as a normal expectation so the fallback cannot
+   * quietly swallow /api again.
    */
-  test.fail("an unknown /api path must 404, not return the SPA shell with 200", async () => {
+  test("an unknown /api path must 404, not return the SPA shell with 200", async () => {
     const api = await apiAnonymous();
     const probes: { method: "get" | "post" | "patch" | "put" | "delete"; path: string }[] = [
       { method: "get", path: "/api/definitely-not-a-route" },
@@ -259,10 +263,9 @@ test.describe("5.4 unauthenticated access", () => {
       }
     }
     await api.dispose();
-    console.log(
-      `[5.4 FINDING] ${htmlTwoHundreds.length}/${probes.length} unmatched API requests returned the SPA ` +
-        `shell with 200: ${htmlTwoHundreds.join("; ")} (server/vite.ts:36, server/static.ts:48)`,
-    );
-    expect(htmlTwoHundreds, "unmatched /api paths must 404 as JSON").toEqual([]);
+    expect(
+      htmlTwoHundreds,
+      "unmatched /api paths must 404 as JSON, not return the SPA shell with 200",
+    ).toEqual([]);
   });
 });

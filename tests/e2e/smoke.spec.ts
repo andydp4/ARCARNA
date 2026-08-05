@@ -18,9 +18,9 @@ test.describe("API smoke", () => {
 });
 
 test.describe("SPA smoke", () => {
-  test("ARCARNA EPOS shell loads at root", async ({ page }) => {
+  test("arcarna shell loads at root", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/ARCARNA EPOS/i);
+    await expect(page).toHaveTitle(/arcarna/i);
     await expect(page.locator("#root")).toBeAttached();
   });
 });

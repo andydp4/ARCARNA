@@ -1,6 +1,6 @@
 /** User-facing brand identity (ARCARNA rebrand). */
 export const BRAND_NAME = "ARCARNA";
-export const BRAND_PRODUCT_NAME = "ARCARNA EPOS";
+export const BRAND_PRODUCT_NAME = "arcarna";
 
 /** Default public mount path (see VITE_BASE_PATH / APP_BASE_PATH). */
 export const DEFAULT_APP_BASE_PATH = "/arcarna";

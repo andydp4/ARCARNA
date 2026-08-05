@@ -50,6 +50,10 @@ export const orders = pgTable('orders', {
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),
   status: varchar('status',{length:20}).default('pending'),
+  // How the customer takes the goods — see shared/schema.ts and migration 047.
+  // Independent of the arrival channel: a WhatsApp order can be collected and a
+  // counter sale can be delivered.
+  fulfilment_method: varchar('fulfilment_method',{length:16}).notNull().default('collection'),
   // Immutable settlement snapshot — see shared/schema.ts and migration 044.
   // Refunds cap against this, not `total`, so post-payment line edits cannot
   // inflate the refundable amount.

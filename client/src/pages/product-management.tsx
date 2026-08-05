@@ -263,6 +263,54 @@ export default function ProductManagement() {
     localStorage.removeItem(AUTOSAVE_KEY)
   }
 
+  /**
+   * Applies an edited Stock figure through the per-location inventory endpoint.
+   *
+   * Stock is not a column on products — it lives in product_location_stock, so
+   * it cannot ride along in the product body. Previously the field was rendered,
+   * stripped before the request, and the save still reported success, so editing
+   * stock appeared to work and never did.
+   *
+   * Only fires when the figure actually changed: an untouched field must not
+   * rewrite stock or stamp an inventory movement just because someone corrected
+   * a product name. The endpoint resolves the location from the caller's context
+   * (resolveStockLocationId), matching Stock Truths' behaviour.
+   */
+  const applyStockEdit = async (product: any) => {
+    const next = formData.stock.trim()
+    if (next === '') return
+    const previous = (product.stock ?? '').toString()
+    if (next === previous) return
+
+    const parsed = Number(next)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast({
+        title: 'Stock not updated',
+        description: `"${next}" is not a valid stock figure. The rest of the product was saved.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // Deliberately not inside handleSubmit's catch: that one swallows errors on
+    // the grounds that mutation onError handlers already toast, and this is a
+    // bare apiRequest with no such handler. Silently dropping it here would
+    // recreate exactly the bug this function exists to fix.
+    try {
+      await apiRequest('PATCH', `/api/inventory/${product.id}`, {
+        adjustment: parsed,
+        type: 'set',
+      })
+    } catch {
+      toast({
+        title: 'Stock not updated',
+        description:
+          'The product details saved, but the stock figure could not be written. Check permissions and try again from Stock Truths.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.salePrice) {
       toast({
@@ -278,24 +326,26 @@ export default function ProductManagement() {
       .split(',')
       .map((a) => a.trim())
       .filter((a) => a.length > 0)
-    // `stock` is deliberately NOT sent. It maps to products.stock, a legacy
-    // display-only column; real stock lives per-location in
-    // product_location_stock and is edited from Stock Truths. Sending it wrote
-    // a value nothing reads back, so saves reported success while the stock
-    // figure on screen never moved. stockLimit (par level) IS on products and
-    // is still saved here.
+    // `stock` is not sent in the product body: it maps to products.stock, a
+    // legacy display-only column that syncLegacyProductStockPlaceholder zeroes.
+    // Real stock is per-location in product_location_stock, so an edited figure
+    // is applied below through /api/inventory — the same endpoint Stock Truths
+    // writes through. stockLimit (par level) IS on products and is saved here.
     const { aliases: _aliases, stock: _stock, ...rest } = formData
     const productData = {
       ...rest,
       costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
       salePrice: parseFloat(formData.salePrice),
-      stockLimit: formData.stockLimit ? parseInt(formData.stockLimit) : 100,
+      // parseFloat, not parseInt: 046_decimal_quantities widened stock_limit to
+      // numeric(14,3), so a 2.5 kg par level must not silently truncate to 2.
+      stockLimit: formData.stockLimit ? parseFloat(formData.stockLimit) : 100,
     }
 
     try {
       if (editingProduct) {
         await updateMutation.mutateAsync({ id: editingProduct.id, data: productData })
         await apiRequest('PATCH', `/api/products/${editingProduct.id}/aliases`, { aliases: aliasesArr })
+        await applyStockEdit(editingProduct)
       } else {
         const res = await createMutation.mutateAsync(productData)
         const created = await res.json().catch(() => null)
@@ -898,125 +948,25 @@ export default function ProductManagement() {
                             </div>
 
                             <div className="flex gap-2 pt-2 border-t">
-                              <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEdit(product)}
-                                    className="flex-1 min-h-[44px]"
-                                    data-testid={`button-edit-${product.id}`}
-                                  >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-md">
-                                  <DialogHeader>
-                                    <DialogTitle>Edit product</DialogTitle>
-                                    <DialogDescription>Update product information</DialogDescription>
-                                  </DialogHeader>
-                                  <div className="grid gap-4 py-4">
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-productId-mobile">Product ID</Label>
-                                      <Input
-                                        id="edit-productId-mobile"
-                                        value={formData.productCode}
-                                        onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
-                                        placeholder="PRD001"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-name-mobile">Name *</Label>
-                                      <Input
-                                        id="edit-name-mobile"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Product Name"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-barcode-mobile">Barcode</Label>
-                                      <Input
-                                        id="edit-barcode-mobile"
-                                        value={formData.barcode}
-                                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                                        placeholder="123456789"
-                                        className="min-h-[44px]"
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-aliases-mobile">Aliases (WhatsApp / order matching)</Label>
-                                      <Input
-                                        id="edit-aliases-mobile"
-                                        value={formData.aliases}
-                                        onChange={(e) => setFormData({ ...formData, aliases: e.target.value })}
-                                        placeholder="coke, large coke, coca cola"
-                                        className="min-h-[44px]"
-                                        data-testid="input-edit-product-aliases-mobile"
-                                      />
-                                      <p className="text-xs text-muted-foreground">
-                                        Comma-separated shorthand names customers might use.
-                                      </p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-costPrice-mobile">Cost Price</Label>
-                                        <Input
-                                          id="edit-costPrice-mobile"
-                                          type="number"
-                                          step="0.01"
-                                          value={formData.costPrice}
-                                          onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                                          placeholder="5.00"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-salePrice-mobile">Sale Price *</Label>
-                                        <Input
-                                          id="edit-salePrice-mobile"
-                                          type="number"
-                                          step="0.01"
-                                          value={formData.salePrice}
-                                          onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
-                                          placeholder="9.99"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="grid gap-2">
-                                        <Label>Stock</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                          Change stock in {VOCAB.stockTruths}.
-                                        </p>
-                                      </div>
-                                      <div className="grid gap-2">
-                                        <Label htmlFor="edit-stockLimit-mobile">Stock Limit</Label>
-                                        <Input
-                                          id="edit-stockLimit-mobile"
-                                          type="number"
-                                          value={formData.stockLimit}
-                                          onChange={(e) => setFormData({ ...formData, stockLimit: e.target.value })}
-                                          placeholder="500"
-                                          className="min-h-[44px]"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <DialogFooter className="gap-2">
-                                    <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
-                                      Cancel
-                                    </Button>
-                                    <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
-                                      {updateMutation.isPending ? 'Updating...' : 'Update Product'}
-                                    </Button>
-                                  </DialogFooter>
-                                </DialogContent>
-                              </Dialog>
+                              {/* Trigger only. The Edit dialog is declared once, in
+                                  the desktop table below. Radix portals dialog
+                                  content to document.body, which escapes this
+                                  wrapper's `lg:hidden` — so a second copy declared
+                                  here opened *alongside* the desktop one at every
+                                  breakpoint: two stacked overlays, two Save
+                                  buttons, and two inputs bound to the same
+                                  formData. One declaration serves both layouts. */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEdit(product)}
+                                className="flex-1 min-h-[44px]"
+                                data-testid={`button-edit-${product.id}`}
+                                aria-label={`Edit ${product.name}`}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1183,11 +1133,18 @@ export default function ProductManagement() {
                                       <Input
                                         id="edit-stock"
                                         type="number"
+                                        inputMode="decimal"
+                                        step="any"
+                                        min="0"
                                         value={formData.stock}
                                         onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                                         placeholder="100"
                                         className="min-h-[44px]"
                                       />
+                                      <p className="text-xs text-muted-foreground">
+                                        Applies to this location. Move stock between locations in{' '}
+                                        {VOCAB.stockTruths}.
+                                      </p>
                                     </div>
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-stockLimit">Stock Limit</Label>
@@ -1206,7 +1163,12 @@ export default function ProductManagement() {
                                   <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
                                     Cancel
                                   </Button>
-                                  <Button onClick={handleSubmit} disabled={updateMutation.isPending} className="min-h-[44px]">
+                                  <Button
+                                    onClick={handleSubmit}
+                                    disabled={updateMutation.isPending}
+                                    className="min-h-[44px]"
+                                    data-testid="button-update-product"
+                                  >
                                     {updateMutation.isPending ? 'Updating...' : 'Update Product'}
                                   </Button>
                                 </DialogFooter>
