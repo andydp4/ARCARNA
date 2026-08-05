@@ -1,13 +1,13 @@
 # WM Supplies Website Domain Deployment
 
-The WM Supplies customer website should live at `https://wmsupplies.com`.
+The WM Supplies customer website should live at `https://wmsupplies.co.uk`.
 
 Arcana remains the backend/admin app at `https://arcarna.viger.cloud`. The WM Supplies website uses Arcana for live stock data, approved customer access, website content, and order submission.
 
 Recommended production shape:
 
-- keep `wmsupplies.com` registered at its current registrar unless there is a separate reason to move it
-- point `wmsupplies.com` and `www.wmsupplies.com` at the customer website host with DNS
+- keep `wmsupplies.co.uk` registered at its current registrar unless there is a separate reason to move it
+- point `wmsupplies.co.uk` and `www.wmsupplies.co.uk` at the customer website host with DNS
 - keep `arcarna.viger.cloud` as the Arcana app/backend endpoint
 - keep Clerk in front of the customer website, with Arcana account approval required before any website content loads
 - submit website orders into Arcana so staff manage them in the Arcana order tray
@@ -20,12 +20,12 @@ For the current target:
 
 | Customer URL | DNS host | DNS value |
 | --- | --- | --- |
-| `https://wmsupplies.com` | `@` | Website host public IPv4 |
-| `https://www.wmsupplies.com` | `www` | Website host public IPv4 or CNAME |
+| `https://wmsupplies.co.uk` | `@` | Website host public IPv4 |
+| `https://www.wmsupplies.co.uk` | `www` | Website host public IPv4 or CNAME |
 
 Use a low TTL while cutting over. DNS can appear quickly, but allow up to 48 hours globally.
 
-Do not point `wmsupplies.com` at `arcarna.viger.cloud` as the customer URL. Arcana is the backend/admin system; customers should interact with `wmsupplies.com`.
+Do not point `wmsupplies.co.uk` at `arcarna.viger.cloud` as the customer URL. Arcana is the backend/admin system; customers should interact with `wmsupplies.co.uk`.
 
 ## Arcana Backend Link
 
@@ -42,9 +42,9 @@ The website should pull approved website content, live stock/product data, and o
 The customer-facing website target is:
 
 ```text
-https://wmsupplies.com/
-https://wmsupplies.com/order
-https://wmsupplies.com/order/success
+https://wmsupplies.co.uk/
+https://wmsupplies.co.uk/order
+https://wmsupplies.co.uk/order/success
 ```
 
 If the website is hosted on the same VPS as Arcana, run it as a separate customer-site process rather than exposing the Arcana app mount as the public shop URL.
@@ -58,7 +58,7 @@ WM_SUPPLIES_CUSTOMER_SITE=1
 VITE_WM_SUPPLIES_CUSTOMER_SITE=1
 VITE_BASE_PATH=
 APP_BASE_PATH=
-VITE_APP_URL=https://wmsupplies.com
+VITE_APP_URL=https://wmsupplies.co.uk
 WORKERS_ENABLED=0
 AUTH_PROVIDER=clerk
 ```
@@ -80,7 +80,7 @@ These steps assume the Arcana app already runs from its own folder on the VPS. C
 PORT=5001
 WM_SUPPLIES_CUSTOMER_SITE=1
 VITE_WM_SUPPLIES_CUSTOMER_SITE=1
-VITE_APP_URL=https://wmsupplies.com
+VITE_APP_URL=https://wmsupplies.co.uk
 VITE_BASE_PATH=
 APP_BASE_PATH=
 WORKERS_ENABLED=0
@@ -110,9 +110,9 @@ SUCCESS: Deploy finished.
 Add the final customer URL in Clerk before the domain is made live:
 
 ```text
-https://wmsupplies.com/
-https://wmsupplies.com/sign-in
-https://wmsupplies.com/pending-approval
+https://wmsupplies.co.uk/
+https://wmsupplies.co.uk/sign-in
+https://wmsupplies.co.uk/pending-approval
 ```
 
 Keep public sign-up invite-only in Clerk and continue approving accounts inside Arcana before assigning the `CUSTOMER` role.
@@ -127,15 +127,15 @@ deploy/nginx-wm-supplies-domain.conf.example
 
 The example includes:
 
-- a customer website server block for `wmsupplies.com`
+- a customer website server block for `wmsupplies.co.uk`
 - proxying to a separate website process on port `5001`
 
 ## Smoke Test
 
 Before giving the URL to customers:
 
-1. Confirm `wmsupplies.com` DNS resolves to the website host.
-2. Confirm Certbot has issued HTTPS for `wmsupplies.com`.
+1. Confirm `wmsupplies.co.uk` DNS resolves to the website host.
+2. Confirm Certbot has issued HTTPS for `wmsupplies.co.uk`.
 3. Open the website signed out and confirm no products/content are visible.
 4. Sign in with an unapproved test account and confirm it lands on pending approval.
 5. Approve that account as `CUSTOMER` in Arcana.

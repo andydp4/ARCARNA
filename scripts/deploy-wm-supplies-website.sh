@@ -23,7 +23,7 @@ echo "On commit: $(git log -1 --oneline)"
 echo "=== npm install ==="
 npm install
 
-echo "=== build for wmsupplies.com ==="
+echo "=== build for wmsupplies.co.uk ==="
 set -a
 source .env
 set +a

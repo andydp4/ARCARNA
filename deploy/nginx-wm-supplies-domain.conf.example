@@ -1,16 +1,16 @@
 # Example Nginx site for the WM Supplies customer website on the same VPS.
 #
-# DNS should point wmsupplies.com and www.wmsupplies.com to the website host.
+# DNS should point wmsupplies.co.uk and www.wmsupplies.co.uk to the website host.
 # Arcana remains the backend/admin app at https://arcarna.viger.cloud.
 #
 # Customer website launch:
 # - Website process: 127.0.0.1:5001
 # - Build it with VITE_BASE_PATH= and APP_BASE_PATH=
-# - Customer URL: https://wmsupplies.com/
+# - Customer URL: https://wmsupplies.co.uk/
 
 server {
     listen 80;
-    server_name wmsupplies.com www.wmsupplies.com;
+    server_name wmsupplies.co.uk www.wmsupplies.co.uk;
 
     client_max_body_size 25m;
 
@@ -28,11 +28,11 @@ server {
 }
 
 # HTTPS after:
-# certbot --nginx -d wmsupplies.com -d www.wmsupplies.com
+# certbot --nginx -d wmsupplies.co.uk -d www.wmsupplies.co.uk
 #
 # server {
 #     listen 443 ssl http2;
-#     server_name wmsupplies.com www.wmsupplies.com;
+#     server_name wmsupplies.co.uk www.wmsupplies.co.uk;
 #
 #     client_max_body_size 25m;
 #     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
