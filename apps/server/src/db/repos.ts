@@ -35,6 +35,24 @@ type DecisionCarryingOrderColumns = Required<
 type OrderInsert = typeof s.orders.$inferInsert & DecisionCarryingOrderColumns;
 
 /**
+ * Same guard for order lines. `org_id` is the one that matters most here: it is
+ * nullable, so omitting it writes a line with no tenant, which then belongs to
+ * nobody and is invisible to every org-scoped query. quantity/unit_price/
+ * total_price are the money, and none of them should ever fall back to a default.
+ *
+ * These two inserts previously used `as typeof s.order_items.$inferInsert`, and a
+ * cast is weaker than an annotation — `as` will accept an object that is missing
+ * required properties when the types overlap enough. An annotation will not.
+ */
+type OrderItemInsert = typeof s.order_items.$inferInsert &
+  Required<
+    Pick<
+      typeof s.order_items.$inferInsert,
+      "order_id" | "product_id" | "quantity" | "unit_price" | "total_price" | "org_id"
+    >
+  >;
+
+/**
  * What the engine carries alongside the domain Order purely so it can be
  * persisted. These are not domain concepts — no engine rule reads them — but
  * they must survive the trip to the repo, and `as any` on both sides is what let
@@ -66,14 +84,15 @@ export const OrdersRepoDrizzle: OrdersRepo = {
       await getDb().delete(s.order_items).where(eq(s.order_items.order_id, o.id as any))
       const orgId = (o as any).orgId ?? existing[0]?.org_id;
       for (const l of o.lines) {
-        await getDb().insert(s.order_items).values({
+        const line: OrderItemInsert = {
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
-        } as typeof s.order_items.$inferInsert)
+        }
+        await getDb().insert(s.order_items).values(line)
       }
     } else {
       const orderWithOrg = o as Order & OrderPersistenceCarrier
@@ -92,16 +111,20 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
       }
       await getDb().insert(s.orders).values(values)
-      const orgId = orderWithOrg.orgId;
+      // `?? null` to match the order row above. PlaceOrderInput marks orgId
+      // optional, so without this a line could be written with no tenant —
+      // a row belonging to nobody and invisible to every org-scoped query.
+      const orgId = orderWithOrg.orgId ?? null;
       for (const l of o.lines) {
-        await getDb().insert(s.order_items).values({
+        const line: OrderItemInsert = {
           order_id: o.id as any,
           product_id: l.productId as any,
           quantity: l.quantity,
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
-        } as typeof s.order_items.$inferInsert)
+        }
+        await getDb().insert(s.order_items).values(line)
       }
     }
   },

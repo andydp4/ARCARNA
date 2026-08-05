@@ -1,6 +1,6 @@
 {
-  "name": "ARCARNA EPOS",
-  "short_name": "ARCARNA",
+  "name": "arcarna",
+  "short_name": "arcarna",
   "description": "Enterprise Point of Sale System with offline support",
   "start_url": "/",
   "scope": "/",

@@ -7,6 +7,7 @@ import { BusinessHealthSection } from "@/components/BusinessHealthSection";
 import { DailyKpiCard } from "@/components/dashboard/DailyKpiCard";
 import { QuickActionCard } from "@/components/dashboard/QuickActionCard";
 import { OperationsSnapshot } from "@/components/dashboard/OperationsSnapshot";
+import { ControlCentreBackdrop } from "@/components/dashboard/ControlCentreBackdrop";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { OnboardingResumeBanner } from "@/components/OnboardingResumeBanner";
 import { ActivityTimeline } from "@/components/activity-timeline";
@@ -94,8 +95,9 @@ export default function Home() {
   }
 
   return (
-    <div className="w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <div className="relative w-full overflow-x-clip">
+      <ControlCentreBackdrop />
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <PageHeader
           title="Control Centre"
           question="How is your business doing today?"

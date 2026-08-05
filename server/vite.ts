@@ -4,6 +4,7 @@ import path from "path";
 import { createServer as createViteServer, createLogger } from "vite";
 import type { Server } from "http";
 import viteConfig from "../vite.config";
+import { isUnmatchedApiPath, sendApiNotFound } from "./apiNotFound";
 
 const viteLogger = createLogger();
 
@@ -35,6 +36,15 @@ export async function setupVite(app: Express, server: Server) {
   // Express 5 / path-to-regexp v8: bare "*" is invalid; pathless middleware catches SPA fallback.
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
+
+    // An /api path that reached this far matched no route — a typo, a wrong
+    // method, or a deleted endpoint. Serving the SPA shell with 200 turns that
+    // into an invisible success: the caller's res.json() then fails on HTML
+    // rather than on a status anyone can read. 404 as JSON, since every /api
+    // consumer expects JSON. (Mirrored in static.ts for production.)
+    if (isUnmatchedApiPath(req.path)) {
+      return sendApiNotFound(res, req.method, req.path);
+    }
 
     try {
       const clientTemplate = path.resolve(

@@ -74,7 +74,7 @@ export default function Settings() {
   // Load settings from localStorage or API
   const [settings, setSettings] = useState({
     // General Settings
-    businessName: 'ARCARNA EPOS',
+    businessName: 'arcarna',
     businessAddress: '',
     businessPhone: '',
     businessEmail: '',

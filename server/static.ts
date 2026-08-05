@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
+import { isUnmatchedApiPath, sendApiNotFound } from "./apiNotFound";
 
 /** Built client assets (Vite outDir). PM2 cwd should be repo root. */
 export function getDistPublicPath(): string {
@@ -48,6 +49,11 @@ export function serveStatic(app: Express, serviceWorkerScope = "/") {
 
   // Express 5 / path-to-regexp v8: bare "*" is invalid; pathless middleware catches SPA fallback.
   app.use((req, res, next) => {
+    // See apiNotFound.ts: an unmatched /api path is a miss, not a page route.
+    // Serving the SPA shell with 200 made a failed call look successful.
+    if (isUnmatchedApiPath(req.path)) {
+      return sendApiNotFound(res, req.method, req.path);
+    }
     if (req.path === "/sw.js" || req.path === "/manifest.json") {
       return res.status(404).type("text/plain").send("Not found — run npm run build");
     }

@@ -13,6 +13,26 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 
+/**
+ * Insert guards. Drizzle's `$inferInsert` makes any column with a database
+ * default OPTIONAL, so an insert that omits one compiles and writes the default
+ * — which is how an order's fulfilment_method was silently persisted as
+ * "collection" when the till said "delivery" (see apps/server/src/db/repos.ts).
+ *
+ * `status` is the one that bites here: it defaults to "draft", so omitting it
+ * from a values object would quietly reopen a draft rather than fail. `orgId` is
+ * the tenant, and a draft written without one belongs to nobody and is invisible
+ * to every org-scoped query in this file.
+ */
+type PurchaseDraftInsert = typeof purchaseDrafts.$inferInsert &
+  Required<Pick<typeof purchaseDrafts.$inferInsert, "orgId" | "supplierId" | "locationId" | "status">>;
+
+type PurchaseDraftItemInsert = typeof purchaseDraftItems.$inferInsert &
+  Required<
+    Pick<typeof purchaseDraftItems.$inferInsert, "purchaseDraftId" | "orgId" | "productId" | "quantity">
+  >;
+
+
 export class PurchaseDraftError extends Error {
   code: string;
   details?: unknown;
@@ -234,30 +254,29 @@ async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraft
     throw new PurchaseDraftError("VALIDATION_ERROR", "At least one line item required");
   }
 
-  const [draft] = await tx
-    .insert(purchaseDrafts)
-    .values({
-      orgId,
-      supplierId: body.supplierId,
-      locationId: body.locationId,
-      status: "draft",
-      createdBy: body.createdBy,
-      sourceRecommendationJson: body.sourceRecommendationJson ?? null,
-    })
-    .returning();
+  const draftValues: PurchaseDraftInsert = {
+    orgId,
+    supplierId: body.supplierId,
+    locationId: body.locationId,
+    status: "draft",
+    createdBy: body.createdBy,
+    sourceRecommendationJson: body.sourceRecommendationJson ?? null,
+  };
+  const [draft] = await tx.insert(purchaseDrafts).values(draftValues).returning();
 
   for (const line of body.items) {
     if (line.quantity <= 0) {
       throw new PurchaseDraftError("VALIDATION_ERROR", "Quantity must be positive");
     }
-    await tx.insert(purchaseDraftItems).values({
+    const itemValues: PurchaseDraftItemInsert = {
       purchaseDraftId: draft.id,
       orgId,
       productId: line.productId,
       quantity: line.quantity,
       estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
       supplierSku: line.supplierSku,
-    });
+    };
+    await tx.insert(purchaseDraftItems).values(itemValues);
   }
 
   return loadDraftWithItems(orgId, draft.id, tx);
@@ -407,17 +426,15 @@ export async function addPurchaseDraftItem(
     throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
   }
 
-  const [item] = await db
-    .insert(purchaseDraftItems)
-    .values({
-      purchaseDraftId: draftId,
-      orgId,
-      productId: line.productId,
-      quantity: line.quantity,
-      estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
-      supplierSku: line.supplierSku,
-    })
-    .returning();
+  const addedValues: PurchaseDraftItemInsert = {
+    purchaseDraftId: draftId,
+    orgId,
+    productId: line.productId,
+    quantity: line.quantity,
+    estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
+    supplierSku: line.supplierSku,
+  };
+  const [item] = await db.insert(purchaseDraftItems).values(addedValues).returning();
 
   await db
     .update(purchaseDrafts)
