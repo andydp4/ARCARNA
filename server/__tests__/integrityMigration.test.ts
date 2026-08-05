@@ -3,7 +3,7 @@
  * schema as the one this suite has been running against.
  *
  * The test builds a genuinely fresh database (CREATE DATABASE → drizzle-kit
- * push → every SQL file listed in scripts/apply-migrations-pm2.sh) and diffs
+ * push → every SQL file scripts/apply-migrations-pm2.sh would apply) and diffs
  * information_schema columns, plus indexes and constraints, against
  * process.env.DATABASE_URL. Any difference is schema drift.
  *
@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 import pg from "pg";
@@ -38,14 +38,43 @@ let adminUrl = "";
 let freshBuilt = false;
 let buildError: string | null = null;
 
-/** Migration files, read from the shell script so the two can never diverge. */
+/**
+ * The files the shell script would apply, selected the same way it selects
+ * them, so the two can never diverge.
+ *
+ * This used to regex a hardcoded list back out of the script. That list drifted
+ * three files behind the directory and silently skipped 045 and 046 on a
+ * production deploy, so the script now globs `migrations/` and sorts by
+ * version. Mirroring the *rule* rather than a list is what keeps this honest:
+ * a new migration is picked up by both sides with no edit to either.
+ *
+ * The one thing the script still hardcodes is its MANUAL_ONLY exclusions, so
+ * those are read from it directly — and a failure to find them throws rather
+ * than quietly applying the wrong set, which is the exact failure mode being
+ * fixed here.
+ */
 function migrationFilesFromScript(): string[] {
   const script = readFileSync(
     path.join(repoRoot, "scripts/apply-migrations-pm2.sh"),
     "utf8",
   );
-  const matches = script.match(/migrations\/[0-9A-Za-z_]+\.sql/g) ?? [];
-  return Array.from(new Set(matches));
+
+  const manualOnlyBlock = script.match(/MANUAL_ONLY=\(([^)]*)\)/)?.[1] ?? "";
+  const manualOnly = new Set(
+    [...manualOnlyBlock.matchAll(/"([^"]+\.sql)"/g)].map((m) => m[1]),
+  );
+  if (manualOnly.size === 0) {
+    throw new Error(
+      "Could not read MANUAL_ONLY out of scripts/apply-migrations-pm2.sh. " +
+        "The script's selection rule has changed and this test no longer mirrors it.",
+    );
+  }
+
+  return readdirSync(path.join(repoRoot, "migrations"))
+    .filter((name) => name.endsWith(".sql") && !manualOnly.has(name))
+    // Matches the script's `sort -V`.
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map((name) => `migrations/${name}`);
 }
 
 function swapDatabase(url: string, dbName: string) {

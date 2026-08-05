@@ -32,6 +32,23 @@ npm ci
 echo "=== build ==="
 npm run build
 
+# Backstop for the sourcemap leak. vite.config.ts builds with
+# `sourcemap: "hidden"` whenever SENTRY_AUTH_TOKEN is set, which writes .map
+# files into dist/public — the directory the server hosts statically. Its
+# `filesToDeleteAfterUpload` clears them, and that was verified to hold even
+# when the upload 401s on a stale token, which is the case that stranded them
+# in production on 6a020e3.
+#
+# This sweep exists because that guarantee lives in a plugin option someone
+# could reasonably delete while tidying, and the failure is silent and
+# security-relevant. Nothing references these files (no sourceMappingURL
+# comment is emitted), so removing any that survive is always safe.
+STRAY_MAPS="$(find dist/public -name '*.map' -type f 2>/dev/null | wc -l)"
+if [[ "$STRAY_MAPS" -gt 0 ]]; then
+  echo "  removing $STRAY_MAPS sourcemap(s) left in dist/public (upload failed or was skipped)"
+  find dist/public -name '*.map' -type f -delete
+fi
+
 echo "=== PM2 (re)start with fresh .env ==="
 # pm2 restart/reload (even with --update-env) keeps the env captured when the
 # process was first created. This app has NO dotenv fallback — PM2's env_file is

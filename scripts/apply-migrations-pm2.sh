@@ -23,51 +23,55 @@ fi
 
 echo "=== Applying SQL migrations to Neon ==="
 
-for f in migrations/001_analytics_org_pk_with_org.sql \
-         migrations/002_org_not_null.sql \
-         migrations/003_org_setup_phase8.sql \
-         migrations/004_phase10_automation.sql \
-         migrations/005_phase11a_location_stock_transfers.sql \
-         migrations/006_phase11b_suppliers_replenishment.sql \
-         migrations/007_phase11c_goods_receiving.sql \
-         migrations/008_auth_subject.sql \
-         migrations/009_domain_outbox_and_workers.sql \
-         migrations/010_domain_outbox_deprecated.sql \
-         migrations/011_admin_audit_logs.sql \
-         migrations/012_channel_readiness.sql \
-         migrations/013_feature_flags.sql \
-         migrations/014_admin_audit_retention.sql \
-         migrations/022_receipt_settings.sql \
-         migrations/023_shifts.sql \
-         migrations/024_orders_shift_id.sql \
-         migrations/025_refunds.sql \
-         migrations/026_gift_cards.sql \
-         migrations/027_gift_card_movements.sql \
-         migrations/028_loyalty_settings.sql \
-         migrations/030_saved_views.sql \
-         migrations/032_customer_rfm.sql \
-         migrations/031_org_onboarding.sql \
-         migrations/033_whatsapp.sql \
-         migrations/034_whatsapp_order_intents.sql \
-         migrations/035_whatsapp_templates.sql \
-         migrations/036_widen_location_state.sql \
-         migrations/037_rename_accent_style_default.sql \
-         migrations/038_cashier_commission.sql \
-         migrations/039_domain_audit_logs.sql \
-         migrations/040_widen_inventory_movement_event_id.sql \
-         migrations/041_org_invoice_payment_details.sql \
-         migrations/042_hot_path_indexes.sql \
-         migrations/043_reports_operational_schema.sql \
-         migrations/044_order_settlement_immutability.sql; do
-  if [[ ! -f "$f" ]]; then
-    echo "  SKIP missing $f"
+# Every migration in migrations/, in version order. Do NOT reintroduce a
+# hardcoded list here. The previous version of this script had one, it drifted
+# three files behind the directory, and a production deploy silently applied
+# nothing for 045 and 046 — no error, no "SKIP" line, just an unmigrated schema
+# under a build that expected the new columns. Globbing cannot drift.
+#
+# Two files are excluded deliberately. Both are conditional Phase 2B analytics
+# variants that an operator runs by hand, not part of the standard sequence:
+#
+#   001_analytics_org_pk.sql          — only for a pre-multi-tenant database;
+#                                       its own header says fresh DBs use
+#                                       `npm run db:push` instead.
+#   001_analytics_org_pk_with_org.sql — requires `-v org_id=<uuid>`, which this
+#                                       script has no way to supply.
+#
+# (Ordering note: sorting puts 031 before 032, where the old hardcoded list had
+# them reversed. They are independent — 031 adds a column to organizations, 032
+# creates customer_rfm — so version order is correct for both.)
+MANUAL_ONLY=(
+  "001_analytics_org_pk.sql"
+  "001_analytics_org_pk_with_org.sql"
+)
+
+is_manual_only() {
+  local candidate="$1" skip
+  for skip in "${MANUAL_ONLY[@]}"; do
+    [[ "$candidate" == "$skip" ]] && return 0
+  done
+  return 1
+}
+
+shopt -s nullglob
+migration_files=(migrations/*.sql)
+if [[ ${#migration_files[@]} -eq 0 ]]; then
+  echo "ERROR: no migrations found under migrations/ — wrong working directory?"
+  exit 1
+fi
+
+while IFS= read -r f; do
+  base="$(basename "$f")"
+  if is_manual_only "$base"; then
+    echo "  SKIP $base (manual-only — see MANUAL_ONLY in this script)"
     continue
   fi
-  echo "  → $(basename "$f")"
+  echo "  → $base"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=0 -f "$f" || {
     echo "  (some 'already exists' notices are OK on re-run)"
   }
-done
+done < <(printf '%s\n' "${migration_files[@]}" | sort -V)
 
 echo "=== migration:sanity ==="
 # npm ci with NODE_ENV=production (often set in .env) omits devDependencies and breaks `tsx`.

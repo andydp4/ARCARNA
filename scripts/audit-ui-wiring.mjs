@@ -246,8 +246,23 @@ function isReached(routePath) {
 
 // Routes that only redirect (kept so old URLs keep working) are unreachable by
 // link on purpose and are not orphans.
+//
+// Two forms exist, and matching only the first is why /orders/:id/refund was
+// reported as an orphan indefinitely:
+//
+//   <Route path="/orders"><Redirect to="/open-orders" /></Route>
+//   <Route path="/orders/:id/refund">
+//     {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
+//
+// A redirect that has to carry a route parameter through *must* use the
+// render-prop form to read `params`, so the ones this used to miss were
+// precisely the parameterised ones.
 const redirectOnlyRoutes = new Set(
-  [...appSrc.matchAll(/<Route\s+path="([^"]+)"\s*>\s*<Redirect/g)].map((m) => m[1]),
+  [
+    ...appSrc.matchAll(
+      /<Route\s+path="([^"]+)"\s*>\s*(?:\{\s*\([^)]*\)\s*=>\s*)?<Redirect/g,
+    ),
+  ].map((m) => m[1]),
 );
 
 const orphanPages = [];

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { setSelectedOrgId } from "@/lib/orgScope";
 import { BRAND_PRODUCT_NAME } from "@shared/brand";
@@ -14,6 +15,7 @@ import { BRAND_PRODUCT_NAME } from "@shared/brand";
 export default function Onboarding() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { user, devAuthBypass } = useAuth();
   const [orgName, setOrgName] = useState("");
 
@@ -27,6 +29,17 @@ export default function Onboarding() {
       queryClient.invalidateQueries({ queryKey: ["/api/orgs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       setLocation("/onboarding/wizard");
+    },
+    // This is the very first action a new account takes, and it was the one
+    // mutation with nowhere to report a failure: the button simply stopped
+    // being pending and the page sat there. A duplicate name or a rejected
+    // request looked identical to nothing having been clicked.
+    onError: (error: unknown) => {
+      toast({
+        title: "Could not create the organization",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
     },
   });
 
