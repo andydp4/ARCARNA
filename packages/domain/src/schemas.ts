@@ -19,6 +19,11 @@ export const PlaceOrderInput = z.object({
   paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
+  // Must be declared even though nothing in the engine branches on it: this is
+  // a plain z.object, so it strips unknown keys, and an undeclared field is
+  // dropped here silently rather than rejected. Omitted means collection, which
+  // matches the column default and the backfill.
+  fulfilmentMethod: z.enum(['collection', 'delivery']).optional(),
   // Org's configured VAT/sales-tax rate as a percentage (e.g. 20 for 20%).
   // Injected by the route from organizations.default_tax_rate. Optional so
   // existing callers keep the previous fixed 20% behaviour.

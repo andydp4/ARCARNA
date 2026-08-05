@@ -47,13 +47,20 @@ export class DomainEngine {
       // Determine order status based on stock availability
       const orderStatus = stockWarnings.length > 0 ? 'on-hold' : 'pending'
 
-      const order: Order & { orgId?: string; locationId?: string } = {
+      const order: Order & {
+        orgId?: string
+        locationId?: string
+        fulfilmentMethod?: 'collection' | 'delivery'
+      } = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
         lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
         subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, createdAt: new Date(),
         orgId: (dto as any).orgId,
         locationId: (dto as any).locationId,
+        // Carried alongside the domain Order rather than inside it, the same way
+        // orgId/locationId are: OrdersRepo persists it, no engine rule reads it.
+        fulfilmentMethod: (dto as any).fulfilmentMethod,
       }
       await this.orders.save(order)
       // Stock mutations: InventoryWorker on OrderCreated (event-driven, per-location)

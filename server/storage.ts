@@ -818,6 +818,14 @@ export class DatabaseStorage implements IStorage {
           paymentMethod: orderData.paymentMethod ?? orderData.payment_method,
           status: "completed",
           channel: orderData.channel ?? orderData.channel_id ?? "pos",
+          // Anything outside the two accepted values falls back to the column
+          // default rather than reaching the CHECK constraint. A bad value here
+          // is a client bug, and failing the whole sale over it would lose a
+          // paid transaction to protect a reporting dimension.
+          fulfilmentMethod:
+            (orderData.fulfilmentMethod ?? orderData.fulfilment_method) === "delivery"
+              ? "delivery"
+              : "collection",
         })
         .returning();
 

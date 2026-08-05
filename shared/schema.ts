@@ -780,6 +780,14 @@ export const orders = pgTable("orders", {
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
   channel: varchar("channel", { length: 32 }).notNull().default("pos"),
+  // How the customer takes the goods. Distinct from `channel`, which is how the
+  // order arrived (pos, whatsapp, ...) — a WhatsApp order can be collected and a
+  // counter sale can be delivered, so the two do not imply each other.
+  // "collection" is the default because a till sale is handed over immediately;
+  // backfilled that way for every pre-existing order, which is what they were.
+  fulfilmentMethod: varchar("fulfilment_method", { length: 16 })
+    .notNull()
+    .default("collection"),
   // Immutable settlement snapshot: the order total at the moment it FIRST
   // reached "completed" (i.e. what was actually collected). Never overwritten
   // on later status changes. Refunds are capped against this, not `total`,

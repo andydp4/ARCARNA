@@ -178,6 +178,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         total: orders.total,
         paymentMethod: orders.payment_method,
         status: orders.status,
+        fulfilmentMethod: orders.fulfilment_method,
         createdAt: orders.created_at,
       }).from(orders).leftJoin(customers, eq(orders.customer_id, customers.id));
       const allOrders = ctx?.orgId

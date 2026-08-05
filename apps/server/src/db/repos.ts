@@ -42,6 +42,12 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         total: String(o.total),
         payment_method: o.paymentMethod,
         status: o.status,
+        // Rides the same `as any` passthrough orgId/locationId use: fulfilment
+        // is not part of the engine's Order domain type, it is carried on the
+        // request body and persisted here. Anything other than "delivery"
+        // becomes "collection" so a malformed value cannot hit the CHECK
+        // constraint and fail an otherwise good sale.
+        fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
       })
       const orgId = orderWithOrg.orgId;
       for (const l of o.lines) {
