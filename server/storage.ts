@@ -128,7 +128,6 @@ export interface IStorage {
   // POS operations
   getProducts(orgId: string): Promise<Product[]>;
   getCustomers(orgId: string): Promise<Customer[]>;
-  createOrder(orderData: any): Promise<Order>;
 
   // Product operations
   createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
@@ -804,74 +803,11 @@ export class DatabaseStorage implements IStorage {
     return customer || null;
   }
 
-  async createOrder(orderData: any): Promise<Order> {
-    return await db.transaction(async (tx) => {
-      // Create order
-      const orgId = orderData.orgId ?? orderData.org_id ?? null;
-      const [order] = await tx
-        .insert(orders)
-        .values({
-          orgId,
-          customerId: orderData.customerId ?? orderData.customer_id,
-          locationId: orderData.locationId ?? orderData.location_id,
-          total: orderData.total,
-          paymentMethod: orderData.paymentMethod ?? orderData.payment_method,
-          status: "completed",
-          channel: orderData.channel ?? orderData.channel_id ?? "pos",
-          // Anything outside the two accepted values falls back to the column
-          // default rather than reaching the CHECK constraint. A bad value here
-          // is a client bug, and failing the whole sale over it would lose a
-          // paid transaction to protect a reporting dimension.
-          fulfilmentMethod:
-            (orderData.fulfilmentMethod ?? orderData.fulfilment_method) === "delivery"
-              ? "delivery"
-              : "collection",
-        })
-        .returning();
-
-      // Create order items (orgId from order)
-      if (orderData.items && orderData.items.length > 0) {
-        await tx.insert(orderItems).values(
-          orderData.items.map((item: any) => ({
-            orgId,
-            orderId: order.id,
-            productId: item.productId ?? item.product_id,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice ?? item.unit_price,
-            totalPrice: item.totalPrice ?? item.total_price,
-          }))
-        );
-
-        // Create order expenses if provided (orgId from order)
-        if (orderData.expenses && orderData.expenses.length > 0) {
-          await tx.insert(orderExpenses).values(
-            orderData.expenses.map((expense: any) => ({
-              orgId,
-              orderId: order.id,
-              category: expense.category,
-              description: expense.description,
-              amount: expense.amount,
-            }))
-          );
-        }
-
-        // Stock: event-driven InventoryWorker (product_location_stock authoritative)
-      }
-
-      // Update customer loyalty points if applicable
-      if (orderData.customer_id) {
-        const points = Math.floor(orderData.total / 10); // 1 point per $10
-        await tx
-          .update(customers)
-          .set({
-            loyaltyPoints: sql`loyalty_points + ${points}`,
-          })
-          .where(eq(customers.id, orderData.customer_id));
-      }
-
-      return order;
-    });
-  }
+  // storage.createOrder was removed here. It was dead code — nothing called it —
+  // and it carried its own explicit insert values list for the orders table, so
+  // it was a fifth place a new order column had to be threaded to avoid being
+  // silently dropped. Orders are created through the domain engine
+  // (engine.placeOrder -> OrdersRepoDrizzle.save), which is the only write path.
 
   async getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]> {
     const { productLocationStock } = await import("@shared/schema");

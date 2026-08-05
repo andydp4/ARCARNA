@@ -3,6 +3,49 @@ import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
 
+/**
+ * Columns an order insert must name explicitly.
+ *
+ * Drizzle's `$inferInsert` marks any column carrying a database default as
+ * OPTIONAL, so a values object that omits one still type-checks — the row is
+ * written with the default and whatever the caller actually chose disappears
+ * without an error anywhere. That is exactly how a till set to "delivery"
+ * persisted as "collection": `fulfilment_method` has a default, so leaving it
+ * out of the object below compiled cleanly and lost the operator's choice.
+ *
+ * `Required<Pick<...>>` strips that optionality back off for the columns that
+ * carry a decision rather than a convention. Adding a column here makes every
+ * insert site fail to compile until it is threaded, which turns a silent runtime
+ * drop into a build error. Columns genuinely happy with their default
+ * (created_at, updated_at) stay out of this list on purpose.
+ */
+type DecisionCarryingOrderColumns = Required<
+  Pick<
+    typeof s.orders.$inferInsert,
+    | "org_id"
+    | "location_id"
+    | "customer_id"
+    | "total"
+    | "payment_method"
+    | "status"
+    | "fulfilment_method"
+  >
+>;
+
+type OrderInsert = typeof s.orders.$inferInsert & DecisionCarryingOrderColumns;
+
+/**
+ * What the engine carries alongside the domain Order purely so it can be
+ * persisted. These are not domain concepts — no engine rule reads them — but
+ * they must survive the trip to the repo, and `as any` on both sides is what let
+ * fulfilmentMethod fall through the gap unnoticed.
+ */
+export type OrderPersistenceCarrier = {
+  orgId?: string | null;
+  locationId?: string | null;
+  fulfilmentMethod?: "collection" | "delivery";
+};
+
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
     // Check if order exists
@@ -33,8 +76,10 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         } as typeof s.order_items.$inferInsert)
       }
     } else {
-      const orderWithOrg = o as any
-      await getDb().insert(s.orders).values({
+      const orderWithOrg = o as Order & OrderPersistenceCarrier
+      // Typed as OrderInsert, so omitting any decision-carrying column is a
+      // compile error rather than a row quietly written with defaults.
+      const values: OrderInsert = {
         id: o.id as any,
         org_id: orderWithOrg.orgId ?? null,
         location_id: orderWithOrg.locationId ?? null,
@@ -42,13 +87,11 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         total: String(o.total),
         payment_method: o.paymentMethod,
         status: o.status,
-        // Rides the same `as any` passthrough orgId/locationId use: fulfilment
-        // is not part of the engine's Order domain type, it is carried on the
-        // request body and persisted here. Anything other than "delivery"
-        // becomes "collection" so a malformed value cannot hit the CHECK
-        // constraint and fail an otherwise good sale.
+        // Anything other than "delivery" becomes "collection" so a malformed
+        // value cannot hit the CHECK constraint and fail an otherwise good sale.
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
-      })
+      }
+      await getDb().insert(s.orders).values(values)
       const orgId = orderWithOrg.orgId;
       for (const l of o.lines) {
         await getDb().insert(s.order_items).values({

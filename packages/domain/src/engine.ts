@@ -47,6 +47,10 @@ export class DomainEngine {
       // Determine order status based on stock availability
       const orderStatus = stockWarnings.length > 0 ? 'on-hold' : 'pending'
 
+      // These three ride alongside the domain Order purely so OrdersRepo can
+      // persist them; no engine rule reads any of them. Declared here rather
+      // than left to `as any` at the repo end, because an untyped handoff is
+      // precisely how fulfilmentMethod was lost between the two.
       const order: Order & {
         orgId?: string
         locationId?: string
