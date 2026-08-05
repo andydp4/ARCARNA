@@ -30,6 +30,7 @@ import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
 import { parseQuantityInput } from "@shared/quantity";
+import { buildGoodsReceiptItems } from "@/lib/receiving";
 
 type DraftListItem = {
   id: string;
@@ -165,20 +166,7 @@ export default function PurchaseDraftsPage() {
   const createReceipt = useMutation({
     mutationFn: async () => {
       if (!detailId) return;
-      const items = (receiving?.items ?? [])
-        .map((item) => {
-          const q = receiveQty[item.id];
-          const received = parseInt(q?.received ?? "0", 10);
-          const damaged = parseInt(q?.damaged ?? "0", 10);
-          if (received <= 0) return null;
-          return {
-            purchaseDraftItemId: item.id,
-            productId: item.productId,
-            quantityReceived: received,
-            quantityDamaged: damaged || 0,
-          };
-        })
-        .filter(Boolean);
+      const items = buildGoodsReceiptItems(receiving?.items ?? [], receiveQty);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: detailId,
         items,

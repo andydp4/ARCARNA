@@ -72,6 +72,17 @@ export function parseQuantityInput(raw: string): number | null {
   return rounded;
 }
 
+/** Parses an input where zero is valid, such as damaged quantity on a receipt. */
+export function parseNonNegativeQuantityInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = roundQuantity(parsed);
+  if (rounded < 0 || rounded > QUANTITY_MAX) return null;
+  return rounded;
+}
+
 /** Trims trailing zeros so 2.000 reads as "2" and 0.400 as "0.4". */
 export function formatQuantity(value: number): string {
   if (!Number.isFinite(value)) return "0";

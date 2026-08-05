@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { clearQueryParams, purchaseDraftLink, readQueryParam } from "@/lib/deepLink";
 import { PackageCheck, Eye } from "lucide-react";
+import { buildGoodsReceiptItems } from "@/lib/receiving";
 
 type ReceiptListItem = {
   id: string;
@@ -152,20 +153,7 @@ export function ReceivingTab() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const items = (receivingInfo?.items ?? [])
-        .map((item) => {
-          const q = lineQty[item.id];
-          const received = parseInt(q?.received ?? "0", 10);
-          const damaged = parseInt(q?.damaged ?? "0", 10);
-          if (received <= 0) return null;
-          return {
-            purchaseDraftItemId: item.id,
-            productId: item.productId,
-            quantityReceived: received,
-            quantityDamaged: damaged || 0,
-          };
-        })
-        .filter(Boolean);
+      const items = buildGoodsReceiptItems(receivingInfo?.items ?? [], lineQty);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: createDraftId,
         items,

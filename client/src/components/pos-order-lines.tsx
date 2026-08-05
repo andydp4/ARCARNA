@@ -32,15 +32,15 @@ import {
 import { cn } from "@/lib/utils";
 import { formatQuantity, parseQuantityInput } from "@shared/quantity";
 import type { PosProduct } from "@/components/pos-product-card";
+import {
+  addProductToOrderLines,
+  priceOf,
+  selectProductForOrderLine,
+  updateOrderLine,
+  type PosOrderLine,
+} from "@/lib/posOrderLines";
 
-export interface OrderLine {
-  product: PosProduct;
-  quantity: number;
-  customPrice: number;
-  subtotal: number;
-  priceInput?: string;
-  quantityInput?: string;
-}
+export type OrderLine = PosOrderLine;
 
 export type PosOrderLinesProps = {
   products: PosProduct[];
@@ -49,17 +49,6 @@ export type PosOrderLinesProps = {
   /** Shown under a line when the quantity exceeds what is in stock. */
   showStockWarnings?: boolean;
 };
-
-function priceOf(product: PosProduct): number {
-  const raw = product.defaultSalePrice;
-  const n = typeof raw === "string" ? parseFloat(raw) : raw;
-  return Number.isFinite(n) ? Number(n) : 0;
-}
-
-function makeLine(product: PosProduct): OrderLine {
-  const price = priceOf(product);
-  return { product, quantity: 1, customPrice: price, subtotal: price };
-}
 
 /** Type-ahead product picker. Matches on name, SKU and barcode. */
 function ProductPicker({
@@ -149,26 +138,13 @@ export function PosOrderLines({
   );
 
   const update = (index: number, patch: Partial<OrderLine>) => {
-    const next = lines.map((line, i) => {
-      if (i !== index) return line;
-      const merged = { ...line, ...patch };
-      merged.subtotal = merged.quantity * merged.customPrice;
-      return merged;
-    });
-    onChange(next);
+    onChange(updateOrderLine(lines, index, patch));
   };
 
   const remove = (index: number) => onChange(lines.filter((_, i) => i !== index));
 
   const addProduct = (product: PosProduct) => {
-    // Choosing a product a line already holds bumps its quantity rather than
-    // creating a duplicate row.
-    const existing = lines.findIndex((l) => l.product.id === product.id);
-    if (existing >= 0) {
-      update(existing, { quantity: lines[existing].quantity + 1, quantityInput: undefined });
-      return;
-    }
-    onChange([...lines, makeLine(product)]);
+    onChange(addProductToOrderLines(lines, product));
   };
 
   return (
@@ -196,7 +172,9 @@ export function PosOrderLines({
                 value={line.product}
                 placeholder="Choose product"
                 testId={`line-product-${index}`}
-                onSelect={(product) => update(index, { product, customPrice: priceOf(product) })}
+                onSelect={(product) =>
+                  onChange(selectProductForOrderLine(lines, index, product))
+                }
               />
 
               <Input
