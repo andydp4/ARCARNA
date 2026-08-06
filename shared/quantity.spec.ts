@@ -3,6 +3,7 @@ import {
   QUANTITY_MAX,
   formatQuantity,
   isStorableQuantity,
+  parseNonNegativeQuantityInput,
   nonNegativeQuantity,
   parseQuantityInput,
   positiveQuantity,
@@ -52,6 +53,14 @@ describe("quantity: parsing what someone types", () => {
 
   it("rounds an over-precise entry rather than refusing it", () => {
     expect(parseQuantityInput("0.4004")).toBe(0.4);
+  });
+
+  it("accepts zero and fractions for optional non-negative counts", () => {
+    expect(parseNonNegativeQuantityInput("0")).toBe(0);
+    expect(parseNonNegativeQuantityInput("0.5")).toBe(0.5);
+    expect(parseNonNegativeQuantityInput(" 2.25 ")).toBe(2.25);
+    expect(parseNonNegativeQuantityInput("")).toBeNull();
+    expect(parseNonNegativeQuantityInput("-0.1")).toBeNull();
   });
 });
 

@@ -288,9 +288,9 @@ export class DomainEngine {
       // Calculate new totals
       const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
       // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
-    // applies when a caller supplies none.
-    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
-    const vat = +(subtotal * taxRate).toFixed(2)
+      // applies when a caller supplies none.
+      const taxRate = (dto.taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
+      const vat = +(subtotal * taxRate).toFixed(2)
       const total = +(subtotal + vat).toFixed(2)
 
       // Determine order status: 

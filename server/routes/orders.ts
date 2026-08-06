@@ -23,6 +23,19 @@ import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 
+async function resolveOrgTaxRate(orgId: string): Promise<number | undefined> {
+  const { organizations: orgTable } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../db");
+  const [orgRow] = await db
+    .select({ defaultTaxRate: orgTable.defaultTaxRate })
+    .from(orgTable)
+    .where(eq(orgTable.id, orgId))
+    .limit(1);
+  const rate = orgRow?.defaultTaxRate != null ? Number(orgRow.defaultTaxRate) : undefined;
+  return Number.isFinite(rate) ? rate : undefined;
+}
+
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
     try {
@@ -38,15 +51,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // The engine used to hardcode 20% while the POS displayed 10%, so the
       // customer was quoted one total and charged another. Both now derive
       // from the org's configured rate.
-      const { organizations: orgTable } = await import("@shared/schema");
-      const { eq: eqOrg } = await import("drizzle-orm");
-      const { db: settingsDb } = await import("../db");
-      const [orgRow] = await settingsDb
-        .select({ defaultTaxRate: orgTable.defaultTaxRate })
-        .from(orgTable)
-        .where(eqOrg(orgTable.id, ctx.orgId))
-        .limit(1);
-      const orgTaxRate = orgRow?.defaultTaxRate != null ? Number(orgRow.defaultTaxRate) : undefined;
+      const orgTaxRate = await resolveOrgTaxRate(ctx.orgId);
 
       const body = {
         ...req.body,
@@ -444,10 +449,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       
       const { engine } = await import('../../apps/server/src/engine.wiring');
       const { publishEvent } = await import('../eventBus');
+      const orgTaxRate = ctx.orgId ? await resolveOrgTaxRate(ctx.orgId) : undefined;
       const result = await engine.updateOrder(req.params.id, {
         ...req.body,
         orgId: ctx.orgId,
         locationId: ctx?.locationId ?? req.body.locationId,
+        ...(orgTaxRate != null ? { taxRatePercent: orgTaxRate } : {}),
       });
       
       // Fetch updated order details

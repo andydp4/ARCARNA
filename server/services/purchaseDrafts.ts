@@ -102,7 +102,7 @@ export async function getOnOrderQuantities(orgId: string) {
     .select({
       productId: purchaseDraftItems.productId,
       locationId: purchaseDrafts.locationId,
-      outstanding: sql<number>`COALESCE(SUM(GREATEST(${purchaseDraftItems.quantity} - ${purchaseDraftItems.quantityReceived}, 0)), 0)::int`.as(
+      outstanding: sql<number>`COALESCE(SUM(GREATEST(${purchaseDraftItems.quantity} - ${purchaseDraftItems.quantityReceived}, 0)), 0)::float8`.as(
         "outstanding",
       ),
     })
@@ -230,7 +230,7 @@ export async function listPurchaseDrafts(orgId: string, status?: string) {
     .select({
       purchaseDraftId: purchaseDraftItems.purchaseDraftId,
       count: sql<number>`COUNT(*)::int`.as("count"),
-      totalQty: sql<number>`COALESCE(SUM(${purchaseDraftItems.quantity}), 0)::int`.as("total_qty"),
+      totalQty: sql<number>`COALESCE(SUM(${purchaseDraftItems.quantity}), 0)::float8`.as("total_qty"),
     })
     .from(purchaseDraftItems)
     .where(inArray(purchaseDraftItems.purchaseDraftId, ids))

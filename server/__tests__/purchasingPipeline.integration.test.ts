@@ -148,14 +148,14 @@ describe.skipIf(!hasDb)("getOnOrderQuantities", () => {
         supplierId: supplierA,
         locationId,
         items: [
-          { productId: productA, quantity: 20 },
-          { productId: productB, quantity: 7 },
+          { productId: productA, quantity: 20.5 },
+          { productId: productB, quantity: 7.25 },
         ],
       },
     ]);
 
-    expect(await onOrderFor(orgId, productA, locationId)).toBe(20);
-    expect(await onOrderFor(orgId, productB, locationId)).toBe(7);
+    expect(await onOrderFor(orgId, productA, locationId)).toBe(20.5);
+    expect(await onOrderFor(orgId, productB, locationId)).toBe(7.25);
 
     await cleanupDrafts([draft!.id]);
   });
@@ -213,7 +213,7 @@ describe.skipIf(!hasDb)("getOnOrderQuantities", () => {
 
   it("nets off quantity already received rather than the full ordered quantity", async () => {
     const [draft] = await createPurchaseDraftsBatch(orgId, [
-      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 10 }] },
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 10.5 }] },
     ]);
     const [line] = await db
       .select()
@@ -222,10 +222,10 @@ describe.skipIf(!hasDb)("getOnOrderQuantities", () => {
 
     await db
       .update(purchaseDraftItems)
-      .set({ quantityReceived: 4 })
+      .set({ quantityReceived: 4.25 })
       .where(eq(purchaseDraftItems.id, line.id));
 
-    expect(await onOrderFor(orgId, productA, locationId)).toBe(6);
+    expect(await onOrderFor(orgId, productA, locationId)).toBe(6.25);
 
     // Over-received rows must clamp at zero, never go negative.
     await db
@@ -416,7 +416,7 @@ describe.skipIf(!hasDb)("createPurchaseDraftsFromRecommendations", () => {
 describe.skipIf(!hasDb)("receive cycle", () => {
   it("moves stock only on completion and reduces on-order as goods arrive", async () => {
     const [draft] = await createPurchaseDraftsBatch(orgId, [
-      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 10 }] },
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 10.5 }] },
     ]);
     const draftId = draft!.id;
 
@@ -436,7 +436,7 @@ describe.skipIf(!hasDb)("receive cycle", () => {
 
     const receiving = await getPurchaseDraftReceiving(orgId, draftId);
     const line = receiving.items[0];
-    expect(line.remaining).toBe(10);
+    expect(line.remaining).toBe(10.5);
 
     const receipt = await createGoodsReceipt(orgId, {
       purchaseDraftId: draftId,
@@ -444,8 +444,8 @@ describe.skipIf(!hasDb)("receive cycle", () => {
         {
           purchaseDraftItemId: line.id,
           productId: productA,
-          quantityReceived: 4,
-          quantityDamaged: 1,
+          quantityReceived: 4.5,
+          quantityDamaged: 0.5,
         },
       ],
     });
@@ -464,7 +464,7 @@ describe.skipIf(!hasDb)("receive cycle", () => {
     expect(stockPending.stock).toBe(startingStock);
 
     const mid = await getPurchaseDraftReceiving(orgId, draftId);
-    expect(mid.items[0].pendingOnReceipts).toBe(4);
+    expect(mid.items[0].pendingOnReceipts).toBe(4.5);
     expect(mid.items[0].remaining).toBe(6);
 
     await completeGoodsReceipt(orgId, receipt!.id, "test");
@@ -479,7 +479,7 @@ describe.skipIf(!hasDb)("receive cycle", () => {
         ),
       );
     // Damaged units are recorded but never become sellable stock.
-    expect(stockAfter.stock).toBe(startingStock + 4);
+    expect(stockAfter.stock).toBe(startingStock + 4.5);
 
     const [draftAfter] = await db
       .select()
@@ -501,7 +501,7 @@ describe.skipIf(!hasDb)("receive cycle", () => {
           eq(productLocationStock.locationId, locationId),
         ),
       );
-    expect(stockIdem.stock).toBe(startingStock + 4);
+    expect(stockIdem.stock).toBe(startingStock + 4.5);
 
     await cleanupDrafts([draftId]);
   });
