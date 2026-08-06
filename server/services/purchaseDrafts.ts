@@ -327,9 +327,48 @@ export async function updatePurchaseDraft(
     );
   }
 
+  const values: Partial<typeof purchaseDrafts.$inferInsert> = { updatedAt: new Date() };
+
+  if (patch.supplierId !== undefined) {
+    const [supplier] = await db
+      .select({ id: suppliers.id })
+      .from(suppliers)
+      .where(and(eq(suppliers.id, patch.supplierId), eq(suppliers.orgId, orgId)))
+      .limit(1);
+    if (!supplier) {
+      throw new PurchaseDraftError(
+        "VALIDATION_ERROR",
+        "Supplier does not belong to this organization",
+      );
+    }
+    values.supplierId = patch.supplierId;
+  }
+
+  if (patch.locationId !== undefined) {
+    const [location] = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(and(eq(locations.id, patch.locationId), eq(locations.orgId, orgId)))
+      .limit(1);
+    if (!location) {
+      throw new PurchaseDraftError(
+        "VALIDATION_ERROR",
+        "Location does not belong to this organization",
+      );
+    }
+    values.locationId = patch.locationId;
+  }
+
+  if (values.supplierId === undefined && values.locationId === undefined) {
+    throw new PurchaseDraftError(
+      "VALIDATION_ERROR",
+      "At least one supplier or location field is required",
+    );
+  }
+
   await db
     .update(purchaseDrafts)
-    .set({ ...patch, updatedAt: new Date() })
+    .set(values)
     .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)));
 
   return loadDraftWithItems(orgId, id);

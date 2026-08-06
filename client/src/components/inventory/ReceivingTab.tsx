@@ -24,9 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryParam } from "@/hooks/useQueryParam";
 import { Link } from "wouter";
-import { clearQueryParams, purchaseDraftLink, readQueryParam } from "@/lib/deepLink";
+import { clearQueryParams, purchaseDraftLink } from "@/lib/deepLink";
 import { PackageCheck, Eye } from "lucide-react";
+import { buildGoodsReceiptItems } from "@/lib/receiving";
 
 type ReceiptListItem = {
   id: string;
@@ -72,8 +74,9 @@ export function ReceivingTab() {
   const canMutate =
     user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
+  const receiptParam = useQueryParam("receipt");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [detailId, setDetailId] = useState<string | null>(() => readQueryParam("receipt"));
+  const [detailId, setDetailId] = useState<string | null>(() => receiptParam);
   const [completeTarget, setCompleteTarget] = useState<ReceiptDetail | null>(null);
   const [createDraftId, setCreateDraftId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -114,11 +117,13 @@ export function ReceivingTab() {
     enabled: !!createDraftId && createOpen,
   });
 
-  // A deep-linked receipt opens once; drop the param so closing the dialog (or
-  // refreshing) does not immediately re-open it.
+  // A deep-linked receipt opens whenever the query changes; drop the param so
+  // closing the dialog (or refreshing) does not immediately re-open it.
   useEffect(() => {
-    if (readQueryParam("receipt")) clearQueryParams(["receipt"]);
-  }, []);
+    if (!receiptParam) return;
+    setDetailId(receiptParam);
+    clearQueryParams(["receipt"]);
+  }, [receiptParam]);
 
   const closeDetail = () => {
     setDetailId(null);
@@ -152,20 +157,7 @@ export function ReceivingTab() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const items = (receivingInfo?.items ?? [])
-        .map((item) => {
-          const q = lineQty[item.id];
-          const received = parseInt(q?.received ?? "0", 10);
-          const damaged = parseInt(q?.damaged ?? "0", 10);
-          if (received <= 0) return null;
-          return {
-            purchaseDraftItemId: item.id,
-            productId: item.productId,
-            quantityReceived: received,
-            quantityDamaged: damaged || 0,
-          };
-        })
-        .filter(Boolean);
+      const items = buildGoodsReceiptItems(receivingInfo?.items ?? [], lineQty);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: createDraftId,
         items,

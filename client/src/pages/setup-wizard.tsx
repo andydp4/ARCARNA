@@ -178,8 +178,8 @@ export default function SetupWizard() {
     mutationFn: async () => {
       await apiRequest("POST", "/api/org/setup/complete", {});
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Setup complete", description: "Your organization is ready." });
       setLocation("/");
     },

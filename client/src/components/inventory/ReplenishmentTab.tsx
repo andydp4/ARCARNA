@@ -188,7 +188,7 @@ export function ReplenishmentTab() {
     },
     onSuccess: async (res) => {
       const body = (await res.json()) as { id?: string };
-      invalidatePurchasingPipeline(queryClient);
+      await invalidatePurchasingPipeline(queryClient);
       setConfirmItem(null);
       setConfirmKind(null);
       toast({
@@ -226,10 +226,10 @@ export function ReplenishmentTab() {
       const res = await apiRequest("POST", "/api/replenishment/create-purchase-drafts", { lines });
       return (await res.json()) as BatchDraftResponse;
     },
-    onSuccess: (body) => {
+    onSuccess: async (body) => {
       // Recommendations net off open drafts, so they must refetch or the same
       // shortfall stays on screen and invites a duplicate order.
-      invalidatePurchasingPipeline(queryClient);
+      await invalidatePurchasingPipeline(queryClient);
       setConfirmItem(null);
       setConfirmKind(null);
       setBatchOpen(false);

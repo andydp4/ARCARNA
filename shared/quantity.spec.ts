@@ -4,6 +4,7 @@ import {
   formatQuantity,
   isStorableQuantity,
   nonNegativeQuantity,
+  parseNonNegativeQuantityInput,
   parseQuantityInput,
   positiveQuantity,
   roundQuantity,
@@ -52,6 +53,19 @@ describe("quantity: parsing what someone types", () => {
 
   it("rounds an over-precise entry rather than refusing it", () => {
     expect(parseQuantityInput("0.4004")).toBe(0.4);
+  });
+
+  it("accepts zero and fractions where a non-negative quantity is allowed", () => {
+    expect(parseNonNegativeQuantityInput("0")).toBe(0);
+    expect(parseNonNegativeQuantityInput("0.4")).toBe(0.4);
+    expect(parseNonNegativeQuantityInput(" 1.25 ")).toBe(1.25);
+  });
+
+  it("rejects unusable non-negative quantities", () => {
+    for (const bad of ["", "   ", "abc", "-1", "NaN", "Infinity"]) {
+      expect(parseNonNegativeQuantityInput(bad), `${bad} must not parse`).toBeNull();
+    }
+    expect(parseNonNegativeQuantityInput(String(QUANTITY_MAX + 1))).toBeNull();
   });
 });
 

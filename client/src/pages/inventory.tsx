@@ -15,10 +15,10 @@ import { AlertTriangle, Package, Plus, Minus, Search, TrendingDown, AlertCircle 
 import { Link, useLocation } from "wouter";
 import {
   isInventoryTab,
-  readQueryParam,
   withQuery,
   type InventoryTab,
 } from "@/lib/deepLink";
+import { useQueryParam } from "@/hooks/useQueryParam";
 import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -53,24 +53,24 @@ export default function Inventory() {
 
   // `?tab=` lets other pages (purchase drafts, replenishment) link straight to
   // the Receiving tab instead of dropping the user on Stock levels.
-  const [routeLocation, setRouteLocation] = useLocation();
+  const [, setRouteLocation] = useLocation();
+  const requestedTab = useQueryParam("tab");
+  const receiptParam = useQueryParam("receipt");
   const [activeTab, setActiveTab] = useState<InventoryTab>(() => {
-    const requested = readQueryParam("tab");
-    return isInventoryTab(requested) ? requested : "stock";
+    return isInventoryTab(requestedTab) ? requestedTab : "stock";
   });
 
   useEffect(() => {
-    const requested = readQueryParam("tab");
-    if (isInventoryTab(requested) && requested !== activeTab) {
-      setActiveTab(requested);
+    if (isInventoryTab(requestedTab) && requestedTab !== activeTab) {
+      setActiveTab(requestedTab);
     }
-  }, [routeLocation]);
+  }, [activeTab, requestedTab]);
 
   const handleTabChange = (value: string) => {
     if (!isInventoryTab(value)) return;
     setActiveTab(value);
     // Preserve any record-level deep link only while its own tab is showing.
-    const receipt = value === "receiving" ? readQueryParam("receipt") : null;
+    const receipt = value === "receiving" ? receiptParam : null;
     setRouteLocation(withQuery("/inventory", { tab: value, receipt }), { replace: true });
   };
 

@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { invalidatePurchasingPipeline } from "@/lib/query-invalidation";
-import { clearQueryParams, readQueryParam, receiptLink, withQuery } from "@/lib/deepLink";
+import { clearQueryParams, receiptLink, withQuery } from "@/lib/deepLink";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,11 +25,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryParam } from "@/hooks/useQueryParam";
 import { Download, Trash2, PackageCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
 import { parseQuantityInput } from "@shared/quantity";
+import { buildGoodsReceiptItems } from "@/lib/receiving";
 
 type DraftListItem = {
   id: string;
@@ -121,16 +123,19 @@ export default function PurchaseDraftsPage() {
   const canMutate =
     user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const [detailId, setDetailId] = useState<string | null>(() => readQueryParam("draft"));
+  const draftParam = useQueryParam("draft");
+  const [detailId, setDetailId] = useState<string | null>(() => draftParam);
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
 
-  // A deep-linked draft opens once; drop the param so closing the dialog (or
-  // refreshing) does not immediately re-open it.
+  // A deep-linked draft opens whenever the query changes; drop the param so
+  // closing the dialog (or refreshing) does not immediately re-open it.
   useEffect(() => {
-    if (readQueryParam("draft")) clearQueryParams(["draft"]);
-  }, []);
+    if (!draftParam) return;
+    setDetailId(draftParam);
+    clearQueryParams(["draft"]);
+  }, [draftParam]);
 
   const closeDetail = () => {
     setDetailId(null);
@@ -165,20 +170,7 @@ export default function PurchaseDraftsPage() {
   const createReceipt = useMutation({
     mutationFn: async () => {
       if (!detailId) return;
-      const items = (receiving?.items ?? [])
-        .map((item) => {
-          const q = receiveQty[item.id];
-          const received = parseInt(q?.received ?? "0", 10);
-          const damaged = parseInt(q?.damaged ?? "0", 10);
-          if (received <= 0) return null;
-          return {
-            purchaseDraftItemId: item.id,
-            productId: item.productId,
-            quantityReceived: received,
-            quantityDamaged: damaged || 0,
-          };
-        })
-        .filter(Boolean);
+      const items = buildGoodsReceiptItems(receiving?.items ?? [], receiveQty);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: detailId,
         items,
