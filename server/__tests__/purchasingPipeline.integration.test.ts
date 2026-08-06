@@ -25,6 +25,7 @@ import {
   getOnOrderQuantities,
   findOpenDraftsForPairs,
   createPurchaseDraftsBatch,
+  updatePurchaseDraft,
   setPurchaseDraftStatus,
   onOrderKey,
 } from "../services/purchaseDrafts";
@@ -341,6 +342,87 @@ describe.skipIf(!hasDb)("createPurchaseDraftsBatch", () => {
 
   it("rejects an empty batch", async () => {
     await expect(createPurchaseDraftsBatch(orgId, [])).rejects.toThrow(/at least one/i);
+  });
+});
+
+describe.skipIf(!hasDb)("updatePurchaseDraft", () => {
+  it("rejects attempts to patch protected draft fields through the supplier/location edit path", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+
+    await expect(
+      updatePurchaseDraft(orgId, draftId, { status: "fully_received" } as any),
+    ).rejects.toThrow(/supplier or location/i);
+
+    const [stored] = await db
+      .select({ orgId: purchaseDrafts.orgId, status: purchaseDrafts.status })
+      .from(purchaseDrafts)
+      .where(eq(purchaseDrafts.id, draftId));
+    expect(stored.orgId).toBe(orgId);
+    expect(stored.status).toBe("draft");
+    expect(await onOrderFor(orgId, productA, locationId)).toBe(8);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("ignores non-editable runtime keys when a valid supplier/location patch is present", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 4 }] },
+    ]);
+    const draftId = draft!.id;
+
+    await updatePurchaseDraft(orgId, draftId, {
+      locationId: otherLocationId,
+      status: "fully_received",
+      orgId: otherOrgId,
+    } as any);
+
+    const [stored] = await db
+      .select({
+        orgId: purchaseDrafts.orgId,
+        locationId: purchaseDrafts.locationId,
+        status: purchaseDrafts.status,
+      })
+      .from(purchaseDrafts)
+      .where(eq(purchaseDrafts.id, draftId));
+    expect(stored.orgId).toBe(orgId);
+    expect(stored.locationId).toBe(otherLocationId);
+    expect(stored.status).toBe("draft");
+    expect(await onOrderFor(orgId, productA, otherLocationId)).toBe(4);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("rejects supplier or location IDs that belong to another organization", async () => {
+    const crossOrgLocation = await makeLocation(otherOrgId, "Cross-org Location");
+    const crossOrgSupplier = await makeSupplier(otherOrgId, "Cross-org Supplier");
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 5 }] },
+    ]);
+    const draftId = draft!.id;
+
+    await expect(
+      updatePurchaseDraft(orgId, draftId, { locationId: crossOrgLocation }),
+    ).rejects.toThrow(/Location does not belong/i);
+    await expect(
+      updatePurchaseDraft(orgId, draftId, { supplierId: crossOrgSupplier }),
+    ).rejects.toThrow(/Supplier does not belong/i);
+
+    const [stored] = await db
+      .select({
+        supplierId: purchaseDrafts.supplierId,
+        locationId: purchaseDrafts.locationId,
+        status: purchaseDrafts.status,
+      })
+      .from(purchaseDrafts)
+      .where(eq(purchaseDrafts.id, draftId));
+    expect(stored.supplierId).toBe(supplierA);
+    expect(stored.locationId).toBe(locationId);
+    expect(stored.status).toBe("draft");
+
+    await cleanupDrafts([draftId]);
   });
 });
 
