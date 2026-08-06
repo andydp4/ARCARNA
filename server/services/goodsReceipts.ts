@@ -66,7 +66,7 @@ async function pendingQtyForDraftItem(
 
   const [row] = await tx
     .select({
-      total: sql<number>`COALESCE(SUM(${goodsReceiptItems.quantityReceived}), 0)::int`.as("total"),
+      total: sql<number>`COALESCE(SUM(${goodsReceiptItems.quantityReceived}), 0)::float8`.as("total"),
     })
     .from(goodsReceiptItems)
     .innerJoin(goodsReceipts, eq(goodsReceiptItems.goodsReceiptId, goodsReceipts.id))

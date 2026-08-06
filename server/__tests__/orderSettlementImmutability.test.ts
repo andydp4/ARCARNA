@@ -79,6 +79,22 @@ describe("settled order financials are frozen", () => {
     // 999 + 20% VAT
     expect(saved[0].total).toBeCloseTo(1198.8, 2);
   });
+
+  it("uses the injected org tax rate when recalculating unsettled edits", async () => {
+    const { engine, saved } = makeEngine({
+      id: "o1",
+      status: "pending",
+      orgId: "org1",
+      total: 10,
+      lines: [],
+    });
+
+    await engine.updateOrder("o1", { lines: LINES, orgId: "org1", taxRatePercent: 10 });
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0].vat).toBeCloseTo(99.9, 2);
+    expect(saved[0].total).toBeCloseTo(1098.9, 2);
+  });
 });
 
 /** Mirrors the ceiling logic in server/routes/refunds.ts. */

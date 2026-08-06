@@ -30,5 +30,10 @@ export const PlaceOrderInput = z.object({
   taxRatePercent: z.number().min(0).max(100).optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
-export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })
+export const UpdateOrderInput = z.object({
+  lines: z.array(OrderLineInput).min(1),
+  // Same route-injected org setting as create. Without this, edits silently
+  // fall back to the legacy fixed 20% rate and rewrite order totals.
+  taxRatePercent: z.number().min(0).max(100).optional(),
+})
 export type UpdateOrderDTO = z.infer<typeof UpdateOrderInput>
