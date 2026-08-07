@@ -280,6 +280,13 @@ export interface IStorage {
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
 }
 
+export class AmbiguousStockLocationError extends Error {
+  constructor() {
+    super("Choose a location before editing stock for a multi-location organization");
+    this.name = "AmbiguousStockLocationError";
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     return withRetries(async () => {
@@ -861,6 +868,16 @@ export class DatabaseStorage implements IStorage {
     const { adjustProductLocationStock, resolveStockLocationId } = await import(
       "./services/productLocationStock",
     );
+
+    if (!locationId) {
+      const activeLocations = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.orgId, orgId), eq(locations.isActive, 1)));
+      if (activeLocations.length > 1) {
+        throw new AmbiguousStockLocationError();
+      }
+    }
 
     const locId = locationId
       ? locationId
