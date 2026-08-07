@@ -429,8 +429,79 @@ describe.skipIf(!hasDb)("6.1 InventoryWorker event replay", () => {
     const moves = await db
       .select()
       .from(inventoryMovements)
-      .where(eq(inventoryMovements.eventId, event.eventId));
+      .where(
+        and(
+          eq(inventoryMovements.correlationId, orderId),
+          eq(inventoryMovements.productId, productId),
+        ),
+      );
     expect(moves).toHaveLength(1);
+  });
+
+  it("retry after a later line fails does not deduct earlier lines twice", async () => {
+    const failingProductId = await makeProduct(
+      orgId,
+      locationId,
+      "Retry Widget",
+      `RETRY-${Date.now()}`,
+    );
+    await db
+      .insert(productLocationStock)
+      .values({ orgId, productId: failingProductId, locationId, stock: 0, stockLimit: 500 });
+
+    const orderId = await makeOrderRow("19.98");
+    const worker = new InventoryWorker();
+    const event = {
+      eventId: `idem-retry-${orderId}`,
+      eventType: "OrderCreated",
+      occurredAt: new Date().toISOString(),
+      correlationId: orderId,
+      actor: { type: "system" as const, id: "test" },
+      source: "test",
+      version: 1,
+      payload: {
+        orderId,
+        orgId,
+        items: [
+          { lineId: "ok", productId, name: "Idem Widget", qty: 1, unitPrice: 9.99 },
+          { lineId: "fail-once", productId: failingProductId, name: "Retry Widget", qty: 1, unitPrice: 9.99 },
+        ],
+      },
+    } as unknown as EventEnvelope;
+
+    const firstProductBefore = (await stockAt(productId, locationId))!;
+    const secondProductBefore = (await stockAt(failingProductId, locationId))!;
+
+    const first = await worker.handle(event);
+    expect(first.status).toBe("failed");
+    expect(await stockAt(productId, locationId)).toBe(firstProductBefore - 1);
+    expect(await stockAt(failingProductId, locationId)).toBe(secondProductBefore);
+
+    await db
+      .update(productLocationStock)
+      .set({ stock: 5 })
+      .where(
+        and(
+          eq(productLocationStock.productId, failingProductId),
+          eq(productLocationStock.locationId, locationId),
+        ),
+      );
+
+    const second = await worker.handle(event);
+    expect(second.status).toBe("success");
+    expect(await stockAt(productId, locationId)).toBe(firstProductBefore - 1);
+    expect(await stockAt(failingProductId, locationId)).toBe(4);
+
+    const firstProductMoves = await db
+      .select()
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.correlationId, orderId),
+          eq(inventoryMovements.productId, productId),
+        ),
+      );
+    expect(firstProductMoves).toHaveLength(1);
   });
 
   it("a re-delivered RefundIssued event returns stock exactly once", async () => {

@@ -193,6 +193,11 @@ function extractQuantity(item: { qty?: number; quantity?: number }): number {
   return item.qty ?? item.quantity ?? 0;
 }
 
+function movementEventId(eventId: string, productId: string, lineId: string | undefined, index: number): string {
+  const lineKey = lineId || productId;
+  return `${eventId}:${lineKey}:${index}`;
+}
+
 // ============================================================================
 // InventoryWorker Implementation
 // ============================================================================
@@ -323,6 +328,15 @@ export class InventoryWorker implements IWorker {
       );
   }
 
+  private async hasMovement(eventId: string): Promise<boolean> {
+    const [existing] = await db
+      .select({ movementId: inventoryMovements.movementId })
+      .from(inventoryMovements)
+      .where(eq(inventoryMovements.eventId, eventId))
+      .limit(1);
+    return !!existing;
+  }
+
   private async handleOrderCreated(event: EventEnvelope, payload: OrderPayload): Promise<WorkerResult> {
     const items = payload.order?.items || payload.items || [];
     const orderId = payload.order?.orderId || payload.orderId || event.correlationId;
@@ -346,7 +360,7 @@ export class InventoryWorker implements IWorker {
     let updatedProducts = 0;
     const lowStockWarnings: string[] = [];
 
-    for (const item of items) {
+    for (const [index, item] of items.entries()) {
       const qty = extractQuantity(item);
       if (qty <= 0) continue;
 
@@ -357,6 +371,9 @@ export class InventoryWorker implements IWorker {
       const product = await resolveProduct(identifier);
       if (!product) continue;
 
+      const lineEventId = movementEventId(event.eventId, product.id, item.lineId, index);
+      if (await this.hasMovement(lineEventId)) continue;
+
       const result = await adjustProductLocationStock({
         orgId: stockCtx.orgId,
         productId: product.id,
@@ -366,7 +383,7 @@ export class InventoryWorker implements IWorker {
         movement: {
           reason: "sale",
           correlationId: orderId,
-          eventId: event.eventId,
+          eventId: lineEventId,
           sku: product.productId,
         },
       });
@@ -483,13 +500,16 @@ export class InventoryWorker implements IWorker {
     
     let returnedProducts = 0;
 
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       const qty = line.qty || 0;
       const identifier = line.productId || line.sku;
       if (!identifier || qty <= 0) continue;
 
       const product = await resolveProduct(identifier);
       if (!product) continue;
+
+      const lineEventId = movementEventId(event.eventId, product.id, line.lineId, index);
+      if (await this.hasMovement(lineEventId)) continue;
 
       await adjustProductLocationStock({
         orgId: stockCtx.orgId,
@@ -499,7 +519,7 @@ export class InventoryWorker implements IWorker {
         movement: {
           reason: event.eventType === "RefundIssued" ? "refund" : "cancellation",
           correlationId: orderId,
-          eventId: event.eventId,
+          eventId: lineEventId,
           sku: product.productId,
         },
       });
