@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
   locations,
   organizations,
+  inventoryMovements,
   productLocationStock,
   products,
 } from "@shared/schema";
@@ -109,6 +110,9 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
   });
 
   afterEach(async () => {
+    await db
+      .delete(inventoryMovements)
+      .where(eq(inventoryMovements.orgId, orgId));
     await db
       .delete(productLocationStock)
       .where(eq(productLocationStock.orgId, orgId));
