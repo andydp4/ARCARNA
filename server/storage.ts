@@ -159,7 +159,14 @@ export interface IStorage {
 
   // Inventory operations
   getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
+  updateProductStock(
+    productId: string,
+    adjustment: number,
+    type: 'add' | 'set',
+    userId: string,
+    orgId: string,
+    locationId?: string | null,
+  ): Promise<Product>;
 
   // Reports operations
   getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
@@ -829,7 +836,7 @@ export class DatabaseStorage implements IStorage {
       : await db
           .select({
             productId: productLocationStock.productId,
-            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
           })
           .from(productLocationStock)
           .where(eq(productLocationStock.orgId, orgId))
@@ -896,7 +903,7 @@ export class DatabaseStorage implements IStorage {
     const [updatedProduct] = await db.select().from(products).where(cond);
     const totals = await db
       .select({
-        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
       })
       .from(productLocationStock)
       .where(and(eq(productLocationStock.orgId, orgId), eq(productLocationStock.productId, productId)));
