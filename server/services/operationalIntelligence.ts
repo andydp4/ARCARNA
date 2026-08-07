@@ -90,7 +90,7 @@ export async function getSmartStock(
   const stockTotals = await db
     .select({
       productId: productLocationStock.productId,
-      total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+      total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
     })
     .from(productLocationStock)
     .where(eq(productLocationStock.orgId, orgId))
@@ -100,7 +100,7 @@ export async function getSmartStock(
   const salesRows = await db
     .select({
       productUuid: orderItems.productId,
-      unitsSold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)::int`.as("units_sold"),
+      unitsSold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)`.as("units_sold"),
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
