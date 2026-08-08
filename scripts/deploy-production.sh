@@ -27,10 +27,25 @@ echo "=== npm ci (lockfile-exact) ==="
 # same commit produced a 390kB entry chunk; this box produced 649kB).
 # `npm ci` installs the lockfile exactly and fails loudly if package.json and
 # package-lock.json have drifted apart, which is what a deploy should do.
-npm ci
+#
+# --include=dev is REQUIRED, not belt-and-braces. This build needs vite and
+# esbuild, both devDependencies, and npm omits devDependencies entirely when
+# NODE_ENV=production is in the environment. .env sets NODE_ENV=production for
+# the running app, so any operator who sources .env before deploying — which the
+# runbook tells them to do for DATABASE_URL — silently gets a production-only
+# install and the build dies on `sh: 1: vite: not found`. It installed 893
+# packages instead of 1176 and failed on exactly that.
+#
+# Forcing it here means the deploy behaves the same whether .env was sourced or
+# not, rather than depending on the shape of the shell it was launched from.
+# apply-migrations-pm2.sh already carries the same scar for tsx.
+npm ci --include=dev
 
 echo "=== build ==="
-npm run build
+# NODE_ENV=production makes Vite refuse to honour the mode and warn; the build is
+# production by default here. The app still runs as production — PM2 loads
+# NODE_ENV from .env via env_file, independently of this shell.
+NODE_ENV= npm run build
 
 # Backstop for the sourcemap leak. vite.config.ts builds with
 # `sourcemap: "hidden"` whenever SENTRY_AUTH_TOKEN is set, which writes .map
