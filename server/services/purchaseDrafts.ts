@@ -93,6 +93,52 @@ export function onOrderKey(productId: string, locationId: string) {
   return `${productId}:${locationId}`;
 }
 
+async function assertSupplierBelongsToOrg(tx: DbTx | typeof db, orgId: string, supplierId: string) {
+  const [supplier] = await tx
+    .select({ id: suppliers.id })
+    .from(suppliers)
+    .where(and(eq(suppliers.id, supplierId), eq(suppliers.orgId, orgId)))
+    .limit(1);
+  if (!supplier) throw new PurchaseDraftError("NOT_FOUND", "Supplier not found");
+}
+
+async function assertLocationBelongsToOrg(tx: DbTx | typeof db, orgId: string, locationId: string) {
+  const [location] = await tx
+    .select({ id: locations.id })
+    .from(locations)
+    .where(and(eq(locations.id, locationId), eq(locations.orgId, orgId)))
+    .limit(1);
+  if (!location) throw new PurchaseDraftError("NOT_FOUND", "Location not found");
+}
+
+async function assertProductsBelongToOrg(tx: DbTx | typeof db, orgId: string, productIds: string[]) {
+  const uniqueProductIds = Array.from(new Set(productIds));
+  if (!uniqueProductIds.length) return;
+
+  const rows = await tx
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.orgId, orgId), inArray(products.id, uniqueProductIds)));
+
+  if (rows.length !== uniqueProductIds.length) {
+    throw new PurchaseDraftError("NOT_FOUND", "One or more products not found");
+  }
+}
+
+async function assertDraftReferencesBelongToOrg(
+  tx: DbTx | typeof db,
+  orgId: string,
+  body: PurchaseDraftGroupInput,
+) {
+  await assertSupplierBelongsToOrg(tx, orgId, body.supplierId);
+  await assertLocationBelongsToOrg(tx, orgId, body.locationId);
+  await assertProductsBelongToOrg(
+    tx,
+    orgId,
+    body.items.map((item) => item.productId),
+  );
+}
+
 /**
  * Outstanding (ordered but not yet received) quantity per product+location
  * across all open purchase drafts, keyed by `onOrderKey`.
@@ -110,6 +156,7 @@ export async function getOnOrderQuantities(orgId: string) {
     .innerJoin(purchaseDrafts, eq(purchaseDraftItems.purchaseDraftId, purchaseDrafts.id))
     .where(
       and(
+        eq(purchaseDrafts.orgId, orgId),
         eq(purchaseDraftItems.orgId, orgId),
         inArray(purchaseDrafts.status, OPEN_PURCHASE_DRAFT_STATUSES),
       ),
@@ -145,8 +192,14 @@ export async function findOpenDraftsForPairs(
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(
+      suppliers,
+      and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)),
+    )
+    .innerJoin(
+      locations,
+      and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)),
+    )
     .where(
       and(
         eq(purchaseDrafts.orgId, orgId),
@@ -176,8 +229,14 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(
+      suppliers,
+      and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)),
+    )
+    .innerJoin(
+      locations,
+      and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)),
+    )
     .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)))
     .limit(1);
 
@@ -195,8 +254,11 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       sku: products.productId,
     })
     .from(purchaseDraftItems)
-    .innerJoin(products, eq(purchaseDraftItems.productId, products.id))
-    .where(eq(purchaseDraftItems.purchaseDraftId, id));
+    .innerJoin(
+      products,
+      and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)),
+    )
+    .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
 
   return { ...draft, items };
 }
@@ -218,8 +280,14 @@ export async function listPurchaseDrafts(orgId: string, status?: string) {
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(
+      suppliers,
+      and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)),
+    )
+    .innerJoin(
+      locations,
+      and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)),
+    )
     .where(and(...conditions))
     .orderBy(desc(purchaseDrafts.updatedAt));
 
@@ -233,7 +301,7 @@ export async function listPurchaseDrafts(orgId: string, status?: string) {
       totalQty: sql<number>`COALESCE(SUM(${purchaseDraftItems.quantity}), 0)::int`.as("total_qty"),
     })
     .from(purchaseDraftItems)
-    .where(inArray(purchaseDraftItems.purchaseDraftId, ids))
+    .where(and(inArray(purchaseDraftItems.purchaseDraftId, ids), eq(purchaseDraftItems.orgId, orgId)))
     .groupBy(purchaseDraftItems.purchaseDraftId);
 
   const countMap = new Map(itemCounts.map((r) => [r.purchaseDraftId, r]));
@@ -253,6 +321,7 @@ async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraft
   if (!body.items.length) {
     throw new PurchaseDraftError("VALIDATION_ERROR", "At least one line item required");
   }
+  await assertDraftReferencesBelongToOrg(tx, orgId, body);
 
   const draftValues: PurchaseDraftInsert = {
     orgId,
@@ -326,6 +395,8 @@ export async function updatePurchaseDraft(
       "Cannot edit supplier/location after approval — cancel only if no pending receipts",
     );
   }
+  if (patch.supplierId) await assertSupplierBelongsToOrg(db, orgId, patch.supplierId);
+  if (patch.locationId) await assertLocationBelongsToOrg(db, orgId, patch.locationId);
 
   await db
     .update(purchaseDrafts)
@@ -425,6 +496,7 @@ export async function addPurchaseDraftItem(
   ) {
     throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
   }
+  await assertProductsBelongToOrg(db, orgId, [line.productId]);
 
   const addedValues: PurchaseDraftItemInsert = {
     purchaseDraftId: draftId,

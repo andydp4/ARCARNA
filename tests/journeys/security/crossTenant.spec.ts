@@ -20,7 +20,7 @@
  * roleEnforcement.spec.ts, which does.
  */
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { apiAs, type Role } from "../fixtures";
+import { apiAs, uniqueSuffix, type Role } from "../fixtures";
 import {
   authMode,
   createOrgB,
@@ -31,6 +31,7 @@ import {
   provisionOrgRecords,
   resolveOrgAId,
   ROLE_GATE_OFF_REASON,
+  SEC_PREFIX,
   type OrgRecords,
 } from "./tenants";
 
@@ -152,6 +153,60 @@ async function send(api: APIRequestContext, w: Write) {
     case "delete":
       return api.delete(w.path, options);
   }
+}
+
+async function jsonOrThrow(res: { ok(): boolean; status(): number; text(): Promise<string> }, what: string) {
+  const raw = await res.text();
+  if (!res.ok()) throw new Error(`${what} failed: ${res.status()} ${raw}`);
+  return JSON.parse(raw);
+}
+
+async function createEditableDraftInOrgC(): Promise<{ id: string }> {
+  const suffix = uniqueSuffix();
+  const location = await jsonOrThrow(
+    await cApi.post("/api/locations", {
+      data: {
+        name: `${SEC_PREFIX} C Store ${suffix}`,
+        address: "3 Isolation Way",
+        city: "Tenantville",
+        state: "TC",
+        zipCode: "TC1 1TC",
+        phone: "0000000000",
+        email: `sec-c-${suffix}@example.invalid`,
+      },
+    }),
+    "POST /api/locations as org C",
+  );
+  const supplier = await jsonOrThrow(
+    await cApi.post("/api/suppliers", {
+      data: { name: `${SEC_PREFIX} C Supplier ${suffix}`, leadTimeDays: 1 },
+    }),
+    "POST /api/suppliers as org C",
+  );
+  const product = await jsonOrThrow(
+    await cApi.post("/api/products", {
+      data: {
+        name: `${SEC_PREFIX} C Widget ${suffix}`,
+        productId: `SECCSKU-${suffix}`,
+        productCode: `SECCSKU-${suffix}`,
+        locationId: location.id,
+        defaultSalePrice: "1.00",
+        costPrice: "0.50",
+      },
+    }),
+    "POST /api/products as org C",
+  );
+
+  return jsonOrThrow(
+    await cApi.post("/api/replenishment/create-purchase-draft", {
+      data: {
+        supplierId: supplier.id,
+        locationId: location.id,
+        items: [{ productId: product.id, quantity: 1, estimatedCost: 0.5 }],
+      },
+    }),
+    "POST /api/replenishment/create-purchase-draft as org C",
+  );
 }
 
 test.describe("5.2 cross-tenant reads", () => {
@@ -299,53 +354,62 @@ test.describe("5.3 cross-tenant writes", () => {
     expect(await orgFingerprint(orgBId), "org B's data changed").toEqual(beforeB);
   });
 
-  /**
-   * OPEN FINDING — cross-tenant reference injection and data disclosure.
-   *
-   * `POST /api/replenishment/create-purchase-draft` (and the batch variant)
-   * accept `supplierId`, `locationId` and `productId` belonging to another
-   * organisation and create the draft anyway:
-   * `insertDraftWithItems` (server/services/purchaseDrafts.ts:229-261) inserts
-   * `orgId` from the caller's context but never checks that the referenced rows
-   * belong to it.
-   *
-   * `test.fail()` rather than a characterisation assertion, because unlike the
-   * missing role guards there is no reading of the requirements under which
-   * this is correct. Playwright reports it as an expected failure today, and
-   * turns RED the moment it starts passing — which is the signal to delete the
-   * annotation, not to "fix a regression".
-   */
-  test.fail("a create must not be allowed to reference another tenant's supplier, location or product", async () => {
-    const single = await cApi.post("/api/replenishment/create-purchase-draft", {
-      data: {
-        supplierId: b.supplierId,
-        locationId: b.locationId,
-        items: [{ productId: b.productId, quantity: 4, estimatedCost: 1 }],
+  test("purchase-draft writes reject another tenant's supplier, location or product ids", async () => {
+    const beforeB = await orgFingerprint(orgBId);
+    const ownDraft = await createEditableDraftInOrgC();
+
+    const attempts = [
+      {
+        what: "single replenishment purchase draft",
+        res: await cApi.post("/api/replenishment/create-purchase-draft", {
+          data: {
+            supplierId: b.supplierId,
+            locationId: b.locationId,
+            items: [{ productId: b.productId, quantity: 4, estimatedCost: 1 }],
+          },
+        }),
       },
-    });
-    const batch = await cApi.post("/api/replenishment/create-purchase-drafts", {
-      data: {
-        lines: [
-          { supplierId: b.supplierId, locationId: b.locationId, productId: b.productId, quantity: 4 },
-        ],
+      {
+        what: "batch replenishment purchase draft",
+        res: await cApi.post("/api/replenishment/create-purchase-drafts", {
+          data: {
+            lines: [
+              { supplierId: b.supplierId, locationId: b.locationId, productId: b.productId, quantity: 4 },
+            ],
+          },
+        }),
       },
-    });
-    console.log(
-      `[5.3 FINDING] create-purchase-draft with org B's ids → ${single.status()}; ` +
-        `create-purchase-drafts → ${batch.status()} ` +
-        `(no ownership check in insertDraftWithItems, server/services/purchaseDrafts.ts:229)`,
-    );
-    expect(single.status(), "single create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
-    expect(batch.status(), "batch create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
+      {
+        what: "own draft retargeted to B's supplier/location",
+        res: await cApi.patch(`/api/purchase-drafts/${ownDraft.id}`, {
+          data: { supplierId: b.supplierId, locationId: b.locationId },
+        }),
+      },
+      {
+        what: "own draft given B's product",
+        res: await cApi.post(`/api/purchase-drafts/${ownDraft.id}/items`, {
+          data: { productId: b.productId, quantity: 1 },
+        }),
+      },
+    ];
+
+    const accepted: string[] = [];
+    const internals: string[] = [];
+    for (const attempt of attempts) {
+      const body = await attempt.res.text();
+      if (attempt.res.status() >= 200 && attempt.res.status() < 300) {
+        accepted.push(`${attempt.what} → ${attempt.res.status()} ${body.slice(0, 240)}`);
+      }
+      const leaked = internalLeak(body);
+      if (leaked) internals.push(`${attempt.what} leaked ${leaked}`);
+    }
+
+    expect(accepted, "a purchase-draft write accepted another tenant's ids").toEqual([]);
+    expect(internals, "a refusal disclosed server internals").toEqual([]);
+    expect(await orgFingerprint(orgBId), "org B's data changed").toEqual(beforeB);
   });
 
-  test("FINDING PROOF: the injected draft then discloses org B's names to org C", async () => {
-    // The injection above is not merely untidy data — it is a working read
-    // oracle. Anyone holding another tenant's UUIDs can plant them in a draft
-    // of their own and read that tenant's supplier, location and product names
-    // straight back out, because loadDraftWithItems joins suppliers, locations
-    // and products with no org predicate
-    // (server/services/purchaseDrafts.ts:156-157, 175).
+  test("refused purchase-draft injection closes the readback disclosure path", async () => {
     const create = await cApi.post("/api/replenishment/create-purchase-draft", {
       data: {
         supplierId: b.supplierId,
@@ -353,29 +417,7 @@ test.describe("5.3 cross-tenant writes", () => {
         items: [{ productId: b.productId, quantity: 2, estimatedCost: 1 }],
       },
     });
-    if (create.status() >= 400) {
-      // The injection has been fixed; there is nothing left to disclose.
-      console.log("[5.3] injection now refused — disclosure path is closed");
-      return;
-    }
-    const draft = (await create.json()) as { id: string };
-
-    const readback = await cApi.get(`/api/purchase-drafts/${draft.id}`);
-    const body = await readback.text();
-    const disclosed = leakedValues(body, [
-      b.supplierId,
-      b.locationId,
-      b.productId,
-    ]);
-    console.log(
-      `[5.3 FINDING] GET /api/purchase-drafts/${draft.id} as org C returned org B's ` +
-        `supplierName/locationName/productName. Disclosed ids: ${disclosed.join(", ")}`,
-    );
-    // Asserted as the *current* behaviour so the proof is recorded and the log
-    // line is produced; the expectation of a fix lives in the test.fail() above.
-    expect(readback.status()).toBe(200);
-    expect(body, "org B's supplier name is served to org C").toContain("ZZ-SEC Supplier");
-    expect(body, "org B's product name is served to org C").toContain("ZZ-SEC Widget");
+    expect(create.status(), "draft creation with org B ids must be refused before readback exists").toBeGreaterThanOrEqual(400);
   });
 });
 
