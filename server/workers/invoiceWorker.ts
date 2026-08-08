@@ -132,8 +132,14 @@ async function fetchOrder(orderId: string): Promise<OrderRecord | null> {
  * @param invoiceData - Invoice fields to persist
  * @returns Created invoice or null if duplicate
  */
+/**
+ * orgId is `string`, not `string | null`. The column is nullable, so Drizzle
+ * would happily accept a null and write an invoice owned by nobody — see the
+ * guard in processOrderCompleted. Requiring it here means any future caller that
+ * cannot supply one fails to compile rather than silently creating an orphan.
+ */
 async function createInvoiceRecord(invoiceData: {
-  orgId: string | null;
+  orgId: string;
   orderId: string;
   customerId: string | null;
   invoiceNumber: string;
@@ -284,6 +290,29 @@ export class InvoiceWorker implements IWorker {
       // Step 4: Calculate totals from payload or database
       const totals = await this.extractTotals(payload, order);
       const customerId = payload.order?.customerId || payload.customerId || order.customerId;
+
+      // An invoice with no org belongs to no tenant: it is invisible to every
+      // org-scoped query, so it never appears on the Invoices page, in any
+      // report, or in any revenue total — while still existing as a financial
+      // record. Production carries four of these, and they are why
+      // 002_org_not_null.sql still refuses to apply its NOT NULL constraint.
+      //
+      // Failing the event is the right outcome. It retries and is visible in
+      // worker logs, where writing an orphan is silent and permanent. There is
+      // also no safe guess available: fetchOrgTaxRate falls back to a hardcoded
+      // 20% without an org, so an orphaned invoice would carry an invented VAT
+      // rate as well as no owner.
+      if (!order.orgId) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'failed',
+          summary: `Order ${orderId} has no org — refusing to create an unowned invoice`,
+          error:
+            'orders.org_id is null. Backfill the order (npm run backfill) and replay this event.',
+        };
+      }
 
       // Step 5: Create invoice record
       const invoiceNumber = generateInvoiceNumber();

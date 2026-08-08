@@ -249,10 +249,72 @@ export async function getPurchaseDraft(orgId: string, id: string) {
   return loadDraftWithItems(orgId, id);
 }
 
+/**
+ * Every id on the draft must belong to the calling org.
+ *
+ * The insert below stamps `orgId` from the caller's context onto the draft and
+ * its lines, which makes the new rows look correctly tenanted while they point
+ * at another organisation's supplier, location and products. Nothing downstream
+ * re-checks: loadDraftWithItems inner-joins those tables without an org
+ * predicate, so tenant C could raise a draft against tenant B's supplier at
+ * tenant B's location and read B's product names straight back out of it.
+ *
+ * Checked in ONE query per table rather than per line: a draft with fifty lines
+ * should not cost fifty round trips, and `inArray` gives the same answer.
+ */
+async function assertReferencesBelongToOrg(
+  tx: DbTx,
+  orgId: string,
+  body: PurchaseDraftGroupInput,
+): Promise<void> {
+  const [supplier] = await tx
+    .select({ id: suppliers.id })
+    .from(suppliers)
+    .where(and(eq(suppliers.id, body.supplierId), eq(suppliers.orgId, orgId)))
+    .limit(1);
+  if (!supplier) {
+    throw new PurchaseDraftError(
+      "VALIDATION_ERROR",
+      "Supplier does not belong to this organization",
+    );
+  }
+
+  const [location] = await tx
+    .select({ id: locations.id })
+    .from(locations)
+    .where(and(eq(locations.id, body.locationId), eq(locations.orgId, orgId)))
+    .limit(1);
+  if (!location) {
+    throw new PurchaseDraftError(
+      "VALIDATION_ERROR",
+      "Location does not belong to this organization",
+    );
+  }
+
+  const productIds = [...new Set(body.items.map((line) => line.productId))];
+  if (productIds.length) {
+    const owned = await tx
+      .select({ id: products.id })
+      .from(products)
+      .where(and(inArray(products.id, productIds), eq(products.orgId, orgId)));
+    if (owned.length !== productIds.length) {
+      // Deliberately does not name which id failed: the caller has already
+      // proved it does not own these rows, and echoing back which of them exist
+      // turns the error into an existence oracle for another tenant's catalogue.
+      throw new PurchaseDraftError(
+        "VALIDATION_ERROR",
+        "One or more products do not belong to this organization",
+      );
+    }
+  }
+}
+
 async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraftGroupInput) {
   if (!body.items.length) {
     throw new PurchaseDraftError("VALIDATION_ERROR", "At least one line item required");
   }
+
+  await assertReferencesBelongToOrg(tx, orgId, body);
 
   const draftValues: PurchaseDraftInsert = {
     orgId,
