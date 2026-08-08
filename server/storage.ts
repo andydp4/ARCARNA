@@ -410,6 +410,19 @@ export class DatabaseStorage implements IStorage {
     if (!data.name || data.name.trim().length === 0) {
       throw new Error('Product name is required');
     }
+    // products.org_id is nullable, so an insert that omits it succeeds and
+    // creates a product owned by no tenant — invisible to every org-scoped
+    // query, and skipped by the location-stock setup below, which already
+    // guards with `if (product.orgId)`. That guard treats a missing org as a
+    // normal case rather than the defect it is: the product exists in the
+    // catalogue with no stock row anywhere, so it can never be sold or counted.
+    //
+    // Rejecting here rather than at the column: making org_id NOT NULL is the
+    // right end state but needs a backfill first, and invoices already show
+    // what happens when orphans accumulate ahead of that constraint.
+    if (!data.orgId) {
+      throw new Error('Product requires an organisation — refusing to create an unowned product');
+    }
     if (data.defaultSalePrice !== undefined && safeParseFloat(data.defaultSalePrice) < 0) {
       throw new Error('Product price cannot be negative');
     }
