@@ -21,7 +21,27 @@ import type { Response } from "express";
  * The only thing that changes is that a miss now looks like a miss.
  */
 export function isUnmatchedApiPath(path: string): boolean {
-  return path === "/api" || path.startsWith("/api/");
+  if (path === "/api" || path.startsWith("/api/")) return true;
+
+  // Also catch a BASE-PREFIXED api path, e.g. "/arcarna/api/health".
+  //
+  // serveStatic/setupVite mount on eposApp, which Express mounts at
+  // APP_BASE_PATH — so req.path is normally already base-stripped and the check
+  // above is enough. It stops being enough when the caller's idea of the base
+  // path disagrees with the app's: the request then never matches a route,
+  // arrives here still carrying the prefix, and would be answered with the SPA
+  // shell and a 200.
+  //
+  // That is not hypothetical. scripts/deploy-production.sh curls
+  // "${APP_BASE_PATH:-/arcarna}/api/health" without sourcing .env, so its base
+  // path is whatever bash defaults to rather than what PM2 loaded into the app.
+  // A production deploy printed the entire index.html under "=== health check
+  // ==="  and then declared "OK: App is responding."
+  //
+  // A mismatch here should be loud. 404 JSON makes it obvious; HTML with a 200
+  // is what let a vacuous health check pass every deploy.
+  const segments = path.split("/").filter(Boolean);
+  return segments.length >= 2 && segments[1] === "api";
 }
 
 export function sendApiNotFound(res: Response, method: string, path: string): void {

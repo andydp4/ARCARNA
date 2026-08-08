@@ -64,11 +64,34 @@ pm2 save
 
 echo "=== health check ==="
 sleep 4
+# Read APP_BASE_PATH from .env rather than from whatever this shell happens to
+# have. PM2 loads .env into the app via env_file; this script never sourced it,
+# so its base path was always the bash default. When the two disagreed the curl
+# below hit a path matching no route, got the SPA shell, and still passed.
+if [[ -f .env ]]; then
+  APP_BASE_PATH="$(grep -E '^APP_BASE_PATH=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"'\r' || true)"
+fi
 HEALTH_PATH="${APP_BASE_PATH:-/arcarna}/api/health"
-if curl -sf "http://127.0.0.1:5000${HEALTH_PATH}" >/dev/null; then
-  curl -s "http://127.0.0.1:5000${HEALTH_PATH}"
+
+# Assert the API answered — not merely that SOMETHING returned 200.
+#
+# The old check was `curl -sf ... >/dev/null`, which succeeds on any 2xx. The SPA
+# fallback answers unmatched paths with index.html and a 200, so a deploy where
+# the API was entirely unreachable still printed "OK: App is responding" — with
+# the whole HTML document above it, which is exactly what happened on 21dea8d.
+# A health check that cannot fail is not a health check.
+HEALTH_BODY="$(curl -s --max-time 10 "http://127.0.0.1:5000${HEALTH_PATH}" || true)"
+if grep -q '"ok"' <<<"$HEALTH_BODY"; then
+  echo "$HEALTH_BODY"
   echo ""
   echo "OK: App is responding."
+elif grep -qi '<!doctype html' <<<"$HEALTH_BODY"; then
+  echo "NOT READY: ${HEALTH_PATH} returned the SPA shell, not JSON."
+  echo "  The app is serving pages but this path reaches no API route."
+  echo "  Check APP_BASE_PATH in .env matches the path above:"
+  echo "    grep APP_BASE_PATH .env"
+  echo "    tr '\0' '\n' < /proc/\$(pm2 pid arcarna-epos)/environ | grep APP_BASE_PATH"
+  exit 1
 else
   echo "NOT READY: /api/health failed"
   echo "--- pm2 status ---"
