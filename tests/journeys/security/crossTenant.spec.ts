@@ -42,6 +42,7 @@ let b: OrgRecords;
 /** A throwaway "attacker" org, used where a probe would otherwise write into
  *  org A and race roleEnforcement.spec.ts's org-A fingerprints. */
 let orgCId: string;
+let c: OrgRecords;
 let cApi: APIRequestContext;
 let bypassOn: boolean;
 
@@ -55,6 +56,7 @@ test.beforeAll(async () => {
   const createdC = await createOrgB();
   orgCId = createdC.orgId;
   cApi = createdC.api;
+  c = await provisionOrgRecords(createdC.api, createdC.orgId);
 });
 
 test.afterAll(async () => {
@@ -152,6 +154,19 @@ async function send(api: APIRequestContext, w: Write) {
     case "delete":
       return api.delete(w.path, options);
   }
+}
+
+async function createOpenDraft(api: APIRequestContext, records: OrgRecords): Promise<{ id: string }> {
+  const res = await api.post("/api/replenishment/create-purchase-draft", {
+    data: {
+      supplierId: records.supplierId,
+      locationId: records.locationId,
+      items: [{ productId: records.productId, quantity: 2, estimatedCost: 1 }],
+    },
+  });
+  const raw = await res.text();
+  expect(res.ok(), `setup draft create failed: ${res.status()} ${raw}`).toBe(true);
+  return JSON.parse(raw) as { id: string };
 }
 
 test.describe("5.2 cross-tenant reads", () => {
@@ -335,6 +350,66 @@ test.describe("5.3 cross-tenant writes", () => {
     });
     expect(single.status(), "single create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
     expect(batch.status(), "batch create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
+  });
+
+  test("editable draft fields cannot smuggle another tenant's supplier/location or status", async () => {
+    const draft = await createOpenDraft(cApi, c);
+    try {
+      const attempts = [
+        {
+          what: "foreign supplier",
+          res: await cApi.patch(`/api/purchase-drafts/${draft.id}`, {
+            data: { supplierId: b.supplierId },
+          }),
+        },
+        {
+          what: "foreign location",
+          res: await cApi.patch(`/api/purchase-drafts/${draft.id}`, {
+            data: { locationId: b.locationId },
+          }),
+        },
+        {
+          what: "status through the supplier/location patch route",
+          res: await cApi.patch(`/api/purchase-drafts/${draft.id}`, {
+            data: { status: "approved" },
+          }),
+        },
+      ];
+
+      const accepted: string[] = [];
+      for (const attempt of attempts) {
+        if (attempt.res.status() >= 200 && attempt.res.status() < 300) {
+          accepted.push(`${attempt.what} → ${attempt.res.status()} ${(await attempt.res.text()).slice(0, 240)}`);
+        }
+      }
+      expect(accepted, "draft edit accepted a cross-tenant reference or unsafe field").toEqual([]);
+
+      const readback = await cApi.get(`/api/purchase-drafts/${draft.id}`);
+      const body = await readback.text();
+      expect(readback.ok(), `readback failed: ${readback.status()} ${body}`).toBe(true);
+      expect(body, "foreign supplier id was persisted").not.toContain(b.supplierId);
+      expect(body, "foreign location id was persisted").not.toContain(b.locationId);
+      expect(body, "status patch bypassed the guarded status route").toContain('"status":"draft"');
+    } finally {
+      await cApi.delete(`/api/purchase-drafts/${draft.id}`);
+    }
+  });
+
+  test("adding a draft item cannot reference another tenant's product", async () => {
+    const draft = await createOpenDraft(cApi, c);
+    try {
+      const add = await cApi.post(`/api/purchase-drafts/${draft.id}/items`, {
+        data: { productId: b.productId, quantity: 1, estimatedCost: 1 },
+      });
+      expect(add.status(), "foreign product line must be refused").toBeGreaterThanOrEqual(400);
+
+      const readback = await cApi.get(`/api/purchase-drafts/${draft.id}`);
+      const body = await readback.text();
+      expect(readback.ok(), `readback failed: ${readback.status()} ${body}`).toBe(true);
+      expect(body, "foreign product id was persisted and disclosed").not.toContain(b.productId);
+    } finally {
+      await cApi.delete(`/api/purchase-drafts/${draft.id}`);
+    }
   });
 
   test("FINDING PROOF: the injected draft then discloses org B's names to org C", async () => {
