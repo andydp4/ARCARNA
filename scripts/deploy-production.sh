@@ -86,7 +86,13 @@ sleep 4
 if [[ -f .env ]]; then
   APP_BASE_PATH="$(grep -E '^APP_BASE_PATH=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"'\r' || true)"
 fi
-HEALTH_PATH="${APP_BASE_PATH:-/arcarna}/api/health"
+# Normalise exactly as shared/appPaths.ts normalizeAppBasePath does: a bare "/"
+# means "served at site root" and becomes the empty string, and trailing slashes
+# are stripped. Without this, APP_BASE_PATH=/ (which is what a root-mounted
+# deployment sets) produced "//api/health" — a path Express matches no route
+# for, so the check reported the app unreachable while it was serving fine.
+APP_BASE_PATH="${APP_BASE_PATH%"${APP_BASE_PATH##*[!/]}"}"
+HEALTH_PATH="${APP_BASE_PATH}/api/health"
 
 # Assert the API answered — not merely that SOMETHING returned 200.
 #

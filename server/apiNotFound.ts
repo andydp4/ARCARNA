@@ -21,7 +21,14 @@ import type { Response } from "express";
  * The only thing that changes is that a miss now looks like a miss.
  */
 export function isUnmatchedApiPath(path: string): boolean {
-  if (path === "/api" || path.startsWith("/api/")) return true;
+  // Collapse repeated slashes before matching. "//api/health" is a real request
+  // shape — a caller that joins a base path of "/" onto "/api/health" produces
+  // it — and it matched neither branch below: startsWith("/api/") is false, and
+  // the segment check saw ["api","health"] with "api" at index 0 rather than 1.
+  // So it reached the SPA fallback and was answered with HTML and a 200, which
+  // is the exact failure this function exists to prevent.
+  const normalised = path.replace(/\/{2,}/g, "/");
+  if (normalised === "/api" || normalised.startsWith("/api/")) return true;
 
   // Also catch a BASE-PREFIXED api path, e.g. "/arcarna/api/health".
   //
@@ -40,7 +47,7 @@ export function isUnmatchedApiPath(path: string): boolean {
   //
   // A mismatch here should be loud. 404 JSON makes it obvious; HTML with a 200
   // is what let a vacuous health check pass every deploy.
-  const segments = path.split("/").filter(Boolean);
+  const segments = normalised.split("/").filter(Boolean);
   return segments.length >= 2 && segments[1] === "api";
 }
 

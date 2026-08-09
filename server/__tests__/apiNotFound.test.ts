@@ -18,6 +18,10 @@ describe("isUnmatchedApiPath", () => {
     ["/api", "bare /api with no trailing segment"],
     ["/arcarna/api/health", "base-prefixed — the deploy health-check case"],
     ["/midnight/api/orders", "legacy base prefix, still an API call"],
+    // A base path of "/" joined onto "/api/health" yields this. It reached the
+    // SPA fallback and was answered with HTML and a 200 on a real deploy.
+    ["//api/health", "doubled slash from an empty base path"],
+    ["/arcarna//api/health", "doubled slash mid-path"],
   ])("treats %s as an API path (%s)", (path) => {
     expect(isUnmatchedApiPath(path)).toBe(true);
   });
