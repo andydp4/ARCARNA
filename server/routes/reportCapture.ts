@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
+import { DELAY_CAUSES } from "@shared/delayCauses";
 
 const satisfactionSchema = z.object({
   orderId: z.string().uuid().optional(),
@@ -40,7 +41,8 @@ const txnSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
-const DELAY_CAUSES = ["Stock unavailable", "Queue overload", "System issue", "Prep error", "Other"] as const;
+// Shared with the client so the dropdown and this Zod enum cannot drift.
+// See shared/delayCauses.ts.
 
 const orderOpsSchema = z.object({
   queuePosition: z.number().int().min(0).max(9999).nullable().optional(),
