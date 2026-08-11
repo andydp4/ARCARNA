@@ -4,6 +4,49 @@
 
 BEGIN;
 
+-- Production migrations are applied in version order, so this file runs before
+-- later backfill helpers. If a single-org database still carries legacy NULL
+-- org_id rows, adopt them here before the hard pre-check so the NOT NULL
+-- constraint lands in the same migration pass. Multi-org databases remain
+-- deliberately blocked: guessing tenant ownership there would be worse than
+-- refusing to apply the constraint.
+DO $$
+DECLARE
+  org_count int;
+  target_org uuid;
+  adopted int;
+  total int := 0;
+  tbl text;
+BEGIN
+  SELECT count(*) INTO org_count FROM organizations;
+
+  IF org_count = 1 THEN
+    SELECT id INTO target_org FROM organizations LIMIT 1;
+
+    FOREACH tbl IN ARRAY ARRAY[
+      'products', 'customers', 'orders', 'order_items', 'order_expenses',
+      'invoices', 'locations', 'loyalty_tiers', 'promotions',
+      'overhead_expenses'
+    ]
+    LOOP
+      IF to_regclass(tbl) IS NULL THEN
+        CONTINUE;
+      END IF;
+
+      EXECUTE format('UPDATE %I SET org_id = $1 WHERE org_id IS NULL', tbl)
+        USING target_org;
+      GET DIAGNOSTICS adopted = ROW_COUNT;
+      total := total + adopted;
+    END LOOP;
+
+    IF total > 0 THEN
+      RAISE NOTICE '002: adopted % orphaned org_id row(s) before NOT NULL enforcement.', total;
+    END IF;
+  ELSIF org_count > 1 THEN
+    RAISE NOTICE '002: % organizations present — refusing to guess orphaned org_id ownership.', org_count;
+  END IF;
+END $$;
+
 -- Explicit pre-check: abort if any NULLs exist
 DO $$
 DECLARE
