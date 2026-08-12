@@ -41,6 +41,13 @@ const itemSchema = z.object({
   supplierSku: z.string().optional(),
 });
 
+const draftPatchSchema = z
+  .object({
+    supplierId: z.string().uuid().optional(),
+    locationId: z.string().uuid().optional(),
+  })
+  .strict();
+
 export function registerPurchaseDraftRoutes(app: Express) {
   app.get("/api/purchase-drafts", ...scoped, async (req: any, res) => {
     try {
@@ -66,8 +73,12 @@ export function registerPurchaseDraftRoutes(app: Express) {
 
   app.patch("/api/purchase-drafts/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
+      const parsed = draftPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ code: "VALIDATION_ERROR", message: "Invalid body" });
+      }
       const ctx = req.orgContext as { orgId: string };
-      const draft = await updatePurchaseDraft(ctx.orgId, req.params.id, req.body);
+      const draft = await updatePurchaseDraft(ctx.orgId, req.params.id, parsed.data);
       res.json(draft);
     } catch (e) {
       sendError(res, e);
