@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { nonNegativeQuantity } from "@shared/quantity";
+import { resolveEditableStockLocationId } from "../services/stockLocationContext";
 
 /** Bounds mirror the products table column widths in shared/schema.ts. */
 const createProductBody = z.object({
@@ -37,7 +38,12 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       // Use authoritative productLocationStock for the active location, not the
       // legacy products.stock column or an org-wide total that POS cannot sell from.
-      const list = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
+      const stockLocationId = await resolveEditableStockLocationId({
+        orgId: ctx.orgId,
+        locationId: ctx.locationId,
+        userId: req.user?.claims?.sub ?? req.user?.id ?? null,
+      });
+      const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching products:", error);
