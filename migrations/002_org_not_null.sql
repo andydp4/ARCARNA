@@ -34,7 +34,7 @@ BEGIN
   ELSIF org_count > 1 THEN
     RAISE NOTICE '002: % organizations present - refusing to guess an owner. Any orphaned rows will abort NOT NULL enforcement.', org_count;
   ELSE
-    RAISE NOTICE '002: no organizations — orphan adoption skipped.';
+    RAISE NOTICE '002: no organizations - orphan adoption skipped.';
   END IF;
 END $$;
 
