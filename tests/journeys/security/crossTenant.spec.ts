@@ -20,6 +20,8 @@
  * roleEnforcement.spec.ts, which does.
  */
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { db } from "../../../server/db";
+import { purchaseDraftItems, purchaseDrafts } from "@shared/schema";
 import { apiAs, type Role } from "../fixtures";
 import {
   authMode,
@@ -43,6 +45,7 @@ let b: OrgRecords;
  *  org A and race roleEnforcement.spec.ts's org-A fingerprints. */
 let orgCId: string;
 let cApi: APIRequestContext;
+let c: OrgRecords;
 let bypassOn: boolean;
 
 test.beforeAll(async () => {
@@ -55,6 +58,7 @@ test.beforeAll(async () => {
   const createdC = await createOrgB();
   orgCId = createdC.orgId;
   cApi = createdC.api;
+  c = await provisionOrgRecords(cApi, createdC.orgId);
 });
 
 test.afterAll(async () => {
@@ -335,6 +339,91 @@ test.describe("5.3 cross-tenant writes", () => {
     });
     expect(single.status(), "single create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
     expect(batch.status(), "batch create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
+  });
+
+  test("draft updates and item adds cannot smuggle another tenant's references or status", async () => {
+    async function createOwnDraft() {
+      const res = await cApi.post("/api/replenishment/create-purchase-draft", {
+        data: {
+          supplierId: c.supplierId,
+          locationId: c.locationId,
+          items: [{ productId: c.productId, quantity: 1, estimatedCost: 1 }],
+        },
+      });
+      const raw = await res.text();
+      expect(res.ok(), `setup draft should be created for org C: ${res.status()} ${raw}`).toBeTruthy();
+      return JSON.parse(raw) as { id: string };
+    }
+
+    const beforeB = await orgFingerprint(orgBId);
+    const accepted: string[] = [];
+    const leaks: string[] = [];
+    const attempts = [
+      {
+        what: "replace supplier with B's supplier",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { supplierId: b.supplierId } }),
+      },
+      {
+        what: "replace location with B's location",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { locationId: b.locationId } }),
+      },
+      {
+        what: "skip review by mass-assigning approved status",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { status: "approved" } }),
+      },
+      {
+        what: "add B's product as a line on C's draft",
+        run: async (draftId: string) =>
+          cApi.post(`/api/purchase-drafts/${draftId}/items`, {
+            data: { productId: b.productId, quantity: 1 },
+          }),
+      },
+    ];
+
+    for (const attempt of attempts) {
+      const draft = await createOwnDraft();
+      const res = await attempt.run(draft.id);
+      const body = await res.text();
+      if (res.status() >= 200 && res.status() < 300) {
+        accepted.push(`${attempt.what} → ${res.status()} ${body.slice(0, 240)}`);
+      }
+      const found = leakedValues(body, [b.supplierId, b.locationId, b.productId]);
+      if (found.length) leaks.push(`${attempt.what} leaked ${found.join(", ")}`);
+    }
+
+    expect(accepted, "a draft mutation accepted a foreign reference or status bypass").toEqual([]);
+    expect(leaks, "a refused draft mutation disclosed another tenant's ids").toEqual([]);
+    expect(await orgFingerprint(orgBId), "org B changed during draft smuggling attempts").toEqual(beforeB);
+  });
+
+  test("poisoned draft references are not served back as a read oracle", async () => {
+    const [poisoned] = await db
+      .insert(purchaseDrafts)
+      .values({
+        orgId: orgCId,
+        supplierId: b.supplierId,
+        locationId: b.locationId,
+        status: "draft",
+      })
+      .returning();
+    await db.insert(purchaseDraftItems).values({
+      purchaseDraftId: poisoned.id,
+      orgId: orgCId,
+      productId: b.productId,
+      quantity: 1,
+    });
+
+    const direct = await cApi.get(`/api/purchase-drafts/${poisoned.id}`);
+    const directBody = await direct.text();
+    const list = await cApi.get("/api/purchase-drafts");
+    const listBody = await list.text();
+
+    expect(direct.status(), "a poisoned draft must not be served").toBeGreaterThanOrEqual(400);
+    expect(leakedValues(directBody, [b.supplierId, b.locationId, b.productId])).toEqual([]);
+    expect(leakedValues(listBody, [b.supplierId, b.locationId, b.productId])).toEqual([]);
   });
 
   test("FINDING PROOF: the injected draft then discloses org B's names to org C", async () => {

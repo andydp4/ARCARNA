@@ -111,6 +111,7 @@ export async function getOnOrderQuantities(orgId: string) {
     .where(
       and(
         eq(purchaseDraftItems.orgId, orgId),
+        eq(purchaseDrafts.orgId, orgId),
         inArray(purchaseDrafts.status, OPEN_PURCHASE_DRAFT_STATUSES),
       ),
     )
@@ -145,8 +146,8 @@ export async function findOpenDraftsForPairs(
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(suppliers, and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)))
+    .innerJoin(locations, and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)))
     .where(
       and(
         eq(purchaseDrafts.orgId, orgId),
@@ -176,8 +177,8 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(suppliers, and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)))
+    .innerJoin(locations, and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)))
     .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)))
     .limit(1);
 
@@ -195,8 +196,8 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       sku: products.productId,
     })
     .from(purchaseDraftItems)
-    .innerJoin(products, eq(purchaseDraftItems.productId, products.id))
-    .where(eq(purchaseDraftItems.purchaseDraftId, id));
+    .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
+    .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
 
   return { ...draft, items };
 }
@@ -218,8 +219,8 @@ export async function listPurchaseDrafts(orgId: string, status?: string) {
       locationName: locations.name,
     })
     .from(purchaseDrafts)
-    .innerJoin(suppliers, eq(purchaseDrafts.supplierId, suppliers.id))
-    .innerJoin(locations, eq(purchaseDrafts.locationId, locations.id))
+    .innerJoin(suppliers, and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)))
+    .innerJoin(locations, and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)))
     .where(and(...conditions))
     .orderBy(desc(purchaseDrafts.updatedAt));
 
@@ -233,7 +234,7 @@ export async function listPurchaseDrafts(orgId: string, status?: string) {
       totalQty: sql<number>`COALESCE(SUM(${purchaseDraftItems.quantity}), 0)::int`.as("total_qty"),
     })
     .from(purchaseDraftItems)
-    .where(inArray(purchaseDraftItems.purchaseDraftId, ids))
+    .where(and(eq(purchaseDraftItems.orgId, orgId), inArray(purchaseDraftItems.purchaseDraftId, ids)))
     .groupBy(purchaseDraftItems.purchaseDraftId);
 
   const countMap = new Map(itemCounts.map((r) => [r.purchaseDraftId, r]));
@@ -262,15 +263,15 @@ export async function getPurchaseDraft(orgId: string, id: string) {
  * Checked in ONE query per table rather than per line: a draft with fifty lines
  * should not cost fifty round trips, and `inArray` gives the same answer.
  */
-async function assertReferencesBelongToOrg(
+async function assertSupplierBelongsToOrg(
   tx: DbTx,
   orgId: string,
-  body: PurchaseDraftGroupInput,
+  supplierId: string,
 ): Promise<void> {
   const [supplier] = await tx
     .select({ id: suppliers.id })
     .from(suppliers)
-    .where(and(eq(suppliers.id, body.supplierId), eq(suppliers.orgId, orgId)))
+    .where(and(eq(suppliers.id, supplierId), eq(suppliers.orgId, orgId)))
     .limit(1);
   if (!supplier) {
     throw new PurchaseDraftError(
@@ -278,11 +279,17 @@ async function assertReferencesBelongToOrg(
       "Supplier does not belong to this organization",
     );
   }
+}
 
+async function assertLocationBelongsToOrg(
+  tx: DbTx,
+  orgId: string,
+  locationId: string,
+): Promise<void> {
   const [location] = await tx
     .select({ id: locations.id })
     .from(locations)
-    .where(and(eq(locations.id, body.locationId), eq(locations.orgId, orgId)))
+    .where(and(eq(locations.id, locationId), eq(locations.orgId, orgId)))
     .limit(1);
   if (!location) {
     throw new PurchaseDraftError(
@@ -290,8 +297,14 @@ async function assertReferencesBelongToOrg(
       "Location does not belong to this organization",
     );
   }
+}
 
-  const productIds = [...new Set(body.items.map((line) => line.productId))];
+async function assertProductsBelongToOrg(
+  tx: DbTx,
+  orgId: string,
+  productIds: string[],
+): Promise<void> {
+  productIds = [...new Set(productIds)];
   if (productIds.length) {
     const owned = await tx
       .select({ id: products.id })
@@ -307,6 +320,20 @@ async function assertReferencesBelongToOrg(
       );
     }
   }
+}
+
+async function assertReferencesBelongToOrg(
+  tx: DbTx,
+  orgId: string,
+  body: PurchaseDraftGroupInput,
+): Promise<void> {
+  await assertSupplierBelongsToOrg(tx, orgId, body.supplierId);
+  await assertLocationBelongsToOrg(tx, orgId, body.locationId);
+  await assertProductsBelongToOrg(
+    tx,
+    orgId,
+    body.items.map((line) => line.productId),
+  );
 }
 
 async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraftGroupInput) {
@@ -375,26 +402,39 @@ export async function updatePurchaseDraft(
   id: string,
   patch: { supplierId?: string; locationId?: string },
 ) {
-  const existing = await loadDraftWithItems(orgId, id);
-  if (!existing) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (
-    existing.status === "cancelled" ||
-    existing.status === "fully_received" ||
-    existing.status === "approved" ||
-    existing.status === "partially_received"
-  ) {
-    throw new PurchaseDraftError(
-      "INVALID_STATUS",
-      "Cannot edit supplier/location after approval — cancel only if no pending receipts",
-    );
-  }
+  return db.transaction(async (tx) => {
+    const existing = await loadDraftWithItems(orgId, id, tx);
+    if (!existing) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
+    if (
+      existing.status === "cancelled" ||
+      existing.status === "fully_received" ||
+      existing.status === "approved" ||
+      existing.status === "partially_received"
+    ) {
+      throw new PurchaseDraftError(
+        "INVALID_STATUS",
+        "Cannot edit supplier/location after approval — cancel only if no pending receipts",
+      );
+    }
 
-  await db
-    .update(purchaseDrafts)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)));
+    if (patch.supplierId !== undefined) {
+      await assertSupplierBelongsToOrg(tx, orgId, patch.supplierId);
+    }
+    if (patch.locationId !== undefined) {
+      await assertLocationBelongsToOrg(tx, orgId, patch.locationId);
+    }
 
-  return loadDraftWithItems(orgId, id);
+    await tx
+      .update(purchaseDrafts)
+      .set({
+        ...(patch.supplierId !== undefined ? { supplierId: patch.supplierId } : {}),
+        ...(patch.locationId !== undefined ? { locationId: patch.locationId } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)));
+
+    return loadDraftWithItems(orgId, id, tx);
+  });
 }
 
 export async function setPurchaseDraftStatus(orgId: string, id: string, status: PurchaseDraftStatus) {
@@ -477,33 +517,37 @@ export async function addPurchaseDraftItem(
     supplierSku?: string;
   },
 ) {
-  const draft = await loadDraftWithItems(orgId, draftId);
-  if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (
-    draft.status === "cancelled" ||
-    draft.status === "approved" ||
-    draft.status === "partially_received" ||
-    draft.status === "fully_received"
-  ) {
-    throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
-  }
+  return db.transaction(async (tx) => {
+    const draft = await loadDraftWithItems(orgId, draftId, tx);
+    if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
+    if (
+      draft.status === "cancelled" ||
+      draft.status === "approved" ||
+      draft.status === "partially_received" ||
+      draft.status === "fully_received"
+    ) {
+      throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
+    }
 
-  const addedValues: PurchaseDraftItemInsert = {
-    purchaseDraftId: draftId,
-    orgId,
-    productId: line.productId,
-    quantity: line.quantity,
-    estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
-    supplierSku: line.supplierSku,
-  };
-  const [item] = await db.insert(purchaseDraftItems).values(addedValues).returning();
+    await assertProductsBelongToOrg(tx, orgId, [line.productId]);
 
-  await db
-    .update(purchaseDrafts)
-    .set({ updatedAt: new Date() })
-    .where(eq(purchaseDrafts.id, draftId));
+    const addedValues: PurchaseDraftItemInsert = {
+      purchaseDraftId: draftId,
+      orgId,
+      productId: line.productId,
+      quantity: line.quantity,
+      estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
+      supplierSku: line.supplierSku,
+    };
+    const [item] = await tx.insert(purchaseDraftItems).values(addedValues).returning();
 
-  return item;
+    await tx
+      .update(purchaseDrafts)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(purchaseDrafts.id, draftId), eq(purchaseDrafts.orgId, orgId)));
+
+    return item;
+  });
 }
 
 export async function updatePurchaseDraftItem(
