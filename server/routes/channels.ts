@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { requireRole } from "../auth";
+import { assertPublicHttpsUrl } from "../lib/safeUrl";
 
 /** C3 — public read API (Bearer org API key). Mounted on the same app as `/api` (e.g. `/midnight/v1/...`). */
 export function registerChannelPublicRoutes(app: Express): void {
@@ -145,8 +146,16 @@ export function registerChannelAuthenticatedRoutes(
         const eventTypes = Array.isArray(req.body?.eventTypes)
           ? (req.body.eventTypes as unknown[]).map((s) => String(s))
           : undefined;
-        if (!url.startsWith("https://")) {
-          return res.status(400).json({ message: "Webhook URL must use https://" });
+        // startsWith("https://") is a string test, not a network one:
+        // "https://127.0.0.1:5000/" and "https://169.254.169.254/" both pass it.
+        // Resolve the host and reject private ranges. Delivery re-checks too —
+        // this is here so an admin gets a clear error now rather than a webhook
+        // that is silently skipped forever.
+        if (!(await assertPublicHttpsUrl(url))) {
+          return res.status(400).json({
+            message:
+              "Webhook URL must be https:// and resolve to a public address",
+          });
         }
         if (secret.length < 16) {
           return res.status(400).json({ message: "secret must be at least 16 characters" });
