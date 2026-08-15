@@ -36,6 +36,18 @@ jobs:
       - name: Audit schema drift (two schema files, same tables)
         run: node scripts/audit-schema-drift.mjs
 
+      # --omit=dev deliberately: a CVE in eslint or playwright does not reach a
+      # customer, and failing the build on one trains everyone to ignore this
+      # step. This gates only what actually ships.
+      #
+      # Nothing had ever run it. Production carried 4 vulnerabilities, 3 of them
+      # high, including a DOMPurify sanitiser bypass — and this app renders
+      # operator-editable receipt and invoice HTML through it. The high-severity
+      # ones all traced to jest/ts-jest sitting in `dependencies` rather than
+      # `devDependencies`, so a test framework was shipping to production.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
       - name: Run tests
         run: npm test
 
