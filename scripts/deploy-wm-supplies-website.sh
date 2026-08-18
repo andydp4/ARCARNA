@@ -20,8 +20,8 @@ git checkout "$BRANCH"
 git pull origin "$BRANCH"
 echo "On commit: $(git log -1 --oneline)"
 
-echo "=== npm install ==="
-npm install
+echo "=== npm install (including build tools) ==="
+npm install --include=dev
 
 echo "=== build for wmsupplies.co.uk ==="
 set -a
