@@ -95,7 +95,11 @@ export default function Home() {
   }
 
   return (
-    <div className="relative w-full overflow-x-clip">
+    /* `isolate` is load-bearing, not decoration. ControlCentreBackdrop sits at
+       -z-10, and Layout's root carries an opaque bg-background; without a
+       stacking context here the backdrop paints behind that background and is
+       invisible. Removing `isolate` silently hides it. */
+    <div className="relative isolate w-full overflow-x-clip">
       <ControlCentreBackdrop />
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <PageHeader
