@@ -42,10 +42,27 @@ export function ControlCentreBackdrop() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || prefersReduced) return;
-    /* Autoplay can be refused (data saver, background tab, policy). The
-     * poster stays up in that case, which is a perfectly good resting
-     * state — so swallow the rejection rather than surfacing it. */
-    void video.play().catch(() => {});
+
+    /* React does not reliably reflect the `muted` prop onto the DOM
+     * attribute, and every autoplay policy refuses a video that is not
+     * muted at the moment it is asked to play. Set it on the element
+     * itself rather than trusting the prop. */
+    video.muted = true;
+
+    /* One attempt can lose a race with buffering, so retry when the
+     * element reports it has enough data. If autoplay is refused outright
+     * the poster stays up, which is a fine resting state. */
+    let cancelled = false;
+    const attempt = () => {
+      if (cancelled) return;
+      void video.play().catch(() => {});
+    };
+    attempt();
+    video.addEventListener("canplay", attempt);
+    return () => {
+      cancelled = true;
+      video.removeEventListener("canplay", attempt);
+    };
   }, [prefersReduced]);
 
   return (
@@ -66,10 +83,11 @@ export function ControlCentreBackdrop() {
           ref={videoRef}
           className="h-full w-full object-cover opacity-60"
           poster={POSTER}
+          autoPlay
           muted
           playsInline
           loop={LOOP}
-          preload="metadata"
+          preload="auto"
           data-testid="control-centre-backdrop-video"
         >
           <source src={`${BASE}/arcarna-light-spheres.webm`} type="video/webm" />
