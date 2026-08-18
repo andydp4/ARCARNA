@@ -1,34 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
- * Control Centre backdrop: a sphere parting once, with a blue flash at the seam.
+ * Control Centre backdrop: the ARCARNA Light Spheres loop, played once.
  *
- * Plays ONCE on mount and settles to a near-static resting state. It sits behind
- * the figures someone reads to run the business, and continuous motion behind
- * live numbers is what makes a dashboard tiring to look at rather than
- * impressive. Nothing loops.
+ * Plays ONCE on mount and holds its last frame. It sits behind the figures
+ * someone reads to run the business, and continuous motion behind live numbers
+ * is what makes a dashboard tiring to look at rather than impressive.
  *
- * SWAP POINT FOR THE DESIGNED ASSET
- * ---------------------------------
- * This is a self-contained CSS/SVG stand-in so the plumbing — mount timing,
- * layering, reduced-motion handling, pointer transparency — is settled and
- * tested before the real animation exists. To swap in a Lottie export, replace
- * the <svg> below with the player and keep everything else: the wrapper's
- * layering, `prefersReduced` branch and `aria-hidden` are the parts that took
- * the thought, and none of them are asset-specific.
+ * Flip LOOP to true to let it run continuously — that is the one knob worth
+ * reaching for here, and the reason it is a named constant rather than a
+ * hardcoded attribute. Everything else (layering, reduced-motion handling,
+ * pointer transparency) is deliberately not asset-specific.
  *
- * Asset spec this was built to accept: Lottie JSON (Bodymovin), 1200x1200,
- * transparent background, 1.5-2s, plays once and holds the final frame, vector
- * only (no embedded rasters) to stay under ~150KB, plus a static final-frame
- * image for the reduced-motion branch.
+ * Source of the asset: scripts/brand/arcarna-light-spheres.html, rendered by
+ * scripts/brand/render-brand-loop.mjs. Palette is the brand Blue Set.
  *
  * Accessibility: decorative, so aria-hidden and inert to pointers — it must
  * never intercept a click meant for a tile. Under prefers-reduced-motion it
- * renders the settled state directly with no animation at all, rather than a
- * faster version of the same motion.
+ * renders the poster still with no video at all, rather than a shorter or
+ * slower version of the same motion.
  */
+
+/** Let the loop run continuously instead of settling after one pass. */
+const LOOP = false;
+
+const BASE = `${import.meta.env.BASE_URL ?? "/"}brand/motion`.replace(/\/{2,}/g, "/");
+const POSTER = `${BASE}/arcarna-light-spheres-poster.jpg`;
+
 export function ControlCentreBackdrop() {
   const [prefersReduced, setPrefersReduced] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -38,93 +39,43 @@ export function ControlCentreBackdrop() {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || prefersReduced) return;
+    /* Autoplay can be refused (data saver, background tab, policy). The
+     * poster stays up in that case, which is a perfectly good resting
+     * state — so swallow the rejection rather than surfacing it. */
+    void video.play().catch(() => {});
+  }, [prefersReduced]);
+
   return (
     <div
       aria-hidden="true"
       className="pointer-events-none absolute inset-x-0 top-0 -z-10 flex h-[420px] justify-center overflow-hidden"
       data-testid="control-centre-backdrop"
     >
-      <style>{`
-        @keyframes arc-sphere-in {
-          from { opacity: 0; transform: scale(0.94); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-        @keyframes arc-part-up {
-          0%, 22%  { transform: translateY(0); }
-          62%,100% { transform: translateY(-26px); }
-        }
-        @keyframes arc-part-down {
-          0%, 22%  { transform: translateY(0); }
-          62%,100% { transform: translateY(26px); }
-        }
-        /* Peaks as the halves separate, then decays to a faint resting glow
-           rather than to nothing — going fully dark reads as a failed load. */
-        @keyframes arc-flash {
-          0%, 20% { opacity: 0; }
-          38%     { opacity: 0.85; }
-          70%     { opacity: 0.16; }
-          100%    { opacity: 0.10; }
-        }
-        .arc-backdrop-root { animation: arc-sphere-in 700ms ease-out both; }
-        .arc-half-top    { animation: arc-part-up 1900ms cubic-bezier(.22,.61,.36,1) both; }
-        .arc-half-bottom { animation: arc-part-down 1900ms cubic-bezier(.22,.61,.36,1) both; }
-        .arc-flash       { animation: arc-flash 1900ms ease-out both; }
-      `}</style>
-
-      <svg
-        viewBox="0 0 600 600"
-        className={prefersReduced ? undefined : "arc-backdrop-root"}
-        style={{
-          width: "min(120vw, 900px)",
-          height: "auto",
-          // Transform/opacity only — no layout or paint thrash behind the tiles.
-          willChange: prefersReduced ? undefined : "transform, opacity",
-        }}
-      >
-        <defs>
-          <radialGradient id="arc-glow">
-            <stop offset="0%" stopColor="#4aa8ff" stopOpacity="0.95" />
-            <stop offset="45%" stopColor="#2b7fd4" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#0b1b2e" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="arc-rim" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="currentColor" stopOpacity="0.42" />
-            <stop offset="100%" stopColor="currentColor" stopOpacity="0.08" />
-          </linearGradient>
-          <clipPath id="arc-clip-top"><rect x="0" y="0" width="600" height="300" /></clipPath>
-          <clipPath id="arc-clip-bottom"><rect x="0" y="300" width="600" height="300" /></clipPath>
-        </defs>
-
-        {/* The seam light, behind the shell so it reads as escaping from inside. */}
-        <ellipse
-          cx="300"
-          cy="300"
-          rx="250"
-          ry="90"
-          fill="url(#arc-glow)"
-          className={prefersReduced ? undefined : "arc-flash"}
-          opacity={prefersReduced ? 0.1 : undefined}
+      {prefersReduced ? (
+        <img
+          src={POSTER}
+          alt=""
+          className="h-full w-full object-cover opacity-60"
+          data-testid="control-centre-backdrop-still"
         />
-
-        <g className="text-metal-warm-white" fill="none" stroke="url(#arc-rim)" strokeWidth="1.5">
-          <g
-            clipPath="url(#arc-clip-top)"
-            className={prefersReduced ? undefined : "arc-half-top"}
-            transform={prefersReduced ? "translate(0,-26)" : undefined}
-          >
-            <circle cx="300" cy="300" r="210" />
-            <circle cx="300" cy="300" r="168" strokeOpacity="0.5" />
-          </g>
-          <g
-            clipPath="url(#arc-clip-bottom)"
-            className={prefersReduced ? undefined : "arc-half-bottom"}
-            transform={prefersReduced ? "translate(0,26)" : undefined}
-          >
-            <circle cx="300" cy="300" r="210" />
-            <circle cx="300" cy="300" r="168" strokeOpacity="0.5" />
-          </g>
-        </g>
-      </svg>
+      ) : (
+        <video
+          ref={videoRef}
+          className="h-full w-full object-cover opacity-60"
+          poster={POSTER}
+          muted
+          playsInline
+          loop={LOOP}
+          preload="metadata"
+          data-testid="control-centre-backdrop-video"
+        >
+          <source src={`${BASE}/arcarna-light-spheres.webm`} type="video/webm" />
+          <source src={`${BASE}/arcarna-light-spheres.mp4`} type="video/mp4" />
+        </video>
+      )}
 
       {/* Fades the backdrop into the page so it never competes with the tiles
           sitting on top of it. */}
