@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ARCARNA — Light Spheres</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  canvas { max-width: 100vw; max-height: 100vh; display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+/*
+ * ARCARNA — Light Spheres
+ * ------------------------------------------------------------------
+ * An 8.000s seamless loop: chains of luminous spheres stream in along
+ * a glossy floor, round a ninety-degree bend and rocket up out of
+ * frame, mirrored beneath them in the floor and lit by a soft pool of
+ * ambient blue on the horizon.
+ *
+ * Everything is a pure function of the normalised loop time u in
+ * [0, 1): no rAF state, no accumulated drift. That makes the loop
+ * seamless by construction and lets the headless renderer in
+ * render-brand-loop.mjs step frames deterministically.
+ *
+ * Camera model: zero pitch with the principal point pushed down to the
+ * horizon, so a sphere's rise reads as dead vertical on screen (as in
+ * a tilt-shift/architectural render) while the floor still recedes to
+ * a vanishing point. Yaw is allowed — it keeps that vertical property
+ * and swings the vanishing point across frame, which is what carries
+ * the loop between its two looks: the lanes head-on, and the bend seen
+ * from the side.
+ *
+ * Spheres are drawn as pre-baked sprites rather than per-sphere
+ * gradients. At 4K that is the difference between minutes and hours:
+ * the gradients are rasterised once at startup, and each frame is a
+ * few thousand scaled blits.
+ */
+
+/* ── ARCARNA palette ─────────────────────────────────────────────── */
+const PALETTE = {
+  truthBlue: [0x3c, 0x7a, 0xc4], // #3C7AC4
+  navy:      [0x0b, 0x2e, 0x66], // #0B2E66
+  deepBlue:  [0x12, 0x3b, 0x78], // #123B78
+  skyBlue:   [0x5d, 0xb4, 0xff], // #5DB4FF
+  lightBlue: [0xb6, 0xd9, 0xff], // #B6D9FF
+};
+/* The hot centre of an emissive sphere reads as white with the
+ * palette's lightest blue still in it, rather than pure #FFF. */
+const CORE = [0xea, 0xf4, 0xff];
+
+/* Resolution is injected by the renderer; the page defaults to 4K. */
+const RENDER_WIDTH = Number(window.__ARCARNA_WIDTH__) || 3840;
+
+const CONFIG = {
+  width: RENDER_WIDTH,
+  height: Math.round((RENDER_WIDTH * 9) / 16),
+  fps: 30,
+  durationSeconds: 8,
+  seed: 0x5db4ff,
+
+  horizon: 0.755,      // fraction of height — matches the reference framing
+  focalRatio: 0.615,   // focal length as a fraction of frame width
+  streamCount: 22,
+  spheresPerStream: 16,
+  nearClip: 0.42,
+  farFog: 48,          // spheres are fully fogged out past this depth
+};
+CONFIG.frameCount = CONFIG.fps * CONFIG.durationSeconds;
+CONFIG.focal = CONFIG.width * CONFIG.focalRatio;
+
+/* Scale factor against the 1920-wide reference, so every pixel-space
+ * constant below stays resolution independent. */
+const PX = CONFIG.width / 1920;
+
+/* ── deterministic RNG (mulberry32) ──────────────────────────────── */
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function rng() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const TAU = Math.PI * 2;
+const lerp = (a, b, k) => a + (b - a) * k;
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const smoothstep = (v) => { const k = clamp01(v); return k * k * (3 - 2 * k); };
+
+function rgba(c, alpha) { return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`; }
+function mix(a, b, k) {
+  return [
+    Math.round(lerp(a[0], b[0], k)),
+    Math.round(lerp(a[1], b[1], k)),
+    Math.round(lerp(a[2], b[2], k)),
+  ];
+}
+
+/* ── the path a sphere follows ───────────────────────────────────────
+ * Along the floor toward the camera, through a quarter circle, then
+ * straight up. Arc length s is measured from the far end of the floor
+ * run, so a sphere at s travels ground → bend → riser.
+ */
+const GROUND_RUN = 24;
+const BEND_RADIUS = 1.3;
+const RISER_RUN = 55;
+const BEND_ARC = (Math.PI / 2) * BEND_RADIUS;
+const PATH_LENGTH = GROUND_RUN + BEND_ARC + RISER_RUN;
+/* Spheres skim just above the floor rather than sitting half-sunk in
+ * it, which is what opens the gap between a sphere and its reflection
+ * and makes the surface read as glossy. */
+const HOVER = 0.45;
+
+/* Share of the cycle spent on each leg. Perspective compresses the
+ * floor run into a narrow band near the horizon, so giving it much
+ * more than half the cycle piles most of the spheres into that band
+ * and they fuse into a single bright smear. */
+const P_GROUND = 0.45;
+const P_BEND = 0.05;
+
+/** Map cycle phase p ∈ [0,1) to arc length s ∈ [0, PATH_LENGTH]. */
+function phaseToArc(p) {
+  if (p <= P_GROUND) return (p / P_GROUND) * GROUND_RUN;
+  if (p <= P_GROUND + P_BEND) {
+    return GROUND_RUN + ((p - P_GROUND) / P_BEND) * BEND_ARC;
+  }
+  const k = (p - P_GROUND - P_BEND) / (1 - P_GROUND - P_BEND);
+  /* Leave the bend already moving, then accelerate. A pure power curve
+   * (k^n, n > 1) has zero derivative at k = 0, which would stall every
+   * sphere at the top of the bend and pile the whole chain up there —
+   * so the linear term carries the speed out of the corner and the
+   * quadratic term supplies the "shoot skywards" acceleration. */
+  return GROUND_RUN + BEND_ARC + (0.35 * k + 0.65 * k * k) * RISER_RUN;
+}
+
+function pathPoint(lane, liftZ, s, out) {
+  out.x = lane;
+  if (s <= GROUND_RUN) {
+    out.y = HOVER;
+    out.z = liftZ + BEND_RADIUS + (GROUND_RUN - s);
+    return out;
+  }
+  if (s <= GROUND_RUN + BEND_ARC) {
+    /* Quarter circle centred at (z = liftZ + R, y = HOVER + R): tangent
+     * to the floor run where it begins, tangent to vertical where the
+     * riser starts. */
+    const a = (s - GROUND_RUN) / BEND_RADIUS; // 0 → π/2
+    out.y = HOVER + BEND_RADIUS * (1 - Math.cos(a));
+    out.z = liftZ + BEND_RADIUS * (1 - Math.sin(a));
+    return out;
+  }
+  out.y = HOVER + BEND_RADIUS + (s - GROUND_RUN - BEND_ARC);
+  out.z = liftZ;
+  return out;
+}
+
+/* ── streams ─────────────────────────────────────────────────────── */
+/* Spectrum weighted toward Sky Blue: it carries the accent role the
+ * magenta held in the reference, and the darker blues sit behind it so
+ * separation comes from value rather than hue. */
+const TONES = [
+  { key: 'sky',   color: PALETTE.skyBlue,   weight: 0.30, gain: 1.00 },
+  { key: 'light', color: PALETTE.lightBlue, weight: 0.14, gain: 0.90 },
+  { key: 'truth', color: PALETTE.truthBlue, weight: 0.34, gain: 0.86 },
+  { key: 'deep',  color: PALETTE.deepBlue,  weight: 0.22, gain: 0.80 },
+];
+
+function pickTone(rng) {
+  let r = rng();
+  for (const tone of TONES) {
+    if (r < tone.weight) return tone;
+    r -= tone.weight;
+  }
+  return TONES[0];
+}
+
+function buildStreams() {
+  const rng = makeRng(CONFIG.seed);
+  const streams = [];
+  for (let i = 0; i < CONFIG.streamCount; i++) {
+    const tone = pickTone(rng);
+    /* Lanes cluster into a loose bundle with a few strays, the way the
+     * reference bunches most lines and lets one or two run wide. */
+    const stray = rng() < 0.18;
+    const lane = stray
+      ? (rng() < 0.5 ? -1 : 1) * lerp(5.2, 9.5, rng())
+      : lerp(-4.4, 4.4, rng());
+
+    /* Each stream is a comet: a tight train of spheres occupying only a
+     * slice of the cycle, so it reads as one object flowing along the
+     * floor rather than as scatter spread over the whole path. */
+    const spheres = [];
+    const count = 5 + Math.floor(rng() * (CONFIG.spheresPerStream - 9));
+    const chainSpan = lerp(0.19, 0.38, rng());
+    const scale = lerp(0.8, 1.25, rng()) * (stray ? 1.15 : 1);
+    for (let j = 0; j < count; j++) {
+      // k = 0 at the tail, 1 at the head.
+      const k = count === 1 ? 1 : j / (count - 1);
+      spheres.push({
+        offset: k * chainSpan + (rng() - 0.5) * 0.008,
+        // The head is the biggest and brightest; the tail thins out.
+        radius: lerp(0.13, 0.34, Math.pow(k, 0.7)) * lerp(0.85, 1.15, rng()) * scale,
+        gain: lerp(0.20, 1.28, Math.pow(k, 0.75)) * lerp(0.88, 1.14, rng()),
+      });
+    }
+
+    streams.push({
+      lane,
+      tone,
+      spheres,
+      /* Where this stream leaves the floor. Spread in depth so the
+       * bundle reads as a staggered wall of bends, not a single row. */
+      liftZ: lerp(7, 22, rng()),
+      /* Integer traversals per loop keeps the motion seamless. */
+      cycles: 1 + Math.floor(rng() * 2),
+      phase: rng(),
+      /* A little wander on the lift point so the row breathes. */
+      wobble: lerp(0.4, 2.1, rng()),
+      wobblePhase: rng() * TAU,
+    });
+  }
+  // Far streams first, so near ones overlap them correctly.
+  streams.sort((a, b) => b.liftZ - a.liftZ);
+  return streams;
+}
+
+/* ── camera ──────────────────────────────────────────────────────── */
+function cameraAt(u) {
+  const a = u * TAU;
+  return {
+    x: 3.9 * Math.sin(a) + 1.5 * Math.sin(2 * a + 0.9),
+    y: 1.62 + 0.42 * Math.sin(a + 1.7),
+    z: -3.4 + 1.2 * Math.sin(2 * a + 2.3),
+    yaw: 0.20 * Math.sin(a + 0.35) + 0.075 * Math.sin(3 * a + 1.1),
+    focal: CONFIG.focal * (1 + 0.075 * Math.sin(a + 2.6)),
+  };
+}
+
+function project(cam, p, out) {
+  const dx = p.x - cam.x;
+  const dz = p.z - cam.z;
+  const c = Math.cos(cam.yaw);
+  const s = Math.sin(cam.yaw);
+  const zr = dx * s + dz * c;
+  const xr = dx * c - dz * s;
+  out.z = zr;
+  if (zr <= CONFIG.nearClip) { out.ok = false; return out; }
+  const k = cam.focal / zr;
+  out.x = CONFIG.width * 0.5 + xr * k;
+  out.y = CONFIG.height * CONFIG.horizon - (p.y - cam.y) * k;
+  out.scale = k;
+  out.ok = true;
+  return out;
+}
+
+/* ── canvases ────────────────────────────────────────────────────── */
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+const stage = document.getElementById('stage');
+stage.width = CONFIG.width;
+stage.height = CONFIG.height;
+const ctx = stage.getContext('2d', { alpha: false });
+
+const sceneCv = makeCanvas(CONFIG.width, CONFIG.height);
+const sceneCtx = sceneCv.getContext('2d');
+const reflectCv = makeCanvas(CONFIG.width, CONFIG.height);
+const reflectCtx = reflectCv.getContext('2d');
+/* The reflection is blurred as one layer at composite time. Blurring
+ * per sphere would set ctx.filter thousands of times a frame, which is
+ * pathologically slow. */
+const softCv = makeCanvas(CONFIG.width, CONFIG.height);
+const softCtx = softCv.getContext('2d');
+const BLOOM_DIV = 4;
+const bloomCv = makeCanvas(
+  Math.ceil(CONFIG.width / BLOOM_DIV),
+  Math.ceil(CONFIG.height / BLOOM_DIV),
+);
+const bloomCtx = bloomCv.getContext('2d');
+
+const STREAMS = buildStreams();
+
+/* ── sprites ─────────────────────────────────────────────────────── */
+/*
+ * Each tone gets three sprites, baked once:
+ *   orb   — the sphere itself: hot centre, coloured body, tight rim
+ *   halo  — the wide soft bloom around it
+ *   pool  — the smear it throws onto the glossy floor underneath
+ * Sprite space is normalised: the drawable extent fills the bitmap, so
+ * a blit is drawImage(sprite, x - r, y - r, 2r, 2r).
+ */
+const SPRITE_SIZE = 256;
+
+function bakeOrb(tone) {
+  const S = SPRITE_SIZE, R = S / 2;
+  const cv = makeCanvas(S, S);
+  const c = cv.getContext('2d');
+  /* The white core is kept deliberately tight. Additive blending stacks
+   * overlapping spheres, so a generous core clips the whole bundle to
+   * white and the palette disappears. */
+  const body = c.createRadialGradient(R, R, 0, R, R, R);
+  body.addColorStop(0.00, 'rgba(255,255,255,1)');
+  body.addColorStop(0.15, rgba(CORE, 0.96));
+  body.addColorStop(0.29, rgba(mix(tone.color, PALETTE.lightBlue, 0.48), 0.90));
+  // Hold the body, then fall away quickly: the shoulder here is what
+  // makes it read as a ball with an edge rather than a soft smudge.
+  body.addColorStop(0.42, rgba(tone.color, 0.74));
+  body.addColorStop(0.52, rgba(tone.color, 0.34));
+  body.addColorStop(0.70, rgba(tone.color, 0.10));
+  body.addColorStop(1.00, rgba(tone.color, 0));
+  c.fillStyle = body;
+  c.fillRect(0, 0, S, S);
+
+  // A small offset specular, which is what stops it reading as a flat
+  // disc and starts it reading as a ball.
+  const hx = R - R * 0.24, hy = R - R * 0.28;
+  const spec = c.createRadialGradient(hx, hy, 0, hx, hy, R * 0.20);
+  spec.addColorStop(0, 'rgba(255,255,255,0.60)');
+  spec.addColorStop(0.5, 'rgba(255,255,255,0.14)');
+  spec.addColorStop(1, 'rgba(255,255,255,0)');
+  c.globalCompositeOperation = 'lighter';
+  c.fillStyle = spec;
+  c.fillRect(0, 0, S, S);
+  return cv;
+}
+
+function bakeHalo(tone) {
+  const S = SPRITE_SIZE, R = S / 2;
+  const cv = makeCanvas(S, S);
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(R, R, 0, R, R, R);
+  g.addColorStop(0.00, rgba(mix(tone.color, PALETTE.lightBlue, 0.18), 0.40));
+  g.addColorStop(0.18, rgba(tone.color, 0.24));
+  g.addColorStop(0.42, rgba(tone.color, 0.075));
+  g.addColorStop(0.70, rgba(tone.color, 0.018));
+  g.addColorStop(1.00, rgba(tone.color, 0));
+  c.fillStyle = g;
+  c.fillRect(0, 0, S, S);
+  return cv;
+}
+
+function bakePool(tone) {
+  const S = SPRITE_SIZE, R = S / 2;
+  const cv = makeCanvas(S, S);
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(R, R, 0, R, R, R);
+  g.addColorStop(0.00, rgba(mix(tone.color, PALETTE.lightBlue, 0.5), 0.42));
+  g.addColorStop(0.25, rgba(tone.color, 0.16));
+  g.addColorStop(0.60, rgba(tone.color, 0.04));
+  g.addColorStop(1.00, rgba(tone.color, 0));
+  c.fillStyle = g;
+  c.fillRect(0, 0, S, S);
+  return cv;
+}
+
+const SPRITES = (() => {
+  const out = {};
+  for (const tone of TONES) {
+    out[tone.key] = { orb: bakeOrb(tone), halo: bakeHalo(tone), pool: bakePool(tone) };
+  }
+  return out;
+})();
+
+/* Pre-baked grain tiles — deterministic, and far cheaper than seeding
+ * per-pixel noise across the whole frame every render. */
+const GRAIN_TILES = (() => {
+  const rng = makeRng(0x9e3779b9);
+  const tiles = [];
+  for (let t = 0; t < 6; t++) {
+    const size = 256;
+    const cv = makeCanvas(size, size);
+    const c2 = cv.getContext('2d');
+    const img = c2.createImageData(size, size);
+    for (let i = 0; i < size * size; i++) {
+      const v = 128 + (rng() - 0.5) * 74;
+      img.data[i * 4] = v;
+      img.data[i * 4 + 1] = v;
+      img.data[i * 4 + 2] = v;
+      img.data[i * 4 + 3] = 255;
+    }
+    c2.putImageData(img, 0, 0);
+    tiles.push(cv);
+  }
+  return tiles;
+})();
+
+/* ── environment ─────────────────────────────────────────────────── */
+function drawEnvironment(target, u) {
+  const W = CONFIG.width, H = CONFIG.height;
+  const horizonY = H * CONFIG.horizon;
+
+  target.globalCompositeOperation = 'source-over';
+  target.fillStyle = '#000205';
+  target.fillRect(0, 0, W, H);
+
+  // Broad navy haze filling the upper volume.
+  const haze = target.createRadialGradient(
+    W * 0.44, horizonY * 0.92, 0,
+    W * 0.44, horizonY * 0.92, W * 0.72,
+  );
+  haze.addColorStop(0, rgba(PALETTE.navy, 0.5));
+  haze.addColorStop(0.45, rgba(PALETTE.navy, 0.2));
+  haze.addColorStop(1, 'rgba(0,0,0,0)');
+  target.fillStyle = haze;
+  target.fillRect(0, 0, W, H);
+
+  /* The ambient pool sitting on the horizon, plus its mirror in the
+   * floor. It drifts laterally so it feels attached to the room rather
+   * than to the frame. */
+  const drift = W * (0.42 + 0.07 * Math.sin(u * TAU + 1.2));
+  target.globalCompositeOperation = 'lighter';
+
+  const pool = target.createRadialGradient(drift, horizonY, 0, drift, horizonY, W * 0.42);
+  pool.addColorStop(0, rgba(mix(PALETTE.deepBlue, PALETTE.truthBlue, 0.35), 0.85));
+  pool.addColorStop(0.28, rgba(PALETTE.deepBlue, 0.42));
+  pool.addColorStop(0.62, rgba(PALETTE.navy, 0.16));
+  pool.addColorStop(1, 'rgba(0,0,0,0)');
+
+  target.save();
+  target.translate(drift, horizonY);
+  target.scale(1, 0.30);
+  target.translate(-drift, -horizonY);
+  target.fillStyle = pool;
+  target.fillRect(-W, horizonY - W, W * 3, W * 2);
+  target.restore();
+
+  // Mirrored pool below the horizon — dimmer and stretched.
+  target.save();
+  target.translate(drift, horizonY);
+  target.scale(1, -0.46);
+  target.translate(-drift, -horizonY);
+  target.globalAlpha = 0.62;
+  target.fillStyle = pool;
+  target.fillRect(-W, horizonY - W, W * 3, W * 2);
+  target.restore();
+
+  /* A tight bright seam on the horizon line. Drawn as a squashed
+   * radial so it fades out at both ends — a linear gradient in a rect
+   * would leave a visible hard edge where the rect stops. */
+  const seam = target.createRadialGradient(drift, horizonY, 0, drift, horizonY, W * 0.5);
+  seam.addColorStop(0, rgba(PALETTE.skyBlue, 0.20));
+  seam.addColorStop(0.35, rgba(PALETTE.truthBlue, 0.10));
+  seam.addColorStop(1, 'rgba(0,0,0,0)');
+  target.save();
+  target.translate(drift, horizonY);
+  target.scale(1, 0.055);
+  target.translate(-drift, -horizonY);
+  target.fillStyle = seam;
+  target.fillRect(-W, horizonY - W, W * 3, W * 2);
+  target.restore();
+
+  target.globalCompositeOperation = 'source-over';
+}
+
+/* ── spheres ─────────────────────────────────────────────────────── */
+
+/* Overall brightness trim. Additive blending makes the bundle much
+ * hotter than any single sphere, so the per-sphere level sits low. */
+const EXPOSURE = 1.05;
+
+/**
+ * Glow extent for a sphere of on-screen `radius`.
+ *
+ * A glow that is a fixed multiple of the sphere is wrong at both ends:
+ * distant spheres lose their bloom, and near ones grow a halo the size
+ * of the frame. This eases from `nearMul` on large spheres to `farMul`
+ * on small ones, so the bloom stays roughly constant in absolute terms.
+ */
+function glowRadius(radius, farMul, nearMul) {
+  const t = 1 / (1 + radius / (26 * PX));
+  return radius * (nearMul + (farMul - nearMul) * t);
+}
+
+/**
+ * Per-pixel brightness trim for a sphere of on-screen `radius`.
+ *
+ * Canvas compositing clamps at white, so a sphere that swells as it
+ * nears the camera doesn't just get bigger — it saturates, and once it
+ * saturates even the transparent falloff of its sprite reaches white
+ * and the square sprite bounds become visible as hard edges. Holding
+ * roughly constant total emitted light instead of constant surface
+ * brightness keeps big spheres inside the range.
+ */
+const DAMP_RADIUS = 17 * PX;
+function sizeDamping(radius) {
+  if (radius <= DAMP_RADIUS) return 1;
+  return Math.max(0.12, Math.pow(DAMP_RADIUS / radius, 0.85));
+}
+
+const _wp = { x: 0, y: 0, z: 0 };
+const _wp2 = { x: 0, y: 0, z: 0 };
+const _sp = { x: 0, y: 0, z: 0, scale: 1, ok: false };
+const _sp2 = { x: 0, y: 0, z: 0, scale: 1, ok: false };
+
+/**
+ * Draw one stream's spheres into `target`.
+ * `mirror` flips the geometry through the floor plane to build the
+ * reflection, which lives in its own layer so it can be softened and
+ * faded as a group.
+ */
+function drawStream(target, cam, stream, u, mirror) {
+  const liftZ = stream.liftZ + stream.wobble * Math.sin(u * TAU + stream.wobblePhase);
+  const sprites = SPRITES[stream.tone.key];
+  const baseGain = stream.tone.gain * (mirror ? 0.62 : 1);
+
+  for (const sphere of stream.spheres) {
+    const p = ((u * stream.cycles + stream.phase + sphere.offset) % 1 + 1) % 1;
+    const s = phaseToArc(p);
+
+    pathPoint(stream.lane, liftZ, s, _wp);
+    const worldY = _wp.y;
+    if (mirror) _wp.y = -_wp.y;
+    project(cam, _wp, _sp);
+    if (!_sp.ok) continue;
+
+    /* Motion stretch along the direction of travel — but only once the
+     * sphere is climbing. On the floor it should stay a round ball
+     * skimming the surface; perspective alone makes its screen velocity
+     * high near the camera, and stretching on that would smear the
+     * floor run into dashes. */
+    const climb = clamp01((worldY - (HOVER + BEND_RADIUS)) / (RISER_RUN * 0.35));
+    let stretch = 1, angle = 0;
+    if (climb > 0) {
+      const sAhead = phaseToArc(Math.min(0.9995, p + 0.004));
+      pathPoint(stream.lane, liftZ, sAhead, _wp2);
+      if (mirror) _wp2.y = -_wp2.y;
+      project(cam, _wp2, _sp2);
+      if (_sp2.ok) {
+        const dx = _sp2.x - _sp.x;
+        const dy = _sp2.y - _sp.y;
+        angle = Math.atan2(dy, dx);
+        stretch = 1 + Math.min(2.6, Math.hypot(dx, dy) / (46 * PX)) * climb;
+      }
+    }
+
+    /* Cap the on-screen size. Without it a sphere that swings close to
+     * the camera scales without bound and swallows the frame. */
+    const radius = Math.min(sphere.radius * _sp.scale, CONFIG.height * 0.042);
+    if (radius < 0.35) continue;
+
+    /* Fade with depth into the haze, again as the sphere climbs out of
+     * the lit volume, and again as it comes very close to the lens —
+     * near misses should slip past, not wash the frame out. */
+    const fog = 1 - smoothstep((_sp.z - CONFIG.farFog * 0.35) / (CONFIG.farFog * 0.65));
+    const altitude = 1 - smoothstep((worldY - RISER_RUN * 0.28) / (RISER_RUN * 0.62));
+    const near = smoothstep((_sp.z - 2.5) / 4.0);
+    const alpha = clamp01(fog * altitude * near) * sphere.gain * baseGain
+      * EXPOSURE * sizeDamping(radius);
+    if (alpha <= 0.004) continue;
+
+    /* Floor pool: a glossy smear directly under a sphere that is still
+     * close to the ground. Skipped for the mirror layer, which already
+     * carries the reflection. */
+    if (!mirror && worldY < BEND_RADIUS * 2.2) {
+      const nearness = 1 - clamp01(worldY / (BEND_RADIUS * 2.2));
+      _wp2.x = stream.lane; _wp2.y = 0; _wp2.z = _wp.z;
+      project(cam, _wp2, _sp2);
+      if (_sp2.ok) {
+        const pr = glowRadius(radius, 3.4, 1.4);
+        target.globalAlpha = clamp01(alpha * nearness * 0.13);
+        target.drawImage(sprites.pool, _sp2.x - pr, _sp2.y - pr * 0.26, pr * 2, pr * 0.52);
+      }
+    }
+
+    // Halo, then the orb on top.
+    target.globalAlpha = alpha;
+    const hr = glowRadius(radius, 3.4, 0.85);
+    target.drawImage(sprites.halo, _sp.x - hr, _sp.y - hr, hr * 2, hr * 2);
+
+    target.globalAlpha = clamp01(alpha * 1.05);
+    if (stretch > 1.06) {
+      target.save();
+      target.translate(_sp.x, _sp.y);
+      target.rotate(angle);
+      target.drawImage(
+        sprites.orb,
+        -radius * stretch, -radius,
+        radius * 2 * stretch, radius * 2,
+      );
+      target.restore();
+    } else {
+      target.drawImage(sprites.orb, _sp.x - radius, _sp.y - radius, radius * 2, radius * 2);
+    }
+  }
+  target.globalAlpha = 1;
+}
+
+/* ── frame assembly ──────────────────────────────────────────────── */
+function renderFrame(frameIndex) {
+  const W = CONFIG.width, H = CONFIG.height;
+  const n = CONFIG.frameCount;
+  const u = (((frameIndex % n) + n) % n) / n;
+  const cam = cameraAt(u);
+  const horizonY = H * CONFIG.horizon;
+
+  // 1. Environment straight onto the stage.
+  drawEnvironment(ctx, u);
+
+  // 2. Reflections into their own layer.
+  reflectCtx.setTransform(1, 0, 0, 1, 0, 0);
+  reflectCtx.globalCompositeOperation = 'source-over';
+  reflectCtx.clearRect(0, 0, W, H);
+  reflectCtx.globalCompositeOperation = 'lighter';
+  for (const stream of STREAMS) drawStream(reflectCtx, cam, stream, u, true);
+
+  /* Soften the whole reflection in one pass, then fade it with depth
+   * into the floor. */
+  softCtx.setTransform(1, 0, 0, 1, 0, 0);
+  softCtx.globalCompositeOperation = 'source-over';
+  softCtx.clearRect(0, 0, W, H);
+  softCtx.filter = `blur(${(3.2 * PX).toFixed(2)}px)`;
+  softCtx.drawImage(reflectCv, 0, 0);
+  softCtx.filter = 'none';
+
+  softCtx.globalCompositeOperation = 'destination-in';
+  const fade = softCtx.createLinearGradient(0, horizonY, 0, H);
+  fade.addColorStop(0, 'rgba(0,0,0,0.95)');
+  fade.addColorStop(0.55, 'rgba(0,0,0,0.78)');
+  fade.addColorStop(1, 'rgba(0,0,0,0.50)');
+  softCtx.fillStyle = fade;
+  softCtx.fillRect(0, 0, W, H);
+  softCtx.globalCompositeOperation = 'source-over';
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(softCv, 0, 0);
+
+  // 3. The spheres themselves.
+  sceneCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sceneCtx.globalCompositeOperation = 'source-over';
+  sceneCtx.clearRect(0, 0, W, H);
+  sceneCtx.globalCompositeOperation = 'lighter';
+  for (const stream of STREAMS) drawStream(sceneCtx, cam, stream, u, false);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(sceneCv, 0, 0);
+
+  // 4. Bloom — downsample the emissive layers, blur, add back.
+  bloomCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bloomCtx.globalCompositeOperation = 'source-over';
+  bloomCtx.clearRect(0, 0, bloomCv.width, bloomCv.height);
+  bloomCtx.filter = `blur(${(7 * PX).toFixed(2)}px)`;
+  bloomCtx.drawImage(sceneCv, 0, 0, bloomCv.width, bloomCv.height);
+  bloomCtx.globalCompositeOperation = 'lighter';
+  bloomCtx.globalAlpha = 0.55;
+  bloomCtx.drawImage(softCv, 0, 0, bloomCv.width, bloomCv.height);
+  bloomCtx.filter = 'none';
+  bloomCtx.globalAlpha = 1;
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.36;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bloomCv, 0, 0, W, H);
+  ctx.globalAlpha = 1;
+
+  // 5. Vignette and grain.
+  ctx.globalCompositeOperation = 'source-over';
+  const vig = ctx.createRadialGradient(
+    W * 0.5, H * 0.56, H * 0.28,
+    W * 0.5, H * 0.56, H * 1.02,
+  );
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(0.68, 'rgba(0,0,0,0.30)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.80)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+
+  const tile = GRAIN_TILES[((frameIndex % 6) + 6) % 6];
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = 0.05;
+  ctx.fillStyle = ctx.createPattern(tile, 'repeat');
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* Exposed for the headless renderer. */
+window.ARCARNA_LOOP = { CONFIG, renderFrame };
+
+/* Live playback when the file is opened in a browser. */
+if (!window.__ARCARNA_HEADLESS__) {
+  const start = performance.now();
+  const tick = () => {
+    const elapsed = (performance.now() - start) / 1000;
+    renderFrame(Math.floor(elapsed * CONFIG.fps));
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+</script>
+</body>
+</html>
