@@ -37,7 +37,11 @@ BEGIN
 
   IF org_count > 1 THEN
     RAISE NOTICE '048: % organizations present — refusing to guess an owner. Orphaned rows left as-is; resolve them deliberately.', org_count;
-    FOREACH tbl IN ARRAY ARRAY['invoices', 'orders', 'order_items', 'customers', 'products', 'locations']
+    FOREACH tbl IN ARRAY ARRAY[
+      'products', 'customers', 'orders', 'order_items', 'order_expenses',
+      'invoices', 'locations', 'loyalty_tiers', 'promotions',
+      'overhead_expenses'
+    ]
     LOOP
       EXECUTE format('SELECT count(*) FROM %I WHERE org_id IS NULL', tbl) INTO adopted;
       IF adopted > 0 THEN
@@ -50,8 +54,9 @@ BEGIN
   SELECT id INTO target_org FROM organizations LIMIT 1;
 
   FOREACH tbl IN ARRAY ARRAY[
-    'invoices', 'orders', 'order_items', 'customers', 'products',
-    'locations', 'loyalty_tiers', 'promotions', 'overhead_expenses'
+    'products', 'customers', 'orders', 'order_items', 'order_expenses',
+    'invoices', 'locations', 'loyalty_tiers', 'promotions',
+    'overhead_expenses'
   ]
   LOOP
     -- to_regclass rather than assuming: this runs against databases at

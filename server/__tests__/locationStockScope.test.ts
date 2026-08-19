@@ -19,11 +19,15 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
   let db: (typeof import("../db"))["db"];
   let storage: (typeof import("../storage"))["storage"];
   let ProductsRepoDrizzle: (typeof import("../../apps/server/src/db/repos"))["ProductsRepoDrizzle"];
+  let resolveEditableStockLocationId: (
+    typeof import("../services/stockLocationContext")
+  )["resolveEditableStockLocationId"];
 
   beforeEach(async () => {
     ({ db } = await import("../db"));
     ({ storage } = await import("../storage"));
     ({ ProductsRepoDrizzle } = await import("../../apps/server/src/db/repos"));
+    ({ resolveEditableStockLocationId } = await import("../services/stockLocationContext"));
 
     orgId = randomUUID();
     locationAId = randomUUID();
@@ -129,6 +133,15 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
     expect(locationAProducts.find((p) => p.id === remoteOnlyProductId)?.stock).toBe(0);
     expect(orgWideProducts.find((p) => p.id === localProductId)?.stock).toBe(102);
     expect(orgWideProducts.find((p) => p.id === remoteOnlyProductId)?.stock).toBe(50);
+  });
+
+  it("resolves an editable stock location before listing stock without location context", async () => {
+    const resolvedLocationId = await resolveEditableStockLocationId({ orgId });
+    const productsForEdit = await storage.getProductsWithStock(orgId, resolvedLocationId);
+
+    expect(resolvedLocationId).toBe(locationAId);
+    expect(productsForEdit.find((p) => p.id === localProductId)?.stock).toBe(2);
+    expect(productsForEdit.find((p) => p.id === remoteOnlyProductId)?.stock).toBe(0);
   });
 
   it("does not accept stock from another location when checking an order", async () => {
