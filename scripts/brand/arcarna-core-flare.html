@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ARCARNA — Core Flare</title>
+<style>
+/*
+ * ARCARNA — Core Flare
+ * ------------------------------------------------------------------
+ * Design source for the Control Centre backdrop. A dark sphere parts
+ * along a horizontal seam, light blasts out through the widening gap,
+ * peaks as an anamorphic blue flare, then settles to a slow Truth Blue
+ * pulse that holds indefinitely.
+ *
+ * Beats:
+ *   0.00-0.55s  the sphere sits dark, rim-lit, barely there
+ *   0.55-1.15s  the halves part; a seam of light opens between them
+ *   1.15-1.45s  THE BLAST — white-hot core, anamorphic streak, spokes
+ *   1.45-2.70s  decay; the flare falls back through Sky to Truth Blue
+ *   2.70s+      settled: a slow Truth Blue pulse, ~5s per breath
+ *
+ * Built from CSS rather than a rendered video for one reason that
+ * matters: the brief ends in an indefinite slow pulse, and a one-shot
+ * video can only stop dead or loop the whole blast. It also animates
+ * transform and opacity only, so it composites on the GPU and costs
+ * effectively nothing once settled.
+ */
+
+:root {
+  --truth-blue: #3C7AC4;
+  --navy:       #0B2E66;
+  --deep-blue:  #123B78;
+  --sky-blue:   #5DB4FF;
+  --light-blue: #B6D9FF;
+  --core:       #EAF4FF;
+
+  /* Seam geometry. The sphere is sized from the band height so the
+     composition holds whatever the backdrop is scaled to. */
+  --sphere: 260px;
+  --part: 26px;          /* how far each half travels — "opens slightly" */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05080f; }
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  overflow: hidden;
+  background: radial-gradient(120% 140% at 50% 46%, #0a1526 0%, #05080f 62%, #03050a 100%);
+}
+
+/* Everything luminous lives in here and blends additively, so overlaps
+   build toward white the way real light does. */
+.light { position: absolute; inset: 0; }
+.light > * { position: absolute; mix-blend-mode: screen; }
+
+.centre { left: 50%; top: 46%; }
+
+/* ── the sphere ──────────────────────────────────────────────────── */
+.sphere-half {
+  /* Not inside .light, so it needs its own positioning — the centring
+     below is margin-based and does nothing while static. */
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: var(--sphere);
+  height: var(--sphere);
+  margin-left: calc(var(--sphere) / -2);
+  margin-top: calc(var(--sphere) / -2);
+  border-radius: 50%;
+  mix-blend-mode: normal;
+  /* A dark body that is not flat black: the rim catches the ambient so
+     the form reads before any light escapes it. */
+  background:
+    radial-gradient(circle at 42% 34%, #0d1828 0%, #070d18 46%, #02040a 78%),
+    radial-gradient(circle at 50% 50%, transparent 58%, rgba(60,122,196,0.55) 80%, rgba(93,180,255,0.22) 90%, transparent 97%);
+  box-shadow: inset 0 0 70px rgba(3,6,14,0.85), 0 0 40px rgba(2,4,10,0.9);
+}
+.half-top    { clip-path: inset(0 0 50% 0); }
+.half-bottom { clip-path: inset(50% 0 0 0); }
+
+/* The lit inner edge of each half, facing the seam. */
+.half-top::after, .half-bottom::after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  width: 92%;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, var(--light-blue) 30%, #fff 50%, var(--light-blue) 70%, transparent);
+  filter: blur(1.5px);
+  opacity: 1;
+}
+.half-top::after    { bottom: calc(50% - 1px); }
+.half-bottom::after { top: calc(50% - 1px); }
+
+/* ── the light escaping the seam ─────────────────────────────────── */
+
+/* Hot core sitting exactly on the seam. */
+.core {
+  width: 240px; height: 240px;
+  margin-left: -120px; margin-top: -120px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255,255,255,0.95) 0%,
+    rgba(234,244,255,0.85) 6%,
+    rgba(182,217,255,0.55) 14%,
+    rgba(93,180,255,0.28) 26%,
+    rgba(60,122,196,0.10) 44%,
+    transparent 68%);
+}
+
+/* The anamorphic streak — the long horizontal bar of a blue lens flare.
+   Kept as a wide, very flat ellipse and scaled on X so the blast can
+   snap it out across the frame. */
+.streak {
+  width: 1500px; height: 160px;
+  margin-left: -750px; margin-top: -80px;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%,
+    rgba(255,255,255,0.95) 0%,
+    rgba(160,208,255,0.55) 8%,
+    rgba(93,180,255,0.30) 22%,
+    rgba(60,122,196,0.14) 42%,
+    rgba(18,59,120,0.05) 66%,
+    transparent 82%);
+  transform: scaleY(0.16);
+}
+
+/* A tighter, brighter line right along the seam. */
+.seam {
+  width: 620px; height: 26px;
+  margin-left: -310px; margin-top: -13px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(60,122,196,0.35) 12%,
+    rgba(93,180,255,0.85) 34%,
+    rgba(255,255,255,0.95) 50%,
+    rgba(93,180,255,0.85) 66%,
+    rgba(60,122,196,0.35) 88%,
+    transparent 100%);
+  filter: blur(3px);
+  transform: scaleY(0.22);
+}
+
+/* Radial spokes, the starburst part of the flare. */
+.spokes {
+  width: 900px; height: 900px;
+  margin-left: -450px; margin-top: -450px;
+  background: conic-gradient(from 0deg,
+    transparent 0deg, rgba(182,217,255,0.30) 2deg, transparent 5deg,
+    transparent 40deg, rgba(93,180,255,0.16) 42deg, transparent 46deg,
+    transparent 86deg, rgba(182,217,255,0.22) 90deg, transparent 94deg,
+    transparent 130deg, rgba(93,180,255,0.14) 133deg, transparent 137deg,
+    transparent 176deg, rgba(182,217,255,0.30) 180deg, transparent 184deg,
+    transparent 220deg, rgba(93,180,255,0.16) 223deg, transparent 227deg,
+    transparent 266deg, rgba(182,217,255,0.22) 270deg, transparent 274deg,
+    transparent 310deg, rgba(93,180,255,0.14) 313deg, transparent 317deg,
+    transparent 360deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,0.5) 30%, transparent 62%);
+          mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,0.5) 30%, transparent 62%);
+  filter: blur(1px);
+}
+
+/* A brief wash over the whole band at the instant of the blast. Short
+   enough to read as a flash rather than as a brightness change. */
+.bloom {
+  left: 0; top: 0; right: 0; bottom: 0;
+  margin: 0;
+  background: radial-gradient(ellipse 70% 120% at 50% 46%,
+    rgba(182,217,255,0.34) 0%,
+    rgba(93,180,255,0.16) 24%,
+    rgba(60,122,196,0.06) 48%,
+    transparent 74%);
+}
+
+/* Volumetric spill on the floor of the frame, the cargo-door read:
+   light does not just glow, it lands on something. */
+.spill {
+  left: 50%;
+  top: 46%;
+  width: 1200px; height: 420px;
+  margin-left: -600px;
+  background: radial-gradient(ellipse 50% 50% at 50% 0%,
+    rgba(93,180,255,0.30) 0%,
+    rgba(60,122,196,0.14) 26%,
+    rgba(18,59,120,0.05) 52%,
+    transparent 76%);
+}
+
+/* The state the piece rests in: Truth Blue, not white. It fades up as
+   the flash decays so the colour genuinely lands on brand rather than
+   just being a dimmer version of the blast. */
+.ember {
+  width: 760px; height: 120px;
+  margin-left: -380px; margin-top: -60px;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%,
+    rgba(182,217,255,0.55) 0%,
+    rgba(93,180,255,0.34) 9%,
+    rgba(60,122,196,0.30) 22%,
+    rgba(60,122,196,0.12) 46%,
+    rgba(18,59,120,0.04) 70%,
+    transparent 86%);
+  transform: scaleY(0.20);
+}
+
+/* ── the sequence ────────────────────────────────────────────────── */
+@keyframes arc-rise { from { opacity: 0; } to { opacity: 1; } }
+@keyframes arc-half-up   { 0%,22% { transform: translateY(0); }
+                          62%,100% { transform: translateY(calc(var(--part) * -1)); } }
+@keyframes arc-half-down { 0%,22% { transform: translateY(0); }
+                          62%,100% { transform: translateY(var(--part)); } }
+
+/* The core: nothing, then a hard spike, then settle to a low ember. */
+@keyframes arc-core {
+  0%, 14%  { opacity: 0;    transform: scale(0.20); }
+  30%      { opacity: 0.35; transform: scale(0.42); }
+  40%      { opacity: 1;    transform: scale(1.25); }
+  46%      { opacity: 0.95; transform: scale(1.05); }
+  70%      { opacity: 0.34; transform: scale(0.74); }
+  100%     { opacity: 0.10; transform: scale(0.52); }
+}
+/* The streak snaps wide at the blast, then retracts. */
+@keyframes arc-streak {
+  0%, 16%  { opacity: 0;    transform: scaleY(0.16) scaleX(0.05); }
+  32%      { opacity: 0.30; transform: scaleY(0.16) scaleX(0.30); }
+  40%      { opacity: 1;    transform: scaleY(0.20) scaleX(1.00); }
+  52%      { opacity: 0.72; transform: scaleY(0.16) scaleX(0.88); }
+  100%     { opacity: 0.10; transform: scaleY(0.10) scaleX(0.44); }
+}
+@keyframes arc-seam {
+  0%, 12%  { opacity: 0;    transform: scaleY(0.22) scaleX(0.02); }
+  30%      { opacity: 0.85; transform: scaleY(0.22) scaleX(0.42); }
+  40%      { opacity: 1;    transform: scaleY(0.30) scaleX(1.00); }
+  100%     { opacity: 0.30; transform: scaleY(0.16) scaleX(0.66); }
+}
+@keyframes arc-spokes {
+  0%, 30%  { opacity: 0;    transform: scale(0.45) rotate(0deg); }
+  40%      { opacity: 0.85; transform: scale(1.00) rotate(4deg); }
+  58%      { opacity: 0.18; transform: scale(1.16) rotate(7deg); }
+  100%     { opacity: 0;    transform: scale(1.22) rotate(9deg); }
+}
+@keyframes arc-spill {
+  0%, 26%  { opacity: 0; }
+  40%      { opacity: 1; }
+  100%     { opacity: 0.30; }
+}
+@keyframes arc-bloom {
+  0%, 30%  { opacity: 0; }
+  40%      { opacity: 1; }
+  55%      { opacity: 0.20; }
+  100%     { opacity: 0; }
+}
+@keyframes arc-ember {
+  0%, 46%  { opacity: 0;    transform: scaleY(0.20) scaleX(0.70); }
+  72%      { opacity: 0.75; transform: scaleY(0.20) scaleX(0.94); }
+  100%     { opacity: 1;    transform: scaleY(0.20) scaleX(1); }
+}
+
+/* Settled state: a slow Truth Blue breath, running for as long as the
+   page is open. Opacity only — this is the cheap, permanent phase. */
+@keyframes arc-pulse {
+  0%, 100% { opacity: 0.42; }
+  50%      { opacity: 0.90; }
+}
+
+.seq { animation-duration: 2700ms; animation-timing-function: cubic-bezier(.19,1,.22,1); animation-fill-mode: both; }
+.sphere-half { animation: arc-rise 700ms ease-out both; }
+.half-top    { animation: arc-rise 700ms ease-out both, arc-half-up   2700ms cubic-bezier(.19,1,.22,1) both; }
+.half-bottom { animation: arc-rise 700ms ease-out both, arc-half-down 2700ms cubic-bezier(.19,1,.22,1) both; }
+.core   { animation: arc-core   2700ms cubic-bezier(.19,1,.22,1) both, arc-pulse 5200ms ease-in-out 2700ms infinite; }
+.seam   { animation: arc-seam   2700ms cubic-bezier(.19,1,.22,1) both, arc-pulse 5200ms ease-in-out 2700ms infinite; }
+.streak { animation: arc-streak 2700ms cubic-bezier(.19,1,.22,1) both, arc-pulse 5200ms ease-in-out 2700ms infinite; }
+.spokes { animation: arc-spokes 2700ms cubic-bezier(.19,1,.22,1) both; }
+.spill  { animation: arc-spill  2700ms cubic-bezier(.19,1,.22,1) both, arc-pulse 5200ms ease-in-out 2700ms infinite; }
+.bloom  { animation: arc-bloom  2700ms cubic-bezier(.19,1,.22,1) both; }
+.ember  { animation: arc-ember  2700ms cubic-bezier(.19,1,.22,1) both, arc-pulse 5200ms ease-in-out 2700ms infinite; }
+
+/* Fades the whole band into the page beneath it. */
+.fade {
+  position: absolute; inset-inline: 0; bottom: 0; height: 160px;
+  background: linear-gradient(to bottom, transparent, #05080f);
+}
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="light">
+    <div class="spill"></div>
+    <div class="spokes centre"></div>
+    <div class="streak centre"></div>
+  </div>
+
+  <div class="sphere-half half-top"></div>
+  <div class="sphere-half half-bottom"></div>
+
+  <div class="light">
+    <div class="ember centre"></div>
+    <div class="seam centre"></div>
+    <div class="core centre"></div>
+    <div class="bloom"></div>
+  </div>
+
+  <div class="fade"></div>
+</div>
+
+<script>
+/* Lets the headless previewer jump to an exact moment: setting a
+   negative animation-delay seeks a paused animation to that time. */
+window.ARCARNA_FLARE = {
+  seek(ms) {
+    document.querySelectorAll('*').forEach((el) => {
+      const a = getComputedStyle(el).animationName;
+      if (!a || a === 'none') return;
+      el.style.animationPlayState = 'paused';
+      el.style.animationDelay = getComputedStyle(el).animationName
+        .split(',')
+        .map((n) => (n.trim() === 'arc-pulse' ? `${-(ms - 2700)}ms` : `${-ms}ms`))
+        .join(', ');
+    });
+  },
+};
+</script>
+</body>
+</html>
