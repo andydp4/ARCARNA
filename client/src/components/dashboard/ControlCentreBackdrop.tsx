@@ -55,6 +55,7 @@ export function ControlCentreBackdrop() {
         .arc-cf {
           --arc-sphere: 260px;
           --arc-open: 16px;   /* how far each door slides — "opens slightly" */
+          --arc-cap: 6%;      /* fixed shell at each pole; doors run between */
           /* Intensity of everything luminous. The shell and core keep their
              own values, so dialling this down dims the burst and the halo
              without dissolving the object itself.
@@ -74,21 +75,48 @@ export function ControlCentreBackdrop() {
           background: radial-gradient(circle at 50% 50%, #060c16 0%, #02040a 70%);
           box-shadow: inset 0 0 60px rgba(2,4,10,0.9), 0 0 50px rgba(2,4,10,0.85);
         }
+        /* The far inside wall of the shell, seen through the aperture above
+           and below the core. Lit only by bounce off the plasma, so it reads
+           as the inside of the same object rather than a hole through it. */
+        .arc-cf .arc-interior {
+          position: absolute; inset: 0; border-radius: 50%;
+          background: radial-gradient(ellipse 42% 60% at 50% 44%, #0c1a2c 0%, #071120 44%, #03070f 78%, #02040a 100%);
+          box-shadow: inset 0 22px 40px rgba(2,4,10,0.9), inset 0 -22px 40px rgba(2,4,10,0.9);
+        }
         /* The Truth Blue sphere inside. Set back off the shell wall so the
-           aperture frames a rounded object rather than a flat slice. */
+           aperture frames a rounded object rather than a flat slice. Read as
+           dense plasma, not glass: lit from within, not seen through. */
         .arc-cf .arc-core {
           position: absolute; inset: 19%; border-radius: 50%;
-          background: radial-gradient(circle at 42% 36%,
-            #cfe6ff 0%, #B6D9FF 9%, #5DB4FF 24%, #3C7AC4 46%,
-            #2a5c9c 66%, #123B78 84%, #0B2E66 100%);
+          background:
+            /* Terminator. A slice this narrow is geometrically almost flat,
+               so the roundness has to come from shading — without it the
+               slot shows a straight blue bar with square ends. */
+            linear-gradient(180deg,
+              rgba(2,4,10,0.92) 0%, rgba(2,4,10,0.55) 9%, rgba(2,4,10,0.14) 20%,
+              transparent 34%, transparent 62%,
+              rgba(2,4,10,0.22) 76%, rgba(2,4,10,0.66) 90%, rgba(2,4,10,0.95) 100%),
+            radial-gradient(ellipse 26% 20% at 46% 40%, #ffffff 0%, #dcefff 34%, transparent 72%),
+            radial-gradient(circle at 44% 38%,
+              #cfe6ff 0%, #B6D9FF 11%, #5DB4FF 26%, #3C7AC4 48%,
+              #2a5c9c 68%, #123B78 86%, #0B2E66 100%);
           box-shadow: 0 0 50px rgba(93,180,255,0.55), 0 0 120px rgba(60,122,196,0.45);
         }
         .arc-cf .arc-door {
-          position: absolute; top: -6%; height: 112%; width: 52%;
+          position: absolute; top: var(--arc-cap); bottom: var(--arc-cap); width: 52%;
           background:
             linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%, transparent 74%, rgba(0,0,0,0.35) 100%),
-            linear-gradient(90deg, #0f1b2c 0%, #16243a 34%, #101c2e 62%, #0a1322 100%);
+            linear-gradient(90deg, #0a1220 0%, #1b2b44 30%, #223350 46%, #142135 62%, #070d18 100%);
         }
+        /* Fixed shell at the poles. These never move, which is what stops the
+           sphere reading as two halves coming apart: the aperture is a slot
+           cut in a solid object, bounded by shell that stays put. */
+        .arc-cf .arc-cap {
+          position: absolute; left: -2%; right: -2%; height: var(--arc-cap);
+          background: linear-gradient(90deg, #0c1626 0%, #142034 38%, #0e1a2b 66%, #091120 100%);
+        }
+        .arc-cf .arc-cap-t { top: 0;    box-shadow: inset 0 -1px 0 rgba(93,180,255,0.18); }
+        .arc-cf .arc-cap-b { bottom: 0; box-shadow: inset 0 1px 0 rgba(93,180,255,0.18); }
         .arc-cf .arc-door-l { left: -2%;  border-right: 1px solid rgba(93,180,255,0.30); }
         .arc-cf .arc-door-r { right: -2%; border-left:  1px solid rgba(93,180,255,0.30); }
         /* The lit inner edge of each door, catching the core's light. */
@@ -210,9 +238,12 @@ export function ControlCentreBackdrop() {
       <div className="arc-l"><div className="arc-halo arc-mid" /></div>
 
       <div className="arc-shell arc-mid">
+        <div className="arc-interior" />
         <div className="arc-core" />
         <div className="arc-door arc-door-l" />
         <div className="arc-door arc-door-r" />
+        <div className="arc-cap arc-cap-t" />
+        <div className="arc-cap arc-cap-b" />
         <div className="arc-rim" />
       </div>
 
