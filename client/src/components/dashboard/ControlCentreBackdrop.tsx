@@ -51,10 +51,20 @@ export function ControlCentreBackdrop() {
         .arc-cf {
           --arc-sphere: 260px;
           --arc-part: 26px;
+          /* Overall intensity of everything luminous — the blast, the
+             streak, the spill and the settled pulse all scale together,
+             while the sphere itself stays put. The whole point of it
+             being one number is that the piece can be dialled to taste
+             behind live figures without retiming anything.
+                0.35  barely there
+                0.55  low — current default, for testing in situ
+                0.80  present
+                1.00  full, as designed */
+          --arc-gain: 0.55;
         }
         /* Everything luminous blends additively, so overlaps build toward
            white the way real light does. */
-        .arc-cf .arc-l { position: absolute; inset: 0; }
+        .arc-cf .arc-l { position: absolute; inset: 0; opacity: var(--arc-gain); }
         .arc-cf .arc-l > * { position: absolute; mix-blend-mode: screen; }
         .arc-cf .arc-c { left: 50%; top: 46%; }
 
