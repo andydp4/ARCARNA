@@ -26,8 +26,8 @@ html, body { margin: 0; height: 100%; background: #05080f; }
 
         .arc-cf {
           --arc-sphere: 260px;
-          --arc-open: 16px;   /* how far the right door slides */
-          --arc-open-l: calc(var(--arc-open) * 2);  /* the left opens twice as far */
+          --arc-open: 16px;   /* where both doors come to rest — the same for each */
+          --arc-overrun: calc(var(--arc-open) * 2.6);  /* how far the left one swings past first */
           --arc-cap: 6%;      /* fixed shell at each pole */
           /* The ARCARNA mark etched over the shell, mapped onto the sphere
              rather than tiled flat: each motif is placed by latitude and
@@ -99,10 +99,10 @@ html, body { margin: 0; height: 100%; background: #05080f; }
         }
         /* Fixed shell at the poles. These never move, which is what stops the
            sphere reading as two halves coming apart: the aperture is a slot
-           cut in a solid object, bounded by shell that stays put. */
-                /* Fixed shell at the poles: the same full sphere, clipped to a band,
-           so its etch registers exactly with the doors' instead of reading as
-           a separate strip laid across the top and bottom. */
+           cut in a solid object, bounded by shell that stays put. It is the
+           same full sphere as the doors, clipped to a band, so its etch
+           registers exactly with theirs instead of reading as a separate
+           strip laid across the top and bottom. */
         .arc-cf .arc-cap {
           position: absolute; inset: 0;
           background-image: var(--arc-etch), linear-gradient(103deg, #050b14 0%, #101c2e 34%, #16243a 50%, #0c1626 68%, #04080f 100%);
@@ -135,14 +135,26 @@ html, body { margin: 0; height: 100%; background: #05080f; }
         }
         /* Specular and environment reflection. Above the doors and fixed,
            because a reflection belongs to the room rather than to the panels
-           — it should not slide when they do. */
+           — it should not slide when they do.
+
+           The specular is one soft oval, not a pip inside a glow. An earlier
+           pair sat on different centres with a tight, near-opaque core, and
+           the bright spot read as a speck of dirt on the sphere rather than
+           a reflection in it. Wider than tall, so it lies along the surface
+           instead of hovering in front of it, and it fades out well short of
+           its own edge — a hard stop is what gives a highlight away.
+
+           There is no horizon band. A reflected horizon is the conventional
+           way to say "polished", but on a sphere this size it draws a level
+           line clean across the middle and the object goes flat — the same
+           complaint the etch pattern drew. Roundness comes from the specular,
+           the bounce below right, and the limb falling away in .arc-form. */
         .arc-cf .arc-sheen {
           position: absolute; inset: 0; border-radius: 50%;
           mix-blend-mode: screen;
           background:
-            radial-gradient(ellipse 15% 11% at 30% 21%, rgba(232,243,255,0.55) 0%, rgba(190,220,255,0.22) 45%, transparent 78%),
-            radial-gradient(ellipse 50% 38% at 33% 26%, rgba(178,208,245,0.16) 0%, rgba(110,160,220,0.05) 46%, transparent 74%),
-            linear-gradient(180deg, transparent 40%, rgba(130,180,240,0.10) 48%, rgba(168,208,252,0.17) 51%, rgba(120,170,230,0.06) 56%, transparent 63%),
+            radial-gradient(ellipse 24% 15% at 32% 25%, rgba(234,245,255,0.30) 0%, rgba(200,226,255,0.16) 34%, rgba(146,188,238,0.06) 62%, transparent 88%),
+            radial-gradient(ellipse 58% 46% at 33% 27%, rgba(178,208,245,0.12) 0%, rgba(110,160,220,0.04) 50%, transparent 82%),
             radial-gradient(ellipse 38% 32% at 74% 84%, rgba(60,122,196,0.20) 0%, transparent 66%);
         }
         /* Above the doors, so the sphere reads as one machined object
@@ -209,12 +221,14 @@ html, body { margin: 0; height: 100%; background: #05080f; }
         }
 
         @keyframes arc-cf-rise { from { opacity: 0; } to { opacity: 1; } }
-        /* The left door overruns and draws back, so the mechanism reads as
-           driven rather than eased into place. */
+        /* The left door swings well past its stop and draws back level with
+           the right, so the mechanism reads as driven rather than eased into
+           place. It settles on --arc-open like its opposite number: the
+           overrun is the flourish, not the resting position. */
         @keyframes arc-cf-door-l {
           0%,18% { transform: translateX(0); }
-          52% { transform: translateX(calc(var(--arc-open-l) * -1.3)); }
-          76%,100% { transform: translateX(calc(var(--arc-open-l) * -1)); }
+          52% { transform: translateX(calc(var(--arc-overrun) * -1)); }
+          76%,100% { transform: translateX(calc(var(--arc-open) * -1)); }
         }
         @keyframes arc-cf-door-r { 0%,18% { transform: translateX(0); } 58%,100% { transform: translateX(var(--arc-open)); } }
         @keyframes arc-cf-shaft {
@@ -260,7 +274,7 @@ html, body { margin: 0; height: 100%; background: #05080f; }
 
         /* Reduced motion: the settled frame, stated outright. */
         .arc-cf[data-static="true"] * { animation: none !important; }
-        .arc-cf[data-static="true"] .arc-door-l { transform: translateX(calc(var(--arc-open-l) * -1)); }
+        .arc-cf[data-static="true"] .arc-door-l { transform: translateX(calc(var(--arc-open) * -1)); }
         .arc-cf[data-static="true"] .arc-door-r { transform: translateX(var(--arc-open)); }
         .arc-cf[data-static="true"] .arc-shaft  { opacity: 0.30; transform: scaleX(0.16) scaleY(0.62); }
         .arc-cf[data-static="true"] .arc-streak { opacity: 0.14; transform: scaleX(0.10) scaleY(0.42); }
