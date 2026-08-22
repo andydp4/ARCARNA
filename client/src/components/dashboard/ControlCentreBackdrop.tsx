@@ -102,8 +102,13 @@ export function ControlCentreBackdrop() {
               #2a5c9c 68%, #123B78 86%, #0B2E66 100%);
           box-shadow: 0 0 50px rgba(93,180,255,0.55), 0 0 120px rgba(60,122,196,0.45);
         }
+        /* Both doors span the full shell and are clipped to opposite sides of
+           one shared square wave. Sharing a single boundary makes the mesh
+           exact by construction — two independently generated profiles have
+           to agree, and an earlier pair did not, which left the shut sphere
+           showing daylight down the seam. */
         .arc-cf .arc-door {
-          position: absolute; top: var(--arc-cap); bottom: var(--arc-cap); width: 52%;
+          position: absolute; top: var(--arc-cap); bottom: var(--arc-cap); left: 0; right: 0;
           background:
             linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%, transparent 74%, rgba(0,0,0,0.35) 100%),
             linear-gradient(90deg, #0a1220 0%, #1b2b44 30%, #223350 46%, #142135 62%, #070d18 100%);
@@ -117,16 +122,17 @@ export function ControlCentreBackdrop() {
         }
         .arc-cf .arc-cap-t { top: 0;    box-shadow: inset 0 -1px 0 rgba(93,180,255,0.18); }
         .arc-cf .arc-cap-b { bottom: 0; box-shadow: inset 0 1px 0 rgba(93,180,255,0.18); }
-        .arc-cf .arc-door-l { left: -2%;  border-right: 1px solid rgba(93,180,255,0.30); }
-        .arc-cf .arc-door-r { right: -2%; border-left:  1px solid rgba(93,180,255,0.30); }
-        /* The lit inner edge of each door, catching the core's light. */
-        .arc-cf .arc-door::after {
-          content: ""; position: absolute; top: 0; bottom: 0; width: 3px;
-          background: linear-gradient(180deg, transparent, #B6D9FF 34%, #fff 50%, #B6D9FF 66%, transparent);
-          filter: blur(1.5px);
+        /* drop-shadow rather than a border for the lit edge: it follows the
+           clipped alpha shape, where a border sits on the box edge and would
+           survive only on the tooth tips. */
+        .arc-cf .arc-door-l {
+          clip-path: polygon(0% 0%, 52.6% 0%, 52.6% 10%, 47.4% 10%, 47.4% 20%, 52.6% 20%, 52.6% 30%, 47.4% 30%, 47.4% 40%, 52.6% 40%, 52.6% 50%, 47.4% 50%, 47.4% 60%, 52.6% 60%, 52.6% 70%, 47.4% 70%, 47.4% 80%, 52.6% 80%, 52.6% 90%, 47.4% 90%, 47.4% 100%, 0% 100%);
+          filter: drop-shadow(2px 0 3px rgba(93,180,255,0.42));
         }
-        .arc-cf .arc-door-l::after { right: 0; }
-        .arc-cf .arc-door-r::after { left: 0; }
+        .arc-cf .arc-door-r {
+          clip-path: polygon(100% 0%, 52.6% 0%, 52.6% 10%, 47.4% 10%, 47.4% 20%, 52.6% 20%, 52.6% 30%, 47.4% 30%, 47.4% 40%, 52.6% 40%, 52.6% 50%, 47.4% 50%, 47.4% 60%, 52.6% 60%, 52.6% 70%, 47.4% 70%, 47.4% 80%, 52.6% 80%, 52.6% 90%, 47.4% 90%, 47.4% 100%, 100% 100%);
+          filter: drop-shadow(-2px 0 3px rgba(93,180,255,0.42));
+        }
         /* Above the doors, so the sphere reads as one machined object
            rather than two panels sitting side by side. */
         .arc-cf .arc-rim {
@@ -148,21 +154,25 @@ export function ControlCentreBackdrop() {
             rgba(60,122,196,0.16) 48%, rgba(18,59,120,0.05) 72%, transparent 88%);
           transform: scaleX(0.16);
         }
-        /* A lens artifact, so horizontal regardless of the aperture. */
+        /* The long faint flare, running with the aperture rather than across it. */
         .arc-cf .arc-streak {
-          width: 1500px; height: 150px; margin-left: -750px; margin-top: -75px;
+          width: 150px; height: 1200px; margin-left: -75px; margin-top: -600px;
           background: radial-gradient(ellipse 50% 50% at 50% 50%,
             rgba(255,255,255,0.92) 0%, rgba(160,208,255,0.50) 8%, rgba(93,180,255,0.26) 22%,
             rgba(60,122,196,0.12) 42%, rgba(18,59,120,0.04) 66%, transparent 82%);
-          transform: scaleY(0.14);
+          transform: scaleX(0.14);
         }
         .arc-cf .arc-spokes {
           width: 820px; height: 820px; margin-left: -410px; margin-top: -410px;
+          /* Vertical arms only, plus faint diagonals — the horizontal pair
+             were the last thing throwing a level line across the frame. */
           background: conic-gradient(from 0deg,
-            transparent 0deg, rgba(182,217,255,0.26) 2deg, transparent 5deg,
-            transparent 86deg, rgba(182,217,255,0.20) 90deg, transparent 94deg,
-            transparent 176deg, rgba(182,217,255,0.26) 180deg, transparent 184deg,
-            transparent 266deg, rgba(182,217,255,0.20) 270deg, transparent 274deg, transparent 360deg);
+            transparent 0deg, rgba(182,217,255,0.30) 2deg, transparent 6deg,
+            transparent 42deg, rgba(93,180,255,0.07) 45deg, transparent 48deg,
+            transparent 132deg, rgba(93,180,255,0.07) 135deg, transparent 138deg,
+            transparent 174deg, rgba(182,217,255,0.30) 180deg, transparent 186deg,
+            transparent 222deg, rgba(93,180,255,0.07) 225deg, transparent 228deg,
+            transparent 312deg, rgba(93,180,255,0.07) 315deg, transparent 318deg, transparent 360deg);
           -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,0.5) 30%, transparent 62%);
                   mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,0.5) 30%, transparent 62%);
           filter: blur(1px);
@@ -181,7 +191,13 @@ export function ControlCentreBackdrop() {
         }
 
         @keyframes arc-cf-rise { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes arc-cf-door-l { 0%,18% { transform: translateX(0); } 58%,100% { transform: translateX(calc(var(--arc-open) * -1)); } }
+        /* The left door overruns and draws back, so the mechanism reads as
+           driven rather than eased into place. */
+        @keyframes arc-cf-door-l {
+          0%,18% { transform: translateX(0); }
+          52% { transform: translateX(calc(var(--arc-open) * -1.3)); }
+          76%,100% { transform: translateX(calc(var(--arc-open) * -1)); }
+        }
         @keyframes arc-cf-door-r { 0%,18% { transform: translateX(0); } 58%,100% { transform: translateX(var(--arc-open)); } }
         @keyframes arc-cf-shaft {
           0%,16% { opacity: 0; transform: scaleX(0.05) scaleY(0.30); }
@@ -191,10 +207,10 @@ export function ControlCentreBackdrop() {
           100% { opacity: 0.30; transform: scaleX(0.16) scaleY(0.62); }
         }
         @keyframes arc-cf-streak {
-          0%,22% { opacity: 0; transform: scaleY(0.14) scaleX(0.05); }
-          44% { opacity: 1; transform: scaleY(0.18) scaleX(1.00); }
-          60% { opacity: 0.55; transform: scaleY(0.14) scaleX(0.80); }
-          100% { opacity: 0.14; transform: scaleY(0.10) scaleX(0.42); }
+          0%,22% { opacity: 0; transform: scaleX(0.14) scaleY(0.05); }
+          44% { opacity: 1; transform: scaleX(0.18) scaleY(1.00); }
+          60% { opacity: 0.55; transform: scaleX(0.14) scaleY(0.80); }
+          100% { opacity: 0.14; transform: scaleX(0.10) scaleY(0.42); }
         }
         @keyframes arc-cf-spokes {
           0%,34% { opacity: 0; transform: scale(0.45) rotate(0deg); }
@@ -229,7 +245,7 @@ export function ControlCentreBackdrop() {
         .arc-cf[data-static="true"] .arc-door-l { transform: translateX(calc(var(--arc-open) * -1)); }
         .arc-cf[data-static="true"] .arc-door-r { transform: translateX(var(--arc-open)); }
         .arc-cf[data-static="true"] .arc-shaft  { opacity: 0.30; transform: scaleX(0.16) scaleY(0.62); }
-        .arc-cf[data-static="true"] .arc-streak { opacity: 0.14; transform: scaleY(0.10) scaleX(0.42); }
+        .arc-cf[data-static="true"] .arc-streak { opacity: 0.14; transform: scaleX(0.10) scaleY(0.42); }
         .arc-cf[data-static="true"] .arc-halo   { opacity: 0.55; }
         .arc-cf[data-static="true"] .arc-spokes,
         .arc-cf[data-static="true"] .arc-bloom  { opacity: 0; }
