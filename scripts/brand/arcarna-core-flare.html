@@ -1,57 +1,29 @@
-import { useEffect, useState } from "react";
-
-/**
- * Control Centre backdrop: a metal sphere holds a Truth Blue sphere inside
- * it. Two doors slide apart horizontally, opening a vertical aperture; the
- * blue shine escapes in a burst, the eye adjusts, and it settles to the core
- * pulsing quietly behind a part-open door.
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ARCARNA — Core Flare</title>
+<style>
+/*
+ * ARCARNA — Core Flare
+ * ------------------------------------------------------------------
+ * Design source for the Control Centre backdrop. Generated from the
+ * shipping component so the two cannot drift: the stylesheet and markup
+ * below are lifted verbatim from
+ * client/src/components/dashboard/ControlCentreBackdrop.tsx.
  *
- * Beats:
- *   0.00-0.50s  the metal sphere sits closed, dark, rim-lit
- *   0.50-1.20s  the doors slide apart; a line of Truth Blue appears
- *   1.20-1.50s  the shine escapes — vertical shaft, anamorphic flare
- *   1.50-2.70s  the eye adjusts; the burst falls away
- *   2.70s+      settled: the core breathing behind the open door, ~5s
+ * A machined shell holds a Truth Blue plasma sphere. Toothed doors draw
+ * apart, the shine escapes in a burst, the eye adjusts, and it settles
+ * to the core breathing behind a part-open door.
  *
- * The doors are clipped by the shell, which is a circle with
- * overflow:hidden, so they slide out of sight behind that mask rather than
- * detaching. The silhouette stays a whole circle throughout — it is a thing
- * opening, not a thing being pulled apart.
- *
- * Built from CSS rather than a rendered video, for three reasons. The piece
- * ends in an indefinite pulse, and a one-shot video can only stop dead or
- * loop the whole burst. Autoplay policies refuse video often enough that a
- * decorative layer silently failing is a real outcome. And it animates
- * transform and opacity only, so it composites on the GPU and costs
- * essentially nothing once settled — which matters directly behind live
- * figures someone is trying to read.
- *
- * Design source, with a headless previewer for stepping the timeline:
- * scripts/brand/arcarna-core-flare.html
- *
- * Accessibility: decorative, so aria-hidden and inert to pointers — it must
- * never intercept a click meant for a tile. Under prefers-reduced-motion it
- * renders the settled state directly, with no sequence and no pulse.
+ * The etch generator lives in scripts/brand/generate-core-etch.py.
  */
-export function ControlCentreBackdrop() {
-  const [prefersReduced, setPrefersReduced] = useState(false);
+html, body { margin: 0; height: 100%; background: #05080f; }
+.stage {
+  position: relative; width: 100%; height: 420px; overflow: hidden;
+  background: radial-gradient(120% 140% at 50% 46%, #0a1526 0%, #05080f 62%, #03050a 100%);
+}
 
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setPrefersReduced(query.matches);
-    const onChange = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-
-  return (
-    <div
-      aria-hidden="true"
-      data-static={prefersReduced ? "true" : undefined}
-      className="arc-cf pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] overflow-hidden"
-      data-testid="control-centre-backdrop"
-    >
-      <style>{`
         .arc-cf {
           --arc-sphere: 260px;
           --arc-open: 16px;   /* where both doors come to rest — the same for each */
@@ -309,32 +281,49 @@ export function ControlCentreBackdrop() {
         .arc-cf[data-static="true"] .arc-halo   { opacity: 0.55; }
         .arc-cf[data-static="true"] .arc-spokes,
         .arc-cf[data-static="true"] .arc-bloom  { opacity: 0; }
-      `}</style>
+      
+</style>
+</head>
+<body>
+<div class="stage" id="stage"><div class="arc-cf" style="position:absolute;inset:0">
+<div class="arc-l"><div class="arc-halo arc-mid" ></div></div>
 
-      <div className="arc-l"><div className="arc-halo arc-mid" /></div>
-
-      <div className="arc-shell arc-mid">
-        <div className="arc-interior" />
-        <div className="arc-core" />
-        <div className="arc-door arc-door-l" />
-        <div className="arc-door arc-door-r" />
-        <div className="arc-cap arc-cap-t" />
-        <div className="arc-cap arc-cap-b" />
-        <div className="arc-form" />
-        <div className="arc-sheen" />
-        <div className="arc-rim" />
+      <div class="arc-shell arc-mid">
+        <div class="arc-interior" ></div>
+        <div class="arc-core" ></div>
+        <div class="arc-door arc-door-l" ></div>
+        <div class="arc-door arc-door-r" ></div>
+        <div class="arc-cap arc-cap-t" ></div>
+        <div class="arc-cap arc-cap-b" ></div>
+        <div class="arc-form" ></div>
+        <div class="arc-sheen" ></div>
+        <div class="arc-rim" ></div>
       </div>
 
-      <div className="arc-l">
-        <div className="arc-spokes arc-mid" />
-        <div className="arc-streak arc-mid" />
-        <div className="arc-shaft arc-mid" />
-        <div className="arc-bloom" />
+      <div class="arc-l">
+        <div class="arc-spokes arc-mid" ></div>
+        <div class="arc-streak arc-mid" ></div>
+        <div class="arc-shaft arc-mid" ></div>
+        <div class="arc-bloom" ></div>
       </div>
 
-      {/* Fades the backdrop into the page so it never competes with the
-          tiles sitting on top of it. */}
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-background" />
-    </div>
-  );
-}
+      
+      <div class="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-background" ></div>
+</div></div>
+<script>
+/* Seek a paused animation by giving it a negative delay. The settled pulse
+   starts 2700ms in, so it needs its own offset or it lands out of phase. */
+window.ARCARNA_FLARE = {
+  seek(ms) {
+    document.querySelectorAll('.arc-cf *').forEach((el) => {
+      const names = getComputedStyle(el).animationName;
+      if (!names || names === 'none') return;
+      el.style.animationPlayState = 'paused';
+      el.style.animationDelay = names.split(',')
+        .map((n) => (n.trim().endsWith('pulse') ? `${-(ms - 2700)}ms` : `${-ms}ms`)).join(', ');
+    });
+  },
+};
+</script>
+</body>
+</html>
