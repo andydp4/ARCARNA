@@ -39,9 +39,9 @@
 
   --sphere: 260px;
   --open: 16px;      /* how far the right door slides */
-  --open-l: calc(var(--open) * 1.5);   /* the left opens half again as far */
+  --open-l: calc(var(--open) * 2);     /* the left opens twice as far */
   --cap: 6%;         /* fixed shell at each pole; the doors run between */
-  --gain: 1;         /* 1 = full; above 1 brightens past it */
+  --gain: 1.5;       /* 1 = full; above 1 brightens past it */
 }
 
 * { box-sizing: border-box; }
@@ -134,9 +134,20 @@ html, body { margin: 0; height: 100%; background: #05080f; }
   bottom: var(--cap);
   left: 0;
   right: 0;
+  /* Shiny dark-blue-black metal with the ARCARNA mark etched into it.
+     The motif is laid down twice, one black copy offset up-left and one
+     white copy offset down-right: lit from above, a groove is shadowed on
+     its upper wall and catches light on its lower one, and that offset
+     pair is what makes it read as cut into the surface rather than
+     printed onto it. */
   background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='46' cy='45' r='28' fill='none' stroke='%239aabc0' stroke-width='13' stroke-dasharray='140 36' stroke-dashoffset='-118'/%3E%3Cpath d='M66 34 L79 42 L96 86 L68 70 Z' fill='%239aabc0'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='46' cy='45' r='28' fill='none' stroke='%2339455a' stroke-width='13' stroke-dasharray='140 36' stroke-dashoffset='-118'/%3E%3Cpath d='M66 34 L79 42 L96 86 L68 70 Z' fill='%2339455a'/%3E%3C/svg%3E"),
     linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%, transparent 74%, rgba(0,0,0,0.35) 100%),
-    linear-gradient(90deg, #0a1220 0%, #1b2b44 30%, #223350 46%, #142135 62%, #070d18 100%);
+    linear-gradient(90deg, #060c16 0%, #16243a 30%, #1d2c46 46%, #101b2c 62%, #04080f 100%);
+  background-size: 17px 17px, 17px 17px, auto, auto;
+  background-position: 1px 1px, -1px -1px, 0 0, 0 0;
+  background-blend-mode: soft-light, soft-light, normal, normal;
 }
 /* Square teeth along the meeting edge, in complementary phase so the pair
    mesh with no gap when shut. drop-shadow rather than a border for the lit
@@ -154,16 +165,36 @@ html, body { margin: 0; height: 100%; background: #05080f; }
 /* Fixed shell at the poles. These never move, which is what stops the
    sphere reading as two halves coming apart: the aperture is a slot cut
    in a solid object, bounded top and bottom by shell that stays put. */
+/* Same machined shell as the doors, so the poles do not read as a
+   different material banded across the top and bottom. */
 .cap {
   position: absolute;
   left: -2%;
   right: -2%;
   height: var(--cap);
-  background:
-    linear-gradient(90deg, #0c1626 0%, #142034 38%, #0e1a2b 66%, #091120 100%);
+  background: inherit;
 }
 .cap-t { top: 0;    box-shadow: inset 0 -1px 0 rgba(93,180,255,0.18); }
 .cap-b { bottom: 0; box-shadow: inset 0 1px 0 rgba(93,180,255,0.18); }
+
+/* Specular and environment reflection. Above the doors and fixed, because
+   a reflection belongs to the room rather than to the panels — it should
+   not slide when they do. */
+.sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  background:
+    /* tight studio hotspot — the thing that says polished, not matte */
+    radial-gradient(ellipse 15% 11% at 30% 21%, rgba(232,243,255,0.55) 0%, rgba(190,220,255,0.22) 45%, transparent 78%),
+    /* the broad softbox it sits in */
+    radial-gradient(ellipse 50% 38% at 33% 26%, rgba(178,208,245,0.16) 0%, rgba(110,160,220,0.05) 46%, transparent 74%),
+    /* the horizon band a polished sphere always picks up */
+    linear-gradient(180deg, transparent 40%, rgba(130,180,240,0.10) 48%, rgba(168,208,252,0.17) 51%, rgba(120,170,230,0.06) 56%, transparent 63%),
+    /* bounce off the floor, lower right */
+    radial-gradient(ellipse 38% 32% at 74% 84%, rgba(60,122,196,0.20) 0%, transparent 66%);
+}
 
 /* A rim around the shell, above the doors, so the sphere reads as one
    machined object rather than two panels sitting side by side. */
@@ -332,6 +363,7 @@ html, body { margin: 0; height: 100%; background: #05080f; }
     <div class="door door-r"></div>
     <div class="cap cap-t"></div>
     <div class="cap cap-b"></div>
+    <div class="sheen"></div>
     <div class="rim"></div>
   </div>
 

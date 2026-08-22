@@ -55,13 +55,13 @@ export function ControlCentreBackdrop() {
         .arc-cf {
           --arc-sphere: 260px;
           --arc-open: 16px;   /* how far the right door slides */
-          --arc-open-l: calc(var(--arc-open) * 1.5);  /* the left opens half again as far */
+          --arc-open-l: calc(var(--arc-open) * 2);  /* the left opens twice as far */
           --arc-cap: 6%;      /* fixed shell at each pole; doors run between */
           /* Intensity of everything luminous. The shell and core keep their
              own values, so dialling this down dims the burst and the halo
              without dissolving the object itself.
-                0.35 barely there · 0.55 low · 1.00 full · 1.50 hot */
-          --arc-gain: 1;
+                0.35 barely there · 0.55 low · 1.00 full · 1.50 hot (default) */
+          --arc-gain: 1.5;
         }
         .arc-cf .arc-mid { position: absolute; left: 50%; top: 46%; }
 
@@ -111,16 +111,31 @@ export function ControlCentreBackdrop() {
            showing daylight down the seam. */
         .arc-cf .arc-door {
           position: absolute; top: var(--arc-cap); bottom: var(--arc-cap); left: 0; right: 0;
+          /* Shiny dark-blue-black metal with the ARCARNA mark etched in. The
+             motif is laid twice — a dark copy offset up-left, a light copy
+             down-right. Lit from above, a groove is shadowed on its upper
+             wall and catches light on its lower one, and that offset pair is
+             what makes it read as cut into the surface rather than printed
+             on it. The two tones sit near mid-grey deliberately: soft-light
+             against grey is a no-op, so the closer they are the shallower
+             the cut, and anything deeper reads as quilting and kills the
+             polish. */
           background:
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='46' cy='45' r='28' fill='none' stroke='%239aabc0' stroke-width='13' stroke-dasharray='140 36' stroke-dashoffset='-118'/%3E%3Cpath d='M66 34 L79 42 L96 86 L68 70 Z' fill='%239aabc0'/%3E%3C/svg%3E"),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='46' cy='45' r='28' fill='none' stroke='%2339455a' stroke-width='13' stroke-dasharray='140 36' stroke-dashoffset='-118'/%3E%3Cpath d='M66 34 L79 42 L96 86 L68 70 Z' fill='%2339455a'/%3E%3C/svg%3E"),
             linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%, transparent 74%, rgba(0,0,0,0.35) 100%),
-            linear-gradient(90deg, #0a1220 0%, #1b2b44 30%, #223350 46%, #142135 62%, #070d18 100%);
+            linear-gradient(90deg, #060c16 0%, #16243a 30%, #1d2c46 46%, #101b2c 62%, #04080f 100%);
+          background-size: 17px 17px, 17px 17px, auto, auto;
+          background-position: 1px 1px, -1px -1px, 0 0, 0 0;
+          background-blend-mode: soft-light, soft-light, normal, normal;
         }
         /* Fixed shell at the poles. These never move, which is what stops the
            sphere reading as two halves coming apart: the aperture is a slot
            cut in a solid object, bounded by shell that stays put. */
         .arc-cf .arc-cap {
           position: absolute; left: -2%; right: -2%; height: var(--arc-cap);
-          background: linear-gradient(90deg, #0c1626 0%, #142034 38%, #0e1a2b 66%, #091120 100%);
+          /* The same shell, so the poles do not band as another material. */
+          background: inherit;
         }
         .arc-cf .arc-cap-t { top: 0;    box-shadow: inset 0 -1px 0 rgba(93,180,255,0.18); }
         .arc-cf .arc-cap-b { bottom: 0; box-shadow: inset 0 1px 0 rgba(93,180,255,0.18); }
@@ -134,6 +149,18 @@ export function ControlCentreBackdrop() {
         .arc-cf .arc-door-r {
           clip-path: polygon(100% 0%, 52.6% 0%, 52.6% 10%, 47.4% 10%, 47.4% 20%, 52.6% 20%, 52.6% 30%, 47.4% 30%, 47.4% 40%, 52.6% 40%, 52.6% 50%, 47.4% 50%, 47.4% 60%, 52.6% 60%, 52.6% 70%, 47.4% 70%, 47.4% 80%, 52.6% 80%, 52.6% 90%, 47.4% 90%, 47.4% 100%, 100% 100%);
           filter: drop-shadow(-2px 0 3px rgba(93,180,255,0.42));
+        }
+        /* Specular and environment reflection. Above the doors and fixed,
+           because a reflection belongs to the room rather than to the panels
+           — it should not slide when they do. */
+        .arc-cf .arc-sheen {
+          position: absolute; inset: 0; border-radius: 50%;
+          mix-blend-mode: screen;
+          background:
+            radial-gradient(ellipse 15% 11% at 30% 21%, rgba(232,243,255,0.55) 0%, rgba(190,220,255,0.22) 45%, transparent 78%),
+            radial-gradient(ellipse 50% 38% at 33% 26%, rgba(178,208,245,0.16) 0%, rgba(110,160,220,0.05) 46%, transparent 74%),
+            linear-gradient(180deg, transparent 40%, rgba(130,180,240,0.10) 48%, rgba(168,208,252,0.17) 51%, rgba(120,170,230,0.06) 56%, transparent 63%),
+            radial-gradient(ellipse 38% 32% at 74% 84%, rgba(60,122,196,0.20) 0%, transparent 66%);
         }
         /* Above the doors, so the sphere reads as one machined object
            rather than two panels sitting side by side. */
@@ -268,6 +295,7 @@ export function ControlCentreBackdrop() {
         <div className="arc-door arc-door-r" />
         <div className="arc-cap arc-cap-t" />
         <div className="arc-cap arc-cap-b" />
+        <div className="arc-sheen" />
         <div className="arc-rim" />
       </div>
 
