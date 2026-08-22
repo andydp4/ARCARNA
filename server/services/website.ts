@@ -113,6 +113,13 @@ export interface WebsiteOrderEngine {
 export interface WebsiteOrderRuntime {
   withTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
   engine: WebsiteOrderEngine;
+  /**
+   * The org's configured tax rate as a percentage, or undefined when unset.
+   * Website orders go through the same engine as the till, so they must supply
+   * the same rate — without it the engine falls back to a hardcoded 20% and
+   * every website order is taxed at a rate the org may not charge.
+   */
+  getOrgTaxRatePercent(orgId: string): Promise<number | undefined>;
   publishOrderCreated(
     tx: unknown,
     eventType: "OrderCreated",
@@ -567,6 +574,7 @@ export function createWebsiteService(repository: WebsiteRepository) {
           address: order.fulfilment.method === "delivery" ? order.fulfilment.address : undefined,
           source: "website",
         });
+        const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
         const result = await runtime.engine.placeOrder({
           orgId,
           customerId: customer.id,
@@ -575,6 +583,7 @@ export function createWebsiteService(repository: WebsiteRepository) {
           paymentMethod: "transfer",
           channel: "web",
           status: settings.defaultOrderStatus,
+          ...(taxRatePercent === undefined ? {} : { taxRatePercent }),
         });
         const createdOrder = await runtime.loadCreatedOrder(tx, result.orderId);
         const orderTotal = asNumber(createdOrder?.total, resolved.subtotal);

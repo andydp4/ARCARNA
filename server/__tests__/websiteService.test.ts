@@ -34,6 +34,7 @@ function repo(overrides: Partial<WebsiteRepository> = {}): WebsiteRepository {
 function runtime(): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
     engine: {
       createCustomer: vi.fn().mockResolvedValue({ id: "customer-1" }),
       placeOrder: vi.fn().mockResolvedValue({ orderId: "order-1", warnings: [] }),
@@ -271,6 +272,47 @@ describe("public website order submission", () => {
     );
     expect(orderRuntime.engine.createCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ source: "website", name: "Ada Buyer" }),
+    );
+  });
+
+  it("passes the org's tax rate to the engine, and omits it when the org has none", async () => {
+    // Without this the engine falls back to DEFAULT_TAX_RATE_PERCENT (20) and
+    // every website order is taxed at a rate the org may not charge — while
+    // the till, which does pass the rate, charges the right one.
+    const repository = repo({
+      listWebsiteOrderProducts: vi.fn().mockResolvedValue([
+        {
+          id: productId,
+          productId: "SKU-1",
+          name: "Cups",
+          defaultSalePrice: "15.00",
+          availableForWebsite: true,
+          stock: 10,
+        },
+      ]),
+    });
+    const service = createWebsiteService(repository);
+    const order = {
+      customer: { name: "Ada Buyer", email: "ada@example.com" },
+      fulfilment: { method: "pickup" as const },
+      items: [{ productId, quantity: 2 }],
+    };
+
+    const configured = runtime();
+    configured.getOrgTaxRatePercent = vi.fn().mockResolvedValue(5);
+    await service.submitPublicOrder("org-1", order, configured);
+    expect(configured.getOrgTaxRatePercent).toHaveBeenCalledWith("org-1");
+    expect(configured.engine.placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ taxRatePercent: 5 }),
+    );
+
+    // An org with no configured rate must send no key at all, so the engine
+    // applies its own default rather than being handed an undefined rate.
+    const unset = runtime();
+    unset.getOrgTaxRatePercent = vi.fn().mockResolvedValue(undefined);
+    await service.submitPublicOrder("org-1", order, unset);
+    expect(unset.engine.placeOrder).toHaveBeenCalledWith(
+      expect.not.objectContaining({ taxRatePercent: expect.anything() }),
     );
   });
 

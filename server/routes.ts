@@ -4,10 +4,7 @@
  */
 import type { Express } from "express";
 import { setupAuth, isAuthenticated, requireOrgContext, requireOrgScope } from "./auth";
-import {
-  registerChannelPublicRoutes,
-  registerChannelAuthenticatedRoutes,
-} from "./routes/channels";
+import { registerChannelAuthenticatedRoutes } from "./routes/channels";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { registerOperationalRoutes } from "./routes/operational";
 import { registerAutomationRoutes } from "./routes/automation";
@@ -51,7 +48,6 @@ import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./route
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
-  registerChannelPublicRoutes(app);
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
   registerAssistantPublicRoutes(app);

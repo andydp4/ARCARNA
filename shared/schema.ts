@@ -378,7 +378,11 @@ export const websiteBlocks = pgTable("website_blocks", {
   buttonBackgroundColor: varchar("button_background_color", { length: 16 }),
   buttonTextColor: varchar("button_text_color", { length: 16 }),
   overlayColor: varchar("overlay_color", { length: 16 }),
-  overlayOpacity: numeric("overlay_opacity", { precision: 4, scale: 3 }).notNull().default("0"),
+  // sql`0`, not "0": a string default renders as `'0'::numeric`, while
+  // migration 038 writes a bare `DEFAULT 0`. Same value, different stored
+  // expression — which is a real difference to the migration-vs-schema
+  // integrity check, and the reason it failed.
+  overlayOpacity: numeric("overlay_opacity", { precision: 4, scale: 3 }).notNull().default(sql`0`),
   imageFit: varchar("image_fit", { length: 16 }).notNull().default("cover"),
   content: jsonb("content").$type<Record<string, unknown>>().notNull().default({}),
   createdBy: varchar("created_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),

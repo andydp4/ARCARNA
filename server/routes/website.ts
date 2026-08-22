@@ -36,6 +36,10 @@ async function getDefaultWebsiteOrderRuntime(): Promise<WebsiteOrderRuntime> {
   defaultWebsiteOrderRuntime = {
     withTransaction,
     engine,
+    async getOrgTaxRatePercent(orgId) {
+      const { getOrgTaxRatePercent } = await import("../services/orgTaxRate");
+      return getOrgTaxRatePercent(orgId);
+    },
     publishOrderCreated: (tx, eventType, correlationId, payload, options) =>
       publishEventTx(tx as never, eventType, correlationId, payload, options),
     async loadCreatedOrder(tx, orderId) {

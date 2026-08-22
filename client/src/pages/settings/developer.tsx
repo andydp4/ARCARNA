@@ -67,9 +67,12 @@ import {
 } from "lucide-react";
 
 const ALL_SCOPES: { id: string; label: string; description: string; group: string }[] = [
+  // Only offer a scope some /v1 route actually enforces with requireScope().
+  // "products:write" used to sit here promising "create, update, delete
+  // products" — there is no product write endpoint on /v1, so granting it did
+  // nothing and the key silently failed to do what its permissions claimed.
   // Products
   { id: "products:read",   label: "Products — read",   description: "List products, prices, stock", group: "Products" },
-  { id: "products:write",  label: "Products — write",  description: "Create, update, delete products", group: "Products" },
   // Orders
   { id: "orders:read",     label: "Orders — read",     description: "View orders and order details", group: "Orders" },
   { id: "orders:write",    label: "Orders — write",    description: "Create and update orders", group: "Orders" },

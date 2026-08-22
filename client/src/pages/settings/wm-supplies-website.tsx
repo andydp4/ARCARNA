@@ -625,7 +625,12 @@ export default function WmSuppliesWebsiteSettingsPage() {
                       <CardTitle className="text-xl">Blocks</CardTitle>
                       <CardDescription>Homepage sections in display order</CardDescription>
                     </div>
-                    <Button type="button" size="icon" onClick={() => startNewBlock()}>
+                    <Button
+                      type="button"
+                      size="icon"
+                      aria-label="Add a homepage block"
+                      onClick={() => startNewBlock()}
+                    >
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>

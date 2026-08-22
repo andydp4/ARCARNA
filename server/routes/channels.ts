@@ -3,40 +3,6 @@ import { storage } from "../storage";
 import { requireRole } from "../auth";
 import { assertPublicHttpsUrl } from "../lib/safeUrl";
 
-/** C3 — public read API (Bearer org API key). Mounted on the same app as `/api` (e.g. `/midnight/v1/...`). */
-export function registerChannelPublicRoutes(app: Express): void {
-  app.get("/v1/orgs/:orgId/products", async (req, res) => {
-    try {
-      const orgId = req.params.orgId;
-      const auth = req.get("authorization") || "";
-      const m = auth.match(/^Bearer\s+(\S+)\s*$/i);
-      if (!m) {
-        return res.status(401).json({ message: "Authorization: Bearer <api_key> required" });
-      }
-      const verified = await storage.verifyApiKeyAndGetOrg(m[1]);
-      if (!verified || verified.orgId !== orgId) {
-        return res.status(403).json({ message: "Invalid API key for this organization" });
-      }
-      if (!verified.scopes.includes("products:read") && !verified.scopes.includes("*")) {
-        return res.status(403).json({ message: "Missing products:read scope" });
-      }
-      const rows = await storage.getProductsForOrgPublic(orgId);
-      res.json(
-        rows.map((p) => ({
-          id: p.id,
-          name: p.name,
-          productId: p.productId,
-          defaultSalePrice: p.defaultSalePrice,
-          stock: p.stock,
-        })),
-      );
-    } catch (e) {
-      console.error("[channels] public products:", e);
-      res.status(500).json({ message: "Failed to list products" });
-    }
-  });
-}
-
 /** C2 / C4 — org-scoped API keys and outbound webhooks (session auth). */
 export function registerChannelAuthenticatedRoutes(
   app: Express,
