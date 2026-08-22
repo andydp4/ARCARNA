@@ -172,7 +172,7 @@ export function registerAdminRoutes(app: Express): void {
       if (actorRole === "ADMIN" && effectiveOrgId !== actorRoleAndOrg?.orgId) {
         return res.status(403).json({ message: "Cannot assign users outside your organization" });
       }
-      await storage.approveUser(replitUserId, approvedBy, { role: role ?? "CASHIER", orgId: effectiveOrgId });
+      await storage.approveUser(replitUserId, approvedBy, { role: role ?? "CUSTOMER", orgId: effectiveOrgId });
       await recordAdminAudit(req, {
         actorUserId: approvedBy,
         actorRole,
@@ -180,7 +180,7 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: effectiveOrgId ?? null,
-        metadata: { role: role ?? "CASHIER" },
+        metadata: { role: role ?? "CUSTOMER" },
       });
       res.json({ message: "User approved successfully" });
     } catch (error: any) {

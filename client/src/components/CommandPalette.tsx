@@ -66,13 +66,13 @@ export function CommandPalette() {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void ensurePaletteData(queryClient).then(() => {
+    void ensurePaletteData(queryClient, user?.role).then(() => {
       if (!cancelled) setIndexVersion((v) => v + 1);
     });
     return () => {
       cancelled = true;
     };
-  }, [open, queryClient]);
+  }, [open, queryClient, user?.role]);
 
   const items = useMemo(
     () => buildCommandPaletteIndex(queryClient, user?.role, user?.id),
@@ -90,7 +90,7 @@ export function CommandPalette() {
     [setLocation, user?.id],
   );
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated || user?.role === "CUSTOMER") return null;
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

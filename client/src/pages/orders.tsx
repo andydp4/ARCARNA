@@ -30,6 +30,7 @@ import {
   Search,
   Star,
   Download,
+  Globe2,
 } from "lucide-react";
 import { OrderOpsDialog } from "@/components/reports/OrderOpsDialog";
 import { SatisfactionDialog } from "@/components/reports/SatisfactionDialog";
@@ -56,6 +57,7 @@ import { getBulkActionsForRole, type BulkActionId } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { executeBulkAction, downloadBlob } from "@/lib/bulkActionsClient";
 import { parseQuantityInput } from "@shared/quantity";
+import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
 
 type Order = OrdersListOrder;
 
@@ -86,6 +88,7 @@ const STATUS_GROUP_ORDER = ["urgent", "on-hold", "awaiting-customer", "pending",
 export default function Orders() {
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<string>("active");
+  const [filterChannel, setFilterChannel] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [opsDialogOpen, setOpsDialogOpen] = useState(false);
   const [satisfactionOpen, setSatisfactionOpen] = useState(false);
@@ -106,6 +109,7 @@ export default function Orders() {
 
   useApplyDefaultView(savedViews.defaultView, (state) => {
     if (typeof state.filters.filterStatus === "string") setFilterStatus(state.filters.filterStatus);
+    if (typeof state.filters.filterChannel === "string") setFilterChannel(state.filters.filterChannel);
     if (typeof state.filters.searchQuery === "string") setSearchQuery(state.filters.searchQuery);
     if (savedViews.defaultView) setActiveViewId(savedViews.defaultView.id);
   });
@@ -114,12 +118,14 @@ export default function Orders() {
     if (!view) {
       setActiveViewId(null);
       setFilterStatus("active");
+      setFilterChannel("all");
       setSearchQuery("");
       return;
     }
     setActiveViewId(view.id);
     const state = savedViews.applyView(view);
     if (typeof state.filters.filterStatus === "string") setFilterStatus(state.filters.filterStatus);
+    if (typeof state.filters.filterChannel === "string") setFilterChannel(state.filters.filterChannel);
     if (typeof state.filters.searchQuery === "string") setSearchQuery(state.filters.searchQuery);
   };
   const [deleteAcknowledged, setDeleteAcknowledged] = useState(false);
@@ -335,14 +341,20 @@ export default function Orders() {
       return order.status === filterStatus;
     });
 
+    const channelFiltered = statusFiltered.filter((order) => {
+      if (filterChannel === "all") return true;
+      return (order.channel || "pos").toLowerCase() === filterChannel;
+    });
+
     const q = searchQuery.trim().toLowerCase();
-    const filtered = statusFiltered.filter((order) => {
+    const filtered = channelFiltered.filter((order) => {
       if (!q) return true;
       const customer = (order.customerName || "").toLowerCase();
       return (
         customer.includes(q) ||
         order.id.toLowerCase().includes(q) ||
-        (order.paymentMethod || "").toLowerCase().includes(q)
+        (order.paymentMethod || "").toLowerCase().includes(q) ||
+        formatOrderChannel(order.channel).toLowerCase().includes(q)
       );
     });
 
@@ -364,7 +376,7 @@ export default function Orders() {
       if (ib === -1) return -1;
       return ia - ib;
     });
-  }, [orders, filterStatus, searchQuery]);
+  }, [orders, filterStatus, filterChannel, searchQuery]);
 
   const visibleOrders = useMemo(
     () => sortedGroupEntries.flatMap(([, list]) => list),
@@ -480,11 +492,11 @@ export default function Orders() {
     const orderData = await response.json();
     setOrderToEdit(orderData);
     setEditLines(
-      orderData.items.map((item: any) => ({
-        productId: item.productId,
-        productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: parseFloat(item.unitPrice),
+      orderData.items.map((orderLine: any) => ({
+        productId: orderLine.productId,
+        productName: orderLine.productName,
+        quantity: orderLine.quantity,
+        unitPrice: parseFloat(orderLine.unitPrice),
       }))
     );
     setEditDialogOpen(true);
@@ -529,6 +541,7 @@ export default function Orders() {
     () => ({
       total: orders.length,
       active: orders.filter((o) => o.status !== "completed").length,
+      website: orders.filter((o) => isWebsiteOrder(o.channel)).length,
       urgent: orders.filter((o) => o.status === "urgent").length,
       completed: orders.filter((o) => o.status === "completed").length,
     }),
@@ -556,7 +569,7 @@ export default function Orders() {
         />
 
         {/* Stats Cards */}
-        <div className="mb-8 grid grid-cols-2 gap-4 sm:gap-4 lg:grid-cols-4">
+        <div className="mb-8 grid grid-cols-2 gap-4 sm:gap-4 lg:grid-cols-5">
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
               <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Total orders</CardTitle>
@@ -583,6 +596,18 @@ export default function Orders() {
           </Card>
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Website</CardTitle>
+              <Globe2 className="h-4 w-4 text-cyan-600" />
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-website-orders">
+                {stats.website}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">From WM site</p>
+            </CardContent>
+          </Card>
+          <Card className="border-border/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
               <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">Urgent</CardTitle>
               <AlertCircle className="h-4 w-4 text-red-500" />
             </CardHeader>
@@ -590,7 +615,7 @@ export default function Orders() {
               <div className="text-2xl font-bold tabular-nums tracking-tight" data-testid="stat-urgent-orders">
                 {stats.urgent}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Highest-priority queue</p>
+              <p className="mt-1 text-xs text-muted-foreground">Highest priority</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -619,7 +644,7 @@ export default function Orders() {
                   savedViews.saveView.mutate({
                     name,
                     isDefault,
-                    state: captureViewState({ filterStatus, searchQuery }),
+                    state: captureViewState({ filterStatus, filterChannel, searchQuery }),
                   });
                 }}
                 onRename={(id, currentName) => {
@@ -631,7 +656,7 @@ export default function Orders() {
                   savedViews.deleteView.mutate(id);
                   if (activeViewId === id) applySavedView(null);
                 }}
-                currentState={captureViewState({ filterStatus, searchQuery })}
+                currentState={captureViewState({ filterStatus, filterChannel, searchQuery })}
                 saving={savedViews.saveView.isPending}
               />
             </div>
@@ -669,6 +694,24 @@ export default function Orders() {
                     data-testid="input-order-search"
                   />
                 </div>
+              </div>
+              <div className="flex-1 min-w-[min(100%,14rem)] space-y-2">
+                <Label htmlFor="order-channel-filter" className="text-muted-foreground">
+                  Channel
+                </Label>
+                <Select value={filterChannel} onValueChange={setFilterChannel}>
+                  <SelectTrigger id="order-channel-filter" className="min-h-[44px] w-full" data-testid="select-filter-channel">
+                    <SelectValue placeholder="Choose channel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All channels</SelectItem>
+                    <SelectItem value="web">Website</SelectItem>
+                    <SelectItem value="pos">POS</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                    <SelectItem value="api">API</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardContent>
@@ -717,7 +760,7 @@ export default function Orders() {
                   </div>
                 </CardHeader>
                 <CardContent className="pb-6 pt-0">
-                  <ul className="space-y-3 sm:space-y-2.5" role="list">
+                  <ul className="space-y-3 sm:space-y-2.5">
                     {statusOrders.map((order) => (
                       <OrdersRow
                         key={order.id}
@@ -771,6 +814,10 @@ export default function Orders() {
                         <div>
                           <p className="text-xs text-muted-foreground">Payment</p>
                           <p className="font-medium capitalize">{formatPaymentLabel(orderDetails.paymentMethod)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Channel</p>
+                          <p className="font-medium">{formatOrderChannel(orderDetails.channel)}</p>
                         </div>
                       </div>
                     </div>
@@ -839,18 +886,18 @@ export default function Orders() {
                 <div>
                   <h4 className="mb-2 text-sm font-medium text-muted-foreground">Line items</h4>
                   <div className="divide-y rounded-lg border">
-                    {orderDetails.items?.map((item) => (
+                    {orderDetails.items?.map((orderLine) => (
                       <div
-                        key={item.id}
+                        key={orderLine.id}
                         className="flex flex-col gap-1 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium">{item.productName || "Unknown product"}</p>
+                          <p className="font-medium">{orderLine.productName || "Unknown product"}</p>
                           <p className="text-sm text-muted-foreground tabular-nums">
-                            {item.quantity} × £{Number(item?.unitPrice ?? 0).toFixed(2)}
+                            {orderLine.quantity} × £{Number(orderLine?.unitPrice ?? 0).toFixed(2)}
                           </p>
                         </div>
-                        <p className="font-semibold tabular-nums sm:text-right">£{Number(item?.total ?? 0).toFixed(2)}</p>
+                        <p className="font-semibold tabular-nums sm:text-right">£{Number(orderLine?.total ?? 0).toFixed(2)}</p>
                       </div>
                     ))}
                   </div>

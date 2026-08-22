@@ -15,12 +15,14 @@ export const commandPaletteActions: CommandPaletteAction[] = [
     label: "Create order",
     keywords: ["pos", "sale", "checkout", "new order"],
     href: "/create-order",
+    minRole: "CASHIER",
   },
   {
     id: "action-open-pos",
     label: "Create Order",
     keywords: ["pos", "terminal", "register", "create order", "sell", "till"],
     href: "/create-order",
+    minRole: "CASHIER",
   },
   {
     id: "action-add-product",
@@ -34,12 +36,14 @@ export const commandPaletteActions: CommandPaletteAction[] = [
     label: "Add customer",
     keywords: ["customer", "contact", "crm"],
     href: "/customers",
+    minRole: "CASHIER",
   },
   {
     id: "action-z-report",
     label: "Open today's Z-report",
     keywords: ["z-report", "shift", "close", "cash", "end of day"],
     href: "/shifts",
+    minRole: "CASHIER",
   },
   {
     id: "action-insights",
