@@ -45,7 +45,7 @@ export class DomainEngine {
       }
 
       // Determine order status based on stock availability
-      const orderStatus = stockWarnings.length > 0 ? 'on-hold' : 'pending'
+      const orderStatus = stockWarnings.length > 0 ? 'on-hold' : dto.status ?? 'pending'
 
       // These three ride alongside the domain Order purely so OrdersRepo can
       // persist them; no engine rule reads any of them. Declared here rather
@@ -59,7 +59,7 @@ export class DomainEngine {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
         lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
-        subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, createdAt: new Date(),
+        subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, channel: dto.channel, createdAt: new Date(),
         orgId: (dto as any).orgId,
         locationId: (dto as any).locationId,
         // Carried alongside the domain Order rather than inside it, the same way
@@ -175,6 +175,7 @@ export class DomainEngine {
         phone: (input as any).phone,
         email: (input as any).email,
         address: (input as any).address,
+        source: (input as any).source,
         category: (input as any).category || 'Bronze',
         loyaltyPoints: 0,
         totalSpent: 0,

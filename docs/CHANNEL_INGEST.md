@@ -15,13 +15,25 @@ This document describes how **non-POS channels** (web checkout, WhatsApp, phone 
 |-------|-----------|
 | **Schema** | `orders.channel`; `api_keys`; `outbound_webhooks` (`migrations/012_channel_readiness.sql`, `shared/schema.ts`) |
 | **Org API keys** | `POST/GET /api/api-keys`, `POST /api/api-keys/:id/revoke` (`server/routes/channels.ts`) |
-| **Public read** | `GET /v1/orgs/:orgId/products` with `Authorization: Bearer mk_live_...` |
+| **Public read** | `GET /v1/orgs/:orgId/products` with `Authorization: Bearer mk_live_...` (`server/routes/v1.ts`) |
 | **Outbound webhooks** | `GET/POST /api/webhooks`; delivery on outbox dispatch (`server/webhooks/outboundNotify.ts`) |
 
 ### Webhook verification (receiver side)
 
 - Body: JSON `{ eventId, eventType, payload }`.
-- Header `X-Midnight-Signature`: lowercase hex **HMAC-SHA256** of the raw body bytes using the shared `secret` you configured in `POST /api/webhooks`.
+- Header `X-Arcarna-Signature`: lowercase hex **HMAC-SHA256** of the raw body bytes using the shared `secret` you configured in `POST /api/webhooks`.
+- Header `X-Arcarna-Event`: the event type, matching `eventType` in the body.
+
+> **Renamed in the Arcarna rebrand.** These were `X-Midnight-*`. A receiver still
+> reading `X-Midnight-Signature` finds no such header and rejects every delivery,
+> because a missing header fails the comparison rather than erroring. If webhook
+> verification is failing on a receiver that used to work, this is why.
+
+**Delivery is order-scoped.** `notifyOutboundWebhooksForEvent` resolves the target
+org from an `order` inside the event payload, and `EVENT_TYPES` in
+`shared/schema.ts` carries only order, payment, refund, gift-card and expense
+events. There is no product or stock event, so **stock levels cannot be pushed** —
+a consumer that needs current stock polls `GET /v1/orgs/:orgId/products`.
 
 ## Adapter interface (ingest)
 

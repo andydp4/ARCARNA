@@ -37,16 +37,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { engine } = await import('../../apps/server/src/engine.wiring');
       // The engine used to hardcode 20% while the POS displayed 10%, so the
       // customer was quoted one total and charged another. Both now derive
-      // from the org's configured rate.
-      const { organizations: orgTable } = await import("@shared/schema");
-      const { eq: eqOrg } = await import("drizzle-orm");
-      const { db: settingsDb } = await import("../db");
-      const [orgRow] = await settingsDb
-        .select({ defaultTaxRate: orgTable.defaultTaxRate })
-        .from(orgTable)
-        .where(eqOrg(orgTable.id, ctx.orgId))
-        .limit(1);
-      const orgTaxRate = orgRow?.defaultTaxRate != null ? Number(orgRow.defaultTaxRate) : undefined;
+      // from the org's configured rate — shared with the website order path so
+      // the two cannot drift apart again.
+      const { getOrgTaxRatePercent } = await import("../services/orgTaxRate");
+      const orgTaxRate = await getOrgTaxRatePercent(ctx.orgId);
 
       const body = {
         ...req.body,
@@ -177,6 +171,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         customerName: customers.name,
         total: orders.total,
         paymentMethod: orders.payment_method,
+        channel: orders.channel,
         status: orders.status,
         fulfilmentMethod: orders.fulfilment_method,
         createdAt: orders.created_at,
@@ -268,6 +263,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         customerName: customer?.name || 'Walk-in',
         total: order.total,
         paymentMethod: order.payment_method,
+        channel: order.channel,
         status: order.status,
         createdAt: order.created_at,
         refundedTotal,

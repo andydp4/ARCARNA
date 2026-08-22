@@ -6,6 +6,8 @@ Production site: **https://viger.cloud** (portal) · **https://arcarna.viger.clo
 
 This guide matches the **current VPS layout** (Node/PM2/Nginx). For **KVM2 → KVM4 migration**, follow [ops/VPS_MIGRATION_KVM2_TO_KVM4.md](./ops/VPS_MIGRATION_KVM2_TO_KVM4.md) first.
 
+For the private WM Supplies customer website domain, keep the domain at GoDaddy if preferred and point DNS to this VPS. See [WM_SUPPLIES_DOMAIN_DEPLOYMENT.md](./WM_SUPPLIES_DOMAIN_DEPLOYMENT.md).
+
 ---
 
 ## Security warning

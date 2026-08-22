@@ -55,6 +55,13 @@ describe("useGlobalShortcut helpers", () => {
 });
 
 describe("commandPaletteActions role gating", () => {
+  it("does not expose staff actions to website customers", () => {
+    expect(getVisibleCommandPaletteActions("CUSTOMER")).toEqual([]);
+    expect(isCommandPaletteActionAllowed({ id: "x", label: "x", href: "/pos", minRole: "CASHIER" }, "CUSTOMER")).toBe(
+      false,
+    );
+  });
+
   it("allows cashiers basic actions but not manager-only settings", () => {
     const cashierActions = getVisibleCommandPaletteActions("CASHIER");
     expect(cashierActions.some((a) => a.id === "action-create-order")).toBe(true);

@@ -7,6 +7,7 @@ const ROLE_RANK: Record<Role, number> = {
   ADMIN: 3,
   MANAGER: 2,
   CASHIER: 1,
+  CUSTOMER: 0,
 };
 
 export function isRole(value: string): value is Role {

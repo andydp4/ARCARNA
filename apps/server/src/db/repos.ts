@@ -28,6 +28,7 @@ type DecisionCarryingOrderColumns = Required<
     | "total"
     | "payment_method"
     | "status"
+    | "channel"
     | "fulfilment_method"
   >
 >;
@@ -62,6 +63,7 @@ export type OrderPersistenceCarrier = {
   orgId?: string | null;
   locationId?: string | null;
   fulfilmentMethod?: "collection" | "delivery";
+  channel?: "pos" | "web" | "api" | "whatsapp" | "phone";
 };
 
 export const OrdersRepoDrizzle: OrdersRepo = {
@@ -77,6 +79,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           total: String(o.total),
           payment_method: o.paymentMethod,
           status: o.status,
+          channel: o.channel ?? 'pos',
         })
         .where(eq(s.orders.id, o.id as any))
       
@@ -109,7 +112,8 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         // Anything other than "delivery" becomes "collection" so a malformed
         // value cannot hit the CHECK constraint and fail an otherwise good sale.
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
-      }
+        channel: orderWithOrg.channel ?? "pos",
+      };
       await getDb().insert(s.orders).values(values)
       // `?? null` to match the order row above. PlaceOrderInput marks orgId
       // optional, so without this a line could be written with no tenant —
@@ -139,17 +143,18 @@ export const OrdersRepoDrizzle: OrdersRepo = {
     return {
       id: orderRow.id as OrderId,
       customerId: orderRow.customer_id as CustomerId,
-      lines: items.map(item => ({
-        productId: item.product_id as ProductId,
-        quantity: item.quantity!,
-        unitPrice: parseFloat(String(item.unit_price!)),
-        lineTotal: parseFloat(String(item.total_price!)),
+      lines: items.map(orderLine => ({
+        productId: orderLine.product_id as ProductId,
+        quantity: orderLine.quantity!,
+        unitPrice: parseFloat(String(orderLine.unit_price!)),
+        lineTotal: parseFloat(String(orderLine.total_price!)),
       })),
       subtotal: parseFloat(String(orderRow.total!)) / 1.20,
       vat: parseFloat(String(orderRow.total!)) * 0.20 / 1.20,
       total: parseFloat(String(orderRow.total!)),
       paymentMethod: orderRow.payment_method as any,
       status: orderRow.status as any,
+      channel: orderRow.channel as any,
       createdAt: orderRow.created_at!,
     } as Order
   }
@@ -344,6 +349,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       email: customer.email,
       address: customer.address,
       category: customer.category,
+      source: c.source,
       loyalty_points: customer.loyaltyPoints,
       created_at: customer.createdAt,
       updated_at: customer.updatedAt,
@@ -381,6 +387,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       phone: updated.phone ?? undefined,
       email: updated.email ?? undefined,
       address: updated.address ?? undefined,
+      source: updated.source ?? undefined,
       category: (updated.category ?? 'Bronze') as Customer['category'],
       loyaltyPoints: updated.loyalty_points ?? 0,
       totalSpent: parseFloat(String(metrics?.total_spent ?? 0)),
@@ -410,6 +417,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       phone: customer.phone ?? undefined,
       email: customer.email ?? undefined,
       address: customer.address ?? undefined,
+      source: customer.source ?? undefined,
       category: (customer.category ?? 'Bronze') as Customer['category'],
       loyaltyPoints: customer.loyalty_points ?? 0,
       totalSpent: parseFloat(String(metrics?.total_spent ?? 0)),
@@ -430,6 +438,7 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       phone: row.customers.phone,
       email: row.customers.email,
       address: row.customers.address,
+      source: row.customers.source,
       category: row.customers.category,
       loyaltyPoints: row.customers.loyalty_points,
       totalSpent: row.customer_metrics?.total_spent || 0,

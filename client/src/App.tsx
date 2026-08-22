@@ -13,6 +13,11 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
+import {
+  WmSuppliesHomePage,
+  WmSuppliesOrderPage,
+  WmSuppliesOrderSuccessPage,
+} from "@/features/wm-supplies/WmSuppliesPublicSite";
 
 // Route-level code splitting: each page ships as its own chunk, fetched on
 // first navigation, instead of one ~1.5MB bundle loaded up front.
@@ -32,6 +37,7 @@ const ProductManagement = lazy(() => import("@/pages/product-management"));
 const Settings = lazy(() => import("@/pages/settings"));
 const ReceiptSettingsPage = lazy(() => import("@/pages/settings/receipts"));
 const LoyaltySettingsPage = lazy(() => import("@/pages/settings/loyalty"));
+const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-supplies-website"));
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
 const Invoices = lazy(() => import("@/pages/invoices"));
@@ -85,7 +91,26 @@ function RouteLoadingFallback() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const isCustomerOnly = user?.role === "CUSTOMER";
+  const isWmSuppliesCustomerSite = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
+
+  if (isWmSuppliesCustomerSite) {
+    return (
+      <WouterRouter base={APP_BASE}>
+      <Switch>
+        <Route path="/sign-in" component={SignInPage} />
+        <Route path="/sign-out" component={SignOutPage} />
+        <Route path="/order" component={WmSuppliesOrderPage} />
+        <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
+        <Route path="/pending-approval" component={PendingApproval} />
+        <Route path="/no-access" component={NoAccess} />
+        <Route path="/" component={WmSuppliesHomePage} />
+        <Route component={NotFound} />
+      </Switch>
+      </WouterRouter>
+    );
+  }
 
   return (
     <WouterRouter base={APP_BASE}>
@@ -94,14 +119,16 @@ function Router() {
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-out" component={SignOutPage} />
+      <Route path="/order" component={WmSuppliesOrderPage} />
+      <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/wizard" component={OnboardingWizard} />
       <Route path="/no-access" component={NoAccess} />
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
-      {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
+      {isLoading || !isAuthenticated || isCustomerOnly ? (
+        <Route path="/" component={WmSuppliesHomePage} />
       ) : (
         <AccessGate>
         <Layout>
@@ -153,6 +180,8 @@ function Router() {
           <Route path="/settings/receipts" component={ReceiptSettingsPage} />
           <Route path="/settings/loyalty" component={LoyaltySettingsPage} />
           <Route path="/settings/developer" component={DeveloperSettingsPage} />
+          <Route path="/settings/wm-supplies-website" component={WmSuppliesWebsiteSettingsPage} />
+          <Route path="/admin/wm-supplies/website" component={WmSuppliesWebsiteSettingsPage} />
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />

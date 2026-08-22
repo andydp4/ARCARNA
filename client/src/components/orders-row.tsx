@@ -18,11 +18,13 @@ import {
   Calendar,
   Trash2,
   Edit2,
+  Globe2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
 
 export interface OrdersListOrder {
   id: string;
@@ -30,6 +32,7 @@ export interface OrdersListOrder {
   customerName?: string;
   total: string;
   paymentMethod: string;
+  channel?: string;
   status: string;
   createdAt: string;
 }
@@ -120,6 +123,16 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
           <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
           <span>{placed}</span>
         </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant={isWebsiteOrder(order.channel) ? "secondary" : "outline"}
+            className="max-w-full gap-1 truncate font-normal"
+            data-testid={`badge-order-channel-${order.id}`}
+          >
+            {isWebsiteOrder(order.channel) && <Globe2 className="h-3 w-3 shrink-0" />}
+            {formatOrderChannel(order.channel)}
+          </Badge>
+        </div>
         <div className="flex flex-wrap items-center gap-2 sm:hidden">
           <span className="text-lg font-bold tabular-nums tracking-tight text-foreground">
             £{totalNum.toFixed(2)}

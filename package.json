@@ -8,6 +8,7 @@
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "deploy:build": "npm run build",
     "deploy": "bash scripts/deploy-production.sh",
+    "deploy:wm-supplies": "bash scripts/deploy-wm-supplies-website.sh",
     "deploy:start": "pm2 start ecosystem.config.cjs",
     "deploy:restart": "pm2 delete arcarna-epos 2>/dev/null || true; pm2 start ecosystem.config.cjs && pm2 save",
     "start": "NODE_ENV=production node dist/index.js",

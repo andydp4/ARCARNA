@@ -73,6 +73,7 @@ import {
   type ApiKey,
   type OutboundWebhook,
 } from "@shared/schema";
+import type { WebsiteProductSettingsPatch } from "@shared/website";
 import { withRetries } from "./lib/dbUtils";
 import { db } from "./db";
 import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
@@ -132,6 +133,11 @@ export interface IStorage {
   // Product operations
   createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
   updateProduct(id: string, data: any): Promise<Product>;
+  updateProductWebsiteSettings(
+    id: string,
+    orgId: string,
+    patch: WebsiteProductSettingsPatch,
+  ): Promise<Product | null>;
   deleteProduct(id: string, orgId: string): Promise<void>;
   getProduct(id: string, orgId: string): Promise<Product | null>;
   importProducts(
@@ -457,6 +463,19 @@ export class DatabaseStorage implements IStorage {
   async updateProduct(id: string, data: any): Promise<Product> {
     const [product] = await db.update(products).set({ ...data, updatedAt: new Date() }).where(eq(products.id, id)).returning();
     return product!;
+  }
+
+  async updateProductWebsiteSettings(
+    id: string,
+    orgId: string,
+    patch: WebsiteProductSettingsPatch,
+  ): Promise<Product | null> {
+    const [product] = await db
+      .update(products)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(eq(products.id, id), eq(products.orgId, orgId)))
+      .returning();
+    return product ?? null;
   }
 
   async deleteProduct(id: string, orgId: string): Promise<void> {
@@ -2085,7 +2104,7 @@ export class DatabaseStorage implements IStorage {
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
       const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
-      const role = options?.role ?? "CASHIER";
+      const role = options?.role ?? "CUSTOMER";
       const orgId =
         options?.orgId !== undefined
           ? options.orgId
