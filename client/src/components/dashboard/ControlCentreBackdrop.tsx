@@ -54,13 +54,14 @@ export function ControlCentreBackdrop() {
       <style>{`
         .arc-cf {
           --arc-sphere: 260px;
-          --arc-open: 16px;   /* how far each door slides — "opens slightly" */
+          --arc-open: 16px;   /* how far the right door slides */
+          --arc-open-l: calc(var(--arc-open) * 1.5);  /* the left opens half again as far */
           --arc-cap: 6%;      /* fixed shell at each pole; doors run between */
           /* Intensity of everything luminous. The shell and core keep their
              own values, so dialling this down dims the burst and the halo
              without dissolving the object itself.
-                0.35 barely there · 0.55 low · 0.80 present · 1.00 full */
-          --arc-gain: 0.55;
+                0.35 barely there · 0.55 low · 1.00 full · 1.50 hot */
+          --arc-gain: 1;
         }
         .arc-cf .arc-mid { position: absolute; left: 50%; top: 46%; }
 
@@ -83,19 +84,20 @@ export function ControlCentreBackdrop() {
           background: radial-gradient(ellipse 42% 60% at 50% 44%, #0c1a2c 0%, #071120 44%, #03070f 78%, #02040a 100%);
           box-shadow: inset 0 22px 40px rgba(2,4,10,0.9), inset 0 -22px 40px rgba(2,4,10,0.9);
         }
-        /* The Truth Blue sphere inside. Set back off the shell wall so the
-           aperture frames a rounded object rather than a flat slice. Read as
+        /* The Truth Blue sphere inside. Fills the shell exactly, so the
+           aperture only ever shows blue — no dark inside the slot. Read as
            dense plasma, not glass: lit from within, not seen through. */
         .arc-cf .arc-core {
-          position: absolute; inset: 19%; border-radius: 50%;
+          position: absolute; inset: 0; border-radius: 50%;
           background:
-            /* Terminator. A slice this narrow is geometrically almost flat,
-               so the roundness has to come from shading — without it the
-               slot shows a straight blue bar with square ends. */
+            /* Terminator, shaded toward Navy rather than black. A slice this
+               narrow is geometrically almost flat, so the poles still have to
+               fall away for it to read as curved — but the sphere stays Truth
+               Blue to its edge, with no black inside the shell. */
             linear-gradient(180deg,
-              rgba(2,4,10,0.92) 0%, rgba(2,4,10,0.55) 9%, rgba(2,4,10,0.14) 20%,
-              transparent 34%, transparent 62%,
-              rgba(2,4,10,0.22) 76%, rgba(2,4,10,0.66) 90%, rgba(2,4,10,0.95) 100%),
+              rgba(11,46,102,0.88) 0%, rgba(11,46,102,0.52) 10%, rgba(18,59,120,0.16) 22%,
+              transparent 36%, transparent 64%,
+              rgba(18,59,120,0.22) 78%, rgba(11,46,102,0.60) 91%, rgba(11,46,102,0.90) 100%),
             radial-gradient(ellipse 26% 20% at 46% 40%, #ffffff 0%, #dcefff 34%, transparent 72%),
             radial-gradient(circle at 44% 38%,
               #cfe6ff 0%, #B6D9FF 11%, #5DB4FF 26%, #3C7AC4 48%,
@@ -142,7 +144,13 @@ export function ControlCentreBackdrop() {
           box-shadow: inset 0 0 40px rgba(2,4,10,0.75);
         }
 
-        .arc-cf .arc-l { position: absolute; inset: 0; opacity: var(--arc-gain); }
+        /* Opacity alone saturates at 1, so a gain above full would silently
+           do nothing. Below 1 it fades; above 1 brightness carries it on. */
+        .arc-cf .arc-l {
+          position: absolute; inset: 0;
+          opacity: min(1, var(--arc-gain));
+          filter: brightness(max(1, var(--arc-gain)));
+        }
         .arc-cf .arc-l > * { position: absolute; mix-blend-mode: screen; }
 
         /* The shaft through the slot — tall and narrow, the shape of the
@@ -195,8 +203,8 @@ export function ControlCentreBackdrop() {
            driven rather than eased into place. */
         @keyframes arc-cf-door-l {
           0%,18% { transform: translateX(0); }
-          52% { transform: translateX(calc(var(--arc-open) * -1.3)); }
-          76%,100% { transform: translateX(calc(var(--arc-open) * -1)); }
+          52% { transform: translateX(calc(var(--arc-open-l) * -1.3)); }
+          76%,100% { transform: translateX(calc(var(--arc-open-l) * -1)); }
         }
         @keyframes arc-cf-door-r { 0%,18% { transform: translateX(0); } 58%,100% { transform: translateX(var(--arc-open)); } }
         @keyframes arc-cf-shaft {
@@ -242,7 +250,7 @@ export function ControlCentreBackdrop() {
 
         /* Reduced motion: the settled frame, stated outright. */
         .arc-cf[data-static="true"] * { animation: none !important; }
-        .arc-cf[data-static="true"] .arc-door-l { transform: translateX(calc(var(--arc-open) * -1)); }
+        .arc-cf[data-static="true"] .arc-door-l { transform: translateX(calc(var(--arc-open-l) * -1)); }
         .arc-cf[data-static="true"] .arc-door-r { transform: translateX(var(--arc-open)); }
         .arc-cf[data-static="true"] .arc-shaft  { opacity: 0.30; transform: scaleX(0.16) scaleY(0.62); }
         .arc-cf[data-static="true"] .arc-streak { opacity: 0.14; transform: scaleX(0.10) scaleY(0.42); }
