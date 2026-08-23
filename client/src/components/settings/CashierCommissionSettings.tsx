@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Wallet, Plus, Pencil, UserX, UserCheck } from "lucide-react";
+import { Wallet, Plus, Pencil, UserX, UserCheck, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,6 +256,21 @@ export function CashierCommissionSettings() {
           </Button>
         </CardHeader>
         <CardContent>
+          {/* Cashier codes are only offered at the till when commission tracking
+              is on, so codes added with the switch off silently never appear. */}
+          {!orgLoading && !cashiersLoading && cashiers.length > 0 && !commissionEnabled && (
+            <div
+              className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              data-testid="warning-cashier-codes-disabled"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p>
+                These cashier codes will not appear at the till. Turn on{" "}
+                <span className="font-medium">Enable cashier commission</span> above so staff can
+                select their code when opening a shift.
+              </p>
+            </div>
+          )}
           {cashiersLoading || orgLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : cashiers.length === 0 ? (
