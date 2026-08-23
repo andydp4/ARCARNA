@@ -23,8 +23,6 @@ import {
   users,
   customers,
   customerMetrics,
-  analyticsDaily,
-  analyticsMonthly,
   products,
   productLocationStock,
   orders,
@@ -358,20 +356,32 @@ export class DatabaseStorage implements IStorage {
     }>
   > {
     return withRetries(async () => {
-      let q = db
-        .select({
-          date: analyticsDaily.date,
-          totalOrders: analyticsDaily.totalOrders,
-          totalRevenue: analyticsDaily.totalRevenue,
-        })
-        .from(analyticsDaily);
-      q = q.where(eq(analyticsDaily.orgId, orgId)) as typeof q;
-      const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
-      return results.reverse().map((r) => ({
-        date: r.date || "",
-        totalOrders: r.totalOrders || 0,
-        totalRevenue: r.totalRevenue || "0",
-      }));
+      // Same definition as the Control Centre card — see services/revenue.ts.
+      // This read the analytics_daily projection, which books revenue on
+      // OrderCreated with no status filter, so this chart and that card
+      // disagreed about the same day by design.
+      const { settledRevenueByDay } = await import("./services/revenue");
+      const { offsetDate } = await import("@shared/analytics/kpi");
+
+      const today = new Date();
+      const toDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const fromDate = offsetDate(toDate, -(days - 1));
+      const byDay = await settledRevenueByDay(orgId, fromDate, toDate);
+
+      // A contiguous series: a day with no takings is a real zero, and a chart
+      // that silently omits it draws a misleading line between the days either
+      // side of it.
+      const out: Array<{ date: string; totalOrders: number; totalRevenue: string }> = [];
+      for (let i = 0; i < days; i++) {
+        const date = offsetDate(fromDate, i);
+        const day = byDay.get(date);
+        out.push({
+          date,
+          totalOrders: day?.txns ?? 0,
+          totalRevenue: (day?.revenue ?? 0).toFixed(2),
+        });
+      }
+      return out;
     });
   }
 
@@ -384,21 +394,17 @@ export class DatabaseStorage implements IStorage {
     }>
   > {
     return withRetries(async () => {
-      let q = db
-        .select({
-          year: analyticsMonthly.year,
-          month: analyticsMonthly.month,
-          totalOrders: analyticsMonthly.totalOrders,
-          totalRevenue: analyticsMonthly.totalRevenue,
-        })
-        .from(analyticsMonthly);
-      q = q.where(eq(analyticsMonthly.orgId, orgId)) as typeof q;
-      const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
-      return results.reverse().map((r) => ({
-        year: r.year || 0,
-        month: r.month || 0,
-        totalOrders: r.totalOrders || 0,
-        totalRevenue: r.totalRevenue || "0",
+      // Rolled up from the same daily figures the Control Centre shows, so a
+      // month always equals the sum of its days. analytics_monthly was
+      // accumulated independently of analytics_daily from the same events,
+      // which meant the two could — and did — drift apart.
+      const { settledRevenueByMonth } = await import("./services/revenue");
+      const rows = await settledRevenueByMonth(orgId, months);
+      return rows.map((r) => ({
+        year: r.year,
+        month: r.month,
+        totalOrders: r.txns,
+        totalRevenue: r.revenue.toFixed(2),
       }));
     });
   }
