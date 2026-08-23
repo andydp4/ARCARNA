@@ -10,20 +10,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Clock,
-  AlertCircle,
-  Truck,
-  CheckCircle2,
   MoreVertical,
   Eye,
   Calendar,
   Trash2,
   Edit2,
   Globe2,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OrderStatusSelect } from "@/components/orders/OrderStatusSelect";
+import { STATUS_CONFIG as STATUS_CONFIG_INTERNAL } from "@/components/orders/statusConfig";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import type { OrderStatus } from "@shared/schema";
 import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
 
 export interface OrdersListOrder {
@@ -37,21 +35,7 @@ export interface OrdersListOrder {
   createdAt: string;
 }
 
-export const STATUS_CONFIG: Record<
-  OrderStatus,
-  { label: string; color: string; border: string; icon: LucideIcon }
-> = {
-  pending: { label: "Pending", color: "bg-yellow-700", border: "border-l-yellow-700", icon: Clock },
-  "on-hold": { label: "On Hold", color: "bg-orange-700", border: "border-l-orange-700", icon: AlertCircle },
-  "awaiting-customer": {
-    label: "Awaiting Customer",
-    color: "bg-blue-600",
-    border: "border-l-blue-600",
-    icon: Truck,
-  },
-  urgent: { label: "Urgent", color: "bg-red-600", border: "border-l-red-600", icon: AlertCircle },
-  completed: { label: "Completed", color: "bg-green-700", border: "border-l-green-700", icon: CheckCircle2 },
-};
+export { STATUS_CONFIG } from "@/components/orders/statusConfig";
 
 export function formatPaymentLabel(method: string) {
   if (!method) return "—";
@@ -59,12 +43,12 @@ export function formatPaymentLabel(method: string) {
 }
 
 function getStatusBorderClass(status: string) {
-  const config = STATUS_CONFIG[status as OrderStatus];
+  const config = STATUS_CONFIG_INTERNAL[status as OrderStatus];
   return config?.border ?? "border-l-muted-foreground/40";
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config = STATUS_CONFIG[status as OrderStatus] || {
+  const config = STATUS_CONFIG_INTERNAL[status as OrderStatus] || {
     label: status,
     color: "bg-gray-500",
     border: "border-l-gray-500",
@@ -83,13 +67,15 @@ export type OrdersRowProps = {
   order: OrdersListOrder;
   onView: (orderId: string) => void;
   onEdit: (orderId: string) => void;
-  onUpdateStatus: (order: OrdersListOrder) => void;
+  onStatusChange: (order: OrdersListOrder, status: OrderStatus) => void;
+  /** True while this row's status write is in flight. */
+  statusPending?: boolean;
   onDelete: (order: OrdersListOrder) => void;
   selected?: boolean;
   onToggleSelect?: () => void;
 };
 
-function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selected, onToggleSelect }: OrdersRowProps) {
+function OrdersRowInner({ order, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect }: OrdersRowProps) {
   const totalNum = parseFloat(order.total || "0");
   const placed = new Date(order.createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
@@ -153,6 +139,13 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
           </Badge>
         </div>
         <div className="flex w-full shrink-0 flex-wrap items-stretch gap-2 border-t border-border/60 pt-3 sm:w-auto sm:border-t-0 sm:pt-0">
+          <OrderStatusSelect
+            status={order.status || "pending"}
+            onChange={(status) => onStatusChange(order, status)}
+            disabled={statusPending}
+            label={`order #${order.id.slice(0, 8)}`}
+            data-testid={`select-order-status-${order.id}`}
+          />
           <Button
             variant="default"
             size="sm"
@@ -180,9 +173,6 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
                 <Edit2 className="mr-2 h-4 w-4" />
                 Edit order
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onUpdateStatus(order)} data-testid="menu-update-status">
-                Update status
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => onDelete(order)}
@@ -206,7 +196,8 @@ export const OrdersRow = memo(
     prev.order === next.order &&
     prev.onView === next.onView &&
     prev.onEdit === next.onEdit &&
-    prev.onUpdateStatus === next.onUpdateStatus &&
+    prev.onStatusChange === next.onStatusChange &&
+    prev.statusPending === next.statusPending &&
     prev.onDelete === next.onDelete
 );
 

@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
-import { test, pageAs, firstLocationId, okJson } from "./fixtures";
+import { test, pageAs, firstLocationId, okJson, ensureOpenShift, placeOrder } from "./fixtures";
 
 /** A product with a known stock level at `locationId`, created fresh per test. */
 async function productWithStock(
@@ -148,9 +148,6 @@ test.describe("UI seams", () => {
     api,
     orgId,
   }) => {
-    const orders = await okJson<any[]>(await api.get("/api/orders"));
-    const expectedOpen = orders.filter((o) => o.status !== "completed").length;
-
     const page = await pageAs(browser, "ADMIN", orgId);
     await page.goto("/");
     await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
@@ -160,21 +157,87 @@ test.describe("UI seams", () => {
 
     // Reads the number the operator reads, and compares it to the same figure
     // derived from the API. A hardcoded tile passes no version of this.
+    //
+    // Both reads happen inside the poll. Taking the API count once up front
+    // made this test a hostage to the rest of the suite: any sibling that
+    // opens or completes an order — U4 does both — moves the real figure while
+    // this one waits, and the captured number can then never be reached.
     await expect
       .poll(
         async () => {
-          const text = await tile.innerText();
-          const match = text.match(/\d+/);
-          return match ? Number(match[0]) : NaN;
+          const orders = await okJson<any[]>(await api.get("/api/orders"));
+          const open = orders.filter((o) => o.status !== "completed").length;
+          const shown = Number((await tile.innerText()).match(/\d+/)?.[0] ?? NaN);
+          return shown - open;
         },
         {
           message:
             "the Open orders tile must show the real count of open orders, " +
-            "not a placeholder",
+            "not a placeholder. A non-zero difference here is the tile and the " +
+            "API disagreeing after both settled.",
           timeout: 20_000,
         },
       )
-      .toBe(expectedOpen);
+      .toBe(0);
+
+    await page.context().close();
+  });
+
+  test("U4 the row status selector actually writes the order's status", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await productWithStock(api, locationId, 5);
+    const placed = await okJson<any>(
+      await placeOrder(api, locationId, [
+        { productId: product.id, quantity: 1, unitPrice: 5 },
+      ]),
+    );
+    const orderId = placed.orderId ?? placed.id ?? placed.order?.id;
+    expect(orderId, "the order fixture must produce an id to drive the row").toBeTruthy();
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/orders");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // Narrow to the order under test — the list groups by status and grows with
+    // the seeded data, so the row is otherwise not reliably on screen.
+    await page.locator('[data-testid="input-order-search"]').fill(orderId);
+
+    const selector = page
+      .locator(`[data-testid="select-order-status-${orderId}"]`)
+      .locator("visible=true");
+    await expect(
+      selector,
+      "each order row must carry its own status control — status used to be " +
+        "reachable only through a kebab menu and a modal, which is the bug this covers",
+    ).toBeVisible({ timeout: 30_000 });
+
+    await selector.click();
+    await page.locator('[data-testid="status-option-completed"]').locator("visible=true").click();
+
+    // Completion is the moment Arcarna counts an order as taken, so this is the
+    // one status change that must not silently fail. The server is the witness:
+    // the row leaves the default "active" filter the instant the optimistic
+    // update lands, whether or not the write ever reached the database.
+    await expect
+      .poll(
+        async () => {
+          const rows = await okJson<any[]>(await api.get("/api/orders"));
+          return rows.find((o) => o.id === orderId)?.status;
+        },
+        {
+          message:
+            "picking a status in the row must reach the database. If this is " +
+            "still 'pending', the row re-rendered the order out of the list " +
+            "before the write was issued and nothing told the operator.",
+          timeout: 20_000,
+        },
+      )
+      .toBe("completed");
 
     await page.context().close();
   });
