@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { OrderOpsDialog } from "@/components/reports/OrderOpsDialog";
 import { SatisfactionDialog } from "@/components/reports/SatisfactionDialog";
-import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import type { OrderStatus } from "@shared/schema";
 import { ViewSelector } from "@/components/ViewSelector";
 import { useSavedViews, useApplyDefaultView } from "@/hooks/useSavedViews";
 import { captureViewState } from "@shared/savedViews/state";
@@ -42,7 +42,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   OrdersRow,
   StatusBadge,
-  STATUS_CONFIG,
   formatPaymentLabel,
   type OrdersListOrder,
 } from "@/components/orders-row";
@@ -92,7 +91,6 @@ export default function Orders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [opsDialogOpen, setOpsDialogOpen] = useState(false);
   const [satisfactionOpen, setSatisfactionOpen] = useState(false);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [downloadingDoc, setDownloadingDoc] = useState<"receipt" | "invoice" | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -100,7 +98,6 @@ export default function Orders() {
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<OrderDetail | null>(null);
   const [editLines, setEditLines] = useState<Array<{productId: string; productName: string; quantity: number; unitPrice: number}>>([]);
-  const [newStatus, setNewStatus] = useState("");
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -233,14 +230,12 @@ export default function Orders() {
           description: "Order status has been successfully updated.",
         });
       }
-      setStatusDialogOpen(false);
-      setSelectedOrder(null);
     },
     onError: (error: any, _vars, context) => {
       if (context?.previousOrders) {
         queryClient.setQueryData(["/api/orders"], context.previousOrders);
-        if (selectedOrder?.id) {
-          const restored = context.previousOrders.find((order) => order.id === selectedOrder.id);
+        if (context.orderId && selectedOrder?.id === context.orderId) {
+          const restored = context.previousOrders.find((order) => order.id === context.orderId);
           if (restored) setSelectedOrder(restored);
         }
       }
@@ -416,11 +411,12 @@ export default function Orders() {
     void runBulk(action);
   };
 
-  const openStatusDialog = useCallback((order: Order) => {
-    setSelectedOrder(order);
-    setNewStatus(order.status || "pending");
-    setStatusDialogOpen(true);
-  }, []);
+  const handleStatusChange = useCallback(
+    (order: OrdersListOrder, status: OrderStatus) => {
+      updateStatusMutation.mutate({ orderId: order.id, status });
+    },
+    [updateStatusMutation],
+  );
 
   const openDetailsDialog = useCallback((orderId: string) => {
     setOrderDetailsId(orderId);
@@ -526,14 +522,6 @@ export default function Orders() {
         quantity: line.quantity,
         unitPrice: line.unitPrice,
       })),
-    });
-  };
-
-  const handleStatusUpdate = () => {
-    if (!selectedOrder || !newStatus) return;
-    updateStatusMutation.mutate({
-      orderId: selectedOrder.id,
-      status: newStatus,
     });
   };
 
@@ -767,7 +755,11 @@ export default function Orders() {
                         order={order}
                         onView={openDetailsDialog}
                         onEdit={openEditDialog}
-                        onUpdateStatus={openStatusDialog}
+                        onStatusChange={handleStatusChange}
+                        statusPending={
+                          updateStatusMutation.isPending &&
+                          updateStatusMutation.variables?.orderId === order.id
+                        }
                         onDelete={openDeleteDialog}
                         selected={bulk.isSelected(order.id)}
                         onToggleSelect={() => bulk.toggle(order.id)}
@@ -1077,57 +1069,6 @@ export default function Orders() {
             />
           </>
         )}
-
-        {/* Status Update Dialog */}
-        <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Update order status</DialogTitle>
-              <DialogDescription>
-                Change the status of order #{selectedOrder?.id.slice(0, 8)}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 py-4">
-              <Label htmlFor="new-order-status">New status</Label>
-              <Select value={newStatus} onValueChange={setNewStatus}>
-                <SelectTrigger id="new-order-status" className="min-h-[44px]" data-testid="select-new-status">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ORDER_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {STATUS_CONFIG[status].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setStatusDialogOpen(false)}
-                className="min-h-[44px]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleStatusUpdate}
-                disabled={updateStatusMutation.isPending}
-                className="min-h-[44px] gap-2"
-                data-testid="button-confirm-status-update"
-              >
-                {updateStatusMutation.isPending ? (
-                  <>
-                    <ActionLoader className="text-primary-foreground" />
-                    Updating…
-                  </>
-                ) : (
-                  "Update status"
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <Dialog

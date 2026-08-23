@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,9 +26,11 @@ import {
   Star,
   Tag,
   X,
+  UserPlus,
 } from "lucide-react";
 import type { PosProduct } from "@/components/pos-product-card";
 import { ActionLoader } from "@/components/action-loader";
+import { NewCustomerDialog } from "@/components/customers/NewCustomerDialog";
 import type { TierProgress } from "@shared/loyalty/progress";
 
 export interface PosCartItem {
@@ -47,6 +50,12 @@ export interface PosCustomer {
   category: string;
   loyaltyPoints: number;
 }
+
+/**
+ * Sentinel for the "add a new customer" row. Namespaced so it can never collide
+ * with a customer id, which is what the other rows carry.
+ */
+const NEW_CUSTOMER_VALUE = "__new-customer__";
 
 export type PosCartPanelProps = {
   cart: PosCartItem[];
@@ -129,6 +138,7 @@ export function PosCartPanel({
   orderSubmitting = false,
 }: PosCartPanelProps) {
   const { toast } = useToast();
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
   return (
     <>
@@ -154,6 +164,13 @@ export function PosCartPanel({
           disabled={orderSubmitting}
           value={selectedCustomer?.id || "walk-in"}
           onValueChange={(value) => {
+            if (value === NEW_CUSTOMER_VALUE) {
+              // Not a selection — an action. Radix is mid-close, and opening a
+              // dialog in the same tick leaves the two fighting over focus, so
+              // wait for the menu to finish closing first.
+              requestAnimationFrame(() => setNewCustomerOpen(true));
+              return;
+            }
             if (value === "walk-in") {
               setSelectedCustomer(null);
               setPromoCode("");
@@ -183,6 +200,12 @@ export function PosCartPanel({
               />
             </div>
             <SelectItem value="walk-in">Walk-in Customer</SelectItem>
+            <SelectItem value={NEW_CUSTOMER_VALUE} data-testid="select-customer-new">
+              <span className="flex items-center gap-2">
+                <UserPlus className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                Add a new customer
+              </span>
+            </SelectItem>
             {filteredCustomers.map((customer) => (
               <SelectItem key={customer.id} value={customer.id}>
                 <div>
@@ -193,8 +216,25 @@ export function PosCartPanel({
                 </div>
               </SelectItem>
             ))}
+            {/* A search that matches nobody is where a new customer is most
+                likely to be standing. Say so rather than showing a blank list. */}
+            {customerSearch.trim() && filteredCustomers.length === 0 && (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                No customer matches "{customerSearch.trim()}". Add them above.
+              </p>
+            )}
           </SelectContent>
         </Select>
+
+        <NewCustomerDialog
+          open={newCustomerOpen}
+          onOpenChange={setNewCustomerOpen}
+          initialName={customerSearch}
+          onCreated={(customer) => {
+            setSelectedCustomer(customer);
+            setCustomerSearch("");
+          }}
+        />
 
         {selectedCustomer && customerTier && (
           <Card className="lm-card-muted mt-2">

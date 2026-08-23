@@ -91,7 +91,7 @@ function RouteLoadingFallback() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, error: authError, user } = useAuth();
   const isCustomerOnly = user?.role === "CUSTOMER";
   const isWmSuppliesCustomerSite = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
 
@@ -193,7 +193,17 @@ function Router() {
         </Layout>
         </AccessGate>
       )}
-      <Route component={NotFound} />
+      {/* While auth is unresolved the router has not yet been given the
+          authenticated routes, so every real page falls through to here.
+          Saying "this route does not exist" about a page that does is worse
+          than saying nothing — wait, then answer.
+
+          An errored auth query counts as unresolved. A 401 is not an error:
+          it comes back as a null user, which is a real answer and lands on
+          the public site. An error means we could not ask — a 429 from the
+          rate limiter, a 5xx, a dropped connection — and not knowing who you
+          are is never grounds for telling you your page does not exist. */}
+      <Route component={isLoading || authError ? RouteLoadingFallback : NotFound} />
     </Switch>
     </Suspense>
     </WouterRouter>

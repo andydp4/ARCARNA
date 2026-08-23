@@ -22,6 +22,7 @@ import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import { resolveUserNames } from "../services/userDisplayName";
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
@@ -191,7 +192,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
       const { orders, order_items, products, customers } = await import('../../apps/server/src/db/schema');
-      const { refunds: refundsTable, refundLines, users } = await import('@shared/schema');
+      const { refunds: refundsTable, refundLines } = await import('@shared/schema');
       const { eq, and } = await import('drizzle-orm');
       const mainDb = (await import('../db')).db;
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
@@ -222,23 +223,17 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         .from(refundsTable)
         .where(eq(refundsTable.orderId, req.params.id));
 
+      // One lookup for the whole list rather than one per refund, and the same
+      // definition of a person's name the shift report uses.
+      const cashierNames = await resolveUserNames(refundRows.map((r) => r.cashierId));
+
       const refundsWithMeta = await Promise.all(
         refundRows.map(async (refund) => {
           const lines = await mainDb
             .select()
             .from(refundLines)
             .where(eq(refundLines.refundId, refund.id));
-          let cashierName = refund.cashierId;
-          const [cashier] = await mainDb
-            .select({ firstName: users.firstName, lastName: users.lastName })
-            .from(users)
-            .where(eq(users.id, refund.cashierId))
-            .limit(1);
-          if (cashier) {
-            cashierName =
-              [cashier.firstName, cashier.lastName].filter(Boolean).join(" ").trim() ||
-              refund.cashierId;
-          }
+          const cashierName = cashierNames.get(refund.cashierId) ?? refund.cashierId;
           return {
             id: refund.id,
             total: refund.total,

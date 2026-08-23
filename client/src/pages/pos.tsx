@@ -471,15 +471,20 @@ export default function POS() {
         playScanSuccessBeep();
       } catch {
         playScanFailBeep();
-        setSearchTerm(code);
+        // The search box exists in tile mode only, so in Order lines this would
+        // set a filter nobody can see — and leave it waiting on the way back.
+        if (entryMode === "tiles") setSearchTerm(code);
         toast({
           title: "Unknown barcode",
-          description: `No product matched "${code}". Search opened with that code.`,
+          description:
+            entryMode === "tiles"
+              ? `No product matched "${code}". Search opened with that code.`
+              : `No product matched "${code}". Add it by name or code on a line.`,
           variant: "destructive",
         });
       }
     },
-    [products, addToCart, toast],
+    [products, addToCart, toast, entryMode],
   );
 
   useBarcodeScanner((code) => {
@@ -768,16 +773,22 @@ export default function POS() {
               </>
             }
           />
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-metal-muted" />
-            <Input
-              placeholder="Search by name, SKU, or barcode…"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="min-h-[44px] border-metal-edge bg-metal-charcoal pl-10 text-metal-warm-white placeholder:text-metal-muted"
-              data-testid="search-products"
-            />
-          </div>
+          {/* Belongs to the tile grid, and only the tile grid. Order lines
+              searches per line, so showing this there put two search boxes on
+              one screen — and worse, this one silently narrowed what the line
+              picker could find. */}
+          {entryMode === "tiles" && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-metal-muted" />
+              <Input
+                placeholder="Search by name, SKU, or barcode…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="min-h-[44px] border-metal-edge bg-metal-charcoal pl-10 text-metal-warm-white placeholder:text-metal-muted"
+                data-testid="search-products"
+              />
+            </div>
+          )}
         </div>
 
         <div className="mb-3 flex items-center gap-2">
@@ -805,7 +816,7 @@ export default function POS() {
               style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
             >
               <PosOrderLines
-                products={filteredProducts}
+                products={products}
                 lines={cart}
                 onChange={setCart}
               />
