@@ -296,4 +296,51 @@ test.describe("UI seams", () => {
 
     await page.context().close();
   });
+
+  test("U6 Order lines shows one search box, and it searches the whole catalogue", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    const target = await productWithStock(api, locationId, 3);
+    const decoy = await productWithStock(api, locationId, 3);
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/create-order");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // Tiles is the default mode and owns the top search box.
+    const topSearch = page.locator('[data-testid="search-products"]').locator("visible=true");
+    await expect(topSearch).toBeVisible({ timeout: 30_000 });
+
+    // Narrow the grid to the decoy, then switch to Order lines. The top box used
+    // to stay on screen — a second search stacked above the per-line one — and
+    // its query kept filtering what the line picker could offer, so the product
+    // under test was invisible with nothing on screen to explain why.
+    await topSearch.fill(decoy.name);
+    await page.locator('[data-testid="pos-entry-mode-lines"]').locator("visible=true").click();
+
+    await expect(
+      page.locator('[data-testid="search-products"]'),
+      "Order lines searches per line, so the tile grid's search box must not " +
+        "also be on screen",
+    ).toHaveCount(0);
+
+    const linePicker = page.locator('[data-testid="line-product-new"]').locator("visible=true");
+    await expect(linePicker).toBeVisible({ timeout: 15_000 });
+    await linePicker.click();
+    await page
+      .locator('[data-testid="line-product-new-search"]')
+      .locator("visible=true")
+      .fill(target.name);
+
+    await expect(
+      page.getByRole("option", { name: new RegExp(target.name) }),
+      "the line picker must search the whole catalogue — a query left in the " +
+        "tile grid's box must not decide what can be ordered here",
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.context().close();
+  });
 });
