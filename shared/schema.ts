@@ -126,6 +126,13 @@ export const locations = pgTable("locations", {
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = typeof locations.$inferInsert;
 
+/**
+ * The trimmed location shape every org role may read. POS needs a location
+ * picker before a shift can be opened, but non-admin staff must not see the
+ * per-location revenue/order stats that the full location payload carries.
+ */
+export type LocationPickerOption = Pick<Location, "id" | "name" | "isActive" | "isDefault">;
+
 // Session storage table (mandatory for Replit Auth)
 export const sessions = pgTable(
   "sessions",

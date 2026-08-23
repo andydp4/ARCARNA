@@ -31,6 +31,10 @@
 - **SUPER_ADMIN** – Must explicitly pass `X-Org-Id` or `?orgId=` to scope. No global view (prevents data breach).
 - **Other roles** – Must have `orgId` assigned. Requests are always scoped to their org.
 - **Locations CRUD** – SUPER_ADMIN and ADMIN only.
+- **Locations list (`GET /api/locations`)** – Readable by every org role, because opening a
+  POS shift requires picking a location. MANAGER and CASHIER get the trimmed picker shape
+  (`id`, `name`, `isActive`, `isDefault`); only SUPER_ADMIN/ADMIN get the payload with
+  per-location revenue and order stats.
 
 ## Request Context
 

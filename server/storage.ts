@@ -50,6 +50,7 @@ import {
   type Order,
   type OrderItem,
   type Location,
+  type LocationPickerOption,
   type LoyaltyTier,
   type InsertLoyaltyTier,
   type Promotion,
@@ -172,6 +173,7 @@ export interface IStorage {
 
   // Locations operations
   getLocations(orgId: string): Promise<Location[]>;
+  getLocationPickerOptions(orgId: string): Promise<LocationPickerOption[]>;
   createLocation(data: any): Promise<Location>;
   updateLocation(id: string, data: any, orgId: string): Promise<Location>;
   deleteLocation(id: string, orgId: string): Promise<void>;
@@ -1231,6 +1233,20 @@ export class DatabaseStorage implements IStorage {
     );
 
     return locationsWithStats;
+  }
+
+  /** Location list for the POS/shift pickers: no stats, no extra queries. */
+  async getLocationPickerOptions(orgId: string): Promise<LocationPickerOption[]> {
+    return db
+      .select({
+        id: locations.id,
+        name: locations.name,
+        isActive: locations.isActive,
+        isDefault: locations.isDefault,
+      })
+      .from(locations)
+      .where(eq(locations.orgId, orgId))
+      .orderBy(desc(locations.isDefault), locations.name);
   }
 
   async createLocation(data: any): Promise<Location> {

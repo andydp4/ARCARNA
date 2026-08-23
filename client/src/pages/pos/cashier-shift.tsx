@@ -8,6 +8,7 @@ import {
   setActiveCashierShiftId,
   setActiveCashierShiftReplayToken,
 } from "@/lib/orgScope";
+import { CASHIER_SHIFT_CHANGED_EVENT } from "@/pages/pos/shift-open";
 import {
   Dialog,
   DialogContent,
@@ -115,6 +116,15 @@ export function CashierShiftBadge() {
     const openStartDialog = () => setStartOpen(true);
     window.addEventListener("arcarna:cashier-shift-required", openStartDialog);
     return () => window.removeEventListener("arcarna:cashier-shift-required", openStartDialog);
+  }, [enabled]);
+
+  // The Open shift modal can start the cashier shift too; pick up the cashier
+  // it stored so this badge shows the open shift instead of "Start cashier shift".
+  useEffect(() => {
+    if (!enabled) return;
+    const syncFromStorage = () => setCashierId(getActiveCashierId());
+    window.addEventListener(CASHIER_SHIFT_CHANGED_EVENT, syncFromStorage);
+    return () => window.removeEventListener(CASHIER_SHIFT_CHANGED_EVENT, syncFromStorage);
   }, [enabled]);
 
   const startShift = useMutation({
