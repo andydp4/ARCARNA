@@ -1,6 +1,14 @@
 import { expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
-import { test, pageAs, firstLocationId, okJson, ensureOpenShift, placeOrder } from "./fixtures";
+import {
+  test,
+  pageAs,
+  firstLocationId,
+  okJson,
+  ensureOpenShift,
+  placeOrder,
+  uniqueSuffix,
+} from "./fixtures";
 
 /** A product with a known stock level at `locationId`, created fresh per test. */
 async function productWithStock(
@@ -238,6 +246,53 @@ test.describe("UI seams", () => {
         },
       )
       .toBe("completed");
+
+    await page.context().close();
+  });
+
+  test("U5 a new customer can be added from the order being built", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const name = `Seam Customer ${uniqueSuffix()}`;
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/create-order");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    const picker = page.locator('[data-testid="select-customer"]').locator("visible=true");
+    await expect(picker).toBeVisible({ timeout: 30_000 });
+    await picker.click();
+
+    await page.locator('[data-testid="select-customer-new"]').locator("visible=true").click();
+    await page.locator('[data-testid="input-new-customer-name"]').locator("visible=true").fill(name);
+    await page.locator('[data-testid="button-save-new-customer"]').locator("visible=true").click();
+
+    // Two things have to be true, and only one of them is visible. The customer
+    // must exist on the system — the whole point of the bug was that a new face
+    // at the counter got rung through as a walk-in and never recorded.
+    await expect
+      .poll(
+        async () => {
+          const customers = await okJson<any[]>(await api.get("/api/customers"));
+          return customers.some((c) => c.name === name);
+        },
+        {
+          message:
+            "adding a customer from the order must write them to the database, " +
+            "not just fill in the picker for this one sale",
+          timeout: 20_000,
+        },
+      )
+      .toBe(true);
+
+    // And they must be attached to the order in progress, or the operator has
+    // to find them again in a list they just left.
+    await expect(
+      picker,
+      "the customer just added must be the one selected for this order",
+    ).toContainText(name, { timeout: 15_000 });
 
     await page.context().close();
   });
