@@ -127,8 +127,19 @@ function Router() {
       <Route path="/no-access" component={NoAccess} />
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
-      {isLoading || !isAuthenticated || isCustomerOnly ? (
+      {/* Arcarna's own front door. #131 replaced this with the WM Supplies
+          storefront, so a signed-out visitor to the Arcarna domain was met by
+          the shop's padlock gate instead of the Arcarna sign-in. The customer
+          site serves that page from its own branch above, on its own domain
+          and its own process — it does not belong here.
+
+          A signed-in CUSTOMER is the one exception: they are a website
+          customer with nothing to do in Arcarna, so the shop is the right
+          place to put them. */}
+      {isCustomerOnly ? (
         <Route path="/" component={WmSuppliesHomePage} />
+      ) : isLoading || !isAuthenticated ? (
+        <Route path="/" component={Landing} />
       ) : (
         <AccessGate>
         <Layout>
