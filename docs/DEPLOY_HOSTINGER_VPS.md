@@ -154,11 +154,12 @@ Stock backfill (after org/products exist):
 npx tsx scripts/backfill-product-location-stock.ts
 ```
 
-Optional schema sync:
-
-```bash
-npx drizzle-kit push
-```
+**Do not run `drizzle-kit push` against production.** Migrations are the only
+mechanism: `npm run deploy` applies `migrations/` in order (see
+`scripts/apply-migrations-pm2.sh`). Push diffs the database against
+`shared/schema.ts` and executes the difference — and with no terminal attached
+it does so without asking. Push also skips the data steps migrations carry,
+such as the org backfill in 048.
 
 ---
 

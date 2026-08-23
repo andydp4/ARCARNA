@@ -14,10 +14,26 @@ fi
 mkdir -p logs
 
 echo "=== git pull ==="
-git fetch origin
 BRANCH="${DEPLOY_BRANCH:-main}"
-git checkout "$BRANCH"
-git pull origin "$BRANCH"
+
+# A deploy that quietly discards someone's hotfix is worse than one that stops.
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "ERROR: This checkout has uncommitted changes. Commit, stash or discard"
+  echo "them before deploying — the branch reset below would throw them away."
+  git status --short
+  exit 1
+fi
+
+# Fetch the branch by name rather than trusting the clone's refspec.
+# `git clone --branch X --single-branch` pins remote.origin.fetch to X alone, so
+# a plain `git fetch origin` never produces origin/main and `git checkout main`
+# dies with "pathspec 'main' did not match any file(s) known to git" — an error
+# that says nothing about the cause and stopped a website deploy dead. Naming
+# the branch works on either shape of clone, and resetting to what was just
+# fetched makes the deployed commit exactly the remote's, whatever the local
+# branch was pointing at.
+git fetch origin "$BRANCH"
+git checkout -B "$BRANCH" FETCH_HEAD
 echo "On commit: $(git log -1 --oneline)"
 
 echo "=== npm install (including build tools) ==="

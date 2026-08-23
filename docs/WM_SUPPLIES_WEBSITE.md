@@ -8,7 +8,7 @@ Customers must sign in with Clerk and be approved in Arcana before they can see 
 
 Migration:
 
-`migrations/038_wm_supplies_website_foundation.sql`
+`migrations/049_wm_supplies_website_foundation.sql`
 
 Development Neon branch:
 
@@ -258,7 +258,7 @@ The orders API includes `channel` on list and detail responses so website orders
 
 Migration:
 
-`migrations/039_customer_website_role.sql`
+`migrations/050_customer_website_role.sql`
 
 The app now has a `CUSTOMER` role for approved website-only accounts.
 
