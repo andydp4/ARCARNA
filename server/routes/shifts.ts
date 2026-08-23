@@ -7,14 +7,18 @@ import {
   orderItems,
   products,
   locations,
-  users,
   refunds,
 } from "../../shared/schema";
-import { and, eq, desc, gte } from "drizzle-orm";
+import { and, eq, desc, gte, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
+import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
+
+/** Default window for the shifts list, and the ceiling a caller may ask for. */
+const DEFAULT_WINDOW_HOURS = 48;
+const MAX_WINDOW_HOURS = 24 * 7;
 
 const openBodySchema = z.object({
   locationId: z.string().uuid(),
@@ -44,16 +48,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     .where(eq(locations.id, shift.locationId))
     .limit(1);
 
-  let cashierName = shift.userId;
-  const [cashier] = await db
-    .select({ firstName: users.firstName, lastName: users.lastName, email: users.email })
-    .from(users)
-    .where(eq(users.id, shift.userId))
-    .limit(1);
-  if (cashier) {
-    const full = [cashier.firstName, cashier.lastName].filter(Boolean).join(" ").trim();
-    cashierName = full || cashier.email || shift.userId;
-  }
+  const cashierName = await resolveUserName(shift.userId);
 
   const shiftOrders = await db
     .select()
@@ -157,12 +152,25 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null };
       const status = (req.query.status as string) || undefined;
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+
+      /**
+       * A rolling window, not "since midnight". The page used to show today
+       * only, so at ten past midnight it was empty and the shift that closed
+       * twenty minutes earlier had vanished — exactly when someone asks who was
+       * on. Bounded at a week so a wide window cannot be used to pull the whole
+       * table.
+       */
+      const requestedHours = Number(req.query.hours);
+      const hours = Number.isFinite(requestedHours)
+        ? Math.min(Math.max(Math.trunc(requestedHours), 1), MAX_WINDOW_HOURS)
+        : DEFAULT_WINDOW_HOURS;
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
       const conditions = [
         eq(shifts.orgId, ctx.orgId),
-        gte(shifts.openedAt, todayStart),
+        // An open shift older than the window is still on now, and "who is on"
+        // is the first question this page answers.
+        or(gte(shifts.openedAt, since), eq(shifts.status, "open"))!,
       ];
       if (status === "open" || status === "closed" || status === "reopened") {
         conditions.push(eq(shifts.status, status));
@@ -172,13 +180,36 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
       }
 
       const rows = await db
-        .select()
+        .select({
+          id: shifts.id,
+          userId: shifts.userId,
+          locationId: shifts.locationId,
+          locationName: locations.name,
+          status: shifts.status,
+          openingFloat: shifts.openingFloat,
+          closingCount: shifts.closingCount,
+          expectedCash: shifts.expectedCash,
+          variance: shifts.variance,
+          openedAt: shifts.openedAt,
+          closedAt: shifts.closedAt,
+          notes: shifts.notes,
+        })
         .from(shifts)
+        .leftJoin(locations, eq(locations.id, shifts.locationId))
         .where(and(...conditions))
         .orderBy(desc(shifts.openedAt))
-        .limit(100);
+        .limit(200);
 
-      res.json(rows);
+      // The page's whole question is "who was on". Sending only the user id
+      // meant it could never answer that, which is what it did.
+      const names = await resolveUserNames(rows.map((row) => row.userId));
+
+      res.json(
+        rows.map((row) => ({
+          ...row,
+          userName: names.get(row.userId) ?? row.userId,
+        })),
+      );
     } catch (error) {
       console.error("[Shifts] list:", error);
       res.status(500).json({ message: "Failed to list shifts" });

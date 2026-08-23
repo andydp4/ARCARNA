@@ -343,4 +343,44 @@ test.describe("UI seams", () => {
 
     await page.context().close();
   });
+
+  test("U7 the Shifts page names who is on, and looks back further than today", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+
+    // The window is a rolling one now. It used to be "since midnight", which
+    // answered "who was on last night?" with an empty table.
+    const listed = await okJson<any[]>(await api.get("/api/shifts?hours=48"));
+    const onNow = listed.find((shift) => shift.status === "open");
+    expect(onNow, "a shift was just opened, so one must come back open").toBeTruthy();
+    expect(
+      onNow.userName,
+      "the list must say who the shift belongs to — sending only a user id is " +
+        "what stopped this page answering its own question",
+    ).toBeTruthy();
+
+    // A window wider than the ceiling is clamped, not refused, and not obeyed.
+    const absurd = await api.get("/api/shifts?hours=999999");
+    expect(absurd.status(), "an over-wide window must be clamped, not a 500").toBe(200);
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/shifts");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    await expect(
+      page.locator('[data-testid="card-on-now"]'),
+      "the page must name whoever is on the till right now",
+    ).toContainText(onNow.userName, { timeout: 30_000 });
+
+    await expect(
+      page.locator(`[data-testid="shift-row-${onNow.id}"]`),
+      "and the shift must appear in the list with that same name against it",
+    ).toContainText(onNow.userName, { timeout: 15_000 });
+
+    await page.context().close();
+  });
 });
