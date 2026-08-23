@@ -368,18 +368,52 @@ test.describe("UI seams", () => {
     expect(absurd.status(), "an over-wide window must be clamped, not a 500").toBe(200);
 
     const page = await pageAs(browser, "ADMIN", orgId);
+    // A failure here used to say only "element not found", which is the least
+    // useful thing a test can say about a page that did not render. Anything
+    // the app threw is captured so the assertion can report it.
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
     await page.goto("/shifts");
     await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
 
-    await expect(
-      page.locator('[data-testid="card-on-now"]'),
-      "the page must name whoever is on the till right now",
-    ).toContainText(onNow.userName, { timeout: 30_000 });
+    /**
+     * Nothing else in this suite — journeys or a11y — visits /shifts, so its
+     * route chunk is compiled on demand the first time this test runs, on a
+     * dev server under whatever else the machine is doing. It gets the same
+     * budget the shell does rather than half of it.
+     *
+     * The poll reports what is on screen instead of what is missing: on
+     * failure the received string carries the URL, anything the app threw, and
+     * the start of the body, so the log says whether the page crashed,
+     * redirected, or simply had not arrived.
+     */
+    const onNowCard = page.locator('[data-testid="card-on-now"]');
+    const describeInstead = async () =>
+      [
+        "<no On now card>",
+        `url=${page.url()}`,
+        `pageErrors=${pageErrors.join(" | ") || "none"}`,
+        `body=${(await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400)}`,
+      ].join(" ");
+
+    await expect
+      .poll(
+        async () =>
+          (await onNowCard.count()) > 0
+            ? (await onNowCard.innerText()).replace(/\s+/g, " ").trim()
+            : await describeInstead(),
+        {
+          message: "the page must name whoever is on the till right now",
+          timeout: 60_000,
+        },
+      )
+      .toContain(onNow.userName);
 
     await expect(
       page.locator(`[data-testid="shift-row-${onNow.id}"]`),
       "and the shift must appear in the list with that same name against it",
-    ).toContainText(onNow.userName, { timeout: 15_000 });
+    ).toContainText(onNow.userName, { timeout: 30_000 });
 
     await page.context().close();
   });
