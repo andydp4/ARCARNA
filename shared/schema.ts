@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   jsonb,
   pgEnum,
@@ -108,7 +109,7 @@ export type InsertImportHistory = typeof importHistory.$inferInsert;
 // Locations table (stores - one per org)
 export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   address: varchar("address", { length: 500 }).notNull(),
   city: varchar("city", { length: 100 }).notNull(),
@@ -163,7 +164,7 @@ export type User = typeof users.$inferSelect;
 // Loyalty tiers table
 export const loyaltyTiers = pgTable("loyalty_tiers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 50 }).notNull(),
   pointsRequired: integer("points_required").notNull(),
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
@@ -195,7 +196,7 @@ export type LoyaltySettings = typeof loyaltySettings.$inferSelect;
 // Promotions/campaigns table
 export const promotions = pgTable("promotions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   code: varchar("code", { length: 50 }),
   type: varchar("type", { length: 20 }).notNull(), // percentage, fixed, bogo, points
@@ -225,7 +226,7 @@ export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 // Customers table (orgId required for new rows; nullable for legacy backfill)
 export const customers = pgTable("customers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
@@ -285,6 +286,12 @@ export const websiteUploadedFiles = pgTable("website_uploaded_files", {
   uniqueIndex("website_uploaded_files_provider_storage_key_uq")
     .on(table.provider, table.storageKey)
     .where(sql`${table.storageKey} IS NOT NULL`),
+  check("website_uploaded_files_provider_ck", sql`${table.provider} IN ('local', 'r2')`),
+  check(
+    "website_uploaded_files_status_ck",
+    sql`${table.status} IN ('available', 'pending', 'deleted')`,
+  ),
+  check("website_uploaded_files_byte_size_ck", sql`${table.byteSize} > 0`),
 ]);
 
 export type WebsiteUploadedFile = typeof websiteUploadedFiles.$inferSelect;
@@ -350,7 +357,20 @@ export const websiteOrderSettings = pgTable("website_order_settings", {
   notificationEmail: varchar("notification_email", { length: 255 }),
   updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  check(
+    "website_order_settings_access_mode_ck",
+    sql`${table.orderAccessMode} IN ('public', 'password', 'clerk')`,
+  ),
+  check(
+    "website_order_settings_status_ck",
+    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed')`,
+  ),
+  check(
+    "website_order_settings_min_order_value_ck",
+    sql`${table.minOrderValue} IS NULL OR ${table.minOrderValue} >= 0`,
+  ),
+]);
 
 export type WebsiteOrderSettings = typeof websiteOrderSettings.$inferSelect;
 export type InsertWebsiteOrderSettings = typeof websiteOrderSettings.$inferInsert;
@@ -393,6 +413,15 @@ export const websiteBlocks = pgTable("website_blocks", {
   index("website_blocks_org_page_sort_idx").on(table.orgId, table.page, table.sortOrder),
   index("website_blocks_org_visible_idx").on(table.orgId, table.isVisible),
   index("website_blocks_image_file_idx").on(table.imageFileId),
+  check(
+    "website_blocks_type_ck",
+    sql`${table.type} IN ('hero', 'image', 'wide', 'split', 'cta', 'notice', 'gallery', 'spacer')`,
+  ),
+  check(
+    "website_blocks_overlay_opacity_ck",
+    sql`${table.overlayOpacity} >= 0 AND ${table.overlayOpacity} <= 1`,
+  ),
+  check("website_blocks_image_fit_ck", sql`${table.imageFit} IN ('cover', 'contain', 'fill')`),
 ]);
 
 export type WebsiteBlock = typeof websiteBlocks.$inferSelect;
@@ -407,7 +436,7 @@ export type InsertWebsiteBlockData = z.infer<typeof insertWebsiteBlockSchema>;
 // Products table (orgId required for new rows; nullable for legacy backfill)
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   productId: varchar("product_id", { length: 100 }).notNull(),
   locationId: uuid("location_id").references(() => locations.id),
@@ -769,6 +798,11 @@ export const shifts = pgTable(
   (table) => [
     index("shifts_org_location_idx").on(table.orgId, table.locationId),
     index("shifts_user_status_idx").on(table.userId, table.status),
+    index("shifts_opened_at_idx").on(table.openedAt.desc()),
+    /** One open shift per person per till (migration 023). A rule, not an index. */
+    uniqueIndex("shifts_one_open_per_user_location_idx")
+      .on(table.orgId, table.locationId, table.userId)
+      .where(sql`${table.status} = 'open'`),
   ],
 );
 
@@ -927,7 +961,7 @@ export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCom
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   customerId: uuid("customer_id").references(() => customers.id),
   locationId: uuid("location_id").references(() => locations.id),
   shiftId: uuid("shift_id").references(() => shifts.id),
@@ -969,6 +1003,14 @@ export const orders = pgTable("orders", {
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
+  check(
+    "orders_fulfilment_method_check",
+    sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
+  ),
+  /** Open orders by fulfilment — the Open Orders list's index (migration 047). */
+  index("idx_orders_fulfilment_open")
+    .on(table.orgId, table.fulfilmentMethod)
+    .where(sql`${table.status} <> 'completed'`),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -990,7 +1032,7 @@ export type UpdateOrderStatus = z.infer<typeof updateOrderStatusSchema>;
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // rent, utilities, insurance, salaries, etc.
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
@@ -1018,7 +1060,7 @@ export type InsertOverheadExpenseData = z.infer<typeof insertOverheadExpenseSche
 // Order expenses table (orgId from order; nullable for legacy backfill)
 export const orderExpenses = pgTable("order_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // travel, shipping, packaging, other
   description: varchar("description", { length: 500 }),
@@ -1037,7 +1079,7 @@ export type InsertOrderExpenseData = z.infer<typeof insertOrderExpenseSchema>;
 // Order items table (orgId from order; nullable for legacy backfill)
 export const orderItems = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id),
   productId: uuid("product_id").references(() => products.id),
   quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
@@ -1275,7 +1317,7 @@ export const insertResellerTransactionSchema = createInsertSchema(resellerTransa
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id),
   customerId: uuid("customer_id").references(() => customers.id),
   invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(),
@@ -1424,6 +1466,10 @@ export const allowedUsers = pgTable("allowed_users", {
 }, (table) => [
   index("allowed_users_org_id_idx").on(table.orgId),
   index("allowed_users_email_idx").on(table.email),
+  /** One row per auth subject, ignoring the legacy null rows (migration 008). */
+  uniqueIndex("allowed_users_auth_user_id_uq")
+    .on(table.authUserId)
+    .where(sql`${table.authUserId} IS NOT NULL`),
 ]);
 
 export type AllowedUser = typeof allowedUsers.$inferSelect;
@@ -1595,6 +1641,71 @@ export type JobStatus = typeof JOB_STATUSES[number];
 export const WORKER_RESULT_STATUSES = ['success', 'failed', 'already_processed', 'retrying', 'skipped'] as const;
 export type WorkerResultStatus = typeof WORKER_RESULT_STATUSES[number];
 
+/**
+ * Tables that existed only in `migrations/`.
+ *
+ * `drizzle.config.ts` points `drizzle-kit push` at this file alone, and push
+ * drops whatever the file does not declare. `audit_logs`, `domain_outbox` and
+ * `admin_audit_logs.retention_until` were created by migrations 039, 009 and
+ * 014 and declared nowhere, so a push would have taken all three with it --
+ * including the seven-year audit trail. Declaring them here is what makes push
+ * agree with the database rather than argue with it.
+ *
+ * Nothing should push against production regardless (see
+ * docs/DEPLOY_HOSTINGER_VPS.md), but "the runbook says don't" is not a
+ * safeguard.
+ */
+
+/** Legacy domain-engine audit log, used by AuditPortDrizzle (migration 039). */
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: varchar("user_id", { length: 100 }).notNull(),
+    userRole: varchar("user_role", { length: 50 }),
+    action: varchar("action", { length: 100 }).notNull(),
+    entityType: varchar("entity_type", { length: 50 }).notNull(),
+    entityId: varchar("entity_id", { length: 100 }),
+    entityName: varchar("entity_name", { length: 255 }),
+    oldValues: jsonb("old_values"),
+    newValues: jsonb("new_values"),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: varchar("user_agent", { length: 1024 }),
+    sessionId: varchar("session_id", { length: 255 }),
+    success: boolean("success").default(true),
+    errorMessage: varchar("error_message", { length: 1024 }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("audit_logs_entity_idx").on(table.entityType, table.entityId),
+    index("audit_logs_created_at_idx").on(table.createdAt.desc()),
+  ],
+);
+
+/** Analytics worker outbox (migration 009). Superseded by eventOutbox below,
+ *  but still present and still written to on existing environments. */
+export const domainOutbox = pgTable(
+  "domain_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "set null" }),
+    type: varchar("type", { length: 128 }).notNull(),
+    data: jsonb("data"),
+    eventType: varchar("event_type", { length: 128 }),
+    aggregateType: varchar("aggregate_type", { length: 128 }),
+    aggregateId: varchar("aggregate_id", { length: 255 }),
+    payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("domain_outbox_unprocessed_idx")
+      .on(table.createdAt)
+      .where(sql`${table.processedAt} IS NULL`),
+  ],
+);
+
 // Event Outbox - stores events before dispatch
 export const eventOutbox = pgTable("event_outbox", {
   eventId: varchar("event_id", { length: 36 }).primaryKey(),
@@ -1712,6 +1823,10 @@ export const apiKeys = pgTable(
   (table) => [
     index("api_keys_org_idx").on(table.orgId),
     index("api_keys_lookup_idx").on(table.orgId, table.keyLookup),
+    /** One live key per lookup per org; revoked ones may repeat (migration 012). */
+    uniqueIndex("api_keys_org_lookup_active_idx")
+      .on(table.orgId, table.keyLookup)
+      .where(sql`${table.revokedAt} IS NULL`),
   ],
 );
 
@@ -1753,6 +1868,10 @@ export const adminAuditLogs = pgTable(
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: varchar("user_agent", { length: 1024 }),
     createdAt: timestamp("created_at").defaultNow(),
+    /** Seven-year audit retention (migration 014). */
+    retentionUntil: timestamp("retention_until", { withTimezone: true }).default(
+      sql`now() + interval '7 years'`,
+    ),
   },
   (table) => [
     index("admin_audit_logs_created_at_idx").on(table.createdAt),

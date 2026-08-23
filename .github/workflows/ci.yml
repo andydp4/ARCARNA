@@ -36,6 +36,9 @@ jobs:
       - name: Audit schema drift (two schema files, same tables)
         run: node scripts/audit-schema-drift.mjs
 
+      - name: Audit migration numbering (no two migrations share a number)
+        run: node scripts/audit-migration-numbers.mjs
+
       # --omit=dev deliberately: a CVE in eslint or playwright does not reach a
       # customer, and failing the build on one trains everyone to ignore this
       # step. This gates only what actually ships.
@@ -277,6 +280,13 @@ jobs:
 
       - name: Migration sanity (post db:push)
         run: npm run migration:sanity
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      # Must run last in this job: it invokes `drizzle-kit push` for real, so the
+      # database is no longer in the shape the steps above built.
+      - name: Audit schema/migration drift (would push destroy anything?)
+        run: node scripts/audit-schema-push-drift.mjs
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
 
