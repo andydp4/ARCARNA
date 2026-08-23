@@ -373,6 +373,12 @@ test.describe("UI seams", () => {
     // the app threw is captured so the assertion can report it.
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    // Console errors too: a failing auth request reports itself there, and that
+    // is what took the router's authenticated routes away the first time this
+    // ran on CI.
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(`console: ${message.text()}`);
+    });
 
     await page.goto("/shifts");
     await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
@@ -414,6 +420,49 @@ test.describe("UI seams", () => {
       page.locator(`[data-testid="shift-row-${onNow.id}"]`),
       "and the shift must appear in the list with that same name against it",
     ).toContainText(onNow.userName, { timeout: 30_000 });
+
+    await page.context().close();
+  });
+
+  test("U8 a real page is not called non-existent while the app works out who you are", async ({
+    browser,
+    orgId,
+  }) => {
+    const page = await pageAs(browser, "ADMIN", orgId);
+
+    // Hold the auth answer back. This is the state U7 hit on CI: the request had
+    // not come back, so the router had not been given the authenticated routes
+    // yet, and every real page fell through to the catch-all.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/auth/user", async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.goto("/shifts");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // A fixed wait, deliberately: the claim is that the page never says this
+    // while auth is outstanding, which is a statement about a stretch of time
+    // rather than about one moment. A web-first assertion would pass on the
+    // first frame and prove nothing.
+    await page.waitForTimeout(3_000);
+    expect(
+      await page.locator("body").innerText(),
+      "an unanswered auth request must not turn a real route into a 404 — " +
+        "telling an operator their page does not exist reads as the system " +
+        "being broken, and it never recovers on its own",
+    ).not.toContain("does not exist");
+
+    // And the wait must not be a dead end: once auth lands, the page arrives.
+    release();
+    await expect(
+      page.locator('[data-testid="card-on-now"]'),
+      "once auth answers, the real page must render rather than stay on the spinner",
+    ).toBeVisible({ timeout: 30_000 });
 
     await page.context().close();
   });

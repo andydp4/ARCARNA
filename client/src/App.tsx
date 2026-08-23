@@ -193,7 +193,11 @@ function Router() {
         </Layout>
         </AccessGate>
       )}
-      <Route component={NotFound} />
+      {/* While auth is unresolved the router has not yet been given the
+          authenticated routes, so every real page falls through to here. Saying
+          "this route does not exist" about a page that does is worse than
+          saying nothing — wait, then answer. */}
+      <Route component={isLoading ? RouteLoadingFallback : NotFound} />
     </Switch>
     </Suspense>
     </WouterRouter>
