@@ -466,4 +466,39 @@ test.describe("UI seams", () => {
 
     await page.context().close();
   });
+
+  test("U9 the Arcarna domain shows Arcarna's sign-in, not the shop's", async ({
+    browser,
+    orgId,
+  }) => {
+    const page = await pageAs(browser, "ADMIN", orgId);
+
+    // Answer the auth check the way it answers a member of the public: signed
+    // out. The dev bypass would otherwise promote every anonymous caller, so
+    // this is the only way to see what a visitor sees.
+    await page.route("**/api/auth/user", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Unauthorized" }),
+      }),
+    );
+
+    await page.goto("/");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    await expect(
+      page.getByText("Welcome Back"),
+      "the front door of the Arcarna domain must be Arcarna's own sign-in",
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The shop's own gate belongs on the shop's domain, served by the customer
+    // site process. Finding it here means the two have been crossed again.
+    await expect(
+      page.locator("#wm-private-title"),
+      "the WM Supplies access gate must not be the Arcarna app's landing page",
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
 });
