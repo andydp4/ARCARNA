@@ -125,12 +125,16 @@ Brief: [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md). Execu
 
 | ID | Status | Wave / notes |
 |----|--------|----------------|
-| K1 | **Planned** | Order attribution — input vs completing cashier |
-| K2 | **Planned** | Per-order commission ledger, 90/10 split; overheads confirmed in the base, so accrual moves to shift close |
-| K3 | **Planned** | Credit/tick lifecycle, pro-rata part-payments with tender methods; carries the F4 fix |
-| K4 | **Planned** | Credit given/resolved on the Z-report |
-| K5 | **Planned** | Personal-use payment type + manager Signal |
-| K6 | **Planned** | Negative-order guard + free-entry commission rates |
+| K1 | **Built** | Order attribution — input vs completing cashier; migration 051 |
+| K2 | **Built** | Per-order commission ledger, 90/10 split; migration 052. Accrues at shift close, since an order's overhead share needs the day's takings |
+| K3 | **Built** | Credit/tick lifecycle, pro-rata part-payments with tender methods; migration 053. Carries the F4 fix |
+| K4 | **Built** | Credit given/resolved on the Z-report, and in the training manual |
+| K5 | **Built** | Personal-use payment type + Signal via `org_notifications`; migration 054 |
+| K6 | **Built** | Negative-order guard (Zod, check constraint, till message) + free-entry rates; migration 055 |
+
+Open: whether "so much cash, so much card, so much tick" also meant splitting a
+single sale across tenders at the counter. K3 covers instalments against a debt;
+split tender at the till would need an `order_payments` table and is not built.
 
 ---
 

@@ -1,6 +1,6 @@
 # Phase K — Cashier commission, credit and personal use
 
-**Status (2026-08-25):** Briefed, not started · **`main` ref:** `3c6b597` (PR #139)
+**Status (2026-08-25):** **K1–K6 built** on `claude/cashier-signin-desk-card-55v3a2` · **`main` ref:** `3c6b597` (PR #139)
 **Depends on:** F2 (shifts + Z-report), the cashier shift engine shipped alongside it.
 
 Six briefs, in strict order: **K1** order attribution, **K2** per-order commission ledger,
@@ -108,7 +108,7 @@ Every row below was read from the tree at `3c6b597`.
 | **F6** | **The org default rate is a fixed dropdown** of 10/20/30. "12, 25, whatever is agreed" cannot be entered. The per-cashier rate is already a free input and the column already exists, so only the org control and the preset list need to change | `shared/schema.ts:36`, `client/src/components/settings/CashierCommissionSettings.tsx:204` |
 | **F7** | **No `personal_use` payment method.** The till offers cash, card, transfer, tick, gift card. `payment_method` is a free `varchar(50)` with no check constraint, so adding one is additive | `client/src/pages/pos.tsx:964`, `shared/schema.ts:978` |
 | **F8** | **Nothing blocks a negative order.** `insertOrderSchema` omits only id/timestamps/status; `total` has no lower bound in Zod and no check constraint in the database, and the orders route adds no guard | `shared/schema.ts:1025`, `server/routes/orders.ts` |
-| **F9** | **There is no Signals table.** The machinery that exists is `event_outbox` + `job_queue` + `worker_run_logs`, plus `reportNotifications.ts`. The personal-use alert should ride the outbox, not a new bespoke path | `shared/schema.ts:1717`, `server/services/reportNotifications.ts` |
+| **F9** | ~~There is no Signals table.~~ **Wrong — `org_notifications` already exists** and is the Signal mechanism behind the Control Centre bell, written by `reportNotifications.ts`. No new table was needed. It is org-scoped rather than per-user, so a personal-use Signal is one notification visible to everyone who can see the org's bell, not a fan-out to each admin and manager. The alert rides `event_outbox` so a failed write is retried rather than silently lost | `shared/schema.ts` (`orgNotifications`), `server/services/reportNotifications.ts` |
 | **F10** | **The Z-report has no credit lines.** `ZReportData` carries gross, refunds, net, sales by payment method and category, top SKUs and the cash drawer. Nothing says how much credit was given out or resolved | `shared/reports/zReport.ts:41` |
 
 ---
