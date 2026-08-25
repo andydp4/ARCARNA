@@ -30,6 +30,7 @@ import { FinanceWorker } from "./financeWorker";
 import { ExpensesWorker } from "./expensesWorker";
 import { AutomationWorker } from "./automationWorker";
 import { ReceiptEmailWorker } from "./receiptEmailWorker";
+import { PersonalUseSignalWorker } from "./personalUseSignalWorker";
 
 // Worker interface that all workers must implement
 export interface IWorker {
@@ -48,6 +49,7 @@ const WORKER_FACTORIES: Record<WorkerName, () => IWorker> = {
   BusinessInsightsWorker: () => new BusinessInsightsWorker(),
   FinanceWorker: () => new FinanceWorker(),
   ExpensesWorker: () => new ExpensesWorker(),
+  PersonalUseSignalWorker: () => new PersonalUseSignalWorker(),
   AutomationWorker: () => new AutomationWorker(),
   ReceiptEmailWorker: () => new ReceiptEmailWorker(),
 };

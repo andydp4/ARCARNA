@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck } from "lucide-react";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck, UserRound } from "lucide-react";
 import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
@@ -114,6 +114,7 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [personalUseReason, setPersonalUseReason] = useState("");
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
@@ -669,6 +670,19 @@ export default function POS() {
       paymentMethod: paymentMethod,
       fulfilmentMethod,
     };
+    if (paymentMethod === "personal_use") {
+      // Guarded here as well as on the server, so the cashier is told before
+      // the request rather than after it.
+      if (personalUseReason.trim().length < 3) {
+        toast({
+          title: "Say what this is for",
+          description: "Personal use needs a reason before it can be recorded.",
+          variant: "destructive",
+        });
+        return;
+      }
+      orderData.personalUseReason = personalUseReason.trim();
+    }
     if (paymentMethod === "gift_card" && giftCardPayment) {
       orderData.giftCardCode = giftCardPayment.code;
       orderData.giftCardAmount = giftCardPayment.amountToApply;
@@ -991,9 +1005,37 @@ export default function POS() {
                       Gift card
                     </div>
                   </SelectItem>
+                  <SelectItem value="personal_use">
+                    <div className="flex items-center gap-2">
+                      <UserRound className="h-4 w-4" />
+                      Personal use (staff)
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {paymentMethod === "personal_use" && (
+              <div>
+                <label className="text-sm font-medium mb-2 block" htmlFor="personal-use-reason">
+                  What is this for?
+                </label>
+                <Input
+                  id="personal-use-reason"
+                  value={personalUseReason}
+                  onChange={(e) => setPersonalUseReason(e.target.value)}
+                  placeholder="e.g. staff lunch, damaged stock written off to staff"
+                  data-testid="input-personal-use-reason"
+                  className="min-h-[44px]"
+                />
+                {/* Said plainly at the till rather than discovered afterwards:
+                    this is recorded, costed, and a manager is told. */}
+                <p className="text-xs text-metal-muted mt-2">
+                  This is not a sale. The stock comes off, the cost goes on today's expenses, and a
+                  manager is notified.
+                </p>
+              </div>
+            )}
 
             <div>
               <span className="text-sm font-medium mb-2 block" id="fulfilment-label">

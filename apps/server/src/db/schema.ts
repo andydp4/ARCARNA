@@ -93,6 +93,8 @@ export const orders = pgTable('orders', {
   // inflate the refundable amount.
   settled_total: numeric('settled_total',{precision:10,scale:2}),
   settled_at: timestamp('settled_at'),
+  // Why stock left without a sale — see shared/schema.ts and migration 054.
+  personal_use_reason: text('personal_use_reason'),
   channel: varchar('channel', { length: 32 }).default('pos').notNull(),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),

@@ -24,6 +24,30 @@ import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { resolveUserNames } from "../services/userDisplayName";
 
+/**
+ * What the goods on a personal-use order cost the business.
+ *
+ * Taken from the products' recorded cost price, because that is what actually
+ * left the shelf. Items with no recorded cost contribute nothing rather than
+ * guessing — an invented figure here would land in the expenses and in the
+ * Signal a manager reads.
+ */
+async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
+  const { orderItems, products } = await import('@shared/schema');
+  const { eq } = await import('drizzle-orm');
+  const rows = await tx
+    .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
+    .from(orderItems)
+    .leftJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(orderItems.orderId, orderId));
+  const total = rows.reduce(
+    (sum: number, r: { quantity: unknown; costPrice: unknown }) =>
+      sum + (r.costPrice == null ? 0 : Number(r.quantity) * parseFloat(String(r.costPrice))),
+    0,
+  );
+  return Math.round(total * 100) / 100;
+}
+
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
     try {
@@ -50,6 +74,24 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
       };
       const userId = req.user?.id ?? "unknown";
+
+      // Personal use: staff taking stock for themselves. Not a sale, so it must
+      // never reach the sales figures — the total is forced to zero here rather
+      // than trusted from the client, and the cost is booked as an expense
+      // below. The reason is mandatory: a Signal that says only "personal use,
+      // £14.20" gets ignored, and being read is the entire control.
+      const isPersonalUse = String(body.paymentMethod ?? "").toLowerCase() === "personal_use";
+      if (isPersonalUse) {
+        const reason = String(body.personalUseReason ?? "").trim();
+        if (reason.length < 3) {
+          return res.status(400).json({
+            message: "Say what this is for before recording personal use.",
+            code: "PERSONAL_USE_REASON_REQUIRED",
+          });
+        }
+        body.personalUseReason = reason;
+      }
+
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
@@ -105,6 +147,36 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             await tx.update(orders).set({ payment_method: paymentLabel }).where(eq(orders.id, result.orderId));
             createdOrder.payment_method = paymentLabel;
           }
+        }
+
+        if (isPersonalUse && createdOrder) {
+          // Zero the sale and book the goods as a cost of the day. The stock has
+          // already been deducted by the ordinary order path — it left the
+          // building either way — so only the money side needs correcting.
+          const stockCost = await personalUseStockCost(tx, result.orderId);
+          await tx
+            .update(orders)
+            .set({ total: "0.00", personal_use_reason: body.personalUseReason })
+            .where(eq(orders.id, result.orderId));
+          createdOrder.total = "0.00";
+          if (stockCost > 0) {
+            const { orderExpenses } = await import('@shared/schema');
+            await tx.insert(orderExpenses).values({
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              category: 'personal_use',
+              description: `Personal use — ${body.personalUseReason}`,
+              amount: String(stockCost),
+            });
+          }
+          await publishEventTx(tx, 'PersonalUseRecorded', result.orderId, {
+            orgId: ctx.orgId,
+            orderId: result.orderId,
+            cashierName: req.user?.name ?? req.user?.email ?? null,
+            reason: body.personalUseReason,
+            stockCost,
+            items: items.map((item: any) => ({ qty: item.quantity })),
+          }, { source: 'api-orders' });
         }
 
         const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);

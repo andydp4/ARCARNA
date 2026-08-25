@@ -1150,6 +1150,10 @@ export const orders = pgTable("orders", {
   revisedEta: timestamp("revised_eta"),
   delayNotificationSentAt: timestamp("delay_notification_sent_at"),
   delayResolution: varchar("delay_resolution", { length: 32 }),
+  // Why stock left without a sale. Required when paymentMethod is
+  // "personal_use" — a Signal without a reason is a Signal nobody reads.
+  // (migration 054)
+  personalUseReason: text("personal_use_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -1771,7 +1775,10 @@ export const EVENT_TYPES = [
   'OrderCancelled',
   'ExpenseLogged',
   'ExpenseUpdated',
-  'ExpenseDeleted'
+  'ExpenseDeleted',
+  // Staff took stock for themselves. Not a sale — it exists so a manager is
+  // told, which is the entire control against it becoming theft.
+  'PersonalUseRecorded'
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 
@@ -1786,6 +1793,7 @@ export const WORKER_NAMES = [
   'ExpensesWorker',
   'AutomationWorker',
   'ReceiptEmailWorker',
+  'PersonalUseSignalWorker',
 ] as const;
 export type WorkerName = typeof WORKER_NAMES[number];
 
@@ -2374,4 +2382,5 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+  PersonalUseRecorded: ['PersonalUseSignalWorker'],
 };

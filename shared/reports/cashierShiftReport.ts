@@ -51,6 +51,8 @@ export type CashierShiftBalanceSheet = {
   globalExpenseAllocation: number;
   refunds: number;
   discounts: number;
+  /** Cost of stock staff took for themselves — never a sale, never commission. */
+  personalUseCost: number;
   netSalesProfit: number;
   commissionRate: number;
   commissionAmount: number;
@@ -65,6 +67,16 @@ function roundMoney(n: number): number {
 
 function isTickPayment(method: string): boolean {
   return method.toLowerCase() === "tick";
+}
+
+/**
+ * Staff taking stock for themselves. Not a sale, and never treated as one: it
+ * contributes nothing to takings and earns nobody commission. Its cost reaches
+ * the books once, as an order expense booked on the day — which is why the
+ * stock cost loop skips it rather than counting the same goods twice.
+ */
+export function isPersonalUse(method: string): boolean {
+  return method.toLowerCase() === "personal_use";
 }
 
 /**
@@ -114,24 +126,29 @@ export function buildCashierShiftBalanceSheet(
   discounts: number,
   commissionRate: number,
 ): CashierShiftBalanceSheet {
-  const grossSales = roundMoney(orders.reduce((sum, o) => sum + Math.max(0, o.total), 0));
+  // Personal use is not a sale. Excluded from every takings figure below, and
+  // from the stock cost, because its cost arrives as an order expense instead.
+  const salesOrders = orders.filter((o) => !isPersonalUse(o.paymentMethod));
+  const personalUseOrders = orders.filter((o) => isPersonalUse(o.paymentMethod));
+
+  const grossSales = roundMoney(salesOrders.reduce((sum, o) => sum + Math.max(0, o.total), 0));
   const cashSales = roundMoney(
-    orders.filter((o) => isCashPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
+    salesOrders.filter((o) => isCashPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
   );
   const cardSales = roundMoney(
-    orders.filter((o) => isCardPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
+    salesOrders.filter((o) => isCardPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
   );
   const creditSales = roundMoney(
-    orders.filter((o) => isTickPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
+    salesOrders.filter((o) => isTickPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
   );
   const unpaidCreditSales = roundMoney(
-    orders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
+    salesOrders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
   );
   const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales);
 
   let stockCost = 0;
   let hasIncompleteCostData = false;
-  for (const order of orders) {
+  for (const order of salesOrders) {
     for (const item of order.items) {
       if (item.costPrice == null) {
         hasIncompleteCostData = true;
@@ -159,6 +176,20 @@ export function buildCashierShiftBalanceSheet(
   const commissionAmount = roundMoney(Math.max(0, netSalesProfit) * (commissionRate / 100));
   const businessRetainedProfit = roundMoney(netSalesProfit - commissionAmount);
 
+  // What the goods taken for personal use cost, shown so it is visible rather
+  // than buried inside the expense line it is booked against.
+  const personalUseCost = roundMoney(
+    personalUseOrders.reduce(
+      (sum, order) =>
+        sum +
+        order.items.reduce(
+          (itemSum, item) => itemSum + (item.costPrice == null ? 0 : item.quantity * item.costPrice),
+          0,
+        ),
+      0,
+    ),
+  );
+
   return {
     grossSales,
     cashSales,
@@ -171,6 +202,7 @@ export function buildCashierShiftBalanceSheet(
     globalExpenseAllocation: roundedGlobalAllocation,
     refunds: refundsTotal,
     discounts: roundedDiscounts,
+    personalUseCost,
     netSalesProfit,
     commissionRate,
     commissionAmount,
