@@ -90,6 +90,79 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
     }
   });
 
+  /**
+   * A part payment against a customer's account.
+   *
+   * Customers pay an account, not an invoice — "here's £150 off what I owe" —
+   * so the amount is allocated across their outstanding orders oldest first.
+   * That is both what a shop does by hand and what keeps the oldest debt from
+   * ageing indefinitely while newer ones get cleared.
+   */
+  app.post("/api/tick-customers/:id/payments", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
+
+      let remaining = Math.round(Number(req.body?.amount) * 100) / 100;
+      if (!Number.isFinite(remaining) || remaining <= 0) {
+        return res.status(400).json({ message: "Enter how much the customer paid." });
+      }
+
+      const { db } = await import('../db');
+      const { orderCredit } = await import('@shared/schema');
+      const { and, asc, eq, inArray } = await import('drizzle-orm');
+      const { recordCreditPayment } = await import('../services/creditLedger');
+
+      const owing = await db
+        .select({ orderId: orderCredit.orderId, outstanding: orderCredit.amountOutstanding })
+        .from(orderCredit)
+        .where(and(
+          eq(orderCredit.orgId, ctx.orgId),
+          eq(orderCredit.customerId, req.params.id),
+          inArray(orderCredit.status, ['outstanding', 'partial']),
+        ))
+        .orderBy(asc(orderCredit.givenOn));
+
+      const owed = owing.reduce((sum, r) => sum + parseFloat(String(r.outstanding)), 0);
+      if (remaining > Math.round(owed * 100) / 100) {
+        return res.status(400).json({
+          message: `That is more than this customer owes. £${owed.toFixed(2)} is outstanding.`,
+          code: "CREDIT_OVERPAYMENT",
+        });
+      }
+
+      const applied: Array<{ orderId: string; amount: number }> = [];
+      for (const row of owing) {
+        if (remaining <= 0) break;
+        const outstanding = parseFloat(String(row.outstanding));
+        const amount = Math.round(Math.min(outstanding, remaining) * 100) / 100;
+        if (amount <= 0) continue;
+        await recordCreditPayment({
+          orgId: ctx.orgId,
+          orderId: row.orderId,
+          amount,
+          method: String(req.body?.method ?? 'cash'),
+          recordedByUserId: req.user?.id ?? null,
+          note: req.body?.note ?? null,
+        });
+        applied.push({ orderId: row.orderId, amount });
+        remaining = Math.round((remaining - amount) * 100) / 100;
+      }
+
+      res.status(201).json({
+        applied,
+        amountApplied: applied.reduce((sum, a) => sum + a.amount, 0),
+        remainingOwed: Math.round((owed - applied.reduce((sum, a) => sum + a.amount, 0)) * 100) / 100,
+      });
+    } catch (error: any) {
+      if (error?.status) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
+      console.error("Error recording tick payment:", error);
+      res.status(500).json({ message: "Failed to record the payment" });
+    }
+  });
+
   // Clearing a customer's whole account, kept because the button exists and
   // people use it. It no longer works by flipping every order to "completed" —
   // that used order status to mean "the money arrived", which is what made

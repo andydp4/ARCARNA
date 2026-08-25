@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -74,6 +75,9 @@ export default function TickList() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'partial' | 'paid'>('all')
   const [selectedCustomer, setSelectedCustomer] = useState<TickCustomer | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [payingCustomer, setPayingCustomer] = useState<TickCustomer | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
   const [customerToDelete, setCustomerToDelete] = useState<TickCustomer | null>(null)
 
   // Fetch tick customers from API
@@ -142,8 +146,37 @@ export default function TickList() {
   const totalDebt = filteredCustomers.reduce((sum, customer) => sum + (customer.totalDebt || 0), 0)
   const customersWithDebt = filteredCustomers.filter(c => c.totalDebt > 0).length
 
-  const handleRecordPayment = (customerId: string) => {
-    markPaidMutation.mutate(customerId)
+  // A part payment against the account. Customers rarely clear an invoice in
+  // one hit, and the amount decides how much commission is released, so it has
+  // to be the real figure rather than "all of it".
+  const recordPaymentMutation = useMutation({
+    mutationFn: async ({ customerId, amount, method }: { customerId: string; amount: number; method: string }) => {
+      const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body?.message ?? 'Failed to record the payment')
+      return body as { amountApplied: number; remainingOwed: number }
+    },
+    onSuccess: (result) => {
+      toast({
+        title: 'Payment recorded',
+        description:
+          result.remainingOwed > 0
+            ? `£${result.amountApplied.toFixed(2)} received. £${result.remainingOwed.toFixed(2)} still outstanding.`
+            : `£${result.amountApplied.toFixed(2)} received. The account is clear.`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['/api/tick-customers'] })
+      setPayingCustomer(null)
+      setPaymentAmount('')
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Could not record the payment', description: error.message, variant: 'destructive' })
+    },
+  })
+
+  const handleRecordPayment = (customer: TickCustomer) => {
+    setPayingCustomer(customer)
+    setPaymentAmount((customer.totalDebt || 0).toFixed(2))
+    setPaymentMethod('cash')
   }
 
   const handleSendReminder = (customerId: string) => {
@@ -353,7 +386,7 @@ export default function TickList() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleRecordPayment(customer.id)}
+                                onClick={() => handleRecordPayment(customer)}
                                 disabled={customer.totalDebt === 0}
                                 data-testid={`button-payment-${customer.id}`}
                               >
@@ -411,7 +444,7 @@ export default function TickList() {
                             size="sm"
                             variant="outline"
                             className="flex-1 min-h-[44px]"
-                            onClick={() => handleRecordPayment(customer.id)}
+                            onClick={() => handleRecordPayment(customer)}
                             disabled={customer.totalDebt === 0}
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
@@ -442,6 +475,72 @@ export default function TickList() {
             )}
           </CardContent>
         </Card>
+
+        {/* Record a payment against the account */}
+        <Dialog open={!!payingCustomer} onOpenChange={(open) => !open && setPayingCustomer(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record a payment from {payingCustomer?.name}</DialogTitle>
+              <DialogDescription>
+                £{(payingCustomer?.totalDebt || 0).toFixed(2)} is outstanding. Enter what the
+                customer actually handed over — it goes against their oldest debt first.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="tick-payment-amount">Amount paid (£)</Label>
+                <Input
+                  id="tick-payment-amount"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="min-h-[44px]"
+                  data-testid="input-tick-payment-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tick-payment-method">Paid by</Label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger id="tick-payment-method" className="min-h-[44px]" aria-label="Paid by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="transfer">Transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+                {/* It matters which: only the cash leg reaches the drawer, so
+                    the Z-report cannot reconcile without knowing. */}
+                <p className="text-xs text-muted-foreground">
+                  Only cash payments go into the till drawer.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" className="min-h-[44px]" onClick={() => setPayingCustomer(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="min-h-[44px]"
+                disabled={recordPaymentMutation.isPending || !(Number(paymentAmount) > 0)}
+                onClick={() =>
+                  payingCustomer &&
+                  recordPaymentMutation.mutate({
+                    customerId: payingCustomer.id,
+                    amount: Number(paymentAmount),
+                    method: paymentMethod,
+                  })
+                }
+                data-testid="button-tick-record-payment"
+              >
+                Record payment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
