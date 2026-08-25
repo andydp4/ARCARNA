@@ -95,7 +95,16 @@
     <tr><td><strong>Sales by category</strong></td><td>Which kinds of product sold, by value. Useful for spotting what a shift actually sold.</td></tr>
     <tr><td><strong>Top SKUs</strong></td><td>The best-selling individual products in the shift, with quantity and revenue.</td></tr>
     <tr><td><strong>Cash drawer</strong></td><td>The reconciliation: opening float, cash sales, cash refunds, expected cash, counted cash and the variance. When the variance is not zero it is shown in the loss colour so it stands out.</td></tr>
+    <tr><td><strong>Credit given out today</strong></td><td>Sales you made on credit during this shift. The goods have gone and the sale is counted, but no money came in — so this is usually why the drawer holds less than the day's sales suggest.</td></tr>
+    <tr><td><strong>Credit resolved from dd/mm/yy</strong></td><td>Money that came in during this shift against a credit sale made on an earlier day. One line per day being settled. It does not add to the day's sales, because that sale was counted when it was made.</td></tr>
   </table>
+  <div class="callout">
+    <strong>Why the two credit lines never change net sales</strong>
+    A credit sale is counted once, on the day the goods leave. When the customer
+    pays later, the money arrives but the sale is not counted again — otherwise
+    the shop's sales would go up twice for one sale. The credit lines are there
+    so you can see the difference between what you sold and what you took.
+  </div>
   <p>Select <span class="ui">Print</span> at the top of the Z-report to print or keep a copy for the day's paperwork.</p>
 
   <p class="eyebrow">Back office · reviewing</p>

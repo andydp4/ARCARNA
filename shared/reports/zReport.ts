@@ -55,6 +55,34 @@ export type ZReportData = {
     closingCount: number | null;
     variance: number | null;
   };
+  /**
+   * Credit handed out during this shift — sales made, goods gone, no money in.
+   *
+   * It explains a drawer that is light: the sales are real and counted, the
+   * cash simply is not there yet. It does not touch `netSales`.
+   */
+  creditGivenOut: number;
+  /**
+   * Credit settled during this shift, grouped by the day the debt was given.
+   *
+   * Cash arriving now against a sale counted on an earlier day, which is why it
+   * does not touch `netSales` either — counting it again would inflate takings
+   * by the value of every credit sale.
+   */
+  creditResolved: Array<{ givenOn: string; amount: number }>;
+};
+
+/** Credit given out during the shift, from the orders' credit records. */
+export type ZReportCreditGiven = {
+  orderId: string;
+  amountGiven: number;
+};
+
+/** A payment taken during the shift against a debt given on `givenOn`. */
+export type ZReportCreditPayment = {
+  amount: number;
+  givenOn: string;
+  method: string;
 };
 
 function roundMoney(n: number): number {
@@ -70,6 +98,8 @@ export function buildZReport(
   shift: ZReportShift,
   orders: ZReportOrder[],
   refunds: ZReportRefund[],
+  creditGiven: ZReportCreditGiven[] = [],
+  creditPaid: ZReportCreditPayment[] = [],
 ): ZReportData {
   const grossSales = roundMoney(
     orders.reduce((sum, o) => sum + Math.max(0, o.total), 0),
@@ -168,7 +198,29 @@ export function buildZReport(
       closingCount,
       variance,
     },
+    creditGivenOut: roundMoney(
+      creditGiven.reduce((sum, c) => sum + Math.max(0, c.amountGiven), 0),
+    ),
+    creditResolved: summariseCreditResolved(creditPaid),
   };
+}
+
+/**
+ * Groups the shift's credit settlements by the day the debt was given, so the
+ * report reads "credit resolved from 12/08/26 — £240.00". A shift clearing
+ * debts from three different days shows three lines, because that is three
+ * separate pieces of history being closed off.
+ */
+function summariseCreditResolved(
+  payments: ZReportCreditPayment[],
+): Array<{ givenOn: string; amount: number }> {
+  const byDay = new Map<string, number>();
+  for (const payment of payments) {
+    byDay.set(payment.givenOn, (byDay.get(payment.givenOn) ?? 0) + Math.max(0, payment.amount));
+  }
+  return [...byDay.entries()]
+    .map(([givenOn, amount]) => ({ givenOn, amount: roundMoney(amount) }))
+    .sort((a, b) => (a.givenOn < b.givenOn ? -1 : 1));
 }
 
 /** Server-side expected cash at close time. */

@@ -102,3 +102,59 @@ describe("buildZReport", () => {
     expect(report.cashSummary.variance).toBe(5);
   });
 });
+
+describe("credit on the Z-report", () => {
+  const shift = {
+    id: "s1",
+    openingFloat: 100,
+    closingCount: null,
+    expectedCash: null,
+    variance: null,
+    openedAt: "2026-08-25T08:00:00.000Z",
+    closedAt: null,
+    cashierName: "Priya",
+    locationName: "Front counter",
+    status: "open",
+    notes: null,
+  };
+
+  it("reports credit given and credit resolved without moving net sales", () => {
+    const orders = [
+      {
+        id: "o1",
+        total: 300,
+        paymentMethod: "tick",
+        createdAt: "2026-08-25T09:00:00.000Z",
+        items: [],
+      },
+    ];
+
+    const withoutCredit = buildZReport(shift, orders, []);
+    const withCredit = buildZReport(
+      shift,
+      orders,
+      [],
+      [{ orderId: "o1", amountGiven: 300 }],
+      [
+        { amount: 120, givenOn: "2026-08-18", method: "cash" },
+        { amount: 30, givenOn: "2026-08-18", method: "card" },
+        { amount: 45, givenOn: "2026-08-20", method: "cash" },
+      ],
+    );
+
+    expect(withCredit.creditGivenOut).toBe(300);
+    expect(withCredit.creditResolved).toEqual([
+      { givenOn: "2026-08-18", amount: 150 },
+      { givenOn: "2026-08-20", amount: 45 },
+    ]);
+    // The whole point: neither line is takings for today.
+    expect(withCredit.netSales).toBe(withoutCredit.netSales);
+  });
+
+  it("reports nothing rather than zeroes on a shift with no credit activity", () => {
+    const report = buildZReport(shift, [], []);
+
+    expect(report.creditGivenOut).toBe(0);
+    expect(report.creditResolved).toEqual([]);
+  });
+});

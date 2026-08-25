@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { ZReportData } from "@shared/reports/zReport";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -6,6 +7,12 @@ import { Printer } from "lucide-react";
 
 function money(n: number) {
   return `£${n.toFixed(2)}`;
+}
+
+/** ISO date to the dd/mm/yy a cashier reads on a docket. */
+function formatGivenOn(iso: string) {
+  const [year, month, day] = iso.split("-");
+  return `${day}/${month}/${year.slice(2)}`;
 }
 
 export function ZReportView({ report }: { report: ZReportData }) {
@@ -119,6 +126,32 @@ export function ZReportView({ report }: { report: ZReportData }) {
               )}
             </div>
           </div>
+
+          {(report.creditGivenOut > 0 || report.creditResolved.length > 0) && (
+            <>
+              <Separator />
+              <div>
+                {/* Directly beneath the drawer, because this is where a light
+                    drawer gets explained: the sales are real and counted, the
+                    cash has not arrived yet. Neither line moves net sales. */}
+                <p className="font-medium mb-1">Credit</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {report.creditGivenOut > 0 && (
+                    <>
+                      <span>Credit given out today</span>
+                      <span className="text-right">{money(report.creditGivenOut)}</span>
+                    </>
+                  )}
+                  {report.creditResolved.map((line) => (
+                    <Fragment key={line.givenOn}>
+                      <span>Credit resolved from {formatGivenOn(line.givenOn)}</span>
+                      <span className="text-right">{money(line.amount)}</span>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {report.shift.notes && (
             <p className="text-muted-foreground">Notes: {report.shift.notes}</p>
