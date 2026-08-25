@@ -15,6 +15,7 @@ import {
   type CashierProfile,
 } from "@shared/schema";
 import { and, eq, gte, lt, lte, or, isNull, inArray, sql } from "drizzle-orm";
+import { accrueShiftCommission, type ShiftCommissionOrder } from "./commissionLedger";
 import {
   buildCashierShiftBalanceSheet,
   allocateGlobalExpenseShare,
@@ -98,6 +99,8 @@ type ShiftOrderRow = {
   paymentMethod: string;
   status: string | null;
   createdAt: Date | null;
+  completedCashierId: string | null;
+  inputCashierId: string | null;
 };
 
 /**
@@ -118,6 +121,8 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       paymentMethod: orders.paymentMethod,
       status: orders.status,
       createdAt: orders.createdAt,
+      completedCashierId: orders.completedCashierId,
+      inputCashierId: orders.inputCashierId,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -147,13 +152,32 @@ async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { co
   return map;
 }
 
-async function loadOrderExpensesTotal(orderIds: string[]): Promise<number> {
-  if (orderIds.length === 0) return 0;
+async function loadOrderExpensesByOrder(orderIds: string[]): Promise<Map<string, number>> {
+  const byOrder = new Map<string, number>();
+  if (orderIds.length === 0) return byOrder;
   const rows = await db
-    .select({ amount: orderExpensesTable.amount })
+    .select({ orderId: orderExpensesTable.orderId, amount: orderExpensesTable.amount })
     .from(orderExpensesTable)
     .where(inArray(orderExpensesTable.orderId, orderIds));
-  return rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
+  for (const row of rows) {
+    if (!row.orderId) continue;
+    byOrder.set(row.orderId, (byOrder.get(row.orderId) ?? 0) + parseFloat(String(row.amount)));
+  }
+  return byOrder;
+}
+
+async function loadRefundsByOrder(orderIds: string[]): Promise<Map<string, number>> {
+  const byOrder = new Map<string, number>();
+  if (orderIds.length === 0) return byOrder;
+  const rows = await db
+    .select({ orderId: refunds.orderId, total: refunds.total })
+    .from(refunds)
+    .where(inArray(refunds.orderId, orderIds));
+  for (const row of rows) {
+    if (!row.orderId) continue;
+    byOrder.set(row.orderId, (byOrder.get(row.orderId) ?? 0) + Math.max(0, parseFloat(String(row.total))));
+  }
+  return byOrder;
 }
 
 function isTickPayment(method: string): boolean {
@@ -226,10 +250,10 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   const orderRows = await loadShiftOrders(shift.id);
   const orderIds = orderRows.map((o) => o.id);
   const costsByOrder = await loadOrdersWithCosts(orderIds);
-  const orderExpensesTotal = await loadOrderExpensesTotal(orderIds);
-  const refundRows = orderIds.length
-    ? await db.select({ total: refunds.total }).from(refunds).where(inArray(refunds.orderId, orderIds))
-    : [];
+  const expensesByOrder = await loadOrderExpensesByOrder(orderIds);
+  const refundsByOrder = await loadRefundsByOrder(orderIds);
+  const orderExpensesTotal = [...expensesByOrder.values()].reduce((sum, v) => sum + v, 0);
+  const refundRows = [...refundsByOrder.values()].map((total) => ({ total }));
 
   const shiftOrders: CashierShiftOrder[] = orderRows.map((o) => ({
     id: o.id,
@@ -245,6 +269,9 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   if (dayKeys.size === 0) dayKeys.add(utcDateKey((shift.closedAt ?? new Date()).toISOString()));
 
   let globalExpenseAllocation = 0;
+  // Kept per day, not just summed: the commission ledger apportions each day's
+  // share across that day's orders, and a shift can span midnight.
+  const allocationByDay = new Map<string, number>();
   for (const dayKey of dayKeys) {
     const { start, end } = dayBounds(dayKey);
     const shiftPaidForDay = paidSalesReceivedFor(
@@ -254,7 +281,9 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
       orgPaidSalesReceivedForDay(orgId, start, end),
       dailyGlobalExpensesForDay(orgId, start, end),
     ]);
-    globalExpenseAllocation += allocateGlobalExpenseShare(dailyExpenses, shiftPaidForDay, orgPaidForDay);
+    const dayShare = allocateGlobalExpenseShare(dailyExpenses, shiftPaidForDay, orgPaidForDay);
+    allocationByDay.set(dayKey, dayShare);
+    globalExpenseAllocation += dayShare;
   }
 
   const commissionRate = effectiveCommissionRate(cashier, org);
@@ -268,10 +297,54 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     commissionRate,
   );
 
-  return { sheet, cashier, org };
+  // One input row per order for the commission ledger. `paidContribution` is
+  // what actually came in: nothing for a credit sale still outstanding, which
+  // is what defers its commission to the day it is paid.
+  const commissionOrders: ShiftCommissionOrder[] = orderRows.map((row) => {
+    const total = parseFloat(String(row.total));
+    const unpaidTick = isTickPayment(row.paymentMethod) && row.status !== "completed";
+    const items = costsByOrder.get(row.id) ?? [];
+    const stockCost = items.reduce(
+      (sum, item) => sum + (item.costPrice == null ? 0 : item.quantity * item.costPrice),
+      0,
+    );
+    return {
+      orderId: row.id,
+      paidContribution: unpaidTick ? 0 : total,
+      stockCost,
+      orderExpenses: expensesByOrder.get(row.id) ?? 0,
+      overheadShare: 0, // filled in by the ledger, which apportions per day
+      refunds: refundsByOrder.get(row.id) ?? 0,
+      completerCashierId: row.completedCashierId,
+      inputterCashierId: row.inputCashierId,
+      soldOn: utcDateKey((row.createdAt ?? new Date()).toISOString()),
+    };
+  });
+
+  return { sheet, cashier, org, commissionOrders, allocationByDay };
 }
 
 type CashierShiftSummarySheet = Awaited<ReturnType<typeof computeCashierShiftBalanceSheet>>["sheet"];
+
+/**
+ * Replaces the sheet's formula-derived commission with what the ledger actually
+ * accrued, and re-derives the retained profit from it.
+ *
+ * The two agree on a shift that took only cash and card. They diverge when a
+ * shift sells on credit: the pool on an unpaid tick is real profit the business
+ * keeps for now and owes the cashier later, so it shows as retained until the
+ * customer pays.
+ */
+function withAccruedCommission(
+  sheet: CashierShiftSummarySheet,
+  accrued: number,
+): CashierShiftSummarySheet {
+  return {
+    ...sheet,
+    commissionAmount: accrued,
+    businessRetainedProfit: Math.round((sheet.netSalesProfit - accrued) * 100) / 100,
+  };
+}
 
 function cashierShiftSummaryValues(
   orgId: string,
@@ -326,7 +399,22 @@ export async function closeCashierShift(
   }
 
   const now = new Date();
-  const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt: now });
+  const { sheet, commissionOrders, allocationByDay } = await computeCashierShiftBalanceSheet(
+    orgId,
+    { ...shift, closedAt: now },
+  );
+
+  // Write the ledger before the summary, so the summary reports what was
+  // actually accrued rather than a formula that would disagree with it. The
+  // two differ whenever the shift sold on credit: an unpaid tick contributes
+  // no paid sales, so it earns nothing until the customer pays.
+  const accrued = await accrueShiftCommission(
+    orgId,
+    shift.id,
+    commissionOrders,
+    allocationByDay,
+    sheet.commissionRate,
+  );
 
   const status = opts.closeReason === "inactivity_auto_close" ? "auto_closed" : "closed";
 
@@ -344,7 +432,7 @@ export async function closeCashierShift(
 
   const [summary] = await db
     .insert(cashierShiftSummaries)
-    .values(cashierShiftSummaryValues(orgId, shift, sheet, now))
+    .values(cashierShiftSummaryValues(orgId, shift, withAccruedCommission(sheet, accrued), now))
     .returning();
 
   return { shift: closed, summary };
@@ -363,8 +451,21 @@ export async function refreshClosedCashierShiftSummary(
   if (shift.status === "open") throw new CashierShiftError("Cashier shift is still open", 400, "SHIFT_STILL_OPEN");
 
   const closedAt = shift.closedAt ?? new Date();
-  const { sheet } = await computeCashierShiftBalanceSheet(orgId, { ...shift, closedAt });
-  const values = cashierShiftSummaryValues(orgId, shift, sheet, closedAt);
+  const { sheet, commissionOrders, allocationByDay } = await computeCashierShiftBalanceSheet(
+    orgId,
+    { ...shift, closedAt },
+  );
+  // An offline order replayed into a closed shift earns commission like any
+  // other. Accrual is idempotent, so re-running it here tops up the ledger with
+  // the newly arrived order and leaves everything already paid alone.
+  const accrued = await accrueShiftCommission(
+    orgId,
+    shift.id,
+    commissionOrders,
+    allocationByDay,
+    sheet.commissionRate,
+  );
+  const values = cashierShiftSummaryValues(orgId, shift, withAccruedCommission(sheet, accrued), closedAt);
 
   const [summary] = await db
     .insert(cashierShiftSummaries)

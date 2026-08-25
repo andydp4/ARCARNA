@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   check,
   index,
   jsonb,
@@ -930,6 +931,60 @@ export const cashierShiftSummaries = pgTable(
 
 export type CashierShiftSummary = typeof cashierShiftSummaries.$inferSelect;
 export type InsertCashierShiftSummary = typeof cashierShiftSummaries.$inferInsert;
+
+/**
+ * One row per cashier per order per accrual — the record of who is owed what.
+ *
+ * Replaces the single commission figure that used to live on
+ * `cashierShiftSummaries`, which could not express either an order split 90/10
+ * between two people or a credit sale that earns its commission weeks after the
+ * shift that sold it closed.
+ *
+ * The money columns are snapshots and must never be recomputed: changing a
+ * cashier's rate must not restate what they have already earned, and
+ * `overheadShare` belongs to the day the order was sold on. (migration 052)
+ */
+export const cashierCommissionEntries = pgTable(
+  "cashier_commission_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: uuid("cashier_id")
+      .references(() => cashierProfiles.id)
+      .notNull(),
+    /** The shift this accrued on. Null for a credit resolution taken later. */
+    cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+    /** "completer" (90%) or "inputter" (10%), or either at 100%. */
+    role: varchar("role", { length: 16 }).notNull(),
+    /** "sale" — money taken at the till. "credit_resolution" — a tick since paid. */
+    basis: varchar("basis", { length: 24 }).notNull(),
+    orderMargin: numeric("order_margin", { precision: 12, scale: 2 }).notNull().default("0"),
+    overheadShare: numeric("overhead_share", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    sharePercent: numeric("share_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    accruedOn: date("accrued_on").notNull(),
+    accruedAt: timestamp("accrued_at").defaultNow().notNull(),
+    // Self-referencing: a reversal points at the entry it undoes. Declared here
+    // as well as in the SQL so a database built by `drizzle-kit push` carries
+    // the same foreign key as one built by the migrations — the migration
+    // integrity suite diffs the two and fails on exactly this kind of gap.
+    reversalOf: uuid("reversal_of").references((): AnyPgColumn => cashierCommissionEntries.id),
+  },
+  (table) => [
+    index("cashier_commission_entries_cashier_date_idx").on(table.orgId, table.cashierId, table.accruedOn),
+    index("cashier_commission_entries_shift_idx").on(table.cashierShiftId),
+    index("cashier_commission_entries_order_idx").on(table.orderId),
+  ],
+);
+
+export type CashierCommissionEntry = typeof cashierCommissionEntries.$inferSelect;
+export type InsertCashierCommissionEntry = typeof cashierCommissionEntries.$inferInsert;
 
 export const cashierCommissionPayments = pgTable(
   "cashier_commission_payments",
