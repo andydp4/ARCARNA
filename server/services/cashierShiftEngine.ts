@@ -14,7 +14,7 @@ import {
   type CashierShiftSummary,
   type CashierProfile,
 } from "@shared/schema";
-import { and, eq, gte, lt, lte, or, isNull, inArray } from "drizzle-orm";
+import { and, eq, gte, lt, lte, or, isNull, inArray, sql } from "drizzle-orm";
 import {
   buildCashierShiftBalanceSheet,
   allocateGlobalExpenseShare,
@@ -100,6 +100,16 @@ type ShiftOrderRow = {
   createdAt: Date | null;
 };
 
+/**
+ * A shift's orders for money purposes.
+ *
+ * An order belongs to the shift that COMPLETED it, not the one that created
+ * it — that is the shift whose drawer took the payment, and whose cashier earns
+ * the 90% share. An order still open has not been completed by anyone, so it
+ * stays with the shift that loaded it, exactly as before (migration 051
+ * backfills the completing shift for every historic order, so closed shifts
+ * decompose to the same set of orders they always did).
+ */
 async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
   return db
     .select({
@@ -110,7 +120,7 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       createdAt: orders.createdAt,
     })
     .from(orders)
-    .where(eq(orders.cashierShiftId, shiftId));
+    .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
 }
 
 async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { costPrice: number | null; quantity: number }[]>> {

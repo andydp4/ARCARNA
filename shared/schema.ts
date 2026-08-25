@@ -974,6 +974,19 @@ export const orders = pgTable("orders", {
   shiftId: uuid("shift_id").references(() => shifts.id),
   cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
   cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+  // Commission is split between the cashier who loaded the order and the one
+  // who completed it (90/10), so a single `cashierId` cannot express it.
+  // `cashierId` is retained and still written as the completing cashier for
+  // backwards compatibility; prefer the two columns below. (migration 051)
+  //
+  // NULL `inputCashierId` means nobody loaded it by hand — a web or storefront
+  // order — and that absence is what gives the completer 100% of the pool.
+  inputCashierId: uuid("input_cashier_id").references(() => cashierProfiles.id),
+  // Written ONCE, at the first transition to "completed", for the same reason
+  // `settledTotal` is: reopening and re-completing an order must not move
+  // commission that has already accrued to somebody else.
+  completedCashierId: uuid("completed_cashier_id").references(() => cashierProfiles.id),
+  completedCashierShiftId: uuid("completed_cashier_shift_id").references(() => cashierShifts.id),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -1009,6 +1022,8 @@ export const orders = pgTable("orders", {
   index("orders_org_id_idx").on(table.orgId),
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
+  index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
+  index("orders_completed_cashier_shift_idx").on(table.completedCashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
   check(
     "orders_fulfilment_method_check",

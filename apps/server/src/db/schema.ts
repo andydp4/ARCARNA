@@ -72,6 +72,14 @@ export const orders = pgTable('orders', {
   shift_id: uuid('shift_id'),
   cashier_id: uuid('cashier_id'),
   cashier_shift_id: uuid('cashier_shift_id'),
+  // Commission splits 90/10 between whoever loaded the order and whoever
+  // completed it, so one cashier column cannot express it — see
+  // shared/schema.ts and migration 051. NULL input_cashier_id means no human
+  // loaded it (web / storefront), which gives the completer the whole pool.
+  input_cashier_id: uuid('input_cashier_id'),
+  // Written once, at the first transition to 'completed', like settled_total.
+  completed_cashier_id: uuid('completed_cashier_id'),
+  completed_cashier_shift_id: uuid('completed_cashier_shift_id'),
   customer_id: uuid('customer_id').references(()=>customers.id),
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),

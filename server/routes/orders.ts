@@ -6,7 +6,7 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
-import { requireActiveCashierShift } from "../middleware/requireActiveCashierShift";
+import { requireActiveCashierShift, attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
   insertLoyaltyTierSchema,
@@ -73,6 +73,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
                 ? {
                     cashier_id: cashierShift.cashierId,
                     cashier_shift_id: cashierShift.cashierShiftId,
+                    // Whoever is on the till right now loaded this order. They
+                    // take 10% of its commission pool if somebody else
+                    // completes it, and the whole pool if they complete it
+                    // themselves. Orders arriving without a cashier shift —
+                    // web and storefront — leave this NULL on purpose.
+                    input_cashier_id: cashierShift.cashierId,
                     ...(cashierShift.queuedAt ? { created_at: cashierShift.queuedAt } : {}),
                   }
                 : {}),
@@ -366,7 +372,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
+  app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), attachActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
@@ -393,8 +399,27 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // refundable ceiling. Refunds cap against this frozen figure.
       const isSettling =
         validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
+      // The completing cashier is frozen here for the same reason the total is:
+      // 90% of the commission pool follows this column, so reopening an order
+      // and re-completing it under someone else must not move money that has
+      // already accrued. `cashier_id` is kept in step for the reads that still
+      // use it. Resolved softly — a manager closing an order from the back
+      // office has no cashier shift, and that must not block the status change.
+      const completingCashier = (req as any).cashierShift as
+        | { cashierId: string; cashierShiftId: string }
+        | undefined;
       const settlementPatch = isSettling
-        ? { settled_total: (currentOrder as any)?.total, settled_at: new Date() }
+        ? {
+            settled_total: (currentOrder as any)?.total,
+            settled_at: new Date(),
+            ...(completingCashier
+              ? {
+                  completed_cashier_id: completingCashier.cashierId,
+                  completed_cashier_shift_id: completingCashier.cashierShiftId,
+                  cashier_id: (currentOrder as any)?.cashier_id ?? completingCashier.cashierId,
+                }
+              : {}),
+          }
         : {};
 
       const [updated] = await db.update(orders)
