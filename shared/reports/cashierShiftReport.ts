@@ -19,6 +19,15 @@ export type CashierShiftOrder = {
   /** Order lifecycle status, e.g. "pending" | "completed" | ... */
   status: string;
   createdAt: string;
+  /**
+   * What is still owed on this order's credit, from its `order_credit` record.
+   *
+   * `undefined` means the caller predates credit records and the legacy test
+   * below applies. Every live caller supplies it, and must: whether the money
+   * has arrived is not something an order's status can answer, because a credit
+   * sale is completed the day the goods leave and unpaid for weeks after.
+   */
+  creditOutstanding?: number;
   items: Array<{
     quantity: number;
     /** Unit cost price; null when the product has no recorded cost. */
@@ -56,6 +65,21 @@ function roundMoney(n: number): number {
 
 function isTickPayment(method: string): boolean {
   return method.toLowerCase() === "tick";
+}
+
+/**
+ * What is still owed on an order.
+ *
+ * Prefers the credit record, which is the only thing that actually knows. Falls
+ * back to the old status heuristic only for callers that predate credit records
+ * — it is wrong under the current model, where a tick order is completed on the
+ * day the goods leave and stays unpaid until the customer settles, and is kept
+ * solely so pre-migration data does not read as fully paid.
+ */
+function outstandingCreditOn(order: CashierShiftOrder): number {
+  if (order.creditOutstanding !== undefined) return Math.max(0, order.creditOutstanding);
+  if (isTickPayment(order.paymentMethod) && order.status !== "completed") return order.total;
+  return 0;
 }
 
 function isCashPayment(method: string): boolean {
@@ -101,9 +125,7 @@ export function buildCashierShiftBalanceSheet(
     orders.filter((o) => isTickPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
   );
   const unpaidCreditSales = roundMoney(
-    orders
-      .filter((o) => isTickPayment(o.paymentMethod) && o.status !== "completed")
-      .reduce((sum, o) => sum + o.total, 0),
+    orders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
   );
   const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales);
 

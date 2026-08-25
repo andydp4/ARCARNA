@@ -431,6 +431,17 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         return res.status(404).json({ message: 'Order not found' });
       }
       
+      // A sale on tick joins the credit list the moment the goods leave. The
+      // sale is recognised now; the money, and the commission it earns, are not.
+      if (isSettling && String((currentOrder as any)?.payment_method ?? "").toLowerCase() === "tick") {
+        const { openCreditForOrder } = await import("../services/creditLedger");
+        await openCreditForOrder(ctx.orgId, {
+          id: req.params.id,
+          customerId: (currentOrder as any)?.customer_id ?? null,
+          amount: parseFloat(String((currentOrder as any)?.total ?? 0)),
+        });
+      }
+
       // Publish OrderStatusChanged event - critical, visible failure
       const eventId = await publishEvent('OrderStatusChanged', req.params.id, {
         orderId: req.params.id,

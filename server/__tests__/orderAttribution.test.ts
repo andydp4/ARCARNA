@@ -64,6 +64,24 @@ vi.mock("../../apps/server/src/db", () => ({
   withTransaction: async (fn: (tx: unknown) => unknown) => fn({}),
 }));
 
+// The route pulls in middleware and services that open a real pool at import
+// time. This suite is about the settlement patch, not the database, and must
+// run in the no-DATABASE_URL CI job.
+vi.mock("../db", () => ({ db: {}, pool: {} }));
+vi.mock("../middleware/requireOpenShift", () => ({
+  requireOpenShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+}));
+vi.mock("../middleware/requireActiveCashierShift", () => ({
+  requireActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+  attachActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+}));
+vi.mock("../services/cashierShiftEngine", () => ({
+  refreshClosedCashierShiftSummary: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../services/creditLedger", () => ({
+  openCreditForOrder: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../storage", () => ({ storage: {} }));
 vi.mock("../adminAudit", () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }));
 

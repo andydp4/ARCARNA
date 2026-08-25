@@ -968,6 +968,14 @@ export const cashierCommissionEntries = pgTable(
     commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
     sharePercent: numeric("share_percent", { precision: 5, scale: 2 }).notNull().default("0"),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    /**
+     * The payment that released this, for a credit resolution. Declared with
+     * its foreign key here as well as in the SQL so a database built by
+     * `drizzle-kit push` matches one built by the migrations.
+     */
+    creditPaymentId: uuid("credit_payment_id").references(() => creditPayments.id, {
+      onDelete: "cascade",
+    }),
     accruedOn: date("accrued_on").notNull(),
     accruedAt: timestamp("accrued_at").defaultNow().notNull(),
     // Self-referencing: a reversal points at the entry it undoes. Declared here
@@ -1019,6 +1027,77 @@ export const insertCashierCommissionPaymentSchema = createInsertSchema(cashierCo
   amountPaid: z.coerce.number().positive("Amount paid must be positive"),
 });
 export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCommissionPaymentSchema>;
+
+/**
+ * The outstanding balance on a sale made on credit (tick), one row per order.
+ *
+ * Credit needed state of its own. "Unpaid" used to be inferred from the order
+ * still being `pending`, and marking it paid set it to `completed` — so whether
+ * the money had arrived was answered by a column that means whether the goods
+ * had. Under the current model a tick order IS completed the day the goods
+ * leave and is simply unpaid, so that test would report every credit sale as
+ * paid immediately and pay commission on money nobody had received.
+ * (migration 053)
+ */
+export const orderCredit = pgTable(
+  "order_credit",
+  {
+    orderId: uuid("order_id")
+      .primaryKey()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    customerId: uuid("customer_id").references(() => customers.id),
+    /** The portion of the sale put on credit — the whole of it today. */
+    amountGiven: numeric("amount_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    amountOutstanding: numeric("amount_outstanding", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** outstanding | partial | settled | written_off | voided */
+    status: varchar("status", { length: 16 }).notNull().default("outstanding"),
+    givenOn: date("given_on").notNull(),
+    settledOn: date("settled_on"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_credit_org_status_idx").on(table.orgId, table.status),
+    index("order_credit_customer_idx").on(table.customerId),
+  ],
+);
+
+export type OrderCredit = typeof orderCredit.$inferSelect;
+export type InsertOrderCredit = typeof orderCredit.$inferInsert;
+
+/**
+ * Every payment made against a credit sale. Several per order is normal, and
+ * they can be of different kinds — a customer settling an account pays some
+ * cash and some card — which is why `method` is required rather than optional.
+ */
+export const creditPayments = pgTable(
+  "credit_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    method: varchar("method", { length: 50 }).notNull().default("cash"),
+    paidOn: date("paid_on").notNull(),
+    recordedByUserId: uuid("recorded_by_user_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
+  ],
+);
+
+export type CreditPayment = typeof creditPayments.$inferSelect;
+export type InsertCreditPayment = typeof creditPayments.$inferInsert;
 
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
