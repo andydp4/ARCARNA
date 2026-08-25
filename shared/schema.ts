@@ -998,6 +998,18 @@ export const cashierCommissionEntries = pgTable(
     index("cashier_commission_entries_cashier_date_idx").on(table.orgId, table.cashierId, table.accruedOn),
     index("cashier_commission_entries_shift_idx").on(table.cashierShiftId),
     index("cashier_commission_entries_order_idx").on(table.orderId),
+    check("cashier_commission_entries_role_check", sql`${table.role} IN ('completer', 'inputter')`),
+    check("cashier_commission_entries_basis_check", sql`${table.basis} IN ('sale', 'credit_resolution')`),
+    // Closing a shift twice, or replaying an offline order into a closed one,
+    // must not pay anybody twice: one accrual per cashier per role per order.
+    uniqueIndex("cashier_commission_entries_unique_sale")
+      .on(table.orderId, table.cashierId, table.role)
+      .where(sql`${table.basis} = 'sale' AND ${table.reversalOf} IS NULL`),
+    // A credit sale settled in instalments accrues once per PAYMENT, so its
+    // guard keys on the payment rather than the order.
+    uniqueIndex("cashier_commission_entries_unique_resolution")
+      .on(table.creditPaymentId, table.cashierId, table.role)
+      .where(sql`${table.basis} = 'credit_resolution' AND ${table.reversalOf} IS NULL`),
   ],
 );
 
@@ -1072,6 +1084,10 @@ export const orderCredit = pgTable(
   (table) => [
     index("order_credit_org_status_idx").on(table.orgId, table.status),
     index("order_credit_customer_idx").on(table.customerId),
+    check(
+      "order_credit_status_check",
+      sql`${table.status} IN ('outstanding', 'partial', 'settled', 'written_off', 'voided')`,
+    ),
   ],
 );
 
@@ -1103,6 +1119,8 @@ export const creditPayments = pgTable(
   (table) => [
     index("credit_payments_order_idx").on(table.orderId),
     index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
+    // A payment of zero or less is not a payment.
+    check("credit_payments_amount_check", sql`${table.amount} > 0`),
   ],
 );
 
@@ -1173,6 +1191,7 @@ export const orders = pgTable("orders", {
   index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
   index("orders_completed_cashier_shift_idx").on(table.completedCashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
+  check("orders_total_non_negative", sql`${table.total} >= 0`),
   check(
     "orders_fulfilment_method_check",
     sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
