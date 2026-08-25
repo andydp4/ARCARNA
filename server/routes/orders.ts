@@ -92,6 +92,18 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         body.personalUseReason = reason;
       }
 
+      // An order may never total less than zero. Giving money back is a refund,
+      // which has its own path and its own controls; a negative order would be
+      // the same payout with none of them. The message says what to do instead,
+      // because a cashier who hits this is trying to give money back.
+      const requestedTotal = Number(body.total);
+      if (Number.isFinite(requestedTotal) && requestedTotal < 0) {
+        return res.status(400).json({
+          message: "An order cannot total less than zero. Use a refund to give money back.",
+          code: "ORDER_TOTAL_NEGATIVE",
+        });
+      }
+
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {

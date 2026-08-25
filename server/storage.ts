@@ -71,6 +71,7 @@ import {
   outboundWebhooks,
   type ApiKey,
   type OutboundWebhook,
+  commissionRateSchema,
 } from "@shared/schema";
 import type { WebsiteProductSettingsPatch } from "@shared/website";
 import { withRetries } from "./lib/dbUtils";
@@ -768,6 +769,16 @@ export class DatabaseStorage implements IStorage {
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
+    }
+    // Commission rates are agreed per cashier and land on figures like 12 or
+    // 25, so any rate is valid — but it still has to be a rate. A rate outside
+    // 0–100 would silently distort every pool derived from it.
+    if (allowed.defaultCashierCommissionRate !== undefined) {
+      const parsed = commissionRateSchema.safeParse(allowed.defaultCashierCommissionRate);
+      if (!parsed.success) {
+        throw new Error(parsed.error.errors[0]?.message ?? "Invalid commission rate");
+      }
+      allowed.defaultCashierCommissionRate = String(parsed.data);
     }
     const [org] = await db
       .update(organizations)

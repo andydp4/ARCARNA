@@ -34,9 +34,19 @@ export const roleEnum = pgEnum('app_role', ROLES);
 export const BUSINESS_TYPES = ['retail', 'hospitality', 'services', 'wholesale', 'other'] as const;
 export type BusinessType = typeof BUSINESS_TYPES[number];
 
-// Cashier commission presets & shift inactivity windows
+// Cashier commission presets & shift inactivity windows.
+//
+// These are SUGGESTIONS offered as quick picks, not the permitted set. Rates
+// are agreed per cashier and land on figures like 12 or 25, which a fixed list
+// of three could not express — any rate from 0 to 100 is valid.
 export const COMMISSION_RATE_PRESETS = [10, 20, 30] as const;
 export type CommissionRatePreset = typeof COMMISSION_RATE_PRESETS[number];
+
+/** Validates a commission rate wherever one is set. */
+export const commissionRateSchema = z.coerce
+  .number()
+  .min(0, "A commission rate cannot be negative")
+  .max(100, "A commission rate cannot be more than 100%");
 
 export const SHIFT_INACTIVITY_OPTIONS = ["1_hour", "12_hours", "1_day", "never"] as const;
 export type ShiftInactivityOption = typeof SHIFT_INACTIVITY_OPTIONS[number];
@@ -1180,6 +1190,14 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true, 
   updatedAt: true,
   status: true
+}).extend({
+  // An order may not total less than zero. Giving money back is a refund, which
+  // is a separate path with its own controls; a negative order would be the
+  // same payout with none of them. Zero is allowed on purpose — personal use is
+  // a real, recorded, zero-total order. Guarded here, by a check constraint on
+  // the column (migration 055), and with a plain message at the till, because
+  // each catches a different mistake.
+  total: z.coerce.number().min(0, "An order cannot total less than zero"),
 });
 export type InsertOrderData = z.infer<typeof insertOrderSchema>;
 
