@@ -119,6 +119,21 @@
 
 ---
 
+## Phase K — Cashier commission, credit & personal use
+
+Brief: [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md). Execute K1 → K6 in order.
+
+| ID | Status | Wave / notes |
+|----|--------|----------------|
+| K1 | **Planned** | Order attribution — input vs completing cashier |
+| K2 | **Planned** | Per-order commission ledger, 90/10 split — **blocked** on the overheads question |
+| K3 | **Planned** | Credit/tick lifecycle — **blocked** on partial payments; carries the F4 fix |
+| K4 | **Planned** | Credit given/resolved on the Z-report |
+| K5 | **Planned** | Personal-use payment type + manager Signal |
+| K6 | **Planned** | Negative-order guard + free-entry commission rates |
+
+---
+
 ## Phase L — Long horizon
 
 | ID | Status |

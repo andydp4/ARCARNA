@@ -68,6 +68,9 @@ Original sequence from the architecture review. **Current truth:** [`BRIEF_STATU
 ### Phase A — Analytics & insights
 - [`PHASE_A_ANALYTICS.md`](./PHASE_A_ANALYTICS.md) — **A1** daily KPI card, **A2** RFM segmentation, **A3** hour-of-day heatmap, **A4** stock turn ratio, **A5** promotion lift.
 
+### Phase K — Cashier commission, credit & personal use
+- [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md) — **K1** order attribution (input vs completing cashier), **K2** per-order commission ledger (90/10 split), **K3** credit/tick lifecycle with commission released on payment, **K4** credit lines on the Z-report, **K5** personal-use payment type + manager Signal, **K6** negative-order guard + free-entry commission rates. Two blocking questions open — see the brief's *Open questions*.
+
 ### Phase L — Long horizon
 Not yet briefed. Surface from the plan when prioritised:
 - L1 mobile manager view · L2 public storefront · L3 WhatsApp ingest · L4 multi-currency · L5 i18n + RTL · L6 Postgres RLS · L7 AI features.
