@@ -126,8 +126,8 @@ Brief: [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md). Execu
 | ID | Status | Wave / notes |
 |----|--------|----------------|
 | K1 | **Planned** | Order attribution — input vs completing cashier |
-| K2 | **Planned** | Per-order commission ledger, 90/10 split — **blocked** on the overheads question |
-| K3 | **Planned** | Credit/tick lifecycle — **blocked** on partial payments; carries the F4 fix |
+| K2 | **Planned** | Per-order commission ledger, 90/10 split; overheads confirmed in the base, so accrual moves to shift close |
+| K3 | **Planned** | Credit/tick lifecycle, pro-rata part-payments with tender methods; carries the F4 fix |
 | K4 | **Planned** | Credit given/resolved on the Z-report |
 | K5 | **Planned** | Personal-use payment type + manager Signal |
 | K6 | **Planned** | Negative-order guard + free-entry commission rates |
