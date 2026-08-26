@@ -80,6 +80,8 @@ vi.mock("../services/cashierShiftEngine", () => ({
 }));
 vi.mock("../services/creditLedger", () => ({
   openCreditForOrder: vi.fn().mockResolvedValue(undefined),
+  // Nothing on tick in these fixtures, so no credit is opened.
+  creditLegTotal: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock("../storage", () => ({ storage: {} }));

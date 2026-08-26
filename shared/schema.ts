@@ -1051,6 +1051,60 @@ export const insertCashierCommissionPaymentSchema = createInsertSchema(cashierCo
 export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCommissionPaymentSchema>;
 
 /**
+ * The tenders that paid for an order — one row per leg.
+ *
+ * A £100 sale can be £50 cash and £50 on tick, which `orders.paymentMethod`
+ * could not express: it holds one value, forcing a split sale to be recorded
+ * either as all cash (and the drawer never reconciles) or all tick (and the
+ * business appears owed money it already has).
+ *
+ * The legs sum to the order total, and every money figure — cash and card
+ * sales, the Z-report breakdown, expected cash — derives from them.
+ * `orders.paymentMethod` is still written, but as a label. (migration 056)
+ */
+export const orderPayments = pgTable(
+  "order_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    method: varchar("method", { length: 50 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_payments_order_idx").on(table.orderId),
+    index("order_payments_org_method_idx").on(table.orgId, table.method),
+    // Zero is allowed — a personal-use order is a real, recorded, zero-value
+    // leg. Negative is not: giving money back is a refund.
+    check("order_payments_amount_check", sql`${table.amount} >= 0`),
+  ],
+);
+
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * A tender leg as the till submits it. The legs must sum to the order total —
+ * a split that does not add up is a sale where some money is unaccounted for,
+ * which is exactly the state this table exists to make impossible.
+ */
+export const orderTenderLegSchema = z.object({
+  method: z.string().min(1, "Each payment needs a method"),
+  amount: z.coerce.number().min(0, "A payment cannot be negative"),
+});
+export type OrderTenderLeg = z.infer<typeof orderTenderLegSchema>;
+
+/** Sums tender legs to the penny. */
+export function sumTenderLegs(legs: OrderTenderLeg[]): number {
+  return Math.round(legs.reduce((sum, leg) => sum + leg.amount, 0) * 100) / 100;
+}
+
+/**
  * The outstanding balance on a sale made on credit (tick), one row per order.
  *
  * Credit needed state of its own. "Unpaid" used to be inferred from the order

@@ -134,7 +134,15 @@ Every row below was read from the tree at `3c6b597`.
    commission, and the Z-report reads as a partial resolution. Each payment carries its own
    method, and one debt may be cleared by several payments of different methods.
 
-**Still open — raised by answer 2, not yet decided:**
+**Answered — split tender at the point of sale is wanted, and is built as K7.**
+
+0. ~~Split tender at the point of sale.~~ **Confirmed:** a £100 sale can be £50
+   cash and £50 on credit, or £50 cash and £50 card, or any combination. Built
+   as **K7** — `order_payments` holds one row per tender leg, and every money
+   figure derives from the legs. Separately confirmed that a debt can come back
+   in drips (£20 one week, £50 the next), which K3 already covers.
+
+   The original wording, kept for the record:
 
 0. **Split tender at the point of sale.** "So much cash, so much card, so much on tick" may mean a
    single sale part-paid at the counter with the remainder put on tick — not just a debt later
@@ -543,6 +551,53 @@ than picking one of three.
 
 ---
 
+## Brief K7 — Split tender at the point of sale
+
+**Goal:** One sale can be paid by several tenders at once — £50 cash and £50 on
+tick, or £50 cash and £50 card — with every money figure derived from the legs.
+
+**Touch:**
+
+- `+ migrations/056_order_payments.sql` — `order_payments (id, org_id, order_id, method, amount, created_at)`; one leg backfilled per existing order
+- `~ shared/schema.ts` — `orderPayments`, `orderTenderLegSchema`, `sumTenderLegs`
+- `~ shared/reports/cashierShiftReport.ts` — cash, card and credit sums from legs
+- `~ shared/reports/zReport.ts` — payment breakdown and expected cash from legs
+- `~ server/routes/orders.ts` — accept `payments[]`, validate they add up, write legs
+- `~ server/services/creditLedger.ts` — `creditLegTotal`; credit opens for the tick leg only
+- `~ server/services/cashierShiftEngine.ts`, `~ server/routes/shifts.ts` — load legs
+- `~ client/src/pages/pos.tsx` — split-tender rows with a running remainder
+
+**Steps:**
+
+1. The legs are the truth; `orders.payment_method` stays and is still written,
+   as `split` for a split sale, but only as a label.
+2. The legs must sum to the order total, checked at the till and again on the
+   server. A split that does not add up is a sale with money unaccounted for.
+3. Only the tick leg opens credit. On a £100 sale paid £50 cash and £50 on tick,
+   £50 is owed — putting the whole £100 on the list would have the business
+   chasing money already in the drawer.
+4. Expected cash counts cash legs only. Counting the whole sale would show a
+   £50 variance on a drawer that balanced perfectly.
+5. A single-tender sale writes one leg, so nothing reads the label for money.
+
+**Out of scope:**
+
+- Splitting a *refund* across tenders.
+- Gift card as a leg — it already has its own redemption path.
+
+**DoD:**
+
+- £100 as £50 cash + £50 tick: gross £100, cash £50, credit £50, £50 outstanding,
+  expected cash up £50, and the Z-report shows both tenders at £50 each.
+- Legs that do not sum to the total are refused at the till and at the API.
+- An order with no legs behaves exactly as a single-tender sale always did.
+
+**Verification:** `npm test`, plus the split-tender cases in the two report specs.
+
+**PR title:** `feat(pos): split one sale across several tenders`
+
+---
+
 ## Sequencing and size
 
 | Brief | Depends on | Rough diff |
@@ -553,6 +608,7 @@ than picking one of three.
 | K4 | K3 | small |
 | K5 | K1 | medium |
 | K6 | K5 | small |
+| K7 | K3, K6 | medium — one table, the reports read legs, split-tender till |
 
 K2 and K3 will each exceed the 600-line target in `README.md`. Split them if a reviewer asks, but
 do not split K3's F4 fix away from the credit tables — a half-landed credit model pays commission

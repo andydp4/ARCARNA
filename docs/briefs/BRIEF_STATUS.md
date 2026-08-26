@@ -131,10 +131,10 @@ Brief: [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md). Execu
 | K4 | **Built** | Credit given/resolved on the Z-report, and in the training manual |
 | K5 | **Built** | Personal-use payment type + Signal via `org_notifications`; migration 054 |
 | K6 | **Built** | Negative-order guard (Zod, check constraint, till message) + free-entry rates; migration 055 |
+| K7 | **Built** | Split tender — one sale across several tenders; migration 056 |
 
-Open: whether "so much cash, so much card, so much tick" also meant splitting a
-single sale across tenders at the counter. K3 covers instalments against a debt;
-split tender at the till would need an `order_payments` table and is not built.
+Split tender was confirmed as wanted and is built as K7. Instalments against an
+existing debt (£20 one week, £50 the next) were already covered by K3.
 
 ---
 

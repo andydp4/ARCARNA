@@ -9,6 +9,7 @@ import {
   locations,
   refunds,
   orderCredit,
+  orderPayments,
   creditPayments,
 } from "../../shared/schema";
 import { and, eq, desc, gte, lte, inArray, or } from "drizzle-orm";
@@ -57,6 +58,24 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     .from(orders)
     .where(eq(orders.shiftId, shiftId));
 
+  const shiftOrderIds = shiftOrders.map((o) => o.id);
+  const legRows = shiftOrderIds.length
+    ? await db
+        .select({
+          orderId: orderPayments.orderId,
+          method: orderPayments.method,
+          amount: orderPayments.amount,
+        })
+        .from(orderPayments)
+        .where(inArray(orderPayments.orderId, shiftOrderIds))
+    : [];
+  const legsByOrder = new Map<string, Array<{ method: string; amount: number }>>();
+  for (const row of legRows) {
+    const list = legsByOrder.get(row.orderId) ?? [];
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    legsByOrder.set(row.orderId, list);
+  }
+
   const zOrders: ZReportOrder[] = [];
   for (const order of shiftOrders) {
     const items = await db
@@ -75,6 +94,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       id: order.id,
       total: parseFloat(String(order.total)),
       paymentMethod: order.paymentMethod,
+      payments: legsByOrder.get(order.id),
       createdAt: order.createdAt?.toISOString() ?? "",
       items: items.map((i) => ({
         productId: i.productId ?? "",

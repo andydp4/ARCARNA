@@ -138,3 +138,39 @@ describe("utcDateKey", () => {
     expect(utcDateKey("2026-06-01T23:30:00Z")).toBe("2026-06-01");
   });
 });
+
+describe("split tender in the shift balance sheet", () => {
+  it("banks each leg where the money actually went", () => {
+    const sheet = buildCashierShiftBalanceSheet(
+      [
+        {
+          id: "o1",
+          total: 100,
+          paymentMethod: "split",
+          status: "completed",
+          createdAt: "2026-08-26T09:00:00.000Z",
+          creditOutstanding: 50,
+          payments: [
+            { method: "cash", amount: 30 },
+            { method: "card", amount: 20 },
+            { method: "tick", amount: 50 },
+          ],
+          items: [{ quantity: 1, costPrice: 40 }],
+        },
+      ],
+      0,
+      0,
+      [],
+      0,
+      10,
+    );
+
+    expect(sheet.grossSales).toBe(100);
+    expect(sheet.cashSales).toBe(30);
+    expect(sheet.cardSales).toBe(20);
+    expect(sheet.creditSales).toBe(50);
+    // £50 of the sale is still owed, so only £50 counts as received.
+    expect(sheet.unpaidCreditSales).toBe(50);
+    expect(sheet.paidSalesReceived).toBe(50);
+  });
+});

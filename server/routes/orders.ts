@@ -17,6 +17,8 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { z } from "zod";
+import { orderTenderLegSchema, orderPayments as orderPaymentsTable, sumTenderLegs } from "@shared/schema";
 import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
@@ -104,6 +106,23 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         });
       }
 
+      // Split tender: a £100 sale can be £50 cash and £50 on tick. The legs are
+      // the truth; `paymentMethod` becomes a label. They must add up — a split
+      // that does not is a sale with money unaccounted for.
+      const tenderLegs = Array.isArray(body.payments) ? body.payments : null;
+      if (tenderLegs) {
+        const parsed = z.array(orderTenderLegSchema).min(1).safeParse(tenderLegs);
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: parsed.error.errors[0]?.message ?? "Invalid payment split",
+            code: "ORDER_PAYMENTS_INVALID",
+          });
+        }
+        body.payments = parsed.data;
+        body.paymentMethod =
+          parsed.data.length === 1 ? parsed.data[0].method : "split";
+      }
+
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
@@ -159,6 +178,37 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             await tx.update(orders).set({ payment_method: paymentLabel }).where(eq(orders.id, result.orderId));
             createdOrder.payment_method = paymentLabel;
           }
+        }
+
+        // Written after the order exists and after any total adjustment, so the
+        // legs can be checked against the figure actually charged.
+        if (tenderLegs && createdOrder) {
+          const orderTotal = roundMoney(parseFloat(String(createdOrder.total)));
+          const legTotal = sumTenderLegs(body.payments);
+          if (Math.abs(legTotal - orderTotal) > 0.005) {
+            throw new Error(
+              `Payments add up to £${legTotal.toFixed(2)} but the order is £${orderTotal.toFixed(2)}`,
+            );
+          }
+          const { orderPayments } = await import('@shared/schema');
+          await tx.insert(orderPayments).values(
+            body.payments.map((leg: { method: string; amount: number }) => ({
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              method: leg.method,
+              amount: String(roundMoney(leg.amount)),
+            })),
+          );
+        } else if (createdOrder) {
+          // A single-tender sale is one leg for the whole total, so every
+          // money figure can read the legs and never the label.
+          const { orderPayments } = await import('@shared/schema');
+          await tx.insert(orderPayments).values({
+            orgId: ctx.orgId!,
+            orderId: result.orderId,
+            method: String(createdOrder.payment_method),
+            amount: String(roundMoney(parseFloat(String(createdOrder.total)))),
+          });
         }
 
         if (isPersonalUse && createdOrder) {
@@ -517,13 +567,25 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       
       // A sale on tick joins the credit list the moment the goods leave. The
       // sale is recognised now; the money, and the commission it earns, are not.
-      if (isSettling && String((currentOrder as any)?.payment_method ?? "").toLowerCase() === "tick") {
-        const { openCreditForOrder } = await import("../services/creditLedger");
-        await openCreditForOrder(ctx.orgId, {
-          id: req.params.id,
-          customerId: (currentOrder as any)?.customer_id ?? null,
-          amount: parseFloat(String((currentOrder as any)?.total ?? 0)),
-        });
+      //
+      // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
+      // £50 on tick, £50 is owed — putting the whole £100 on credit would have
+      // the business chasing money it already has in the drawer.
+      if (isSettling) {
+        const { creditLegTotal } = await import("../services/creditLedger");
+        const owed = await creditLegTotal(
+          req.params.id,
+          String((currentOrder as any)?.payment_method ?? ""),
+          parseFloat(String((currentOrder as any)?.total ?? 0)),
+        );
+        if (owed > 0) {
+          const { openCreditForOrder } = await import("../services/creditLedger");
+          await openCreditForOrder(ctx.orgId, {
+            id: req.params.id,
+            customerId: (currentOrder as any)?.customer_id ?? null,
+            amount: owed,
+          });
+        }
       }
 
       // Publish OrderStatusChanged event - critical, visible failure

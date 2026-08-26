@@ -28,6 +28,15 @@ export type CashierShiftOrder = {
    * sale is completed the day the goods leave and unpaid for weeks after.
    */
   creditOutstanding?: number;
+  /**
+   * The tenders that paid for this order. A sale can be part cash, part card
+   * and part tick, so which bucket its money falls into is a property of the
+   * legs, not of a single column on the order.
+   *
+   * Absent means the caller predates split tender; the whole total is then
+   * attributed to `paymentMethod`, which is what a single-tender sale is.
+   */
+  payments?: Array<{ method: string; amount: number }>;
   items: Array<{
     quantity: number;
     /** Unit cost price; null when the product has no recorded cost. */
@@ -77,6 +86,15 @@ function isTickPayment(method: string): boolean {
  */
 export function isPersonalUse(method: string): boolean {
   return method.toLowerCase() === "personal_use";
+}
+
+/**
+ * An order's tender legs, falling back to the whole total on its single
+ * payment method for callers that predate split tender.
+ */
+function tenderLegs(order: CashierShiftOrder): Array<{ method: string; amount: number }> {
+  if (order.payments && order.payments.length > 0) return order.payments;
+  return [{ method: order.paymentMethod, amount: order.total }];
 }
 
 /**
@@ -132,15 +150,22 @@ export function buildCashierShiftBalanceSheet(
   const personalUseOrders = orders.filter((o) => isPersonalUse(o.paymentMethod));
 
   const grossSales = roundMoney(salesOrders.reduce((sum, o) => sum + Math.max(0, o.total), 0));
-  const cashSales = roundMoney(
-    salesOrders.filter((o) => isCashPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
-  );
-  const cardSales = roundMoney(
-    salesOrders.filter((o) => isCardPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
-  );
-  const creditSales = roundMoney(
-    salesOrders.filter((o) => isTickPayment(o.paymentMethod)).reduce((sum, o) => sum + o.total, 0),
-  );
+
+  // Money taken by tender, summed across every leg of every sale.
+  const takenBy = (matches: (method: string) => boolean): number =>
+    roundMoney(
+      salesOrders.reduce(
+        (sum, order) =>
+          sum +
+          tenderLegs(order)
+            .filter((leg) => matches(leg.method))
+            .reduce((legSum, leg) => legSum + leg.amount, 0),
+        0,
+      ),
+    );
+  const cashSales = takenBy(isCashPayment);
+  const cardSales = takenBy(isCardPayment);
+  const creditSales = takenBy(isTickPayment);
   const unpaidCreditSales = roundMoney(
     salesOrders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
   );

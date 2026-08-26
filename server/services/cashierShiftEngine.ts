@@ -4,6 +4,7 @@ import {
   cashierShifts,
   cashierShiftSummaries,
   orderCredit,
+  orderPayments,
   orders,
   orderItems,
   products,
@@ -214,6 +215,28 @@ function paidSalesReceivedFor(
   return gross - unpaid;
 }
 
+/** The tender legs for each order — which bucket its money actually fell into. */
+async function loadTenderLegs(
+  orderIds: string[],
+): Promise<Map<string, Array<{ method: string; amount: number }>>> {
+  const byOrder = new Map<string, Array<{ method: string; amount: number }>>();
+  if (orderIds.length === 0) return byOrder;
+  const rows = await db
+    .select({
+      orderId: orderPayments.orderId,
+      method: orderPayments.method,
+      amount: orderPayments.amount,
+    })
+    .from(orderPayments)
+    .where(inArray(orderPayments.orderId, orderIds));
+  for (const row of rows) {
+    const list = byOrder.get(row.orderId) ?? [];
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    byOrder.set(row.orderId, list);
+  }
+  return byOrder;
+}
+
 /** What is still owed on each of these orders, from their credit records. */
 async function loadOutstandingCredit(orderIds: string[]): Promise<Map<string, number>> {
   const byOrder = new Map<string, number>();
@@ -290,6 +313,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   const expensesByOrder = await loadOrderExpensesByOrder(orderIds);
   const refundsByOrder = await loadRefundsByOrder(orderIds);
   const outstandingByOrder = await loadOutstandingCredit(orderIds);
+  const legsByOrder = await loadTenderLegs(orderIds);
   const orderExpensesTotal = [...expensesByOrder.values()].reduce((sum, v) => sum + v, 0);
   const refundRows = [...refundsByOrder.values()].map((total) => ({ total }));
 
@@ -300,6 +324,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     status: o.status ?? "pending",
     createdAt: (o.createdAt ?? new Date()).toISOString(),
     creditOutstanding: outstandingByOrder.get(o.id),
+    payments: legsByOrder.get(o.id),
     items: (costsByOrder.get(o.id) ?? []).map((i) => ({ quantity: i.quantity, costPrice: i.costPrice })),
   }));
 

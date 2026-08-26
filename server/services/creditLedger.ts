@@ -6,6 +6,7 @@ import {
   orderCredit,
   orderExpenses as orderExpensesTable,
   orderItems,
+  orderPayments,
   orders,
   organizations,
   products,
@@ -40,6 +41,33 @@ export class CreditError extends Error {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * How much of an order went on tick.
+ *
+ * Reads the tender legs, so a £100 sale paid £50 cash and £50 on credit puts
+ * £50 on the list rather than £100. Falls back to the order's single payment
+ * method for orders taken before split tender existed.
+ */
+export async function creditLegTotal(
+  orderId: string,
+  paymentMethod: string,
+  orderTotal: number,
+): Promise<number> {
+  const legs = await db
+    .select({ method: orderPayments.method, amount: orderPayments.amount })
+    .from(orderPayments)
+    .where(eq(orderPayments.orderId, orderId));
+
+  if (legs.length === 0) {
+    return paymentMethod.toLowerCase() === "tick" ? roundMoney(orderTotal) : 0;
+  }
+  return roundMoney(
+    legs
+      .filter((leg) => leg.method.toLowerCase() === "tick")
+      .reduce((sum, leg) => sum + parseFloat(String(leg.amount)), 0),
+  );
 }
 
 /**

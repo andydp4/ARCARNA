@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -115,6 +116,14 @@ export default function POS() {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [personalUseReason, setPersonalUseReason] = useState("");
+  // Split tender: a £100 sale taken as £50 cash and £50 on tick. Off by
+  // default, because most sales are one tender and the extra controls would
+  // just slow the till down.
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [tenderLegs, setTenderLegs] = useState<Array<{ method: string; amount: string }>>([
+    { method: "cash", amount: "" },
+    { method: "card", amount: "" },
+  ]);
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
@@ -560,6 +569,14 @@ export default function POS() {
   // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
   const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
 
+  // What is still to be taken on a split payment. Negative means over-tendered.
+  const splitRemaining =
+    Math.round(
+      (total -
+        tenderLegs.reduce((sum, leg) => sum + (Number(leg.amount) || 0), 0)) *
+        100,
+    ) / 100;
+
   // Total item count for cart badge (sum of quantities)
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -670,6 +687,31 @@ export default function POS() {
       paymentMethod: paymentMethod,
       fulfilmentMethod,
     };
+    if (splitPayment) {
+      const legs = tenderLegs
+        .map((leg) => ({ method: leg.method, amount: Number(leg.amount) }))
+        .filter((leg) => Number.isFinite(leg.amount) && leg.amount > 0);
+      if (legs.length === 0) {
+        toast({
+          title: "Enter how it was paid",
+          description: "A split payment needs at least one amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const legTotal = Math.round(legs.reduce((sum, leg) => sum + leg.amount, 0) * 100) / 100;
+      // Checked here as well as on the server: a cashier who is a few pence out
+      // should find out at the till, not after the sale is recorded.
+      if (Math.abs(legTotal - total) > 0.005) {
+        toast({
+          title: "The split does not add up",
+          description: `Payments come to £${legTotal.toFixed(2)}, the order is £${total.toFixed(2)}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      orderData.payments = legs;
+    }
     if (paymentMethod === "personal_use") {
       // Guarded here as well as on the server, so the cashier is told before
       // the request rather than after it.
@@ -968,6 +1010,94 @@ export default function POS() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Split across payment types</span>
+              <Switch
+                checked={splitPayment}
+                onCheckedChange={setSplitPayment}
+                aria-label="Split across payment types"
+                data-testid="switch-split-payment"
+              />
+            </div>
+
+            {splitPayment ? (
+              <div className="space-y-2">
+                {/* Each row is one tender. They have to add up to the order —
+                    a split that does not is a sale with money unaccounted for. */}
+                {tenderLegs.map((leg, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select
+                      value={leg.method}
+                      onValueChange={(v) =>
+                        setTenderLegs((legs) =>
+                          legs.map((l, i) => (i === index ? { ...l, method: v } : l)),
+                        )
+                      }
+                    >
+                      <SelectTrigger className="min-h-[44px] flex-1" aria-label={`Payment type ${index + 1}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                        <SelectItem value="transfer">Transfer</SelectItem>
+                        <SelectItem value="tick">On Credit (Tick)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      className="min-h-[44px] w-32"
+                      value={leg.amount}
+                      aria-label={`Amount ${index + 1}`}
+                      data-testid={`input-tender-amount-${index}`}
+                      onChange={(e) =>
+                        setTenderLegs((legs) =>
+                          legs.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l)),
+                        )
+                      }
+                    />
+                    {tenderLegs.length > 2 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-[44px]"
+                        aria-label={`Remove payment ${index + 1}`}
+                        onClick={() => setTenderLegs((legs) => legs.filter((_, i) => i !== index))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px]"
+                    onClick={() => setTenderLegs((legs) => [...legs, { method: "cash", amount: "" }])}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add payment
+                  </Button>
+                  {/* The number a cashier actually needs: what is left to take. */}
+                  <span
+                    className={`text-sm font-medium ${splitRemaining === 0 ? "text-metal-muted" : "text-warning"}`}
+                    data-testid="text-split-remaining"
+                  >
+                    {splitRemaining === 0
+                      ? "Adds up"
+                      : splitRemaining > 0
+                        ? `£${splitRemaining.toFixed(2)} left to take`
+                        : `£${Math.abs(splitRemaining).toFixed(2)} over`}
+                  </span>
+                </div>
+              </div>
+            ) : (
             <div>
               <label className="text-sm font-medium mb-2 block">Payment Method</label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -1014,8 +1144,9 @@ export default function POS() {
                 </SelectContent>
               </Select>
             </div>
+            )}
 
-            {paymentMethod === "personal_use" && (
+            {!splitPayment && paymentMethod === "personal_use" && (
               <div>
                 <label className="text-sm font-medium mb-2 block" htmlFor="personal-use-reason">
                   What is this for?

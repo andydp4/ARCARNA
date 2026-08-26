@@ -158,3 +158,61 @@ describe("credit on the Z-report", () => {
     expect(report.creditResolved).toEqual([]);
   });
 });
+
+describe("split tender", () => {
+  const shift = {
+    id: "s1",
+    openingFloat: 100,
+    closingCount: null,
+    expectedCash: null,
+    variance: null,
+    openedAt: "2026-08-26T08:00:00.000Z",
+    closedAt: null,
+    cashierName: "Priya",
+    locationName: "Front counter",
+    status: "open",
+    notes: null,
+  };
+
+  const splitOrder = {
+    id: "o1",
+    total: 100,
+    paymentMethod: "split",
+    payments: [
+      { method: "cash", amount: 50 },
+      { method: "tick", amount: 50 },
+    ],
+    createdAt: "2026-08-26T09:00:00.000Z",
+    items: [],
+  };
+
+  it("shows each tender for what it actually took", () => {
+    const report = buildZReport(shift, [splitOrder], []);
+
+    expect(report.salesByPaymentMethod).toEqual([
+      { method: "cash", total: 50, count: 1 },
+      { method: "tick", total: 50, count: 1 },
+    ]);
+    expect(report.grossSales).toBe(100);
+  });
+
+  it("expects only the cash leg in the drawer", () => {
+    // The whole point: £100 sold, £50 in the till. Counting the sale as £100 of
+    // cash would show a £50 variance on a drawer that balanced perfectly.
+    const report = buildZReport(shift, [splitOrder], []);
+
+    expect(report.cashSummary.cashSales).toBe(50);
+    expect(report.cashSummary.expectedCash).toBe(150);
+  });
+
+  it("treats an order with no legs as a single tender, as it always was", () => {
+    const report = buildZReport(
+      shift,
+      [{ id: "o2", total: 80, paymentMethod: "card", createdAt: "2026-08-26T09:00:00.000Z", items: [] }],
+      [],
+    );
+
+    expect(report.salesByPaymentMethod).toEqual([{ method: "card", total: 80, count: 1 }]);
+    expect(report.cashSummary.cashSales).toBe(0);
+  });
+});

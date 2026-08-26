@@ -15,6 +15,13 @@ export type ZReportOrder = {
     quantity: number;
     lineTotal: number;
   }>;
+  /**
+   * The tenders that paid for this order. A sale can be part cash, part card
+   * and part tick, so the payment breakdown and the drawer both have to be
+   * built from the legs rather than from one column. Absent means a
+   * single-tender sale, which is what every order was before split tender.
+   */
+  payments?: Array<{ method: string; amount: number }>;
 };
 
 export type ZReportRefund = {
@@ -94,6 +101,27 @@ function isCashPayment(method: string): boolean {
   return m === "cash" || m.includes("cash");
 }
 
+/**
+ * An order's tender legs, falling back to the whole total on its single
+ * payment method for orders taken before split tender existed.
+ */
+function tenderLegs(order: ZReportOrder): Array<{ method: string; amount: number }> {
+  if (order.payments && order.payments.length > 0) return order.payments;
+  return [{ method: order.paymentMethod, amount: order.total }];
+}
+
+/** Cash actually taken across a set of orders, counting only the cash legs. */
+function cashTakenFrom(orders: ZReportOrder[]): number {
+  return orders.reduce(
+    (sum, order) =>
+      sum +
+      tenderLegs(order)
+        .filter((leg) => isCashPayment(leg.method))
+        .reduce((legSum, leg) => legSum + leg.amount, 0),
+    0,
+  );
+}
+
 export function buildZReport(
   shift: ZReportShift,
   orders: ZReportOrder[],
@@ -109,13 +137,19 @@ export function buildZReport(
   );
   const netSales = roundMoney(grossSales - refundsTotal);
 
+  // Split by tender leg: a £100 sale taken as £50 cash and £50 on tick appears
+  // under both, for £50 each, rather than £100 under whichever was picked first.
+  // The count is orders-touching-that-tender, which is what "how many card
+  // transactions did we take?" actually means.
   const paymentMap = new Map<string, { total: number; count: number }>();
   for (const order of orders) {
-    const method = order.paymentMethod || "unknown";
-    const entry = paymentMap.get(method) ?? { total: 0, count: 0 };
-    entry.total += order.total;
-    entry.count += 1;
-    paymentMap.set(method, entry);
+    for (const leg of tenderLegs(order)) {
+      const method = leg.method || "unknown";
+      const entry = paymentMap.get(method) ?? { total: 0, count: 0 };
+      entry.total += leg.amount;
+      entry.count += 1;
+      paymentMap.set(method, entry);
+    }
   }
   const salesByPaymentMethod = [...paymentMap.entries()]
     .map(([method, { total, count }]) => ({
@@ -158,11 +192,9 @@ export function buildZReport(
     .slice(0, 10)
     .map((s) => ({ ...s, revenue: roundMoney(s.revenue) }));
 
-  const cashSales = roundMoney(
-    orders
-      .filter((o) => isCashPayment(o.paymentMethod))
-      .reduce((sum, o) => sum + o.total, 0),
-  );
+  // Only the cash legs reach the drawer. A £100 sale half paid by card puts £50
+  // in the till, and expecting £100 would show a £50 variance every time.
+  const cashSales = roundMoney(cashTakenFrom(orders));
   const cashRefunds = roundMoney(
     refunds
       .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
@@ -229,9 +261,7 @@ export function computeExpectedCash(
   orders: ZReportOrder[],
   refunds: ZReportRefund[],
 ): number {
-  const cashSales = orders
-    .filter((o) => isCashPayment(o.paymentMethod))
-    .reduce((sum, o) => sum + o.total, 0);
+  const cashSales = cashTakenFrom(orders);
   const cashRefunds = refunds
     .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
     .reduce((sum, r) => sum + r.total, 0);
