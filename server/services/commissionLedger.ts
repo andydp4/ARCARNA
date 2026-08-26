@@ -2,9 +2,10 @@ import { db } from "../db";
 import {
   cashierCommissionEntries,
   cashierProfiles,
+  users,
   type CashierCommissionEntry,
 } from "@shared/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   apportionOverheadsByDay,
   buildShiftCommission,
@@ -23,23 +24,53 @@ import {
 export type { ShiftCommissionOrder };
 
 /**
- * Resolves each cashier's own rate, falling back to the org default.
+ * Resolves each completer's rate, keyed by cashier id.
+ *
+ * The user's own rate wins where the order records one, because commission
+ * belongs to the person who logged in (migration 057); a cashier code's rate is
+ * honoured underneath it so shifts taken before the change keep their figures.
  *
  * Only completers are looked up. An inputter's rate is never read: their tenth
  * comes out of the completer's pool, priced at the completer's rate.
  */
-async function completerRates(cashierIds: string[]): Promise<Map<string, number>> {
+async function completerRates(
+  orders: Array<{ completerCashierId: string | null; completerUserId?: string | null }>,
+): Promise<Map<string, number>> {
   const rates = new Map<string, number>();
-  const unique = [...new Set(cashierIds)];
-  if (unique.length === 0) return rates;
+  const cashierIds = [
+    ...new Set(orders.map((o) => o.completerCashierId).filter((id): id is string => !!id)),
+  ];
+  const userIds = [
+    ...new Set(orders.map((o) => o.completerUserId).filter((id): id is string => !!id)),
+  ];
+  if (cashierIds.length === 0 && userIds.length === 0) return rates;
 
-  const rows = await db
-    .select({ id: cashierProfiles.id, rate: cashierProfiles.defaultCommissionRate })
-    .from(cashierProfiles);
+  const userRates = new Map<string, number>();
+  if (userIds.length > 0) {
+    const rows = await db
+      .select({ id: users.id, rate: users.commissionRate })
+      .from(users)
+      .where(inArray(users.id, userIds));
+    for (const row of rows) {
+      if (row.rate != null) userRates.set(row.id, parseFloat(String(row.rate)));
+    }
+  }
 
-  for (const row of rows) {
-    if (!unique.includes(row.id)) continue;
-    if (row.rate != null) rates.set(row.id, parseFloat(String(row.rate)));
+  if (cashierIds.length > 0) {
+    const rows = await db
+      .select({ id: cashierProfiles.id, rate: cashierProfiles.defaultCommissionRate })
+      .from(cashierProfiles)
+      .where(inArray(cashierProfiles.id, cashierIds));
+    for (const row of rows) {
+      if (row.rate != null) rates.set(row.id, parseFloat(String(row.rate)));
+    }
+  }
+
+  // The user's rate overrides the code's, for every order that names one.
+  for (const order of orders) {
+    if (!order.completerCashierId || !order.completerUserId) continue;
+    const userRate = userRates.get(order.completerUserId);
+    if (userRate != null) rates.set(order.completerCashierId, userRate);
   }
   return rates;
 }
@@ -72,9 +103,7 @@ export async function accrueShiftCommission(
     overheadShare: overheadShares.get(order.orderId) ?? 0,
   }));
 
-  const rates = await completerRates(
-    priced.map((o) => o.completerCashierId).filter((id): id is string => !!id),
-  );
+  const rates = await completerRates(priced);
   const { perOrder, total } = buildShiftCommission(priced, rates, fallbackRate);
 
   const rows = perOrder.flatMap((result) => {
@@ -85,6 +114,7 @@ export async function accrueShiftCommission(
       orgId,
       orderId: result.orderId,
       cashierId: entry.cashierId,
+      userId: entry.userId ?? null,
       cashierShiftId: shiftId,
       role: entry.role,
       basis: "sale" as const,

@@ -47,6 +47,13 @@ export type CommissionOrderInput = {
   completerCashierId: string | null;
   /** Who loaded it. Null for web and storefront orders. */
   inputterCashierId: string | null;
+  /**
+   * The same two people by user account, which is what commission actually
+   * belongs to (migration 057). Carried alongside the cashier ids rather than
+   * replacing them so a shift closed before the change still reconciles.
+   */
+  completerUserId?: string | null;
+  inputterUserId?: string | null;
   /** Personal use and anything else that is not a sale: never accrues. */
   excluded?: boolean;
 };
@@ -55,6 +62,8 @@ export type CommissionEntryRole = "completer" | "inputter";
 
 export type CommissionEntry = {
   cashierId: string;
+  /** Who is owed this, by user account. Undefined for pre-057 orders. */
+  userId?: string | null;
   role: CommissionEntryRole;
   sharePercent: number;
   amount: number;
@@ -157,7 +166,15 @@ export function buildOrderCommission(
       orderId: order.orderId,
       margin,
       pool,
-      entries: [{ cashierId: completerId, role: "completer", sharePercent: 100, amount: pool }],
+      entries: [
+        {
+          cashierId: completerId,
+          userId: order.completerUserId,
+          role: "completer",
+          sharePercent: 100,
+          amount: pool,
+        },
+      ],
     };
   }
 
@@ -169,6 +186,7 @@ export function buildOrderCommission(
   const entries: CommissionEntry[] = [
     {
       cashierId: completerId,
+      userId: order.completerUserId,
       role: "completer",
       sharePercent: COMPLETER_SHARE_PERCENT,
       amount: completerAmount,
@@ -179,6 +197,7 @@ export function buildOrderCommission(
   if (inputterAmount > 0) {
     entries.push({
       cashierId: inputterId,
+      userId: order.inputterUserId,
       role: "inputter",
       sharePercent: INPUTTER_SHARE_PERCENT,
       amount: inputterAmount,

@@ -1,6 +1,6 @@
 # Phase L — Shifts as trading days, and the daily close
 
-**Status (2026-08-26):** Briefed, not started · **Depends on:** Phase K (K1–K7)
+**Status (2026-08-26):** **L1 built**; L2–L5 planned · **Depends on:** Phase K (K1–K7)
 
 Five briefs: **L1** commission moves from cashier codes to user accounts, **L2** a
 shift becomes a trading day opened at login, **L3** the 06:00 daily close, **L4**
@@ -69,9 +69,14 @@ inputter's 10% stands.
 
 ## Open questions
 
-**Blocking L1:**
+**Answered — L1 is unblocked and built:**
 
-1. **What happens to the existing cashier codes and their rates?** The per-cashier
+1. **Everyone goes back to the organisation default rate**, and a per-person
+   rate is set in user management. The old per-code rates are not carried over,
+   because nothing ever linked a code to a user account (G1). Original wording
+   kept below for the record.
+
+1. ~~**What happens to the existing cashier codes and their rates?**~~ The per-cashier
    commission rate lives on `cashier_profiles.default_commission_rate`, and there
    is no way to map a code to a user (G1). **Proposed:** add a commission rate to
    the user record; keep `cashier_profiles` read-only for historic reports; drop

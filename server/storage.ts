@@ -76,7 +76,7 @@ import {
 import type { WebsiteProductSettingsPatch } from "@shared/website";
 import { withRetries } from "./lib/dbUtils";
 import { db } from "./db";
-import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
+import { eq, desc, sql, and, or, lte, gte, isNull, between, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -1926,16 +1926,44 @@ export class DatabaseStorage implements IStorage {
     return { linked: true };
   }
 
+  /**
+   * The access list, with each person's commission rate alongside.
+   *
+   * The rate lives on `users`, not `allowed_users`, so it is joined in rather
+   * than duplicated — the access screen is where it is set, and showing a stale
+   * copy of somebody's pay rate would be worse than not showing it.
+   */
+  private async attachCommissionRates<T extends { replitUserId: string }>(
+    rows: T[],
+  ): Promise<Array<T & { commissionRate: string | null }>> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.replitUserId).filter(Boolean);
+    const userRows = ids.length
+      ? await db
+          .select({ id: users.id, replitUserId: users.replitUserId, rate: users.commissionRate })
+          .from(users)
+          .where(or(inArray(users.id, ids), inArray(users.replitUserId, ids)))
+      : [];
+    const byKey = new Map<string, string | null>();
+    for (const u of userRows) {
+      if (u.id) byKey.set(u.id, u.rate);
+      if (u.replitUserId) byKey.set(u.replitUserId, u.rate);
+    }
+    return rows.map((r) => ({ ...r, commissionRate: byKey.get(r.replitUserId) ?? null }));
+  }
+
   async getAllowedUsers(orgId: string): Promise<AllowedUser[]> {
-    return db
+    const rows = await db
       .select()
       .from(allowedUsers)
       .where(eq(allowedUsers.orgId, orgId))
       .orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async adminGetAllAllowedUsers(): Promise<AllowedUser[]> {
-    return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    const rows = await db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser> {
@@ -1974,6 +2002,24 @@ export class DatabaseStorage implements IStorage {
       .from(allowedUsers)
       .where(eq(allowedUsers.isOwner, 1));
     return owner || null;
+  }
+
+  /**
+   * Sets a person's commission rate, or clears it back to the org default.
+   *
+   * Keyed on the replit user id the access screen already works in, matched
+   * against both `users.replitUserId` and `users.id` because the two are the
+   * same value for accounts created since the auth migration and differ for
+   * older ones.
+   */
+  async setUserCommissionRate(replitUserId: string, rate: number | null): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        commissionRate: rate == null ? null : String(rate),
+        updatedAt: new Date(),
+      })
+      .where(or(eq(users.replitUserId, replitUserId), eq(users.id, replitUserId)));
   }
 
   async updateAllowedUserAccess(

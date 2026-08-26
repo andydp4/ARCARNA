@@ -77,6 +77,10 @@ export const orders = pgTable('orders', {
   // shared/schema.ts and migration 051. NULL input_cashier_id means no human
   // loaded it (web / storefront), which gives the completer the whole pool.
   input_cashier_id: uuid('input_cashier_id'),
+  // Who actually did the work, by user account — see shared/schema.ts and
+  // migration 057. varchar because users.id is the auth subject, not a uuid.
+  input_user_id: varchar('input_user_id', { length: 255 }),
+  completed_user_id: varchar('completed_user_id', { length: 255 }),
   // Written once, at the first transition to 'completed', like settled_total.
   completed_cashier_id: uuid('completed_cashier_id'),
   completed_cashier_shift_id: uuid('completed_cashier_shift_id'),

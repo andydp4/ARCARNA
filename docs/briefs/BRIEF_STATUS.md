@@ -144,7 +144,7 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 
 | ID | Status | Wave / notes |
 |----|--------|----------------|
-| L1 | **Planned** | Commission by user, not cashier code — **blocked** on what happens to the old per-code rates |
+| L1 | **Built** | Commission by user, not cashier code; migration 057. Everyone on the org default, per-user rate set in user management |
 | L2 | **Planned** | Shift = trading day, 06:00–06:00, opened on first sale |
 | L3 | **Planned** | The 06:00 daily close, on the existing worker loop |
 | L4 | **Planned** | Z-report-so-far button |

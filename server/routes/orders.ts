@@ -137,6 +137,16 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const result = await engine.placeOrder(body);
         const shiftId = req.shift?.id;
         const cashierShift = req.cashierShift;
+        // Whoever is logged in loaded this order. Recorded independently of any
+        // cashier code: the user is always known on a till sale, whereas a code
+        // is only present when one was picked (migration 057).
+        const inputUserId = req.user?.id ?? null;
+        if (inputUserId) {
+          await tx
+            .update(orders)
+            .set({ input_user_id: inputUserId })
+            .where(eq(orders.id, result.orderId));
+        }
         if (shiftId || cashierShift) {
           await tx
             .update(orders)
@@ -546,6 +556,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         ? {
             settled_total: (currentOrder as any)?.total,
             settled_at: new Date(),
+            // The user who completed it — frozen here for the same reason the
+            // total is, since 90% of the pool follows this column.
+            ...(req.user?.id ? { completed_user_id: req.user.id } : {}),
             ...(completingCashier
               ? {
                   completed_cashier_id: completingCashier.cashierId,

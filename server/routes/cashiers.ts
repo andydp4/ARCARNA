@@ -60,6 +60,10 @@ function formatMoney(amount: number, currency = "GBP"): string {
 }
 
 function cashierShiftWithReplayToken(shift: typeof cashierShifts.$inferSelect) {
+  // Offline replay is keyed on the cashier code, so a shift that has none gets
+  // no token. Issuing one with an empty code would sign a claim the validator
+  // can never match, which fails obscurely later instead of plainly here.
+  if (!shift.cashierId) return { ...shift, replayToken: null };
   return {
     ...shift,
     replayToken: createCashierShiftReplayToken({

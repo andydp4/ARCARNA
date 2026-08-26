@@ -81,12 +81,20 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
 
       const summaryByCashier = new Map<string, typeof summaries>();
       for (const s of summaries) {
+        // Summaries for a shift with no cashier code belong to a user instead
+        // (migration 057); they are reported per user, not forced into a code
+        // bucket that does not exist.
+        if (!s.cashierId) continue;
         const list = summaryByCashier.get(s.cashierId) ?? [];
         list.push(s);
         summaryByCashier.set(s.cashierId, list);
       }
       const shiftsByCashier = new Map<string, typeof shifts>();
       for (const s of shifts) {
+        // A shift can belong to a user with no cashier code (migration 057).
+        // Those are grouped by user in the per-user payroll rather than being
+        // forced into a code bucket that does not exist.
+        if (!s.cashierId) continue;
         const list = shiftsByCashier.get(s.cashierId) ?? [];
         list.push(s);
         shiftsByCashier.set(s.cashierId, list);

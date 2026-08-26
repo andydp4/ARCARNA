@@ -12,6 +12,7 @@ import {
   overheadExpenses,
   refunds,
   organizations,
+  users,
   type CashierShift,
   type CashierShiftSummary,
   type CashierProfile,
@@ -36,14 +37,33 @@ export class CashierShiftError extends Error {
   }
 }
 
+/**
+ * The rate that applies to a shift, most specific first.
+ *
+ * The user's own rate wins, because commission belongs to the person who logged
+ * in (migration 057). A cashier code's rate is still honoured underneath it so
+ * shifts taken before the change keep the figures they were closed on. Failing
+ * both, the organisation default applies — which is where everyone starts,
+ * since the old per-code rates could never be mapped to users.
+ */
+export function resolveCommissionRate(input: {
+  userRate?: string | number | null;
+  cashierRate?: string | number | null;
+  orgRate?: string | number | null;
+}): number {
+  if (input.userRate != null) return parseFloat(String(input.userRate));
+  if (input.cashierRate != null) return parseFloat(String(input.cashierRate));
+  return input.orgRate != null ? parseFloat(String(input.orgRate)) : 0;
+}
+
 export function effectiveCommissionRate(
   cashier: Pick<CashierProfile, "defaultCommissionRate">,
   org: { defaultCashierCommissionRate: string | number | null },
 ): number {
-  const cashierRate = cashier.defaultCommissionRate;
-  if (cashierRate != null) return parseFloat(String(cashierRate));
-  const orgRate = org.defaultCashierCommissionRate;
-  return orgRate != null ? parseFloat(String(orgRate)) : 0;
+  return resolveCommissionRate({
+    cashierRate: cashier.defaultCommissionRate,
+    orgRate: org.defaultCashierCommissionRate,
+  });
 }
 
 export async function getOpenCashierShift(
@@ -103,6 +123,8 @@ type ShiftOrderRow = {
   createdAt: Date | null;
   completedCashierId: string | null;
   inputCashierId: string | null;
+  completedUserId: string | null;
+  inputUserId: string | null;
 };
 
 /**
@@ -125,6 +147,8 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       createdAt: orders.createdAt,
       completedCashierId: orders.completedCashierId,
       inputCashierId: orders.inputCashierId,
+      completedUserId: orders.completedUserId,
+      inputUserId: orders.inputUserId,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -297,15 +321,26 @@ function dayBounds(dateKey: string): { start: Date; end: Date } {
  * day — correctly handling overnight/multi-day shifts and no-sales days.
  */
 export async function computeCashierShiftBalanceSheet(orgId: string, shift: CashierShift) {
-  const [cashier] = await db
-    .select()
-    .from(cashierProfiles)
-    .where(eq(cashierProfiles.id, shift.cashierId))
-    .limit(1);
-  if (!cashier) throw new CashierShiftError("Cashier profile not found", 404, "CASHIER_NOT_FOUND");
+  // A shift belongs to a user now and need not have a cashier code at all, so
+  // a missing profile is no longer an error — only a missing code AND a missing
+  // user would leave the shift belonging to nobody.
+  const [cashier] = shift.cashierId
+    ? await db.select().from(cashierProfiles).where(eq(cashierProfiles.id, shift.cashierId)).limit(1)
+    : [undefined];
+  if (!cashier && !shift.userId) {
+    throw new CashierShiftError("Shift belongs to no cashier or user", 404, "CASHIER_NOT_FOUND");
+  }
 
   const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) throw new CashierShiftError("Organization not found", 404, "ORG_NOT_FOUND");
+
+  const [shiftUser] = shift.userId
+    ? await db
+        .select({ commissionRate: users.commissionRate })
+        .from(users)
+        .where(eq(users.id, shift.userId))
+        .limit(1)
+    : [undefined];
 
   const orderRows = await loadShiftOrders(shift.id);
   const orderIds = orderRows.map((o) => o.id);
@@ -351,7 +386,11 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     globalExpenseAllocation += dayShare;
   }
 
-  const commissionRate = effectiveCommissionRate(cashier, org);
+  const commissionRate = resolveCommissionRate({
+    userRate: shiftUser?.commissionRate,
+    cashierRate: cashier?.defaultCommissionRate,
+    orgRate: org.defaultCashierCommissionRate,
+  });
 
   const sheet = buildCashierShiftBalanceSheet(
     shiftOrders,
@@ -388,6 +427,8 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
       refunds: refundsByOrder.get(row.id) ?? 0,
       completerCashierId: row.completedCashierId,
       inputterCashierId: row.inputCashierId,
+      completerUserId: row.completedUserId,
+      inputterUserId: row.inputUserId,
       soldOn: utcDateKey((row.createdAt ?? new Date()).toISOString()),
     };
   });
@@ -427,6 +468,7 @@ function cashierShiftSummaryValues(
     orgId,
     shiftId: shift.id,
     cashierId: shift.cashierId,
+    userId: shift.userId,
     grossSales: String(sheet.grossSales),
     cashSales: String(sheet.cashSales),
     cardSales: String(sheet.cardSales),

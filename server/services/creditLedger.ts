@@ -11,10 +11,12 @@ import {
   organizations,
   products,
   refunds,
+  users,
   type OrderCredit,
 } from "@shared/schema";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { buildOrderCommission, roundMoney } from "@shared/reports/orderCommission";
+import { resolveCommissionRate } from "./cashierShiftEngine";
 
 /**
  * The credit (tick) lifecycle.
@@ -97,6 +99,8 @@ export async function openCreditForOrder(
 type OrderCommissionBasis = {
   completerCashierId: string | null;
   inputterCashierId: string | null;
+  completerUserId: string | null;
+  inputterUserId: string | null;
   rate: number;
   /** The pool the order would pay if the whole balance were settled. */
   fullPool: number;
@@ -123,15 +127,27 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
     .where(eq(organizations.id, order.orgId))
     .limit(1);
 
-  let rate = org?.defaultRate != null ? parseFloat(String(org.defaultRate)) : 0;
-  if (order.completedCashierId) {
-    const [cashier] = await db
-      .select({ rate: cashierProfiles.defaultCommissionRate })
-      .from(cashierProfiles)
-      .where(eq(cashierProfiles.id, order.completedCashierId))
-      .limit(1);
-    if (cashier?.rate != null) rate = parseFloat(String(cashier.rate));
-  }
+  // Most specific rate wins: the completing user's own, then the cashier code's
+  // for orders taken before users were attributed, then the org default.
+  const [cashier] = order.completedCashierId
+    ? await db
+        .select({ rate: cashierProfiles.defaultCommissionRate })
+        .from(cashierProfiles)
+        .where(eq(cashierProfiles.id, order.completedCashierId))
+        .limit(1)
+    : [undefined];
+  const [completer] = order.completedUserId
+    ? await db
+        .select({ rate: users.commissionRate })
+        .from(users)
+        .where(eq(users.id, order.completedUserId))
+        .limit(1)
+    : [undefined];
+  const rate = resolveCommissionRate({
+    userRate: completer?.rate,
+    cashierRate: cashier?.rate,
+    orgRate: org?.defaultRate,
+  });
 
   const itemRows = await db
     .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
@@ -166,6 +182,8 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
       refunds: refundTotal,
       completerCashierId: order.completedCashierId,
       inputterCashierId: order.inputCashierId,
+      completerUserId: order.completedUserId,
+      inputterUserId: order.inputUserId,
     },
     rate,
   );
@@ -173,6 +191,8 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
   return {
     completerCashierId: order.completedCashierId,
     inputterCashierId: order.inputCashierId,
+    completerUserId: order.completedUserId,
+    inputterUserId: order.inputUserId,
     rate,
     fullPool: result.pool,
     completerAmount: result.entries.find((e) => e.role === "completer")?.amount ?? 0,
@@ -294,16 +314,40 @@ async function releaseCommission(
   const settledFraction = newOutstanding <= 0 ? 1 : roundMoney(given - newOutstanding) / given;
 
   const already = await accruedResolutionByRole(orderId);
-  const targets: Array<{ cashierId: string; role: "completer" | "inputter"; full: number; sharePercent: number }> = [];
+  const targets: Array<{
+    cashierId: string;
+    userId: string | null;
+    role: "completer" | "inputter";
+    full: number;
+    sharePercent: number;
+  }> = [];
 
   const completerId = basis.completerCashierId;
   const inputterId = basis.inputterCashierId;
   if (!inputterId || inputterId === completerId) {
-    targets.push({ cashierId: completerId, role: "completer", full: basis.fullPool, sharePercent: 100 });
+    targets.push({
+      cashierId: completerId,
+      userId: basis.completerUserId,
+      role: "completer",
+      full: basis.fullPool,
+      sharePercent: 100,
+    });
   } else {
-    targets.push({ cashierId: completerId, role: "completer", full: basis.completerAmount, sharePercent: 90 });
+    targets.push({
+      cashierId: completerId,
+      userId: basis.completerUserId,
+      role: "completer",
+      full: basis.completerAmount,
+      sharePercent: 90,
+    });
     if (basis.inputterAmount > 0) {
-      targets.push({ cashierId: inputterId, role: "inputter", full: basis.inputterAmount, sharePercent: 10 });
+      targets.push({
+        cashierId: inputterId,
+        userId: basis.inputterUserId,
+        role: "inputter",
+        full: basis.inputterAmount,
+        sharePercent: 10,
+      });
     }
   }
 
@@ -318,6 +362,7 @@ async function releaseCommission(
       orgId,
       orderId,
       cashierId: target.cashierId,
+      userId: target.userId,
       cashierShiftId: null,
       creditPaymentId,
       role: target.role,

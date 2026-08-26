@@ -169,6 +169,11 @@ export const users = pgTable("users", {
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
   defaultLocationId: uuid("default_location_id").references(() => locations.id),
+  // This person's commission rate, as a percentage. Null means the
+  // organisation default applies, which is where everyone starts: the old
+  // per-code rates could not be carried over, because nothing ever linked a
+  // cashier code to a user. Set in user management. (migration 057)
+  commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -875,9 +880,11 @@ export const cashierShifts = pgTable(
     orgId: uuid("org_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057: a shift belongs to a user, and cashier
+    // codes are on their way out, so it must be able to exist without one.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this is. The unit of attribution from migration 057 on. */
+    userId: varchar("user_id", { length: 255 }),
     openedByUserId: varchar("opened_by_user_id", { length: 255 }).notNull(),
     closedByUserId: varchar("closed_by_user_id", { length: 255 }),
     openedAt: timestamp("opened_at").defaultNow().notNull(),
@@ -891,6 +898,7 @@ export const cashierShifts = pgTable(
   (table) => [
     index("cashier_shifts_org_id_idx").on(table.orgId),
     index("cashier_shifts_cashier_id_idx").on(table.cashierId),
+    index("cashier_shifts_user_idx").on(table.orgId, table.userId),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)
       .where(sql`status = 'open'`),
@@ -910,9 +918,10 @@ export const cashierShiftSummaries = pgTable(
     shiftId: uuid("shift_id")
       .references(() => cashierShifts.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057 — a shift can belong to a user with no code.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this summarises. The unit of attribution from 057 on. */
+    userId: varchar("user_id", { length: 255 }),
     grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -935,6 +944,7 @@ export const cashierShiftSummaries = pgTable(
   (table) => [
     index("cashier_shift_summaries_org_id_idx").on(table.orgId),
     index("cashier_shift_summaries_cashier_id_idx").on(table.cashierId),
+    index("cashier_shift_summaries_user_idx").on(table.orgId, table.userId),
     uniqueIndex("cashier_shift_summaries_shift_id_idx").on(table.shiftId),
   ],
 );
@@ -969,6 +979,8 @@ export const cashierCommissionEntries = pgTable(
       .notNull(),
     /** The shift this accrued on. Null for a credit resolution taken later. */
     cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+    /** Who is owed this, by user account. Preferred over `cashierId`. */
+    userId: varchar("user_id", { length: 255 }),
     /** "completer" (90%) or "inputter" (10%), or either at 100%. */
     role: varchar("role", { length: 16 }).notNull(),
     /** "sale" — money taken at the till. "credit_resolution" — a tick since paid. */
@@ -996,6 +1008,7 @@ export const cashierCommissionEntries = pgTable(
   },
   (table) => [
     index("cashier_commission_entries_cashier_date_idx").on(table.orgId, table.cashierId, table.accruedOn),
+    index("cashier_commission_entries_user_date_idx").on(table.orgId, table.userId, table.accruedOn),
     index("cashier_commission_entries_shift_idx").on(table.cashierShiftId),
     index("cashier_commission_entries_order_idx").on(table.orderId),
     check("cashier_commission_entries_role_check", sql`${table.role} IN ('completer', 'inputter')`),
@@ -1203,6 +1216,12 @@ export const orders = pgTable("orders", {
   // commission that has already accrued to somebody else.
   completedCashierId: uuid("completed_cashier_id").references(() => cashierProfiles.id),
   completedCashierShiftId: uuid("completed_cashier_shift_id").references(() => cashierShifts.id),
+  // Who actually did the work, by user account rather than cashier code.
+  // varchar because `users.id` is the auth subject, not a uuid. No foreign key:
+  // removing someone from the org must not make historic orders unreadable.
+  // (migration 057)
+  inputUserId: varchar("input_user_id", { length: 255 }),
+  completedUserId: varchar("completed_user_id", { length: 255 }),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -1243,6 +1262,7 @@ export const orders = pgTable("orders", {
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
   index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
+  index("orders_completed_user_idx").on(table.orgId, table.completedUserId),
   index("orders_completed_cashier_shift_idx").on(table.completedCashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
   check("orders_total_non_negative", sql`${table.total} >= 0`),
