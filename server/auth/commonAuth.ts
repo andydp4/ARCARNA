@@ -1,7 +1,7 @@
 import type { RequestHandler, Request, Response, NextFunction } from "express";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { shifts } from "../../shared/schema";
+import { locations, shifts } from "../../shared/schema";
 import { storage } from "../storage";
 import { isDevAuthBypassEnabled } from "../authRuntime";
 
@@ -130,6 +130,10 @@ async function resolveLocationFromOpenShift(orgId: string, userId: string): Prom
   const [open] = await db
     .select({ locationId: shifts.locationId })
     .from(shifts)
+    .innerJoin(
+      locations,
+      and(eq(locations.id, shifts.locationId), eq(locations.orgId, orgId)),
+    )
     .where(and(eq(shifts.orgId, orgId), eq(shifts.userId, userId), eq(shifts.status, "open")))
     .limit(1);
   return open?.locationId ?? null;

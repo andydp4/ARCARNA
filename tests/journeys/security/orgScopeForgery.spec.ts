@@ -20,6 +20,9 @@
  * before/after database fingerprints must not interleave.
  */
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { and, eq } from "drizzle-orm";
+import { db } from "../../../server/db";
+import { shifts } from "@shared/schema";
 import { apiAs, type Role } from "../fixtures";
 import {
   apiWithHeaders,
@@ -194,6 +197,30 @@ test.describe("5.6 forged org scope", () => {
     const stock = await forged.get(`/api/locations/${b.locationId}/stock`);
     expect(stock.status(), "another tenant's location must not resolve").toBe(404);
     await forged.dispose();
+  });
+
+  test("a forged x-location-id cannot open a POS shift against another tenant's location", async () => {
+    const countPoisonedShifts = async () =>
+      (
+        await db
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(and(eq(shifts.orgId, orgAId), eq(shifts.locationId, b.locationId)))
+      ).length;
+
+    const before = await countPoisonedShifts();
+    const forged = await apiWithHeaders("CASHIER", { "x-location-id": b.locationId });
+    const res = await forged.post("/api/shifts/open", {
+      data: { locationId: b.locationId, openingFloat: 10 },
+    });
+    const body = await res.text();
+    await forged.dispose();
+
+    expect(res.status(), `foreign location shift open returned ${res.status()} ${body}`).toBe(404);
+    expect(
+      await countPoisonedShifts(),
+      "opening a shift must not create an org-A row that references org-B's location",
+    ).toBe(before);
   });
 
   test("impersonation headers without the shared secret cannot select a user", async () => {

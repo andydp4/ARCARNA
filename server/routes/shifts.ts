@@ -227,6 +227,21 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         if (!userId) return res.status(401).json({ message: "Unauthorized" });
         const body = openBodySchema.parse(req.body ?? {});
 
+        const [location] = await db
+          .select({ id: locations.id })
+          .from(locations)
+          .where(
+            and(
+              eq(locations.id, body.locationId),
+              eq(locations.orgId, ctx.orgId),
+              eq(locations.isActive, 1),
+            ),
+          )
+          .limit(1);
+        if (!location) {
+          return res.status(404).json({ message: "Location not found" });
+        }
+
         const [existing] = await db
           .select()
           .from(shifts)
