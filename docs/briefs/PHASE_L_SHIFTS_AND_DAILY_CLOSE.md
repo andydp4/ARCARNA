@@ -1,6 +1,6 @@
 # Phase L — Shifts as trading days, and the daily close
 
-**Status (2026-08-26):** **L1 and L2 built**; L3–L5 planned · **Depends on:** Phase K (K1–K7)
+**Status (2026-08-26):** **L1–L5 built** · **Depends on:** Phase K (K1–K7)
 
 Five briefs: **L1** commission moves from cashier codes to user accounts, **L2** a
 shift becomes a trading day opened at login, **L3** the 06:00 daily close, **L4**
@@ -261,8 +261,9 @@ drawer figures; no counted-cash figure is invented.
 **Goal:** Make Open Orders good enough to work a counter from. It is where orders
 are completed, so it is where commission is earned.
 
-**Needs a specification before it is built** — "looking better" is not one. The
-proposal to agree or reject:
+**Built to the specification below, which was proposed rather than agreed** —
+"looking better" was not one, so this is the reading that was taken. Say if any
+of it is wrong and it changes cheaply:
 
 - The list answers, at a glance: what is waiting, how long it has waited, and
   what is blocking it.

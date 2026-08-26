@@ -148,7 +148,7 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 | L2 | **Built** | Shift = trading day, 06:00–06:00, opened on first sale; migration 058. Open-shift modal removed |
 | L3 | **Built** | The 06:00 daily close, on the existing worker loop; migration 059. Exactly-once per org per day |
 | L4 | **Built** | Z-report-so-far button; running shifts show pending, never a zero variance |
-| L5 | **Planned** | Open Orders redesign — needs a spec agreed first |
+| L5 | **Built†** | Open Orders counter view — built to a *proposed* spec, not an agreed one; see the brief |
 
 ---
 

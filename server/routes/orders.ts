@@ -326,11 +326,31 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         status: orders.status,
         fulfilmentMethod: orders.fulfilment_method,
         createdAt: orders.created_at,
+        // Who loaded it. The counter view shows this because it decides where
+        // the inputter's 10% of the commission goes, and because knowing who to
+        // ask about an order is half of working a counter.
+        inputUserId: orders.input_user_id,
+        // Already on the order and never surfaced: what is holding it up.
+        delayFlag: orders.delay_flag,
+        delayReason: orders.delay_reason,
+        revisedEta: orders.revised_eta,
+        etaGiven: orders.eta_given,
       }).from(orders).leftJoin(customers, eq(orders.customer_id, customers.id));
       const allOrders = ctx?.orgId
         ? await baseQuery.where(eq(orders.org_id, ctx.orgId)).orderBy(orders.created_at)
         : await baseQuery.orderBy(orders.created_at);
-      res.json(allOrders);
+
+      // Resolve the loader's name once for the page rather than per row.
+      const { resolveUserNames } = await import("../services/userDisplayName");
+      const names = await resolveUserNames(
+        allOrders.map((o: { inputUserId: string | null }) => o.inputUserId).filter(Boolean) as string[],
+      );
+      res.json(
+        allOrders.map((o: { inputUserId: string | null }) => ({
+          ...o,
+          inputUserName: o.inputUserId ? names.get(o.inputUserId) ?? null : null,
+        })),
+      );
     } catch (error) {
       console.error("Error fetching orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });

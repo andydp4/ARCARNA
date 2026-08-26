@@ -81,6 +81,11 @@ export const orders = pgTable('orders', {
   // migration 057. varchar because users.id is the auth subject, not a uuid.
   input_user_id: varchar('input_user_id', { length: 255 }),
   completed_user_id: varchar('completed_user_id', { length: 255 }),
+  // Operational fields for the counter view — see shared/schema.ts.
+  delay_flag: boolean('delay_flag').default(false).notNull(),
+  delay_reason: varchar('delay_reason', { length: 255 }),
+  eta_given: timestamp('eta_given'),
+  revised_eta: timestamp('revised_eta'),
   // Written once, at the first transition to 'completed', like settled_total.
   completed_cashier_id: uuid('completed_cashier_id'),
   completed_cashier_shift_id: uuid('completed_cashier_shift_id'),
