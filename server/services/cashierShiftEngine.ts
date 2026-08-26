@@ -19,11 +19,11 @@ import {
 } from "@shared/schema";
 import { and, eq, gte, lt, lte, or, isNull, inArray, sql } from "drizzle-orm";
 import { accrueShiftCommission, type ShiftCommissionOrder } from "./commissionLedger";
+import { tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
 import {
   buildCashierShiftBalanceSheet,
   allocateGlobalExpenseShare,
   dailyOverheadTotal,
-  utcDateKey,
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
 
@@ -308,12 +308,6 @@ async function dailyGlobalExpensesForDay(orgId: string, dayStart: Date, dayEnd: 
   return dailyOverheadTotal(rows.map((r) => ({ amount: parseFloat(String(r.amount)), frequency: r.frequency })));
 }
 
-function dayBounds(dateKey: string): { start: Date; end: Date } {
-  const start = new Date(`${dateKey}T00:00:00.000Z`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  return { start, end };
-}
-
 /**
  * Computes (without persisting) the balance sheet for a cashier shift.
  * Global expenses are allocated per calendar day the shift's orders fall on,
@@ -363,18 +357,24 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     items: (costsByOrder.get(o.id) ?? []).map((i) => ({ quantity: i.quantity, costPrice: i.costPrice })),
   }));
 
-  // Bucket the shift's orders by UTC calendar day to allocate global expenses per-day.
-  const dayKeys = new Set<string>(shiftOrders.map((o) => utcDateKey(o.createdAt)));
-  if (dayKeys.size === 0) dayKeys.add(utcDateKey((shift.closedAt ?? new Date()).toISOString()));
+  // Bucket by TRADING day, not UTC calendar day. A 06:00 local cut means an
+  // order sold at 02:00 belongs to the day before, and in British Summer Time
+  // the cut is 05:00 UTC — so a UTC-midnight bucket was wrong twice over
+  // (migration 058).
+  const timeZone = org.timezone ?? "Europe/London";
+  const dayKeys = new Set<string>(
+    shiftOrders.map((o) => tradingDayFor(new Date(o.createdAt), timeZone)),
+  );
+  if (dayKeys.size === 0) dayKeys.add(tradingDayFor(shift.closedAt ?? new Date(), timeZone));
 
   let globalExpenseAllocation = 0;
   // Kept per day, not just summed: the commission ledger apportions each day's
   // share across that day's orders, and a shift can span midnight.
   const allocationByDay = new Map<string, number>();
   for (const dayKey of dayKeys) {
-    const { start, end } = dayBounds(dayKey);
+    const { start, end } = tradingDayBounds(dayKey, timeZone);
     const shiftPaidForDay = paidSalesReceivedFor(
-      orderRows.filter((o) => o.createdAt && utcDateKey(o.createdAt.toISOString()) === dayKey),
+      orderRows.filter((o) => o.createdAt && tradingDayFor(o.createdAt, timeZone) === dayKey),
       outstandingByOrder,
     );
     const [orgPaidForDay, dailyExpenses] = await Promise.all([
@@ -429,7 +429,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
       inputterCashierId: row.inputCashierId,
       completerUserId: row.completedUserId,
       inputterUserId: row.inputUserId,
-      soldOn: utcDateKey((row.createdAt ?? new Date()).toISOString()),
+      soldOn: tradingDayFor(row.createdAt ?? new Date(), timeZone),
     };
   });
 
@@ -630,6 +630,12 @@ export async function autoCloseInactiveCashierShifts(): Promise<number> {
 
   let closedCount = 0;
   for (const row of openShifts) {
+    // A shift is a trading day now, and only the 06:00 cut ends it — going for
+    // lunch must not close the till (migration 058). A shift that already has a
+    // trading day is on the new model and is left alone; the inactivity setting
+    // still applies to older shifts that predate it, so nothing hanging open
+    // from before the change is stranded.
+    if (row.shift.tradingDay) continue;
     const setting = row.shiftInactivityCloseAfter ?? "never";
     if (setting === "never" || !thresholdMs[setting]) continue;
     const lastActivity = row.shift.lastActivityAt ? new Date(row.shift.lastActivityAt).getTime() : now;

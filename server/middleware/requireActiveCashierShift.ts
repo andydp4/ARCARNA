@@ -7,6 +7,7 @@ import {
   touchCashierShiftActivity,
 } from "../services/cashierShiftEngine";
 import { validateCashierShiftReplay } from "../services/cashierShiftReplayToken";
+import { resolveShiftForToday } from "../services/tradingDayShift";
 
 export type ActiveCashierShiftContext = {
   cashierId: string;
@@ -135,30 +136,42 @@ function cashierShiftMiddleware(enforce: boolean): RequestHandler {
         (req.query?.cashierId as string) ||
         null;
 
-      if (!cashierId) {
-        if (enforce && org.requireCashierForSale) {
-          return res.status(409).json({
-            message: "An active cashier shift is required before taking sales.",
-            code: "CASHIER_SHIFT_REQUIRED",
-          });
+      // A cashier code was named, so honour it — offline replay and any till
+      // still sending one keep working exactly as they did.
+      if (cashierId) {
+        const openShift = await getOpenCashierShift(ctx.orgId, cashierId);
+        if (openShift) {
+          await touchCashierShiftActivity(openShift.id);
+          req.cashierShift = { cashierId, cashierShiftId: openShift.id };
+          return next();
         }
-        return next();
       }
 
-      const openShift = await getOpenCashierShift(ctx.orgId, cashierId);
-      if (!openShift) {
-        if (enforce && org.requireCashierForSale) {
-          return res.status(409).json({
-            message:
-              "No active shift for this cashier. Start a cashier shift before taking sales.",
-            code: "CASHIER_SHIFT_REQUIRED",
-          });
+      // Otherwise the shift is the logged-in person's trading day, opened on
+      // their first sale of it (migration 058). Nothing is refused for the want
+      // of a shift any more: the person is known, so their shift can always be
+      // resolved, and making them press a button first was the thing removed.
+      const shiftUserId = (req.user as { id?: string } | undefined)?.id;
+      if (shiftUserId) {
+        const shift = await resolveShiftForToday(ctx.orgId, shiftUserId);
+        if (shift) {
+          await touchCashierShiftActivity(shift.id);
+          req.cashierShift = {
+            cashierId: shift.cashierId ?? shiftUserId,
+            cashierShiftId: shift.id,
+          };
+          return next();
         }
-        return next();
       }
 
-      await touchCashierShiftActivity(openShift.id);
-      req.cashierShift = { cashierId, cashierShiftId: openShift.id };
+      // No user and no code at all. Only the sale path cares, and only when the
+      // org insists on attribution.
+      if (enforce && org.requireCashierForSale) {
+        return res.status(409).json({
+          message: "An active cashier shift is required before taking sales.",
+          code: "CASHIER_SHIFT_REQUIRED",
+        });
+      }
       return next();
     } catch (error) {
       console.error("[requireActiveCashierShift]", error);

@@ -18,7 +18,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck, UserRound } from "lucide-react";
-import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
+import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
 import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
@@ -149,7 +149,6 @@ export default function POS() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [emailReceipt, setEmailReceipt] = useState(false);
   const [shiftId, setShiftId] = useState<string | null>(() => getStoredShiftId());
-  const [shiftOpenModal, setShiftOpenModal] = useState(false);
   const [shiftCloseOpen, setShiftCloseOpen] = useState(false);
 
   const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
@@ -163,16 +162,17 @@ export default function POS() {
     },
   });
 
+  // The till no longer asks anybody to open a shift. One exists per person per
+  // trading day and opens itself on the first sale, so this only mirrors what
+  // the server already decided (migration 058).
   useEffect(() => {
     const serverShift = currentShiftData?.shift;
     if (serverShift?.id) {
       setShiftId(serverShift.id);
       setStoredShiftId(serverShift.id);
-      setShiftOpenModal(false);
     } else if (!shiftLoading && currentShiftData && !serverShift) {
       setShiftId(null);
       setStoredShiftId(null);
-      setShiftOpenModal(true);
     }
   }, [currentShiftData, shiftLoading]);
 
@@ -367,8 +367,6 @@ export default function POS() {
           const text = await response.text() || response.statusText;
           if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
             window.dispatchEvent(new CustomEvent("arcarna:cashier-shift-required"));
-          } else if (response.status === 409 && text.includes("SHIFT_REQUIRED")) {
-            setShiftOpenModal(true);
           }
           throw new Error(`${response.status}: ${text}`);
         }
@@ -1400,21 +1398,16 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
-      <ShiftOpenModal
-        open={shiftOpenModal}
-        onShiftOpened={(id) => {
-          setShiftId(id);
-          setShiftOpenModal(false);
-        }}
-      />
       {shiftId && (
         <ShiftCloseWizard
           open={shiftCloseOpen}
           shiftId={shiftId}
           onClosed={() => {
+            // Closing the drawer no longer prompts to open another. The next
+            // sale opens one by itself, on whatever trading day it falls in.
             setShiftCloseOpen(false);
             setShiftId(null);
-            setShiftOpenModal(true);
+            setStoredShiftId(null);
           }}
           onCancel={() => setShiftCloseOpen(false)}
         />

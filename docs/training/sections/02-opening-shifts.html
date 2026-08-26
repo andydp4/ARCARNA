@@ -28,7 +28,8 @@
 
   <table>
     <tr><th>Term</th><th>What it means</th></tr>
-    <tr><td><strong>Opening float</strong></td><td>The cash placed in the drawer before serving starts — your starting count.</td></tr>
+    <tr><td><strong>Trading day</strong></td><td>6am to 6am. A sale at one in the morning belongs to the day before, because that is when the shop was working.</td></tr>
+    <tr><td><strong>Opening float</strong></td><td>The cash in the drawer when serving starts. It carries over from what was counted into it at the last cash-up.</td></tr>
     <tr><td><strong>Expected cash</strong></td><td>What the drawer should hold now: opening float, plus cash sales, minus cash refunds.</td></tr>
     <tr><td><strong>Closing count</strong></td><td>The cash you actually count in the drawer when you close the shift.</td></tr>
     <tr><td><strong>Variance</strong></td><td>Closing count minus expected cash. Zero means it balanced. A signed number (for example −£3.50) means the drawer was short or over.</td></tr>
@@ -36,34 +37,24 @@
   </table>
 
   <p class="eyebrow">At the till · starting</p>
-  <h2>Starting a cashier shift <span class="role role-cashier">CASHIER</span></h2>
-  <p>You start your shift from the till — the <span class="ui">Create Order</span> screen. When your shop tracks cashiers, a <span class="ui">Start cashier shift</span> control sits at the top of the till. It ties every sale you take to your name, so the shift can be balanced against your drawer at the end.</p>
-
-  <figure>
-    <img src="../images/02-start-cashier-shift.png" alt="The Start cashier shift dialog at the till, with a cashier code to select" />
-    <figcaption>Starting a shift — choose your cashier code, then start.</figcaption>
-    <!-- SHOT: route=/create-order ; show=the Start cashier shift button at the top of the till and the "Start cashier shift" dialog open, showing the Cashier code dropdown and the "Start shift" button ; state=cashier commission tracking enabled in Settings, no shift currently open -->
-  </figure>
-
-  <ol class="steps">
-    <li>Count the cash already in the drawer — this is your <strong>opening float</strong>. Make sure it matches the amount your shop starts each till with.</li>
-    <li>On the till, select <span class="ui">Start cashier shift</span>.</li>
-    <li>In the <span class="ui">Start cashier shift</span> window, open the <span class="ui">Cashier</span> list and choose your own cashier code (shown as your code and name, for example <span class="ui">A1 — Priya</span>).</li>
-    <li>Select <span class="ui">Start shift</span>. The control changes to a badge reading <span class="ui">Cashier A1 · Shift open</span> — that badge is your confirmation the shift is running.</li>
-  </ol>
+  <h2>Your shift starts itself <span class="role role-cashier">CASHIER</span></h2>
+  <p>There is nothing to open. Your shift begins the moment you take your first order of the day, and every sale you make is tied to your name automatically. You do not choose a cashier code, and you do not press a start button.</p>
+  <p>A shift is a <strong>trading day</strong>, not a sitting at the till. The day runs from 6am to 6am, so an order taken at one in the morning still belongs to the day before — which is when the shop was working. If you log out for lunch, or go home and come back, you return to the same shift.</p>
+  <p>Several people can be serving at once. Everyone has their own shift for the day, and every order records who took it.</p>
   <div class="callout">
-    <strong>No cashier codes yet?</strong>
-    If the list is empty, the window says so and points to <span class="ui">Settings → Cashiers</span>. A manager adds cashier profiles there before anyone can start a shift. See Section 9.
+    <strong>What replaced the old start-of-shift window</strong>
+    You used to pick a location and a cashier code before you could serve. Both
+    are now taken from your own account, so there is nothing to fill in.
   </div>
 
   <p class="eyebrow">During the shift · serving</p>
   <h2>Serving while your shift is open <span class="role role-cashier">CASHIER</span></h2>
-  <p>Once your shift is open there is nothing extra to do — build orders and take payment as normal (Section 3). The <span class="ui">Cashier · Shift open</span> badge stays visible at the top of the till so you can see at a glance that you are on the clock and that sales are being counted against your drawer.</p>
-  <p>Some shops require a shift before any sale can go through. If yours does and no shift is open, the till will prompt you to start one the moment you try to take a payment. Start your shift, then carry on.</p>
+  <p>There is nothing extra to do — build orders and take payment as normal (Section 3). Everything you sell counts against your own shift for the day.</p>
 
   <p class="eyebrow">At the till · closing</p>
   <h2>Ending your shift <span class="role role-cashier">CASHIER</span></h2>
-  <p>Closing a shift is how the till is balanced. Do it at the end of your time on the till, before you hand over.</p>
+  <p>Closing a shift is how the till is balanced. Do it when you cash up, before you hand the drawer over.</p>
+  <p>You do not have to remember: at 6am the system closes the previous day itself and works out the totals. Counting the drawer at the end of the night is still worth doing, because it is the only way a variance can be spotted.</p>
   <ol class="steps">
     <li>Count all the cash in the drawer — notes and coin — to get your <strong>closing count</strong>.</li>
     <li>On the till, select <span class="ui">End shift</span> next to your cashier badge.</li>

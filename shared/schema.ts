@@ -885,6 +885,12 @@ export const cashierShifts = pgTable(
     cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
     /** Whose shift this is. The unit of attribution from migration 057 on. */
     userId: varchar("user_id", { length: 255 }),
+    /**
+     * The trading day this shift covers — 06:00 to 06:00 in the org's own
+     * timezone. A shift is a trading day, not a login session, so logging out
+     * for a break and back in returns to this same shift. (migration 058)
+     */
+    tradingDay: date("trading_day"),
     openedByUserId: varchar("opened_by_user_id", { length: 255 }).notNull(),
     closedByUserId: varchar("closed_by_user_id", { length: 255 }),
     openedAt: timestamp("opened_at").defaultNow().notNull(),
@@ -899,6 +905,12 @@ export const cashierShifts = pgTable(
     index("cashier_shifts_org_id_idx").on(table.orgId),
     index("cashier_shifts_cashier_id_idx").on(table.cashierId),
     index("cashier_shifts_user_idx").on(table.orgId, table.userId),
+    index("cashier_shifts_trading_day_idx").on(table.orgId, table.tradingDay),
+    // One shift per person per trading day. This is what makes opening a shift
+    // lazily safe: two concurrent first-sales race, one wins, the other finds it.
+    uniqueIndex("cashier_shifts_user_trading_day_idx")
+      .on(table.orgId, table.userId, table.tradingDay)
+      .where(sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL`),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)
       .where(sql`status = 'open'`),

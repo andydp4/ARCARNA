@@ -1,6 +1,6 @@
 # Phase L — Shifts as trading days, and the daily close
 
-**Status (2026-08-26):** **L1 built**; L2–L5 planned · **Depends on:** Phase K (K1–K7)
+**Status (2026-08-26):** **L1 and L2 built**; L3–L5 planned · **Depends on:** Phase K (K1–K7)
 
 Five briefs: **L1** commission moves from cashier codes to user accounts, **L2** a
 shift becomes a trading day opened at login, **L3** the 06:00 daily close, **L4**
