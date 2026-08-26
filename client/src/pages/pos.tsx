@@ -20,6 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck, UserRound } from "lucide-react";
 import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
+import { ZReportView } from "@/components/ZReport";
+import type { ZReportData } from "@shared/reports/zReport";
 import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
 import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
@@ -86,6 +88,32 @@ function PosProductGridSkeleton() {
   );
 }
 
+/**
+ * The Z-report for a shift that is still running.
+ *
+ * Loaded on open rather than kept in cache: a cashier checking where they are
+ * up to needs the figure as of now, and a stale one is exactly the problem this
+ * is meant to solve.
+ */
+function ShiftSoFar({ shiftId }: { shiftId: string }) {
+  const { data, isLoading, isError } = useQuery<{ report: ZReportData }>({
+    queryKey: ["/api/shifts", shiftId, "report"],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/shifts/${shiftId}/report`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load the report");
+      return res.json();
+    },
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  if (isLoading) return <p className="text-sm text-metal-muted">Working out where you are up to…</p>;
+  if (isError || !data?.report) {
+    return <p className="text-sm text-destructive">Could not load your shift figures.</p>;
+  }
+  return <ZReportView report={data.report} />;
+}
+
 export default function POS() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -150,6 +178,7 @@ export default function POS() {
   const [emailReceipt, setEmailReceipt] = useState(false);
   const [shiftId, setShiftId] = useState<string | null>(() => getStoredShiftId());
   const [shiftCloseOpen, setShiftCloseOpen] = useState(false);
+  const [zReportOpen, setZReportOpen] = useState(false);
 
   const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
     shift: { id: string; status: string } | null;
@@ -810,6 +839,17 @@ export default function POS() {
                   <Button
                     variant="outline"
                     className="lm-btn-outline min-h-[44px] shrink-0"
+                    onClick={() => setZReportOpen(true)}
+                    data-testid="button-z-report-so-far"
+                  >
+                    <Receipt className="mr-2 h-4 w-4" />
+                    Z-report so far
+                  </Button>
+                )}
+                {shiftId && (
+                  <Button
+                    variant="outline"
+                    className="lm-btn-outline min-h-[44px] shrink-0"
                     onClick={() => setShiftCloseOpen(true)}
                   >
                     <Clock className="mr-2 h-4 w-4" />
@@ -1395,6 +1435,21 @@ export default function POS() {
               Apply discount
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Where you are up to, without closing anything. Fetched fresh each time
+          it opens rather than cached, because a stale figure is the whole
+          problem this screen is meant to solve. */}
+      <Dialog open={zReportOpen} onOpenChange={setZReportOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Your shift so far</DialogTitle>
+            <DialogDescription>
+              Everything you have taken since the shift began. Nothing is closed by looking.
+            </DialogDescription>
+          </DialogHeader>
+          {zReportOpen && shiftId && <ShiftSoFar shiftId={shiftId} />}
         </DialogContent>
       </Dialog>
 

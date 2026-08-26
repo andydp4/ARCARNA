@@ -47,6 +47,14 @@ export type ZReportShift = {
 
 export type ZReportData = {
   shift: ZReportShift;
+  /**
+   * When these figures were taken.
+   *
+   * It matters on a shift that is still running: the report is a snapshot of a
+   * day still being traded, and without a time on it somebody will read a
+   * mid-afternoon figure as the day's total.
+   */
+  generatedAt: string;
   orderCount: number;
   grossSales: number;
   refundsTotal: number;
@@ -128,6 +136,7 @@ export function buildZReport(
   refunds: ZReportRefund[],
   creditGiven: ZReportCreditGiven[] = [],
   creditPaid: ZReportCreditPayment[] = [],
+  generatedAt: Date = new Date(),
 ): ZReportData {
   const grossSales = roundMoney(
     orders.reduce((sum, o) => sum + Math.max(0, o.total), 0),
@@ -215,6 +224,7 @@ export function buildZReport(
 
   return {
     shift,
+    generatedAt: generatedAt.toISOString(),
     orderCount: orders.length,
     grossSales,
     refundsTotal,

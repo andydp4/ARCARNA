@@ -16,15 +16,25 @@ function formatGivenOn(iso: string) {
 }
 
 export function ZReportView({ report }: { report: ZReportData }) {
+  const inProgress = report.shift.status === "open";
   return (
     <div className="z-report space-y-4 print:text-black print:bg-white">
       <div className="flex items-center justify-between print:hidden">
-        <h2 className="text-lg font-semibold">Z-Report</h2>
+        <h2 className="text-lg font-semibold">{inProgress ? "Z-Report so far" : "Z-Report"}</h2>
         <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
           <Printer className="h-4 w-4 mr-2" />
           Print
         </Button>
       </div>
+
+      {inProgress && (
+        // Said plainly, because a mid-afternoon figure read as a day's total is
+        // the obvious way for this screen to mislead somebody.
+        <p className="text-sm text-muted-foreground border-l-2 border-primary pl-3">
+          This shift is still running. Figures are as at{" "}
+          {new Date(report.generatedAt).toLocaleTimeString()} and will keep changing until it closes.
+        </p>
+      )}
 
       <Card>
         <CardHeader className="pb-2">
@@ -108,6 +118,16 @@ export function ZReportView({ report }: { report: ZReportData }) {
               <span className="text-right font-medium">
                 {money(report.cashSummary.expectedCash)}
               </span>
+              {report.cashSummary.closingCount == null && inProgress && (
+                <>
+                  {/* Not zero — nobody has counted the drawer yet, and showing
+                      a zero variance on an uncounted drawer would be a lie. */}
+                  <span>Counted cash</span>
+                  <span className="text-right text-muted-foreground">Not counted yet</span>
+                  <span>Variance</span>
+                  <span className="text-right text-muted-foreground">Pending the count</span>
+                </>
+              )}
               {report.cashSummary.closingCount != null && (
                 <>
                   <span>Counted cash</span>

@@ -147,7 +147,7 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 | L1 | **Built** | Commission by user, not cashier code; migration 057. Everyone on the org default, per-user rate set in user management |
 | L2 | **Built** | Shift = trading day, 06:00–06:00, opened on first sale; migration 058. Open-shift modal removed |
 | L3 | **Built** | The 06:00 daily close, on the existing worker loop; migration 059. Exactly-once per org per day |
-| L4 | **Planned** | Z-report-so-far button |
+| L4 | **Built** | Z-report-so-far button; running shifts show pending, never a zero variance |
 | L5 | **Planned** | Open Orders redesign — needs a spec agreed first |
 
 ---
