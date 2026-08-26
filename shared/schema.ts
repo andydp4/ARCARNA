@@ -1206,6 +1206,40 @@ export const creditPayments = pgTable(
 export type CreditPayment = typeof creditPayments.$inferSelect;
 export type InsertCreditPayment = typeof creditPayments.$inferInsert;
 
+/**
+ * One row per organisation per trading day, written by the 06:00 close.
+ *
+ * The unique key is the mechanism, not bookkeeping: a server restarted at 06:00
+ * or two instances running at once must not total the same day twice and send
+ * the same Signals twice. Whoever inserts the row does the work. (migration 059)
+ */
+export const dailyCloseRuns = pgTable(
+  "daily_close_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    tradingDay: date("trading_day").notNull(),
+    ranAt: timestamp("ran_at").defaultNow().notNull(),
+    shiftsClosed: integer("shifts_closed").notNull().default(0),
+    orderCount: integer("order_count").notNull().default(0),
+    grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditGiven: numeric("credit_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditResolved: numeric("credit_resolved", { precision: 12, scale: 2 }).notNull().default("0"),
+    personalUseCost: numeric("personal_use_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionAccrued: numeric("commission_accrued", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** Drawers still open at the cut — named, never closed uncounted. */
+    uncountedDrawers: integer("uncounted_drawers").notNull().default(0),
+  },
+  (table) => [uniqueIndex("daily_close_runs_org_day_idx").on(table.orgId, table.tradingDay)],
+);
+
+export type DailyCloseRun = typeof dailyCloseRuns.$inferSelect;
+export type InsertDailyCloseRun = typeof dailyCloseRuns.$inferInsert;
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
