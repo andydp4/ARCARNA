@@ -60,6 +60,7 @@ const WINDOWS = [
 ] as const;
 
 const DEFAULT_WINDOW = "48";
+const ACTIVE_SHIFT_STATUSES = new Set(["open", "reopened"]);
 
 function money(value: string | null | undefined): string {
   if (value == null) return "—";
@@ -119,7 +120,7 @@ export default function ShiftsPage() {
   });
 
   const openShifts = useMemo(
-    () => shifts.filter((shift) => shift.status === "open"),
+    () => shifts.filter((shift) => ACTIVE_SHIFT_STATUSES.has(shift.status)),
     [shifts],
   );
 

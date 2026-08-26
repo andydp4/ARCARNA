@@ -170,7 +170,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         eq(shifts.orgId, ctx.orgId),
         // An open shift older than the window is still on now, and "who is on"
         // is the first question this page answers.
-        or(gte(shifts.openedAt, since), eq(shifts.status, "open"))!,
+        or(gte(shifts.openedAt, since), eq(shifts.status, "open"), eq(shifts.status, "reopened"))!,
       ];
       if (status === "open" || status === "closed" || status === "reopened") {
         conditions.push(eq(shifts.status, status));
