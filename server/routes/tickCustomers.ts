@@ -72,10 +72,16 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const { db } = await import('../../apps/server/src/db');
       const { orders } = await import('../../apps/server/src/db/schema');
-      const { eq, and } = await import('drizzle-orm');
+      const { eq, and, sql } = await import('drizzle-orm');
       const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
+      const paidAt = new Date();
       await db.update(orders)
-        .set({ status: 'completed', updated_at: new Date() })
+        .set({
+          status: 'completed',
+          settled_total: sql`COALESCE(${orders.settled_total}, ${orders.total})`,
+          settled_at: sql`COALESCE(${orders.settled_at}, ${paidAt})`,
+          updated_at: paidAt,
+        })
         .where(whereCond);
       
       res.json({ message: "Customer removed from tick list" });
@@ -93,10 +99,16 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const { db } = await import('../../apps/server/src/db');
       const { orders } = await import('../../apps/server/src/db/schema');
-      const { eq, and } = await import('drizzle-orm');
+      const { eq, and, sql } = await import('drizzle-orm');
       const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
+      const paidAt = new Date();
       await db.update(orders)
-        .set({ status: 'completed', updated_at: new Date() })
+        .set({
+          status: 'completed',
+          settled_total: sql`COALESCE(${orders.settled_total}, ${orders.total})`,
+          settled_at: sql`COALESCE(${orders.settled_at}, ${paidAt})`,
+          updated_at: paidAt,
+        })
         .where(whereCond);
       
       res.json({ message: "Customer debt marked as paid" });

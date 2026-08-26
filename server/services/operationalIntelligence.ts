@@ -455,10 +455,13 @@ export async function getBusinessHealth(orgId: string): Promise<{
   todayStart.setHours(0, 0, 0, 0);
   const rangeStart = new Date();
   rangeStart.setDate(rangeStart.getDate() - rangeDays);
+  rangeStart.setHours(0, 0, 0, 0);
 
   let revenueToday = 0;
   let revenueRange = 0;
   const revenueTrend: { date: string; revenue: number }[] = [];
+  let orderCountToday = 0;
+  let orderCountRange = 0;
 
   try {
     // One definition of takings — see services/revenue.ts. This block
@@ -475,30 +478,23 @@ export async function getBusinessHealth(orgId: string): Promise<{
     const byDay = await settledRevenueByDay(orgId, isoDay(rangeStart), todayStr);
 
     revenueToday = byDay.get(todayStr)?.revenue ?? 0;
+    orderCountToday = byDay.get(todayStr)?.txns ?? 0;
 
     // Contiguous across the window so a quiet day plots as zero rather than
     // being dropped and drawing a straight line over itself.
     for (let d = new Date(rangeStart); d <= todayStart; d.setDate(d.getDate() + 1)) {
       const key = isoDay(d);
-      const revenue = byDay.get(key)?.revenue ?? 0;
+      const day = byDay.get(key);
+      const revenue = day?.revenue ?? 0;
       revenueTrend.push({ date: key, revenue });
       revenueRange += revenue;
+      orderCountRange += day?.txns ?? 0;
     }
     revenueRange = Math.round(revenueRange * 100) / 100;
   } catch {
     // fallback zeros
   }
 
-  const orderCountTodayRow = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, todayStart)));
-  const orderCountRangeRow = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, rangeStart)));
-  const orderCountToday = orderCountTodayRow[0]?.c ?? 0;
-  const orderCountRange = orderCountRangeRow[0]?.c ?? 0;
   const averageOrderValue =
     orderCountRange > 0 ? Math.round((revenueRange / orderCountRange) * 100) / 100 : 0;
 

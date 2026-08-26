@@ -16,10 +16,12 @@ describe.skipIf(!hasDb)("takings are the orders settled that day", () => {
   let db: (typeof import("../db"))["db"];
   let settledRevenueByDay: (typeof import("../services/revenue"))["settledRevenueByDay"];
   let settledRevenueByMonth: (typeof import("../services/revenue"))["settledRevenueByMonth"];
+  let getBusinessHealth: (typeof import("../services/operationalIntelligence"))["getBusinessHealth"];
 
   beforeEach(async () => {
     ({ db } = await import("../db"));
     ({ settledRevenueByDay, settledRevenueByMonth } = await import("../services/revenue"));
+    ({ getBusinessHealth } = await import("../services/operationalIntelligence"));
 
     orgId = randomUUID();
     await db.insert(organizations).values({ id: orgId, name: "Settled Revenue Test" });
@@ -164,5 +166,41 @@ describe.skipIf(!hasDb)("takings are the orders settled that day", () => {
     const byDay = await settledRevenueByDay(orgId, "2026-08-01", "2026-08-31");
     const summed = [...byDay.values()].reduce((s, d) => s + d.revenue, 0);
     expect(august?.revenue).toBe(Math.round(summed * 100) / 100);
+  });
+
+  it("business health includes today's settled takings and counts the same settled orders for AOV", async () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+    await db.insert(orders).values([
+      {
+        id: randomUUID(),
+        orgId,
+        total: "200.00",
+        paymentMethod: "cash",
+        status: "completed",
+        createdAt: today,
+        settledTotal: "200.00",
+        settledAt: today,
+      },
+      {
+        id: randomUUID(),
+        orgId,
+        total: "999.00",
+        paymentMethod: "cash",
+        status: "pending",
+        createdAt: today,
+      },
+    ] as never);
+
+    const health = await getBusinessHealth(orgId);
+
+    expect(health.revenueToday).toBe(200);
+    expect(health.revenueRange).toBe(200);
+    expect(health.orderCountToday).toBe(1);
+    expect(health.orderCountRange).toBe(1);
+    expect(health.averageOrderValue).toBe(200);
+    expect(health.revenueTrend.at(-1)).toEqual({ date: todayKey, revenue: 200 });
   });
 });
