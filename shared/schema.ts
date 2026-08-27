@@ -908,9 +908,18 @@ export const cashierShifts = pgTable(
     index("cashier_shifts_trading_day_idx").on(table.orgId, table.tradingDay),
     // One shift per person per trading day. This is what makes opening a shift
     // lazily safe: two concurrent first-sales race, one wins, the other finds it.
+    //
+    // Scoped to shifts with no cashier code (migration 060). Under the old
+    // model a shift was a login session opened by hand, and two in a day was
+    // ordinary — so the backfilled historic rows collide on this key. Those
+    // rows all carry a code; nothing creates a coded shift any more, and
+    // resolveShiftForToday never sets one. So this covers exactly the rows the
+    // invariant was written for, and every shift made from here on.
     uniqueIndex("cashier_shifts_user_trading_day_idx")
       .on(table.orgId, table.userId, table.tradingDay)
-      .where(sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL`),
+      .where(
+        sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL AND ${table.cashierId} IS NULL`,
+      ),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)
       .where(sql`status = 'open'`),

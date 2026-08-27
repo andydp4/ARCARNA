@@ -154,14 +154,24 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               ...(shiftId ? { shift_id: shiftId } : {}),
               ...(cashierShift
                 ? {
-                    cashier_id: cashierShift.cashierId,
                     cashier_shift_id: cashierShift.cashierShiftId,
                     // Whoever is on the till right now loaded this order. They
                     // take 10% of its commission pool if somebody else
                     // completes it, and the whole pool if they complete it
                     // themselves. Orders arriving without a cashier shift —
                     // web and storefront — leave this NULL on purpose.
-                    input_cashier_id: cashierShift.cashierId,
+                    //
+                    // Only written when a cashier CODE was actually used. These
+                    // are uuid columns pointing at cashier_profiles; a shift
+                    // opened on first sale has no code, and the user who loaded
+                    // the order is recorded in `input_user_id` above, which is
+                    // what commission is computed from.
+                    ...(cashierShift.cashierId
+                      ? {
+                          cashier_id: cashierShift.cashierId,
+                          input_cashier_id: cashierShift.cashierId,
+                        }
+                      : {}),
                     ...(cashierShift.queuedAt ? { created_at: cashierShift.queuedAt } : {}),
                   }
                 : {}),
@@ -570,7 +580,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // use it. Resolved softly — a manager closing an order from the back
       // office has no cashier shift, and that must not block the status change.
       const completingCashier = (req as any).cashierShift as
-        | { cashierId: string; cashierShiftId: string }
+        | { cashierId: string | null; cashierShiftId: string }
         | undefined;
       const settlementPatch = isSettling
         ? {
@@ -581,9 +591,18 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             ...(req.user?.id ? { completed_user_id: req.user.id } : {}),
             ...(completingCashier
               ? {
-                  completed_cashier_id: completingCashier.cashierId,
                   completed_cashier_shift_id: completingCashier.cashierShiftId,
-                  cashier_id: (currentOrder as any)?.cashier_id ?? completingCashier.cashierId,
+                  // Code columns only when a code was actually used — they are
+                  // uuids into cashier_profiles, and a shift opened on first
+                  // sale has none. `completed_user_id` above is the record that
+                  // matters, and the one commission follows.
+                  ...(completingCashier.cashierId
+                    ? {
+                        completed_cashier_id: completingCashier.cashierId,
+                        cashier_id:
+                          (currentOrder as any)?.cashier_id ?? completingCashier.cashierId,
+                      }
+                    : {}),
                 }
               : {}),
           }

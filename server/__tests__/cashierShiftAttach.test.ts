@@ -32,12 +32,19 @@ vi.mock("../services/cashierShiftReplayToken", () => ({
   validateCashierShiftReplay: () => ({ ok: false, reason: "not-tested" }),
 }));
 
+/** The shift `resolveShiftForToday` finds or opens; swapped per test. */
+let lazyShift: { id: string; cashierId: string | null } | null = null;
+
+vi.mock("../services/tradingDayShift", () => ({
+  resolveShiftForToday: async () => lazyShift,
+}));
+
 const { requireActiveCashierShift, attachActiveCashierShift } = await import(
   "../middleware/requireActiveCashierShift"
 );
 
-function run(middleware: typeof requireActiveCashierShift) {
-  const req: any = { orgContext: { orgId: ORG_ID }, headers: {}, body: {}, query: {} };
+function run(middleware: typeof requireActiveCashierShift, user?: { id: string }) {
+  const req: any = { orgContext: { orgId: ORG_ID }, headers: {}, body: {}, query: {}, user };
   let statusCode: number | null = null;
   let nexted = false;
   const res: any = {
@@ -47,17 +54,22 @@ function run(middleware: typeof requireActiveCashierShift) {
     },
     json: () => undefined,
   };
-  return new Promise<{ statusCode: number | null; nexted: boolean }>((resolve) => {
+  return new Promise<{
+    statusCode: number | null;
+    nexted: boolean;
+    req: any;
+  }>((resolve) => {
     void (middleware as any)(req, res, () => {
       nexted = true;
-      resolve({ statusCode, nexted });
+      resolve({ statusCode, nexted, req });
     });
-    setImmediate(() => resolve({ statusCode, nexted }));
+    setImmediate(() => resolve({ statusCode, nexted, req }));
   });
 }
 
 beforeEach(() => {
   orgRow = { cashierCommissionEnabled: true, requireCashierForSale: true };
+  lazyShift = null;
 });
 
 describe("cashier shift middleware", () => {
@@ -86,5 +98,60 @@ describe("cashier shift middleware", () => {
       expect(statusCode).toBeNull();
       expect(nexted).toBe(true);
     }
+  });
+});
+
+/**
+ * A shift opened on first sale carries no cashier code, and that is the normal
+ * case now — the manual open that assigned one went away in L2.
+ *
+ * `cashierId` here feeds `orders.cashier_id`, `input_cashier_id` and
+ * `completed_cashier_id`, all of them `uuid REFERENCES cashier_profiles`. The
+ * field used to be typed `string`, so the resolver substituted the logged-in
+ * user's id when the shift had no code — and a Clerk subject
+ * (`user_3EFIamv0...`) is not a uuid. Every sale 500'd on
+ * `invalid input syntax for type uuid` the moment the new model went live.
+ *
+ * Nothing here should ever put a user id in this field.
+ */
+describe("a shift opened on first sale has no cashier code", () => {
+  const USER = { id: "user_3EFIamv0l9IggwK7Ncy6oDEPfWk" };
+  const SHIFT_ID = "00000000-0000-4000-8000-0000000000cc";
+  const CASHIER_CODE_ID = "00000000-0000-4000-8000-00000000000a";
+
+  it("attaches the shift with a null cashier code, not the user id", async () => {
+    lazyShift = { id: SHIFT_ID, cashierId: null };
+
+    const { nexted, req } = await run(requireActiveCashierShift, USER);
+
+    expect(nexted).toBe(true);
+    expect(req.cashierShift).toEqual({
+      cashierId: null,
+      cashierShiftId: SHIFT_ID,
+    });
+    // The specific regression: a Clerk subject reaching a uuid column.
+    expect(req.cashierShift.cashierId).not.toBe(USER.id);
+  });
+
+  it("still honours a real cashier code when the shift carries one", async () => {
+    lazyShift = { id: SHIFT_ID, cashierId: CASHIER_CODE_ID };
+
+    const { req } = await run(attachActiveCashierShift, USER);
+
+    expect(req.cashierShift).toEqual({
+      cashierId: CASHIER_CODE_ID,
+      cashierShiftId: SHIFT_ID,
+    });
+  });
+
+  it("takes the sale rather than refusing it, even though there is no code", async () => {
+    // requireCashierForSale is on. The shift exists, so there is nothing to
+    // refuse — the policy is about having a shift, not about having a code.
+    lazyShift = { id: SHIFT_ID, cashierId: null };
+
+    const { statusCode, nexted } = await run(requireActiveCashierShift, USER);
+
+    expect(statusCode).toBeNull();
+    expect(nexted).toBe(true);
   });
 });
