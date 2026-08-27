@@ -14,6 +14,9 @@ export type CompanyInfo = {
   vatNumber?: string;
   email?: string;
   logo?: Buffer;
+  /** The org's own brand colours (Settings → Branding), for invoice/receipt PDFs. */
+  primaryColor?: string;
+  accentColor?: string;
   bankName?: string;
   bankSortCode?: string;
   bankAccountNumber?: string;
@@ -29,11 +32,22 @@ type OrgBrandingFields = {
   vatNumber: string | null;
   email: string | null;
   currency: string | null;
+  /** organizations.business_colors — jsonb, shaped { primary, accent } by the
+   *  setup wizard, but typed loosely here since it is user-editable JSON. */
+  businessColors: unknown;
   invoiceBankName: string | null;
   invoiceBankSortCode: string | null;
   invoiceBankAccountNumber: string | null;
   invoicePaymentLink: string | null;
 };
+
+/** Pulls a named hex colour out of the org's business_colors JSON, tolerating
+ *  it being absent, malformed, or from before the field existed. */
+function brandColor(businessColors: unknown, key: "primary" | "accent"): string | undefined {
+  if (!businessColors || typeof businessColors !== "object") return undefined;
+  const value = (businessColors as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
 
 /**
  * Fetches the org's logo bytes, if a logo is configured and enabled for
@@ -60,6 +74,8 @@ export function buildCompanyInfo(org: OrgBrandingFields, logo: Buffer | undefine
     vatNumber: org.vatNumber || undefined,
     email: org.email || undefined,
     logo,
+    primaryColor: brandColor(org.businessColors, "primary"),
+    accentColor: brandColor(org.businessColors, "accent"),
     bankName: org.invoiceBankName || undefined,
     bankSortCode: org.invoiceBankSortCode || undefined,
     bankAccountNumber: org.invoiceBankAccountNumber || undefined,

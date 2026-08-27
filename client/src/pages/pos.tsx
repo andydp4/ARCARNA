@@ -22,7 +22,6 @@ import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { ZReportView } from "@/components/ZReport";
 import type { ZReportData } from "@shared/reports/zReport";
-import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
 import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -827,14 +826,23 @@ export default function POS() {
       <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6 lg:max-w-[62%] lg:flex-[1.62]">
         <div className="pos-section-header mb-6 pb-6">
           <PageHeader
-            className="mb-4"
+            // Below lg, stack the action row under the title instead of
+            // fighting it for horizontal space. The default breakpoint (sm,
+            // 640px) is too eager here: three buttons squeezed the title and
+            // question onto a column a few characters wide, wrapping "Create
+            // Order" and "What is this customer buying?" one word per line.
+            className="mb-4 sm:flex-col sm:items-stretch sm:justify-start lg:flex-row lg:items-start lg:justify-between"
             eyebrow="Step 1 of 4 · Add items"
             title="Create Order"
             question="What is this customer buying?"
             explanation="Search products, build the cart, then check out."
             action={
               <>
-                <CashierShiftBadge />
+                {/* "Start cashier shift" (assigning a cashier CODE) is gone
+                    from the primary toolbar. Codes were dropped in favour of
+                    user accounts (L1/L2): a shift now opens automatically on
+                    login, and the button's own copy — "select your cashier
+                    code to begin tracking commission" — is no longer true. */}
                 {shiftId && (
                   <Button
                     variant="outline"
@@ -1079,7 +1087,7 @@ export default function POS() {
                         <SelectItem value="cash">Cash</SelectItem>
                         <SelectItem value="card">Card</SelectItem>
                         <SelectItem value="transfer">Transfer</SelectItem>
-                        <SelectItem value="tick">On Credit (Tick)</SelectItem>
+                        <SelectItem value="tick">On Credit</SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
@@ -1164,7 +1172,7 @@ export default function POS() {
                   <SelectItem value="tick">
                     <div className="flex items-center gap-2">
                       <Receipt className="h-4 w-4" />
-                      On Credit (Tick)
+                      On Credit
                     </div>
                   </SelectItem>
                   <SelectItem value="gift_card">

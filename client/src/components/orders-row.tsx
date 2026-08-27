@@ -70,9 +70,21 @@ export function describeWait(createdAt: string, now: number = Date.now()) {
 
 export { STATUS_CONFIG } from "@/components/orders/statusConfig";
 
+// Tender values that read as something other than their own name — "tick" is
+// the one case: the internal payment_method value stayed "tick" (it is a
+// stored data value across every historic order, not just a label) after the
+// credit rework, but nothing anywhere should show a customer or a member of
+// staff the word "tick" any more.
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  tick: "Credit",
+};
+
 export function formatPaymentLabel(method: string) {
   if (!method) return "—";
-  return method.replace(/-/g, " ");
+  const known = PAYMENT_METHOD_LABELS[method.toLowerCase()];
+  if (known) return known;
+  const spaced = method.replace(/[-_]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function getStatusBorderClass(status: string) {
