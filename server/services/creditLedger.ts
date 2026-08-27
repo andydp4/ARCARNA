@@ -106,8 +106,8 @@ type OrderCommissionBasis = {
   completerUserId: string | null;
   inputterUserId: string | null;
   rate: number;
-  /** The pool the order would pay if the whole balance were settled. */
-  fullPool: number;
+  /** The credit leg's remaining pool once any till-paid contribution is excluded. */
+  creditPool: number;
   completerAmount: number;
   inputterAmount: number;
 };
@@ -121,7 +121,7 @@ type OrderCommissionBasis = {
  * money in that day, and this one brought none, so charging it a share now
  * would count the same overheads twice.
  */
-async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis | null> {
+async function commissionBasisFor(orderId: string, creditAmount: number): Promise<OrderCommissionBasis | null> {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) return null;
 
@@ -176,20 +176,43 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
   const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
 
   const settled = parseFloat(String(order.settledTotal ?? order.total));
-  const result = buildOrderCommission(
-    {
-      orderId,
-      paidContribution: settled,
-      stockCost,
-      orderExpenses: expenses,
-      overheadShare: 0,
-      refunds: refundTotal,
-      completerCashierId: order.completedCashierId,
-      inputterCashierId: order.inputCashierId,
-      completerUserId: order.completedUserId,
-      inputterUserId: order.inputUserId,
-    },
+  const baseOrder = {
+    orderId,
+    stockCost,
+    orderExpenses: expenses,
+    overheadShare: 0,
+    refunds: refundTotal,
+    completerCashierId: order.completedCashierId,
+    inputterCashierId: order.inputCashierId,
+    completerUserId: order.completedUserId,
+    inputterUserId: order.inputUserId,
+  };
+  const fullResult = buildOrderCommission({ ...baseOrder, paidContribution: settled }, rate);
+  // The sale ledger already handles anything paid at the till. Credit resolution
+  // only releases the extra pool unlocked by the debt itself being paid.
+  const upfrontResult = buildOrderCommission(
+    { ...baseOrder, paidContribution: Math.max(0, settled - creditAmount) },
     rate,
+  );
+
+  const amountFor = (
+    result: typeof fullResult,
+    userId: string | null,
+    cashierId: string | null,
+    role: "completer" | "inputter",
+  ) =>
+    result.entries.find(
+      (entry) =>
+        entry.role === role &&
+        commissionParty(entry.userId, entry.cashierId) === commissionParty(userId, cashierId),
+    )?.amount ?? 0;
+  const completerAmount = roundMoney(
+    amountFor(fullResult, order.completedUserId, order.completedCashierId, "completer") -
+      amountFor(upfrontResult, order.completedUserId, order.completedCashierId, "completer"),
+  );
+  const inputterAmount = roundMoney(
+    amountFor(fullResult, order.inputUserId, order.inputCashierId, "inputter") -
+      amountFor(upfrontResult, order.inputUserId, order.inputCashierId, "inputter"),
   );
 
   return {
@@ -198,9 +221,9 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
     completerUserId: order.completedUserId,
     inputterUserId: order.inputUserId,
     rate,
-    fullPool: result.pool,
-    completerAmount: result.entries.find((e) => e.role === "completer")?.amount ?? 0,
-    inputterAmount: result.entries.find((e) => e.role === "inputter")?.amount ?? 0,
+    creditPool: roundMoney(completerAmount + inputterAmount),
+    completerAmount,
+    inputterAmount,
   };
 }
 
@@ -315,11 +338,11 @@ async function releaseCommission(
   credit: OrderCredit,
   newOutstanding: number,
 ): Promise<void> {
-  const basis = await commissionBasisFor(orderId);
-  if (!basis || basis.fullPool <= 0 || !basis.completerCashierId) return;
-
   const given = roundMoney(parseFloat(String(credit.amountGiven)));
   if (given <= 0) return;
+  const basis = await commissionBasisFor(orderId, given);
+  const completerParty = basis ? commissionParty(basis.completerUserId, basis.completerCashierId) : null;
+  if (!basis || basis.creditPool <= 0 || !completerParty) return;
   // Cumulative fraction of the debt now settled. Exactly 1 on full settlement,
   // which is what makes the released total land on the pool to the penny.
   const settledFraction = newOutstanding <= 0 ? 1 : roundMoney(given - newOutstanding) / given;
@@ -339,14 +362,13 @@ async function releaseCommission(
   // codeless order both codes are null, and comparing those would fold the
   // inputter's tenth into the completer's share even when two people were
   // involved.
-  const completerParty = commissionParty(basis.completerUserId, completerId);
   const inputterParty = commissionParty(basis.inputterUserId, inputterId);
   if (!inputterParty || inputterParty === completerParty) {
     targets.push({
       cashierId: completerId,
       userId: basis.completerUserId,
       role: "completer",
-      full: basis.fullPool,
+      full: basis.creditPool,
       sharePercent: 100,
     });
   } else {

@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "../db";
-import { cashierShifts, organizations } from "@shared/schema";
+import { cashierProfiles, cashierShifts, organizations } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { resolveShiftForToday } from "../services/tradingDayShift";
 
@@ -31,6 +31,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!orgId) return;
   await db.delete(cashierShifts).where(eq(cashierShifts.orgId, orgId));
+  await db.delete(cashierProfiles).where(eq(cashierProfiles.orgId, orgId));
   await db.delete(organizations).where(eq(organizations.id, orgId));
 });
 
@@ -108,6 +109,32 @@ describe("opening a shift without anybody opening a shift", () => {
         ),
       );
     expect(rows).toHaveLength(1);
+  });
+
+  it("does not attach a lazy sale to a historic closed cashier-code shift", async () => {
+    const [cashier] = await db
+      .insert(cashierProfiles)
+      .values({ orgId, cashierCode: `H${SUFFIX}`.slice(0, 12), displayName: "Historic code" })
+      .returning();
+    const [historic] = await db
+      .insert(cashierShifts)
+      .values({
+        orgId,
+        cashierId: cashier.id,
+        userId: ALICE,
+        tradingDay: "2026-04-04",
+        openedByUserId: ALICE,
+        status: "closed",
+        closedAt: new Date("2026-04-04T12:00:00Z"),
+      })
+      .returning();
+
+    const shift = await resolveShiftForToday(orgId, ALICE, new Date("2026-04-04T14:00:00Z"));
+
+    expect(shift).not.toBeNull();
+    expect(shift!.id).not.toBe(historic.id);
+    expect(shift!.cashierId).toBeNull();
+    expect(shift!.status).toBe("open");
   });
 
   it("needs both an org and a person", async () => {

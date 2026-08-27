@@ -23,13 +23,28 @@ import {
 } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { recordCreditPayment, voidCredit, writeOffCredit } from "../services/creditLedger";
+import { commissionParty } from "@shared/reports/orderCommission";
 
 const SUFFIX = Date.now().toString(36);
 let orgId: string;
 let completerId: string;
 let inputterId: string;
+const USER_COMPLETER = `user-completer-${SUFFIX}`;
+const USER_INPUTTER = `user-inputter-${SUFFIX}`;
 
-async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
+async function makeOrder(
+  total: number,
+  opts: {
+    sameCashier?: boolean;
+    codeless?: boolean;
+    completedUserId?: string | null;
+    inputUserId?: string | null;
+    creditAmount?: number;
+  } = {},
+) {
+  const completedUserId = opts.completedUserId ?? (opts.codeless ? USER_COMPLETER : null);
+  const inputUserId =
+    opts.inputUserId ?? (opts.codeless ? (opts.sameCashier ? completedUserId : USER_INPUTTER) : null);
   const [order] = await db
     .insert(orders)
     .values({
@@ -38,15 +53,18 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
       settledTotal: String(total),
       paymentMethod: "tick",
       status: "completed",
-      completedCashierId: completerId,
-      inputCashierId: opts.sameCashier ? completerId : inputterId,
+      completedCashierId: opts.codeless ? null : completerId,
+      inputCashierId: opts.codeless ? null : opts.sameCashier ? completerId : inputterId,
+      completedUserId,
+      inputUserId,
     })
     .returning();
+  const creditAmount = opts.creditAmount ?? total;
   await db.insert(orderCredit).values({
     orderId: order.id,
     orgId,
-    amountGiven: String(total),
-    amountOutstanding: String(total),
+    amountGiven: String(creditAmount),
+    amountOutstanding: String(creditAmount),
     status: "outstanding",
     givenOn: "2026-08-01",
   });
@@ -55,15 +73,29 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
 
 async function releasedFor(orderId: string) {
   const rows = await db
-    .select({ cashierId: cashierCommissionEntries.cashierId, amount: cashierCommissionEntries.amount })
+    .select({
+      cashierId: cashierCommissionEntries.cashierId,
+      userId: cashierCommissionEntries.userId,
+      amount: cashierCommissionEntries.amount,
+    })
     .from(cashierCommissionEntries)
     .where(and(eq(cashierCommissionEntries.orderId, orderId), isNull(cashierCommissionEntries.reversalOf)));
   const total = rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
   const byCashier = new Map<string, number>();
+  const byParty = new Map<string, number>();
   for (const r of rows) {
-    byCashier.set(r.cashierId, Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
+    if (r.cashierId) {
+      byCashier.set(
+        r.cashierId,
+        Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100,
+      );
+    }
+    const party = commissionParty(r.userId, r.cashierId);
+    if (party) {
+      byParty.set(party, Math.round(((byParty.get(party) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
+    }
   }
-  return { total: Math.round(total * 100) / 100, byCashier };
+  return { total: Math.round(total * 100) / 100, byCashier, byParty };
 }
 
 beforeAll(async () => {
@@ -164,6 +196,27 @@ describe("credit released as it is paid", () => {
     const released = await releasedFor(orderId);
     expect(released.byCashier.get(completerId)).toBe(20);
     expect(released.byCashier.size).toBe(1);
+  });
+
+  it("releases codeless credit commission to the attributed users", async () => {
+    const orderId = await makeOrder(200, { codeless: true });
+
+    await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(20);
+    expect(released.byParty.get(USER_COMPLETER)).toBe(18);
+    expect(released.byParty.get(USER_INPUTTER)).toBe(2);
+  });
+
+  it("releases only the unpaid credit leg on split-tender orders", async () => {
+    const orderId = await makeOrder(100, { sameCashier: true, creditAmount: 50 });
+
+    await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(5);
+    expect(released.byCashier.get(completerId)).toBe(5);
   });
 });
 
