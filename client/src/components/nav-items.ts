@@ -118,7 +118,7 @@ export const navGroups: NavGroup[] = [
       },
       {
         key: 'tick-list',
-        label: 'Tick List',
+        label: 'Credit List',
         href: '/tick-list',
         icon: CreditCard,
         testId: 'nav-tick-list'

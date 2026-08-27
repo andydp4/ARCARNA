@@ -276,7 +276,7 @@ export function CashierShiftBadge() {
                 <span className="text-right">{money(closedSummary.summary.cashSales)}</span>
                 <span className="text-muted-foreground">Card sales</span>
                 <span className="text-right">{money(closedSummary.summary.cardSales)}</span>
-                <span className="text-muted-foreground">Credit/tick sales</span>
+                <span className="text-muted-foreground">Credit sales</span>
                 <span className="text-right">{money(closedSummary.summary.creditSales)}</span>
                 <span className="text-muted-foreground">Stock cost</span>
                 <span className="text-right">-{money(closedSummary.summary.stockCost)}</span>

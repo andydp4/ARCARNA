@@ -94,7 +94,7 @@ export default function TickList() {
     onSuccess: () => {
       toast({
         title: 'Customer Removed',
-        description: 'Customer has been removed from tick list',
+        description: 'Customer has been removed from the credit list',
       })
       queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
       setDeleteDialogOpen(false)
@@ -223,12 +223,12 @@ export default function TickList() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'tick-list.csv'
+    a.download = 'credit-list.csv'
     a.click()
     
     toast({
       title: 'Export Complete',
-      description: 'Tick list exported to CSV',
+      description: 'Credit list exported to CSV',
     })
   }
 
@@ -250,8 +250,8 @@ export default function TickList() {
         {/* Header */}
         <PageHeader
           icon={CreditCard}
-          title="Tick List"
-          question="Who's buying on tick, and what's outstanding?"
+          title="Credit List"
+          question="Who's buying on credit, and what's outstanding?"
           explanation="Manage customer credit and outstanding payments."
         />
 
@@ -546,7 +546,7 @@ export default function TickList() {
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove {customerToDelete?.name} from the tick list?</DialogTitle>
+              <DialogTitle>Remove {customerToDelete?.name} from the credit list?</DialogTitle>
               <DialogDescription>
                 Their running credit balance and its history are cleared. Any amount they
                 currently owe stops being tracked here. This cannot be undone.
@@ -567,7 +567,7 @@ export default function TickList() {
                 className="min-h-[44px]"
                 data-testid="button-confirm-delete"
               >
-                {deleteMutation.isPending ? 'Removing…' : 'Remove from tick list'}
+                {deleteMutation.isPending ? 'Removing…' : 'Remove from credit list'}
               </Button>
             </DialogFooter>
           </DialogContent>

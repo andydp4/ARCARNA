@@ -6,7 +6,7 @@
  * is stated directly and escalates in tone, so a glance is enough.
  */
 import { describe, expect, it } from "vitest";
-import { describeWait } from "../orders-row";
+import { describeWait, formatPaymentLabel } from "../orders-row";
 
 const NOW = new Date("2026-08-26T14:00:00Z").getTime();
 const minutesAgo = (n: number) => new Date(NOW - n * 60_000).toISOString();
@@ -41,5 +41,34 @@ describe("how long an order has waited", () => {
     const future = new Date(NOW + 30_000).toISOString();
     expect(describeWait(future, NOW).minutes).toBe(0);
     expect(describeWait(future, NOW).label).toBe("just now");
+  });
+});
+
+/**
+ * The stored value for a credit sale is still literally "tick" — it is a
+ * database value on every historic and current order, not just a label, and
+ * changing it is a data migration, not a rename. Every place that DISPLAYS
+ * a payment method has to translate it, or the word "tick" resurfaces on a
+ * screen a member of staff reads (Open Orders, invoices, insights).
+ */
+describe("payment method labels", () => {
+  it("shows a credit sale as Credit, never as tick", () => {
+    expect(formatPaymentLabel("tick")).toBe("Credit");
+    expect(formatPaymentLabel("TICK")).toBe("Credit");
+  });
+
+  it("capitalises everything else consistently", () => {
+    expect(formatPaymentLabel("cash")).toBe("Cash");
+    expect(formatPaymentLabel("card")).toBe("Card");
+    expect(formatPaymentLabel("transfer")).toBe("Transfer");
+  });
+
+  it("turns hyphens and underscores into spaces before capitalising", () => {
+    expect(formatPaymentLabel("personal_use")).toBe("Personal use");
+    expect(formatPaymentLabel("gift-card")).toBe("Gift card");
+  });
+
+  it("shows a dash for no method at all, rather than an empty cell", () => {
+    expect(formatPaymentLabel("")).toBe("—");
   });
 });

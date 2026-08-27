@@ -64,8 +64,8 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       
       res.json(tickCustomers);
     } catch (error) {
-      console.error("Error fetching tick customers:", error);
-      res.status(500).json({ message: "Failed to fetch tick customers" });
+      console.error("Error fetching credit customers:", error);
+      res.status(500).json({ message: "Failed to fetch credit customers" });
     }
   });
 
@@ -83,10 +83,10 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         .set({ status: 'completed', updated_at: new Date() })
         .where(whereCond);
       
-      res.json({ message: "Customer removed from tick list" });
+      res.json({ message: "Customer removed from the credit list" });
     } catch (error) {
-      console.error("Error removing tick customer:", error);
-      res.status(500).json({ message: "Failed to remove customer from tick list" });
+      console.error("Error removing credit customer:", error);
+      res.status(500).json({ message: "Failed to remove customer from the credit list" });
     }
   });
 
@@ -158,7 +158,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       if (error?.status) {
         return res.status(error.status).json({ message: error.message, code: error.code });
       }
-      console.error("Error recording tick payment:", error);
+      console.error("Error recording credit payment:", error);
       res.status(500).json({ message: "Failed to record the payment" });
     }
   });
