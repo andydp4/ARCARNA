@@ -756,7 +756,25 @@ export default function POS() {
       orderData.giftCardAmount = giftCardPayment.amountToApply;
       if (giftCardPayment.remainderPaymentMethod) orderData.remainderPaymentMethod = giftCardPayment.remainderPaymentMethod;
     }
-    
+
+    // Credit needs someone to collect it from. Guarded here as well as on the
+    // server, so the cashier finds out before the sale goes through rather
+    // than after — a tick sale with no customer used to open a debt that
+    // silently dropped off the credit list because that list only ever shows
+    // customers, and nobody could see or chase it.
+    const usesCredit =
+      paymentMethod === "tick" ||
+      (Array.isArray(orderData.payments) &&
+        orderData.payments.some((leg: { method: string }) => leg.method === "tick"));
+    if (usesCredit && !selectedCustomer?.id) {
+      toast({
+        title: "Select a customer",
+        description: "A sale on credit needs a customer to put it against.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Only include customerId if a customer is selected (Zod expects optional, not null)
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
