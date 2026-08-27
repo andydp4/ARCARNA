@@ -10,7 +10,21 @@ import { validateCashierShiftReplay } from "../services/cashierShiftReplayToken"
 import { resolveShiftForToday } from "../services/tradingDayShift";
 
 export type ActiveCashierShiftContext = {
-  cashierId: string;
+  /**
+   * The cashier CODE on the shift, or null when there isn't one.
+   *
+   * Nullable deliberately. This was `string`, and a non-nullable field with no
+   * value to put in it is an invitation to substitute something — here the
+   * logged-in user's id, which is a Clerk subject and not a uuid. Every column
+   * it reaches (`orders.cashier_id`, `input_cashier_id`,
+   * `completed_cashier_id`) is `uuid REFERENCES cashier_profiles`, so the
+   * substitution took the till down with a 500 on every sale the moment the
+   * new shift model went live and shifts stopped carrying codes.
+   *
+   * Nothing is lost by leaving it null: attribution runs on `input_user_id`
+   * and `completed_user_id` since L1, and commission is computed from those.
+   */
+  cashierId: string | null;
   cashierShiftId: string;
   queuedAt?: Date;
   replayedToClosedShift?: boolean;
@@ -157,7 +171,9 @@ function cashierShiftMiddleware(enforce: boolean): RequestHandler {
         if (shift) {
           await touchCashierShiftActivity(shift.id);
           req.cashierShift = {
-            cashierId: shift.cashierId ?? shiftUserId,
+            // No fallback to the user id. A shift opened lazily has no cashier
+            // code, and that absence is the truth — see the note on the type.
+            cashierId: shift.cashierId,
             cashierShiftId: shift.id,
           };
           return next();

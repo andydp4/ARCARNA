@@ -3,8 +3,10 @@ import {
   apportionOverheadsByDay,
   buildOrderCommission,
   buildShiftCommission,
+  commissionParty,
   distributeOverheadShare,
   type CommissionOrderInput,
+  type ShiftCommissionOrder,
 } from "./orderCommission";
 
 const A = "cashier-a";
@@ -218,5 +220,95 @@ describe("a shift that spans midnight", () => {
     const monday = (shares.get("a") ?? 0) + (shares.get("b") ?? 0);
     expect(Math.round(monday * 100) / 100).toBe(7.77);
     expect(shares.get("c")).toBe(3.33);
+  });
+});
+
+/**
+ * Since L2 a shift is opened on first sale and carries no cashier code, so
+ * `completerCashierId` is null on every order taken from the cutover on.
+ *
+ * The gate here read the code. Null code meant no entries, so the ledger stayed
+ * empty and nobody was ever paid — no error, no warning, no zero to notice,
+ * because a shift with no entries simply reports £0 commission and looks like a
+ * quiet day. These cover the user-attributed path end to end.
+ */
+describe("commission when nobody has a cashier code", () => {
+  const USER_A = "user_3EFIamv0l9IggwK7Ncy6oDEPfWk";
+  const USER_B = "user_3IKRoWhVuuDi6l27pdJfxPX5JnE";
+
+  function codeless(overrides: Partial<CommissionOrderInput> = {}): CommissionOrderInput {
+    return order({
+      completerCashierId: null,
+      inputterCashierId: null,
+      completerUserId: USER_A,
+      inputterUserId: USER_A,
+      ...overrides,
+    });
+  }
+
+  it("pays the completer, rather than paying nobody", () => {
+    const result = buildOrderCommission(codeless(), 10);
+
+    expect(result.pool).toBe(10);
+    expect(result.entries).toEqual([
+      { cashierId: null, userId: USER_A, role: "completer", sharePercent: 100, amount: 10 },
+    ]);
+  });
+
+  it("splits 90/10 between two users on the same order", () => {
+    const result = buildOrderCommission(
+      codeless({ completerUserId: USER_B, inputterUserId: USER_A }),
+      10,
+    );
+
+    expect(result.entries).toEqual([
+      { cashierId: null, userId: USER_B, role: "completer", sharePercent: 90, amount: 9 },
+      { cashierId: null, userId: USER_A, role: "inputter", sharePercent: 10, amount: 1 },
+    ]);
+  });
+
+  it("does not split one person's own order against themselves", () => {
+    // Both codes are null. Comparing codes would find them equal purely because
+    // they are both absent — which is right here by luck, and wrong in the test
+    // above. Comparing parties is right in both.
+    const result = buildOrderCommission(codeless(), 10);
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].sharePercent).toBe(100);
+  });
+
+  it("gives the completer the lot on a web order with no inputter", () => {
+    const result = buildOrderCommission(codeless({ inputterUserId: null }), 10);
+
+    expect(result.entries).toEqual([
+      { cashierId: null, userId: USER_A, role: "completer", sharePercent: 100, amount: 10 },
+    ]);
+  });
+
+  it("still pays nobody when there is genuinely no completer", () => {
+    const result = buildOrderCommission(
+      codeless({ completerUserId: null, inputterUserId: null }),
+      10,
+    );
+
+    expect(result.entries).toEqual([]);
+  });
+
+  it("finds the completer's rate by user across a shift", () => {
+    // The rate map is keyed by party. Keyed by code it could not be looked up at
+    // all here, and everybody would silently drop to the org default — so the
+    // per-user rate set in user management would never do anything.
+    const shiftOrders: ShiftCommissionOrder[] = [
+      { ...codeless({ completerUserId: USER_B, inputterUserId: null }), soldOn: "2026-08-25" },
+    ];
+    const { perOrder } = buildShiftCommission(shiftOrders, new Map([[USER_B, 25]]), 10);
+
+    expect(perOrder[0].pool).toBe(25);
+  });
+
+  it("prefers the user over the code, and falls back to the code", () => {
+    expect(commissionParty(USER_A, "cashier-a")).toBe(USER_A);
+    expect(commissionParty(null, "cashier-a")).toBe("cashier-a");
+    expect(commissionParty(null, null)).toBeNull();
   });
 });

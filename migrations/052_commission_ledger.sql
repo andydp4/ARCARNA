@@ -66,6 +66,26 @@ CREATE INDEX IF NOT EXISTS cashier_commission_entries_order_idx
 -- Closing a shift twice, or replaying an offline order into a closed shift,
 -- must not pay anybody twice. One accrual per cashier per role per order per
 -- basis is the whole of the rule.
-CREATE UNIQUE INDEX IF NOT EXISTS cashier_commission_entries_unique_accrual
-  ON cashier_commission_entries (order_id, cashier_id, role, basis)
-  WHERE reversal_of IS NULL;
+--
+-- Skipped once 053 has run. 053 replaces this index with the narrower
+-- _unique_sale and _unique_resolution pair, which allow row shapes this one
+-- forbids — so on a database that already holds credit-resolution entries,
+-- recreating it fails. Every deploy re-runs every file in this directory, so
+-- an applied migration has to stay re-runnable; without this guard the second
+-- deploy after 053 errors here and, since the runner now treats a migration
+-- error as a failed deploy, stops the release outright.
+--
+-- On a fresh database nothing has run yet, the guard passes, and the index is
+-- created exactly as before — then dropped by 053 moments later, as designed.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+     WHERE schemaname = 'public'
+       AND indexname = 'cashier_commission_entries_unique_sale'
+  ) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS cashier_commission_entries_unique_accrual
+      ON cashier_commission_entries (order_id, cashier_id, role, basis)
+      WHERE reversal_of IS NULL;
+  END IF;
+END $$;

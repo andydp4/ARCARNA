@@ -107,7 +107,10 @@ function patchHandler(): { middleware: RequestHandler[]; handler: Handler } {
   return { middleware: chain.slice(0, -1), handler: chain[chain.length - 1] };
 }
 
-async function completeOrder(cashierShift?: { cashierId: string; cashierShiftId: string }) {
+async function completeOrder(cashierShift?: {
+  cashierId: string | null;
+  cashierShiftId: string;
+}) {
   const { handler } = patchHandler();
   const req: any = {
     params: { id: ORDER_ID },
@@ -185,5 +188,71 @@ describe("order attribution — the completing cashier", () => {
     expect(status).toBe(200);
     expect(updatePatch).toMatchObject({ status: "completed", settled_total: "120.00" });
     expect(updatePatch).not.toHaveProperty("completed_cashier_id");
+  });
+});
+
+/**
+ * The columns holding a cashier CODE — `cashier_id`, `input_cashier_id`,
+ * `completed_cashier_id` — are `uuid REFERENCES cashier_profiles`. A shift
+ * opened on first sale has no code, so they must simply go unwritten.
+ *
+ * They were written unconditionally from a field the resolver had filled with
+ * the logged-in user's id, which is a Clerk subject rather than a uuid. Postgres
+ * rejected the UPDATE and every completion 500'd.
+ */
+describe("a completing shift with no cashier code", () => {
+  const USER_ID = "user_3EFIamv0l9IggwK7Ncy6oDEPfWk";
+
+  it("records the shift and the user, and writes no code columns", async () => {
+    currentOrder = {
+      id: ORDER_ID,
+      status: "pending",
+      total: "120.00",
+      settled_total: null,
+      cashier_id: null,
+    };
+
+    const { status } = await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
+
+    expect(status).toBe(200);
+    expect(updatePatch).toMatchObject({
+      completed_cashier_shift_id: SHIFT_B,
+      settled_total: "120.00",
+    });
+    expect(updatePatch).not.toHaveProperty("completed_cashier_id");
+    expect(updatePatch).not.toHaveProperty("cashier_id");
+  });
+
+  it("never lets a user id reach a cashier-code column", async () => {
+    currentOrder = {
+      id: ORDER_ID,
+      status: "pending",
+      total: "120.00",
+      settled_total: null,
+      cashier_id: null,
+    };
+
+    await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
+
+    for (const column of ["cashier_id", "input_cashier_id", "completed_cashier_id"]) {
+      expect(updatePatch?.[column]).not.toBe(USER_ID);
+    }
+  });
+
+  it("leaves an existing code alone rather than clearing it", async () => {
+    // A order loaded under a cashier code, completed by somebody on a lazily
+    // opened shift. The inputter's 10% is read from `cashier_id`; blanking it
+    // would lose their share.
+    currentOrder = {
+      id: ORDER_ID,
+      status: "pending",
+      total: "120.00",
+      settled_total: null,
+      cashier_id: CASHIER_A,
+    };
+
+    await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
+
+    expect(updatePatch).not.toHaveProperty("cashier_id");
   });
 });

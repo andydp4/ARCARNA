@@ -8,6 +8,7 @@ import {
   cashierCommissionPayments,
   organizations,
   orgNotifications,
+  users,
 } from "../../shared/schema";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { requireRole } from "../auth";
@@ -332,14 +333,25 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       if (req.query.from) conditions.push(gte(cashierShiftSummaries.closedAt, new Date(req.query.from as string)));
       if (req.query.to) conditions.push(lte(cashierShiftSummaries.closedAt, new Date(req.query.to as string)));
 
+      // LEFT joins, both of them.
+      //
+      // This was an INNER JOIN on cashier_profiles, which silently emptied the
+      // payroll list of every shift taken since L2: a shift opened on first
+      // sale has no cashier code, so `cashierId` is null, and an inner join on
+      // a null matches nothing. Commission accrued correctly and simply never
+      // appeared on the screen that says who is owed it.
       const summaries = await db
         .select({
           summary: cashierShiftSummaries,
           cashierCode: cashierProfiles.cashierCode,
-          cashierName: cashierProfiles.displayName,
+          cashierDisplayName: cashierProfiles.displayName,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
         })
         .from(cashierShiftSummaries)
-        .innerJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+        .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+        .leftJoin(users, eq(cashierShiftSummaries.userId, users.id))
         .where(and(...conditions))
         .orderBy(desc(cashierShiftSummaries.closedAt))
         .limit(500);
@@ -358,10 +370,19 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         summaries.map((row) => {
           const commissionAmount = parseFloat(String(row.summary.commissionAmount));
           const paid = paidMap.get(row.summary.shiftId) ?? 0;
+          // Whoever the shift belonged to, named however we can name them: the
+          // cashier code's display name for historic shifts, the user account
+          // for everything since. Falling back to the email rather than to
+          // nothing, because an unnamed row on a payroll screen is unusable.
+          const userName = [row.userFirstName, row.userLastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
           return {
             ...row.summary,
             cashierCode: row.cashierCode,
-            cashierName: row.cashierName,
+            cashierName:
+              row.cashierDisplayName || userName || row.userEmail || "Unknown",
             amountPaid: paid,
             amountUnpaid: Math.max(0, Math.round((commissionAmount - paid) * 100) / 100),
             paidStatus: paid >= commissionAmount && commissionAmount > 0 ? "paid" : paid > 0 ? "partial" : "unpaid",
