@@ -995,9 +995,13 @@ export const cashierCommissionEntries = pgTable(
     orderId: uuid("order_id")
       .references(() => orders.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    /**
+     * The cashier CODE, when one was used. Nullable since migration 061: a
+     * shift opened on first sale has no code, and commission is owed to the
+     * user instead. `cashier_commission_entries_party_check` keeps at least one
+     * of the two present.
+     */
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
     /** The shift this accrued on. Null for a credit resolution taken later. */
     cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
     /** Who is owed this, by user account. Preferred over `cashierId`. */
@@ -1034,15 +1038,33 @@ export const cashierCommissionEntries = pgTable(
     index("cashier_commission_entries_order_idx").on(table.orderId),
     check("cashier_commission_entries_role_check", sql`${table.role} IN ('completer', 'inputter')`),
     check("cashier_commission_entries_basis_check", sql`${table.basis} IN ('sale', 'credit_resolution')`),
+    // Somebody has to be owed the money. See migration 061.
+    check(
+      "cashier_commission_entries_party_check",
+      sql`${table.cashierId} IS NOT NULL OR ${table.userId} IS NOT NULL`,
+    ),
     // Closing a shift twice, or replaying an offline order into a closed one,
-    // must not pay anybody twice: one accrual per cashier per role per order.
+    // must not pay anybody twice: one accrual per party per role per order.
+    //
+    // Keyed on COALESCE(code, user) and not on the code alone (migration 061).
+    // Postgres treats NULLs in a unique index as distinct, so once the code went
+    // away this guard would have stopped deduplicating altogether — silently,
+    // paying the same commission twice with the ledger looking normal.
     uniqueIndex("cashier_commission_entries_unique_sale")
-      .on(table.orderId, table.cashierId, table.role)
+      .on(
+        table.orderId,
+        sql`COALESCE(${table.cashierId}::text, ${table.userId})`,
+        table.role,
+      )
       .where(sql`${table.basis} = 'sale' AND ${table.reversalOf} IS NULL`),
     // A credit sale settled in instalments accrues once per PAYMENT, so its
     // guard keys on the payment rather than the order.
     uniqueIndex("cashier_commission_entries_unique_resolution")
-      .on(table.creditPaymentId, table.cashierId, table.role)
+      .on(
+        table.creditPaymentId,
+        sql`COALESCE(${table.cashierId}::text, ${table.userId})`,
+        table.role,
+      )
       .where(sql`${table.basis} = 'credit_resolution' AND ${table.reversalOf} IS NULL`),
   ],
 );

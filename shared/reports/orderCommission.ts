@@ -61,7 +61,8 @@ export type CommissionOrderInput = {
 export type CommissionEntryRole = "completer" | "inputter";
 
 export type CommissionEntry = {
-  cashierId: string;
+  /** The cashier CODE, when one was used. Null on everything since L2. */
+  cashierId: string | null;
   /** Who is owed this, by user account. Undefined for pre-057 orders. */
   userId?: string | null;
   role: CommissionEntryRole;
@@ -132,6 +133,28 @@ export function distributeOverheadShare(
 }
 
 /**
+ * Who a share belongs to: the user account when there is one, the cashier code
+ * otherwise.
+ *
+ * Everything that decides or de-duplicates commission keys on this, and not on
+ * the code alone. Keying on the code was correct only while every shift had
+ * one. L2 removed the manual open that assigned codes, so `completerCashierId`
+ * is null on every order taken since — and the gate below, reading the code,
+ * returned no entries at all. Sales went through, shifts closed, and the ledger
+ * stayed empty: nobody was paid a penny, with nothing raised anywhere.
+ *
+ * The user is preferred over the code because a user is the thing commission
+ * actually belongs to (migration 057). The code remains the identity for shifts
+ * closed before that change, so historic figures still reconcile.
+ */
+export function commissionParty(
+  userId: string | null | undefined,
+  cashierId: string | null | undefined,
+): string | null {
+  return userId ?? cashierId ?? null;
+}
+
+/**
  * Builds the commission entries for a single order.
  *
  * @param completerRate The completing cashier's effective rate, as a percentage
@@ -154,14 +177,19 @@ export function buildOrderCommission(
     : roundMoney(Math.max(0, margin) * (completerRate / 100));
 
   // Nobody completed it, or there is nothing to share out.
-  if (pool <= 0 || !order.completerCashierId) {
+  const completerParty = commissionParty(order.completerUserId, order.completerCashierId);
+  const inputterParty = commissionParty(order.inputterUserId, order.inputterCashierId);
+  if (pool <= 0 || !completerParty) {
     return { orderId: order.orderId, margin, pool: Math.max(0, pool), entries: [] };
   }
 
   const completerId = order.completerCashierId;
   const inputterId = order.inputterCashierId;
 
-  if (!inputterId || inputterId === completerId) {
+  // Same person loading and completing takes the lot. Compared by party, so two
+  // codeless orders are not mistaken for one another and, more importantly, one
+  // person working alone is not split into a 90/10 against themselves.
+  if (!inputterParty || inputterParty === completerParty) {
     return {
       orderId: order.orderId,
       margin,
@@ -214,9 +242,8 @@ export function buildShiftCommission(
   fallbackRate: number,
 ): { perOrder: OrderCommission[]; total: number } {
   const perOrder = orders.map((order) => {
-    const rate = order.completerCashierId
-      ? completerRates.get(order.completerCashierId) ?? fallbackRate
-      : fallbackRate;
+    const party = commissionParty(order.completerUserId, order.completerCashierId);
+    const rate = party ? completerRates.get(party) ?? fallbackRate : fallbackRate;
     return buildOrderCommission(order, rate);
   });
   const total = roundMoney(

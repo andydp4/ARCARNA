@@ -15,7 +15,11 @@ import {
   type OrderCredit,
 } from "@shared/schema";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { buildOrderCommission, roundMoney } from "@shared/reports/orderCommission";
+import {
+  buildOrderCommission,
+  commissionParty,
+  roundMoney,
+} from "@shared/reports/orderCommission";
 import { resolveCommissionRate } from "./cashierShiftEngine";
 
 /**
@@ -200,11 +204,18 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
   };
 }
 
-/** What has already been released to each cashier for this order's credit. */
+/**
+ * What has already been released to each party for this order's credit.
+ *
+ * Keyed by party rather than by cashier code: a codeless entry would otherwise
+ * key as "null:completer", so a second payment against the same tick would
+ * compare against the wrong running total.
+ */
 async function accruedResolutionByRole(orderId: string): Promise<Map<string, number>> {
   const rows = await db
     .select({
       cashierId: cashierCommissionEntries.cashierId,
+      userId: cashierCommissionEntries.userId,
       role: cashierCommissionEntries.role,
       amount: cashierCommissionEntries.amount,
     })
@@ -218,7 +229,7 @@ async function accruedResolutionByRole(orderId: string): Promise<Map<string, num
     );
   const byRole = new Map<string, number>();
   for (const row of rows) {
-    const key = `${row.cashierId}:${row.role}`;
+    const key = `${commissionParty(row.userId, row.cashierId)}:${row.role}`;
     byRole.set(key, roundMoney((byRole.get(key) ?? 0) + parseFloat(String(row.amount))));
   }
   return byRole;
@@ -315,7 +326,7 @@ async function releaseCommission(
 
   const already = await accruedResolutionByRole(orderId);
   const targets: Array<{
-    cashierId: string;
+    cashierId: string | null;
     userId: string | null;
     role: "completer" | "inputter";
     full: number;
@@ -324,7 +335,13 @@ async function releaseCommission(
 
   const completerId = basis.completerCashierId;
   const inputterId = basis.inputterCashierId;
-  if (!inputterId || inputterId === completerId) {
+  // Compared by party, for the same reason buildOrderCommission is: on a
+  // codeless order both codes are null, and comparing those would fold the
+  // inputter's tenth into the completer's share even when two people were
+  // involved.
+  const completerParty = commissionParty(basis.completerUserId, completerId);
+  const inputterParty = commissionParty(basis.inputterUserId, inputterId);
+  if (!inputterParty || inputterParty === completerParty) {
     targets.push({
       cashierId: completerId,
       userId: basis.completerUserId,
@@ -354,7 +371,8 @@ async function releaseCommission(
   const rows = targets
     .map((target) => {
       const shouldHave = roundMoney(target.full * settledFraction);
-      const delta = roundMoney(shouldHave - (already.get(`${target.cashierId}:${target.role}`) ?? 0));
+      const key = `${commissionParty(target.userId, target.cashierId)}:${target.role}`;
+      const delta = roundMoney(shouldHave - (already.get(key) ?? 0));
       return { target, delta };
     })
     .filter(({ delta }) => delta > 0)

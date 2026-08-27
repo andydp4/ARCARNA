@@ -9,6 +9,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   apportionOverheadsByDay,
   buildShiftCommission,
+  commissionParty,
   roundMoney,
   type ShiftCommissionOrder,
 } from "@shared/reports/orderCommission";
@@ -24,7 +25,7 @@ import {
 export type { ShiftCommissionOrder };
 
 /**
- * Resolves each completer's rate, keyed by cashier id.
+ * Resolves each completer's rate, keyed by commission party.
  *
  * The user's own rate wins where the order records one, because commission
  * belongs to the person who logged in (migration 057); a cashier code's rate is
@@ -56,21 +57,30 @@ async function completerRates(
     }
   }
 
+  const codeRates = new Map<string, number>();
   if (cashierIds.length > 0) {
     const rows = await db
       .select({ id: cashierProfiles.id, rate: cashierProfiles.defaultCommissionRate })
       .from(cashierProfiles)
       .where(inArray(cashierProfiles.id, cashierIds));
     for (const row of rows) {
-      if (row.rate != null) rates.set(row.id, parseFloat(String(row.rate)));
+      if (row.rate != null) codeRates.set(row.id, parseFloat(String(row.rate)));
     }
   }
 
-  // The user's rate overrides the code's, for every order that names one.
+  // Keyed by PARTY, so an order with no cashier code still finds its rate.
+  //
+  // This used to key by code and apply a user's rate only when a code was
+  // present too, so on a codeless order — every order since L2 — the per-user
+  // rate set in user management was never read and everybody silently fell back
+  // to the org default.
   for (const order of orders) {
-    if (!order.completerCashierId || !order.completerUserId) continue;
-    const userRate = userRates.get(order.completerUserId);
-    if (userRate != null) rates.set(order.completerCashierId, userRate);
+    const party = commissionParty(order.completerUserId, order.completerCashierId);
+    if (!party) continue;
+    const rate =
+      (order.completerUserId ? userRates.get(order.completerUserId) : undefined) ??
+      (order.completerCashierId ? codeRates.get(order.completerCashierId) : undefined);
+    if (rate != null) rates.set(party, rate);
   }
   return rates;
 }
@@ -108,8 +118,8 @@ export async function accrueShiftCommission(
 
   const rows = perOrder.flatMap((result) => {
     const source = priced.find((o) => o.orderId === result.orderId)!;
-    const rate =
-      (source.completerCashierId && rates.get(source.completerCashierId)) || fallbackRate;
+    const party = commissionParty(source.completerUserId, source.completerCashierId);
+    const rate = (party && rates.get(party)) || fallbackRate;
     return result.entries.map((entry) => ({
       orgId,
       orderId: result.orderId,
