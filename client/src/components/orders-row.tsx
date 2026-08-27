@@ -9,13 +9,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Clock,
-  MoreVertical,
-  Eye,
+  AlertTriangle,
   Calendar,
-  Trash2,
+  Check,
+  Clock,
   Edit2,
+  Eye,
   Globe2,
+  MoreVertical,
+  Trash2,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrderStatusSelect } from "@/components/orders/OrderStatusSelect";
@@ -33,6 +36,36 @@ export interface OrdersListOrder {
   channel?: string;
   status: string;
   createdAt: string;
+  /** Who loaded it — this is where the inputter's 10% goes. */
+  inputUserName?: string | null;
+  /** Already on the order and never shown: what is holding it up. */
+  delayFlag?: boolean;
+  delayReason?: string | null;
+  revisedEta?: string | null;
+  etaGiven?: string | null;
+}
+
+/**
+ * How long an order has been waiting, and how loudly to say so.
+ *
+ * The counter view exists to answer "what is waiting and how long has it
+ * waited", and a timestamp does not answer that — a person reading
+ * "14:32" has to do arithmetic to find out that it has been sitting for
+ * forty minutes. The thresholds escalate so a glance is enough.
+ */
+export function describeWait(createdAt: string, now: number = Date.now()) {
+  const minutes = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 60000));
+  const label =
+    minutes < 1
+      ? "just now"
+      : minutes < 60
+        ? `${minutes} min`
+        : minutes < 60 * 24
+          ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+          : `${Math.floor(minutes / (60 * 24))}d`;
+  const tone =
+    minutes >= 60 ? "text-destructive" : minutes >= 20 ? "text-warning" : "text-muted-foreground";
+  return { minutes, label, tone };
 }
 
 export { STATUS_CONFIG } from "@/components/orders/statusConfig";
@@ -65,6 +98,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export type OrdersRowProps = {
   order: OrdersListOrder;
+  /** Completing from the list is the whole point of the counter view. */
+  onComplete?: (order: OrdersListOrder) => void;
   onView: (orderId: string) => void;
   onEdit: (orderId: string) => void;
   onStatusChange: (order: OrdersListOrder, status: OrderStatus) => void;
@@ -75,12 +110,15 @@ export type OrdersRowProps = {
   onToggleSelect?: () => void;
 };
 
-function OrdersRowInner({ order, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect }: OrdersRowProps) {
+function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect }: OrdersRowProps) {
   const totalNum = parseFloat(order.total || "0");
   const placed = new Date(order.createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+  const wait = describeWait(order.createdAt);
+  const isOpen = (order.status || "pending") !== "completed";
+  const eta = order.revisedEta ?? order.etaGiven ?? null;
 
   return (
     <li
@@ -105,10 +143,40 @@ function OrdersRowInner({ order, onView, onEdit, onStatusChange, statusPending, 
             #{order.id.slice(0, 8)}
           </span>
         </div>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-          <span>{placed}</span>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {isOpen && (
+            <span className={cn("inline-flex items-center gap-1.5 font-medium", wait.tone)}>
+              <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Waiting {wait.label}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            {placed}
+          </span>
+          {order.inputUserName && (
+            // Who to ask about it, and who earns the inputter's share of it.
+            <span className="inline-flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              Loaded by {order.inputUserName}
+            </span>
+          )}
         </p>
+        {isOpen && (order.delayFlag || eta) && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            {order.delayFlag && (
+              <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {order.delayReason?.trim() || "Delayed"}
+              </span>
+            )}
+            {eta && (
+              <span className="text-muted-foreground">
+                Due {new Date(eta).toLocaleTimeString(undefined, { timeStyle: "short" })}
+              </span>
+            )}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             variant={isWebsiteOrder(order.channel) ? "secondary" : "outline"}
@@ -146,8 +214,25 @@ function OrdersRowInner({ order, onView, onEdit, onStatusChange, statusPending, 
             label={`order #${order.id.slice(0, 8)}`}
             data-testid={`select-order-status-${order.id}`}
           />
+          {isOpen && onComplete && (
+            // One action, from the list. Completing used to mean opening the
+            // status dropdown and picking the right value — on the screen where
+            // completing is the single most common thing anybody does, and
+            // where the completer earns 90% of the order's commission.
+            <Button
+              variant="default"
+              size="sm"
+              className="min-h-[44px] flex-1 sm:min-w-[6.5rem] sm:flex-none"
+              onClick={() => onComplete(order)}
+              disabled={statusPending}
+              data-testid={`button-complete-order-${order.id}`}
+            >
+              <Check className="mr-2 h-4 w-4 shrink-0" />
+              Complete
+            </Button>
+          )}
           <Button
-            variant="default"
+            variant={isOpen && onComplete ? "outline" : "default"}
             size="sm"
             className="min-h-[44px] flex-1 sm:min-w-[5.5rem] sm:flex-none"
             onClick={() => onView(order.id)}
@@ -197,6 +282,7 @@ export const OrdersRow = memo(
     prev.onView === next.onView &&
     prev.onEdit === next.onEdit &&
     prev.onStatusChange === next.onStatusChange &&
+    prev.onComplete === next.onComplete &&
     prev.statusPending === next.statusPending &&
     prev.onDelete === next.onDelete
 );

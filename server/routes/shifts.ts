@@ -8,8 +8,11 @@ import {
   products,
   locations,
   refunds,
+  orderCredit,
+  orderPayments,
+  creditPayments,
 } from "../../shared/schema";
-import { and, eq, desc, gte, or } from "drizzle-orm";
+import { and, eq, desc, gte, lte, inArray, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
@@ -55,6 +58,24 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     .from(orders)
     .where(eq(orders.shiftId, shiftId));
 
+  const shiftOrderIds = shiftOrders.map((o) => o.id);
+  const legRows = shiftOrderIds.length
+    ? await db
+        .select({
+          orderId: orderPayments.orderId,
+          method: orderPayments.method,
+          amount: orderPayments.amount,
+        })
+        .from(orderPayments)
+        .where(inArray(orderPayments.orderId, shiftOrderIds))
+    : [];
+  const legsByOrder = new Map<string, Array<{ method: string; amount: number }>>();
+  for (const row of legRows) {
+    const list = legsByOrder.get(row.orderId) ?? [];
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    legsByOrder.set(row.orderId, list);
+  }
+
   const zOrders: ZReportOrder[] = [];
   for (const order of shiftOrders) {
     const items = await db
@@ -73,6 +94,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       id: order.id,
       total: parseFloat(String(order.total)),
       paymentMethod: order.paymentMethod,
+      payments: legsByOrder.get(order.id),
       createdAt: order.createdAt?.toISOString() ?? "",
       items: items.map((i) => ({
         productId: i.productId ?? "",
@@ -96,6 +118,37 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     createdAt: r.createdAt?.toISOString() ?? "",
   }));
 
+  // Credit handed out on this shift, and credit settled on it. Both come from
+  // the credit records: an order's status cannot say whether money arrived.
+  const orderIds = shiftOrders.map((o) => o.id);
+  const creditGiven = orderIds.length
+    ? await db
+        .select({ orderId: orderCredit.orderId, amountGiven: orderCredit.amountGiven })
+        .from(orderCredit)
+        .where(inArray(orderCredit.orderId, orderIds))
+    : [];
+
+  // Settlements taken while this shift was open, whatever day the debt was
+  // given — that is the whole point of the line.
+  const shiftWindowEnd = shift.closedAt ?? new Date();
+  const creditPaid = shift.openedAt
+    ? await db
+        .select({
+          amount: creditPayments.amount,
+          method: creditPayments.method,
+          givenOn: orderCredit.givenOn,
+        })
+        .from(creditPayments)
+        .innerJoin(orderCredit, eq(orderCredit.orderId, creditPayments.orderId))
+        .where(
+          and(
+            eq(creditPayments.orgId, orgId),
+            gte(creditPayments.createdAt, shift.openedAt),
+            lte(creditPayments.createdAt, shiftWindowEnd),
+          ),
+        )
+    : [];
+
   const report = buildZReport(
     {
       id: shift.id,
@@ -114,6 +167,15 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     },
     zOrders,
     zRefunds,
+    creditGiven.map((c) => ({
+      orderId: c.orderId,
+      amountGiven: parseFloat(String(c.amountGiven)),
+    })),
+    creditPaid.map((p) => ({
+      amount: parseFloat(String(p.amount)),
+      givenOn: String(p.givenOn),
+      method: p.method,
+    })),
   );
 
   return { shift, report };

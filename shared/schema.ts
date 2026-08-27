@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   check,
   index,
   jsonb,
@@ -33,9 +34,19 @@ export const roleEnum = pgEnum('app_role', ROLES);
 export const BUSINESS_TYPES = ['retail', 'hospitality', 'services', 'wholesale', 'other'] as const;
 export type BusinessType = typeof BUSINESS_TYPES[number];
 
-// Cashier commission presets & shift inactivity windows
+// Cashier commission presets & shift inactivity windows.
+//
+// These are SUGGESTIONS offered as quick picks, not the permitted set. Rates
+// are agreed per cashier and land on figures like 12 or 25, which a fixed list
+// of three could not express — any rate from 0 to 100 is valid.
 export const COMMISSION_RATE_PRESETS = [10, 20, 30] as const;
 export type CommissionRatePreset = typeof COMMISSION_RATE_PRESETS[number];
+
+/** Validates a commission rate wherever one is set. */
+export const commissionRateSchema = z.coerce
+  .number()
+  .min(0, "A commission rate cannot be negative")
+  .max(100, "A commission rate cannot be more than 100%");
 
 export const SHIFT_INACTIVITY_OPTIONS = ["1_hour", "12_hours", "1_day", "never"] as const;
 export type ShiftInactivityOption = typeof SHIFT_INACTIVITY_OPTIONS[number];
@@ -158,6 +169,11 @@ export const users = pgTable("users", {
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
   defaultLocationId: uuid("default_location_id").references(() => locations.id),
+  // This person's commission rate, as a percentage. Null means the
+  // organisation default applies, which is where everyone starts: the old
+  // per-code rates could not be carried over, because nothing ever linked a
+  // cashier code to a user. Set in user management. (migration 057)
+  commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -864,9 +880,17 @@ export const cashierShifts = pgTable(
     orgId: uuid("org_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057: a shift belongs to a user, and cashier
+    // codes are on their way out, so it must be able to exist without one.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this is. The unit of attribution from migration 057 on. */
+    userId: varchar("user_id", { length: 255 }),
+    /**
+     * The trading day this shift covers — 06:00 to 06:00 in the org's own
+     * timezone. A shift is a trading day, not a login session, so logging out
+     * for a break and back in returns to this same shift. (migration 058)
+     */
+    tradingDay: date("trading_day"),
     openedByUserId: varchar("opened_by_user_id", { length: 255 }).notNull(),
     closedByUserId: varchar("closed_by_user_id", { length: 255 }),
     openedAt: timestamp("opened_at").defaultNow().notNull(),
@@ -880,6 +904,13 @@ export const cashierShifts = pgTable(
   (table) => [
     index("cashier_shifts_org_id_idx").on(table.orgId),
     index("cashier_shifts_cashier_id_idx").on(table.cashierId),
+    index("cashier_shifts_user_idx").on(table.orgId, table.userId),
+    index("cashier_shifts_trading_day_idx").on(table.orgId, table.tradingDay),
+    // One shift per person per trading day. This is what makes opening a shift
+    // lazily safe: two concurrent first-sales race, one wins, the other finds it.
+    uniqueIndex("cashier_shifts_user_trading_day_idx")
+      .on(table.orgId, table.userId, table.tradingDay)
+      .where(sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL`),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)
       .where(sql`status = 'open'`),
@@ -899,9 +930,10 @@ export const cashierShiftSummaries = pgTable(
     shiftId: uuid("shift_id")
       .references(() => cashierShifts.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057 — a shift can belong to a user with no code.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this summarises. The unit of attribution from 057 on. */
+    userId: varchar("user_id", { length: 255 }),
     grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -924,12 +956,90 @@ export const cashierShiftSummaries = pgTable(
   (table) => [
     index("cashier_shift_summaries_org_id_idx").on(table.orgId),
     index("cashier_shift_summaries_cashier_id_idx").on(table.cashierId),
+    index("cashier_shift_summaries_user_idx").on(table.orgId, table.userId),
     uniqueIndex("cashier_shift_summaries_shift_id_idx").on(table.shiftId),
   ],
 );
 
 export type CashierShiftSummary = typeof cashierShiftSummaries.$inferSelect;
 export type InsertCashierShiftSummary = typeof cashierShiftSummaries.$inferInsert;
+
+/**
+ * One row per cashier per order per accrual — the record of who is owed what.
+ *
+ * Replaces the single commission figure that used to live on
+ * `cashierShiftSummaries`, which could not express either an order split 90/10
+ * between two people or a credit sale that earns its commission weeks after the
+ * shift that sold it closed.
+ *
+ * The money columns are snapshots and must never be recomputed: changing a
+ * cashier's rate must not restate what they have already earned, and
+ * `overheadShare` belongs to the day the order was sold on. (migration 052)
+ */
+export const cashierCommissionEntries = pgTable(
+  "cashier_commission_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    cashierId: uuid("cashier_id")
+      .references(() => cashierProfiles.id)
+      .notNull(),
+    /** The shift this accrued on. Null for a credit resolution taken later. */
+    cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+    /** Who is owed this, by user account. Preferred over `cashierId`. */
+    userId: varchar("user_id", { length: 255 }),
+    /** "completer" (90%) or "inputter" (10%), or either at 100%. */
+    role: varchar("role", { length: 16 }).notNull(),
+    /** "sale" — money taken at the till. "credit_resolution" — a tick since paid. */
+    basis: varchar("basis", { length: 24 }).notNull(),
+    orderMargin: numeric("order_margin", { precision: 12, scale: 2 }).notNull().default("0"),
+    overheadShare: numeric("overhead_share", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    sharePercent: numeric("share_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    /**
+     * The payment that released this, for a credit resolution. Declared with
+     * its foreign key here as well as in the SQL so a database built by
+     * `drizzle-kit push` matches one built by the migrations.
+     */
+    creditPaymentId: uuid("credit_payment_id").references(() => creditPayments.id, {
+      onDelete: "cascade",
+    }),
+    accruedOn: date("accrued_on").notNull(),
+    accruedAt: timestamp("accrued_at").defaultNow().notNull(),
+    // Self-referencing: a reversal points at the entry it undoes. Declared here
+    // as well as in the SQL so a database built by `drizzle-kit push` carries
+    // the same foreign key as one built by the migrations — the migration
+    // integrity suite diffs the two and fails on exactly this kind of gap.
+    reversalOf: uuid("reversal_of").references((): AnyPgColumn => cashierCommissionEntries.id),
+  },
+  (table) => [
+    index("cashier_commission_entries_cashier_date_idx").on(table.orgId, table.cashierId, table.accruedOn),
+    index("cashier_commission_entries_user_date_idx").on(table.orgId, table.userId, table.accruedOn),
+    index("cashier_commission_entries_shift_idx").on(table.cashierShiftId),
+    index("cashier_commission_entries_order_idx").on(table.orderId),
+    check("cashier_commission_entries_role_check", sql`${table.role} IN ('completer', 'inputter')`),
+    check("cashier_commission_entries_basis_check", sql`${table.basis} IN ('sale', 'credit_resolution')`),
+    // Closing a shift twice, or replaying an offline order into a closed one,
+    // must not pay anybody twice: one accrual per cashier per role per order.
+    uniqueIndex("cashier_commission_entries_unique_sale")
+      .on(table.orderId, table.cashierId, table.role)
+      .where(sql`${table.basis} = 'sale' AND ${table.reversalOf} IS NULL`),
+    // A credit sale settled in instalments accrues once per PAYMENT, so its
+    // guard keys on the payment rather than the order.
+    uniqueIndex("cashier_commission_entries_unique_resolution")
+      .on(table.creditPaymentId, table.cashierId, table.role)
+      .where(sql`${table.basis} = 'credit_resolution' AND ${table.reversalOf} IS NULL`),
+  ],
+);
+
+export type CashierCommissionEntry = typeof cashierCommissionEntries.$inferSelect;
+export type InsertCashierCommissionEntry = typeof cashierCommissionEntries.$inferInsert;
 
 export const cashierCommissionPayments = pgTable(
   "cashier_commission_payments",
@@ -965,6 +1075,171 @@ export const insertCashierCommissionPaymentSchema = createInsertSchema(cashierCo
 });
 export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCommissionPaymentSchema>;
 
+/**
+ * The tenders that paid for an order — one row per leg.
+ *
+ * A £100 sale can be £50 cash and £50 on tick, which `orders.paymentMethod`
+ * could not express: it holds one value, forcing a split sale to be recorded
+ * either as all cash (and the drawer never reconciles) or all tick (and the
+ * business appears owed money it already has).
+ *
+ * The legs sum to the order total, and every money figure — cash and card
+ * sales, the Z-report breakdown, expected cash — derives from them.
+ * `orders.paymentMethod` is still written, but as a label. (migration 056)
+ */
+export const orderPayments = pgTable(
+  "order_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    method: varchar("method", { length: 50 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_payments_order_idx").on(table.orderId),
+    index("order_payments_org_method_idx").on(table.orgId, table.method),
+    // Zero is allowed — a personal-use order is a real, recorded, zero-value
+    // leg. Negative is not: giving money back is a refund.
+    check("order_payments_amount_check", sql`${table.amount} >= 0`),
+  ],
+);
+
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * A tender leg as the till submits it. The legs must sum to the order total —
+ * a split that does not add up is a sale where some money is unaccounted for,
+ * which is exactly the state this table exists to make impossible.
+ */
+export const orderTenderLegSchema = z.object({
+  method: z.string().min(1, "Each payment needs a method"),
+  amount: z.coerce.number().min(0, "A payment cannot be negative"),
+});
+export type OrderTenderLeg = z.infer<typeof orderTenderLegSchema>;
+
+/** Sums tender legs to the penny. */
+export function sumTenderLegs(legs: OrderTenderLeg[]): number {
+  return Math.round(legs.reduce((sum, leg) => sum + leg.amount, 0) * 100) / 100;
+}
+
+/**
+ * The outstanding balance on a sale made on credit (tick), one row per order.
+ *
+ * Credit needed state of its own. "Unpaid" used to be inferred from the order
+ * still being `pending`, and marking it paid set it to `completed` — so whether
+ * the money had arrived was answered by a column that means whether the goods
+ * had. Under the current model a tick order IS completed the day the goods
+ * leave and is simply unpaid, so that test would report every credit sale as
+ * paid immediately and pay commission on money nobody had received.
+ * (migration 053)
+ */
+export const orderCredit = pgTable(
+  "order_credit",
+  {
+    orderId: uuid("order_id")
+      .primaryKey()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    customerId: uuid("customer_id").references(() => customers.id),
+    /** The portion of the sale put on credit — the whole of it today. */
+    amountGiven: numeric("amount_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    amountOutstanding: numeric("amount_outstanding", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** outstanding | partial | settled | written_off | voided */
+    status: varchar("status", { length: 16 }).notNull().default("outstanding"),
+    givenOn: date("given_on").notNull(),
+    settledOn: date("settled_on"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_credit_org_status_idx").on(table.orgId, table.status),
+    index("order_credit_customer_idx").on(table.customerId),
+    check(
+      "order_credit_status_check",
+      sql`${table.status} IN ('outstanding', 'partial', 'settled', 'written_off', 'voided')`,
+    ),
+  ],
+);
+
+export type OrderCredit = typeof orderCredit.$inferSelect;
+export type InsertOrderCredit = typeof orderCredit.$inferInsert;
+
+/**
+ * Every payment made against a credit sale. Several per order is normal, and
+ * they can be of different kinds — a customer settling an account pays some
+ * cash and some card — which is why `method` is required rather than optional.
+ */
+export const creditPayments = pgTable(
+  "credit_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    method: varchar("method", { length: 50 }).notNull().default("cash"),
+    paidOn: date("paid_on").notNull(),
+    recordedByUserId: uuid("recorded_by_user_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
+    // A payment of zero or less is not a payment.
+    check("credit_payments_amount_check", sql`${table.amount} > 0`),
+  ],
+);
+
+export type CreditPayment = typeof creditPayments.$inferSelect;
+export type InsertCreditPayment = typeof creditPayments.$inferInsert;
+
+/**
+ * One row per organisation per trading day, written by the 06:00 close.
+ *
+ * The unique key is the mechanism, not bookkeeping: a server restarted at 06:00
+ * or two instances running at once must not total the same day twice and send
+ * the same Signals twice. Whoever inserts the row does the work. (migration 059)
+ */
+export const dailyCloseRuns = pgTable(
+  "daily_close_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    tradingDay: date("trading_day").notNull(),
+    ranAt: timestamp("ran_at").defaultNow().notNull(),
+    shiftsClosed: integer("shifts_closed").notNull().default(0),
+    orderCount: integer("order_count").notNull().default(0),
+    grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditGiven: numeric("credit_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditResolved: numeric("credit_resolved", { precision: 12, scale: 2 }).notNull().default("0"),
+    personalUseCost: numeric("personal_use_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionAccrued: numeric("commission_accrued", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** Drawers still open at the cut — named, never closed uncounted. */
+    uncountedDrawers: integer("uncounted_drawers").notNull().default(0),
+  },
+  (table) => [uniqueIndex("daily_close_runs_org_day_idx").on(table.orgId, table.tradingDay)],
+);
+
+export type DailyCloseRun = typeof dailyCloseRuns.$inferSelect;
+export type InsertDailyCloseRun = typeof dailyCloseRuns.$inferInsert;
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -974,6 +1249,25 @@ export const orders = pgTable("orders", {
   shiftId: uuid("shift_id").references(() => shifts.id),
   cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
   cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+  // Commission is split between the cashier who loaded the order and the one
+  // who completed it (90/10), so a single `cashierId` cannot express it.
+  // `cashierId` is retained and still written as the completing cashier for
+  // backwards compatibility; prefer the two columns below. (migration 051)
+  //
+  // NULL `inputCashierId` means nobody loaded it by hand — a web or storefront
+  // order — and that absence is what gives the completer 100% of the pool.
+  inputCashierId: uuid("input_cashier_id").references(() => cashierProfiles.id),
+  // Written ONCE, at the first transition to "completed", for the same reason
+  // `settledTotal` is: reopening and re-completing an order must not move
+  // commission that has already accrued to somebody else.
+  completedCashierId: uuid("completed_cashier_id").references(() => cashierProfiles.id),
+  completedCashierShiftId: uuid("completed_cashier_shift_id").references(() => cashierShifts.id),
+  // Who actually did the work, by user account rather than cashier code.
+  // varchar because `users.id` is the auth subject, not a uuid. No foreign key:
+  // removing someone from the org must not make historic orders unreadable.
+  // (migration 057)
+  inputUserId: varchar("input_user_id", { length: 255 }),
+  completedUserId: varchar("completed_user_id", { length: 255 }),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -1003,13 +1297,21 @@ export const orders = pgTable("orders", {
   revisedEta: timestamp("revised_eta"),
   delayNotificationSentAt: timestamp("delay_notification_sent_at"),
   delayResolution: varchar("delay_resolution", { length: 32 }),
+  // Why stock left without a sale. Required when paymentMethod is
+  // "personal_use" — a Signal without a reason is a Signal nobody reads.
+  // (migration 054)
+  personalUseReason: text("personal_use_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
+  index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
+  index("orders_completed_user_idx").on(table.orgId, table.completedUserId),
+  index("orders_completed_cashier_shift_idx").on(table.completedCashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
+  check("orders_total_non_negative", sql`${table.total} >= 0`),
   check(
     "orders_fulfilment_method_check",
     sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
@@ -1027,6 +1329,14 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true, 
   updatedAt: true,
   status: true
+}).extend({
+  // An order may not total less than zero. Giving money back is a refund, which
+  // is a separate path with its own controls; a negative order would be the
+  // same payout with none of them. Zero is allowed on purpose — personal use is
+  // a real, recorded, zero-total order. Guarded here, by a check constraint on
+  // the column (migration 055), and with a plain message at the till, because
+  // each catches a different mistake.
+  total: z.coerce.number().min(0, "An order cannot total less than zero"),
 });
 export type InsertOrderData = z.infer<typeof insertOrderSchema>;
 
@@ -1622,7 +1932,10 @@ export const EVENT_TYPES = [
   'OrderCancelled',
   'ExpenseLogged',
   'ExpenseUpdated',
-  'ExpenseDeleted'
+  'ExpenseDeleted',
+  // Staff took stock for themselves. Not a sale — it exists so a manager is
+  // told, which is the entire control against it becoming theft.
+  'PersonalUseRecorded'
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 
@@ -1637,6 +1950,7 @@ export const WORKER_NAMES = [
   'ExpensesWorker',
   'AutomationWorker',
   'ReceiptEmailWorker',
+  'PersonalUseSignalWorker',
 ] as const;
 export type WorkerName = typeof WORKER_NAMES[number];
 
@@ -2225,4 +2539,5 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+  PersonalUseRecorded: ['PersonalUseSignalWorker'],
 };

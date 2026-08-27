@@ -189,23 +189,49 @@ export function CashierCommissionSettings() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Default commission rate</Label>
-              <Select
-                value={defaultRate}
-                onValueChange={(v) => {
-                  setDefaultRate(v);
-                  saveSettings.mutate({ defaultCashierCommissionRate: v });
-                }}
-              >
-                <SelectTrigger className="min-h-[44px]" data-testid="settings-commission-rate">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {COMMISSION_RATE_PRESETS.map((rate) => (
-                    <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* A free figure with the common ones as quick picks. Rates are
+                  agreed per cashier and land on 12 or 25 as readily as 10, so a
+                  fixed list of three could not express what was agreed. */}
+              <Label htmlFor="default-commission-rate">Default commission rate</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="default-commission-rate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={defaultRate}
+                  className="min-h-[44px]"
+                  data-testid="settings-commission-rate"
+                  onChange={(e) => setDefaultRate(e.target.value)}
+                  onBlur={() => {
+                    const rate = Number(defaultRate);
+                    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+                      setDefaultRate(String(org?.defaultCashierCommissionRate ?? 10));
+                      return;
+                    }
+                    saveSettings.mutate({ defaultCashierCommissionRate: String(rate) });
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+              <div className="flex gap-2">
+                {COMMISSION_RATE_PRESETS.map((rate) => (
+                  <Button
+                    key={rate}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDefaultRate(String(rate));
+                      saveSettings.mutate({ defaultCashierCommissionRate: String(rate) });
+                    }}
+                    data-testid={`settings-commission-rate-${rate}`}
+                  >
+                    {rate}%
+                  </Button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Auto-close inactive shift after</Label>

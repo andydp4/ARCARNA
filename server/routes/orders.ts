@@ -6,7 +6,7 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { requireOpenShift } from "../middleware/requireOpenShift";
-import { requireActiveCashierShift } from "../middleware/requireActiveCashierShift";
+import { requireActiveCashierShift, attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
   insertLoyaltyTierSchema,
@@ -17,12 +17,38 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { z } from "zod";
+import { orderTenderLegSchema, orderPayments as orderPaymentsTable, sumTenderLegs } from "@shared/schema";
 import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { resolveUserNames } from "../services/userDisplayName";
+
+/**
+ * What the goods on a personal-use order cost the business.
+ *
+ * Taken from the products' recorded cost price, because that is what actually
+ * left the shelf. Items with no recorded cost contribute nothing rather than
+ * guessing — an invented figure here would land in the expenses and in the
+ * Signal a manager reads.
+ */
+async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
+  const { orderItems, products } = await import('@shared/schema');
+  const { eq } = await import('drizzle-orm');
+  const rows = await tx
+    .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
+    .from(orderItems)
+    .leftJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(orderItems.orderId, orderId));
+  const total = rows.reduce(
+    (sum: number, r: { quantity: unknown; costPrice: unknown }) =>
+      sum + (r.costPrice == null ? 0 : Number(r.quantity) * parseFloat(String(r.costPrice))),
+    0,
+  );
+  return Math.round(total * 100) / 100;
+}
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
@@ -50,6 +76,53 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
       };
       const userId = req.user?.id ?? "unknown";
+
+      // Personal use: staff taking stock for themselves. Not a sale, so it must
+      // never reach the sales figures — the total is forced to zero here rather
+      // than trusted from the client, and the cost is booked as an expense
+      // below. The reason is mandatory: a Signal that says only "personal use,
+      // £14.20" gets ignored, and being read is the entire control.
+      const isPersonalUse = String(body.paymentMethod ?? "").toLowerCase() === "personal_use";
+      if (isPersonalUse) {
+        const reason = String(body.personalUseReason ?? "").trim();
+        if (reason.length < 3) {
+          return res.status(400).json({
+            message: "Say what this is for before recording personal use.",
+            code: "PERSONAL_USE_REASON_REQUIRED",
+          });
+        }
+        body.personalUseReason = reason;
+      }
+
+      // An order may never total less than zero. Giving money back is a refund,
+      // which has its own path and its own controls; a negative order would be
+      // the same payout with none of them. The message says what to do instead,
+      // because a cashier who hits this is trying to give money back.
+      const requestedTotal = Number(body.total);
+      if (Number.isFinite(requestedTotal) && requestedTotal < 0) {
+        return res.status(400).json({
+          message: "An order cannot total less than zero. Use a refund to give money back.",
+          code: "ORDER_TOTAL_NEGATIVE",
+        });
+      }
+
+      // Split tender: a £100 sale can be £50 cash and £50 on tick. The legs are
+      // the truth; `paymentMethod` becomes a label. They must add up — a split
+      // that does not is a sale with money unaccounted for.
+      const tenderLegs = Array.isArray(body.payments) ? body.payments : null;
+      if (tenderLegs) {
+        const parsed = z.array(orderTenderLegSchema).min(1).safeParse(tenderLegs);
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: parsed.error.errors[0]?.message ?? "Invalid payment split",
+            code: "ORDER_PAYMENTS_INVALID",
+          });
+        }
+        body.payments = parsed.data;
+        body.paymentMethod =
+          parsed.data.length === 1 ? parsed.data[0].method : "split";
+      }
+
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
@@ -64,6 +137,16 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const result = await engine.placeOrder(body);
         const shiftId = req.shift?.id;
         const cashierShift = req.cashierShift;
+        // Whoever is logged in loaded this order. Recorded independently of any
+        // cashier code: the user is always known on a till sale, whereas a code
+        // is only present when one was picked (migration 057).
+        const inputUserId = req.user?.id ?? null;
+        if (inputUserId) {
+          await tx
+            .update(orders)
+            .set({ input_user_id: inputUserId })
+            .where(eq(orders.id, result.orderId));
+        }
         if (shiftId || cashierShift) {
           await tx
             .update(orders)
@@ -73,6 +156,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
                 ? {
                     cashier_id: cashierShift.cashierId,
                     cashier_shift_id: cashierShift.cashierShiftId,
+                    // Whoever is on the till right now loaded this order. They
+                    // take 10% of its commission pool if somebody else
+                    // completes it, and the whole pool if they complete it
+                    // themselves. Orders arriving without a cashier shift —
+                    // web and storefront — leave this NULL on purpose.
+                    input_cashier_id: cashierShift.cashierId,
                     ...(cashierShift.queuedAt ? { created_at: cashierShift.queuedAt } : {}),
                   }
                 : {}),
@@ -99,6 +188,67 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             await tx.update(orders).set({ payment_method: paymentLabel }).where(eq(orders.id, result.orderId));
             createdOrder.payment_method = paymentLabel;
           }
+        }
+
+        // Written after the order exists and after any total adjustment, so the
+        // legs can be checked against the figure actually charged.
+        if (tenderLegs && createdOrder) {
+          const orderTotal = roundMoney(parseFloat(String(createdOrder.total)));
+          const legTotal = sumTenderLegs(body.payments);
+          if (Math.abs(legTotal - orderTotal) > 0.005) {
+            throw new Error(
+              `Payments add up to £${legTotal.toFixed(2)} but the order is £${orderTotal.toFixed(2)}`,
+            );
+          }
+          const { orderPayments } = await import('@shared/schema');
+          await tx.insert(orderPayments).values(
+            body.payments.map((leg: { method: string; amount: number }) => ({
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              method: leg.method,
+              amount: String(roundMoney(leg.amount)),
+            })),
+          );
+        } else if (createdOrder) {
+          // A single-tender sale is one leg for the whole total, so every
+          // money figure can read the legs and never the label.
+          const { orderPayments } = await import('@shared/schema');
+          await tx.insert(orderPayments).values({
+            orgId: ctx.orgId!,
+            orderId: result.orderId,
+            method: String(createdOrder.payment_method),
+            amount: String(roundMoney(parseFloat(String(createdOrder.total)))),
+          });
+        }
+
+        if (isPersonalUse && createdOrder) {
+          // Zero the sale and book the goods as a cost of the day. The stock has
+          // already been deducted by the ordinary order path — it left the
+          // building either way — so only the money side needs correcting.
+          const stockCost = await personalUseStockCost(tx, result.orderId);
+          await tx
+            .update(orders)
+            .set({ total: "0.00", personal_use_reason: body.personalUseReason })
+            .where(eq(orders.id, result.orderId));
+          createdOrder.total = "0.00";
+          if (stockCost > 0) {
+            const { orderExpenses } = await import('@shared/schema');
+            await tx.insert(orderExpenses).values({
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              category: 'personal_use',
+              description: `Personal use — ${body.personalUseReason}`,
+              amount: String(stockCost),
+            });
+          }
+          await publishEventTx(tx, 'PersonalUseRecorded', result.orderId, {
+            orgId: ctx.orgId,
+            orderId: result.orderId,
+            cashierName: req.user?.name ?? req.user?.email ?? null,
+            reason: body.personalUseReason,
+            stockCost,
+            items: items.map((item: any) => ({ qty: item.quantity })),
+          }, { source: 'api-orders' });
         }
 
         const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);
@@ -176,11 +326,31 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         status: orders.status,
         fulfilmentMethod: orders.fulfilment_method,
         createdAt: orders.created_at,
+        // Who loaded it. The counter view shows this because it decides where
+        // the inputter's 10% of the commission goes, and because knowing who to
+        // ask about an order is half of working a counter.
+        inputUserId: orders.input_user_id,
+        // Already on the order and never surfaced: what is holding it up.
+        delayFlag: orders.delay_flag,
+        delayReason: orders.delay_reason,
+        revisedEta: orders.revised_eta,
+        etaGiven: orders.eta_given,
       }).from(orders).leftJoin(customers, eq(orders.customer_id, customers.id));
       const allOrders = ctx?.orgId
         ? await baseQuery.where(eq(orders.org_id, ctx.orgId)).orderBy(orders.created_at)
         : await baseQuery.orderBy(orders.created_at);
-      res.json(allOrders);
+
+      // Resolve the loader's name once for the page rather than per row.
+      const { resolveUserNames } = await import("../services/userDisplayName");
+      const names = await resolveUserNames(
+        allOrders.map((o: { inputUserId: string | null }) => o.inputUserId).filter(Boolean) as string[],
+      );
+      res.json(
+        allOrders.map((o: { inputUserId: string | null }) => ({
+          ...o,
+          inputUserName: o.inputUserId ? names.get(o.inputUserId) ?? null : null,
+        })),
+      );
     } catch (error) {
       console.error("Error fetching orders:", error);
       res.status(500).json({ message: "Failed to fetch orders" });
@@ -366,7 +536,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
+  app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), attachActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { db } = await import('../../apps/server/src/db');
@@ -393,8 +563,30 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // refundable ceiling. Refunds cap against this frozen figure.
       const isSettling =
         validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
+      // The completing cashier is frozen here for the same reason the total is:
+      // 90% of the commission pool follows this column, so reopening an order
+      // and re-completing it under someone else must not move money that has
+      // already accrued. `cashier_id` is kept in step for the reads that still
+      // use it. Resolved softly — a manager closing an order from the back
+      // office has no cashier shift, and that must not block the status change.
+      const completingCashier = (req as any).cashierShift as
+        | { cashierId: string; cashierShiftId: string }
+        | undefined;
       const settlementPatch = isSettling
-        ? { settled_total: (currentOrder as any)?.total, settled_at: new Date() }
+        ? {
+            settled_total: (currentOrder as any)?.total,
+            settled_at: new Date(),
+            // The user who completed it — frozen here for the same reason the
+            // total is, since 90% of the pool follows this column.
+            ...(req.user?.id ? { completed_user_id: req.user.id } : {}),
+            ...(completingCashier
+              ? {
+                  completed_cashier_id: completingCashier.cashierId,
+                  completed_cashier_shift_id: completingCashier.cashierShiftId,
+                  cashier_id: (currentOrder as any)?.cashier_id ?? completingCashier.cashierId,
+                }
+              : {}),
+          }
         : {};
 
       const [updated] = await db.update(orders)
@@ -406,6 +598,29 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         return res.status(404).json({ message: 'Order not found' });
       }
       
+      // A sale on tick joins the credit list the moment the goods leave. The
+      // sale is recognised now; the money, and the commission it earns, are not.
+      //
+      // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
+      // £50 on tick, £50 is owed — putting the whole £100 on credit would have
+      // the business chasing money it already has in the drawer.
+      if (isSettling) {
+        const { creditLegTotal } = await import("../services/creditLedger");
+        const owed = await creditLegTotal(
+          req.params.id,
+          String((currentOrder as any)?.payment_method ?? ""),
+          parseFloat(String((currentOrder as any)?.total ?? 0)),
+        );
+        if (owed > 0) {
+          const { openCreditForOrder } = await import("../services/creditLedger");
+          await openCreditForOrder(ctx.orgId, {
+            id: req.params.id,
+            customerId: (currentOrder as any)?.customer_id ?? null,
+            amount: owed,
+          });
+        }
+      }
+
       // Publish OrderStatusChanged event - critical, visible failure
       const eventId = await publishEvent('OrderStatusChanged', req.params.id, {
         orderId: req.params.id,

@@ -18,7 +18,12 @@ export type CashierShiftReplayValidationInput = {
   queuedAt: unknown;
   shift: {
     orgId: string;
-    cashierId: string;
+    // Nullable since migration 057 — a shift can belong to a user with no
+    // cashier code. Line 110 compares it against the token's claim, so a shift
+    // without a code can never satisfy a token that names one. That is the
+    // right answer: an offline order replayed against a code the shift does
+    // not have must be rejected, not waved through.
+    cashierId: string | null;
     id: string;
     openedAt: Date;
     closedAt: Date | null;

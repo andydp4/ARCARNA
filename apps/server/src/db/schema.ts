@@ -72,6 +72,23 @@ export const orders = pgTable('orders', {
   shift_id: uuid('shift_id'),
   cashier_id: uuid('cashier_id'),
   cashier_shift_id: uuid('cashier_shift_id'),
+  // Commission splits 90/10 between whoever loaded the order and whoever
+  // completed it, so one cashier column cannot express it — see
+  // shared/schema.ts and migration 051. NULL input_cashier_id means no human
+  // loaded it (web / storefront), which gives the completer the whole pool.
+  input_cashier_id: uuid('input_cashier_id'),
+  // Who actually did the work, by user account — see shared/schema.ts and
+  // migration 057. varchar because users.id is the auth subject, not a uuid.
+  input_user_id: varchar('input_user_id', { length: 255 }),
+  completed_user_id: varchar('completed_user_id', { length: 255 }),
+  // Operational fields for the counter view — see shared/schema.ts.
+  delay_flag: boolean('delay_flag').default(false).notNull(),
+  delay_reason: varchar('delay_reason', { length: 255 }),
+  eta_given: timestamp('eta_given'),
+  revised_eta: timestamp('revised_eta'),
+  // Written once, at the first transition to 'completed', like settled_total.
+  completed_cashier_id: uuid('completed_cashier_id'),
+  completed_cashier_shift_id: uuid('completed_cashier_shift_id'),
   customer_id: uuid('customer_id').references(()=>customers.id),
   total: numeric('total',{precision:10,scale:2}).notNull(),
   payment_method: varchar('payment_method',{length:50}).notNull(),
@@ -85,6 +102,8 @@ export const orders = pgTable('orders', {
   // inflate the refundable amount.
   settled_total: numeric('settled_total',{precision:10,scale:2}),
   settled_at: timestamp('settled_at'),
+  // Why stock left without a sale — see shared/schema.ts and migration 054.
+  personal_use_reason: text('personal_use_reason'),
   channel: varchar('channel', { length: 32 }).default('pos').notNull(),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
