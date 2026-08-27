@@ -123,6 +123,26 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           parsed.data.length === 1 ? parsed.data[0].method : "split";
       }
 
+      // Credit needs someone to collect it from. A tick sale with no customer
+      // opens a debt nobody can be chased for and — because the credit list
+      // only ever shows customers, see tickCustomers.ts — nobody can even see:
+      // it silently drops off `/api/tick-customers` and the balance is real
+      // money the business will never recover. Checked here, before the order
+      // is created, rather than left to surface once the till has already told
+      // the cashier the sale went through.
+      const legsForCheck: Array<{ method: string }> = Array.isArray(body.payments)
+        ? body.payments
+        : [];
+      const usesCredit =
+        String(body.paymentMethod ?? "").toLowerCase() === "tick" ||
+        legsForCheck.some((leg) => String(leg.method ?? "").toLowerCase() === "tick");
+      if (usesCredit && !body.customerId) {
+        return res.status(400).json({
+          message: "Select a customer before putting a sale on credit.",
+          code: "CREDIT_CUSTOMER_REQUIRED",
+        });
+      }
+
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
