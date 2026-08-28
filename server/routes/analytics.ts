@@ -1,9 +1,6 @@
 import type { Express, RequestHandler } from "express";
-import { format } from "date-fns";
 import { storage } from "../storage";
-import type { DailyKpiResponse } from "@shared/analytics/kpi";
 import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
-import { getDailyKpi } from "../services/dailyKpi";
 import { getHourOfDayAnalytics } from "../services/hourOfDayService";
 import { getChannelAttribution } from "../services/channelAttributionService";
 import { getStockTurnAnalytics } from "../services/stockTurnService";
@@ -11,26 +8,14 @@ import { getPromotionLift } from "../services/promoLiftService";
 import { getRfmCustomersBySegment, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
 import { requireRole } from "../auth";
 
-type KpiCacheEntry = { payload: DailyKpiResponse; expiresAt: number };
-
-const KPI_CACHE_TTL_MS = 60_000;
 const HOD_CACHE_TTL_MS = 5 * 60_000;
 const CHANNEL_CACHE_TTL_MS = 5 * 60_000;
 const STOCK_TURN_CACHE_TTL_MS = 5 * 60_000;
 const PROMO_LIFT_CACHE_TTL_MS = 5 * 60_000;
-const kpiCache = new Map<string, KpiCacheEntry>();
 const hodCache = new Map<string, { payload: unknown; expiresAt: number }>();
 const channelCache = new Map<string, { payload: unknown; expiresAt: number }>();
 const stockTurnCache = new Map<string, { payload: unknown; expiresAt: number }>();
 const promoLiftCache = new Map<string, { payload: unknown; expiresAt: number }>();
-
-function kpiCacheKey(orgId: string, date: string): string {
-  return `${orgId}:${date}`;
-}
-
-function isValidDateParam(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-}
 
 export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
@@ -79,30 +64,6 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     } catch (error) {
       console.error("Error fetching monthly summary:", error);
       res.status(500).json({ message: "Failed to fetch monthly summary" });
-    }
-  });
-
-  app.get("/api/analytics/kpi/daily", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const rawDate = typeof req.query.date === "string" ? req.query.date : "";
-      const date = rawDate && isValidDateParam(rawDate)
-        ? rawDate
-        : format(new Date(), "yyyy-MM-dd");
-
-      const cacheKey = kpiCacheKey(ctx.orgId, date);
-      const hit = kpiCache.get(cacheKey);
-      if (hit && hit.expiresAt > Date.now()) {
-        res.json(hit.payload);
-        return;
-      }
-
-      const payload = await getDailyKpi(ctx.orgId, date);
-      kpiCache.set(cacheKey, { payload, expiresAt: Date.now() + KPI_CACHE_TTL_MS });
-      res.json(payload);
-    } catch (error) {
-      console.error("Error fetching daily KPI:", error);
-      res.status(500).json({ message: "Failed to fetch daily KPI" });
     }
   });
 

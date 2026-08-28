@@ -1,7 +1,8 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { orders, refunds } from "@shared/schema";
 import type { DayKpi } from "@shared/analytics/kpi";
+import { tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
 
 /**
  * The single definition of "revenue taken" for Arcarna.
@@ -120,6 +121,100 @@ export async function settledRevenueByDay(
       revenue: round(existing.revenue - refunded),
       refundsTotal: round(existing.refundsTotal + refunded),
     });
+  }
+
+  return byDay;
+}
+
+/**
+ * Takings per TRADING day rather than calendar day — 06:00 to 06:00 in the
+ * org's own timezone, the same cut the shift engine and the daily close use
+ * (shared/time/tradingDay.ts).
+ *
+ * {@link settledRevenueByDay} stays calendar-bucketed on purpose: weekly and
+ * monthly reports answer "how did this calendar week/month go", and nobody
+ * disputes what that means. But a "today" figure sits right next to the till,
+ * and the till's own day does not turn over at midnight — a sale at 1am is
+ * still last night's shift, still on last night's Z-report, still the
+ * previous day as far as commission and the 06:00 close are concerned. Bucket
+ * "today's revenue" at midnight and it disagrees with every other number the
+ * business already trusts about the same hour of trading.
+ *
+ * Same definition as {@link settledRevenueByDay} in every other respect —
+ * settled status, settlement-snapshot value, refunds netted off the day
+ * issued — just re-bucketed. Fetches the raw rows across the whole instant
+ * range and buckets them in JS with {@link tradingDayFor}, because the 06:00
+ * cut is DST-aware per organisation and cannot be expressed as a fixed SQL
+ * offset without silently drifting an hour for the seven months a year the
+ * clocks are forward.
+ */
+export async function settledRevenueByTradingDay(
+  orgId: string,
+  timeZone: string,
+  fromTradingDay: string,
+  toTradingDay: string,
+): Promise<Map<string, RevenueDay>> {
+  const spanStart = tradingDayBounds(fromTradingDay, timeZone).start;
+  const spanEnd = tradingDayBounds(toTradingDay, timeZone).end;
+
+  const [settledRows, refundRows] = await Promise.all([
+    db
+      .select({
+        settledAt: orders.settledAt,
+        gross: sql<string>`coalesce(${orders.settledTotal}, ${orders.total})::numeric`.as("gross"),
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.orgId, orgId),
+          eq(orders.status, SETTLED_STATUS),
+          gte(orders.settledAt, spanStart),
+          lt(orders.settledAt, spanEnd),
+        ),
+      ),
+
+    db
+      .select({
+        createdAt: refunds.createdAt,
+        refunded: sql<string>`${refunds.total}::numeric`.as("refunded"),
+      })
+      .from(refunds)
+      .where(
+        and(
+          eq(refunds.orgId, orgId),
+          gte(refunds.createdAt, spanStart),
+          lt(refunds.createdAt, spanEnd),
+        ),
+      ),
+  ]);
+
+  const byDay = new Map<string, RevenueDay>();
+  const empty = (): RevenueDay => ({ revenue: 0, txns: 0, aov: 0, refundsTotal: 0 });
+
+  for (const row of settledRows) {
+    if (!row.settledAt) continue;
+    const day = tradingDayFor(row.settledAt, timeZone);
+    const existing = byDay.get(day) ?? empty();
+    existing.revenue = round(existing.revenue + (Number(row.gross) || 0));
+    existing.txns += 1;
+    byDay.set(day, existing);
+  }
+  for (const [day, kpi] of byDay) {
+    byDay.set(day, { ...kpi, aov: kpi.txns > 0 ? round(kpi.revenue / kpi.txns) : 0 });
+  }
+
+  // Refunds netted off the trading day they were issued, exactly as
+  // settledRevenueByDay nets them off the calendar day issued — not
+  // necessarily the trading day the original sale settled on.
+  for (const row of refundRows) {
+    if (!row.createdAt) continue;
+    const day = tradingDayFor(row.createdAt, timeZone);
+    const refunded = round(Number(row.refunded) || 0);
+    if (refunded === 0) continue;
+    const existing = byDay.get(day) ?? empty();
+    existing.revenue = round(existing.revenue - refunded);
+    existing.refundsTotal = round(existing.refundsTotal + refunded);
+    byDay.set(day, existing);
   }
 
   return byDay;
