@@ -16,7 +16,10 @@ export const PlaceOrderInput = z.object({
     .optional()
     .transform((v) => (v === '' || v === null ? undefined : v)),
   lines: z.array(OrderLineInput).min(1),
-  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
+  // 'split' is a label, not a tender: the route sets it when an order has 2+
+  // distinct payment legs (each recorded separately in order_payments), never
+  // a leg's own method. See shared/schema.ts's orderPayments doc comment.
+  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
   // Must be declared even though nothing in the engine branches on it: this is
