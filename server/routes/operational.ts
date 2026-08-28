@@ -6,6 +6,7 @@ import {
   getNotifications,
   getBusinessHealth,
 } from "../services/operationalIntelligence";
+import { getControlCentreSnapshot } from "../services/controlCentre";
 import { db } from "../db";
 import { orgNotifications } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -62,6 +63,22 @@ export function registerOperationalRoutes(app: Express) {
     } catch (error) {
       console.error("Error fetching business health:", error);
       res.status(500).json({ message: "Failed to fetch business health" });
+    }
+  });
+
+  // The Control Centre's one data source — see controlCentre.ts for why this
+  // is deliberately separate from /api/business-health rather than a change
+  // to it: that route's shape is depended on by scheduled report emails and
+  // the assistant's alert summaries, and this page's redesign should not risk
+  // either.
+  app.get("/api/control-centre", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const data = await getControlCentreSnapshot(ctx.orgId);
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching Control Centre snapshot:", error);
+      res.status(500).json({ message: "Failed to fetch Control Centre snapshot" });
     }
   });
 
