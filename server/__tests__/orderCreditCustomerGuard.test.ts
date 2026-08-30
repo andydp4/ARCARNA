@@ -25,6 +25,26 @@ const withTransactionMock = vi.hoisted(() =>
     throw new Error("stop-after-guard");
   }),
 );
+const appDbMock = vi.hoisted(() => {
+  const selectWhere = vi.fn();
+  const selectFrom = vi.fn(() => ({ where: selectWhere }));
+  const select = vi.fn(() => ({ from: selectFrom }));
+  const updateReturning = vi.fn();
+  const updateWhere = vi.fn(() => ({ returning: updateReturning }));
+  const updateSet = vi.fn(() => ({ where: updateWhere }));
+  const update = vi.fn(() => ({ set: updateSet }));
+  return {
+    db: { select, update },
+    selectWhere,
+    updateReturning,
+    updateSet,
+    updateWhere,
+  };
+});
+const publishEventMock = vi.hoisted(() => vi.fn().mockResolvedValue("evt-1"));
+const publishEventTxMock = vi.hoisted(() => vi.fn().mockResolvedValue("evt-1"));
+const creditLegTotalMock = vi.hoisted(() => vi.fn());
+const openCreditForOrderMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("../auth", () => {
   const pass = ((_req, _res, next) => next()) as RequestHandler;
@@ -39,16 +59,20 @@ vi.mock("../auth", () => {
 });
 
 vi.mock("../eventBus", () => ({
-  publishEvent: vi.fn().mockResolvedValue("evt-1"),
-  publishEventTx: vi.fn().mockResolvedValue("evt-1"),
+  publishEvent: publishEventMock,
+  publishEventTx: publishEventTxMock,
 }));
 
 vi.mock("../../apps/server/src/db", () => ({
+  db: appDbMock.db,
   withTransaction: withTransactionMock,
 }));
 
 vi.mock("../../apps/server/src/db/schema", () => ({
-  orders: {},
+  orders: {
+    id: "orders.id",
+    org_id: "orders.org_id",
+  },
   order_items: {},
 }));
 
@@ -79,6 +103,10 @@ vi.mock("../middleware/requireActiveCashierShift", () => ({
 vi.mock("../services/cashierShiftEngine", () => ({
   refreshClosedCashierShiftSummary: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../services/creditLedger", () => ({
+  creditLegTotal: creditLegTotalMock,
+  openCreditForOrder: openCreditForOrderMock,
+}));
 vi.mock("../storage", () => ({ storage: {} }));
 vi.mock("../adminAudit", () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }));
 
@@ -96,6 +124,22 @@ function postHandler(): Handler {
     },
     put: () => {},
     patch: () => {},
+    delete: () => {},
+  };
+  registerOrderRoutes(app, []);
+  return chain[chain.length - 1];
+}
+
+/** Mounts the routes and returns the PATCH /api/orders/:id handler. */
+function patchHandler(): Handler {
+  const chain: any[] = [];
+  const app: any = {
+    get: () => {},
+    post: () => {},
+    put: () => {},
+    patch: (path: string, ...rest: any[]) => {
+      if (path === "/api/orders/:id") chain.push(...rest);
+    },
     delete: () => {},
   };
   registerOrderRoutes(app, []);
@@ -126,8 +170,43 @@ async function placeOrder(body: Record<string, unknown>) {
   return { status, payload: payload as { message?: string; code?: string } };
 }
 
+async function updateOrderStatus(body: Record<string, unknown>) {
+  const handler = patchHandler();
+  const req: any = {
+    params: { id: "order-1" },
+    body,
+    orgContext: { orgId: ORG_ID, locationId: null, role: "CASHIER" },
+    user: { id: "user_1" },
+    cashierShift: { cashierId: null, cashierShiftId: "shift-1" },
+  };
+  let status = 200;
+  let payload: unknown;
+  const res: any = {
+    status(code: number) {
+      status = code;
+      return this;
+    },
+    json: (p: unknown) => {
+      payload = p;
+      return p;
+    },
+  };
+  await handler(req, res);
+  return { status, payload: payload as { message?: string; code?: string } };
+}
+
 beforeEach(() => {
   withTransactionMock.mockClear();
+  appDbMock.selectWhere.mockReset();
+  appDbMock.updateReturning.mockReset();
+  appDbMock.updateSet.mockClear();
+  appDbMock.updateWhere.mockClear();
+  appDbMock.db.select.mockClear();
+  appDbMock.db.update.mockClear();
+  creditLegTotalMock.mockReset();
+  openCreditForOrderMock.mockClear();
+  publishEventMock.mockClear();
+  publishEventTxMock.mockClear();
 });
 
 describe("a sale on credit needs a customer", () => {
@@ -180,5 +259,54 @@ describe("a sale on credit needs a customer", () => {
 
     expect(withTransactionMock).toHaveBeenCalledTimes(1);
     expect(payload.code).not.toBe("CREDIT_CUSTOMER_REQUIRED");
+  });
+
+  it("refuses to complete an existing customerless credit order before changing its status", async () => {
+    appDbMock.selectWhere.mockResolvedValueOnce([
+      {
+        id: "order-1",
+        status: "pending",
+        settled_total: null,
+        payment_method: "tick",
+        total: "70.00",
+        customer_id: null,
+      },
+    ]);
+    creditLegTotalMock.mockResolvedValueOnce(70);
+
+    const { status, payload } = await updateOrderStatus({ status: "completed" });
+
+    expect(status).toBe(400);
+    expect(payload.code).toBe("CREDIT_CUSTOMER_REQUIRED");
+    expect(appDbMock.db.update).not.toHaveBeenCalled();
+    expect(openCreditForOrderMock).not.toHaveBeenCalled();
+    expect(publishEventMock).not.toHaveBeenCalled();
+  });
+
+  it("still opens credit when a customer is attached before completion", async () => {
+    appDbMock.selectWhere.mockResolvedValueOnce([
+      {
+        id: "order-1",
+        status: "pending",
+        settled_total: null,
+        payment_method: "tick",
+        total: "70.00",
+        customer_id: CUSTOMER_ID,
+        cashier_id: null,
+      },
+    ]);
+    appDbMock.updateReturning.mockResolvedValueOnce([{ id: "order-1", status: "completed" }]);
+    creditLegTotalMock.mockResolvedValueOnce(70);
+
+    const { status, payload } = await updateOrderStatus({ status: "completed" });
+
+    expect(status).toBe(200);
+    expect(payload.code).not.toBe("CREDIT_CUSTOMER_REQUIRED");
+    expect(openCreditForOrderMock).toHaveBeenCalledWith(ORG_ID, {
+      id: "order-1",
+      customerId: CUSTOMER_ID,
+      amount: 70,
+    });
+    expect(publishEventMock).toHaveBeenCalledTimes(1);
   });
 });

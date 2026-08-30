@@ -86,6 +86,13 @@ export async function openCreditForOrder(
   order: { id: string; customerId: string | null; amount: number },
 ): Promise<void> {
   if (order.amount <= 0) return;
+  if (!order.customerId) {
+    throw new CreditError(
+      "Select a customer before putting a sale on credit.",
+      400,
+      "CREDIT_CUSTOMER_REQUIRED",
+    );
+  }
   await db
     .insert(orderCredit)
     .values({
