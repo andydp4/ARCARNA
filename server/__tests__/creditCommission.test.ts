@@ -28,8 +28,10 @@ const SUFFIX = Date.now().toString(36);
 let orgId: string;
 let completerId: string;
 let inputterId: string;
+const completerUserId = `credit-completer-${SUFFIX}`;
+const inputterUserId = `credit-inputter-${SUFFIX}`;
 
-async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
+async function makeOrder(total: number, opts: { sameCashier?: boolean; codelessUsers?: boolean } = {}) {
   const [order] = await db
     .insert(orders)
     .values({
@@ -38,8 +40,10 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
       settledTotal: String(total),
       paymentMethod: "tick",
       status: "completed",
-      completedCashierId: completerId,
-      inputCashierId: opts.sameCashier ? completerId : inputterId,
+      completedCashierId: opts.codelessUsers ? null : completerId,
+      inputCashierId: opts.codelessUsers ? null : opts.sameCashier ? completerId : inputterId,
+      completedUserId: opts.codelessUsers ? completerUserId : null,
+      inputUserId: opts.codelessUsers ? (opts.sameCashier ? completerUserId : inputterUserId) : null,
     })
     .returning();
   await db.insert(orderCredit).values({
@@ -55,15 +59,26 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
 
 async function releasedFor(orderId: string) {
   const rows = await db
-    .select({ cashierId: cashierCommissionEntries.cashierId, amount: cashierCommissionEntries.amount })
+    .select({
+      cashierId: cashierCommissionEntries.cashierId,
+      userId: cashierCommissionEntries.userId,
+      amount: cashierCommissionEntries.amount,
+    })
     .from(cashierCommissionEntries)
     .where(and(eq(cashierCommissionEntries.orderId, orderId), isNull(cashierCommissionEntries.reversalOf)));
   const total = rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
   const byCashier = new Map<string, number>();
+  const byUser = new Map<string, number>();
   for (const r of rows) {
-    byCashier.set(r.cashierId, Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
+    const amount = parseFloat(String(r.amount));
+    if (r.cashierId) {
+      byCashier.set(r.cashierId, Math.round(((byCashier.get(r.cashierId) ?? 0) + amount) * 100) / 100);
+    }
+    if (r.userId) {
+      byUser.set(r.userId, Math.round(((byUser.get(r.userId) ?? 0) + amount) * 100) / 100);
+    }
   }
-  return { total: Math.round(total * 100) / 100, byCashier };
+  return { total: Math.round(total * 100) / 100, byCashier, byUser };
 }
 
 beforeAll(async () => {
@@ -165,6 +180,17 @@ describe("credit released as it is paid", () => {
     expect(released.byCashier.get(completerId)).toBe(20);
     expect(released.byCashier.size).toBe(1);
   });
+
+  it("releases commission to codeless shift users when credit is paid", async () => {
+    const orderId = await makeOrder(200, { codelessUsers: true });
+    await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(20);
+    expect(released.byUser.get(completerUserId)).toBe(18);
+    expect(released.byUser.get(inputterUserId)).toBe(2);
+    expect(released.byCashier.size).toBe(0);
+  });
 });
 
 describe("credit that is never paid", () => {
@@ -197,5 +223,27 @@ describe("credit that is never paid", () => {
     await recordCreditPayment({ orgId, orderId, amount: 20, method: "cash" });
 
     await expect(voidCredit(orgId, orderId)).rejects.toThrow(/already been paid/i);
+  });
+
+  it("serializes concurrent payments so a debt cannot be paid twice", async () => {
+    const orderId = await makeOrder(100);
+
+    const attempts = await Promise.allSettled([
+      recordCreditPayment({ orgId, orderId, amount: 100, method: "cash" }),
+      recordCreditPayment({ orgId, orderId, amount: 100, method: "cash" }),
+    ]);
+
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((result) => result.status === "rejected")).toHaveLength(1);
+
+    const [credit] = await db.select().from(orderCredit).where(eq(orderCredit.orderId, orderId));
+    expect(parseFloat(String(credit.amountOutstanding))).toBe(0);
+    expect(credit.status).toBe("settled");
+
+    const payments = await db.select().from(creditPayments).where(eq(creditPayments.orderId, orderId));
+    expect(payments).toHaveLength(1);
+    expect(parseFloat(String(payments[0].amount))).toBe(100);
+
+    expect((await releasedFor(orderId)).total).toBe(10);
   });
 });
