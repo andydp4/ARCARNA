@@ -212,13 +212,13 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
 }
 
 /**
- * What has already been released to each party for this order's credit.
+ * What has already been accrued to each party for this order and basis.
  *
  * Keyed by party rather than by cashier code: a codeless entry would otherwise
  * key as "null:completer", so a second payment against the same tick would
  * compare against the wrong running total.
  */
-async function accruedResolutionByRole(orderId: string): Promise<Map<string, number>> {
+async function accruedByRole(orderId: string, basis: "sale" | "credit_resolution"): Promise<Map<string, number>> {
   const rows = await db
     .select({
       cashierId: cashierCommissionEntries.cashierId,
@@ -230,7 +230,7 @@ async function accruedResolutionByRole(orderId: string): Promise<Map<string, num
     .where(
       and(
         eq(cashierCommissionEntries.orderId, orderId),
-        eq(cashierCommissionEntries.basis, "credit_resolution"),
+        eq(cashierCommissionEntries.basis, basis),
         isNull(cashierCommissionEntries.reversalOf),
       ),
     );
@@ -323,7 +323,7 @@ async function releaseCommission(
   newOutstanding: number,
 ): Promise<void> {
   const basis = await commissionBasisFor(orderId);
-  if (!basis || basis.fullPool <= 0 || !basis.completerCashierId) return;
+  if (!basis || basis.fullPool <= 0) return;
 
   const given = roundMoney(parseFloat(String(credit.amountGiven)));
   if (given <= 0) return;
@@ -331,7 +331,10 @@ async function releaseCommission(
   // which is what makes the released total land on the pool to the penny.
   const settledFraction = newOutstanding <= 0 ? 1 : roundMoney(given - newOutstanding) / given;
 
-  const already = await accruedResolutionByRole(orderId);
+  const [alreadyResolution, alreadySale] = await Promise.all([
+    accruedByRole(orderId, "credit_resolution"),
+    accruedByRole(orderId, "sale"),
+  ]);
   const targets: Array<{
     cashierId: string | null;
     userId: string | null;
@@ -348,6 +351,7 @@ async function releaseCommission(
   // involved.
   const completerParty = commissionParty(basis.completerUserId, completerId);
   const inputterParty = commissionParty(basis.inputterUserId, inputterId);
+  if (!completerParty) return;
   if (!inputterParty || inputterParty === completerParty) {
     targets.push({
       cashierId: completerId,
@@ -379,7 +383,14 @@ async function releaseCommission(
     .map((target) => {
       const shouldHave = roundMoney(target.full * settledFraction);
       const key = `${commissionParty(target.userId, target.cashierId)}:${target.role}`;
-      const delta = roundMoney(shouldHave - (already.get(key) ?? 0));
+      // Split credit orders can already have earned sale-basis commission on
+      // the non-credit tender legs. Credit payments only top the party up to
+      // the full order pool; they must not pay that sale amount a second time.
+      const delta = roundMoney(
+        shouldHave -
+          (alreadyResolution.get(key) ?? 0) -
+          (alreadySale.get(key) ?? 0),
+      );
       return { target, delta };
     })
     .filter(({ delta }) => delta > 0)
