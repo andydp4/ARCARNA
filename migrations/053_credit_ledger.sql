@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS credit_payments (
   -- reconcile a shift without knowing which of the two arrived.
   method varchar(50) NOT NULL DEFAULT 'cash',
   paid_on date NOT NULL,
-  recorded_by_user_id uuid,
+  recorded_by_user_id varchar(255),
   note text,
   created_at timestamp NOT NULL DEFAULT now()
 );

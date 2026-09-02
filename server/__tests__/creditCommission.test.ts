@@ -157,6 +157,27 @@ describe("credit released as it is paid", () => {
     ]);
   });
 
+  it("accepts auth-subject strings for the user who recorded the payment", async () => {
+    const orderId = await makeOrder(75);
+    await recordCreditPayment({
+      orgId,
+      orderId,
+      amount: 75,
+      method: "cash",
+      recordedByUserId: "user_credit_settlement_non_uuid",
+    });
+
+    const [payment] = await db
+      .select({ recordedByUserId: creditPayments.recordedByUserId })
+      .from(creditPayments)
+      .where(eq(creditPayments.orderId, orderId));
+    const [credit] = await db.select().from(orderCredit).where(eq(orderCredit.orderId, orderId));
+
+    expect(payment.recordedByUserId).toBe("user_credit_settlement_non_uuid");
+    expect(credit.status).toBe("settled");
+    expect(parseFloat(String(credit.amountOutstanding))).toBe(0);
+  });
+
   it("gives one cashier the whole pool when they loaded and completed it", async () => {
     const orderId = await makeOrder(200, { sameCashier: true });
     await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
