@@ -63,6 +63,19 @@ describe("split-tender orders reach the domain engine", () => {
     expect(saved[0].paymentMethod).toBe("split");
   });
 
+  it("accepts paymentMethod: 'personal_use' so the route can zero and expense staff stock", async () => {
+    const { engine, saved } = makeEngine();
+    const result = await engine.placeOrder({
+      lines: LINES,
+      paymentMethod: "personal_use",
+      orgId: "11111111-1111-1111-1111-111111111111",
+      channel: "pos",
+    });
+    expect(result.orderId).toBeTruthy();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].paymentMethod).toBe("personal_use");
+  });
+
   it("still rejects a genuinely invalid payment method", async () => {
     const { engine } = makeEngine();
     await expect(

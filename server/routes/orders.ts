@@ -312,6 +312,32 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
 
         return { result, eventId, createdOrder, items };
       });
+
+      // Most POS credit sales are created as pending and open their credit row
+      // when PATCH /api/orders/:id first settles them. API/import callers can
+      // create a completed tick order in one POST, though; that path has
+      // already settled and must not skip the credit ledger entirely.
+      const creditAmountForCompletedPost = (() => {
+        if (createdOrder?.status !== "completed") return 0;
+        if (Array.isArray(body.payments)) {
+          return roundMoney(
+            body.payments
+              .filter((leg: { method: string }) => String(leg.method).toLowerCase() === "tick")
+              .reduce((sum: number, leg: { amount: number }) => sum + Number(leg.amount), 0),
+          );
+        }
+        return String(createdOrder.payment_method ?? "").toLowerCase() === "tick"
+          ? roundMoney(parseFloat(String(createdOrder.total ?? "0")))
+          : 0;
+      })();
+      if (creditAmountForCompletedPost > 0) {
+        const { openCreditForOrder } = await import("../services/creditLedger");
+        await openCreditForOrder(ctx.orgId, {
+          id: result.orderId,
+          customerId: createdOrder.customer_id ?? null,
+          amount: creditAmountForCompletedPost,
+        });
+      }
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
       if (req.cashierShift?.replayedToClosedShift && ctx.orgId) {
