@@ -19,7 +19,7 @@ export const PlaceOrderInput = z.object({
   // 'split' is a label, not a tender: the route sets it when an order has 2+
   // distinct payment legs (each recorded separately in order_payments), never
   // a leg's own method. See shared/schema.ts's orderPayments doc comment.
-  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split']),
+  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split','personal_use']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
   // Must be declared even though nothing in the engine branches on it: this is
@@ -33,6 +33,14 @@ export const PlaceOrderInput = z.object({
   taxRatePercent: z.number().min(0).max(100).optional(),
   channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
   status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
+}).superRefine((order, ctx) => {
+  if (order.paymentMethod === 'tick' && !order.customerId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['customerId'],
+      message: 'Select a customer before putting a sale on credit.',
+    })
+  }
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
 export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })

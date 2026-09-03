@@ -191,14 +191,45 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        if (String(req.body?.paymentMethod ?? "").toLowerCase() === "tick" && !req.body?.customerId) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "Select a customer before putting a sale on credit.",
+            code: "CREDIT_CUSTOMER_REQUIRED",
+          });
+        }
         const { engine } = await import("../../apps/server/src/engine.wiring");
         const result = await engine.placeOrder({ ...req.body, orgId });
+        if (req.body?.status === "completed") {
+          const { db } = await import("../db");
+          const { orders } = await import("../../apps/server/src/db/schema");
+          const { eq, and } = await import("drizzle-orm");
+          const [createdOrder] = await db
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, result.orderId), eq(orders.org_id, orgId)))
+            .limit(1);
+          const { creditLegTotal, openCreditForOrder } = await import("../services/creditLedger");
+          const owed = await creditLegTotal(
+            result.orderId,
+            String((createdOrder as any)?.payment_method ?? req.body.paymentMethod ?? ""),
+            parseFloat(String((createdOrder as any)?.total ?? 0)),
+          );
+          if (owed > 0) {
+            await openCreditForOrder(orgId, {
+              id: result.orderId,
+              customerId: (createdOrder as any)?.customer_id ?? req.body.customerId ?? null,
+              amount: owed,
+            });
+          }
+        }
         res.status(201).json(result);
       } catch (e: any) {
         console.error("[v1] order create:", e);
-        res.status(e?.name === "ZodError" ? 400 : 500).json({
+        res.status(e?.status ?? (e?.name === "ZodError" ? 400 : 500)).json({
           error: e?.name === "ZodError" ? "validation_error" : "internal_error",
           message: e?.message,
+          code: e?.code,
         });
       }
     },
@@ -215,16 +246,60 @@ export function registerV1Routes(app: Express): void {
         const { db } = await import("../db");
         const { orders } = await import("../../apps/server/src/db/schema");
         const { eq, and } = await import("drizzle-orm");
+        const { updateOrderStatusSchema } = await import("@shared/schema");
+        const validation = updateOrderStatusSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ error: "validation_error", errors: validation.error.errors });
+        }
+        const orderCond = and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId));
+        const [currentOrder] = await db.select().from(orders).where(orderCond).limit(1);
+        if (!currentOrder) return res.status(404).json({ error: "not_found" });
+
+        const isSettling = validation.data.status === "completed" && !(currentOrder as any)?.settled_total;
+        let settlingCreditOwed = 0;
+        if (isSettling) {
+          const { creditLegTotal } = await import("../services/creditLedger");
+          settlingCreditOwed = await creditLegTotal(
+            req.params.orderId,
+            String((currentOrder as any)?.payment_method ?? ""),
+            parseFloat(String((currentOrder as any)?.total ?? 0)),
+          );
+          if (settlingCreditOwed > 0 && !(currentOrder as any)?.customer_id) {
+            return res.status(400).json({
+              error: "validation_error",
+              message: "Select a customer before putting a sale on credit.",
+              code: "CREDIT_CUSTOMER_REQUIRED",
+            });
+          }
+        }
+
         const [updated] = await db
           .update(orders)
-          .set({ status: req.body.status, updated_at: new Date() })
-          .where(and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId)))
+          .set({
+            status: validation.data.status,
+            updated_at: new Date(),
+            ...(isSettling
+              ? {
+                  settled_total: (currentOrder as any)?.total,
+                  settled_at: new Date(),
+                }
+              : {}),
+          })
+          .where(orderCond)
           .returning();
-        if (!updated) return res.status(404).json({ error: "not_found" });
+
+        if (isSettling && settlingCreditOwed > 0) {
+          const { openCreditForOrder } = await import("../services/creditLedger");
+          await openCreditForOrder(orgId, {
+            id: req.params.orderId,
+            customerId: (currentOrder as any)?.customer_id ?? null,
+            amount: settlingCreditOwed,
+          });
+        }
         res.json(updated);
-      } catch (e) {
+      } catch (e: any) {
         console.error("[v1] order patch:", e);
-        res.status(500).json({ error: "internal_error" });
+        res.status(e?.status ?? 500).json({ error: "internal_error", message: e?.message, code: e?.code });
       }
     },
   );

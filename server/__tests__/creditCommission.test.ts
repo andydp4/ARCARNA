@@ -53,6 +53,29 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
   return order.id;
 }
 
+async function makeCodelessOrder(total: number, completedUserId: string) {
+  const [order] = await db
+    .insert(orders)
+    .values({
+      orgId,
+      total: String(total),
+      settledTotal: String(total),
+      paymentMethod: "tick",
+      status: "completed",
+      completedUserId,
+    })
+    .returning();
+  await db.insert(orderCredit).values({
+    orderId: order.id,
+    orgId,
+    amountGiven: String(total),
+    amountOutstanding: String(total),
+    status: "outstanding",
+    givenOn: "2026-08-01",
+  });
+  return order.id;
+}
+
 async function releasedFor(orderId: string) {
   const rows = await db
     .select({ cashierId: cashierCommissionEntries.cashierId, amount: cashierCommissionEntries.amount })
@@ -64,6 +87,19 @@ async function releasedFor(orderId: string) {
     byCashier.set(r.cashierId, Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
   }
   return { total: Math.round(total * 100) / 100, byCashier };
+}
+
+async function releasedUsersFor(orderId: string) {
+  const rows = await db
+    .select({ userId: cashierCommissionEntries.userId, amount: cashierCommissionEntries.amount })
+    .from(cashierCommissionEntries)
+    .where(and(eq(cashierCommissionEntries.orderId, orderId), isNull(cashierCommissionEntries.reversalOf)));
+  const byUser = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.userId) continue;
+    byUser.set(row.userId, Math.round(((byUser.get(row.userId) ?? 0) + parseFloat(String(row.amount))) * 100) / 100);
+  }
+  return byUser;
 }
 
 beforeAll(async () => {
@@ -157,6 +193,24 @@ describe("credit released as it is paid", () => {
     ]);
   });
 
+  it("records the auth-subject user who took the payment", async () => {
+    const orderId = await makeOrder(50);
+    await recordCreditPayment({
+      orgId,
+      orderId,
+      amount: 50,
+      method: "cash",
+      recordedByUserId: "seed-cashier",
+    });
+
+    const [payment] = await db
+      .select({ recordedByUserId: creditPayments.recordedByUserId })
+      .from(creditPayments)
+      .where(eq(creditPayments.orderId, orderId));
+
+    expect(payment.recordedByUserId).toBe("seed-cashier");
+  });
+
   it("gives one cashier the whole pool when they loaded and completed it", async () => {
     const orderId = await makeOrder(200, { sameCashier: true });
     await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
@@ -164,6 +218,15 @@ describe("credit released as it is paid", () => {
     const released = await releasedFor(orderId);
     expect(released.byCashier.get(completerId)).toBe(20);
     expect(released.byCashier.size).toBe(1);
+  });
+
+  it("releases commission to codeless user-attributed credit sales", async () => {
+    const userId = `seed-cashier-${SUFFIX}`;
+    const orderId = await makeCodelessOrder(200, userId);
+
+    await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
+
+    expect((await releasedUsersFor(orderId)).get(userId)).toBe(20);
   });
 });
 

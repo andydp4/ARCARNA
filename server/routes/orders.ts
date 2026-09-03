@@ -281,6 +281,22 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           }, { source: 'api-orders' });
         }
 
+        if (createdOrder?.status === 'completed') {
+          const { creditLegTotal, openCreditForOrder } = await import("../services/creditLedger");
+          const owed = await creditLegTotal(
+            result.orderId,
+            String(createdOrder.payment_method ?? ""),
+            parseFloat(String(createdOrder.total ?? 0)),
+          );
+          if (owed > 0) {
+            await openCreditForOrder(ctx.orgId!, {
+              id: result.orderId,
+              customerId: createdOrder.customer_id ?? null,
+              amount: owed,
+            });
+          }
+        }
+
         const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);
         if (redeemPoints > 0) {
           if (!createdOrder?.customer_id) throw new Error("Customer required for points redemption");
@@ -585,6 +601,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       }
       
       const [currentOrder] = await db.select().from(orders).where(orderCond);
+      if (!currentOrder) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
       const previousStatus = currentOrder?.status;
 
       // SECURITY: snapshot the settlement total the FIRST time this order
@@ -628,14 +647,26 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           }
         : {};
 
+      let settlingCreditOwed = 0;
+      if (isSettling) {
+        const { creditLegTotal } = await import("../services/creditLedger");
+        settlingCreditOwed = await creditLegTotal(
+          req.params.id,
+          String((currentOrder as any)?.payment_method ?? ""),
+          parseFloat(String((currentOrder as any)?.total ?? 0)),
+        );
+        if (settlingCreditOwed > 0 && !(currentOrder as any)?.customer_id) {
+          return res.status(400).json({
+            message: "Select a customer before putting a sale on credit.",
+            code: "CREDIT_CUSTOMER_REQUIRED",
+          });
+        }
+      }
+
       const [updated] = await db.update(orders)
         .set({ status: validation.data.status, updated_at: new Date(), ...settlementPatch })
         .where(orderCond)
         .returning();
-        
-      if (!updated) {
-        return res.status(404).json({ message: 'Order not found' });
-      }
       
       // A sale on tick joins the credit list the moment the goods leave. The
       // sale is recognised now; the money, and the commission it earns, are not.
@@ -643,21 +674,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
       // £50 on tick, £50 is owed — putting the whole £100 on credit would have
       // the business chasing money it already has in the drawer.
-      if (isSettling) {
-        const { creditLegTotal } = await import("../services/creditLedger");
-        const owed = await creditLegTotal(
-          req.params.id,
-          String((currentOrder as any)?.payment_method ?? ""),
-          parseFloat(String((currentOrder as any)?.total ?? 0)),
-        );
-        if (owed > 0) {
+      if (isSettling && settlingCreditOwed > 0) {
           const { openCreditForOrder } = await import("../services/creditLedger");
           await openCreditForOrder(ctx.orgId, {
             id: req.params.id,
             customerId: (currentOrder as any)?.customer_id ?? null,
-            amount: owed,
+            amount: settlingCreditOwed,
           });
-        }
       }
 
       // Publish OrderStatusChanged event - critical, visible failure
@@ -671,9 +694,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       console.log(`[Orders] Status changed ${req.params.id}: ${previousStatus} → ${validation.data.status} (event: ${eventId})`);
       
       res.json({ ...updated, eventId });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating order:", error);
-      res.status(500).json({ message: "Failed to update order" });
+      res.status(error?.status ?? 500).json({
+        message: error?.message ?? "Failed to update order",
+        code: error?.code,
+      });
     }
   });
 

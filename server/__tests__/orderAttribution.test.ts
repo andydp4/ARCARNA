@@ -29,6 +29,8 @@ let currentOrder: Record<string, unknown>;
 let updatePatch: Record<string, unknown> | null;
 
 const publishEventMock = vi.hoisted(() => vi.fn().mockResolvedValue("evt-1"));
+const openCreditForOrderMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const creditLegTotalMock = vi.hoisted(() => vi.fn().mockResolvedValue(0));
 
 vi.mock("../auth", () => {
   const pass = ((_req, _res, next) => next()) as RequestHandler;
@@ -79,9 +81,9 @@ vi.mock("../services/cashierShiftEngine", () => ({
   refreshClosedCashierShiftSummary: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/creditLedger", () => ({
-  openCreditForOrder: vi.fn().mockResolvedValue(undefined),
+  openCreditForOrder: openCreditForOrderMock,
   // Nothing on tick in these fixtures, so no credit is opened.
-  creditLegTotal: vi.fn().mockResolvedValue(0),
+  creditLegTotal: creditLegTotalMock,
 }));
 
 vi.mock("../storage", () => ({ storage: {} }));
@@ -119,20 +121,27 @@ async function completeOrder(cashierShift?: {
     cashierShift,
   };
   let status = 200;
+  let payload: any;
   const res: any = {
     status(code: number) {
       status = code;
       return this;
     },
-    json: (payload: unknown) => payload,
+    json: (p: unknown) => {
+      payload = p;
+      return p;
+    },
   };
   await handler(req, res);
-  return { status };
+  return { status, payload };
 }
 
 beforeEach(() => {
   updatePatch = null;
   publishEventMock.mockClear();
+  openCreditForOrderMock.mockClear();
+  creditLegTotalMock.mockReset();
+  creditLegTotalMock.mockResolvedValue(0);
 });
 
 describe("order attribution — the completing cashier", () => {
@@ -188,6 +197,50 @@ describe("order attribution — the completing cashier", () => {
     expect(status).toBe(200);
     expect(updatePatch).toMatchObject({ status: "completed", settled_total: "120.00" });
     expect(updatePatch).not.toHaveProperty("completed_cashier_id");
+  });
+
+  it("refuses to complete a credit order with no customer before writing the status", async () => {
+    currentOrder = {
+      id: ORDER_ID,
+      status: "pending",
+      total: "120.00",
+      payment_method: "tick",
+      settled_total: null,
+      customer_id: null,
+      cashier_id: null,
+    };
+    creditLegTotalMock.mockResolvedValue(120);
+
+    const { status, payload } = await completeOrder(undefined);
+
+    expect(status).toBe(400);
+    expect(payload.code).toBe("CREDIT_CUSTOMER_REQUIRED");
+    expect(updatePatch).toBeNull();
+    expect(openCreditForOrderMock).not.toHaveBeenCalled();
+    expect(publishEventMock).not.toHaveBeenCalled();
+  });
+
+  it("opens credit when a customer-backed credit order first completes", async () => {
+    currentOrder = {
+      id: ORDER_ID,
+      status: "pending",
+      total: "120.00",
+      payment_method: "tick",
+      settled_total: null,
+      customer_id: "00000000-0000-4000-8000-0000000000cc",
+      cashier_id: null,
+    };
+    creditLegTotalMock.mockResolvedValue(120);
+
+    const { status } = await completeOrder(undefined);
+
+    expect(status).toBe(200);
+    expect(updatePatch).toMatchObject({ status: "completed", settled_total: "120.00" });
+    expect(openCreditForOrderMock).toHaveBeenCalledWith(ORG_ID, {
+      id: ORDER_ID,
+      customerId: "00000000-0000-4000-8000-0000000000cc",
+      amount: 120,
+    });
   });
 });
 

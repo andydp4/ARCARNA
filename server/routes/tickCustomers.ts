@@ -69,22 +69,46 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
     }
   });
 
-  app.delete("/api/tick-customers/:id", ...scoped, async (req: any, res) => {
+  app.delete(
+    "/api/tick-customers/:id",
+    ...scoped,
+    requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"),
+    async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
-      const { db } = await import('../../apps/server/src/db');
-      const { orders } = await import('../../apps/server/src/db/schema');
-      const { eq, and } = await import('drizzle-orm');
-      const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
-      await db.update(orders)
-        .set({ status: 'completed', updated_at: new Date() })
-        .where(whereCond);
+      const { db } = await import('../db');
+      const { orderCredit } = await import('@shared/schema');
+      const { eq, and, inArray } = await import('drizzle-orm');
+      const { writeOffCredit } = await import('../services/creditLedger');
+
+      const owing = await db
+        .select({ orderId: orderCredit.orderId, outstanding: orderCredit.amountOutstanding })
+        .from(orderCredit)
+        .where(and(
+          eq(orderCredit.orgId, ctx.orgId),
+          eq(orderCredit.customerId, req.params.id),
+          inArray(orderCredit.status, ['outstanding', 'partial']),
+        ));
+
+      let writtenOff = 0;
+      for (const row of owing) {
+        const amount = Number(row.outstanding);
+        await writeOffCredit(ctx.orgId, row.orderId);
+        if (Number.isFinite(amount) && amount > 0) writtenOff += amount;
+      }
       
-      res.json({ message: "Customer removed from the credit list" });
-    } catch (error) {
+      res.json({
+        message: "Customer removed from the credit list",
+        creditsWrittenOff: owing.length,
+        amountWrittenOff: Math.round(writtenOff * 100) / 100,
+      });
+    } catch (error: any) {
+      if (error?.status) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
       console.error("Error removing credit customer:", error);
       res.status(500).json({ message: "Failed to remove customer from the credit list" });
     }
