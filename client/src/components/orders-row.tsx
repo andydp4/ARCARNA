@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { describeOrderDating } from "@shared/orders/orderDate";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +37,8 @@ export interface OrdersListOrder {
   channel?: string;
   status: string;
   createdAt: string;
+  /** live | backdated | preorder — whether createdAt is when it was keyed in or the day it is for. */
+  dateKind?: string | null;
   /** Who loaded it — this is where the inputter's 10% goes. */
   inputUserName?: string | null;
   /** Already on the order and never shown: what is holding it up. */
@@ -130,6 +133,10 @@ function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, sta
   });
   const wait = describeWait(order.createdAt);
   const isOpen = (order.status || "pending") !== "completed";
+  const datedLabel = describeOrderDating(order.dateKind);
+  // A pre-order is not waiting on anyone yet; "waiting just now" for a fortnight
+  // would be noise on the exact screen that exists to show what is waiting.
+  const showWait = isOpen && order.dateKind !== "preorder";
   const eta = order.revisedEta ?? order.etaGiven ?? null;
 
   return (
@@ -156,7 +163,7 @@ function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, sta
           </span>
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {isOpen && (
+          {showWait && (
             <span className={cn("inline-flex items-center gap-1.5 font-medium", wait.tone)}>
               <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
               Waiting {wait.label}
@@ -198,6 +205,17 @@ function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, sta
             {isWebsiteOrder(order.channel) && <Globe2 className="h-3 w-3 shrink-0" />}
             {formatOrderChannel(order.channel)}
           </Badge>
+          {datedLabel && (
+            // Dated for a day other than the one it was keyed in on. Shown so
+            // that a sale entered late is never mistaken for one taken live.
+            <Badge
+              variant="outline"
+              className="max-w-full gap-1 truncate font-normal"
+              data-testid={`badge-order-dated-${order.id}`}
+            >
+              {datedLabel}
+            </Badge>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:hidden">
           <span className="text-lg font-bold tabular-nums tracking-tight text-foreground">
