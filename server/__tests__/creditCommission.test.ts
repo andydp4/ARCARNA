@@ -31,7 +31,11 @@ let inputterId: string;
 const codelessCompleterUserId = `credit-completer-${SUFFIX}`;
 const codelessInputterUserId = `credit-inputter-${SUFFIX}`;
 
-async function makeOrder(total: number, opts: { sameCashier?: boolean; codeless?: boolean } = {}) {
+async function makeOrder(
+  total: number,
+  opts: { sameCashier?: boolean; codeless?: boolean; creditAmount?: number } = {},
+) {
+  const creditAmount = opts.creditAmount ?? total;
   const [order] = await db
     .insert(orders)
     .values({
@@ -53,8 +57,8 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean; codeless?
   await db.insert(orderCredit).values({
     orderId: order.id,
     orgId,
-    amountGiven: String(total),
-    amountOutstanding: String(total),
+    amountGiven: String(creditAmount),
+    amountOutstanding: String(creditAmount),
     status: "outstanding",
     givenOn: "2026-08-01",
   });
@@ -66,6 +70,7 @@ async function releasedFor(orderId: string) {
     .select({
       cashierId: cashierCommissionEntries.cashierId,
       userId: cashierCommissionEntries.userId,
+      basis: cashierCommissionEntries.basis,
       amount: cashierCommissionEntries.amount,
     })
     .from(cashierCommissionEntries)
@@ -218,6 +223,61 @@ describe("credit released as it is paid", () => {
     expect(released.byParty.get(codelessCompleterUserId)).toBe(18);
     expect(released.byParty.get(codelessInputterUserId)).toBe(2);
     expect(released.rows.every((row) => row.cashierId === null)).toBe(true);
+  });
+
+  it("tops up split-tender credit commission without duplicating the upfront tender commission", async () => {
+    const orderId = await makeOrder(100, { creditAmount: 50 });
+    await db.insert(cashierCommissionEntries).values([
+      {
+        orgId,
+        orderId,
+        cashierId: completerId,
+        role: "completer",
+        basis: "sale",
+        orderMargin: "50.00",
+        overheadShare: "0",
+        commissionRate: "10.00",
+        sharePercent: "90",
+        amount: "4.50",
+        accruedOn: "2026-08-01",
+      },
+      {
+        orgId,
+        orderId,
+        cashierId: inputterId,
+        role: "inputter",
+        basis: "sale",
+        orderMargin: "50.00",
+        overheadShare: "0",
+        commissionRate: "10.00",
+        sharePercent: "10",
+        amount: "0.50",
+        accruedOn: "2026-08-01",
+      },
+    ]);
+
+    await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(10);
+    expect(released.byCashier.get(completerId)).toBe(9);
+    expect(released.byCashier.get(inputterId)).toBe(1);
+    const creditResolutionTotal = released.rows
+      .filter((row) => row.basis === "credit_resolution")
+      .reduce((sum, row) => Math.round((sum + parseFloat(String(row.amount))) * 100) / 100, 0);
+    expect(creditResolutionTotal).toBe(5);
+  });
+
+  it("releases only the credit leg when the customer pays before shift close accrues the upfront tender", async () => {
+    const orderId = await makeOrder(100, { creditAmount: 50 });
+
+    await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(5);
+    expect(released.byCashier.get(completerId)).toBe(4.5);
+    expect(released.byCashier.get(inputterId)).toBe(0.5);
+    expect(released.rows.every((row) => row.basis === "credit_resolution")).toBe(true);
   });
 });
 

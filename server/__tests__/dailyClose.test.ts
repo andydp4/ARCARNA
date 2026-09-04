@@ -26,10 +26,27 @@ const LONDON = "Europe/London";
 const DAY = "2026-02-10";
 let orgId: string;
 
-async function sale(total: number, method: string, at: string) {
+async function sale(
+  total: number,
+  method: string,
+  at: string,
+  opts: { status?: string; settledAt?: string | null; settledTotal?: number } = {},
+) {
+  const status = opts.status ?? "completed";
   const [order] = await db
     .insert(orders)
-    .values({ orgId, total: String(total), paymentMethod: method, status: "completed", createdAt: new Date(at) })
+    .values({
+      orgId,
+      total: String(total),
+      settledTotal: opts.settledTotal == null ? String(total) : String(opts.settledTotal),
+      paymentMethod: method,
+      status,
+      createdAt: new Date(at),
+      settledAt:
+        opts.settledAt === null
+          ? null
+          : new Date(opts.settledAt ?? at),
+    })
     .returning();
   await db
     .insert(orderPayments)
@@ -55,6 +72,11 @@ beforeAll(async () => {
   // belongs to this day, because the cut is 06:00.
   await sale(100, "cash", "2026-02-10T14:00:00Z");
   await sale(60, "card", "2026-02-11T01:00:00Z");
+  // Open work is not takings yet.
+  await sale(800, "cash", "2026-02-10T15:00:00Z", { status: "pending", settledAt: null });
+  // Created during this trading day, but settled after the 06:00 cut: this
+  // belongs to the next day's figures.
+  await sale(70, "cash", "2026-02-10T15:30:00Z", { settledAt: "2026-02-11T10:00:00Z" });
   // And one after the cut, which belongs to the next day and must not count.
   await sale(999, "cash", "2026-02-11T09:00:00Z");
 });
@@ -166,11 +188,17 @@ describe("closing a trading day", () => {
 });
 
 describe("catching up", () => {
-  it("closes the day that has just finished", async () => {
+  it("closes every missed day through the one that has just finished", async () => {
     // 06:05 on the 20th — the day that finished is the 19th.
     const results = await runDueDailyCloses(new Date("2026-02-20T06:05:00Z"));
-    const mine = results.find((r) => r.orgId === orgId);
+    const mine = results.filter((r) => r.orgId === orgId).map((r) => r.tradingDay);
 
-    expect(mine?.tradingDay).toBe("2026-02-19");
+    expect(mine).toEqual([
+      "2026-02-15",
+      "2026-02-16",
+      "2026-02-17",
+      "2026-02-18",
+      "2026-02-19",
+    ]);
   });
 });

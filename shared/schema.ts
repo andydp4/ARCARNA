@@ -914,11 +914,13 @@ export const cashierShifts = pgTable(
     // ordinary — so the backfilled historic rows collide on this key. Those
     // rows all carry a code; nothing creates a coded shift any more, and
     // resolveShiftForToday never sets one. So this covers exactly the rows the
-    // invariant was written for, and every shift made from here on.
+    // invariant was written for while it remains open. If somebody closes a
+    // same-day lazy shift and keeps selling, the next sale must open a fresh
+    // open shift rather than attaching to a closed one.
     uniqueIndex("cashier_shifts_user_trading_day_idx")
       .on(table.orgId, table.userId, table.tradingDay)
       .where(
-        sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL AND ${table.cashierId} IS NULL`,
+        sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL AND ${table.cashierId} IS NULL AND ${table.status} = 'open'`,
       ),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)

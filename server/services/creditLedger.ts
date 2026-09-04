@@ -20,6 +20,7 @@ import {
   commissionParty,
   roundMoney,
 } from "@shared/reports/orderCommission";
+import { currentTradingDay } from "@shared/time/tradingDay";
 import { resolveCommissionRate } from "./cashierShiftEngine";
 
 type CreditLedgerDb = Pick<typeof db, "select" | "insert" | "update">;
@@ -47,8 +48,13 @@ export class CreditError extends Error {
   }
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
+  const [org] = await client
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return currentTradingDay(org?.timezone ?? "Europe/London");
 }
 
 /**
@@ -97,7 +103,7 @@ export async function openCreditForOrder(
       amountGiven: String(roundMoney(order.amount)),
       amountOutstanding: String(roundMoney(order.amount)),
       status: "outstanding",
-      givenOn: today(),
+      givenOn: await tradingDayTodayForOrg(orgId),
     })
     .onConflictDoNothing();
 }
@@ -108,10 +114,11 @@ type OrderCommissionBasis = {
   completerUserId: string | null;
   inputterUserId: string | null;
   rate: number;
+  settledTotal: number;
   /** The pool the order would pay if the whole balance were settled. */
   fullPool: number;
-  completerAmount: number;
-  inputterAmount: number;
+  creditCompleterAmount: number;
+  creditInputterAmount: number;
 };
 
 /**
@@ -125,6 +132,7 @@ type OrderCommissionBasis = {
  */
 async function commissionBasisFor(
   orderId: string,
+  creditAmountGiven = 0,
   client: CreditLedgerDb = db,
 ): Promise<OrderCommissionBasis | null> {
   const [order] = await client.select().from(orders).where(eq(orders.id, orderId)).limit(1);
@@ -181,21 +189,36 @@ async function commissionBasisFor(
   const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
 
   const settled = parseFloat(String(order.settledTotal ?? order.total));
+  const commissionInput = {
+    orderId,
+    stockCost,
+    orderExpenses: expenses,
+    overheadShare: 0,
+    refunds: refundTotal,
+    completerCashierId: order.completedCashierId,
+    inputterCashierId: order.inputCashierId,
+    completerUserId: order.completedUserId,
+    inputterUserId: order.inputUserId,
+  };
   const result = buildOrderCommission(
     {
-      orderId,
+      ...commissionInput,
       paidContribution: settled,
-      stockCost,
-      orderExpenses: expenses,
-      overheadShare: 0,
-      refunds: refundTotal,
-      completerCashierId: order.completedCashierId,
-      inputterCashierId: order.inputCashierId,
-      completerUserId: order.completedUserId,
-      inputterUserId: order.inputUserId,
     },
     rate,
   );
+  const upfrontResult = buildOrderCommission(
+    {
+      ...commissionInput,
+      paidContribution: Math.max(0, settled - roundMoney(creditAmountGiven)),
+    },
+    rate,
+  );
+
+  const fullCompleter = result.entries.find((e) => e.role === "completer")?.amount ?? 0;
+  const fullInputter = result.entries.find((e) => e.role === "inputter")?.amount ?? 0;
+  const upfrontCompleter = upfrontResult.entries.find((e) => e.role === "completer")?.amount ?? 0;
+  const upfrontInputter = upfrontResult.entries.find((e) => e.role === "inputter")?.amount ?? 0;
 
   return {
     completerCashierId: order.completedCashierId,
@@ -203,14 +226,15 @@ async function commissionBasisFor(
     completerUserId: order.completedUserId,
     inputterUserId: order.inputUserId,
     rate,
+    settledTotal: settled,
     fullPool: result.pool,
-    completerAmount: result.entries.find((e) => e.role === "completer")?.amount ?? 0,
-    inputterAmount: result.entries.find((e) => e.role === "inputter")?.amount ?? 0,
+    creditCompleterAmount: Math.max(0, roundMoney(fullCompleter - upfrontCompleter)),
+    creditInputterAmount: Math.max(0, roundMoney(fullInputter - upfrontInputter)),
   };
 }
 
 /**
- * What has already been released to each party for this order's credit.
+ * What has already been released to each party from credit payments.
  *
  * Keyed by party rather than by cashier code: a codeless entry would otherwise
  * key as "null:completer", so a second payment against the same tick would
@@ -287,7 +311,7 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
       );
     }
 
-    const paidOn = input.paidOn ?? today();
+    const paidOn = input.paidOn ?? await tradingDayTodayForOrg(input.orgId, tx);
     const [payment] = await tx
       .insert(creditPayments)
       .values({
@@ -327,14 +351,18 @@ async function releaseCommission(
   newOutstanding: number,
   client: CreditLedgerDb = db,
 ): Promise<void> {
-  const basis = await commissionBasisFor(orderId, client);
-  if (!basis || basis.fullPool <= 0) return;
-
   const given = roundMoney(parseFloat(String(credit.amountGiven)));
   if (given <= 0) return;
-  // Cumulative fraction of the debt now settled. Exactly 1 on full settlement,
-  // which is what makes the released total land on the pool to the penny.
-  const settledFraction = newOutstanding <= 0 ? 1 : roundMoney(given - newOutstanding) / given;
+
+  const basis = await commissionBasisFor(orderId, given, client);
+  if (!basis || basis.fullPool <= 0) return;
+
+  // Cumulative fraction of the credit leg now paid. The non-credit portion is
+  // sale-basis commission; this payment only releases the credit component.
+  const settledFraction =
+    newOutstanding <= 0
+      ? 1
+      : Math.max(0, Math.min(1, roundMoney(given - newOutstanding) / given));
 
   const already = await accruedResolutionByRole(orderId, client);
   const targets: Array<{
@@ -359,7 +387,7 @@ async function releaseCommission(
       cashierId: completerId,
       userId: basis.completerUserId,
       role: "completer",
-      full: basis.fullPool,
+      full: roundMoney(basis.creditCompleterAmount + basis.creditInputterAmount),
       sharePercent: 100,
     });
   } else {
@@ -367,15 +395,15 @@ async function releaseCommission(
       cashierId: completerId,
       userId: basis.completerUserId,
       role: "completer",
-      full: basis.completerAmount,
+      full: basis.creditCompleterAmount,
       sharePercent: 90,
     });
-    if (basis.inputterAmount > 0) {
+    if (basis.creditInputterAmount > 0) {
       targets.push({
         cashierId: inputterId,
         userId: basis.inputterUserId,
         role: "inputter",
-        full: basis.inputterAmount,
+        full: basis.creditInputterAmount,
         sharePercent: 10,
       });
     }

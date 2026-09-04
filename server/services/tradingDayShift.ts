@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { cashierShifts, organizations, type CashierShift } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { currentTradingDay } from "@shared/time/tradingDay";
 
 /**
@@ -65,6 +65,8 @@ async function findShift(
         eq(cashierShifts.orgId, orgId),
         eq(cashierShifts.userId, userId),
         eq(cashierShifts.tradingDay, tradingDay),
+        eq(cashierShifts.status, "open"),
+        isNull(cashierShifts.cashierId),
       ),
     )
     .limit(1);
