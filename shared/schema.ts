@@ -1222,7 +1222,9 @@ export const creditPayments = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     method: varchar("method", { length: 50 }).notNull().default("cash"),
     paidOn: date("paid_on").notNull(),
-    recordedByUserId: uuid("recorded_by_user_id"),
+    // Auth subjects are Clerk/Replit/dev ids (for example `user_...` or
+    // `seed-cashier`), not UUIDs.
+    recordedByUserId: varchar("recorded_by_user_id", { length: 255 }),
     note: text("note"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

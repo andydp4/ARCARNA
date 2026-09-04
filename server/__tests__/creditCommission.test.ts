@@ -28,8 +28,10 @@ const SUFFIX = Date.now().toString(36);
 let orgId: string;
 let completerId: string;
 let inputterId: string;
+const codelessCompleterUserId = `credit-completer-${SUFFIX}`;
+const codelessInputterUserId = `credit-inputter-${SUFFIX}`;
 
-async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
+async function makeOrder(total: number, opts: { sameCashier?: boolean; codeless?: boolean } = {}) {
   const [order] = await db
     .insert(orders)
     .values({
@@ -38,8 +40,14 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
       settledTotal: String(total),
       paymentMethod: "tick",
       status: "completed",
-      completedCashierId: completerId,
-      inputCashierId: opts.sameCashier ? completerId : inputterId,
+      completedCashierId: opts.codeless ? null : completerId,
+      inputCashierId: opts.codeless ? null : opts.sameCashier ? completerId : inputterId,
+      completedUserId: opts.codeless ? codelessCompleterUserId : null,
+      inputUserId: opts.codeless
+        ? opts.sameCashier
+          ? codelessCompleterUserId
+          : codelessInputterUserId
+        : null,
     })
     .returning();
   await db.insert(orderCredit).values({
@@ -55,15 +63,32 @@ async function makeOrder(total: number, opts: { sameCashier?: boolean } = {}) {
 
 async function releasedFor(orderId: string) {
   const rows = await db
-    .select({ cashierId: cashierCommissionEntries.cashierId, amount: cashierCommissionEntries.amount })
+    .select({
+      cashierId: cashierCommissionEntries.cashierId,
+      userId: cashierCommissionEntries.userId,
+      amount: cashierCommissionEntries.amount,
+    })
     .from(cashierCommissionEntries)
     .where(and(eq(cashierCommissionEntries.orderId, orderId), isNull(cashierCommissionEntries.reversalOf)));
   const total = rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
   const byCashier = new Map<string, number>();
+  const byParty = new Map<string, number>();
   for (const r of rows) {
-    byCashier.set(r.cashierId, Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
+    if (r.cashierId) {
+      byCashier.set(
+        r.cashierId,
+        Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100,
+      );
+    }
+    const party = r.userId ?? r.cashierId;
+    if (party) {
+      byParty.set(
+        party,
+        Math.round(((byParty.get(party) ?? 0) + parseFloat(String(r.amount))) * 100) / 100,
+      );
+    }
   }
-  return { total: Math.round(total * 100) / 100, byCashier };
+  return { total: Math.round(total * 100) / 100, byCashier, byParty, rows };
 }
 
 beforeAll(async () => {
@@ -157,6 +182,24 @@ describe("credit released as it is paid", () => {
     ]);
   });
 
+  it("accepts auth-subject strings for the user who recorded the payment", async () => {
+    const orderId = await makeOrder(100);
+    await recordCreditPayment({
+      orgId,
+      orderId,
+      amount: 100,
+      method: "cash",
+      recordedByUserId: "seed-cashier",
+    });
+
+    const [row] = await db
+      .select({ recordedByUserId: creditPayments.recordedByUserId })
+      .from(creditPayments)
+      .where(eq(creditPayments.orderId, orderId));
+
+    expect(row.recordedByUserId).toBe("seed-cashier");
+  });
+
   it("gives one cashier the whole pool when they loaded and completed it", async () => {
     const orderId = await makeOrder(200, { sameCashier: true });
     await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
@@ -164,6 +207,17 @@ describe("credit released as it is paid", () => {
     const released = await releasedFor(orderId);
     expect(released.byCashier.get(completerId)).toBe(20);
     expect(released.byCashier.size).toBe(1);
+  });
+
+  it("releases credit commission to codeless user-attributed shifts", async () => {
+    const orderId = await makeOrder(200, { codeless: true });
+    await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(20);
+    expect(released.byParty.get(codelessCompleterUserId)).toBe(18);
+    expect(released.byParty.get(codelessInputterUserId)).toBe(2);
+    expect(released.rows.every((row) => row.cashierId === null)).toBe(true);
   });
 });
 
