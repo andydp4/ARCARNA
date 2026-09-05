@@ -197,6 +197,12 @@ async function encode(dir, width, args, name) {
   const pattern = join(dir, `f%0${width}d.png`);
   const px = `${args.cssWidth * args.dpr}x${args.cssHeight * args.dpr}`;
   const hd = `${Math.round(args.cssWidth * args.dpr / 2)}x${Math.round(args.cssHeight * args.dpr / 2)}`;
+  // Name by the height actually rendered, not by assuming --dpr 3. At the
+  // default that is 2160 and 1080, so the filenames are unchanged; at any
+  // other dpr the old hardcoded -4k was simply a lie about the contents.
+  const tall = args.cssHeight * args.dpr;
+  const tag = (h) => (h >= 2000 ? '-4k' : `-${h}`);
+  const full = tag(tall), half = tag(Math.round(tall / 2));
   const out = (suffix, ext) => join(args.outDir, `${name}${suffix}.${ext}`);
 
   // Tag colour explicitly. Untagged UHD gets guessed as BT.2020 by some
@@ -205,14 +211,14 @@ async function encode(dir, width, args, name) {
   const IN = ['-y', '-framerate', String(args.fps), '-i', pattern];
 
   const jobs = [
-    ['UHD  H.264', [...IN, '-c:v', 'libx264', '-preset', 'slow', '-crf', String(args.crf),
-      '-pix_fmt', 'yuv420p', '-movflags', '+faststart', ...TAG, out('-4k', 'mp4')]],
-    ['UHD  VP9', [...IN, '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1',
-      '-pix_fmt', 'yuv420p', ...TAG, out('-4k', 'webm')]],
-    ['1080 H.264', [...IN, '-vf', `scale=${hd}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow',
-      '-crf', String(args.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', ...TAG, out('-1080', 'mp4')]],
-    ['1080 VP9', [...IN, '-vf', `scale=${hd}:flags=lanczos`, '-c:v', 'libvpx-vp9', '-crf', '30',
-      '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', ...TAG, out('-1080', 'webm')]],
+    [`${full.slice(1).padEnd(4)} H.264`, [...IN, '-c:v', 'libx264', '-preset', 'slow', '-crf', String(args.crf),
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart', ...TAG, out(full, 'mp4')]],
+    [`${full.slice(1).padEnd(4)} VP9`, [...IN, '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1',
+      '-pix_fmt', 'yuv420p', ...TAG, out(full, 'webm')]],
+    [`${half.slice(1).padEnd(4)} H.264`, [...IN, '-vf', `scale=${hd}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow',
+      '-crf', String(args.crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', ...TAG, out(half, 'mp4')]],
+    [`${half.slice(1).padEnd(4)} VP9`, [...IN, '-vf', `scale=${hd}:flags=lanczos`, '-c:v', 'libvpx-vp9', '-crf', '30',
+      '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', ...TAG, out(half, 'webm')]],
   ];
   for (const [label, cmd] of jobs) {
     process.stderr.write(`  ${label} ... `);
