@@ -1,5 +1,5 @@
 import type { Express, RequestHandler } from "express";
-import { storage } from "../storage";
+import { AmbiguousStockLocationError, storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -44,6 +44,12 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
       res.json(product);
     } catch (error) {
       console.error("Error updating inventory:", error);
+      if (error instanceof AmbiguousStockLocationError) {
+        return res.status(400).json({
+          code: "LOCATION_REQUIRED",
+          message: error.message,
+        });
+      }
       res.status(500).json({ message: "Failed to update inventory" });
     }
   });

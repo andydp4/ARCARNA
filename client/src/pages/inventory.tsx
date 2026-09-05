@@ -27,6 +27,7 @@ import { SmartStockTab } from "@/components/inventory/SmartStockTab";
 import { TransfersTab } from "@/components/inventory/TransfersTab";
 import { ReplenishmentTab } from "@/components/inventory/ReplenishmentTab";
 import { ReceivingTab } from "@/components/inventory/ReceivingTab";
+import { parseNonNegativeQuantityInput } from "@shared/quantity";
 import { Sparkles, ArrowRightLeft, PackageSearch, PackageCheck } from "lucide-react";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -183,11 +184,11 @@ export default function Inventory() {
   const handleStockAdjustment = () => {
     if (!selectedProduct || !adjustmentValue) return;
     
-    const value = parseInt(adjustmentValue);
-    if (isNaN(value)) {
+    const value = parseNonNegativeQuantityInput(adjustmentValue);
+    if (value === null) {
       toast({
         title: "Invalid Value",
-        description: "Please enter a valid number",
+        description: "Please enter a valid stock quantity",
         variant: "destructive",
       });
       return;
@@ -567,7 +568,10 @@ export default function Inventory() {
           <div className="py-4">
             <Input
               type="number"
-              placeholder={adjustmentType === "add" ? "Enter adjustment amount (+ or -)" : "Enter new stock level"}
+              inputMode="decimal"
+              step="any"
+              min="0"
+              placeholder={adjustmentType === "add" ? "Enter amount to add" : "Enter new stock level"}
               value={adjustmentValue}
               onChange={(e) => setAdjustmentValue(e.target.value)}
               className="min-h-[44px]"
