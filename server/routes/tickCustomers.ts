@@ -69,32 +69,39 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
     }
   });
 
-  app.delete("/api/tick-customers/:id", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
-      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
-      if (!customer) return res.status(404).json({ message: 'Customer not found' });
-      const { db } = await import('../../apps/server/src/db');
-      const { orders } = await import('../../apps/server/src/db/schema');
-      const { eq, and, sql } = await import('drizzle-orm');
-      const whereCond = and(eq(orders.customer_id, req.params.id), eq(orders.payment_method, 'tick'), eq(orders.org_id, ctx.orgId));
-      const paidAt = new Date();
-      await db.update(orders)
-        .set({
-          status: 'completed',
-          settled_total: sql`COALESCE(${orders.settled_total}, ${orders.total})`,
-          settled_at: sql`COALESCE(${orders.settled_at}, ${paidAt})`,
-          updated_at: paidAt,
-        })
-        .where(whereCond);
-      
-      res.json({ message: "Customer removed from the credit list" });
-    } catch (error) {
-      console.error("Error removing credit customer:", error);
-      res.status(500).json({ message: "Failed to remove customer from the credit list" });
-    }
-  });
+  app.delete(
+    "/api/tick-customers/:id",
+    ...scoped,
+    requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'),
+    async (req: any, res) => {
+      try {
+        const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+        if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
+        const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+        if (!customer) return res.status(404).json({ message: 'Customer not found' });
+        const { db } = await import('../db');
+        const { orderCredit } = await import('@shared/schema');
+        const { eq, and, inArray } = await import('drizzle-orm');
+        const writtenOff = await db.update(orderCredit)
+          .set({
+            amountOutstanding: '0',
+            status: 'written_off',
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(orderCredit.orgId, ctx.orgId),
+            eq(orderCredit.customerId, req.params.id),
+            inArray(orderCredit.status, ['outstanding', 'partial']),
+          ))
+          .returning({ orderId: orderCredit.orderId });
+
+        res.json({ message: "Customer removed from the credit list", creditsWrittenOff: writtenOff.length });
+      } catch (error) {
+        console.error("Error removing credit customer:", error);
+        res.status(500).json({ message: "Failed to remove customer from the credit list" });
+      }
+    },
+  );
 
   /**
    * A part payment against a customer's account.

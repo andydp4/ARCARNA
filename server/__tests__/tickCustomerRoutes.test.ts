@@ -13,6 +13,7 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
   let orgId: string;
   let customerId: string;
   let orderId: string;
+  let role: string;
 
   beforeEach(async () => {
     ({ db } = await import("../db"));
@@ -21,6 +22,7 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
     orgId = randomUUID();
     customerId = randomUUID();
     orderId = randomUUID();
+    role = "ADMIN";
 
     await db.insert(organizations).values({ id: orgId, name: "Tick Route Test" });
     await db.insert(customers).values({ id: customerId, orgId, name: "Credit Customer" });
@@ -34,8 +36,8 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
     } as never);
 
     const scoped: RequestHandler = (req: any, _res, next) => {
-      req.orgContext = { orgId, locationId: null, role: "ADMIN" };
-      req.user = { id: "test-admin" };
+      req.orgContext = { orgId, locationId: null, role };
+      req.user = { id: "test-admin", role };
       next();
     };
 
@@ -53,13 +55,53 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
     await db.delete(organizations).where(eq(organizations.id, orgId));
   });
 
-  it("stamps settlement fields when removing a customer from the credit list", async () => {
-    await request(app).delete(`/api/tick-customers/${customerId}`).expect(200);
+  it("writes off outstanding credit when removing a customer from the credit list", async () => {
+    await db.insert(orderCredit).values({
+      orderId,
+      orgId,
+      customerId,
+      amountGiven: "125.50",
+      amountOutstanding: "125.50",
+      status: "outstanding",
+      givenOn: "2026-08-01",
+    });
+
+    const res = await request(app).delete(`/api/tick-customers/${customerId}`).expect(200);
+    expect(res.body.creditsWrittenOff).toBe(1);
 
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
-    expect(order.status).toBe("completed");
-    expect(order.settledTotal).toBe("125.50");
-    expect(order.settledAt).toBeInstanceOf(Date);
+    expect(order.status).toBe("pending");
+    expect(order.settledTotal).toBeNull();
+    expect(order.settledAt).toBeNull();
+
+    const [credit] = await db.select().from(orderCredit).where(eq(orderCredit.orderId, orderId));
+    expect(credit.status).toBe("written_off");
+    expect(parseFloat(String(credit.amountOutstanding))).toBe(0);
+
+    const payments = await db.select().from(creditPayments).where(eq(creditPayments.orderId, orderId));
+    expect(payments).toHaveLength(0);
+
+    const list = await request(app).get("/api/tick-customers").expect(200);
+    expect(list.body).toEqual([]);
+  });
+
+  it("does not let cashiers write off credit by removing a customer", async () => {
+    await db.insert(orderCredit).values({
+      orderId,
+      orgId,
+      customerId,
+      amountGiven: "125.50",
+      amountOutstanding: "125.50",
+      status: "outstanding",
+      givenOn: "2026-08-01",
+    });
+    role = "CASHIER";
+
+    await request(app).delete(`/api/tick-customers/${customerId}`).expect(403);
+
+    const [credit] = await db.select().from(orderCredit).where(eq(orderCredit.orderId, orderId));
+    expect(credit.status).toBe("outstanding");
+    expect(parseFloat(String(credit.amountOutstanding))).toBe(125.5);
   });
 
   it("settles the customer's outstanding credit through the ledger when marking debt paid", async () => {
