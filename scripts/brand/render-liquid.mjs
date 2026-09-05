@@ -40,14 +40,19 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
 const SOURCE = resolve(HERE, 'arcarna-liquid.html');
 
+// Each `to` is the cut's own length from CUTS in arcarna-liquid.html and
+// has to stay in step with it. The two looping cuts are 24000 — two turns
+// of LIQUID_PERIOD — so the last frame joins the first with no crossfade;
+// shortening either one to a nicer number puts a jump in the seam.
+// Posters land on the beat the clip is about, not on its final frame.
 const CLIPS = {
-  mark:     { mode: 'mark',     from: 0, to: 4400,  poster: 3600 },
-  endcard:  { mode: 'endcard',  from: 0, to: 8600,  poster: 7400 },
+  mark:     { mode: 'mark',     from: 0, to: 24000, poster: 16800 },
+  endcard:  { mode: 'endcard',  from: 0, to: 21000, poster: 20600 },
   backdrop: { mode: 'backdrop', from: 0, to: 12000, poster: 6000 },
-  // The mark alone, no wordmark. Loops.
-  marksolo: { mode: 'markSolo', from: 0, to: 5000,  poster: 4200 },
-  // The mark, a five second hold, then by viger cloud.
-  cloud:    { mode: 'cloud',    from: 0, to: 8600,  poster: 8500 },
+  // The a alone: rises, drains, goes white, returns. Loops.
+  marksolo: { mode: 'markSolo', from: 0, to: 24000, poster: 14600 },
+  // The a, a five second hold, then by viger cloud.
+  cloud:    { mode: 'cloud',    from: 0, to: 21000, poster: 20500 },
 };
 
 function findChromium() {
