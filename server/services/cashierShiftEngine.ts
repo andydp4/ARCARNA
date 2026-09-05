@@ -211,32 +211,33 @@ function isTickPayment(method: string): boolean {
 }
 
 /**
- * Paid sales received for a set of orders: gross total, less whatever is still
- * outstanding on credit.
+ * Paid sales received for a set of orders: gross total, less the part of any
+ * sale that was put on credit.
  *
- * The outstanding figure comes from the order's credit record, never from its
- * status. A credit sale is completed the day the goods leave and unpaid until
- * the customer settles, so reading status here would count every tick sale as
- * money received the moment it completed.
+ * The credit-leg figure comes from the order's credit record, never from its
+ * status. Credit-resolution commission is released when account payments land,
+ * so shift-close sale commission only covers the non-credit tender portion.
  */
+type CreditAmounts = { amountGiven: number; outstanding: number };
+
 function paidSalesReceivedFor(
   rows: { id?: string; total: string; paymentMethod: string; status: string | null }[],
-  outstandingByOrder?: Map<string, number>,
+  creditByOrder?: Map<string, CreditAmounts>,
 ): number {
   let gross = 0;
-  let unpaid = 0;
+  let deferredCredit = 0;
   for (const row of rows) {
     const total = parseFloat(String(row.total));
     gross += total;
-    const outstanding = row.id !== undefined ? outstandingByOrder?.get(row.id) : undefined;
-    if (outstanding !== undefined) {
-      unpaid += Math.max(0, outstanding);
+    const credit = row.id !== undefined ? creditByOrder?.get(row.id) : undefined;
+    if (credit) {
+      deferredCredit += Math.max(0, credit.amountGiven);
     } else if (isTickPayment(row.paymentMethod) && row.status !== "completed") {
       // Legacy fallback for orders with no credit record (pre-migration 053).
-      unpaid += total;
+      deferredCredit += total;
     }
   }
-  return gross - unpaid;
+  return gross - deferredCredit;
 }
 
 /** The tender legs for each order — which bucket its money actually fell into. */
@@ -261,15 +262,24 @@ async function loadTenderLegs(
   return byOrder;
 }
 
-/** What is still owed on each of these orders, from their credit records. */
-async function loadOutstandingCredit(orderIds: string[]): Promise<Map<string, number>> {
-  const byOrder = new Map<string, number>();
+/** The credit leg and remaining balance on each of these orders. */
+async function loadCreditAmounts(orderIds: string[]): Promise<Map<string, CreditAmounts>> {
+  const byOrder = new Map<string, CreditAmounts>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db
-    .select({ orderId: orderCredit.orderId, outstanding: orderCredit.amountOutstanding })
+    .select({
+      orderId: orderCredit.orderId,
+      amountGiven: orderCredit.amountGiven,
+      outstanding: orderCredit.amountOutstanding,
+    })
     .from(orderCredit)
     .where(inArray(orderCredit.orderId, orderIds));
-  for (const row of rows) byOrder.set(row.orderId, parseFloat(String(row.outstanding)));
+  for (const row of rows) {
+    byOrder.set(row.orderId, {
+      amountGiven: parseFloat(String(row.amountGiven)),
+      outstanding: parseFloat(String(row.outstanding)),
+    });
+  }
   return byOrder;
 }
 
@@ -281,16 +291,22 @@ async function orgPaidSalesReceivedForDay(orgId: string, dayStart: Date, dayEnd:
       total: orders.total,
       paymentMethod: orders.paymentMethod,
       status: orders.status,
+      amountGiven: orderCredit.amountGiven,
       outstanding: orderCredit.amountOutstanding,
     })
     .from(orders)
     .leftJoin(orderCredit, eq(orderCredit.orderId, orders.id))
     .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, dayStart), lt(orders.createdAt, dayEnd)));
-  const outstanding = new Map<string, number>();
+  const creditByOrder = new Map<string, CreditAmounts>();
   for (const row of rows) {
-    if (row.outstanding != null) outstanding.set(row.id, parseFloat(String(row.outstanding)));
+    if (row.amountGiven != null) {
+      creditByOrder.set(row.id, {
+        amountGiven: parseFloat(String(row.amountGiven)),
+        outstanding: parseFloat(String(row.outstanding ?? 0)),
+      });
+    }
   }
-  return paidSalesReceivedFor(rows, outstanding);
+  return paidSalesReceivedFor(rows, creditByOrder);
 }
 
 async function dailyGlobalExpensesForDay(orgId: string, dayStart: Date, dayEnd: Date): Promise<number> {
@@ -341,7 +357,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   const costsByOrder = await loadOrdersWithCosts(orderIds);
   const expensesByOrder = await loadOrderExpensesByOrder(orderIds);
   const refundsByOrder = await loadRefundsByOrder(orderIds);
-  const outstandingByOrder = await loadOutstandingCredit(orderIds);
+  const creditByOrder = await loadCreditAmounts(orderIds);
   const legsByOrder = await loadTenderLegs(orderIds);
   const orderExpensesTotal = [...expensesByOrder.values()].reduce((sum, v) => sum + v, 0);
   const refundRows = [...refundsByOrder.values()].map((total) => ({ total }));
@@ -352,7 +368,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     paymentMethod: o.paymentMethod,
     status: o.status ?? "pending",
     createdAt: (o.createdAt ?? new Date()).toISOString(),
-    creditOutstanding: outstandingByOrder.get(o.id),
+    creditOutstanding: creditByOrder.get(o.id)?.outstanding,
     payments: legsByOrder.get(o.id),
     items: (costsByOrder.get(o.id) ?? []).map((i) => ({ quantity: i.quantity, costPrice: i.costPrice })),
   }));
@@ -375,7 +391,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     const { start, end } = tradingDayBounds(dayKey, timeZone);
     const shiftPaidForDay = paidSalesReceivedFor(
       orderRows.filter((o) => o.createdAt && tradingDayFor(o.createdAt, timeZone) === dayKey),
-      outstandingByOrder,
+      creditByOrder,
     );
     const [orgPaidForDay, dailyExpenses] = await Promise.all([
       orgPaidSalesReceivedForDay(orgId, start, end),
@@ -402,14 +418,14 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   );
 
   // One input row per order for the commission ledger. `paidContribution` is
-  // what actually came in: nothing for a credit sale still outstanding, which
-  // is what defers its commission to the day it is paid.
+  // the non-credit tender portion: credit-leg commission belongs to the account
+  // payment lifecycle, even if the customer settles before this shift closes.
   const commissionOrders: ShiftCommissionOrder[] = orderRows.map((row) => {
     const total = parseFloat(String(row.total));
-    const outstanding = outstandingByOrder.get(row.id);
-    const stillOwed =
-      outstanding !== undefined
-        ? Math.max(0, outstanding)
+    const credit = creditByOrder.get(row.id);
+    const deferredCredit =
+      credit !== undefined
+        ? Math.max(0, credit.amountGiven)
         : isTickPayment(row.paymentMethod) && row.status !== "completed"
           ? total
           : 0;
@@ -420,7 +436,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     );
     return {
       orderId: row.id,
-      paidContribution: Math.max(0, total - stillOwed),
+      paidContribution: Math.max(0, total - deferredCredit),
       stockCost,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,
       overheadShare: 0, // filled in by the ledger, which apportions per day

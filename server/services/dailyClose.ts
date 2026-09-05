@@ -12,7 +12,7 @@ import {
   shifts,
 } from "@shared/schema";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
-import { lastClosedTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
+import { lastClosedTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { closeCashierShift } from "./cashierShiftEngine";
 import { isPersonalUse } from "@shared/reports/cashierShiftReport";
 
@@ -38,6 +38,8 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+type DailyCloseDb = Pick<typeof db, "select" | "insert" | "update">;
+
 export type DailyCloseResult = {
   orgId: string;
   tradingDay: string;
@@ -49,84 +51,96 @@ export type DailyCloseResult = {
 /**
  * Closes one organisation's trading day. Safe to call repeatedly.
  *
- * The `daily_close_runs` insert is the lock: whoever writes the row does the
- * work, and everyone else sees it and stops. That is what stops a server
- * restarted at 06:00 from totalling the day twice and sending the Signals
- * twice.
+ * A transaction-scoped advisory lock serializes the close for this org/day.
+ * The run row is written at the end, after the totals and Signals have been
+ * prepared, so a transient failure can be retried instead of leaving a
+ * permanent zero-total "success" row behind.
  */
 export async function closeTradingDay(
   orgId: string,
   tradingDay: string,
   timeZone: string,
 ): Promise<DailyCloseResult> {
-  const [claim] = await db
-    .insert(dailyCloseRuns)
-    .values({ orgId, tradingDay })
-    .onConflictDoNothing()
-    .returning({ id: dailyCloseRuns.id });
-
-  if (!claim) {
-    return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0 };
-  }
-
   const { start, end } = tradingDayBounds(tradingDay, timeZone);
 
-  // Close the cashier shifts that traded this day. These are logical shifts —
-  // no cash count is involved — so they can be closed without a human.
-  const openShifts = await db
-    .select({ id: cashierShifts.id })
-    .from(cashierShifts)
-    .where(
-      and(
-        eq(cashierShifts.orgId, orgId),
-        eq(cashierShifts.tradingDay, tradingDay),
-        eq(cashierShifts.status, "open"),
-      ),
-    );
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`daily-close:${orgId}:${tradingDay}`}))`);
 
-  let shiftsClosed = 0;
-  for (const shift of openShifts) {
-    try {
-      await closeCashierShift(orgId, shift.id, {
-        closedByUserId: null,
-        closeReason: "inactivity_auto_close",
-      });
-      shiftsClosed += 1;
-    } catch (error) {
-      // One shift failing must not abandon the rest of the day.
-      console.error("[DailyClose] Could not close cashier shift", shift.id, error);
+    const [existing] = await tx
+      .select({ id: dailyCloseRuns.id })
+      .from(dailyCloseRuns)
+      .where(and(eq(dailyCloseRuns.orgId, orgId), eq(dailyCloseRuns.tradingDay, tradingDay)))
+      .for("update")
+      .limit(1);
+
+    if (existing) {
+      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0 };
     }
-  }
 
-  const totals = await totalsForDay(orgId, start, end, tradingDay);
+    // Close the cashier shifts that traded this day. These are logical shifts —
+    // no cash count is involved — so they can be closed without a human.
+    const openShifts = await tx
+      .select({ id: cashierShifts.id })
+      .from(cashierShifts)
+      .where(
+        and(
+          eq(cashierShifts.orgId, orgId),
+          eq(cashierShifts.tradingDay, tradingDay),
+          eq(cashierShifts.status, "open"),
+        ),
+      );
 
-  // Drawers still open are counted and named, never closed. A cash drawer
-  // closed without being counted can never be reconciled afterwards, and
-  // somebody may well be cashing up at five past six.
-  const [{ count: uncountedDrawers }] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(shifts)
-    .where(and(eq(shifts.orgId, orgId), eq(shifts.status, "open"), lt(shifts.openedAt, end)));
+    let shiftsClosed = 0;
+    for (const shift of openShifts) {
+      try {
+        await closeCashierShift(orgId, shift.id, {
+          closedByUserId: null,
+          closeReason: "inactivity_auto_close",
+        });
+        shiftsClosed += 1;
+      } catch (error) {
+        // One shift failing must not abandon the rest of the day.
+        console.error("[DailyClose] Could not close cashier shift", shift.id, error);
+      }
+    }
 
-  await db
-    .update(dailyCloseRuns)
-    .set({
-      shiftsClosed,
-      uncountedDrawers,
-      orderCount: totals.orderCount,
-      grossSales: String(totals.grossSales),
-      cashSales: String(totals.cashSales),
-      cardSales: String(totals.cardSales),
-      creditGiven: String(totals.creditGiven),
-      creditResolved: String(totals.creditResolved),
-      personalUseCost: String(totals.personalUseCost),
-      commissionAccrued: String(totals.commissionAccrued),
-    })
-    .where(eq(dailyCloseRuns.id, claim.id));
+    const totals = await totalsForDay(orgId, start, end, tradingDay, tx);
 
-  await raiseSignals(orgId, tradingDay, { ...totals, shiftsClosed, uncountedDrawers });
+    // Drawers still open are counted and named, never closed. A cash drawer
+    // closed without being counted can never be reconciled afterwards, and
+    // somebody may well be cashing up at five past six.
+    const [{ count: uncountedDrawers }] = await tx
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(shifts)
+      .where(and(eq(shifts.orgId, orgId), eq(shifts.status, "open"), lt(shifts.openedAt, end)));
 
-  return { orgId, tradingDay, alreadyRun: false, shiftsClosed, uncountedDrawers };
+    const [run] = await tx
+      .insert(dailyCloseRuns)
+      .values({
+        orgId,
+        tradingDay,
+        shiftsClosed,
+        uncountedDrawers,
+        orderCount: totals.orderCount,
+        grossSales: String(totals.grossSales),
+        cashSales: String(totals.cashSales),
+        cardSales: String(totals.cardSales),
+        creditGiven: String(totals.creditGiven),
+        creditResolved: String(totals.creditResolved),
+        personalUseCost: String(totals.personalUseCost),
+        commissionAccrued: String(totals.commissionAccrued),
+      })
+      .onConflictDoNothing()
+      .returning({ id: dailyCloseRuns.id });
+
+    if (!run) {
+      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0 };
+    }
+
+    await raiseSignals(orgId, tradingDay, { ...totals, shiftsClosed, uncountedDrawers }, tx);
+
+    return { orgId, tradingDay, alreadyRun: false, shiftsClosed, uncountedDrawers };
+  });
 }
 
 type DayTotals = {
@@ -145,20 +159,35 @@ async function totalsForDay(
   start: Date,
   end: Date,
   tradingDay: string,
+  client: DailyCloseDb = db,
 ): Promise<DayTotals> {
-  const dayOrders = await db
-    .select({ id: orders.id, total: orders.total, paymentMethod: orders.paymentMethod })
+  const dayOrders = await client
+    .select({
+      id: orders.id,
+      total: orders.total,
+      settledTotal: orders.settledTotal,
+      paymentMethod: orders.paymentMethod,
+    })
     .from(orders)
-    .where(and(eq(orders.orgId, orgId), gte(orders.createdAt, start), lt(orders.createdAt, end)));
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        eq(orders.status, "completed"),
+        gte(orders.settledAt, start),
+        lt(orders.settledAt, end),
+      ),
+    );
 
   // Personal use is not a sale and never counts as one.
   const sales = dayOrders.filter((o) => !isPersonalUse(o.paymentMethod));
-  const grossSales = round(sales.reduce((sum, o) => sum + parseFloat(String(o.total)), 0));
+  const grossSales = round(
+    sales.reduce((sum, o) => sum + parseFloat(String(o.settledTotal ?? o.total)), 0),
+  );
   const orderIds = dayOrders.map((o) => o.id);
 
   // Cash and card come from the tender legs, so a split sale lands in both.
   const legs = orderIds.length
-    ? await db
+    ? await client
         .select({ method: orderPayments.method, amount: orderPayments.amount })
         .from(orderPayments)
         .where(inArray(orderPayments.orderId, orderIds))
@@ -170,17 +199,17 @@ async function totalsForDay(
         .reduce((sum, l) => sum + parseFloat(String(l.amount)), 0),
     );
 
-  const creditGivenRows = await db
+  const creditGivenRows = await client
     .select({ amount: orderCredit.amountGiven })
     .from(orderCredit)
     .where(and(eq(orderCredit.orgId, orgId), eq(orderCredit.givenOn, tradingDay)));
 
-  const creditPaidRows = await db
+  const creditPaidRows = await client
     .select({ amount: creditPayments.amount })
     .from(creditPayments)
     .where(and(eq(creditPayments.orgId, orgId), eq(creditPayments.paidOn, tradingDay)));
 
-  const commissionRows = await db
+  const commissionRows = await client
     .select({ amount: cashierCommissionEntries.amount })
     .from(cashierCommissionEntries)
     .where(
@@ -223,6 +252,7 @@ async function raiseSignals(
   orgId: string,
   tradingDay: string,
   totals: DayTotals & { shiftsClosed: number; uncountedDrawers: number },
+  client: DailyCloseDb = db,
 ): Promise<void> {
   if (totals.orderCount === 0 && totals.creditResolved === 0 && totals.uncountedDrawers === 0) {
     return;
@@ -237,7 +267,7 @@ async function raiseSignals(
   if (totals.personalUseCost > 0) lines.push(`Personal use ${money(totals.personalUseCost)}.`);
   lines.push(`Commission earned ${money(totals.commissionAccrued)}.`);
 
-  await db.insert(orgNotifications).values({
+  await client.insert(orgNotifications).values({
     orgId,
     title: `Trading day closed — ${tradingDay}`,
     message: lines.join(" "),
@@ -247,7 +277,7 @@ async function raiseSignals(
   });
 
   if (totals.uncountedDrawers > 0) {
-    await db.insert(orgNotifications).values({
+    await client.insert(orgNotifications).values({
       orgId,
       title: `${totals.uncountedDrawers} drawer${totals.uncountedDrawers === 1 ? "" : "s"} not counted`,
       // Deliberately not closed for them: a drawer closed without a count can
@@ -278,13 +308,33 @@ export async function runDueDailyCloses(now: Date = new Date()): Promise<DailyCl
   const results: DailyCloseResult[] = [];
   for (const org of orgs) {
     const timeZone = org.timezone ?? "Europe/London";
-    const day = lastClosedTradingDay(timeZone, now);
-    try {
-      const result = await closeTradingDay(org.id, day, timeZone);
-      if (!result.alreadyRun) results.push(result);
-    } catch (error) {
-      console.error("[DailyClose] Failed for org", org.id, day, error);
+    const targetDay = lastClosedTradingDay(timeZone, now);
+    const days = await dueTradingDays(org.id, targetDay);
+    for (const day of days) {
+      try {
+        const result = await closeTradingDay(org.id, day, timeZone);
+        if (!result.alreadyRun) results.push(result);
+      } catch (error) {
+        console.error("[DailyClose] Failed for org", org.id, day, error);
+      }
     }
   }
   return results;
+}
+
+async function dueTradingDays(orgId: string, targetDay: string): Promise<string[]> {
+  const [latest] = await db
+    .select({ day: sql<string | null>`MAX(${dailyCloseRuns.tradingDay})::text` })
+    .from(dailyCloseRuns)
+    .where(eq(dailyCloseRuns.orgId, orgId));
+
+  const lastClosed = latest?.day ?? null;
+  if (!lastClosed) return [targetDay];
+  if (lastClosed >= targetDay) return [];
+
+  const days: string[] = [];
+  for (let day = shiftIsoDate(lastClosed, 1); day <= targetDay; day = shiftIsoDate(day, 1)) {
+    days.push(day);
+  }
+  return days;
 }

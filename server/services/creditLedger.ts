@@ -20,7 +20,10 @@ import {
   commissionParty,
   roundMoney,
 } from "@shared/reports/orderCommission";
+import { currentTradingDay } from "@shared/time/tradingDay";
 import { resolveCommissionRate } from "./cashierShiftEngine";
+
+type CreditLedgerDb = Pick<typeof db, "select" | "insert" | "update">;
 
 /**
  * The credit (tick) lifecycle.
@@ -45,8 +48,13 @@ export class CreditError extends Error {
   }
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
+  const [org] = await client
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return currentTradingDay(org?.timezone ?? "Europe/London");
 }
 
 /**
@@ -102,7 +110,7 @@ export async function openCreditForOrder(
       amountGiven: String(roundMoney(order.amount)),
       amountOutstanding: String(roundMoney(order.amount)),
       status: "outstanding",
-      givenOn: today(),
+      givenOn: await tradingDayTodayForOrg(orgId),
     })
     .onConflictDoNothing();
 }
@@ -113,10 +121,11 @@ type OrderCommissionBasis = {
   completerUserId: string | null;
   inputterUserId: string | null;
   rate: number;
+  settledTotal: number;
   /** The pool the order would pay if the whole balance were settled. */
   fullPool: number;
-  completerAmount: number;
-  inputterAmount: number;
+  creditCompleterAmount: number;
+  creditInputterAmount: number;
 };
 
 /**
@@ -128,11 +137,15 @@ type OrderCommissionBasis = {
  * money in that day, and this one brought none, so charging it a share now
  * would count the same overheads twice.
  */
-async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis | null> {
-  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+async function commissionBasisFor(
+  orderId: string,
+  creditAmountGiven = 0,
+  client: CreditLedgerDb = db,
+): Promise<OrderCommissionBasis | null> {
+  const [order] = await client.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) return null;
 
-  const [org] = await db
+  const [org] = await client
     .select({ defaultRate: organizations.defaultCashierCommissionRate })
     .from(organizations)
     .where(eq(organizations.id, order.orgId))
@@ -141,14 +154,14 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
   // Most specific rate wins: the completing user's own, then the cashier code's
   // for orders taken before users were attributed, then the org default.
   const [cashier] = order.completedCashierId
-    ? await db
+    ? await client
         .select({ rate: cashierProfiles.defaultCommissionRate })
         .from(cashierProfiles)
         .where(eq(cashierProfiles.id, order.completedCashierId))
         .limit(1)
     : [undefined];
   const [completer] = order.completedUserId
-    ? await db
+    ? await client
         .select({ rate: users.commissionRate })
         .from(users)
         .where(eq(users.id, order.completedUserId))
@@ -160,7 +173,7 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
     orgRate: org?.defaultRate,
   });
 
-  const itemRows = await db
+  const itemRows = await client
     .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
     .from(orderItems)
     .leftJoin(products, eq(orderItems.productId, products.id))
@@ -170,34 +183,49 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
     0,
   );
 
-  const expenseRows = await db
+  const expenseRows = await client
     .select({ amount: orderExpensesTable.amount })
     .from(orderExpensesTable)
     .where(eq(orderExpensesTable.orderId, orderId));
   const expenses = expenseRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
 
-  const refundRows = await db
+  const refundRows = await client
     .select({ total: refunds.total })
     .from(refunds)
     .where(eq(refunds.orderId, orderId));
   const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
 
   const settled = parseFloat(String(order.settledTotal ?? order.total));
+  const commissionInput = {
+    orderId,
+    stockCost,
+    orderExpenses: expenses,
+    overheadShare: 0,
+    refunds: refundTotal,
+    completerCashierId: order.completedCashierId,
+    inputterCashierId: order.inputCashierId,
+    completerUserId: order.completedUserId,
+    inputterUserId: order.inputUserId,
+  };
   const result = buildOrderCommission(
     {
-      orderId,
+      ...commissionInput,
       paidContribution: settled,
-      stockCost,
-      orderExpenses: expenses,
-      overheadShare: 0,
-      refunds: refundTotal,
-      completerCashierId: order.completedCashierId,
-      inputterCashierId: order.inputCashierId,
-      completerUserId: order.completedUserId,
-      inputterUserId: order.inputUserId,
     },
     rate,
   );
+  const upfrontResult = buildOrderCommission(
+    {
+      ...commissionInput,
+      paidContribution: Math.max(0, settled - roundMoney(creditAmountGiven)),
+    },
+    rate,
+  );
+
+  const fullCompleter = result.entries.find((e) => e.role === "completer")?.amount ?? 0;
+  const fullInputter = result.entries.find((e) => e.role === "inputter")?.amount ?? 0;
+  const upfrontCompleter = upfrontResult.entries.find((e) => e.role === "completer")?.amount ?? 0;
+  const upfrontInputter = upfrontResult.entries.find((e) => e.role === "inputter")?.amount ?? 0;
 
   return {
     completerCashierId: order.completedCashierId,
@@ -205,21 +233,25 @@ async function commissionBasisFor(orderId: string): Promise<OrderCommissionBasis
     completerUserId: order.completedUserId,
     inputterUserId: order.inputUserId,
     rate,
+    settledTotal: settled,
     fullPool: result.pool,
-    completerAmount: result.entries.find((e) => e.role === "completer")?.amount ?? 0,
-    inputterAmount: result.entries.find((e) => e.role === "inputter")?.amount ?? 0,
+    creditCompleterAmount: Math.max(0, roundMoney(fullCompleter - upfrontCompleter)),
+    creditInputterAmount: Math.max(0, roundMoney(fullInputter - upfrontInputter)),
   };
 }
 
 /**
- * What has already been accrued to each party for this order and basis.
+ * What has already been released to each party from credit payments.
  *
  * Keyed by party rather than by cashier code: a codeless entry would otherwise
  * key as "null:completer", so a second payment against the same tick would
  * compare against the wrong running total.
  */
-async function accruedByRole(orderId: string, basis: "sale" | "credit_resolution"): Promise<Map<string, number>> {
-  const rows = await db
+async function accruedResolutionByRole(
+  orderId: string,
+  client: CreditLedgerDb = db,
+): Promise<Map<string, number>> {
+  const rows = await client
     .select({
       cashierId: cashierCommissionEntries.cashierId,
       userId: cashierCommissionEntries.userId,
@@ -230,7 +262,7 @@ async function accruedByRole(orderId: string, basis: "sale" | "credit_resolution
     .where(
       and(
         eq(cashierCommissionEntries.orderId, orderId),
-        eq(cashierCommissionEntries.basis, basis),
+        eq(cashierCommissionEntries.basis, "credit_resolution"),
         isNull(cashierCommissionEntries.reversalOf),
       ),
     );
@@ -265,53 +297,56 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
   const amount = roundMoney(input.amount);
   if (!(amount > 0)) throw new CreditError("A payment must be more than zero", 400, "CREDIT_AMOUNT_INVALID");
 
-  const [credit] = await db
-    .select()
-    .from(orderCredit)
-    .where(and(eq(orderCredit.orderId, input.orderId), eq(orderCredit.orgId, input.orgId)))
-    .limit(1);
-  if (!credit) throw new CreditError("No credit is recorded against this order", 404, "CREDIT_NOT_FOUND");
-  if (credit.status === "voided" || credit.status === "written_off") {
-    throw new CreditError(`This credit is ${credit.status.replace("_", " ")}`, 409, "CREDIT_CLOSED");
-  }
+  return db.transaction(async (tx) => {
+    const [credit] = await tx
+      .select()
+      .from(orderCredit)
+      .where(and(eq(orderCredit.orderId, input.orderId), eq(orderCredit.orgId, input.orgId)))
+      .for("update")
+      .limit(1);
+    if (!credit) throw new CreditError("No credit is recorded against this order", 404, "CREDIT_NOT_FOUND");
+    if (credit.status === "voided" || credit.status === "written_off") {
+      throw new CreditError(`This credit is ${credit.status.replace("_", " ")}`, 409, "CREDIT_CLOSED");
+    }
 
-  const outstanding = roundMoney(parseFloat(String(credit.amountOutstanding)));
-  if (amount > outstanding) {
-    throw new CreditError(
-      `That is more than is outstanding. £${outstanding.toFixed(2)} is left to pay.`,
-      400,
-      "CREDIT_OVERPAYMENT",
-    );
-  }
+    const outstanding = roundMoney(parseFloat(String(credit.amountOutstanding)));
+    if (amount > outstanding) {
+      throw new CreditError(
+        `That is more than is outstanding. £${outstanding.toFixed(2)} is left to pay.`,
+        400,
+        "CREDIT_OVERPAYMENT",
+      );
+    }
 
-  const paidOn = input.paidOn ?? today();
-  const [payment] = await db
-    .insert(creditPayments)
-    .values({
-      orgId: input.orgId,
-      orderId: input.orderId,
-      amount: String(amount),
-      method: input.method,
-      paidOn,
-      recordedByUserId: input.recordedByUserId ?? null,
-      note: input.note ?? null,
-    })
-    .returning();
+    const paidOn = input.paidOn ?? await tradingDayTodayForOrg(input.orgId, tx);
+    const [payment] = await tx
+      .insert(creditPayments)
+      .values({
+        orgId: input.orgId,
+        orderId: input.orderId,
+        amount: String(amount),
+        method: input.method,
+        paidOn,
+        recordedByUserId: input.recordedByUserId ?? null,
+        note: input.note ?? null,
+      })
+      .returning();
 
-  const newOutstanding = roundMoney(outstanding - amount);
-  const [updated] = await db
-    .update(orderCredit)
-    .set({
-      amountOutstanding: String(newOutstanding),
-      status: newOutstanding <= 0 ? "settled" : "partial",
-      settledOn: newOutstanding <= 0 ? paidOn : null,
-      updatedAt: new Date(),
-    })
-    .where(eq(orderCredit.orderId, input.orderId))
-    .returning();
+    const newOutstanding = roundMoney(outstanding - amount);
+    const [updated] = await tx
+      .update(orderCredit)
+      .set({
+        amountOutstanding: String(newOutstanding),
+        status: newOutstanding <= 0 ? "settled" : "partial",
+        settledOn: newOutstanding <= 0 ? paidOn : null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(orderCredit.orderId, input.orderId), eq(orderCredit.orgId, input.orgId)))
+      .returning();
 
-  await releaseCommission(input.orgId, input.orderId, payment.id, paidOn, credit, newOutstanding);
-  return updated;
+    await releaseCommission(input.orgId, input.orderId, payment.id, paidOn, credit, newOutstanding, tx);
+    return updated;
+  });
 }
 
 async function releaseCommission(
@@ -321,20 +356,22 @@ async function releaseCommission(
   paidOn: string,
   credit: OrderCredit,
   newOutstanding: number,
+  client: CreditLedgerDb = db,
 ): Promise<void> {
-  const basis = await commissionBasisFor(orderId);
-  if (!basis || basis.fullPool <= 0) return;
-
   const given = roundMoney(parseFloat(String(credit.amountGiven)));
   if (given <= 0) return;
-  // Cumulative fraction of the debt now settled. Exactly 1 on full settlement,
-  // which is what makes the released total land on the pool to the penny.
-  const settledFraction = newOutstanding <= 0 ? 1 : roundMoney(given - newOutstanding) / given;
 
-  const [alreadyResolution, alreadySale] = await Promise.all([
-    accruedByRole(orderId, "credit_resolution"),
-    accruedByRole(orderId, "sale"),
-  ]);
+  const basis = await commissionBasisFor(orderId, given, client);
+  if (!basis || basis.fullPool <= 0) return;
+
+  // Cumulative fraction of the credit leg now paid. The non-credit portion is
+  // sale-basis commission; this payment only releases the credit component.
+  const settledFraction =
+    newOutstanding <= 0
+      ? 1
+      : Math.max(0, Math.min(1, roundMoney(given - newOutstanding) / given));
+
+  const already = await accruedResolutionByRole(orderId, client);
   const targets: Array<{
     cashierId: string | null;
     userId: string | null;
@@ -357,7 +394,7 @@ async function releaseCommission(
       cashierId: completerId,
       userId: basis.completerUserId,
       role: "completer",
-      full: basis.fullPool,
+      full: roundMoney(basis.creditCompleterAmount + basis.creditInputterAmount),
       sharePercent: 100,
     });
   } else {
@@ -365,15 +402,15 @@ async function releaseCommission(
       cashierId: completerId,
       userId: basis.completerUserId,
       role: "completer",
-      full: basis.completerAmount,
+      full: basis.creditCompleterAmount,
       sharePercent: 90,
     });
-    if (basis.inputterAmount > 0) {
+    if (basis.creditInputterAmount > 0) {
       targets.push({
         cashierId: inputterId,
         userId: basis.inputterUserId,
         role: "inputter",
-        full: basis.inputterAmount,
+        full: basis.creditInputterAmount,
         sharePercent: 10,
       });
     }
@@ -383,14 +420,11 @@ async function releaseCommission(
     .map((target) => {
       const shouldHave = roundMoney(target.full * settledFraction);
       const key = `${commissionParty(target.userId, target.cashierId)}:${target.role}`;
-      // Split credit orders can already have earned sale-basis commission on
-      // the non-credit tender legs. Credit payments only top the party up to
-      // the full order pool; they must not pay that sale amount a second time.
-      const delta = roundMoney(
-        shouldHave -
-          (alreadyResolution.get(key) ?? 0) -
-          (alreadySale.get(key) ?? 0),
-      );
+      // Only the credit component is released here. The upfront tender legs of
+      // a split sale earn sale-basis commission at shift close, whether that
+      // has happened yet or not, so they are excluded from the pool above
+      // rather than netted off after the fact.
+      const delta = roundMoney(shouldHave - (already.get(key) ?? 0));
       return { target, delta };
     })
     .filter(({ delta }) => delta > 0)
@@ -412,7 +446,7 @@ async function releaseCommission(
     }));
 
   if (rows.length > 0) {
-    await db.insert(cashierCommissionEntries).values(rows).onConflictDoNothing();
+    await client.insert(cashierCommissionEntries).values(rows).onConflictDoNothing();
   }
 }
 
