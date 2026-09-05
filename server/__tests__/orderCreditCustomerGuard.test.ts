@@ -283,4 +283,53 @@ describe("a sale on credit needs a customer", () => {
     expect(appDbMock.db.update).not.toHaveBeenCalled();
     expect(creditLedgerMock.openCreditForOrder).not.toHaveBeenCalled();
   });
+
+  it("opens credit in the same transaction as completing an existing order", async () => {
+    appDbMock.state.currentOrder = {
+      id: "order-1",
+      org_id: ORG_ID,
+      customer_id: CUSTOMER_ID,
+      total: "70.00",
+      payment_method: "tick",
+      status: "pending",
+      settled_total: null,
+    };
+    creditLedgerMock.creditLegTotal.mockResolvedValue(70);
+    creditLedgerMock.openCreditForOrder.mockResolvedValue(undefined);
+    const tx = { update: appDbMock.db.update };
+    appDbMock.withTransaction.mockImplementationOnce(async (fn: any) => fn(tx));
+
+    const handler = patchHandler();
+    const req: any = {
+      params: { id: "order-1" },
+      body: { status: "completed" },
+      orgContext: { orgId: ORG_ID, locationId: null, role: "CASHIER" },
+      user: { id: "user_1" },
+      cashierShift: { cashierId: null, cashierShiftId: "shift-1" },
+    };
+    let status = 200;
+    let payload: unknown;
+    const res: any = {
+      status(code: number) {
+        status = code;
+        return this;
+      },
+      json: (p: unknown) => {
+        payload = p;
+        return p;
+      },
+    };
+
+    await handler(req, res);
+
+    expect(status).toBe(200);
+    expect(appDbMock.withTransaction).toHaveBeenCalledTimes(1);
+    expect(appDbMock.db.update).toHaveBeenCalledTimes(1);
+    expect(creditLedgerMock.openCreditForOrder).toHaveBeenCalledWith(
+      ORG_ID,
+      { id: "order-1", customerId: CUSTOMER_ID, amount: 70 },
+      tx,
+    );
+    expect((payload as { eventId?: string }).eventId).toBe("evt-1");
+  });
 });
