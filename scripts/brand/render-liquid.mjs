@@ -66,6 +66,12 @@ function parseArgs(argv) {
     cssHeight: 720,
     dpr: 3,
     workers: 3,
+    // Playwright's screenshot default is 30s. A 4K frame off SwiftShader,
+    // with several workers contending for the same cores, goes past that —
+    // the render dies mid-clip with a TimeoutError after having spent the
+    // frames it already rendered. The wait is legitimate work, not a hang,
+    // so give it room rather than racing it.
+    shotTimeout: 120000,
     crf: 16,
     keepFrames: false,
   };
@@ -81,6 +87,7 @@ function parseArgs(argv) {
       case '--height': args.cssHeight = Number(take()); break;
       case '--dpr': args.dpr = Number(take()); break;
       case '--workers': args.workers = Number(take()); break;
+      case '--timeout': args.shotTimeout = Number(take()); break;
       case '--crf': args.crf = Number(take()); break;
       case '--keep-frames': args.keepFrames = true; break;
       case '--help': printUsage(); process.exit(0); break;
@@ -105,6 +112,7 @@ function printUsage() {
   --height N      CSS height                        (default 720)
   --dpr N         device pixel ratio                (default 3, so UHD)
   --workers N     parallel render pages             (default 3)
+  --timeout MS    per-frame screenshot cap          (default 120000)
   --crf N         x264 quality, lower is better     (default 16)
   --keep-frames   leave the PNG sequence behind`);
 }
@@ -151,12 +159,16 @@ async function renderFrames(browser, clip, args, dir) {
     if (first >= count) return;
     const page = await openPage(browser, args, clip.mode);
     for (let i = first; i < Math.min(first + chunk, count); i++) {
+      const file = join(dir, `f${String(i).padStart(width, '0')}.png`);
+      // Frames already on disk are reused, so a clip that dies part-way can
+      // be resumed with --keep-frames instead of started over.
+      if (existsSync(file)) { done += 1; continue; }
       await page.evaluate((ms) => {
         window.ARCARNA_LIQUID.seek(ms);
         // Two frames: one for the seek to take, one to composite.
         return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }, times[i]);
-      await page.screenshot({ path: join(dir, `f${String(i).padStart(width, '0')}.png`), type: 'png' });
+      await page.screenshot({ path: file, type: 'png', timeout: args.shotTimeout });
       done += 1;
       if (done % 5 === 0 || done === count) {
         const per = (Date.now() - startedAt) / done;
@@ -225,7 +237,7 @@ async function main() {
     const clip = CLIPS[name];
     const outName = `arcarna-liquid-${name}`;
     const frameDir = join(args.outDir, `.frames-${name}`);
-    await rm(frameDir, { recursive: true, force: true });
+    if (!args.keepFrames) await rm(frameDir, { recursive: true, force: true });
     await mkdir(frameDir, { recursive: true });
 
     console.error(`\n=== ${name}: ${clip.from}-${clip.to}ms at ${args.fps}fps ===`);
