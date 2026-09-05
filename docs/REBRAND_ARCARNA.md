@@ -39,15 +39,36 @@ You provided two finals. Copy into [`client/public/brand/`](client/public/brand/
 
 | Source (workspace assets) | Repo filename | Use |
 |-------------------------|---------------|-----|
-| `ARCARNA_A_final_logo-…png` | `arcarna-mark.png` | **Small display** — favicon, `apple-touch-icon`, PWA `icon-192` / `icon-512`, collapsed mobile nav, command palette chip, notification tray |
-| `Arcarna_Full_final_logo-…png` | `arcarna-wordmark.png` | **Key brand points** — portal hero, auth/onboarding shells, setup wizard header, expanded desktop sidebar, sign-out page, PWA install banner hero |
+| `arcarna-mark_Master-Logo.svg` | `arcarna-mark.png` | **Small display** — favicon, `apple-touch-icon`, PWA `icon-192` / `icon-512`, collapsed mobile nav, command palette chip, notification tray |
+| `arcarna-mark_Master-Wordmark.png` | `arcarna-wordmark.png` | **Key brand points** — portal hero, auth/onboarding shells, setup wizard header, expanded desktop sidebar, sign-out page, PWA install banner hero |
 
 **Rule:** Never crop the wordmark to favicon size — always use `arcarna-mark.png` below ~48px logical width. Never use the A mark alone where the product name must be legible (portal card title area uses wordmark + text).
 
-Regenerate raster sizes from **mark only** via [`scripts/generate-brand-assets.py`](scripts/generate-brand-assets.py):
+Regenerate every raster from the vector masters via
+[`scripts/generate-brand-assets.mjs`](../scripts/generate-brand-assets.mjs):
 
-- `favicon-32.png`, `icon-192.png`, `icon-512.png` ← `arcarna-mark.png`
-- Optional: `arcarna-wordmark-sm.png` (max-width 240px) for narrow auth cards
+```bash
+node scripts/generate-brand-assets.mjs           # rewrite the rasters
+node scripts/generate-brand-assets.mjs --check   # fail if any is stale
+```
+
+| Master (in `scripts/brand/`) | Derived |
+|---|---|
+| `arcarna-mark_Master-Logo.svg` | `brand/arcarna-mark.png` (1024), `logo.png` (256), `icon-512`, `icon-192`, `favicon-32`, and the training manual's copy |
+| `arcarna-mark_Master-Wordmark.png` | `brand/arcarna-wordmark.png` (4688 wide) and the training manual's copy |
+
+The masters are the only files a brand change should touch; everything
+under `client/public/` and `docs/training/images/` is output.
+
+**The mark is bare** — Truth Blue on transparent, no tile. The icons it
+replaced put a white glyph on a dark rounded tile, which is what made
+them legible on any ground. Dropping that is a deliberate brand
+decision. Measured against every ground the mark actually lands on in
+this repo it holds up (3.71:1 on gunmetal, 4.26:1 on graphite, 4.22:1 on
+the training band, 4.40:1 on white); the one case it cannot survive is
+Truth Blue on Truth Blue, which does not occur here. If a Truth Blue
+surface ever needs the mark, give that surface a tiled variant rather
+than changing the master.
 
 Portal build copies **wordmark** to `portal/portal-assets/arcarna-wordmark.png` ([`scripts/build-portal.mjs`](scripts/build-portal.mjs)).
 
