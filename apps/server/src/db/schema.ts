@@ -105,6 +105,10 @@ export const orders = pgTable('orders', {
   // Why stock left without a sale — see shared/schema.ts and migration 054.
   personal_use_reason: text('personal_use_reason'),
   channel: varchar('channel', { length: 32 }).default('pos').notNull(),
+  // When it was keyed in, and whether created_at is that moment or the day the
+  // sale is for — see shared/schema.ts and migration 062.
+  entered_at: timestamp('entered_at').defaultNow(),
+  date_kind: varchar('date_kind', { length: 16 }).notNull().default('live'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

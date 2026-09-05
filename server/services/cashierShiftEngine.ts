@@ -494,7 +494,8 @@ export async function closeCashierShift(
   shiftId: string,
   opts: {
     closedByUserId: string | null;
-    closeReason: "manual" | "inactivity_auto_close";
+    /** "backdated_entry": a past day's shift opened only to hold sales keyed in late (orderDating.ts). */
+    closeReason: "manual" | "inactivity_auto_close" | "backdated_entry";
     /** When set, only the user who opened the shift may close it (cashiers).
      *  Leave undefined/null for manager/admin override and auto-close. */
     requireOwnerUserId?: string | null;
@@ -529,7 +530,7 @@ export async function closeCashierShift(
     sheet.commissionRate,
   );
 
-  const status = opts.closeReason === "inactivity_auto_close" ? "auto_closed" : "closed";
+  const status = opts.closeReason === "manual" ? "closed" : "auto_closed";
 
   const [closed] = await db
     .update(cashierShifts)

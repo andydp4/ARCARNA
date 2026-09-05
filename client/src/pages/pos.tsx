@@ -30,6 +30,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PosProductCard } from "@/components/pos-product-card";
 import { PosOrderLines } from "@/components/pos-order-lines";
 import { STORAGE_POS_ENTRY_MODE } from "@shared/storageKeys";
+import {
+  BACKDATE_LIMIT_DAYS,
+  PREORDER_LIMIT_DAYS,
+  classifyOrderDate,
+  localIsoDate,
+  orderDateWindow,
+} from "@shared/orders/orderDate";
 import type { PosProduct } from "@/components/pos-product-card";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -153,6 +160,10 @@ export default function POS() {
   ]);
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
+  // The day the order is for. Today unless the cashier says otherwise — a
+  // missed day being keyed in afterwards, or a pre-order. Sent only when it is
+  // not today, so an ordinary sale is dated by the server, in the org's zone.
+  const [orderDate, setOrderDate] = useState<string>(() => localIsoDate());
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
     "collection",
   );
@@ -438,6 +449,9 @@ export default function POS() {
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
+      // Same reason: one backdated entry must not quietly date every later
+      // sale on this till to last week.
+      setOrderDate(localIsoDate());
       setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
@@ -704,6 +718,16 @@ export default function POS() {
       }
     }
 
+    // Checked here as well as on the server, so a date outside the window is
+    // caught before the sale is sent rather than after the cashier thinks it
+    // went through.
+    const today = localIsoDate();
+    const dateVerdict = classifyOrderDate(orderDate, today);
+    if (!dateVerdict.ok) {
+      toast({ title: "Check the order date", description: dateVerdict.message, variant: "destructive" });
+      return;
+    }
+
     const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
@@ -712,6 +736,10 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
       fulfilmentMethod,
+      // Omitted for today: the server dates a live sale itself, in the org's
+      // own timezone, so a till and a server either side of midnight cannot
+      // disagree about which day "today" is.
+      ...(dateVerdict.dating.kind !== "live" ? { orderDate: dateVerdict.dating.date } : {}),
     };
     if (splitPayment) {
       const legs = tenderLegs
@@ -1231,6 +1259,44 @@ export default function POS() {
                 </p>
               </div>
             )}
+
+            {(() => {
+              const today = localIsoDate();
+              const window = orderDateWindow(today);
+              const verdict = classifyOrderDate(orderDate, today);
+              const kind = verdict.ok ? verdict.dating.kind : null;
+              return (
+                <div>
+                  <label className="text-sm font-medium mb-2 block" htmlFor="order-date">
+                    Order date
+                  </label>
+                  <Input
+                    id="order-date"
+                    type="date"
+                    value={orderDate}
+                    min={window.min}
+                    max={window.max}
+                    onChange={(e) => setOrderDate(e.target.value || today)}
+                    className="min-h-[44px]"
+                    aria-describedby="order-date-hint"
+                    data-testid="input-order-date"
+                  />
+                  {/* Said at the till, before the sale goes through: a dated
+                      order lands on that day's figures, and is marked as
+                      keyed in late or ahead so nobody mistakes it for a live
+                      sale afterwards. */}
+                  <p id="order-date-hint" className="text-xs text-metal-muted mt-2" data-testid="text-order-date-hint">
+                    {!verdict.ok
+                      ? verdict.message
+                      : kind === "backdated"
+                        ? `Backdated: this will be recorded as a sale on ${orderDate} and marked as entered late.`
+                        : kind === "preorder"
+                          ? `Pre-order: this will be recorded against ${orderDate} and marked as a pre-order.`
+                          : `Today. Up to ${BACKDATE_LIMIT_DAYS} days back for a missed day, or ${PREORDER_LIMIT_DAYS} days ahead for a pre-order.`}
+                  </p>
+                </div>
+              );
+            })()}
 
             <div>
               <span className="text-sm font-medium mb-2 block" id="fulfilment-label">

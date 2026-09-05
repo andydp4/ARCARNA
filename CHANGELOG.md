@@ -5,6 +5,12 @@ All notable changes to the ARCARNA EPOS project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Backdated orders and pre-orders** (2026-09-03)
+  - The POS checkout has an "Order date" field, defaulting to today. It accepts up to 7 days back (a missed day's sales keyed in afterwards) and up to 14 days ahead (pre-orders); anything outside that is refused, not clamped.
+  - A dated order is stamped with the day it is for in `orders.created_at`, so it lands on that day in every report and the daily close. `orders.entered_at` keeps when it was actually keyed in and `orders.date_kind` (`live` / `backdated` / `preorder`) marks it, and the orders list badges it.
+  - A backdated sale joins the cashier shift of the day it was sold on (opened and closed for that day if it never had one), not today's, and no till drawer. Pre-orders stay in today's shift and drawer, since that is where the money is.
+  - Migration `062_order_dating.sql`; rules in `shared/orders/orderDate.ts`; server side in `server/services/orderDating.ts`.
+
 - **Web Contact Picker Integration** (2025-10-22)
   - Added "Import from Contacts" button to customer creation form
   - Enables one-tap import of contact data from device phonebook (name, email, phone)

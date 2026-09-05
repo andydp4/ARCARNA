@@ -74,19 +74,30 @@ export function tradingDayFor(instant: Date, timeZone: string): string {
   return p.hour < TRADING_DAY_START_HOUR ? shiftIsoDate(localDate, -1) : localDate;
 }
 
+/** The calendar date an instant falls on in the zone, as an ISO date. Ignores the 06:00 cut. */
+export function localCalendarDate(instant: Date, timeZone: string): string {
+  const p = partsIn(instant, timeZone);
+  return isoDate(p.year, p.month, p.day);
+}
+
 /**
- * The instant 06:00 local falls on for a given date.
+ * The instant a given local hour falls on for a given date.
  *
  * Resolved by correcting a naive UTC guess with the zone's offset, then
  * re-checking: on the two days a year the clocks move, the offset at the guess
  * is not the offset at the answer, and taking the first result would be an hour
  * out on exactly the day it matters most.
  */
-function localStartInstant(date: string, timeZone: string): Date {
-  const naive = new Date(`${date}T${String(TRADING_DAY_START_HOUR).padStart(2, "0")}:00:00.000Z`);
+export function localInstant(date: string, hour: number, timeZone: string): Date {
+  const naive = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00.000Z`);
   const firstGuess = new Date(naive.getTime() - zoneOffsetMs(naive, timeZone));
   const corrected = zoneOffsetMs(firstGuess, timeZone);
   return new Date(naive.getTime() - corrected);
+}
+
+/** The instant 06:00 local falls on for a given date. */
+function localStartInstant(date: string, timeZone: string): Date {
+  return localInstant(date, TRADING_DAY_START_HOUR, timeZone);
 }
 
 /**
