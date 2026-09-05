@@ -39,7 +39,7 @@ export type OrderChannel = 'pos'|'web'|'api'|'whatsapp'|'phone'
 export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];
   subtotal: MoneyGBP; vat: MoneyGBP; total: MoneyGBP;
-  paymentMethod: 'cash'|'card'|'transfer'|'tick'|'gift_card';
+  paymentMethod: 'cash'|'card'|'transfer'|'tick'|'gift_card'|'split';
   status: 'pending'|'processing'|'completed'|'cancelled'|'on-hold'|'awaiting-customer'|'urgent';
   channel?: OrderChannel;
   createdAt: Date;

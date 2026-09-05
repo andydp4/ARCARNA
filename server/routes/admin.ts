@@ -13,6 +13,7 @@ import {
   insertProductSchema,
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
+  commissionRateSchema,
 } from "@shared/schema";
 
 export function registerAdminRoutes(app: Express): void {
@@ -110,9 +111,27 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.role ??
           roleAndOrg?.role ??
           (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
-      const { role, orgId } = req.body ?? {};
+      const { role, orgId, commissionRate } = req.body ?? {};
       if (role && !isRole(role)) {
         return res.status(400).json({ message: "Invalid role" });
+      }
+      // Commission is agreed per person and can be any figure, but it still has
+      // to be a rate — one outside 0–100 would distort every pool derived from
+      // it. An empty value clears it back to the organisation default, which is
+      // where everyone starts (migration 057).
+      let parsedCommissionRate: number | null | undefined;
+      if (commissionRate !== undefined) {
+        if (commissionRate === null || commissionRate === "") {
+          parsedCommissionRate = null;
+        } else {
+          const parsed = commissionRateSchema.safeParse(commissionRate);
+          if (!parsed.success) {
+            return res
+              .status(400)
+              .json({ message: parsed.error.errors[0]?.message ?? "Invalid commission rate" });
+          }
+          parsedCommissionRate = parsed.data;
+        }
       }
       if (role && !canAssignRole(actorRole, role)) {
         return res.status(403).json({ message: "You cannot assign this role" });
@@ -135,6 +154,9 @@ export function registerAdminRoutes(app: Express): void {
         { role, orgId },
         { role: actorRole, orgId: roleAndOrg?.orgId ?? null, replitUserId: actorId },
       );
+      if (parsedCommissionRate !== undefined) {
+        await storage.setUserCommissionRate(replitUserId, parsedCommissionRate);
+      }
       await recordAdminAudit(req, {
         actorUserId: actorId,
         actorRole,
@@ -142,7 +164,7 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: roleAndOrg?.orgId ?? null,
-        metadata: { role, orgId },
+        metadata: { role, orgId, commissionRate: parsedCommissionRate },
       });
       res.json(updated);
     } catch (error: any) {

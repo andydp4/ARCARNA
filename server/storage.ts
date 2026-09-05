@@ -71,11 +71,12 @@ import {
   outboundWebhooks,
   type ApiKey,
   type OutboundWebhook,
+  commissionRateSchema,
 } from "@shared/schema";
 import type { WebsiteProductSettingsPatch } from "@shared/website";
 import { withRetries } from "./lib/dbUtils";
 import { db } from "./db";
-import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
+import { eq, desc, sql, and, or, lte, gte, isNull, between, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -164,7 +165,14 @@ export interface IStorage {
 
   // Inventory operations
   getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
+  updateProductStock(
+    productId: string,
+    adjustment: number,
+    type: 'add' | 'set',
+    userId: string,
+    orgId: string,
+    locationId?: string | null,
+  ): Promise<Product>;
 
   // Reports operations
   getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
@@ -277,6 +285,13 @@ export interface IStorage {
   ): Promise<OutboundWebhook>;
   listOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
+}
+
+export class AmbiguousStockLocationError extends Error {
+  constructor() {
+    super("Choose a location before editing stock for a multi-location organization");
+    this.name = "AmbiguousStockLocationError";
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -769,6 +784,16 @@ export class DatabaseStorage implements IStorage {
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
     }
+    // Commission rates are agreed per cashier and land on figures like 12 or
+    // 25, so any rate is valid — but it still has to be a rate. A rate outside
+    // 0–100 would silently distort every pool derived from it.
+    if (allowed.defaultCashierCommissionRate !== undefined) {
+      const parsed = commissionRateSchema.safeParse(allowed.defaultCashierCommissionRate);
+      if (!parsed.success) {
+        throw new Error(parsed.error.errors[0]?.message ?? "Invalid commission rate");
+      }
+      allowed.defaultCashierCommissionRate = String(parsed.data);
+    }
     const [org] = await db
       .update(organizations)
       .set({ ...allowed, updatedAt: new Date() })
@@ -869,7 +894,7 @@ export class DatabaseStorage implements IStorage {
       : await db
           .select({
             productId: productLocationStock.productId,
-            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
           })
           .from(productLocationStock)
           .where(eq(productLocationStock.orgId, orgId))
@@ -894,6 +919,16 @@ export class DatabaseStorage implements IStorage {
     const { adjustProductLocationStock, resolveStockLocationId } = await import(
       "./services/productLocationStock",
     );
+
+    if (!locationId) {
+      const activeLocations = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.orgId, orgId), eq(locations.isActive, 1)));
+      if (activeLocations.length > 1) {
+        throw new AmbiguousStockLocationError();
+      }
+    }
 
     const locId = locationId
       ? locationId
@@ -936,7 +971,7 @@ export class DatabaseStorage implements IStorage {
     const [updatedProduct] = await db.select().from(products).where(cond);
     const totals = await db
       .select({
-        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
       })
       .from(productLocationStock)
       .where(and(eq(productLocationStock.orgId, orgId), eq(productLocationStock.productId, productId)));
@@ -1915,16 +1950,44 @@ export class DatabaseStorage implements IStorage {
     return { linked: true };
   }
 
+  /**
+   * The access list, with each person's commission rate alongside.
+   *
+   * The rate lives on `users`, not `allowed_users`, so it is joined in rather
+   * than duplicated — the access screen is where it is set, and showing a stale
+   * copy of somebody's pay rate would be worse than not showing it.
+   */
+  private async attachCommissionRates<T extends { replitUserId: string }>(
+    rows: T[],
+  ): Promise<Array<T & { commissionRate: string | null }>> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.replitUserId).filter(Boolean);
+    const userRows = ids.length
+      ? await db
+          .select({ id: users.id, replitUserId: users.replitUserId, rate: users.commissionRate })
+          .from(users)
+          .where(or(inArray(users.id, ids), inArray(users.replitUserId, ids)))
+      : [];
+    const byKey = new Map<string, string | null>();
+    for (const u of userRows) {
+      if (u.id) byKey.set(u.id, u.rate);
+      if (u.replitUserId) byKey.set(u.replitUserId, u.rate);
+    }
+    return rows.map((r) => ({ ...r, commissionRate: byKey.get(r.replitUserId) ?? null }));
+  }
+
   async getAllowedUsers(orgId: string): Promise<AllowedUser[]> {
-    return db
+    const rows = await db
       .select()
       .from(allowedUsers)
       .where(eq(allowedUsers.orgId, orgId))
       .orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async adminGetAllAllowedUsers(): Promise<AllowedUser[]> {
-    return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    const rows = await db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser> {
@@ -1963,6 +2026,24 @@ export class DatabaseStorage implements IStorage {
       .from(allowedUsers)
       .where(eq(allowedUsers.isOwner, 1));
     return owner || null;
+  }
+
+  /**
+   * Sets a person's commission rate, or clears it back to the org default.
+   *
+   * Keyed on the replit user id the access screen already works in, matched
+   * against both `users.replitUserId` and `users.id` because the two are the
+   * same value for accounts created since the auth migration and differ for
+   * older ones.
+   */
+  async setUserCommissionRate(replitUserId: string, rate: number | null): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        commissionRate: rate == null ? null : String(rate),
+        updatedAt: new Date(),
+      })
+      .where(or(eq(users.replitUserId, replitUserId), eq(users.id, replitUserId)));
   }
 
   async updateAllowedUserAccess(

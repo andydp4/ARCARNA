@@ -30,6 +30,7 @@ import { FinanceWorker } from "./financeWorker";
 import { ExpensesWorker } from "./expensesWorker";
 import { AutomationWorker } from "./automationWorker";
 import { ReceiptEmailWorker } from "./receiptEmailWorker";
+import { PersonalUseSignalWorker } from "./personalUseSignalWorker";
 
 // Worker interface that all workers must implement
 export interface IWorker {
@@ -48,6 +49,7 @@ const WORKER_FACTORIES: Record<WorkerName, () => IWorker> = {
   BusinessInsightsWorker: () => new BusinessInsightsWorker(),
   FinanceWorker: () => new FinanceWorker(),
   ExpensesWorker: () => new ExpensesWorker(),
+  PersonalUseSignalWorker: () => new PersonalUseSignalWorker(),
   AutomationWorker: () => new AutomationWorker(),
   ReceiptEmailWorker: () => new ReceiptEmailWorker(),
 };
@@ -275,6 +277,12 @@ async function runHousekeeping(): Promise<void> {
       (await import("../services/rfmRunner")).processRfmNightly()],
     ["cashier-shift-autoclose", async () =>
       (await import("../services/cashierShiftEngine")).autoCloseInactiveCashierShifts()],
+    // The 06:00 close. Housekeeping runs every fifteen minutes, so this lands
+    // within fifteen minutes of the cut — and being late is harmless, because
+    // the day it totals is a window that has already finished. It is
+    // exactly-once by unique key, so running it on every pass costs one query.
+    ["daily-close", async () =>
+      (await import("../services/dailyClose")).runDueDailyCloses()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

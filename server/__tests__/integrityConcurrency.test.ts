@@ -22,7 +22,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
 import type { RequestHandler } from "express";
 import request from "supertest";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import {
   organizations,
@@ -599,10 +599,13 @@ describe.skipIf(!hasDb)("6.3 duplicate event delivery to InventoryWorker", () =>
 
     await Promise.all([worker.handle(event), worker.handle(event)]);
 
+    // Movements are keyed per order line (`eventId:line:index`) so a
+    // multi-line order records one movement per line rather than tripping the
+    // per-event uniqueness guard after its first line. Match the prefix.
     const moves = await db
       .select()
       .from(inventoryMovements)
-      .where(eq(inventoryMovements.eventId, event.eventId));
+      .where(like(inventoryMovements.eventId, `${event.eventId}:%`));
     expect(moves).toHaveLength(1);
     expect(await stockAt(productId, locationId)).toBe(17);
   });

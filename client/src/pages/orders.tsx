@@ -768,6 +768,7 @@ export default function Orders() {
                       <OrdersRow
                         key={order.id}
                         order={order}
+                        onComplete={(target) => handleStatusChange(target, "completed")}
                         onView={openDetailsDialog}
                         onEdit={openEditDialog}
                         onStatusChange={handleStatusChange}

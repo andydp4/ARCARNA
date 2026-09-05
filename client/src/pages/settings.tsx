@@ -403,7 +403,7 @@ export default function Settings() {
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="tickPayment">Tick Payment (Credit)</Label>
+                      <Label htmlFor="tickPayment">Credit Payment</Label>
                       <Switch
                         id="tickPayment"
                         checked={settings.tickPaymentEnabled}

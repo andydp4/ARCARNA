@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/input";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,8 @@ interface AllowedUser {
   name: string | null;
   isOwner: number;
   role?: string | null;
+  /** Percentage. Null means the organisation default applies. */
+  commissionRate?: string | null;
   orgId?: string | null;
   createdAt: string;
 }
@@ -55,6 +58,68 @@ interface ApprovalRequest {
   requestedAt: string;
   reviewedAt: string | null;
   reviewedBy: string | null;
+}
+
+/**
+ * A person's commission rate, editable in place.
+ *
+ * Blank is meaningful and is shown as such: it means the organisation default
+ * applies, which is different from zero. Saving on blur rather than on every
+ * keystroke, so a half-typed "1" on the way to "12" is never written.
+ */
+function CommissionRateCell({
+  user,
+  onSave,
+  saving,
+}: {
+  user: AllowedUser;
+  onSave: (rate: string | null) => void;
+  saving: boolean;
+}) {
+  const stored = user.commissionRate ?? "";
+  const [value, setValue] = useState(stored);
+
+  useEffect(() => {
+    setValue(user.commissionRate ?? "");
+  }, [user.commissionRate]);
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed === stored.trim()) return;
+    if (trimmed === "") {
+      onSave(null);
+      return;
+    }
+    const rate = Number(trimmed);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      setValue(stored);
+      return;
+    }
+    onSave(trimmed);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        type="number"
+        min={0}
+        max={100}
+        step="0.01"
+        value={value}
+        placeholder="Default"
+        disabled={saving}
+        className="h-9 w-[92px]"
+        aria-label={`Commission rate for ${user.name || user.email || "this user"}`}
+        data-testid={`commission-rate-${user.replitUserId}`}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+      <span className="text-sm text-muted-foreground">%</span>
+    </div>
+  );
 }
 
 export default function UserAccess() {
@@ -74,6 +139,32 @@ export default function UserAccess() {
 
   const { data: pendingApprovals = [], isLoading: loadingPending } = useQuery<ApprovalRequest[]>({
     queryKey: ["/api/admin/pending-approvals"],
+  });
+
+  // Commission is agreed per person. Blank means the organisation default,
+  // which is where everyone starts — the old per-cashier-code rates could not
+  // be carried across, because nothing ever linked a code to a user account.
+  const updateCommissionMutation = useMutation({
+    mutationFn: async ({
+      replitUserId,
+      commissionRate,
+    }: {
+      replitUserId: string;
+      commissionRate: string | null;
+    }) => {
+      return apiRequest("PATCH", `/api/admin/allowed-users/${replitUserId}`, { commissionRate });
+    },
+    onSuccess: () => {
+      toast({ title: "Commission rate updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not update the commission rate",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const updateRoleMutation = useMutation({
@@ -311,6 +402,7 @@ export default function UserAccess() {
                         <TableHead>User</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
+                        <TableHead>Commission</TableHead>
                         <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -353,6 +445,18 @@ export default function UserAccess() {
                                 </SelectContent>
                               </Select>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <CommissionRateCell
+                              user={user}
+                              onSave={(commissionRate) =>
+                                updateCommissionMutation.mutate({
+                                  replitUserId: user.replitUserId,
+                                  commissionRate,
+                                })
+                              }
+                              saving={updateCommissionMutation.isPending}
+                            />
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {formatDate(user.createdAt)}

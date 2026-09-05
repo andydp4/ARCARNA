@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -16,10 +17,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck } from "lucide-react";
-import { ShiftOpenModal, getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
+import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck, UserRound } from "lucide-react";
+import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
-import { CashierShiftBadge } from "@/pages/pos/cashier-shift";
+import { ZReportView } from "@/components/ZReport";
+import type { ZReportData } from "@shared/reports/zReport";
 import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,6 +30,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PosProductCard } from "@/components/pos-product-card";
 import { PosOrderLines } from "@/components/pos-order-lines";
 import { STORAGE_POS_ENTRY_MODE } from "@shared/storageKeys";
+import {
+  BACKDATE_LIMIT_DAYS,
+  PREORDER_LIMIT_DAYS,
+  classifyOrderDate,
+  localIsoDate,
+  orderDateWindow,
+} from "@shared/orders/orderDate";
 import type { PosProduct } from "@/components/pos-product-card";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -85,6 +94,32 @@ function PosProductGridSkeleton() {
   );
 }
 
+/**
+ * The Z-report for a shift that is still running.
+ *
+ * Loaded on open rather than kept in cache: a cashier checking where they are
+ * up to needs the figure as of now, and a stale one is exactly the problem this
+ * is meant to solve.
+ */
+function ShiftSoFar({ shiftId }: { shiftId: string }) {
+  const { data, isLoading, isError } = useQuery<{ report: ZReportData }>({
+    queryKey: ["/api/shifts", shiftId, "report"],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/shifts/${shiftId}/report`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load the report");
+      return res.json();
+    },
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  if (isLoading) return <p className="text-sm text-metal-muted">Working out where you are up to…</p>;
+  if (isError || !data?.report) {
+    return <p className="text-sm text-destructive">Could not load your shift figures.</p>;
+  }
+  return <ZReportView report={data.report} />;
+}
+
 export default function POS() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -114,8 +149,21 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [personalUseReason, setPersonalUseReason] = useState("");
+  // Split tender: a £100 sale taken as £50 cash and £50 on tick. Off by
+  // default, because most sales are one tender and the extra controls would
+  // just slow the till down.
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [tenderLegs, setTenderLegs] = useState<Array<{ method: string; amount: string }>>([
+    { method: "cash", amount: "" },
+    { method: "card", amount: "" },
+  ]);
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
+  // The day the order is for. Today unless the cashier says otherwise — a
+  // missed day being keyed in afterwards, or a pre-order. Sent only when it is
+  // not today, so an ordinary sale is dated by the server, in the org's zone.
+  const [orderDate, setOrderDate] = useState<string>(() => localIsoDate());
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
     "collection",
   );
@@ -139,8 +187,8 @@ export default function POS() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [emailReceipt, setEmailReceipt] = useState(false);
   const [shiftId, setShiftId] = useState<string | null>(() => getStoredShiftId());
-  const [shiftOpenModal, setShiftOpenModal] = useState(false);
   const [shiftCloseOpen, setShiftCloseOpen] = useState(false);
+  const [zReportOpen, setZReportOpen] = useState(false);
 
   const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
     shift: { id: string; status: string } | null;
@@ -153,16 +201,17 @@ export default function POS() {
     },
   });
 
+  // The till no longer asks anybody to open a shift. One exists per person per
+  // trading day and opens itself on the first sale, so this only mirrors what
+  // the server already decided (migration 058).
   useEffect(() => {
     const serverShift = currentShiftData?.shift;
     if (serverShift?.id) {
       setShiftId(serverShift.id);
       setStoredShiftId(serverShift.id);
-      setShiftOpenModal(false);
     } else if (!shiftLoading && currentShiftData && !serverShift) {
       setShiftId(null);
       setStoredShiftId(null);
-      setShiftOpenModal(true);
     }
   }, [currentShiftData, shiftLoading]);
 
@@ -357,8 +406,6 @@ export default function POS() {
           const text = await response.text() || response.statusText;
           if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
             window.dispatchEvent(new CustomEvent("arcarna:cashier-shift-required"));
-          } else if (response.status === 409 && text.includes("SHIFT_REQUIRED")) {
-            setShiftOpenModal(true);
           }
           throw new Error(`${response.status}: ${text}`);
         }
@@ -402,6 +449,9 @@ export default function POS() {
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
+      // Same reason: one backdated entry must not quietly date every later
+      // sale on this till to last week.
+      setOrderDate(localIsoDate());
       setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
@@ -559,6 +609,14 @@ export default function POS() {
   // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
   const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
 
+  // What is still to be taken on a split payment. Negative means over-tendered.
+  const splitRemaining =
+    Math.round(
+      (total -
+        tenderLegs.reduce((sum, leg) => sum + (Number(leg.amount) || 0), 0)) *
+        100,
+    ) / 100;
+
   // Total item count for cart badge (sum of quantities)
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -660,6 +718,16 @@ export default function POS() {
       }
     }
 
+    // Checked here as well as on the server, so a date outside the window is
+    // caught before the sale is sent rather than after the cashier thinks it
+    // went through.
+    const today = localIsoDate();
+    const dateVerdict = classifyOrderDate(orderDate, today);
+    if (!dateVerdict.ok) {
+      toast({ title: "Check the order date", description: dateVerdict.message, variant: "destructive" });
+      return;
+    }
+
     const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
@@ -668,13 +736,73 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
       fulfilmentMethod,
+      // Omitted for today: the server dates a live sale itself, in the org's
+      // own timezone, so a till and a server either side of midnight cannot
+      // disagree about which day "today" is.
+      ...(dateVerdict.dating.kind !== "live" ? { orderDate: dateVerdict.dating.date } : {}),
     };
+    if (splitPayment) {
+      const legs = tenderLegs
+        .map((leg) => ({ method: leg.method, amount: Number(leg.amount) }))
+        .filter((leg) => Number.isFinite(leg.amount) && leg.amount > 0);
+      if (legs.length === 0) {
+        toast({
+          title: "Enter how it was paid",
+          description: "A split payment needs at least one amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const legTotal = Math.round(legs.reduce((sum, leg) => sum + leg.amount, 0) * 100) / 100;
+      // Checked here as well as on the server: a cashier who is a few pence out
+      // should find out at the till, not after the sale is recorded.
+      if (Math.abs(legTotal - total) > 0.005) {
+        toast({
+          title: "The split does not add up",
+          description: `Payments come to £${legTotal.toFixed(2)}, the order is £${total.toFixed(2)}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      orderData.payments = legs;
+    }
+    if (paymentMethod === "personal_use") {
+      // Guarded here as well as on the server, so the cashier is told before
+      // the request rather than after it.
+      if (personalUseReason.trim().length < 3) {
+        toast({
+          title: "Say what this is for",
+          description: "Personal use needs a reason before it can be recorded.",
+          variant: "destructive",
+        });
+        return;
+      }
+      orderData.personalUseReason = personalUseReason.trim();
+    }
     if (paymentMethod === "gift_card" && giftCardPayment) {
       orderData.giftCardCode = giftCardPayment.code;
       orderData.giftCardAmount = giftCardPayment.amountToApply;
       if (giftCardPayment.remainderPaymentMethod) orderData.remainderPaymentMethod = giftCardPayment.remainderPaymentMethod;
     }
-    
+
+    // Credit needs someone to collect it from. Guarded here as well as on the
+    // server, so the cashier finds out before the sale goes through rather
+    // than after — a tick sale with no customer used to open a debt that
+    // silently dropped off the credit list because that list only ever shows
+    // customers, and nobody could see or chase it.
+    const usesCredit =
+      paymentMethod === "tick" ||
+      (Array.isArray(orderData.payments) &&
+        orderData.payments.some((leg: { method: string }) => leg.method === "tick"));
+    if (usesCredit && !selectedCustomer?.id) {
+      toast({
+        title: "Select a customer",
+        description: "A sale on credit needs a customer to put it against.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Only include customerId if a customer is selected (Zod expects optional, not null)
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
@@ -744,14 +872,34 @@ export default function POS() {
       <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6 lg:max-w-[62%] lg:flex-[1.62]">
         <div className="pos-section-header mb-6 pb-6">
           <PageHeader
-            className="mb-4"
+            // Below lg, stack the action row under the title instead of
+            // fighting it for horizontal space. The default breakpoint (sm,
+            // 640px) is too eager here: three buttons squeezed the title and
+            // question onto a column a few characters wide, wrapping "Create
+            // Order" and "What is this customer buying?" one word per line.
+            className="mb-4 sm:flex-col sm:items-stretch sm:justify-start lg:flex-row lg:items-start lg:justify-between"
             eyebrow="Step 1 of 4 · Add items"
             title="Create Order"
             question="What is this customer buying?"
             explanation="Search products, build the cart, then check out."
             action={
               <>
-                <CashierShiftBadge />
+                {/* "Start cashier shift" (assigning a cashier CODE) is gone
+                    from the primary toolbar. Codes were dropped in favour of
+                    user accounts (L1/L2): a shift now opens automatically on
+                    login, and the button's own copy — "select your cashier
+                    code to begin tracking commission" — is no longer true. */}
+                {shiftId && (
+                  <Button
+                    variant="outline"
+                    className="lm-btn-outline min-h-[44px] shrink-0"
+                    onClick={() => setZReportOpen(true)}
+                    data-testid="button-z-report-so-far"
+                  >
+                    <Receipt className="mr-2 h-4 w-4" />
+                    Z-report so far
+                  </Button>
+                )}
                 {shiftId && (
                   <Button
                     variant="outline"
@@ -954,6 +1102,94 @@ export default function POS() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Split across payment types</span>
+              <Switch
+                checked={splitPayment}
+                onCheckedChange={setSplitPayment}
+                aria-label="Split across payment types"
+                data-testid="switch-split-payment"
+              />
+            </div>
+
+            {splitPayment ? (
+              <div className="space-y-2">
+                {/* Each row is one tender. They have to add up to the order —
+                    a split that does not is a sale with money unaccounted for. */}
+                {tenderLegs.map((leg, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select
+                      value={leg.method}
+                      onValueChange={(v) =>
+                        setTenderLegs((legs) =>
+                          legs.map((l, i) => (i === index ? { ...l, method: v } : l)),
+                        )
+                      }
+                    >
+                      <SelectTrigger className="min-h-[44px] flex-1" aria-label={`Payment type ${index + 1}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                        <SelectItem value="transfer">Transfer</SelectItem>
+                        <SelectItem value="tick">On Credit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      className="min-h-[44px] w-32"
+                      value={leg.amount}
+                      aria-label={`Amount ${index + 1}`}
+                      data-testid={`input-tender-amount-${index}`}
+                      onChange={(e) =>
+                        setTenderLegs((legs) =>
+                          legs.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l)),
+                        )
+                      }
+                    />
+                    {tenderLegs.length > 2 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-[44px]"
+                        aria-label={`Remove payment ${index + 1}`}
+                        onClick={() => setTenderLegs((legs) => legs.filter((_, i) => i !== index))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px]"
+                    onClick={() => setTenderLegs((legs) => [...legs, { method: "cash", amount: "" }])}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add payment
+                  </Button>
+                  {/* The number a cashier actually needs: what is left to take. */}
+                  <span
+                    className={`text-sm font-medium ${splitRemaining === 0 ? "text-metal-muted" : "text-warning"}`}
+                    data-testid="text-split-remaining"
+                  >
+                    {splitRemaining === 0
+                      ? "Adds up"
+                      : splitRemaining > 0
+                        ? `£${splitRemaining.toFixed(2)} left to take`
+                        : `£${Math.abs(splitRemaining).toFixed(2)} over`}
+                  </span>
+                </div>
+              </div>
+            ) : (
             <div>
               <label className="text-sm font-medium mb-2 block">Payment Method</label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -982,7 +1218,7 @@ export default function POS() {
                   <SelectItem value="tick">
                     <div className="flex items-center gap-2">
                       <Receipt className="h-4 w-4" />
-                      On Credit (Tick)
+                      On Credit
                     </div>
                   </SelectItem>
                   <SelectItem value="gift_card">
@@ -991,9 +1227,76 @@ export default function POS() {
                       Gift card
                     </div>
                   </SelectItem>
+                  <SelectItem value="personal_use">
+                    <div className="flex items-center gap-2">
+                      <UserRound className="h-4 w-4" />
+                      Personal use (staff)
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            )}
+
+            {!splitPayment && paymentMethod === "personal_use" && (
+              <div>
+                <label className="text-sm font-medium mb-2 block" htmlFor="personal-use-reason">
+                  What is this for?
+                </label>
+                <Input
+                  id="personal-use-reason"
+                  value={personalUseReason}
+                  onChange={(e) => setPersonalUseReason(e.target.value)}
+                  placeholder="e.g. staff lunch, damaged stock written off to staff"
+                  data-testid="input-personal-use-reason"
+                  className="min-h-[44px]"
+                />
+                {/* Said plainly at the till rather than discovered afterwards:
+                    this is recorded, costed, and a manager is told. */}
+                <p className="text-xs text-metal-muted mt-2">
+                  This is not a sale. The stock comes off, the cost goes on today's expenses, and a
+                  manager is notified.
+                </p>
+              </div>
+            )}
+
+            {(() => {
+              const today = localIsoDate();
+              const window = orderDateWindow(today);
+              const verdict = classifyOrderDate(orderDate, today);
+              const kind = verdict.ok ? verdict.dating.kind : null;
+              return (
+                <div>
+                  <label className="text-sm font-medium mb-2 block" htmlFor="order-date">
+                    Order date
+                  </label>
+                  <Input
+                    id="order-date"
+                    type="date"
+                    value={orderDate}
+                    min={window.min}
+                    max={window.max}
+                    onChange={(e) => setOrderDate(e.target.value || today)}
+                    className="min-h-[44px]"
+                    aria-describedby="order-date-hint"
+                    data-testid="input-order-date"
+                  />
+                  {/* Said at the till, before the sale goes through: a dated
+                      order lands on that day's figures, and is marked as
+                      keyed in late or ahead so nobody mistakes it for a live
+                      sale afterwards. */}
+                  <p id="order-date-hint" className="text-xs text-metal-muted mt-2" data-testid="text-order-date-hint">
+                    {!verdict.ok
+                      ? verdict.message
+                      : kind === "backdated"
+                        ? `Backdated: this will be recorded as a sale on ${orderDate} and marked as entered late.`
+                        : kind === "preorder"
+                          ? `Pre-order: this will be recorded against ${orderDate} and marked as a pre-order.`
+                          : `Today. Up to ${BACKDATE_LIMIT_DAYS} days back for a missed day, or ${PREORDER_LIMIT_DAYS} days ahead for a pre-order.`}
+                  </p>
+                </div>
+              );
+            })()}
 
             <div>
               <span className="text-sm font-medium mb-2 block" id="fulfilment-label">
@@ -1227,21 +1530,31 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
-      <ShiftOpenModal
-        open={shiftOpenModal}
-        onShiftOpened={(id) => {
-          setShiftId(id);
-          setShiftOpenModal(false);
-        }}
-      />
+      {/* Where you are up to, without closing anything. Fetched fresh each time
+          it opens rather than cached, because a stale figure is the whole
+          problem this screen is meant to solve. */}
+      <Dialog open={zReportOpen} onOpenChange={setZReportOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Your shift so far</DialogTitle>
+            <DialogDescription>
+              Everything you have taken since the shift began. Nothing is closed by looking.
+            </DialogDescription>
+          </DialogHeader>
+          {zReportOpen && shiftId && <ShiftSoFar shiftId={shiftId} />}
+        </DialogContent>
+      </Dialog>
+
       {shiftId && (
         <ShiftCloseWizard
           open={shiftCloseOpen}
           shiftId={shiftId}
           onClosed={() => {
+            // Closing the drawer no longer prompts to open another. The next
+            // sale opens one by itself, on whatever trading day it falls in.
             setShiftCloseOpen(false);
             setShiftId(null);
-            setShiftOpenModal(true);
+            setStoredShiftId(null);
           }}
           onCancel={() => setShiftCloseOpen(false)}
         />
