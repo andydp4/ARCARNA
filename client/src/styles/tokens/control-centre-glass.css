@@ -1,0 +1,91 @@
+/**
+ * Control Centre glass.
+ *
+ * Scoped to `.cc-glass` on the Control Centre wrapper, so the rest of the
+ * app keeps the opaque gunmetal surfaces. The Control Centre is the only
+ * page with a liquid behind it; glass anywhere else would frost a flat
+ * background and read as a flat tint for the cost of a readback.
+ *
+ * Two coats, and the order matters. The dark smoke is the body of the
+ * glass: it is what holds contrast when a bright part of the liquid drifts
+ * underneath. The white frost is only a sheen across the top-left, lifting
+ * the surface without washing the figures out. White alone is the
+ * light-theme formula, and it measured 3.34:1 for secondary text over the
+ * lit part of the field — under the 4.5:1 floor in WCAG 1.4.3.
+ *
+ * Deliberately NOT applied to the quick-action tiles. Every
+ * backdrop-filter element forces a readback of the composited backdrop
+ * beneath it, and the liquid moving re-triggers all of them every frame.
+ * Six surfaces is comfortable; six plus twelve tiles is where scrolling
+ * starts to tear on mid-range hardware and in Firefox.
+ */
+
+.cc-glass {
+  --cc-frost: 0.075;
+  --cc-smoke: 0.30;
+  --cc-blur: 24px;
+}
+
+.liquid-metal .cc-glass .lm-card,
+.liquid-metal .cc-glass .lm-card-muted {
+  background-image: linear-gradient(
+    158deg,
+    rgba(255, 255, 255, var(--cc-frost)) 0%,
+    rgba(255, 255, 255, calc(var(--cc-frost) * 0.34)) 44%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  background-color: rgba(9, 16, 28, var(--cc-smoke));
+  -webkit-backdrop-filter: blur(var(--cc-blur)) saturate(160%);
+          backdrop-filter: blur(var(--cc-blur)) saturate(160%);
+  /* Dimmer along the top, brighter down the sides and bottom — light from
+     below and behind, which is where the liquid is. The instinct is the
+     opposite, and the opposite looks wrong over a lit ground. */
+  border-color: rgba(232, 237, 242, 0.13) rgba(232, 237, 242, 0.22)
+    rgba(232, 237, 242, 0.22);
+  box-shadow:
+    inset 1px 1px 0 rgba(214, 231, 255, 0.14),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.02),
+    0 14px 34px rgba(0, 0, 0, 0.34);
+}
+
+/* Secondary text has to come up on glass. --lm-muted clears 4.5:1 on flat
+   gunmetal and fails it over a lit field; this is what glass costs, and it
+   is cheaper to pay in the token than to dim the liquid until 58% works. */
+.liquid-metal .cc-glass .text-metal-muted {
+  color: hsl(210, 14%, 75%);
+}
+
+/* Sky Blue over the liquid measured 3.43:1. Blue text on a lit blue ground
+   is the one pairing this palette cannot afford; Light Blue clears it. */
+.liquid-metal .cc-glass .cc-eyebrow {
+  color: var(--light-blue);
+}
+
+/* Both fallbacks land on the shipped opaque surface rather than leaving a
+   see-through box with live figures in it. An unhandled glass panel is the
+   worst outcome here, and both of these fail silently without this. */
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .liquid-metal .cc-glass .lm-card,
+  .liquid-metal .cc-glass .lm-card-muted {
+    background-image: none;
+    background-color: transparent;
+    background: var(--lm-surface-gradient);
+    border-color: var(--lm-edge-highlight);
+    box-shadow: var(--lm-panel-shadow);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-metal .cc-glass .lm-card,
+  .liquid-metal .cc-glass .lm-card-muted {
+    background-image: none;
+    background-color: transparent;
+    background: var(--lm-surface-gradient);
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    border-color: var(--lm-edge-highlight);
+    box-shadow: var(--lm-panel-shadow);
+  }
+}
