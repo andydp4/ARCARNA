@@ -642,6 +642,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       }
       
       const [currentOrder] = await db.select().from(orders).where(orderCond);
+      if (!currentOrder) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
       const previousStatus = currentOrder?.status;
 
       // SECURITY: snapshot the settlement total the FIRST time this order
@@ -650,6 +653,21 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // refundable ceiling. Refunds cap against this frozen figure.
       const isSettling =
         validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
+      let creditAmountToOpen = 0;
+      if (isSettling) {
+        const { creditLegTotal } = await import("../services/creditLedger");
+        creditAmountToOpen = await creditLegTotal(
+          req.params.id,
+          String((currentOrder as any)?.payment_method ?? ""),
+          parseFloat(String((currentOrder as any)?.total ?? 0)),
+        );
+        if (creditAmountToOpen > 0 && !(currentOrder as any)?.customer_id) {
+          return res.status(400).json({
+            message: "Select a customer before putting a sale on credit.",
+            code: "CREDIT_CUSTOMER_REQUIRED",
+          });
+        }
+      }
       // The completing cashier is frozen here for the same reason the total is:
       // 90% of the commission pool follows this column, so reopening an order
       // and re-completing it under someone else must not move money that has
@@ -725,21 +743,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
       // £50 on tick, £50 is owed — putting the whole £100 on credit would have
       // the business chasing money it already has in the drawer.
-      if (isSettling) {
-        const { creditLegTotal } = await import("../services/creditLedger");
-        const owed = await creditLegTotal(
-          req.params.id,
-          String((currentOrder as any)?.payment_method ?? ""),
-          parseFloat(String((currentOrder as any)?.total ?? 0)),
-        );
-        if (owed > 0) {
-          const { openCreditForOrder } = await import("../services/creditLedger");
-          await openCreditForOrder(ctx.orgId, {
-            id: req.params.id,
-            customerId: (currentOrder as any)?.customer_id ?? null,
-            amount: owed,
-          });
-        }
+      if (isSettling && creditAmountToOpen > 0) {
+        const { openCreditForOrder } = await import("../services/creditLedger");
+        await openCreditForOrder(ctx.orgId, {
+          id: req.params.id,
+          customerId: (currentOrder as any)?.customer_id ?? null,
+          amount: creditAmountToOpen,
+        });
       }
 
       // Publish OrderStatusChanged event - critical, visible failure
