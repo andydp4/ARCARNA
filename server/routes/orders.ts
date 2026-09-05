@@ -9,6 +9,11 @@ import { requireOpenShift } from "../middleware/requireOpenShift";
 import { requireActiveCashierShift, attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
+  cashierShiftForBackdatedOrder,
+  resolveOrderDating,
+  settleBackdatedShift,
+} from "../services/orderDating";
+import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
   insertOrderSchema,
@@ -153,9 +158,41 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         body.giftCardAmount = giftCardAmount;
       }
 
+      // The day the order is FOR. Normally today, in which case nothing below
+      // changes. A missed day keyed in afterwards, or a pre-order, carries its
+      // own date: `created_at` is set to it so the sale lands on the right day
+      // in every report, and the entry moment is kept alongside so that the
+      // order still says it was keyed in late. Refused outside the window
+      // rather than clamped — a date that is out of range is a mistake, and
+      // silently moving it would be a worse one.
+      const dating = await resolveOrderDating(ctx.orgId, body.orderDate);
+      if (!dating.ok) {
+        return res.status(400).json({ message: dating.message, code: dating.code });
+      }
+      const isBackdated = dating.dating.kind === "backdated";
+
+      // A backdated sale belongs to the shift of the day it was sold on, the
+      // way an offline order replayed after its shift closed already does. The
+      // middleware resolved today's shift, which is the wrong day for this
+      // order; swap it for the sold-on day's shift, opening one if that day
+      // never had a shift (a whole missed day usually didn't).
+      let backdatedShift: Awaited<ReturnType<typeof cashierShiftForBackdatedOrder>> = null;
+      if (isBackdated && dating.instant && req.cashierShift && req.user?.id) {
+        backdatedShift = await cashierShiftForBackdatedOrder(ctx.orgId, req.user.id, dating.instant);
+        if (backdatedShift) {
+          req.cashierShift = {
+            cashierId: backdatedShift.cashierId,
+            cashierShiftId: backdatedShift.id,
+          };
+        }
+      }
+
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
-        const shiftId = req.shift?.id;
+        // The till shift is the drawer. A backdated sale's money was in a
+        // drawer that has since been counted, so it joins no drawer at all:
+        // putting it in today's would make today's count come up short.
+        const shiftId = isBackdated ? undefined : req.shift?.id;
         const cashierShift = req.cashierShift;
         // Whoever is logged in loaded this order. Recorded independently of any
         // cashier code: the user is always known on a till sale, whereas a code
@@ -195,6 +232,18 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
                     ...(cashierShift.queuedAt ? { created_at: cashierShift.queuedAt } : {}),
                   }
                 : {}),
+            })
+            .where(eq(orders.id, result.orderId));
+        }
+        // Written last so it wins over the offline-replay stamp above: an order
+        // the till dated is dated, whatever queue it arrived through.
+        if (dating.instant) {
+          await tx
+            .update(orders)
+            .set({
+              created_at: dating.instant,
+              entered_at: new Date(),
+              date_kind: dating.dating.kind,
             })
             .where(eq(orders.id, result.orderId));
         }
@@ -317,6 +366,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       if (req.cashierShift?.replayedToClosedShift && ctx.orgId) {
         await refreshClosedCashierShiftSummary(ctx.orgId, req.cashierShift.cashierShiftId);
       }
+      if (backdatedShift && ctx.orgId) {
+        await settleBackdatedShift(ctx.orgId, backdatedShift);
+      }
       
       res.status(201).json({ 
         ...result, 
@@ -326,7 +378,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           status: createdOrder.status,
           total: createdOrder.total,
           paymentMethod: createdOrder.payment_method,
-          createdAt: createdOrder.created_at
+          createdAt: createdOrder.created_at,
+          dateKind: createdOrder.date_kind ?? dating.dating.kind,
         } : null
       });
     } catch (error: any) {
@@ -356,6 +409,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         status: orders.status,
         fulfilmentMethod: orders.fulfilment_method,
         createdAt: orders.created_at,
+        // Whether created_at is when it was keyed in or the day it is for
+        // (migration 062). The counter view badges anything that is not live.
+        dateKind: orders.date_kind,
+        enteredAt: orders.entered_at,
         // Who loaded it. The counter view shows this because it decides where
         // the inputter's 10% of the commission goes, and because knowing who to
         // ask about an order is half of working a counter.
@@ -585,6 +642,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       }
       
       const [currentOrder] = await db.select().from(orders).where(orderCond);
+      if (!currentOrder) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
       const previousStatus = currentOrder?.status;
 
       // SECURITY: snapshot the settlement total the FIRST time this order
@@ -593,15 +653,51 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // refundable ceiling. Refunds cap against this frozen figure.
       const isSettling =
         validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
+      let creditAmountToOpen = 0;
+      if (isSettling) {
+        const { creditLegTotal } = await import("../services/creditLedger");
+        creditAmountToOpen = await creditLegTotal(
+          req.params.id,
+          String((currentOrder as any)?.payment_method ?? ""),
+          parseFloat(String((currentOrder as any)?.total ?? 0)),
+        );
+        if (creditAmountToOpen > 0 && !(currentOrder as any)?.customer_id) {
+          return res.status(400).json({
+            message: "Select a customer before putting a sale on credit.",
+            code: "CREDIT_CUSTOMER_REQUIRED",
+          });
+        }
+      }
       // The completing cashier is frozen here for the same reason the total is:
       // 90% of the commission pool follows this column, so reopening an order
       // and re-completing it under someone else must not move money that has
       // already accrued. `cashier_id` is kept in step for the reads that still
       // use it. Resolved softly — a manager closing an order from the back
       // office has no cashier shift, and that must not block the status change.
-      const completingCashier = (req as any).cashierShift as
+      let completingCashier = (req as any).cashierShift as
         | { cashierId: string | null; cashierShiftId: string }
         | undefined;
+      // A backdated order is completed into the shift of the day it was sold
+      // on, not the day someone got round to completing it: an order belongs
+      // to the shift that completed it, and for a missed day that shift is
+      // the missed day's. Resolved softly, like the attribution itself.
+      let backdatedShift: Awaited<ReturnType<typeof cashierShiftForBackdatedOrder>> = null;
+      const soldOn = (currentOrder as any)?.created_at as Date | null | undefined;
+      if (
+        isSettling &&
+        (currentOrder as any)?.date_kind === "backdated" &&
+        completingCashier &&
+        req.user?.id &&
+        soldOn
+      ) {
+        backdatedShift = await cashierShiftForBackdatedOrder(ctx.orgId, req.user.id, new Date(soldOn));
+        if (backdatedShift) {
+          completingCashier = {
+            cashierId: backdatedShift.cashierId,
+            cashierShiftId: backdatedShift.id,
+          };
+        }
+      }
       const settlementPatch = isSettling
         ? {
             settled_total: (currentOrder as any)?.total,
@@ -636,6 +732,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       if (!updated) {
         return res.status(404).json({ message: 'Order not found' });
       }
+
+      if (backdatedShift && ctx.orgId) {
+        await settleBackdatedShift(ctx.orgId, backdatedShift);
+      }
       
       // A sale on tick joins the credit list the moment the goods leave. The
       // sale is recognised now; the money, and the commission it earns, are not.
@@ -643,21 +743,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
       // £50 on tick, £50 is owed — putting the whole £100 on credit would have
       // the business chasing money it already has in the drawer.
-      if (isSettling) {
-        const { creditLegTotal } = await import("../services/creditLedger");
-        const owed = await creditLegTotal(
-          req.params.id,
-          String((currentOrder as any)?.payment_method ?? ""),
-          parseFloat(String((currentOrder as any)?.total ?? 0)),
-        );
-        if (owed > 0) {
-          const { openCreditForOrder } = await import("../services/creditLedger");
-          await openCreditForOrder(ctx.orgId, {
-            id: req.params.id,
-            customerId: (currentOrder as any)?.customer_id ?? null,
-            amount: owed,
-          });
-        }
+      if (isSettling && creditAmountToOpen > 0) {
+        const { openCreditForOrder } = await import("../services/creditLedger");
+        await openCreditForOrder(ctx.orgId, {
+          id: req.params.id,
+          customerId: (currentOrder as any)?.customer_id ?? null,
+          amount: creditAmountToOpen,
+        });
       }
 
       // Publish OrderStatusChanged event - critical, visible failure

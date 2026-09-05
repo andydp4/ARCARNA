@@ -165,7 +165,14 @@ export interface IStorage {
 
   // Inventory operations
   getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
+  updateProductStock(
+    productId: string,
+    adjustment: number,
+    type: 'add' | 'set',
+    userId: string,
+    orgId: string,
+    locationId?: string | null,
+  ): Promise<Product>;
 
   // Reports operations
   getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
@@ -278,6 +285,13 @@ export interface IStorage {
   ): Promise<OutboundWebhook>;
   listOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
+}
+
+export class AmbiguousStockLocationError extends Error {
+  constructor() {
+    super("Choose a location before editing stock for a multi-location organization");
+    this.name = "AmbiguousStockLocationError";
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -880,7 +894,7 @@ export class DatabaseStorage implements IStorage {
       : await db
           .select({
             productId: productLocationStock.productId,
-            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
           })
           .from(productLocationStock)
           .where(eq(productLocationStock.orgId, orgId))
@@ -905,6 +919,16 @@ export class DatabaseStorage implements IStorage {
     const { adjustProductLocationStock, resolveStockLocationId } = await import(
       "./services/productLocationStock",
     );
+
+    if (!locationId) {
+      const activeLocations = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.orgId, orgId), eq(locations.isActive, 1)));
+      if (activeLocations.length > 1) {
+        throw new AmbiguousStockLocationError();
+      }
+    }
 
     const locId = locationId
       ? locationId
@@ -947,7 +971,7 @@ export class DatabaseStorage implements IStorage {
     const [updatedProduct] = await db.select().from(products).where(cond);
     const totals = await db
       .select({
-        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
       })
       .from(productLocationStock)
       .where(and(eq(productLocationStock.orgId, orgId), eq(productLocationStock.productId, productId)));

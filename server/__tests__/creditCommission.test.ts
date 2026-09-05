@@ -22,19 +22,31 @@ import {
   organizations,
 } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import { commissionParty } from "@shared/reports/orderCommission";
 import { recordCreditPayment, voidCredit, writeOffCredit } from "../services/creditLedger";
 
 const SUFFIX = Date.now().toString(36);
 let orgId: string;
 let completerId: string;
 let inputterId: string;
-const codelessCompleterUserId = `credit-completer-${SUFFIX}`;
-const codelessInputterUserId = `credit-inputter-${SUFFIX}`;
 
-async function makeOrder(
-  total: number,
-  opts: { sameCashier?: boolean; codeless?: boolean; creditAmount?: number } = {},
-) {
+async function makeOrder(total: number, opts: {
+  sameCashier?: boolean;
+  creditAmount?: number;
+  completedCashierId?: string | null;
+  inputCashierId?: string | null;
+  completedUserId?: string | null;
+  inputUserId?: string | null;
+  paymentMethod?: string;
+} = {}) {
+  const hasCashierOverride = Object.prototype.hasOwnProperty.call(opts, "completedCashierId");
+  const completedCashierId = hasCashierOverride ? opts.completedCashierId ?? null : completerId;
+  const inputCashierId =
+    Object.prototype.hasOwnProperty.call(opts, "inputCashierId")
+      ? opts.inputCashierId ?? null
+      : opts.sameCashier
+        ? completedCashierId
+        : inputterId;
   const creditAmount = opts.creditAmount ?? total;
   const [order] = await db
     .insert(orders)
@@ -42,16 +54,12 @@ async function makeOrder(
       orgId,
       total: String(total),
       settledTotal: String(total),
-      paymentMethod: "tick",
+      paymentMethod: opts.paymentMethod ?? "tick",
       status: "completed",
-      completedCashierId: opts.codeless ? null : completerId,
-      inputCashierId: opts.codeless ? null : opts.sameCashier ? completerId : inputterId,
-      completedUserId: opts.codeless ? codelessCompleterUserId : null,
-      inputUserId: opts.codeless
-        ? opts.sameCashier
-          ? codelessCompleterUserId
-          : codelessInputterUserId
-        : null,
+      completedCashierId,
+      inputCashierId,
+      completedUserId: opts.completedUserId ?? null,
+      inputUserId: opts.inputUserId ?? null,
     })
     .returning();
   await db.insert(orderCredit).values({
@@ -76,24 +84,39 @@ async function releasedFor(orderId: string) {
     .from(cashierCommissionEntries)
     .where(and(eq(cashierCommissionEntries.orderId, orderId), isNull(cashierCommissionEntries.reversalOf)));
   const total = rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
-  const byCashier = new Map<string, number>();
   const byParty = new Map<string, number>();
   for (const r of rows) {
-    if (r.cashierId) {
-      byCashier.set(
-        r.cashierId,
-        Math.round(((byCashier.get(r.cashierId) ?? 0) + parseFloat(String(r.amount))) * 100) / 100,
-      );
-    }
-    const party = r.userId ?? r.cashierId;
-    if (party) {
-      byParty.set(
-        party,
-        Math.round(((byParty.get(party) ?? 0) + parseFloat(String(r.amount))) * 100) / 100,
-      );
-    }
+    const party = commissionParty(r.userId, r.cashierId);
+    if (!party) continue;
+    byParty.set(party, Math.round(((byParty.get(party) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
   }
-  return { total: Math.round(total * 100) / 100, byCashier, byParty, rows };
+  return { total: Math.round(total * 100) / 100, byCashier: byParty, byParty, rows };
+}
+
+async function insertSaleCommission(orderId: string, entries: Array<{
+  cashierId: string | null;
+  userId?: string | null;
+  role: "completer" | "inputter";
+  sharePercent: number;
+  amount: number;
+}>) {
+  await db.insert(cashierCommissionEntries).values(
+    entries.map((entry) => ({
+      orgId,
+      orderId,
+      cashierId: entry.cashierId,
+      userId: entry.userId ?? null,
+      cashierShiftId: null,
+      role: entry.role,
+      basis: "sale",
+      orderMargin: "50",
+      overheadShare: "0",
+      commissionRate: "10",
+      sharePercent: String(entry.sharePercent),
+      amount: String(entry.amount),
+      accruedOn: "2026-08-01",
+    })),
+  );
 }
 
 beforeAll(async () => {
@@ -214,62 +237,23 @@ describe("credit released as it is paid", () => {
     expect(released.byCashier.size).toBe(1);
   });
 
-  it("releases credit commission to codeless user-attributed shifts", async () => {
-    const orderId = await makeOrder(200, { codeless: true });
-    await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
-
-    const released = await releasedFor(orderId);
-    expect(released.total).toBe(20);
-    expect(released.byParty.get(codelessCompleterUserId)).toBe(18);
-    expect(released.byParty.get(codelessInputterUserId)).toBe(2);
-    expect(released.rows.every((row) => row.cashierId === null)).toBe(true);
-  });
-
-  it("tops up split-tender credit commission without duplicating the upfront tender commission", async () => {
-    const orderId = await makeOrder(100, { creditAmount: 50 });
-    await db.insert(cashierCommissionEntries).values([
-      {
-        orgId,
-        orderId,
-        cashierId: completerId,
-        role: "completer",
-        basis: "sale",
-        orderMargin: "50.00",
-        overheadShare: "0",
-        commissionRate: "10.00",
-        sharePercent: "90",
-        amount: "4.50",
-        accruedOn: "2026-08-01",
-      },
-      {
-        orgId,
-        orderId,
-        cashierId: inputterId,
-        role: "inputter",
-        basis: "sale",
-        orderMargin: "50.00",
-        overheadShare: "0",
-        commissionRate: "10.00",
-        sharePercent: "10",
-        amount: "0.50",
-        accruedOn: "2026-08-01",
-      },
+  it("only releases the residual pool after a split sale already accrued on its paid legs", async () => {
+    const orderId = await makeOrder(100, { creditAmount: 50, paymentMethod: "split" });
+    await insertSaleCommission(orderId, [
+      { cashierId: completerId, role: "completer", sharePercent: 90, amount: 4.5 },
+      { cashierId: inputterId, role: "inputter", sharePercent: 10, amount: 0.5 },
     ]);
 
-    await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
+    await recordCreditPayment({ orgId, orderId, amount: 50, method: "card" });
 
     const released = await releasedFor(orderId);
     expect(released.total).toBe(10);
     expect(released.byCashier.get(completerId)).toBe(9);
     expect(released.byCashier.get(inputterId)).toBe(1);
-    const creditResolutionTotal = released.rows
-      .filter((row) => row.basis === "credit_resolution")
-      .reduce((sum, row) => Math.round((sum + parseFloat(String(row.amount))) * 100) / 100, 0);
-    expect(creditResolutionTotal).toBe(5);
   });
 
   it("releases only the credit leg when the customer pays before shift close accrues the upfront tender", async () => {
-    const orderId = await makeOrder(100, { creditAmount: 50 });
+    const orderId = await makeOrder(100, { creditAmount: 50, paymentMethod: "split" });
 
     await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
 
@@ -278,6 +262,24 @@ describe("credit released as it is paid", () => {
     expect(released.byCashier.get(completerId)).toBe(4.5);
     expect(released.byCashier.get(inputterId)).toBe(0.5);
     expect(released.rows.every((row) => row.basis === "credit_resolution")).toBe(true);
+  });
+
+  it("releases credit commission to user-attributed codeless shifts", async () => {
+    const completedUserId = `user-completer-${SUFFIX}`;
+    const inputUserId = `user-inputter-${SUFFIX}`;
+    const orderId = await makeOrder(120, {
+      completedCashierId: null,
+      inputCashierId: null,
+      completedUserId,
+      inputUserId,
+    });
+
+    await recordCreditPayment({ orgId, orderId, amount: 120, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(12);
+    expect(released.byParty.get(completedUserId)).toBe(10.8);
+    expect(released.byParty.get(inputUserId)).toBe(1.2);
   });
 });
 

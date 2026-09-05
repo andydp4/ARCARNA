@@ -33,6 +33,11 @@ export const PlaceOrderInput = z.object({
   taxRatePercent: z.number().min(0).max(100).optional(),
   channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
   status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
+  // The calendar date the order is FOR, when that is not today: a missed day
+  // being keyed in afterwards, or a pre-order. Declared so it survives parsing
+  // (this object strips unknown keys); the route, not the engine, acts on it —
+  // see server/services/orderDating.ts and shared/orders/orderDate.ts.
+  orderDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
 export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })

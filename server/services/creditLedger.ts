@@ -94,6 +94,13 @@ export async function openCreditForOrder(
   order: { id: string; customerId: string | null; amount: number },
 ): Promise<void> {
   if (order.amount <= 0) return;
+  if (!order.customerId) {
+    throw new CreditError(
+      "Select a customer before putting a sale on credit.",
+      400,
+      "CREDIT_CUSTOMER_REQUIRED",
+    );
+  }
   await db
     .insert(orderCredit)
     .values({
@@ -413,6 +420,10 @@ async function releaseCommission(
     .map((target) => {
       const shouldHave = roundMoney(target.full * settledFraction);
       const key = `${commissionParty(target.userId, target.cashierId)}:${target.role}`;
+      // Only the credit component is released here. The upfront tender legs of
+      // a split sale earn sale-basis commission at shift close, whether that
+      // has happened yet or not, so they are excluded from the pool above
+      // rather than netted off after the fact.
       const delta = roundMoney(shouldHave - (already.get(key) ?? 0));
       return { target, delta };
     })

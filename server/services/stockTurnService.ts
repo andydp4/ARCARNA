@@ -11,7 +11,7 @@ export async function getStockTurnAnalytics(orgId: string, windowDays: number) {
   const soldRows = await db
     .select({
       productId: products.productId,
-      unitsSold: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int`,
+      unitsSold: sql<number>`coalesce(sum(${orderItems.quantity}), 0)`,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
@@ -29,7 +29,7 @@ export async function getStockTurnAnalytics(orgId: string, windowDays: number) {
   const stockRows = await db
     .select({
       productId: products.productId,
-      avgStock: sql<number>`coalesce(sum(${productLocationStock.stock}), 0)::int`,
+      avgStock: sql<number>`coalesce(sum(${productLocationStock.stock}), 0)`,
     })
     .from(products)
     .leftJoin(productLocationStock, eq(productLocationStock.productId, products.id))

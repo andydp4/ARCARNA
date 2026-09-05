@@ -20,11 +20,44 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const ORG_ID = "00000000-0000-4000-8000-000000000001";
 const CUSTOMER_ID = "00000000-0000-4000-8000-0000000000cc";
 
-const withTransactionMock = vi.hoisted(() =>
-  vi.fn(async () => {
-    throw new Error("stop-after-guard");
-  }),
-);
+const appDbMock = vi.hoisted(() => {
+  const state: {
+    currentOrder: Record<string, unknown> | null;
+    updatePatch: Record<string, unknown> | null;
+  } = {
+    currentOrder: null,
+    updatePatch: null,
+  };
+  const select = vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(async () => (state.currentOrder ? [state.currentOrder] : [])),
+    })),
+  }));
+  const update = vi.fn(() => ({
+    set: vi.fn((patch: Record<string, unknown>) => {
+      state.updatePatch = patch;
+      return {
+        where: vi.fn(() => ({
+          returning: vi.fn(async () =>
+            state.currentOrder ? [{ ...state.currentOrder, ...patch }] : [],
+          ),
+        })),
+      };
+    }),
+  }));
+  return {
+    state,
+    db: { select, update },
+    withTransaction: vi.fn(async () => {
+      throw new Error("stop-after-guard");
+    }),
+  };
+});
+
+const creditLedgerMock = vi.hoisted(() => ({
+  creditLegTotal: vi.fn(),
+  openCreditForOrder: vi.fn(),
+}));
 
 vi.mock("../auth", () => {
   const pass = ((_req, _res, next) => next()) as RequestHandler;
@@ -44,13 +77,17 @@ vi.mock("../eventBus", () => ({
 }));
 
 vi.mock("../../apps/server/src/db", () => ({
-  withTransaction: withTransactionMock,
+  withTransaction: appDbMock.withTransaction,
+  db: appDbMock.db,
 }));
 
-vi.mock("../../apps/server/src/db/schema", () => ({
-  orders: {},
-  order_items: {},
-}));
+vi.mock("../../apps/server/src/db/schema", async () => {
+  const actual: any = await vi.importActual("../../apps/server/src/db/schema");
+  return {
+    orders: actual.orders,
+    order_items: actual.order_items,
+  };
+});
 
 vi.mock("../../apps/server/src/engine.wiring", () => ({
   engine: { placeOrder: vi.fn() },
@@ -79,6 +116,7 @@ vi.mock("../middleware/requireActiveCashierShift", () => ({
 vi.mock("../services/cashierShiftEngine", () => ({
   refreshClosedCashierShiftSummary: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../services/creditLedger", () => creditLedgerMock);
 vi.mock("../storage", () => ({ storage: {} }));
 vi.mock("../adminAudit", () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }));
 
@@ -96,6 +134,22 @@ function postHandler(): Handler {
     },
     put: () => {},
     patch: () => {},
+    delete: () => {},
+  };
+  registerOrderRoutes(app, []);
+  return chain[chain.length - 1];
+}
+
+/** Mounts the routes and returns the PATCH /api/orders/:id handler. */
+function patchHandler(): Handler {
+  const chain: any[] = [];
+  const app: any = {
+    get: () => {},
+    post: () => {},
+    put: () => {},
+    patch: (path: string, ...rest: any[]) => {
+      if (path === "/api/orders/:id") chain.push(...rest);
+    },
     delete: () => {},
   };
   registerOrderRoutes(app, []);
@@ -127,7 +181,13 @@ async function placeOrder(body: Record<string, unknown>) {
 }
 
 beforeEach(() => {
-  withTransactionMock.mockClear();
+  appDbMock.withTransaction.mockClear();
+  appDbMock.db.select.mockClear();
+  appDbMock.db.update.mockClear();
+  appDbMock.state.currentOrder = null;
+  appDbMock.state.updatePatch = null;
+  creditLedgerMock.creditLegTotal.mockReset();
+  creditLedgerMock.openCreditForOrder.mockReset();
 });
 
 describe("a sale on credit needs a customer", () => {
@@ -139,7 +199,7 @@ describe("a sale on credit needs a customer", () => {
 
     expect(status).toBe(400);
     expect(payload.code).toBe("CREDIT_CUSTOMER_REQUIRED");
-    expect(withTransactionMock).not.toHaveBeenCalled();
+    expect(appDbMock.withTransaction).not.toHaveBeenCalled();
   });
 
   it("refuses a split sale with a tick leg and no customer", async () => {
@@ -156,7 +216,7 @@ describe("a sale on credit needs a customer", () => {
 
     expect(status).toBe(400);
     expect(payload.code).toBe("CREDIT_CUSTOMER_REQUIRED");
-    expect(withTransactionMock).not.toHaveBeenCalled();
+    expect(appDbMock.withTransaction).not.toHaveBeenCalled();
   });
 
   it("lets a tick sale through once a customer is attached", async () => {
@@ -168,7 +228,7 @@ describe("a sale on credit needs a customer", () => {
 
     // withTransaction is mocked to throw once entered, so the guard clearly
     // did not fire — its rejection returns before withTransaction runs at all.
-    expect(withTransactionMock).toHaveBeenCalledTimes(1);
+    expect(appDbMock.withTransaction).toHaveBeenCalledTimes(1);
     expect(payload.code).not.toBe("CREDIT_CUSTOMER_REQUIRED");
   });
 
@@ -178,7 +238,49 @@ describe("a sale on credit needs a customer", () => {
       paymentMethod: "cash",
     });
 
-    expect(withTransactionMock).toHaveBeenCalledTimes(1);
+    expect(appDbMock.withTransaction).toHaveBeenCalledTimes(1);
     expect(payload.code).not.toBe("CREDIT_CUSTOMER_REQUIRED");
+  });
+
+  it("refuses to complete an existing customerless credit order before writing status or debt", async () => {
+    appDbMock.state.currentOrder = {
+      id: "order-1",
+      org_id: ORG_ID,
+      customer_id: null,
+      total: "70.00",
+      payment_method: "tick",
+      status: "pending",
+      settled_total: null,
+    };
+    creditLedgerMock.creditLegTotal.mockResolvedValue(70);
+
+    const handler = patchHandler();
+    const req: any = {
+      params: { id: "order-1" },
+      body: { status: "completed" },
+      orgContext: { orgId: ORG_ID, locationId: null, role: "CASHIER" },
+      user: { id: "user_1" },
+      cashierShift: { cashierId: null, cashierShiftId: "shift-1" },
+    };
+    let status = 200;
+    let payload: unknown;
+    const res: any = {
+      status(code: number) {
+        status = code;
+        return this;
+      },
+      json: (p: unknown) => {
+        payload = p;
+        return p;
+      },
+    };
+
+    await handler(req, res);
+
+    expect(status).toBe(400);
+    expect((payload as { code?: string }).code).toBe("CREDIT_CUSTOMER_REQUIRED");
+    expect(creditLedgerMock.creditLegTotal).toHaveBeenCalledWith("order-1", "tick", 70);
+    expect(appDbMock.db.update).not.toHaveBeenCalled();
+    expect(creditLedgerMock.openCreditForOrder).not.toHaveBeenCalled();
   });
 });
