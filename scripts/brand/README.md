@@ -156,8 +156,17 @@ Clip lengths in `render-liquid.mjs` mirror `CUTS` in the page and have to stay
 in step with it — `mark` and `marksolo` 24s, `endcard` and `cloud` 21s,
 `backdrop` 12s.
 
-Each writes 4K and 1080p, MP4 and WebM, plus a poster, with colour tagged
-BT.709 so players do not guess BT.2020 on untagged UHD.
+Each writes two resolutions — the one rendered and half of it — as MP4 and
+WebM, plus a poster, with colour tagged BT.709 so players do not guess BT.2020
+on untagged UHD. At the default `--dpr 3` that is 4K and 1080p; the filenames
+follow the actual height, so `--dpr 1.5` gives `-1080` and `-540` rather than
+labelling a 1080p file `-4k`.
+
+A lower `--dpr` is the way to get watchable files quickly. Frame cost is
+mostly fragment shading, so `--dpr 1.5` is roughly twice as fast as the
+default — useful for judging pacing before committing to a 4K pass. Send it
+to its own `--out-dir` so the resumable frame cache does not mix resolutions:
+frames are reused on name alone, and nothing checks their dimensions.
 
 The liquid needs **WebGL**. Headless has no GPU, so `render-liquid.mjs`
 launches Chromium with `--use-gl=swiftshader`; that renders correctly but
