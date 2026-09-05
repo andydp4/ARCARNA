@@ -47,8 +47,8 @@ vi.mock("../eventBus", () => ({
   publishEventTx: publishEventMock,
 }));
 
-vi.mock("../../apps/server/src/db", () => ({
-  db: {
+vi.mock("../../apps/server/src/db", () => {
+  const db = {
     select: () => ({ from: () => ({ where: async () => [currentOrder] }) }),
     update: () => ({
       set: (patch: Record<string, unknown>) => {
@@ -60,9 +60,12 @@ vi.mock("../../apps/server/src/db", () => ({
         };
       },
     }),
-  },
-  withTransaction: async (fn: (tx: unknown) => unknown) => fn({}),
-}));
+  };
+  return {
+    db,
+    withTransaction: async (fn: (tx: typeof db) => unknown) => fn(db),
+  };
+});
 
 // The route pulls in middleware and services that open a real pool at import
 // time. This suite is about the settlement patch, not the database, and must
