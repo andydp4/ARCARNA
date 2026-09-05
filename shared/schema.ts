@@ -1332,10 +1332,23 @@ export const orders = pgTable("orders", {
   // "personal_use" — a Signal without a reason is a Signal nobody reads.
   // (migration 054)
   personalUseReason: text("personal_use_reason"),
+  // `createdAt` is the day the sale is FOR — what every report reads as the
+  // moment of sale. Normally that is when it was keyed in; for a day's sales
+  // entered afterwards, or a pre-order, it is not, and these two say so.
+  // (migration 062, shared/orders/orderDate.ts)
+  enteredAt: timestamp("entered_at").defaultNow(),
+  dateKind: varchar("date_kind", { length: 16 }).notNull().default("live"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  index("orders_dated_idx")
+    .on(table.orgId, table.dateKind, table.createdAt)
+    .where(sql`${table.dateKind} <> 'live'`),
+  check(
+    "orders_date_kind_check",
+    sql`${table.dateKind} IN ('live', 'backdated', 'preorder')`,
+  ),
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
   index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
