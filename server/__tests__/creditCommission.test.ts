@@ -78,6 +78,7 @@ async function releasedFor(orderId: string) {
     .select({
       cashierId: cashierCommissionEntries.cashierId,
       userId: cashierCommissionEntries.userId,
+      basis: cashierCommissionEntries.basis,
       amount: cashierCommissionEntries.amount,
     })
     .from(cashierCommissionEntries)
@@ -89,7 +90,7 @@ async function releasedFor(orderId: string) {
     if (!party) continue;
     byParty.set(party, Math.round(((byParty.get(party) ?? 0) + parseFloat(String(r.amount))) * 100) / 100);
   }
-  return { total: Math.round(total * 100) / 100, byCashier: byParty, byParty };
+  return { total: Math.round(total * 100) / 100, byCashier: byParty, byParty, rows };
 }
 
 async function insertSaleCommission(orderId: string, entries: Array<{
@@ -209,6 +210,24 @@ describe("credit released as it is paid", () => {
     ]);
   });
 
+  it("accepts auth-subject strings for the user who recorded the payment", async () => {
+    const orderId = await makeOrder(100);
+    await recordCreditPayment({
+      orgId,
+      orderId,
+      amount: 100,
+      method: "cash",
+      recordedByUserId: "seed-cashier",
+    });
+
+    const [row] = await db
+      .select({ recordedByUserId: creditPayments.recordedByUserId })
+      .from(creditPayments)
+      .where(eq(creditPayments.orderId, orderId));
+
+    expect(row.recordedByUserId).toBe("seed-cashier");
+  });
+
   it("gives one cashier the whole pool when they loaded and completed it", async () => {
     const orderId = await makeOrder(200, { sameCashier: true });
     await recordCreditPayment({ orgId, orderId, amount: 200, method: "cash" });
@@ -231,6 +250,18 @@ describe("credit released as it is paid", () => {
     expect(released.total).toBe(10);
     expect(released.byCashier.get(completerId)).toBe(9);
     expect(released.byCashier.get(inputterId)).toBe(1);
+  });
+
+  it("releases only the credit leg when the customer pays before shift close accrues the upfront tender", async () => {
+    const orderId = await makeOrder(100, { creditAmount: 50, paymentMethod: "split" });
+
+    await recordCreditPayment({ orgId, orderId, amount: 50, method: "cash" });
+
+    const released = await releasedFor(orderId);
+    expect(released.total).toBe(5);
+    expect(released.byCashier.get(completerId)).toBe(4.5);
+    expect(released.byCashier.get(inputterId)).toBe(0.5);
+    expect(released.rows.every((row) => row.basis === "credit_resolution")).toBe(true);
   });
 
   it("releases credit commission to user-attributed codeless shifts", async () => {

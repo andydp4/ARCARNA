@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "../db";
-import { cashierShifts, organizations } from "@shared/schema";
+import { cashierProfiles, cashierShifts, organizations } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { resolveShiftForToday } from "../services/tradingDayShift";
 
@@ -31,6 +31,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!orgId) return;
   await db.delete(cashierShifts).where(eq(cashierShifts.orgId, orgId));
+  await db.delete(cashierProfiles).where(eq(cashierProfiles.orgId, orgId));
   await db.delete(organizations).where(eq(organizations.id, orgId));
 });
 
@@ -108,6 +109,53 @@ describe("opening a shift without anybody opening a shift", () => {
         ),
       );
     expect(rows).toHaveLength(1);
+  });
+
+  it("ignores a closed historical coded shift and opens a live lazy shift", async () => {
+    const userId = `user-historic-${SUFFIX}`;
+    const [profile] = await db
+      .insert(cashierProfiles)
+      .values({ orgId, cashierCode: `H${SUFFIX}`.slice(0, 12), displayName: "Historic cashier" })
+      .returning();
+    const [closed] = await db
+      .insert(cashierShifts)
+      .values({
+        orgId,
+        cashierId: profile.id,
+        userId,
+        tradingDay: "2026-04-04",
+        openedByUserId: userId,
+        status: "closed",
+        closedAt: new Date("2026-04-04T12:00:00Z"),
+      })
+      .returning();
+
+    const shift = await resolveShiftForToday(orgId, userId, new Date("2026-04-04T14:00:00Z"));
+
+    expect(shift!.id).not.toBe(closed.id);
+    expect(shift!.status).toBe("open");
+    expect(shift!.cashierId).toBeNull();
+  });
+
+  it("opens a fresh lazy shift after a same-day lazy shift was closed", async () => {
+    const userId = `user-closed-lazy-${SUFFIX}`;
+    const [closed] = await db
+      .insert(cashierShifts)
+      .values({
+        orgId,
+        userId,
+        tradingDay: "2026-04-05",
+        openedByUserId: userId,
+        status: "closed",
+        closedAt: new Date("2026-04-05T12:00:00Z"),
+      })
+      .returning();
+
+    const shift = await resolveShiftForToday(orgId, userId, new Date("2026-04-05T14:00:00Z"));
+
+    expect(shift!.id).not.toBe(closed.id);
+    expect(shift!.status).toBe("open");
+    expect(shift!.cashierId).toBeNull();
   });
 
   it("needs both an org and a person", async () => {
