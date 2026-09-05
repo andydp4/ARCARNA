@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/appPaths";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -99,6 +99,8 @@ export default function Orders() {
   const [orderToEdit, setOrderToEdit] = useState<OrderDetail | null>(null);
   const [editLines, setEditLines] = useState<Array<{productId: string; productName: string; quantity: number; unitPrice: number}>>([]);
   const [orderDetailsId, setOrderDetailsId] = useState<string | null>(null);
+  const pendingStatusOrderIdsRef = useRef(new Set<string>());
+  const [pendingStatusOrderIds, setPendingStatusOrderIds] = useState<Set<string>>(() => new Set());
   const [copiedText, setCopiedText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -165,6 +167,14 @@ export default function Orders() {
     queryKey: ["/api/settings"],
   });
 
+  const setStatusOrderPending = useCallback((orderId: string, pending: boolean) => {
+    const next = new Set(pendingStatusOrderIdsRef.current);
+    if (pending) next.add(orderId);
+    else next.delete(orderId);
+    pendingStatusOrderIdsRef.current = next;
+    setPendingStatusOrderIds(next);
+  }, []);
+
   // Update order status mutation
   const updateStatusMutation = useMutation({
     mutationFn: async (data: { orderId: string; status: string }) => {
@@ -184,6 +194,7 @@ export default function Orders() {
       return response.json();
     },
     onMutate: async ({ orderId, status }) => {
+      setStatusOrderPending(orderId, true);
       await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
       await queryClient.cancelQueries({ queryKey: ["/api/orders", orderId] });
 
@@ -247,6 +258,9 @@ export default function Orders() {
         description: error.message || "Failed to update order status",
         variant: "destructive",
       });
+    },
+    onSettled: (_data, _error, variables) => {
+      if (variables?.orderId) setStatusOrderPending(variables.orderId, false);
     },
   });
 
@@ -413,6 +427,7 @@ export default function Orders() {
 
   const handleStatusChange = useCallback(
     (order: OrdersListOrder, status: OrderStatus) => {
+      if (pendingStatusOrderIdsRef.current.has(order.id)) return;
       updateStatusMutation.mutate({ orderId: order.id, status });
     },
     [updateStatusMutation],
@@ -757,10 +772,7 @@ export default function Orders() {
                         onView={openDetailsDialog}
                         onEdit={openEditDialog}
                         onStatusChange={handleStatusChange}
-                        statusPending={
-                          updateStatusMutation.isPending &&
-                          updateStatusMutation.variables?.orderId === order.id
-                        }
+                        statusPending={pendingStatusOrderIds.has(order.id)}
                         onDelete={openDeleteDialog}
                         selected={bulk.isSelected(order.id)}
                         onToggleSelect={() => bulk.toggle(order.id)}

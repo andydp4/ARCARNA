@@ -232,7 +232,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         eq(shifts.orgId, ctx.orgId),
         // An open shift older than the window is still on now, and "who is on"
         // is the first question this page answers.
-        or(gte(shifts.openedAt, since), eq(shifts.status, "open"))!,
+        or(gte(shifts.openedAt, since), eq(shifts.status, "open"), eq(shifts.status, "reopened"))!,
       ];
       if (status === "open" || status === "closed" || status === "reopened") {
         conditions.push(eq(shifts.status, status));
@@ -288,6 +288,21 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: "Unauthorized" });
         const body = openBodySchema.parse(req.body ?? {});
+
+        const [location] = await db
+          .select({ id: locations.id })
+          .from(locations)
+          .where(
+            and(
+              eq(locations.id, body.locationId),
+              eq(locations.orgId, ctx.orgId),
+              eq(locations.isActive, 1),
+            ),
+          )
+          .limit(1);
+        if (!location) {
+          return res.status(404).json({ message: "Location not found" });
+        }
 
         const [existing] = await db
           .select()

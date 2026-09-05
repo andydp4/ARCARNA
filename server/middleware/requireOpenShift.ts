@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { db } from "../db";
-import { shifts } from "../../shared/schema";
+import { locations, shifts } from "../../shared/schema";
 import { and, desc, eq } from "drizzle-orm";
 
 export type OpenShiftContext = {
@@ -101,6 +101,14 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
       return res.status(400).json({
         message: "Location required for POS. Pass X-Location-Id or set a default location.",
       });
+    }
+    const [location] = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(and(eq(locations.id, locationId), eq(locations.orgId, ctx.orgId)))
+      .limit(1);
+    if (!location) {
+      return res.status(404).json({ message: "Location not found for organization" });
     }
     const [open] = await db
       .select()
