@@ -5,7 +5,15 @@ import path from "path";
 
 // Default to site root (subdomain deploy). Override with VITE_BASE_PATH for a
 // path-mounted build (e.g. VITE_BASE_PATH=/arcarna npm run build).
-const appBase = (process.env.VITE_BASE_PATH || "/").replace(/\/?$/, "/");
+function viteBasePath(raw: string | undefined): string {
+  if (raw === undefined) return "/";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "/") return "/";
+  const withLeading = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeading.replace(/\/?$/, "/");
+}
+
+const appBase = viteBasePath(process.env.VITE_BASE_PATH);
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
 
 export default defineConfig({

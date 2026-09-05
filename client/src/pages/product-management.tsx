@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { queryClient, apiRequest } from '@/lib/queryClient'
+import { queryClient, apiRequest, getJson } from '@/lib/queryClient'
 import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/PageHeader'
@@ -52,6 +52,8 @@ import {
   Search,
   AlertCircle,
   CheckCircle,
+  Globe,
+  ImagePlus,
   X
 } from 'lucide-react'
 import { PRODUCT_IMPORT_CSV_SAMPLE } from '@shared/setup'
@@ -64,6 +66,14 @@ import { downloadBlob } from '@/lib/fileImport'
 import { ViewSelector } from '@/components/ViewSelector'
 import { useSavedViews, useApplyDefaultView } from '@/hooks/useSavedViews'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { BulkActionBar } from '@/components/BulkActionBar'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
@@ -72,6 +82,19 @@ import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
 import type { Role } from '@shared/schema'
 import { executeBulkAction, downloadBlob as downloadBulkCsv } from '@/lib/bulkActionsClient'
 import { captureViewState } from '@shared/savedViews/state'
+import type { WebsiteUploadItem } from '@/features/wm-supplies/adminWebsite'
+
+const NO_WEBSITE_IMAGE = '__none__'
+
+type ProductWebsiteFormData = {
+  availableForWebsite: boolean
+  websiteTitle: string
+  websiteDescription: string
+  websiteCategory: string
+  websiteUnitLabel: string
+  websiteSortOrder: string
+  websiteImageFileId: string
+}
 
 export default function ProductManagement() {
   const { toast, dismiss } = useToast()
@@ -97,6 +120,7 @@ export default function ProductManagement() {
   }
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
+  const [websiteProduct, setWebsiteProduct] = useState<any>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [csvContent, setCsvContent] = useState('')
   const [csvPreview, setCsvPreview] = useState<ProductImportPreview | null>(null)
@@ -112,11 +136,25 @@ export default function ProductManagement() {
     categoryId: '',
     aliases: ''
   })
+  const [websiteFormData, setWebsiteFormData] = useState<ProductWebsiteFormData>({
+    availableForWebsite: false,
+    websiteTitle: '',
+    websiteDescription: '',
+    websiteCategory: '',
+    websiteUnitLabel: '',
+    websiteSortOrder: '0',
+    websiteImageFileId: '',
+  })
 
 
   // Fetch products
   const { data: products = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/products'],
+  })
+
+  const { data: websiteUploads = [] } = useQuery<WebsiteUploadItem[]>({
+    queryKey: ['/api/website/uploads'],
+    queryFn: () => getJson<WebsiteUploadItem[]>('/api/website/uploads'),
   })
 
   const refreshAfterProductMutation = async () => {
@@ -165,6 +203,27 @@ export default function ProductManagement() {
     },
     onError: (error: any) => {
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update product'
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const websiteMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      apiRequest('PATCH', `/api/products/${id}/website`, data),
+    onSuccess: async () => {
+      await refreshAfterProductMutation()
+      setWebsiteProduct(null)
+      toast({
+        title: 'Website settings saved',
+        description: 'Product website details updated',
+      })
+    },
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update website product settings'
       toast({
         title: 'Error',
         description: errorMessage,
@@ -374,6 +433,40 @@ export default function ProductManagement() {
       stockLimit: (product.stockLimit || '').toString(),
       categoryId: product.categoryId || '',
       aliases: Array.isArray(product.aliases) ? product.aliases.join(', ') : ''
+    })
+  }
+
+  const handleWebsiteEdit = (product: any) => {
+    setWebsiteProduct(product)
+    setWebsiteFormData({
+      availableForWebsite: !!product.availableForWebsite,
+      websiteTitle: product.websiteTitle || '',
+      websiteDescription: product.websiteDescription || '',
+      websiteCategory: product.websiteCategory || '',
+      websiteUnitLabel: product.websiteUnitLabel || '',
+      websiteSortOrder: (product.websiteSortOrder ?? 0).toString(),
+      websiteImageFileId: product.websiteImageFileId || '',
+    })
+  }
+
+  const websiteNullable = (value: string) => {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  const handleWebsiteSubmit = async () => {
+    if (!websiteProduct) return
+    await websiteMutation.mutateAsync({
+      id: websiteProduct.id,
+      data: {
+        availableForWebsite: websiteFormData.availableForWebsite,
+        websiteTitle: websiteNullable(websiteFormData.websiteTitle),
+        websiteDescription: websiteNullable(websiteFormData.websiteDescription),
+        websiteCategory: websiteNullable(websiteFormData.websiteCategory),
+        websiteUnitLabel: websiteNullable(websiteFormData.websiteUnitLabel),
+        websiteSortOrder: Number.parseInt(websiteFormData.websiteSortOrder || '0', 10) || 0,
+        websiteImageFileId: websiteNullable(websiteFormData.websiteImageFileId),
+      },
     })
   }
 
@@ -785,6 +878,139 @@ export default function ProductManagement() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={!!websiteProduct} onOpenChange={(open) => !open && setWebsiteProduct(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                WM Supplies Website
+              </DialogTitle>
+              <DialogDescription>
+                {websiteProduct?.name ? `Website listing settings for ${websiteProduct.name}` : 'Website listing settings'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <Label htmlFor="website-visible">Show on website</Label>
+                  <p className="text-sm text-muted-foreground">Approved customers can order this product online</p>
+                </div>
+                <Switch
+                  id="website-visible"
+                  checked={websiteFormData.availableForWebsite}
+                  onCheckedChange={(checked) =>
+                    setWebsiteFormData({ ...websiteFormData, availableForWebsite: checked })
+                  }
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="website-title">Website title</Label>
+                  <Input
+                    id="website-title"
+                    value={websiteFormData.websiteTitle}
+                    onChange={(e) =>
+                      setWebsiteFormData({ ...websiteFormData, websiteTitle: e.target.value })
+                    }
+                    placeholder={websiteProduct?.name || 'Product title'}
+                    className="min-h-[44px]"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="website-category">Website category</Label>
+                  <Input
+                    id="website-category"
+                    value={websiteFormData.websiteCategory}
+                    onChange={(e) =>
+                      setWebsiteFormData({ ...websiteFormData, websiteCategory: e.target.value })
+                    }
+                    placeholder="Catering"
+                    className="min-h-[44px]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="website-description">Website description</Label>
+                <Textarea
+                  id="website-description"
+                  value={websiteFormData.websiteDescription}
+                  onChange={(e) =>
+                    setWebsiteFormData({ ...websiteFormData, websiteDescription: e.target.value })
+                  }
+                  rows={4}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="website-unit">Unit label</Label>
+                  <Input
+                    id="website-unit"
+                    value={websiteFormData.websiteUnitLabel}
+                    onChange={(e) =>
+                      setWebsiteFormData({ ...websiteFormData, websiteUnitLabel: e.target.value })
+                    }
+                    placeholder="case"
+                    className="min-h-[44px]"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="website-sort">Sort order</Label>
+                  <Input
+                    id="website-sort"
+                    type="number"
+                    min="0"
+                    value={websiteFormData.websiteSortOrder}
+                    onChange={(e) =>
+                      setWebsiteFormData({ ...websiteFormData, websiteSortOrder: e.target.value })
+                    }
+                    className="min-h-[44px]"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="website-image">Image</Label>
+                  <Select
+                    value={websiteFormData.websiteImageFileId || NO_WEBSITE_IMAGE}
+                    onValueChange={(value) =>
+                      setWebsiteFormData({
+                        ...websiteFormData,
+                        websiteImageFileId: value === NO_WEBSITE_IMAGE ? '' : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger id="website-image" className="min-h-[44px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_WEBSITE_IMAGE}>No image</SelectItem>
+                      {websiteUploads.map((upload) => (
+                        <SelectItem key={upload.id} value={upload.id}>
+                          {upload.altText || upload.fileName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setWebsiteProduct(null)} className="min-h-[44px]">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleWebsiteSubmit}
+                disabled={websiteMutation.isPending}
+                className="min-h-[44px]"
+                data-testid="button-save-product-website"
+              >
+                {websiteMutation.isPending ? 'Saving...' : 'Save website settings'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Card>
@@ -918,6 +1144,14 @@ export default function ProductManagement() {
                                 {product.productId && (
                                   <div className="text-xs font-mono text-muted-foreground mt-0.5">{product.productId}</div>
                                 )}
+                                <div className="mt-2">
+                                  <Badge
+                                    variant={product.availableForWebsite ? 'secondary' : 'outline'}
+                                    className="text-xs"
+                                  >
+                                    {product.availableForWebsite ? 'Website' : 'Not online'}
+                                  </Badge>
+                                </div>
                               </div>
                               <Badge variant={stockStatus.variant} className="ml-2">
                                 {stockStatus.status}
@@ -948,6 +1182,16 @@ export default function ProductManagement() {
                             </div>
 
                             <div className="flex gap-2 pt-2 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleWebsiteEdit(product)}
+                                className="flex-1 min-h-[44px]"
+                                data-testid={`button-website-${product.id}`}
+                              >
+                                <ImagePlus className="h-4 w-4 mr-2" />
+                                Website
+                              </Button>
                               {/* Trigger only. The Edit dialog is declared once, in
                                   the desktop table below. Radix portals dialog
                                   content to document.body, which escapes this
@@ -1003,6 +1247,7 @@ export default function ProductManagement() {
                         <TableHead>Price</TableHead>
                         <TableHead>Tax</TableHead>
                         <TableHead>Stock</TableHead>
+                        <TableHead>Website</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
@@ -1031,12 +1276,26 @@ export default function ProductManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
+                          <Badge variant={product.availableForWebsite ? 'secondary' : 'outline'}>
+                            {product.availableForWebsite ? 'Online' : 'Hidden'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={stockStatus.variant}>
                             {stockStatus.status}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleWebsiteEdit(product)}
+                              data-testid={`button-website-${product.id}`}
+                              aria-label="Edit website listing"
+                            >
+                              <ImagePlus className="h-4 w-4" />
+                            </Button>
                             <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
                               <DialogTrigger asChild>
                                 <Button

@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { describeOrderDating } from "@shared/orders/orderDate";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,20 +10,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Clock,
-  AlertCircle,
-  Truck,
-  CheckCircle2,
-  MoreVertical,
-  Eye,
+  AlertTriangle,
   Calendar,
-  Trash2,
+  Check,
+  Clock,
   Edit2,
-  type LucideIcon,
+  Eye,
+  Globe2,
+  MoreVertical,
+  Trash2,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OrderStatusSelect } from "@/components/orders/OrderStatusSelect";
+import { STATUS_CONFIG as STATUS_CONFIG_INTERNAL } from "@/components/orders/statusConfig";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ORDER_STATUSES, type OrderStatus } from "@shared/schema";
+import type { OrderStatus } from "@shared/schema";
+import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
 
 export interface OrdersListOrder {
   id: string;
@@ -30,38 +34,69 @@ export interface OrdersListOrder {
   customerName?: string;
   total: string;
   paymentMethod: string;
+  channel?: string;
   status: string;
   createdAt: string;
+  /** live | backdated | preorder — whether createdAt is when it was keyed in or the day it is for. */
+  dateKind?: string | null;
+  /** Who loaded it — this is where the inputter's 10% goes. */
+  inputUserName?: string | null;
+  /** Already on the order and never shown: what is holding it up. */
+  delayFlag?: boolean;
+  delayReason?: string | null;
+  revisedEta?: string | null;
+  etaGiven?: string | null;
 }
 
-export const STATUS_CONFIG: Record<
-  OrderStatus,
-  { label: string; color: string; border: string; icon: LucideIcon }
-> = {
-  pending: { label: "Pending", color: "bg-yellow-700", border: "border-l-yellow-700", icon: Clock },
-  "on-hold": { label: "On Hold", color: "bg-orange-700", border: "border-l-orange-700", icon: AlertCircle },
-  "awaiting-customer": {
-    label: "Awaiting Customer",
-    color: "bg-blue-600",
-    border: "border-l-blue-600",
-    icon: Truck,
-  },
-  urgent: { label: "Urgent", color: "bg-red-600", border: "border-l-red-600", icon: AlertCircle },
-  completed: { label: "Completed", color: "bg-green-700", border: "border-l-green-700", icon: CheckCircle2 },
+/**
+ * How long an order has been waiting, and how loudly to say so.
+ *
+ * The counter view exists to answer "what is waiting and how long has it
+ * waited", and a timestamp does not answer that — a person reading
+ * "14:32" has to do arithmetic to find out that it has been sitting for
+ * forty minutes. The thresholds escalate so a glance is enough.
+ */
+export function describeWait(createdAt: string, now: number = Date.now()) {
+  const minutes = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 60000));
+  const label =
+    minutes < 1
+      ? "just now"
+      : minutes < 60
+        ? `${minutes} min`
+        : minutes < 60 * 24
+          ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+          : `${Math.floor(minutes / (60 * 24))}d`;
+  const tone =
+    minutes >= 60 ? "text-destructive" : minutes >= 20 ? "text-warning" : "text-muted-foreground";
+  return { minutes, label, tone };
+}
+
+export { STATUS_CONFIG } from "@/components/orders/statusConfig";
+
+// Tender values that read as something other than their own name — "tick" is
+// the one case: the internal payment_method value stayed "tick" (it is a
+// stored data value across every historic order, not just a label) after the
+// credit rework, but nothing anywhere should show a customer or a member of
+// staff the word "tick" any more.
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  tick: "Credit",
 };
 
 export function formatPaymentLabel(method: string) {
   if (!method) return "—";
-  return method.replace(/-/g, " ");
+  const known = PAYMENT_METHOD_LABELS[method.toLowerCase()];
+  if (known) return known;
+  const spaced = method.replace(/[-_]/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function getStatusBorderClass(status: string) {
-  const config = STATUS_CONFIG[status as OrderStatus];
+  const config = STATUS_CONFIG_INTERNAL[status as OrderStatus];
   return config?.border ?? "border-l-muted-foreground/40";
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config = STATUS_CONFIG[status as OrderStatus] || {
+  const config = STATUS_CONFIG_INTERNAL[status as OrderStatus] || {
     label: status,
     color: "bg-gray-500",
     border: "border-l-gray-500",
@@ -78,20 +113,31 @@ function StatusBadge({ status }: { status: string }) {
 
 export type OrdersRowProps = {
   order: OrdersListOrder;
+  /** Completing from the list is the whole point of the counter view. */
+  onComplete?: (order: OrdersListOrder) => void;
   onView: (orderId: string) => void;
   onEdit: (orderId: string) => void;
-  onUpdateStatus: (order: OrdersListOrder) => void;
+  onStatusChange: (order: OrdersListOrder, status: OrderStatus) => void;
+  /** True while this row's status write is in flight. */
+  statusPending?: boolean;
   onDelete: (order: OrdersListOrder) => void;
   selected?: boolean;
   onToggleSelect?: () => void;
 };
 
-function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selected, onToggleSelect }: OrdersRowProps) {
+function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect }: OrdersRowProps) {
   const totalNum = parseFloat(order.total || "0");
   const placed = new Date(order.createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+  const wait = describeWait(order.createdAt);
+  const isOpen = (order.status || "pending") !== "completed";
+  const datedLabel = describeOrderDating(order.dateKind);
+  // A pre-order is not waiting on anyone yet; "waiting just now" for a fortnight
+  // would be noise on the exact screen that exists to show what is waiting.
+  const showWait = isOpen && order.dateKind !== "preorder";
+  const eta = order.revisedEta ?? order.etaGiven ?? null;
 
   return (
     <li
@@ -116,10 +162,61 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
             #{order.id.slice(0, 8)}
           </span>
         </div>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-          <span>{placed}</span>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {showWait && (
+            <span className={cn("inline-flex items-center gap-1.5 font-medium", wait.tone)}>
+              <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Waiting {wait.label}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            {placed}
+          </span>
+          {order.inputUserName && (
+            // Who to ask about it, and who earns the inputter's share of it.
+            <span className="inline-flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              Loaded by {order.inputUserName}
+            </span>
+          )}
         </p>
+        {isOpen && (order.delayFlag || eta) && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            {order.delayFlag && (
+              <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {order.delayReason?.trim() || "Delayed"}
+              </span>
+            )}
+            {eta && (
+              <span className="text-muted-foreground">
+                Due {new Date(eta).toLocaleTimeString(undefined, { timeStyle: "short" })}
+              </span>
+            )}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant={isWebsiteOrder(order.channel) ? "secondary" : "outline"}
+            className="max-w-full gap-1 truncate font-normal"
+            data-testid={`badge-order-channel-${order.id}`}
+          >
+            {isWebsiteOrder(order.channel) && <Globe2 className="h-3 w-3 shrink-0" />}
+            {formatOrderChannel(order.channel)}
+          </Badge>
+          {datedLabel && (
+            // Dated for a day other than the one it was keyed in on. Shown so
+            // that a sale entered late is never mistaken for one taken live.
+            <Badge
+              variant="outline"
+              className="max-w-full gap-1 truncate font-normal"
+              data-testid={`badge-order-dated-${order.id}`}
+            >
+              {datedLabel}
+            </Badge>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2 sm:hidden">
           <span className="text-lg font-bold tabular-nums tracking-tight text-foreground">
             £{totalNum.toFixed(2)}
@@ -140,8 +237,32 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
           </Badge>
         </div>
         <div className="flex w-full shrink-0 flex-wrap items-stretch gap-2 border-t border-border/60 pt-3 sm:w-auto sm:border-t-0 sm:pt-0">
+          <OrderStatusSelect
+            status={order.status || "pending"}
+            onChange={(status) => onStatusChange(order, status)}
+            disabled={statusPending}
+            label={`order #${order.id.slice(0, 8)}`}
+            data-testid={`select-order-status-${order.id}`}
+          />
+          {isOpen && onComplete && (
+            // One action, from the list. Completing used to mean opening the
+            // status dropdown and picking the right value — on the screen where
+            // completing is the single most common thing anybody does, and
+            // where the completer earns 90% of the order's commission.
+            <Button
+              variant="default"
+              size="sm"
+              className="min-h-[44px] flex-1 sm:min-w-[6.5rem] sm:flex-none"
+              onClick={() => onComplete(order)}
+              disabled={statusPending}
+              data-testid={`button-complete-order-${order.id}`}
+            >
+              <Check className="mr-2 h-4 w-4 shrink-0" />
+              Complete
+            </Button>
+          )}
           <Button
-            variant="default"
+            variant={isOpen && onComplete ? "outline" : "default"}
             size="sm"
             className="min-h-[44px] flex-1 sm:min-w-[5.5rem] sm:flex-none"
             onClick={() => onView(order.id)}
@@ -167,9 +288,6 @@ function OrdersRowInner({ order, onView, onEdit, onUpdateStatus, onDelete, selec
                 <Edit2 className="mr-2 h-4 w-4" />
                 Edit order
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onUpdateStatus(order)} data-testid="menu-update-status">
-                Update status
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => onDelete(order)}
@@ -193,7 +311,9 @@ export const OrdersRow = memo(
     prev.order === next.order &&
     prev.onView === next.onView &&
     prev.onEdit === next.onEdit &&
-    prev.onUpdateStatus === next.onUpdateStatus &&
+    prev.onStatusChange === next.onStatusChange &&
+    prev.onComplete === next.onComplete &&
+    prev.statusPending === next.statusPending &&
     prev.onDelete === next.onDelete
 );
 

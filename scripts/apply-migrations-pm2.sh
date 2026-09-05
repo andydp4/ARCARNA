@@ -61,6 +61,22 @@ if [[ ${#migration_files[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# Errors are collected, not ignored.
+#
+# This loop used to run psql with ON_ERROR_STOP=0 and swallow the exit code, so
+# a migration that failed outright printed one ERROR line into a thousand lines
+# of NOTICE and the deploy carried on to "SUCCESS". That is not hypothetical:
+# 058 failed on its first production run — the unique index guarding against
+# one person's trading day being split across two shifts was never created —
+# and the deploy reported success over it. A silent half-migrated schema is the
+# single worst outcome this script can produce.
+#
+# ON_ERROR_STOP stays 0 deliberately: every migration is IF NOT EXISTS, and
+# stopping at the first "already exists" NOTICE-adjacent error would break
+# re-runs. Instead each file is checked for real ERROR lines, and the script
+# fails at the end naming every file that had one.
+failed_migrations=()
+
 while IFS= read -r f; do
   base="$(basename "$f")"
   if is_manual_only "$base"; then
@@ -68,10 +84,28 @@ while IFS= read -r f; do
     continue
   fi
   echo "  → $base"
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=0 -f "$f" || {
-    echo "  (some 'already exists' notices are OK on re-run)"
-  }
+  migration_log="$(mktemp)"
+  if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=0 -f "$f" 2>&1 | tee "$migration_log"; then
+    failed_migrations+=("$base (psql exited non-zero)")
+  elif grep -qE '^psql:[^ ]+: ERROR:|^ERROR:' "$migration_log"; then
+    failed_migrations+=("$base")
+  fi
+  rm -f "$migration_log"
 done < <(printf '%s\n' "${migration_files[@]}" | sort -V)
+
+if [[ ${#failed_migrations[@]} -gt 0 ]]; then
+  echo ""
+  echo "ERROR: ${#failed_migrations[@]} migration(s) reported an error:"
+  for m in "${failed_migrations[@]}"; do
+    echo "  - $m"
+  done
+  echo ""
+  echo "  The schema is half-applied. Scroll up for the ERROR line from each"
+  echo "  file — it names the constraint, index or column that did not take."
+  echo "  Fix the data or the migration, then re-run; every file is"
+  echo "  IF NOT EXISTS, so re-running costs nothing."
+  exit 1
+fi
 
 echo "=== migration:sanity ==="
 # npm ci with NODE_ENV=production (often set in .env) omits devDependencies and breaks `tsx`.

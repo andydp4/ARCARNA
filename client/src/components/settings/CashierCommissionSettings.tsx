@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Wallet, Plus, Pencil, UserX, UserCheck } from "lucide-react";
+import { Wallet, Plus, Pencil, UserX, UserCheck, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,23 +189,49 @@ export function CashierCommissionSettings() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Default commission rate</Label>
-              <Select
-                value={defaultRate}
-                onValueChange={(v) => {
-                  setDefaultRate(v);
-                  saveSettings.mutate({ defaultCashierCommissionRate: v });
-                }}
-              >
-                <SelectTrigger className="min-h-[44px]" data-testid="settings-commission-rate">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {COMMISSION_RATE_PRESETS.map((rate) => (
-                    <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* A free figure with the common ones as quick picks. Rates are
+                  agreed per cashier and land on 12 or 25 as readily as 10, so a
+                  fixed list of three could not express what was agreed. */}
+              <Label htmlFor="default-commission-rate">Default commission rate</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="default-commission-rate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={defaultRate}
+                  className="min-h-[44px]"
+                  data-testid="settings-commission-rate"
+                  onChange={(e) => setDefaultRate(e.target.value)}
+                  onBlur={() => {
+                    const rate = Number(defaultRate);
+                    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+                      setDefaultRate(String(org?.defaultCashierCommissionRate ?? 10));
+                      return;
+                    }
+                    saveSettings.mutate({ defaultCashierCommissionRate: String(rate) });
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+              <div className="flex gap-2">
+                {COMMISSION_RATE_PRESETS.map((rate) => (
+                  <Button
+                    key={rate}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDefaultRate(String(rate));
+                      saveSettings.mutate({ defaultCashierCommissionRate: String(rate) });
+                    }}
+                    data-testid={`settings-commission-rate-${rate}`}
+                  >
+                    {rate}%
+                  </Button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Auto-close inactive shift after</Label>
@@ -256,6 +282,21 @@ export function CashierCommissionSettings() {
           </Button>
         </CardHeader>
         <CardContent>
+          {/* Cashier codes are only offered at the till when commission tracking
+              is on, so codes added with the switch off silently never appear. */}
+          {!orgLoading && !cashiersLoading && cashiers.length > 0 && !commissionEnabled && (
+            <div
+              className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              data-testid="warning-cashier-codes-disabled"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p>
+                These cashier codes will not appear at the till. Turn on{" "}
+                <span className="font-medium">Enable cashier commission</span> above so staff can
+                select their code when opening a shift.
+              </p>
+            </div>
+          )}
           {cashiersLoading || orgLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : cashiers.length === 0 ? (

@@ -61,6 +61,7 @@ import {
   Mail,
   Globe,
   Award,
+  LayoutTemplate,
 } from 'lucide-react'
 
 export default function Settings() {
@@ -191,6 +192,20 @@ export default function Settings() {
           </TabsContent>
 
           <TabsContent value="integrations" className="space-y-6">
+            <Card className={LM_CARD}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LayoutTemplate className="h-5 w-5" />
+                  WM Supplies Website
+                </CardTitle>
+                <CardDescription>Customer-facing homepage, media, theme, and order intake</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/settings/wm-supplies-website">
+                  <Button variant="outline">Open website manager</Button>
+                </Link>
+              </CardContent>
+            </Card>
             <WhatsAppSettings />
           </TabsContent>
 
@@ -388,7 +403,7 @@ export default function Settings() {
                       />
                     </div>
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="tickPayment">Tick Payment (Credit)</Label>
+                      <Label htmlFor="tickPayment">Credit Payment</Label>
                       <Switch
                         id="tickPayment"
                         checked={settings.tickPaymentEnabled}

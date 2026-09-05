@@ -6,6 +6,7 @@ import {
   cashierShiftSummaries,
   cashierCommissionPayments,
   orders,
+  users,
 } from "../../shared/schema";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
@@ -81,12 +82,20 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
 
       const summaryByCashier = new Map<string, typeof summaries>();
       for (const s of summaries) {
+        // Summaries for a shift with no cashier code belong to a user instead
+        // (migration 057); they are reported per user, not forced into a code
+        // bucket that does not exist.
+        if (!s.cashierId) continue;
         const list = summaryByCashier.get(s.cashierId) ?? [];
         list.push(s);
         summaryByCashier.set(s.cashierId, list);
       }
       const shiftsByCashier = new Map<string, typeof shifts>();
       for (const s of shifts) {
+        // A shift can belong to a user with no cashier code (migration 057).
+        // Those are grouped by user in the per-user payroll rather than being
+        // forced into a code bucket that does not exist.
+        if (!s.cashierId) continue;
         const list = shiftsByCashier.get(s.cashierId) ?? [];
         list.push(s);
         shiftsByCashier.set(s.cashierId, list);
@@ -177,14 +186,22 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
     try {
       const ctx = req.orgContext as { orgId: string };
       const { from, to } = parseRange(req);
+      // LEFT joins for the same reason /api/cashier-commission uses them: a
+      // shift opened on first sale has no cashier code, and an inner join on
+      // that null would drop every shift taken since L2 out of the export —
+      // quietly, leaving a CSV that looks complete and is not.
       const summaries = await db
         .select({
           summary: cashierShiftSummaries,
           cashierCode: cashierProfiles.cashierCode,
-          cashierName: cashierProfiles.displayName,
+          cashierDisplayName: cashierProfiles.displayName,
+          userFirstName: users.firstName,
+          userLastName: users.lastName,
+          userEmail: users.email,
         })
         .from(cashierShiftSummaries)
-        .innerJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+        .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+        .leftJoin(users, eq(cashierShiftSummaries.userId, users.id))
         .where(
           and(
             eq(cashierShiftSummaries.orgId, ctx.orgId),
@@ -206,8 +223,11 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
       ];
       const rows = summaries.map((row) =>
         [
-          row.cashierCode,
-          row.cashierName,
+          row.cashierCode ?? "",
+          row.cashierDisplayName ||
+            [row.userFirstName, row.userLastName].filter(Boolean).join(" ").trim() ||
+            row.userEmail ||
+            "Unknown",
           row.summary.closedAt?.toISOString() ?? "",
           row.summary.grossSales,
           row.summary.netSalesProfit,

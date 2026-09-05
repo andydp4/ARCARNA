@@ -16,16 +16,28 @@ import {
 } from "@shared/schema";
 
 export function registerLocationRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const locations = await storage.getLocations(ctx.orgId);
-      res.json(locations);
-    } catch (error) {
-      console.error("Error fetching locations:", error);
-      res.status(500).json({ message: "Failed to fetch locations" });
-    }
-  });
+  // Every org role can read the location list: managers and cashiers need it to
+  // pick a location when opening a POS shift. Only admins get the full payload
+  // (which carries per-location revenue/order stats); everyone else gets the
+  // trimmed picker shape. Creating/editing locations stays admin-only below.
+  app.get(
+    "/api/locations",
+    ...scoped,
+    requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'),
+    async (req: any, res) => {
+      try {
+        const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+        const canSeeStats = ctx.role === 'SUPER_ADMIN' || ctx.role === 'ADMIN';
+        const locations = canSeeStats
+          ? await storage.getLocations(ctx.orgId)
+          : await storage.getLocationPickerOptions(ctx.orgId);
+        res.json(locations);
+      } catch (error) {
+        console.error("Error fetching locations:", error);
+        res.status(500).json({ message: "Failed to fetch locations" });
+      }
+    },
+  );
 
   app.post("/api/locations", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {

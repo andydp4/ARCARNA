@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { db } from "../db";
 import { shifts } from "../../shared/schema";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 export type OpenShiftContext = {
   id: string;
@@ -11,20 +11,70 @@ export type OpenShiftContext = {
   openingFloat: string;
 };
 
-declare module "express-serve-static-core" {
-  interface Request {
-    shift?: OpenShiftContext;
-  }
-}
+type RequestWithOpenShift = Parameters<RequestHandler>[0] & {
+  shift?: OpenShiftContext;
+};
 
 /**
- * Requires an open shift for the current user at the org location. When the
- * request carries no explicit location, falls back to the location of the
- * user's currently-open shift. Sets req.shift; responds 409 when none exists.
+ * Resolves the current user's till shift at the org location, opening one if
+ * there is not already one running.
+ *
+ * There is no "open a shift" step any more (migration 058): the first sale of
+ * the day opens the drawer, and it stays open until the 06:00 close. Refusing a
+ * sale because nobody pressed a button first was the thing being removed, so
+ * this no longer answers 409 for a missing shift — only for a missing location,
+ * which it genuinely cannot invent.
+ *
+ * THE OPENING FLOAT is carried forward from the last closed shift's counted
+ * cash at that location, falling back to zero. That mirrors what physically
+ * happens — the drawer is not emptied between days, so this morning's float is
+ * last night's count — and it keeps the variance meaningful, which a hard-coded
+ * zero would not. Where a shop floats its drawer up or down to a fixed amount
+ * instead, this is the figure to change.
  */
+/**
+ * Opens a till shift, floating the drawer at whatever was last counted into it.
+ *
+ * Racing callers are tolerated: if a concurrent first sale opened one first,
+ * that one is returned rather than a second being created, so the day's cash
+ * cannot end up split across two drawers.
+ */
+async function openShiftForUser(orgId: string, locationId: string, userId: string) {
+  const [lastClosed] = await db
+    .select({ closingCount: shifts.closingCount })
+    .from(shifts)
+    .where(and(eq(shifts.orgId, orgId), eq(shifts.locationId, locationId), eq(shifts.status, "closed")))
+    .orderBy(desc(shifts.closedAt))
+    .limit(1);
+
+  const openingFloat = lastClosed?.closingCount != null ? String(lastClosed.closingCount) : "0";
+
+  const [created] = await db
+    .insert(shifts)
+    .values({ orgId, locationId, userId, openingFloat, status: "open" })
+    .returning();
+  if (created) return created;
+
+  const [existing] = await db
+    .select()
+    .from(shifts)
+    .where(
+      and(
+        eq(shifts.orgId, orgId),
+        eq(shifts.locationId, locationId),
+        eq(shifts.userId, userId),
+        eq(shifts.status, "open"),
+      ),
+    )
+    .limit(1);
+  return existing ?? null;
+}
+
 export const requireOpenShift: RequestHandler = async (req, res, next) => {
   try {
-    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } }).orgContext;
+    const request = req as RequestWithOpenShift;
+    const ctx = (req as { orgContext?: { orgId: string; locationId: string | null } })
+      .orgContext;
     const user = req.user as { id?: string } | undefined;
     if (!ctx?.orgId || !user?.id) {
       return res.status(400).json({ message: "Org context and authenticated user required" });
@@ -64,18 +114,16 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
         ),
       )
       .limit(1);
-    if (!open) {
-      return res.status(409).json({
-        message: "No open shift for this location. Open a shift before taking orders.",
-        code: "SHIFT_REQUIRED",
-      });
+    const shift = open ?? (await openShiftForUser(ctx.orgId, locationId, user.id));
+    if (!shift) {
+      return res.status(500).json({ message: "Could not open a till shift" });
     }
-    req.shift = {
-      id: open.id,
-      orgId: open.orgId,
-      locationId: open.locationId,
-      userId: open.userId,
-      openingFloat: String(open.openingFloat ?? "0"),
+    request.shift = {
+      id: shift.id,
+      orgId: shift.orgId,
+      locationId: shift.locationId,
+      userId: shift.userId,
+      openingFloat: String(shift.openingFloat ?? "0"),
     };
     return next();
   } catch (error) {

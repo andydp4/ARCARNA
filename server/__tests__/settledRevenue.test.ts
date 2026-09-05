@@ -1,0 +1,297 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
+import { orders, organizations, refunds } from "@shared/schema";
+
+const hasDb = !!process.env.DATABASE_URL;
+
+/** Local-midday timestamp for an ISO date, so a day never slips across a boundary. */
+function at(date: string, hour = 12): Date {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d, hour, 0, 0, 0);
+}
+
+describe.skipIf(!hasDb)("takings are the orders settled that day", () => {
+  let orgId: string;
+  let db: (typeof import("../db"))["db"];
+  let settledRevenueByDay: (typeof import("../services/revenue"))["settledRevenueByDay"];
+  let settledRevenueByMonth: (typeof import("../services/revenue"))["settledRevenueByMonth"];
+  let settledRevenueByTradingDay: (typeof import("../services/revenue"))["settledRevenueByTradingDay"];
+
+  beforeEach(async () => {
+    ({ db } = await import("../db"));
+    ({ settledRevenueByDay, settledRevenueByMonth, settledRevenueByTradingDay } = await import(
+      "../services/revenue"
+    ));
+
+    orgId = randomUUID();
+    await db.insert(organizations).values({ id: orgId, name: "Settled Revenue Test" });
+  });
+
+  afterEach(async () => {
+    await db.delete(refunds).where(eq(refunds.orgId, orgId));
+    await db.delete(orders).where(eq(orders.orgId, orgId));
+    await db.delete(organizations).where(eq(organizations.id, orgId));
+  });
+
+  /**
+   * The production pattern this replaces. Arcarna is pick-and-pack, so orders
+   * are routinely taken one day and handed over the next. The old aggregate
+   * grouped by created_at, which booked the money against the day the request
+   * arrived — every single day read wrong, and consistently one day early.
+   */
+  it("books an order taken Thursday and handed over Friday to Friday", async () => {
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "1743.50",
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: at("2026-08-20"),
+      settledTotal: "1743.50",
+      settledAt: at("2026-08-21"),
+    } as never);
+
+    const byDay = await settledRevenueByDay(orgId, "2026-08-19", "2026-08-22");
+
+    expect(byDay.get("2026-08-21")?.revenue).toBe(1743.5);
+    expect(byDay.get("2026-08-21")?.txns).toBe(1);
+    // The day it was taken must be empty — that is the whole defect.
+    expect(byDay.get("2026-08-20")).toBeUndefined();
+  });
+
+  it("excludes pending and on-hold orders — they are open work, not money", async () => {
+    await db.insert(orders).values([
+      {
+        id: randomUUID(),
+        orgId,
+        total: "59.00",
+        paymentMethod: "cash",
+        status: "pending",
+        createdAt: at("2026-08-21"),
+      },
+      {
+        id: randomUUID(),
+        orgId,
+        total: "60600.00",
+        paymentMethod: "cash",
+        status: "on-hold",
+        createdAt: at("2026-08-21"),
+      },
+    ] as never);
+
+    const byDay = await settledRevenueByDay(orgId, "2026-08-20", "2026-08-22");
+    expect(byDay.size).toBe(0);
+  });
+
+  it("values a settled order at its frozen settlement total, not its live total", async () => {
+    // A line price edited after settlement must not rewrite a past day.
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "999.00",
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: at("2026-08-18"),
+      settledTotal: "1152.50",
+      settledAt: at("2026-08-19"),
+    } as never);
+
+    const byDay = await settledRevenueByDay(orgId, "2026-08-18", "2026-08-20");
+    expect(byDay.get("2026-08-19")?.revenue).toBe(1152.5);
+  });
+
+  it("nets refunds off the day they were issued", async () => {
+    const orderId = randomUUID();
+    await db.insert(orders).values({
+      id: orderId,
+      orgId,
+      total: "500.00",
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: at("2026-08-19"),
+      settledTotal: "500.00",
+      settledAt: at("2026-08-19"),
+    } as never);
+
+    // Refunded two days later — it reduces the day it was issued, not the sale's day.
+    await db.insert(refunds).values({
+      id: randomUUID(),
+      orderId,
+      orgId,
+      cashierId: "test-cashier",
+      reason: "damaged",
+      refundMethod: "cash",
+      total: "120.00",
+      createdAt: at("2026-08-21"),
+    } as never);
+
+    const byDay = await settledRevenueByDay(orgId, "2026-08-18", "2026-08-22");
+
+    expect(byDay.get("2026-08-19")?.revenue).toBe(500);
+    expect(byDay.get("2026-08-19")?.refundsTotal).toBe(0);
+    expect(byDay.get("2026-08-21")?.revenue).toBe(-120);
+    expect(byDay.get("2026-08-21")?.refundsTotal).toBe(120);
+  });
+
+  it("makes a month equal the sum of its days", async () => {
+    await db.insert(orders).values([
+      {
+        id: randomUUID(),
+        orgId,
+        total: "100.00",
+        paymentMethod: "cash",
+        status: "completed",
+        createdAt: at("2026-08-01"),
+        settledTotal: "100.00",
+        settledAt: at("2026-08-02"),
+      },
+      {
+        id: randomUUID(),
+        orgId,
+        total: "250.00",
+        paymentMethod: "cash",
+        status: "completed",
+        createdAt: at("2026-08-14"),
+        settledTotal: "250.00",
+        settledAt: at("2026-08-15"),
+      },
+    ] as never);
+
+    const months = await settledRevenueByMonth(orgId, 1, at("2026-08-31"));
+    const august = months.find((m) => m.year === 2026 && m.month === 8);
+
+    expect(august?.revenue).toBe(350);
+    expect(august?.txns).toBe(2);
+
+    const byDay = await settledRevenueByDay(orgId, "2026-08-01", "2026-08-31");
+    const summed = [...byDay.values()].reduce((s, d) => s + d.revenue, 0);
+    expect(august?.revenue).toBe(Math.round(summed * 100) / 100);
+  });
+});
+
+/**
+ * The trading day turns over at 06:00 local, not midnight — the same cut the
+ * shift engine and the daily close use. Every timestamp here is a fixed UTC
+ * instant, and every case uses "Europe/London" in January specifically
+ * because GMT is UTC+0 with no DST in play — so a naive UTC calendar-date
+ * bucketing and a correct trading-day bucketing would happen to agree by
+ * coincidence for anything after 06:00. The 05:xx cases are the ones that
+ * actually distinguish the two: they are exactly the sales a midnight-cut
+ * dashboard books to the wrong day relative to the shift that took them.
+ */
+describe.skipIf(!hasDb)("takings are the orders settled that TRADING day", () => {
+  const LONDON = "Europe/London";
+  let orgId: string;
+  let db: (typeof import("../db"))["db"];
+  let settledRevenueByTradingDay: (typeof import("../services/revenue"))["settledRevenueByTradingDay"];
+
+  beforeEach(async () => {
+    ({ db } = await import("../db"));
+    ({ settledRevenueByTradingDay } = await import("../services/revenue"));
+
+    orgId = randomUUID();
+    await db.insert(organizations).values({ id: orgId, name: "Trading Day Revenue Test" });
+  });
+
+  afterEach(async () => {
+    await db.delete(refunds).where(eq(refunds.orgId, orgId));
+    await db.delete(orders).where(eq(orders.orgId, orgId));
+    await db.delete(organizations).where(eq(organizations.id, orgId));
+  });
+
+  it("books a 05:30 sale to the PREVIOUS trading day, not the calendar day it falls on", async () => {
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "40.00",
+      paymentMethod: "cash",
+      status: "completed",
+      settledTotal: "40.00",
+      settledAt: new Date("2026-01-15T05:30:00.000Z"),
+    } as never);
+
+    const byDay = await settledRevenueByTradingDay(orgId, LONDON, "2026-01-14", "2026-01-15");
+
+    expect(byDay.get("2026-01-14")?.revenue).toBe(40);
+    expect(byDay.get("2026-01-14")?.txns).toBe(1);
+    // The whole point: a midnight-cut dashboard would put this on the 15th.
+    expect(byDay.get("2026-01-15")).toBeUndefined();
+  });
+
+  it("books a 06:30 sale to that trading day, just past the cut", async () => {
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "55.00",
+      paymentMethod: "cash",
+      status: "completed",
+      settledTotal: "55.00",
+      settledAt: new Date("2026-01-15T06:30:00.000Z"),
+    } as never);
+
+    const byDay = await settledRevenueByTradingDay(orgId, LONDON, "2026-01-14", "2026-01-15");
+
+    expect(byDay.get("2026-01-15")?.revenue).toBe(55);
+    expect(byDay.get("2026-01-14")).toBeUndefined();
+  });
+
+  it("splits one calendar day's sales across two trading days either side of the cut", async () => {
+    await db.insert(orders).values([
+      {
+        id: randomUUID(),
+        orgId,
+        total: "20.00",
+        paymentMethod: "cash",
+        status: "completed",
+        settledTotal: "20.00",
+        settledAt: new Date("2026-01-15T02:00:00.000Z"), // before 06:00 -> the 14th
+      },
+      {
+        id: randomUUID(),
+        orgId,
+        total: "30.00",
+        paymentMethod: "cash",
+        status: "completed",
+        settledTotal: "30.00",
+        settledAt: new Date("2026-01-15T20:00:00.000Z"), // after 06:00 -> the 15th
+      },
+    ] as never);
+
+    const byDay = await settledRevenueByTradingDay(orgId, LONDON, "2026-01-14", "2026-01-16");
+
+    expect(byDay.get("2026-01-14")?.revenue).toBe(20);
+    expect(byDay.get("2026-01-15")?.revenue).toBe(30);
+  });
+
+  it("nets a refund off the trading day it was issued", async () => {
+    const orderId = randomUUID();
+    await db.insert(orders).values({
+      id: orderId,
+      orgId,
+      total: "500.00",
+      paymentMethod: "cash",
+      status: "completed",
+      settledTotal: "500.00",
+      settledAt: new Date("2026-01-15T12:00:00.000Z"),
+    } as never);
+
+    // Issued at 05:00 the next calendar day, which is still the 15th's trading day.
+    await db.insert(refunds).values({
+      id: randomUUID(),
+      orderId,
+      orgId,
+      cashierId: "test-cashier",
+      reason: "damaged",
+      refundMethod: "cash",
+      total: "50.00",
+      createdAt: new Date("2026-01-16T05:00:00.000Z"),
+    } as never);
+
+    const byDay = await settledRevenueByTradingDay(orgId, LONDON, "2026-01-15", "2026-01-16");
+
+    expect(byDay.get("2026-01-15")?.revenue).toBe(450);
+    expect(byDay.get("2026-01-15")?.refundsTotal).toBe(50);
+    expect(byDay.get("2026-01-16")).toBeUndefined();
+  });
+});

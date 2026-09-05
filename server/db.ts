@@ -1,6 +1,6 @@
 import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
-import pg from "pg";
+import { Pool as PgPool } from "pg";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import ws from "ws";
 import * as schema from "@shared/schema";
@@ -28,9 +28,9 @@ export function usesNeonPooler(): boolean {
   return connectionString.includes("-pooler.");
 }
 
-function attachPoolErrorHandler(pool: NeonPool | pg.Pool, label: string) {
+function attachPoolErrorHandler(pool: NeonPool | PgPool, label: string) {
   // node-postgres Pool emits 'error' on idle clients; Neon serverless Pool typings omit it.
-  (pool as pg.Pool).on?.("error", (err: Error) => {
+  (pool as PgPool).on?.("error", (err: Error) => {
     console.error(`[db] Idle ${label} pool client error (non-fatal):`, err);
   });
 }
@@ -53,7 +53,7 @@ function createPool() {
     attachPoolErrorHandler(pool, "neon");
     return pool;
   }
-  const pool = new pg.Pool({
+  const pool = new PgPool({
     connectionString,
     max: 10,
     idleTimeoutMillis: 30_000,
@@ -67,4 +67,4 @@ export const pool = createPool();
 export const db =
   driver === "neon"
     ? drizzleNeon({ client: pool as NeonPool, schema })
-    : drizzlePg({ client: pool as pg.Pool, schema });
+    : drizzlePg({ client: pool as PgPool, schema });

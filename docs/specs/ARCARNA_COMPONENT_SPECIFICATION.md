@@ -110,7 +110,34 @@ keep the forged-metal material.
   state (Design System §10). Always pair colour with a label/legend.
 - Each chart carries a one-line stated truth and a drill path (Guide).
 
-## 9. Modals
+## 9. Selectors (choose-a-value controls)
+
+Built on `ui/select`. A selector sets **one value from a known, short list** — status, location,
+channel, assignee. It is not a form, and it is not a decision point.
+
+**The control goes where the value lives.** A row's status belongs in the row; a page-wide filter
+belongs in the filter bar. Burying a row-level value behind an overflow menu costs four
+interactions and a context switch to make one choice, and leaves the row showing no status at all.
+
+- **Selection is the commit.** Choosing writes. No separate confirm for a single reversible field —
+  the optimistic update *is* the confirmation, and picking again corrects it. Confirmation is for
+  destructive and irreversible actions, which is §10's job.
+- **Never a modal for one field.** A dialog whose whole body is one `Select` and a confirm button is
+  a selector that lost its way. Escalate to a modal only when the choice needs more than the value:
+  a reason, a date, or several fields that must land together.
+- **The current value is visible, in words,** on the trigger. A colour dot may repeat it; it may
+  never *be* it (state never by colour alone).
+- **Disable the control, not the page,** while its own write is in flight — one slow row must not
+  freeze the list.
+- **≥44px** trigger; `aria-label` naming which thing it governs when several share a screen
+  (`Status for order #1a2b3c4d`); one `data-testid` per instance, keyed by that row.
+- **Presentation is shared, not restated** — label, icon and colour come from one config the row and
+  the selector both read, so the two cannot drift.
+
+**Canonical:** [`orders/OrderStatusSelect`](../../client/src/components/orders/OrderStatusSelect.tsx)
+— row-level, self-committing, labelled per row; shares `orders/statusConfig` with the row.
+
+## 10. Modals
 
 - Built on `ui/dialog` / `ui/alert-dialog` / `ui/sheet` / `ui/drawer`.
 - **`ConfirmDestructive`** required for delete/void/refund/irreversible actions. Title = decision,
@@ -118,7 +145,7 @@ keep the forged-metal material.
 - **`UnsavedChangesAlert`** guards navigation away from dirty forms.
 - Focus-trapped; `Esc` closes; one decision per modal.
 
-## 10. Empty states (canonical `EmptyState`)
+## 11. Empty states (canonical `EmptyState`)
 
 - `EmptyState` (`EmptyState.tsx`) is canonical when a CTA is required; `EmptyStatePanel` is legacy
   (keep only where used). Foundation §15.1 dedup.
@@ -126,7 +153,7 @@ keep the forged-metal material.
 - **No dead ends:** every empty state offers a first move (Foundation §4). Distinguish "no data" vs
   "no matches" (Language §9). Replace inline `hsl()` literals with tokens.
 
-## 11. Notification Center → **Signals**
+## 12. Notification Center → **Signals**
 
 - `NotificationCenter` is the **Signals** surface. A signal = a truth that needs attention now
   (low stock, overdue invoice, unprocessed goods receipt — see [`docs/ARCARNA_VOICE.md`](../ARCARNA_VOICE.md)
@@ -135,34 +162,34 @@ keep the forged-metal material.
 - Dismissed state persists under `arcarna.notifications.dismissed`. Severity uses state colour
   **with** an icon/label, never colour alone.
 
-## 12. Toasts
+## 13. Toasts
 
 - `ui/toast` + `Toaster`. Confirm outcomes briefly: "Order saved.", "Refund issued — £24.00."
 - Success/error use state colour **and** icon. No celebration language; no exclamation unless real
   urgency (Language §7). Auto-dismiss; never trap focus.
 
-## 13. Settings components
+## 14. Settings components
 
 - `settings/ImportsHub`, `settings/SuppliersHub`, `settings/WhatsAppSettings`; `OrgNameSettings`,
   `settings/receipts`, `settings/loyalty`, `settings/developer`.
 - Each setting states what it changes, in the owner's words ("your business", "your team").
 - Forms guard unsaved changes; destructive settings confirm. No "tenant"/"org" in chrome.
 
-## 14. Onboarding components
+## 15. Onboarding components
 
 - `OnboardingResumeBanner`, `onboarding`, `onboarding-wizard`, `setup-wizard`.
 - One step / one ask; visible progress; resume always available ("Pick up where you left off.").
 - Frames setup as revealing the business, not configuring software (Language §14). Ends at the
   Control Centre ("You're set up. Here's your Control Centre.").
 
-## 15. AI Assistant components → **Arcarna Voice**
+## 16. AI Assistant components → **Arcarna Voice**
 
 - `assistant/ArcarnaAssistantBar` — floating command/voice bar, always-on in `Layout`.
 - **Rule-based, deterministic; never labelled "AI"** (Foundation §9). Always confirms before a real
   write. One step at a time; spoken-first copy (Language §11).
 - Visual: quiet surface, Truth Blue active state; no "magic" sparkle/glow.
 
-## 16. POS / order components (`Create Order`)
+## 17. POS / order components (`Create Order`)
 
 - `pos-product-card`, `pos-cart-panel`, plus POS shell surfaces; `Orders`/`orders-row`/
   `orders-skeleton`; `ZReport` (shift Z-report); `OrderRefundPage`.
@@ -170,28 +197,28 @@ keep the forged-metal material.
   add-to-cart. Price text is neutral (`--lm-warm-white`/Truth Blue), **not** a state colour.
 - Availability/stock state via state colour **with text**. Refund/void go through `ConfirmDestructive`.
 
-## 17. Customer components
+## 18. Customer components
 
 - `Customers`, `top-customers-table`, `customers` detail; loyalty/gift-card/promotion surfaces in
   the **Operate** group.
 - Answer "who buys from you, and what are they worth?" — surface recency/frequency/value (links to
   Customer Segments / RFM). Communication history visible. Speed prioritised.
 
-## 18. Inventory components
+## 19. Inventory components
 
 - `inventory/ReceivingTab`, `inventory/ReplenishmentTab`, `inventory/SmartStockTab`,
   `inventory/TransfersTab`; `Products`/`ProductManagement`; `PurchaseDraftsPage`.
 - Reveal stock truth fast: in stock / low / out via state colour + label. Quick adjustments and
   scanning. "Smart Stock" describes the rule-based replenishment — not "AI" (Language §11).
 
-## 19. Report / Evidence components
+## 20. Report / Evidence components
 
 - Reporting surfaces (`Insights`/Truths, `analytics/*`, `expense-reports`/Profit Analysis,
   `scheduled-reports`/Scheduled Evidence) and `reporting-skeletons`.
 - The noun is **Evidence**; actions "Export evidence", "Schedule evidence" (Language §12).
 - Each piece of evidence ties to a **Truth** it proves and offers a Next Move.
 
-## 20. Component maturity model
+## 21. Component maturity model
 
 | Level | Definition | Gate to next |
 |-------|-----------|--------------|
@@ -202,7 +229,7 @@ keep the forged-metal material.
 
 Target: all shell/pattern/Truth components at **L3**; all feature components ≥ **L1**, Truth-facing ones at **L2+**.
 
-## 21. Deduplication ledger + acceptance criteria
+## 22. Deduplication ledger + acceptance criteria
 
 **Ledger (Foundation §15.1 — must resolve):**
 
@@ -212,6 +239,7 @@ Target: all shell/pattern/Truth components at **L3**; all feature components ≥
 | Empty state | `EmptyState` | `EmptyStatePanel` (legacy only) |
 | KPI / Truth card | `TruthCard` / `DailyKpiCard` | `MetricCard` (as-is) |
 | Icon system | `lucide-react` | FontAwesome (`fas fa-*`) |
+| Row-level status change | `OrderStatusSelect` (in-row, §9) | "Update status" modal + kebab entry |
 
 **Acceptance criteria:**
 - [ ] Every component supports understanding, trust, action, or empowerment (critical rule).
@@ -220,4 +248,5 @@ Target: all shell/pattern/Truth components at **L3**; all feature components ≥
 - [ ] All components consume refined Design System tokens — forged metal **retained**, decorative shine / FontAwesome / light tokens removed (Design System §19 clear).
 - [ ] Page headers carry `title` (nav label) + `question` (route question).
 - [ ] Empty states / modals / signals / toasts follow Language §7–§11.
+- [ ] Setting one value uses a selector where the value lives, not a modal (§9).
 - [ ] a11y: ≥44px targets, `aria-label` on icon controls, state never by colour alone; `npm run test:a11y` green.

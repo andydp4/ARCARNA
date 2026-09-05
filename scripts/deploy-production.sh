@@ -11,13 +11,56 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# Migration preflight — deliberately BEFORE the pull/build/stop below.
+#
+# Migrations run further down, in the window between stopping the old process
+# and starting the new one. A missing psql or DATABASE_URL discovered *there*
+# aborts with the app already stopped and the new build unable to serve, so the
+# shop is down until someone SSHes in. Both are knowable now, at zero cost and
+# zero downtime, so check them here and refuse to start.
+#
+# The subshell matters: .env sets NODE_ENV=production, and sourcing it into this
+# shell would defeat the `NODE_ENV=` on the build below and change how npm
+# behaves. Read the value, discard the environment.
+if ! command -v psql >/dev/null 2>&1; then
+  echo "ERROR: psql not found, and this deploy applies migrations."
+  echo "  Install it:  sudo apt install -y postgresql-client"
+  exit 1
+fi
+if ! (
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+  [[ -n "${DATABASE_URL:-}" ]]
+); then
+  echo "ERROR: DATABASE_URL is not set in .env, and this deploy applies migrations."
+  exit 1
+fi
+
 mkdir -p logs
 
 echo "=== git pull ==="
-git fetch origin
 BRANCH="${DEPLOY_BRANCH:-main}"
-git checkout "$BRANCH"
-git pull origin "$BRANCH"
+
+# A deploy that quietly discards someone's hotfix is worse than one that stops.
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "ERROR: This checkout has uncommitted changes. Commit, stash or discard"
+  echo "them before deploying — the branch reset below would throw them away."
+  git status --short
+  exit 1
+fi
+
+# Fetch the branch by name rather than trusting the clone's refspec.
+# `git clone --branch X --single-branch` pins remote.origin.fetch to X alone, so
+# a plain `git fetch origin` never produces origin/main and `git checkout main`
+# dies with "pathspec 'main' did not match any file(s) known to git" — an error
+# that says nothing about the cause and stopped a website deploy dead. Naming
+# the branch works on either shape of clone, and resetting to what was just
+# fetched makes the deployed commit exactly the remote's, whatever the local
+# branch was pointing at.
+git fetch origin "$BRANCH"
+git checkout -B "$BRANCH" FETCH_HEAD
 echo "On commit: $(git log -1 --oneline)"
 
 echo "=== npm ci (lockfile-exact) ==="
@@ -74,6 +117,40 @@ echo "=== PM2 (re)start with fresh .env ==="
 if pm2 describe arcarna-epos >/dev/null 2>&1; then
   pm2 delete arcarna-epos
 fi
+
+echo "=== migrations ==="
+# Between stop and start, which is the order docs/DEPLOY_HOSTINGER_VPS.md
+# prescribes for schema releases: "build first, then stop the app, migrate, and
+# start the new build ... Never leave a migration applied with the previous
+# build running." Pulling and building above while the old process kept serving
+# was safe — old code against the old schema is a consistent pair — so the
+# outage is only as long as the ALTERs take.
+#
+# This step did not exist, and its absence is not hypothetical. Drizzle names
+# every column explicitly in its SELECTs, so a build that expects a column the
+# database lacks fails every query against that table — for #131 that was
+# `products.available_for_website`, which would have taken out the POS, product
+# management and order placement. The health check below would not have caught
+# it either: /api/health touches no products, so the deploy would have printed
+# SUCCESS over a broken till. apply-migrations-pm2.sh carries the scar of the
+# same class of bug from 045/046.
+#
+# Idempotent: every migration is IF NOT EXISTS, so re-running a deploy that
+# needs no schema change is a no-op that costs a few seconds.
+if ! bash scripts/apply-migrations-pm2.sh; then
+  echo ""
+  echo "ERROR: migrations failed — the app is STOPPED and has NOT been started."
+  echo ""
+  echo "  Deliberate. The new build is on disk and expects the new schema, so"
+  echo "  starting it now would serve errors from every affected table. A"
+  echo "  half-migrated database needs a person, not a retry."
+  echo ""
+  echo "  Diagnose:  npm run migration:sanity"
+  echo "  Once the schema is correct:  pm2 start ecosystem.config.cjs && pm2 save"
+  echo "  To fall back instead: check out the previous release, rebuild, start."
+  exit 1
+fi
+
 pm2 start ecosystem.config.cjs
 pm2 save
 
