@@ -13,6 +13,7 @@ import {
 import { eq, and, desc, gte, lte, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { adjustProductLocationStock, StockError, stockErrorPayload } from "./productLocationStock";
+import { roundQuantity } from "@shared/quantity";
 
 export { StockError, stockErrorPayload };
 
@@ -66,7 +67,7 @@ async function pendingQtyForDraftItem(
 
   const [row] = await tx
     .select({
-      total: sql<number>`COALESCE(SUM(${goodsReceiptItems.quantityReceived}), 0)::int`.as("total"),
+      total: sql<number>`COALESCE(SUM(${goodsReceiptItems.quantityReceived}), 0)`.as("total"),
     })
     .from(goodsReceiptItems)
     .innerJoin(goodsReceipts, eq(goodsReceiptItems.goodsReceiptId, goodsReceipts.id))
@@ -195,7 +196,7 @@ export async function getPurchaseDraftReceiving(orgId: string, purchaseDraftId: 
     items.map(async (item) => {
       const pending = await pendingQtyForDraftItem(item.id);
       const already = item.quantityReceived ?? 0;
-      const remaining = Math.max(0, item.quantity - already - pending);
+      const remaining = Math.max(0, roundQuantity(item.quantity - already - pending));
       return {
         ...item,
         alreadyReceived: already,
@@ -273,7 +274,7 @@ async function validateReceiptLines(
     }
     requested.set(line.purchaseDraftItemId, {
       productId: line.productId,
-      quantity: (prior?.quantity ?? 0) + line.quantityReceived,
+      quantity: roundQuantity((prior?.quantity ?? 0) + line.quantityReceived),
     });
   }
 
@@ -301,7 +302,7 @@ async function validateReceiptLines(
 
     const already = draftItem.quantityReceived ?? 0;
     const pending = await pendingQtyForDraftItem(purchaseDraftItemId, excludeReceiptId, tx);
-    const remaining = draftItem.quantity - already - pending;
+    const remaining = Math.max(0, roundQuantity(draftItem.quantity - already - pending));
 
     if (want.quantity > remaining) {
       throw new GoodsReceiptError(
@@ -447,7 +448,7 @@ export async function completeGoodsReceipt(
           throw new GoodsReceiptError("LINE_NOT_FOUND", "Draft line missing on complete");
         }
 
-        const newReceived = (draftItem.quantityReceived ?? 0) + line.quantityReceived;
+        const newReceived = roundQuantity((draftItem.quantityReceived ?? 0) + line.quantityReceived);
         if (newReceived > draftItem.quantity) {
           throw new GoodsReceiptError("OVER_RECEIVE", "Would exceed ordered quantity on complete", {
             purchaseDraftItemId: line.purchaseDraftItemId,

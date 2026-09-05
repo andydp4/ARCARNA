@@ -29,7 +29,7 @@ import { Download, Trash2, PackageCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
-import { parseQuantityInput } from "@shared/quantity";
+import { parseNonNegativeQuantityInput, parseQuantityInput } from "@shared/quantity";
 
 type DraftListItem = {
   id: string;
@@ -168,14 +168,14 @@ export default function PurchaseDraftsPage() {
       const items = (receiving?.items ?? [])
         .map((item) => {
           const q = receiveQty[item.id];
-          const received = parseInt(q?.received ?? "0", 10);
-          const damaged = parseInt(q?.damaged ?? "0", 10);
-          if (received <= 0) return null;
+          const received = parseQuantityInput(q?.received ?? "");
+          const damaged = parseNonNegativeQuantityInput(q?.damaged ?? "") ?? 0;
+          if (received === null) return null;
           return {
             purchaseDraftItemId: item.id,
             productId: item.productId,
             quantityReceived: received,
-            quantityDamaged: damaged || 0,
+            quantityDamaged: damaged,
           };
         })
         .filter(Boolean);
@@ -505,6 +505,8 @@ export default function PurchaseDraftsPage() {
                       <Label>Qty received</Label>
                       <Input
                         type="number"
+                        inputMode="decimal"
+                        step="any"
                         min={0}
                         max={item.remaining}
                         value={receiveQty[item.id]?.received ?? ""}
@@ -523,6 +525,8 @@ export default function PurchaseDraftsPage() {
                       <Label>Damaged</Label>
                       <Input
                         type="number"
+                        inputMode="decimal"
+                        step="any"
                         min={0}
                         value={receiveQty[item.id]?.damaged ?? "0"}
                         onChange={(e) =>

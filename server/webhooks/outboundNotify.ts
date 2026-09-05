@@ -1,5 +1,8 @@
 import { createHmac } from "crypto";
 import { storage } from "../storage";
+import { assertPublicHttpsUrl } from "../lib/safeUrl";
+
+const WEBHOOK_TIMEOUT_MS = 5_000;
 
 function orgIdFromPayload(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
@@ -33,8 +36,26 @@ export async function notifyOutboundWebhooksForEvent(event: {
   for (const h of hooks) {
     const types = (h.eventTypes as string[]) ?? [];
     if (!types.includes(event.eventType)) continue;
+    // Re-resolve on every delivery rather than trusting the registration check.
+    // POST /api/webhooks only asserted url.startsWith("https://"), which
+    // "https://127.0.0.1:5000/" and "https://169.254.169.254/" both satisfy —
+    // so an org admin could point this loop at the host's own network. Checking
+    // here rather than only at registration also closes DNS rebinding, where a
+    // hostname resolves publicly when saved and privately later.
+    const safeUrl = await assertPublicHttpsUrl(h.url);
+    if (!safeUrl) {
+      console.warn(
+        `[outboundNotify] refusing webhook ${h.id}: ${h.url} does not resolve to a public address`,
+      );
+      continue;
+    }
+
     const sig = createHmac("sha256", h.secret).update(body).digest("hex");
-    void fetch(h.url, {
+    // Bounded: this is fire-and-forget, so without a timeout a hanging endpoint
+    // holds a socket and its payload for as long as the peer cares to stall.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+    void fetch(safeUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -42,6 +63,11 @@ export async function notifyOutboundWebhooksForEvent(event: {
         "X-Arcarna-Event": event.eventType,
       },
       body,
-    }).catch(() => {});
+      // A 3xx to an internal address would otherwise bypass the check above.
+      redirect: "manual",
+      signal: controller.signal,
+    })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeout));
   }
 }

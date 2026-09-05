@@ -35,15 +35,30 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        // `productId`/`defaultSalePrice`, not `sku`/`price`. Until this route
+        // was de-duplicated, a second handler on this exact path — registered
+        // first, so it always answered — served these names. No caller can be
+        // relying on `sku`/`price`, because nothing ever returned them.
+        const websiteOnly = String(req.query.availableForWebsite ?? "") === "true";
         const rows = await storage.getProductsForOrgPublic(orgId);
         res.json(
-          rows.map((p) => ({
-            id: p.id,
-            name: p.name,
-            sku: p.productId,
-            price: p.defaultSalePrice,
-            stock: p.stock,
-          })),
+          rows
+            .filter((p) => !websiteOnly || p.availableForWebsite)
+            .map((p) => ({
+              id: p.id,
+              name: p.name,
+              productId: p.productId,
+              defaultSalePrice: p.defaultSalePrice,
+              stock: p.stock,
+              // Website publishing state, so an integrator can tell which
+              // products the shop window shows without a second endpoint.
+              // Cost price stays out — this projection is for partners.
+              availableForWebsite: p.availableForWebsite,
+              websiteTitle: p.websiteTitle,
+              websiteDescription: p.websiteDescription,
+              websiteCategory: p.websiteCategory,
+              websiteUnitLabel: p.websiteUnitLabel,
+            })),
         );
       } catch (e) {
         console.error("[v1] products list:", e);

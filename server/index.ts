@@ -33,6 +33,9 @@ if (process.env.SENTRY_DSN?.trim()) {
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+const isWmSuppliesCustomerSite = process.env.WM_SUPPLIES_CUSTOMER_SITE === "1";
+const workersEnabled =
+  process.env.WORKERS_ENABLED !== "0" && process.env.DISABLE_WORKERS !== "1";
 
 /** Behind reverse proxies (Nginx, Fly, etc.) so rate limits use client IP. */
 if (isProduction) {
@@ -105,10 +108,12 @@ process.on("unhandledRejection", (reason) => {
 });
 
 (async () => {
-  // The Viger portal is a separate project (repo: andydp4/VigerPortal), served
-  // statically by nginx on viger.cloud — it is no longer served by this app.
-  registerLegacyEposRedirects(app, APP_BASE_PATH);
-  registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
+  if (!isWmSuppliesCustomerSite) {
+    // The Viger portal is a separate project (repo: andydp4/VigerPortal), served
+    // statically by nginx on viger.cloud — it is no longer served by this app.
+    registerLegacyEposRedirects(app, APP_BASE_PATH);
+    registerDefaultLegacyBasePathRedirects(app, APP_BASE_PATH);
+  }
 
   // Root-level aliases for bookmarks / old links that omit APP_BASE_PATH
   if (APP_BASE_PATH) {
@@ -188,11 +193,11 @@ process.on("unhandledRejection", (reason) => {
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
+    reusePort: process.platform === "linux",
   }, async () => {
     log(`serving on port ${port} (${BRAND_PRODUCT_NAME} at ${mount || "/"})`);
     
-    if (process.env.DATABASE_URL) {
+    if (process.env.DATABASE_URL && workersEnabled) {
       // domain_outbox / analytics.worker deprecated — use event_outbox + server/workers/*
       
       // Start event-driven worker runner.
@@ -216,6 +221,8 @@ process.on("unhandledRejection", (reason) => {
       } catch (error) {
         log('Event-driven worker runner not available (non-critical)');
       }
+    } else if (process.env.DATABASE_URL) {
+      log("Background workers disabled for this process");
     }
   });
   

@@ -14,7 +14,6 @@ import {
   workerRunLogs,
   deadLetters,
   userApprovalRequests,
-  analyticsDaily,
   orgNotifications,
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
@@ -90,7 +89,7 @@ export async function getSmartStock(
   const stockTotals = await db
     .select({
       productId: productLocationStock.productId,
-      total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+      total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
     })
     .from(productLocationStock)
     .where(eq(productLocationStock.orgId, orgId))
@@ -100,7 +99,7 @@ export async function getSmartStock(
   const salesRows = await db
     .select({
       productUuid: orderItems.productId,
-      unitsSold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)::int`.as("units_sold"),
+      unitsSold: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)`.as("units_sold"),
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
@@ -462,65 +461,30 @@ export async function getBusinessHealth(orgId: string): Promise<{
   const revenueTrend: { date: string; revenue: number }[] = [];
 
   try {
-    const todayOrders = await db
-      .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)` })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.orgId, orgId),
-          eq(orders.status, COMPLETED_STATUS),
-          gte(orders.createdAt, todayStart),
-        ),
-      );
-    revenueToday = Number(todayOrders[0]?.total) || 0;
+    // One definition of takings — see services/revenue.ts. This block
+    // previously carried three different ones at once: revenueToday and
+    // revenueRange summed completed orders by created_at, while revenueTrend
+    // preferred the analytics_daily projection (which books every order at
+    // creation, whatever its status) and only fell back to a created_at
+    // aggregate when the projection had no rows. Three answers, one label.
+    const { settledRevenueByDay } = await import("./revenue");
+    const isoDay = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-    const rangeOrders = await db
-      .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)` })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.orgId, orgId),
-          eq(orders.status, COMPLETED_STATUS),
-          gte(orders.createdAt, rangeStart),
-        ),
-      );
-    revenueRange = Number(rangeOrders[0]?.total) || 0;
+    const todayStr = isoDay(todayStart);
+    const byDay = await settledRevenueByDay(orgId, isoDay(rangeStart), todayStr);
 
-    const rangeDateStr = rangeStart.toISOString().slice(0, 10);
-    const daily = await db
-      .select()
-      .from(analyticsDaily)
-      .where(and(eq(analyticsDaily.orgId, orgId), gte(analyticsDaily.date, rangeDateStr)))
-      .orderBy(analyticsDaily.date)
-      .limit(rangeDays + 1);
+    revenueToday = byDay.get(todayStr)?.revenue ?? 0;
 
-    if (daily.length > 0) {
-      for (const d of daily) {
-        revenueTrend.push({
-          date: String(d.date),
-          revenue: Number(d.totalRevenue) || 0,
-        });
-      }
-    } else {
-      const byDay = await db
-        .select({
-          day: sql<string>`DATE(${orders.createdAt})`.as("day"),
-          revenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`.as("rev"),
-        })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.orgId, orgId),
-            eq(orders.status, COMPLETED_STATUS),
-            gte(orders.createdAt, rangeStart),
-          ),
-        )
-        .groupBy(sql`DATE(${orders.createdAt})`)
-        .orderBy(sql`DATE(${orders.createdAt})`);
-      for (const row of byDay) {
-        revenueTrend.push({ date: String(row.day), revenue: Number(row.revenue) || 0 });
-      }
+    // Contiguous across the window so a quiet day plots as zero rather than
+    // being dropped and drawing a straight line over itself.
+    for (let d = new Date(rangeStart); d <= todayStart; d.setDate(d.getDate() + 1)) {
+      const key = isoDay(d);
+      const revenue = byDay.get(key)?.revenue ?? 0;
+      revenueTrend.push({ date: key, revenue });
+      revenueRange += revenue;
     }
+    revenueRange = Math.round(revenueRange * 100) / 100;
   } catch {
     // fallback zeros
   }

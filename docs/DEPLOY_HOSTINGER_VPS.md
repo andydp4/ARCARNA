@@ -6,6 +6,8 @@ Production site: **https://viger.cloud** (portal) · **https://arcarna.viger.clo
 
 This guide matches the **current VPS layout** (Node/PM2/Nginx). For **KVM2 → KVM4 migration**, follow [ops/VPS_MIGRATION_KVM2_TO_KVM4.md](./ops/VPS_MIGRATION_KVM2_TO_KVM4.md) first.
 
+For the private WM Supplies customer website domain, keep the domain at GoDaddy if preferred and point DNS to this VPS. See [WM_SUPPLIES_DOMAIN_DEPLOYMENT.md](./WM_SUPPLIES_DOMAIN_DEPLOYMENT.md).
+
 ---
 
 ## Security warning
@@ -152,11 +154,12 @@ Stock backfill (after org/products exist):
 npx tsx scripts/backfill-product-location-stock.ts
 ```
 
-Optional schema sync:
-
-```bash
-npx drizzle-kit push
-```
+**Do not run `drizzle-kit push` against production.** Migrations are the only
+mechanism: `npm run deploy` applies `migrations/` in order (see
+`scripts/apply-migrations-pm2.sh`). Push diffs the database against
+`shared/schema.ts` and executes the difference — and with no terminal attached
+it does so without asking. Push also skips the data steps migrations carry,
+such as the org backfill in 048.
 
 ---
 

@@ -23,8 +23,6 @@ import {
   users,
   customers,
   customerMetrics,
-  analyticsDaily,
-  analyticsMonthly,
   products,
   productLocationStock,
   orders,
@@ -52,6 +50,7 @@ import {
   type Order,
   type OrderItem,
   type Location,
+  type LocationPickerOption,
   type LoyaltyTier,
   type InsertLoyaltyTier,
   type Promotion,
@@ -72,10 +71,12 @@ import {
   outboundWebhooks,
   type ApiKey,
   type OutboundWebhook,
+  commissionRateSchema,
 } from "@shared/schema";
+import type { WebsiteProductSettingsPatch } from "@shared/website";
 import { withRetries } from "./lib/dbUtils";
 import { db } from "./db";
-import { eq, desc, sql, and, or, lte, gte, isNull, between } from "drizzle-orm";
+import { eq, desc, sql, and, or, lte, gte, isNull, between, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -132,6 +133,11 @@ export interface IStorage {
   // Product operations
   createProduct(data: InsertProduct): Promise<Product>; // Use InsertProduct type
   updateProduct(id: string, data: any): Promise<Product>;
+  updateProductWebsiteSettings(
+    id: string,
+    orgId: string,
+    patch: WebsiteProductSettingsPatch,
+  ): Promise<Product | null>;
   deleteProduct(id: string, orgId: string): Promise<void>;
   getProduct(id: string, orgId: string): Promise<Product | null>;
   importProducts(
@@ -159,7 +165,14 @@ export interface IStorage {
 
   // Inventory operations
   getProductsWithStock(orgId: string, locationId?: string | null): Promise<Product[]>;
-  updateProductStock(productId: string, adjustment: number, type: 'add' | 'set', userId: string, orgId: string): Promise<Product>;
+  updateProductStock(
+    productId: string,
+    adjustment: number,
+    type: 'add' | 'set',
+    userId: string,
+    orgId: string,
+    locationId?: string | null,
+  ): Promise<Product>;
 
   // Reports operations
   getReportData(fromDate: Date, toDate: Date, orgId: string): Promise<any>;
@@ -168,6 +181,7 @@ export interface IStorage {
 
   // Locations operations
   getLocations(orgId: string): Promise<Location[]>;
+  getLocationPickerOptions(orgId: string): Promise<LocationPickerOption[]>;
   createLocation(data: any): Promise<Location>;
   updateLocation(id: string, data: any, orgId: string): Promise<Location>;
   deleteLocation(id: string, orgId: string): Promise<void>;
@@ -273,6 +287,13 @@ export interface IStorage {
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
 }
 
+export class AmbiguousStockLocationError extends Error {
+  constructor() {
+    super("Choose a location before editing stock for a multi-location organization");
+    this.name = "AmbiguousStockLocationError";
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     return withRetries(async () => {
@@ -352,20 +373,32 @@ export class DatabaseStorage implements IStorage {
     }>
   > {
     return withRetries(async () => {
-      let q = db
-        .select({
-          date: analyticsDaily.date,
-          totalOrders: analyticsDaily.totalOrders,
-          totalRevenue: analyticsDaily.totalRevenue,
-        })
-        .from(analyticsDaily);
-      q = q.where(eq(analyticsDaily.orgId, orgId)) as typeof q;
-      const results = await q.orderBy(desc(analyticsDaily.date)).limit(days);
-      return results.reverse().map((r) => ({
-        date: r.date || "",
-        totalOrders: r.totalOrders || 0,
-        totalRevenue: r.totalRevenue || "0",
-      }));
+      // Same definition as the Control Centre card — see services/revenue.ts.
+      // This read the analytics_daily projection, which books revenue on
+      // OrderCreated with no status filter, so this chart and that card
+      // disagreed about the same day by design.
+      const { settledRevenueByDay } = await import("./services/revenue");
+      const { offsetDate } = await import("@shared/analytics/kpi");
+
+      const today = new Date();
+      const toDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const fromDate = offsetDate(toDate, -(days - 1));
+      const byDay = await settledRevenueByDay(orgId, fromDate, toDate);
+
+      // A contiguous series: a day with no takings is a real zero, and a chart
+      // that silently omits it draws a misleading line between the days either
+      // side of it.
+      const out: Array<{ date: string; totalOrders: number; totalRevenue: string }> = [];
+      for (let i = 0; i < days; i++) {
+        const date = offsetDate(fromDate, i);
+        const day = byDay.get(date);
+        out.push({
+          date,
+          totalOrders: day?.txns ?? 0,
+          totalRevenue: (day?.revenue ?? 0).toFixed(2),
+        });
+      }
+      return out;
     });
   }
 
@@ -378,21 +411,17 @@ export class DatabaseStorage implements IStorage {
     }>
   > {
     return withRetries(async () => {
-      let q = db
-        .select({
-          year: analyticsMonthly.year,
-          month: analyticsMonthly.month,
-          totalOrders: analyticsMonthly.totalOrders,
-          totalRevenue: analyticsMonthly.totalRevenue,
-        })
-        .from(analyticsMonthly);
-      q = q.where(eq(analyticsMonthly.orgId, orgId)) as typeof q;
-      const results = await q.orderBy(desc(analyticsMonthly.year), desc(analyticsMonthly.month)).limit(months);
-      return results.reverse().map((r) => ({
-        year: r.year || 0,
-        month: r.month || 0,
-        totalOrders: r.totalOrders || 0,
-        totalRevenue: r.totalRevenue || "0",
+      // Rolled up from the same daily figures the Control Centre shows, so a
+      // month always equals the sum of its days. analytics_monthly was
+      // accumulated independently of analytics_daily from the same events,
+      // which meant the two could — and did — drift apart.
+      const { settledRevenueByMonth } = await import("./services/revenue");
+      const rows = await settledRevenueByMonth(orgId, months);
+      return rows.map((r) => ({
+        year: r.year,
+        month: r.month,
+        totalOrders: r.txns,
+        totalRevenue: r.revenue.toFixed(2),
       }));
     });
   }
@@ -457,6 +486,19 @@ export class DatabaseStorage implements IStorage {
   async updateProduct(id: string, data: any): Promise<Product> {
     const [product] = await db.update(products).set({ ...data, updatedAt: new Date() }).where(eq(products.id, id)).returning();
     return product!;
+  }
+
+  async updateProductWebsiteSettings(
+    id: string,
+    orgId: string,
+    patch: WebsiteProductSettingsPatch,
+  ): Promise<Product | null> {
+    const [product] = await db
+      .update(products)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(eq(products.id, id), eq(products.orgId, orgId)))
+      .returning();
+    return product ?? null;
   }
 
   async deleteProduct(id: string, orgId: string): Promise<void> {
@@ -742,6 +784,16 @@ export class DatabaseStorage implements IStorage {
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
     }
+    // Commission rates are agreed per cashier and land on figures like 12 or
+    // 25, so any rate is valid — but it still has to be a rate. A rate outside
+    // 0–100 would silently distort every pool derived from it.
+    if (allowed.defaultCashierCommissionRate !== undefined) {
+      const parsed = commissionRateSchema.safeParse(allowed.defaultCashierCommissionRate);
+      if (!parsed.success) {
+        throw new Error(parsed.error.errors[0]?.message ?? "Invalid commission rate");
+      }
+      allowed.defaultCashierCommissionRate = String(parsed.data);
+    }
     const [org] = await db
       .update(organizations)
       .set({ ...allowed, updatedAt: new Date() })
@@ -842,7 +894,7 @@ export class DatabaseStorage implements IStorage {
       : await db
           .select({
             productId: productLocationStock.productId,
-            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+            total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
           })
           .from(productLocationStock)
           .where(eq(productLocationStock.orgId, orgId))
@@ -867,6 +919,16 @@ export class DatabaseStorage implements IStorage {
     const { adjustProductLocationStock, resolveStockLocationId } = await import(
       "./services/productLocationStock",
     );
+
+    if (!locationId) {
+      const activeLocations = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.orgId, orgId), eq(locations.isActive, 1)));
+      if (activeLocations.length > 1) {
+        throw new AmbiguousStockLocationError();
+      }
+    }
 
     const locId = locationId
       ? locationId
@@ -909,7 +971,7 @@ export class DatabaseStorage implements IStorage {
     const [updatedProduct] = await db.select().from(products).where(cond);
     const totals = await db
       .select({
-        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)::int`.as("total"),
+        total: sql<number>`COALESCE(SUM(${productLocationStock.stock}), 0)`.as("total"),
       })
       .from(productLocationStock)
       .where(and(eq(productLocationStock.orgId, orgId), eq(productLocationStock.productId, productId)));
@@ -1206,6 +1268,20 @@ export class DatabaseStorage implements IStorage {
     );
 
     return locationsWithStats;
+  }
+
+  /** Location list for the POS/shift pickers: no stats, no extra queries. */
+  async getLocationPickerOptions(orgId: string): Promise<LocationPickerOption[]> {
+    return db
+      .select({
+        id: locations.id,
+        name: locations.name,
+        isActive: locations.isActive,
+        isDefault: locations.isDefault,
+      })
+      .from(locations)
+      .where(eq(locations.orgId, orgId))
+      .orderBy(desc(locations.isDefault), locations.name);
   }
 
   async createLocation(data: any): Promise<Location> {
@@ -1874,16 +1950,44 @@ export class DatabaseStorage implements IStorage {
     return { linked: true };
   }
 
+  /**
+   * The access list, with each person's commission rate alongside.
+   *
+   * The rate lives on `users`, not `allowed_users`, so it is joined in rather
+   * than duplicated — the access screen is where it is set, and showing a stale
+   * copy of somebody's pay rate would be worse than not showing it.
+   */
+  private async attachCommissionRates<T extends { replitUserId: string }>(
+    rows: T[],
+  ): Promise<Array<T & { commissionRate: string | null }>> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.replitUserId).filter(Boolean);
+    const userRows = ids.length
+      ? await db
+          .select({ id: users.id, replitUserId: users.replitUserId, rate: users.commissionRate })
+          .from(users)
+          .where(or(inArray(users.id, ids), inArray(users.replitUserId, ids)))
+      : [];
+    const byKey = new Map<string, string | null>();
+    for (const u of userRows) {
+      if (u.id) byKey.set(u.id, u.rate);
+      if (u.replitUserId) byKey.set(u.replitUserId, u.rate);
+    }
+    return rows.map((r) => ({ ...r, commissionRate: byKey.get(r.replitUserId) ?? null }));
+  }
+
   async getAllowedUsers(orgId: string): Promise<AllowedUser[]> {
-    return db
+    const rows = await db
       .select()
       .from(allowedUsers)
       .where(eq(allowedUsers.orgId, orgId))
       .orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async adminGetAllAllowedUsers(): Promise<AllowedUser[]> {
-    return db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    const rows = await db.select().from(allowedUsers).orderBy(desc(allowedUsers.createdAt));
+    return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
 
   async addAllowedUser(data: InsertAllowedUser): Promise<AllowedUser> {
@@ -1922,6 +2026,24 @@ export class DatabaseStorage implements IStorage {
       .from(allowedUsers)
       .where(eq(allowedUsers.isOwner, 1));
     return owner || null;
+  }
+
+  /**
+   * Sets a person's commission rate, or clears it back to the org default.
+   *
+   * Keyed on the replit user id the access screen already works in, matched
+   * against both `users.replitUserId` and `users.id` because the two are the
+   * same value for accounts created since the auth migration and differ for
+   * older ones.
+   */
+  async setUserCommissionRate(replitUserId: string, rate: number | null): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        commissionRate: rate == null ? null : String(rate),
+        updatedAt: new Date(),
+      })
+      .where(or(eq(users.replitUserId, replitUserId), eq(users.id, replitUserId)));
   }
 
   async updateAllowedUserAccess(
@@ -2085,7 +2207,7 @@ export class DatabaseStorage implements IStorage {
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
       const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
-      const role = options?.role ?? "CASHIER";
+      const role = options?.role ?? "CUSTOMER";
       const orgId =
         options?.orgId !== undefined
           ? options.orgId

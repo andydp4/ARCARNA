@@ -4,10 +4,7 @@
  */
 import type { Express } from "express";
 import { setupAuth, isAuthenticated, requireOrgContext, requireOrgScope } from "./auth";
-import {
-  registerChannelPublicRoutes,
-  registerChannelAuthenticatedRoutes,
-} from "./routes/channels";
+import { registerChannelAuthenticatedRoutes } from "./routes/channels";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { registerOperationalRoutes } from "./routes/operational";
 import { registerAutomationRoutes } from "./routes/automation";
@@ -33,6 +30,7 @@ import { registerPromotionRoutes } from "./routes/promotions";
 import { registerExpenseRoutes } from "./routes/expenses";
 import { registerInvoiceRoutes } from "./routes/invoices";
 import { registerTickCustomerRoutes } from "./routes/tickCustomers";
+import { registerCreditRoutes } from "./routes/credit";
 import { registerSettingsOrgRoutes } from "./routes/settingsOrg";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerWorkerAdminRoutes } from "./routes/workers";
@@ -47,10 +45,10 @@ import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerV1Routes } from "./routes/v1";
 import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
 import { registerAssistantPublicRoutes, registerAssistantRoutes } from "./routes/assistant";
+import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./routes/website";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
-  registerChannelPublicRoutes(app);
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
   registerAssistantPublicRoutes(app);
@@ -60,6 +58,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerAuthRoutes(app);
 
   const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+  const websiteCustomerScoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+  registerWebsitePublicRoutes(app, websiteCustomerScoped);
 
   registerChannelAuthenticatedRoutes(app, scoped);
   registerAnalyticsRoutes(app, scoped);
@@ -95,9 +95,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerExpenseRoutes(app, scoped);
   registerInvoiceRoutes(app, scoped);
   registerTickCustomerRoutes(app, scoped);
+  registerCreditRoutes(app, scoped);
   registerSettingsOrgRoutes(app, scoped);
   registerReceiptRoutes(app, scoped);
   registerFeatureFlagRoutes(app, scoped);
+  registerWebsiteAdminRoutes(app, scoped);
 
   registerAdminRoutes(app);
   registerWorkerAdminRoutes(app);

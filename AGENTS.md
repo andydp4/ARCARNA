@@ -63,11 +63,20 @@ npx tsx scripts/backfill-product-location-stock.ts
 ```bash
 # Replace ORG_ID and LOC_ID from seed output / locations table
 psql "$DATABASE_URL" -c "
-  UPDATE products p SET stock = pls.stock
-  FROM product_location_stock pls
-  WHERE pls.product_id = p.id AND pls.location_id = 'LOC_ID' AND p.org_id = 'ORG_ID';
+ UPDATE products p SET stock = pls.stock
+ FROM product_location_stock pls
+ WHERE pls.product_id = p.id AND pls.location_id = 'LOC_ID' AND p.org_id = 'ORG_ID';
 "
-UPDATE organizations SET setup_complete = 1 WHERE name = 'Midnight Demo Org';
+# NOTE: scripts/seed.ts names the org "Arcarna Demo Org" (not "Midnight Demo Org").
+psql "$DATABASE_URL" -c "UPDATE organizations SET setup_complete = 1 WHERE name = 'Arcarna Demo Org';"
+```
+
+**POS create-order gotcha (onboarding + shift):** Even with `setup_complete = 1`, `/api/auth/user` can still report `needsOrgOnboarding: true`, and the Create Order screen refuses to place an order until an **open shift** exists for the user/location. To make the POS flow work headlessly, mark onboarding done and open a shift:
+
+```bash
+psql "$DATABASE_URL" -c "UPDATE organizations SET onboarding_state = '{\"completedSteps\": [\"org\", \"currency\", \"location\", \"product\", \"first-sale\"]}' WHERE name = 'Arcarna Demo Org';"
+# A shift row (status='open') for the seed user + location is required to place orders.
+# Alternatively, open a shift through the UI ("Close shift"/shift control on the POS page).
 ```
 
 **Legacy domain engine tables:** Order creation via `apps/server` may need `audit_logs` and `domain_outbox` if missing after `db:push` alone — `bash scripts/apply-migrations-pm2.sh` normally creates `domain_outbox`; create `audit_logs` from `apps/server/src/db/schema.ts` if you see `relation "audit_logs" does not exist`.

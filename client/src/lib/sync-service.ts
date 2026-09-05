@@ -38,6 +38,7 @@ export class SyncService {
 
   async syncOnline() {
     if (this.syncing || !navigator.onLine) return;
+    if (!offlineStorage.getActiveOrgId()) return;
 
     this.syncing = true;
     console.log('[Sync] Starting sync...');

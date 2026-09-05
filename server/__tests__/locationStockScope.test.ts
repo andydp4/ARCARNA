@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
   locations,
   organizations,
+  inventoryMovements,
   productLocationStock,
   products,
 } from "@shared/schema";
@@ -114,6 +115,9 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
 
   afterEach(async () => {
     await db
+      .delete(inventoryMovements)
+      .where(eq(inventoryMovements.orgId, orgId));
+    await db
       .delete(productLocationStock)
       .where(eq(productLocationStock.orgId, orgId));
     await db
@@ -158,5 +162,31 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
         locationId: locationAId,
       }),
     ).resolves.toBe(2);
+  });
+
+  it("rejects ambiguous stock edits when the caller only saw org-wide stock", async () => {
+    await expect(
+      storage.updateProductStock(localProductId, 50, "set", "scope-test-user", orgId),
+    ).rejects.toThrow(/Choose a location/i);
+
+    const unchanged = await storage.getProductsWithStock(orgId);
+    expect(unchanged.find((p) => p.id === localProductId)?.stock).toBe(102);
+
+    await storage.updateProductStock(
+      localProductId,
+      50,
+      "set",
+      "scope-test-user",
+      orgId,
+      locationAId,
+    );
+
+    const locationAProducts = await storage.getProductsWithStock(orgId, locationAId);
+    const locationBProducts = await storage.getProductsWithStock(orgId, locationBId);
+    const orgWideProducts = await storage.getProductsWithStock(orgId);
+
+    expect(locationAProducts.find((p) => p.id === localProductId)?.stock).toBe(50);
+    expect(locationBProducts.find((p) => p.id === localProductId)?.stock).toBe(100);
+    expect(orgWideProducts.find((p) => p.id === localProductId)?.stock).toBe(150);
   });
 });

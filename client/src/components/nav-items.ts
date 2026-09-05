@@ -118,7 +118,7 @@ export const navGroups: NavGroup[] = [
       },
       {
         key: 'tick-list',
-        label: 'Tick List',
+        label: 'Credit List',
         href: '/tick-list',
         icon: CreditCard,
         testId: 'nav-tick-list'
@@ -250,11 +250,15 @@ export const navGroups: NavGroup[] = [
         testId: 'nav-gift-cards'
       },
       {
+        // Every location CRUD route is SUPER_ADMIN/ADMIN only
+        // (server/routes/locations.ts), so the page is admin-only even though
+        // the plain location list is readable by POS staff for shift opening.
         key: 'locations',
         label: 'Locations',
         href: '/locations',
         icon: MapPin,
-        testId: 'nav-locations'
+        testId: 'nav-locations',
+        roles: ADMIN_ROLES
       },
       {
         key: 'expenses',

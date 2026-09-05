@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
+  check,
   index,
   jsonb,
   pgEnum,
@@ -24,7 +26,7 @@ import { relations } from "drizzle-orm";
 // Locations are treated as stores (one org can have many locations/stores).
 // See ARCHITECTURE.md and RBAC.md for scoping rules.
 
-export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'] as const;
+export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER', 'CUSTOMER'] as const;
 export type Role = typeof ROLES[number];
 
 export const roleEnum = pgEnum('app_role', ROLES);
@@ -32,9 +34,19 @@ export const roleEnum = pgEnum('app_role', ROLES);
 export const BUSINESS_TYPES = ['retail', 'hospitality', 'services', 'wholesale', 'other'] as const;
 export type BusinessType = typeof BUSINESS_TYPES[number];
 
-// Cashier commission presets & shift inactivity windows
+// Cashier commission presets & shift inactivity windows.
+//
+// These are SUGGESTIONS offered as quick picks, not the permitted set. Rates
+// are agreed per cashier and land on figures like 12 or 25, which a fixed list
+// of three could not express — any rate from 0 to 100 is valid.
 export const COMMISSION_RATE_PRESETS = [10, 20, 30] as const;
 export type CommissionRatePreset = typeof COMMISSION_RATE_PRESETS[number];
+
+/** Validates a commission rate wherever one is set. */
+export const commissionRateSchema = z.coerce
+  .number()
+  .min(0, "A commission rate cannot be negative")
+  .max(100, "A commission rate cannot be more than 100%");
 
 export const SHIFT_INACTIVITY_OPTIONS = ["1_hour", "12_hours", "1_day", "never"] as const;
 export type ShiftInactivityOption = typeof SHIFT_INACTIVITY_OPTIONS[number];
@@ -108,7 +120,7 @@ export type InsertImportHistory = typeof importHistory.$inferInsert;
 // Locations table (stores - one per org)
 export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   address: varchar("address", { length: 500 }).notNull(),
   city: varchar("city", { length: 100 }).notNull(),
@@ -124,6 +136,13 @@ export const locations = pgTable("locations", {
 
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = typeof locations.$inferInsert;
+
+/**
+ * The trimmed location shape every org role may read. POS needs a location
+ * picker before a shift can be opened, but non-admin staff must not see the
+ * per-location revenue/order stats that the full location payload carries.
+ */
+export type LocationPickerOption = Pick<Location, "id" | "name" | "isActive" | "isDefault">;
 
 // Session storage table (mandatory for Replit Auth)
 export const sessions = pgTable(
@@ -150,6 +169,11 @@ export const users = pgTable("users", {
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
   defaultLocationId: uuid("default_location_id").references(() => locations.id),
+  // This person's commission rate, as a percentage. Null means the
+  // organisation default applies, which is where everyone starts: the old
+  // per-code rates could not be carried over, because nothing ever linked a
+  // cashier code to a user. Set in user management. (migration 057)
+  commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -163,7 +187,7 @@ export type User = typeof users.$inferSelect;
 // Loyalty tiers table
 export const loyaltyTiers = pgTable("loyalty_tiers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 50 }).notNull(),
   pointsRequired: integer("points_required").notNull(),
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
@@ -195,7 +219,7 @@ export type LoyaltySettings = typeof loyaltySettings.$inferSelect;
 // Promotions/campaigns table
 export const promotions = pgTable("promotions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   code: varchar("code", { length: 50 }),
   type: varchar("type", { length: 20 }).notNull(), // percentage, fixed, bogo, points
@@ -225,7 +249,7 @@ export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 // Customers table (orgId required for new rows; nullable for legacy backfill)
 export const customers = pgTable("customers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
@@ -256,10 +280,186 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 });
 export type InsertCustomerData = z.infer<typeof insertCustomerSchema>;
 
+export const WEBSITE_FILE_STATUSES = ["available", "pending", "deleted"] as const;
+export type WebsiteFileStatus = (typeof WEBSITE_FILE_STATUSES)[number];
+
+export const WEBSITE_FILE_PROVIDERS = ["local", "r2"] as const;
+export type WebsiteFileProvider = (typeof WEBSITE_FILE_PROVIDERS)[number];
+
+export const websiteUploadedFiles = pgTable("website_uploaded_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull().default("local"),
+  storageKey: varchar("storage_key", { length: 1024 }),
+  publicUrl: varchar("public_url", { length: 2048 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  originalFileName: varchar("original_file_name", { length: 255 }),
+  mimeType: varchar("mime_type", { length: 128 }).notNull(),
+  byteSize: integer("byte_size").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  altText: varchar("alt_text", { length: 255 }),
+  status: varchar("status", { length: 32 }).notNull().default("available"),
+  uploadedBy: varchar("uploaded_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("website_uploaded_files_org_status_idx").on(table.orgId, table.status),
+  index("website_uploaded_files_org_created_idx").on(table.orgId, table.createdAt),
+  uniqueIndex("website_uploaded_files_provider_storage_key_uq")
+    .on(table.provider, table.storageKey)
+    .where(sql`${table.storageKey} IS NOT NULL`),
+  check("website_uploaded_files_provider_ck", sql`${table.provider} IN ('local', 'r2')`),
+  check(
+    "website_uploaded_files_status_ck",
+    sql`${table.status} IN ('available', 'pending', 'deleted')`,
+  ),
+  check("website_uploaded_files_byte_size_ck", sql`${table.byteSize} > 0`),
+]);
+
+export type WebsiteUploadedFile = typeof websiteUploadedFiles.$inferSelect;
+export type InsertWebsiteUploadedFile = typeof websiteUploadedFiles.$inferInsert;
+export const insertWebsiteUploadedFileSchema = createInsertSchema(websiteUploadedFiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWebsiteUploadedFileData = z.infer<typeof insertWebsiteUploadedFileSchema>;
+
+export const WEBSITE_BLOCK_TYPES = [
+  "hero",
+  "image",
+  "wide",
+  "split",
+  "cta",
+  "notice",
+  "gallery",
+  "spacer",
+] as const;
+export type WebsiteBlockType = (typeof WEBSITE_BLOCK_TYPES)[number];
+
+export const WEBSITE_ORDER_ACCESS_MODES = ["public", "password", "clerk"] as const;
+export type WebsiteOrderAccessMode = (typeof WEBSITE_ORDER_ACCESS_MODES)[number];
+
+export const websiteThemeSettings = pgTable("website_theme_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  siteName: varchar("site_name", { length: 255 }).notNull().default("WM Supplies"),
+  logoFileId: uuid("logo_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  faviconFileId: uuid("favicon_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  primaryColor: varchar("primary_color", { length: 16 }).notNull().default("#ff2bd6"),
+  secondaryColor: varchar("secondary_color", { length: 16 }).notNull().default("#00d4ff"),
+  accentColor: varchar("accent_color", { length: 16 }).notNull().default("#ffe600"),
+  backgroundColor: varchar("background_color", { length: 16 }).notNull().default("#111111"),
+  textColor: varchar("text_color", { length: 16 }).notNull().default("#ffffff"),
+  borderColor: varchar("border_color", { length: 16 }).notNull().default("#ffffff"),
+  buttonBackgroundColor: varchar("button_background_color", { length: 16 }).notNull().default("#ffe600"),
+  buttonTextColor: varchar("button_text_color", { length: 16 }).notNull().default("#111111"),
+  headingFont: varchar("heading_font", { length: 120 }),
+  bodyFont: varchar("body_font", { length: 120 }),
+  customCss: text("custom_css"),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteThemeSettings = typeof websiteThemeSettings.$inferSelect;
+export type InsertWebsiteThemeSettings = typeof websiteThemeSettings.$inferInsert;
+export const insertWebsiteThemeSettingsSchema = createInsertSchema(websiteThemeSettings).omit({
+  updatedAt: true,
+});
+export type InsertWebsiteThemeSettingsData = z.infer<typeof insertWebsiteThemeSettingsSchema>;
+
+export const websiteOrderSettings = pgTable("website_order_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  orderAccessMode: varchar("order_access_mode", { length: 32 }).notNull().default("public"),
+  defaultOrderStatus: varchar("default_order_status", { length: 20 }).notNull().default("pending"),
+  defaultLocationId: uuid("default_location_id").references(() => locations.id, { onDelete: "set null" }),
+  allowOutOfStockOrders: boolean("allow_out_of_stock_orders").notNull().default(false),
+  minOrderValue: numeric("min_order_value", { precision: 10, scale: 2 }),
+  orderIntroText: text("order_intro_text"),
+  successMessage: text("success_message"),
+  notificationEmail: varchar("notification_email", { length: 255 }),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  check(
+    "website_order_settings_access_mode_ck",
+    sql`${table.orderAccessMode} IN ('public', 'password', 'clerk')`,
+  ),
+  check(
+    "website_order_settings_status_ck",
+    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed')`,
+  ),
+  check(
+    "website_order_settings_min_order_value_ck",
+    sql`${table.minOrderValue} IS NULL OR ${table.minOrderValue} >= 0`,
+  ),
+]);
+
+export type WebsiteOrderSettings = typeof websiteOrderSettings.$inferSelect;
+export type InsertWebsiteOrderSettings = typeof websiteOrderSettings.$inferInsert;
+export const insertWebsiteOrderSettingsSchema = createInsertSchema(websiteOrderSettings).omit({
+  updatedAt: true,
+});
+export type InsertWebsiteOrderSettingsData = z.infer<typeof insertWebsiteOrderSettingsSchema>;
+
+export const websiteBlocks = pgTable("website_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  page: varchar("page", { length: 64 }).notNull().default("home"),
+  type: varchar("type", { length: 32 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isVisible: boolean("is_visible").notNull().default(true),
+  title: varchar("title", { length: 255 }),
+  subtitle: varchar("subtitle", { length: 255 }),
+  body: text("body"),
+  ctaLabel: varchar("cta_label", { length: 120 }),
+  ctaLink: varchar("cta_link", { length: 2048 }),
+  imageFileId: uuid("image_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
+  backgroundColor: varchar("background_color", { length: 16 }),
+  textColor: varchar("text_color", { length: 16 }),
+  borderColor: varchar("border_color", { length: 16 }),
+  buttonBackgroundColor: varchar("button_background_color", { length: 16 }),
+  buttonTextColor: varchar("button_text_color", { length: 16 }),
+  overlayColor: varchar("overlay_color", { length: 16 }),
+  // sql`0`, not "0": a string default renders as `'0'::numeric`, while
+  // migration 038 writes a bare `DEFAULT 0`. Same value, different stored
+  // expression — which is a real difference to the migration-vs-schema
+  // integrity check, and the reason it failed.
+  overlayOpacity: numeric("overlay_opacity", { precision: 4, scale: 3 }).notNull().default(sql`0`),
+  imageFit: varchar("image_fit", { length: 16 }).notNull().default("cover"),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: varchar("created_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("website_blocks_org_page_sort_idx").on(table.orgId, table.page, table.sortOrder),
+  index("website_blocks_org_visible_idx").on(table.orgId, table.isVisible),
+  index("website_blocks_image_file_idx").on(table.imageFileId),
+  check(
+    "website_blocks_type_ck",
+    sql`${table.type} IN ('hero', 'image', 'wide', 'split', 'cta', 'notice', 'gallery', 'spacer')`,
+  ),
+  check(
+    "website_blocks_overlay_opacity_ck",
+    sql`${table.overlayOpacity} >= 0 AND ${table.overlayOpacity} <= 1`,
+  ),
+  check("website_blocks_image_fit_ck", sql`${table.imageFit} IN ('cover', 'contain', 'fill')`),
+]);
+
+export type WebsiteBlock = typeof websiteBlocks.$inferSelect;
+export type InsertWebsiteBlock = typeof websiteBlocks.$inferInsert;
+export const insertWebsiteBlockSchema = createInsertSchema(websiteBlocks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWebsiteBlockData = z.infer<typeof insertWebsiteBlockSchema>;
+
 // Products table (orgId required for new rows; nullable for legacy backfill)
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   productId: varchar("product_id", { length: 100 }).notNull(),
   locationId: uuid("location_id").references(() => locations.id),
@@ -277,11 +477,20 @@ export const products = pgTable("products", {
   barcode: varchar("barcode", { length: 255 }),
   // Optional shorthand names used for WhatsApp/order-intent matching, e.g. ["coke", "large coke"].
   aliases: jsonb("aliases").$type<string[]>(),
+  availableForWebsite: boolean("available_for_website").notNull().default(false),
+  websiteTitle: varchar("website_title", { length: 255 }),
+  websiteDescription: text("website_description"),
+  websiteCategory: varchar("website_category", { length: 120 }),
+  websiteUnitLabel: varchar("website_unit_label", { length: 120 }),
+  websiteSortOrder: integer("website_sort_order").notNull().default(0),
+  websiteImageFileId: uuid("website_image_file_id").references(() => websiteUploadedFiles.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("products_org_id_idx").on(table.orgId),
   index("products_org_product_id_idx").on(table.orgId, table.productId),
+  index("products_org_website_idx").on(table.orgId, table.availableForWebsite, table.websiteSortOrder),
+  index("products_website_image_file_idx").on(table.websiteImageFileId),
 ]);
 
 export type Product = typeof products.$inferSelect;
@@ -612,6 +821,11 @@ export const shifts = pgTable(
   (table) => [
     index("shifts_org_location_idx").on(table.orgId, table.locationId),
     index("shifts_user_status_idx").on(table.userId, table.status),
+    index("shifts_opened_at_idx").on(table.openedAt.desc()),
+    /** One open shift per person per till (migration 023). A rule, not an index. */
+    uniqueIndex("shifts_one_open_per_user_location_idx")
+      .on(table.orgId, table.locationId, table.userId)
+      .where(sql`${table.status} = 'open'`),
   ],
 );
 
@@ -666,9 +880,17 @@ export const cashierShifts = pgTable(
     orgId: uuid("org_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057: a shift belongs to a user, and cashier
+    // codes are on their way out, so it must be able to exist without one.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this is. The unit of attribution from migration 057 on. */
+    userId: varchar("user_id", { length: 255 }),
+    /**
+     * The trading day this shift covers — 06:00 to 06:00 in the org's own
+     * timezone. A shift is a trading day, not a login session, so logging out
+     * for a break and back in returns to this same shift. (migration 058)
+     */
+    tradingDay: date("trading_day"),
     openedByUserId: varchar("opened_by_user_id", { length: 255 }).notNull(),
     closedByUserId: varchar("closed_by_user_id", { length: 255 }),
     openedAt: timestamp("opened_at").defaultNow().notNull(),
@@ -682,6 +904,22 @@ export const cashierShifts = pgTable(
   (table) => [
     index("cashier_shifts_org_id_idx").on(table.orgId),
     index("cashier_shifts_cashier_id_idx").on(table.cashierId),
+    index("cashier_shifts_user_idx").on(table.orgId, table.userId),
+    index("cashier_shifts_trading_day_idx").on(table.orgId, table.tradingDay),
+    // One shift per person per trading day. This is what makes opening a shift
+    // lazily safe: two concurrent first-sales race, one wins, the other finds it.
+    //
+    // Scoped to shifts with no cashier code (migration 060). Under the old
+    // model a shift was a login session opened by hand, and two in a day was
+    // ordinary — so the backfilled historic rows collide on this key. Those
+    // rows all carry a code; nothing creates a coded shift any more, and
+    // resolveShiftForToday never sets one. So this covers exactly the rows the
+    // invariant was written for, and every shift made from here on.
+    uniqueIndex("cashier_shifts_user_trading_day_idx")
+      .on(table.orgId, table.userId, table.tradingDay)
+      .where(
+        sql`${table.userId} IS NOT NULL AND ${table.tradingDay} IS NOT NULL AND ${table.cashierId} IS NULL`,
+      ),
     uniqueIndex("cashier_shifts_one_open_per_cashier_idx")
       .on(table.orgId, table.cashierId)
       .where(sql`status = 'open'`),
@@ -701,9 +939,10 @@ export const cashierShiftSummaries = pgTable(
     shiftId: uuid("shift_id")
       .references(() => cashierShifts.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 057 — a shift can belong to a user with no code.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Whose shift this summarises. The unit of attribution from 057 on. */
+    userId: varchar("user_id", { length: 255 }),
     grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -726,12 +965,112 @@ export const cashierShiftSummaries = pgTable(
   (table) => [
     index("cashier_shift_summaries_org_id_idx").on(table.orgId),
     index("cashier_shift_summaries_cashier_id_idx").on(table.cashierId),
+    index("cashier_shift_summaries_user_idx").on(table.orgId, table.userId),
     uniqueIndex("cashier_shift_summaries_shift_id_idx").on(table.shiftId),
   ],
 );
 
 export type CashierShiftSummary = typeof cashierShiftSummaries.$inferSelect;
 export type InsertCashierShiftSummary = typeof cashierShiftSummaries.$inferInsert;
+
+/**
+ * One row per cashier per order per accrual — the record of who is owed what.
+ *
+ * Replaces the single commission figure that used to live on
+ * `cashierShiftSummaries`, which could not express either an order split 90/10
+ * between two people or a credit sale that earns its commission weeks after the
+ * shift that sold it closed.
+ *
+ * The money columns are snapshots and must never be recomputed: changing a
+ * cashier's rate must not restate what they have already earned, and
+ * `overheadShare` belongs to the day the order was sold on. (migration 052)
+ */
+export const cashierCommissionEntries = pgTable(
+  "cashier_commission_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    /**
+     * The cashier CODE, when one was used. Nullable since migration 061: a
+     * shift opened on first sale has no code, and commission is owed to the
+     * user instead. `cashier_commission_entries_party_check` keeps at least one
+     * of the two present.
+     */
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** The shift this accrued on. Null for a credit resolution taken later. */
+    cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+    /** Who is owed this, by user account. Preferred over `cashierId`. */
+    userId: varchar("user_id", { length: 255 }),
+    /** "completer" (90%) or "inputter" (10%), or either at 100%. */
+    role: varchar("role", { length: 16 }).notNull(),
+    /** "sale" — money taken at the till. "credit_resolution" — a tick since paid. */
+    basis: varchar("basis", { length: 24 }).notNull(),
+    orderMargin: numeric("order_margin", { precision: 12, scale: 2 }).notNull().default("0"),
+    overheadShare: numeric("overhead_share", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    sharePercent: numeric("share_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    /**
+     * The payment that released this, for a credit resolution. Declared with
+     * its foreign key here as well as in the SQL so a database built by
+     * `drizzle-kit push` matches one built by the migrations.
+     */
+    creditPaymentId: uuid("credit_payment_id").references(() => creditPayments.id, {
+      onDelete: "cascade",
+    }),
+    accruedOn: date("accrued_on").notNull(),
+    accruedAt: timestamp("accrued_at").defaultNow().notNull(),
+    // Self-referencing: a reversal points at the entry it undoes. Declared here
+    // as well as in the SQL so a database built by `drizzle-kit push` carries
+    // the same foreign key as one built by the migrations — the migration
+    // integrity suite diffs the two and fails on exactly this kind of gap.
+    reversalOf: uuid("reversal_of").references((): AnyPgColumn => cashierCommissionEntries.id),
+  },
+  (table) => [
+    index("cashier_commission_entries_cashier_date_idx").on(table.orgId, table.cashierId, table.accruedOn),
+    index("cashier_commission_entries_user_date_idx").on(table.orgId, table.userId, table.accruedOn),
+    index("cashier_commission_entries_shift_idx").on(table.cashierShiftId),
+    index("cashier_commission_entries_order_idx").on(table.orderId),
+    check("cashier_commission_entries_role_check", sql`${table.role} IN ('completer', 'inputter')`),
+    check("cashier_commission_entries_basis_check", sql`${table.basis} IN ('sale', 'credit_resolution')`),
+    // Somebody has to be owed the money. See migration 061.
+    check(
+      "cashier_commission_entries_party_check",
+      sql`${table.cashierId} IS NOT NULL OR ${table.userId} IS NOT NULL`,
+    ),
+    // Closing a shift twice, or replaying an offline order into a closed one,
+    // must not pay anybody twice: one accrual per party per role per order.
+    //
+    // Keyed on COALESCE(code, user) and not on the code alone (migration 061).
+    // Postgres treats NULLs in a unique index as distinct, so once the code went
+    // away this guard would have stopped deduplicating altogether — silently,
+    // paying the same commission twice with the ledger looking normal.
+    uniqueIndex("cashier_commission_entries_unique_sale")
+      .on(
+        table.orderId,
+        sql`COALESCE(${table.cashierId}::text, ${table.userId})`,
+        table.role,
+      )
+      .where(sql`${table.basis} = 'sale' AND ${table.reversalOf} IS NULL`),
+    // A credit sale settled in instalments accrues once per PAYMENT, so its
+    // guard keys on the payment rather than the order.
+    uniqueIndex("cashier_commission_entries_unique_resolution")
+      .on(
+        table.creditPaymentId,
+        sql`COALESCE(${table.cashierId}::text, ${table.userId})`,
+        table.role,
+      )
+      .where(sql`${table.basis} = 'credit_resolution' AND ${table.reversalOf} IS NULL`),
+  ],
+);
+
+export type CashierCommissionEntry = typeof cashierCommissionEntries.$inferSelect;
+export type InsertCashierCommissionEntry = typeof cashierCommissionEntries.$inferInsert;
 
 export const cashierCommissionPayments = pgTable(
   "cashier_commission_payments",
@@ -767,15 +1106,199 @@ export const insertCashierCommissionPaymentSchema = createInsertSchema(cashierCo
 });
 export type InsertCashierCommissionPaymentData = z.infer<typeof insertCashierCommissionPaymentSchema>;
 
+/**
+ * The tenders that paid for an order — one row per leg.
+ *
+ * A £100 sale can be £50 cash and £50 on tick, which `orders.paymentMethod`
+ * could not express: it holds one value, forcing a split sale to be recorded
+ * either as all cash (and the drawer never reconciles) or all tick (and the
+ * business appears owed money it already has).
+ *
+ * The legs sum to the order total, and every money figure — cash and card
+ * sales, the Z-report breakdown, expected cash — derives from them.
+ * `orders.paymentMethod` is still written, but as a label. (migration 056)
+ */
+export const orderPayments = pgTable(
+  "order_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    method: varchar("method", { length: 50 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_payments_order_idx").on(table.orderId),
+    index("order_payments_org_method_idx").on(table.orgId, table.method),
+    // Zero is allowed — a personal-use order is a real, recorded, zero-value
+    // leg. Negative is not: giving money back is a refund.
+    check("order_payments_amount_check", sql`${table.amount} >= 0`),
+  ],
+);
+
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * A tender leg as the till submits it. The legs must sum to the order total —
+ * a split that does not add up is a sale where some money is unaccounted for,
+ * which is exactly the state this table exists to make impossible.
+ */
+export const orderTenderLegSchema = z.object({
+  method: z.string().min(1, "Each payment needs a method"),
+  amount: z.coerce.number().min(0, "A payment cannot be negative"),
+});
+export type OrderTenderLeg = z.infer<typeof orderTenderLegSchema>;
+
+/** Sums tender legs to the penny. */
+export function sumTenderLegs(legs: OrderTenderLeg[]): number {
+  return Math.round(legs.reduce((sum, leg) => sum + leg.amount, 0) * 100) / 100;
+}
+
+/**
+ * The outstanding balance on a sale made on credit (tick), one row per order.
+ *
+ * Credit needed state of its own. "Unpaid" used to be inferred from the order
+ * still being `pending`, and marking it paid set it to `completed` — so whether
+ * the money had arrived was answered by a column that means whether the goods
+ * had. Under the current model a tick order IS completed the day the goods
+ * leave and is simply unpaid, so that test would report every credit sale as
+ * paid immediately and pay commission on money nobody had received.
+ * (migration 053)
+ */
+export const orderCredit = pgTable(
+  "order_credit",
+  {
+    orderId: uuid("order_id")
+      .primaryKey()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    customerId: uuid("customer_id").references(() => customers.id),
+    /** The portion of the sale put on credit — the whole of it today. */
+    amountGiven: numeric("amount_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    amountOutstanding: numeric("amount_outstanding", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** outstanding | partial | settled | written_off | voided */
+    status: varchar("status", { length: 16 }).notNull().default("outstanding"),
+    givenOn: date("given_on").notNull(),
+    settledOn: date("settled_on"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("order_credit_org_status_idx").on(table.orgId, table.status),
+    index("order_credit_customer_idx").on(table.customerId),
+    check(
+      "order_credit_status_check",
+      sql`${table.status} IN ('outstanding', 'partial', 'settled', 'written_off', 'voided')`,
+    ),
+  ],
+);
+
+export type OrderCredit = typeof orderCredit.$inferSelect;
+export type InsertOrderCredit = typeof orderCredit.$inferInsert;
+
+/**
+ * Every payment made against a credit sale. Several per order is normal, and
+ * they can be of different kinds — a customer settling an account pays some
+ * cash and some card — which is why `method` is required rather than optional.
+ */
+export const creditPayments = pgTable(
+  "credit_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    method: varchar("method", { length: 50 }).notNull().default("cash"),
+    paidOn: date("paid_on").notNull(),
+    recordedByUserId: uuid("recorded_by_user_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
+    // A payment of zero or less is not a payment.
+    check("credit_payments_amount_check", sql`${table.amount} > 0`),
+  ],
+);
+
+export type CreditPayment = typeof creditPayments.$inferSelect;
+export type InsertCreditPayment = typeof creditPayments.$inferInsert;
+
+/**
+ * One row per organisation per trading day, written by the 06:00 close.
+ *
+ * The unique key is the mechanism, not bookkeeping: a server restarted at 06:00
+ * or two instances running at once must not total the same day twice and send
+ * the same Signals twice. Whoever inserts the row does the work. (migration 059)
+ */
+export const dailyCloseRuns = pgTable(
+  "daily_close_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    tradingDay: date("trading_day").notNull(),
+    ranAt: timestamp("ran_at").defaultNow().notNull(),
+    shiftsClosed: integer("shifts_closed").notNull().default(0),
+    orderCount: integer("order_count").notNull().default(0),
+    grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditGiven: numeric("credit_given", { precision: 12, scale: 2 }).notNull().default("0"),
+    creditResolved: numeric("credit_resolved", { precision: 12, scale: 2 }).notNull().default("0"),
+    personalUseCost: numeric("personal_use_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    commissionAccrued: numeric("commission_accrued", { precision: 12, scale: 2 }).notNull().default("0"),
+    /** Drawers still open at the cut — named, never closed uncounted. */
+    uncountedDrawers: integer("uncounted_drawers").notNull().default(0),
+  },
+  (table) => [uniqueIndex("daily_close_runs_org_day_idx").on(table.orgId, table.tradingDay)],
+);
+
+export type DailyCloseRun = typeof dailyCloseRuns.$inferSelect;
+export type InsertDailyCloseRun = typeof dailyCloseRuns.$inferInsert;
+
 // Orders table (orgId required for new rows; nullable for legacy backfill)
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   customerId: uuid("customer_id").references(() => customers.id),
   locationId: uuid("location_id").references(() => locations.id),
   shiftId: uuid("shift_id").references(() => shifts.id),
   cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
   cashierShiftId: uuid("cashier_shift_id").references(() => cashierShifts.id),
+  // Commission is split between the cashier who loaded the order and the one
+  // who completed it (90/10), so a single `cashierId` cannot express it.
+  // `cashierId` is retained and still written as the completing cashier for
+  // backwards compatibility; prefer the two columns below. (migration 051)
+  //
+  // NULL `inputCashierId` means nobody loaded it by hand — a web or storefront
+  // order — and that absence is what gives the completer 100% of the pool.
+  inputCashierId: uuid("input_cashier_id").references(() => cashierProfiles.id),
+  // Written ONCE, at the first transition to "completed", for the same reason
+  // `settledTotal` is: reopening and re-completing an order must not move
+  // commission that has already accrued to somebody else.
+  completedCashierId: uuid("completed_cashier_id").references(() => cashierProfiles.id),
+  completedCashierShiftId: uuid("completed_cashier_shift_id").references(() => cashierShifts.id),
+  // Who actually did the work, by user account rather than cashier code.
+  // varchar because `users.id` is the auth subject, not a uuid. No foreign key:
+  // removing someone from the org must not make historic orders unreadable.
+  // (migration 057)
+  inputUserId: varchar("input_user_id", { length: 255 }),
+  completedUserId: varchar("completed_user_id", { length: 255 }),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -805,13 +1328,42 @@ export const orders = pgTable("orders", {
   revisedEta: timestamp("revised_eta"),
   delayNotificationSentAt: timestamp("delay_notification_sent_at"),
   delayResolution: varchar("delay_resolution", { length: 32 }),
+  // Why stock left without a sale. Required when paymentMethod is
+  // "personal_use" — a Signal without a reason is a Signal nobody reads.
+  // (migration 054)
+  personalUseReason: text("personal_use_reason"),
+  // `createdAt` is the day the sale is FOR — what every report reads as the
+  // moment of sale. Normally that is when it was keyed in; for a day's sales
+  // entered afterwards, or a pre-order, it is not, and these two say so.
+  // (migration 062, shared/orders/orderDate.ts)
+  enteredAt: timestamp("entered_at").defaultNow(),
+  dateKind: varchar("date_kind", { length: 16 }).notNull().default("live"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  index("orders_dated_idx")
+    .on(table.orgId, table.dateKind, table.createdAt)
+    .where(sql`${table.dateKind} <> 'live'`),
+  check(
+    "orders_date_kind_check",
+    sql`${table.dateKind} IN ('live', 'backdated', 'preorder')`,
+  ),
   index("orders_shift_id_idx").on(table.shiftId),
   index("orders_cashier_shift_id_idx").on(table.cashierShiftId),
+  index("orders_completed_cashier_idx").on(table.orgId, table.completedCashierId),
+  index("orders_completed_user_idx").on(table.orgId, table.completedUserId),
+  index("orders_completed_cashier_shift_idx").on(table.completedCashierShiftId),
   index("orders_delay_flag_idx").on(table.orgId, table.delayFlag),
+  check("orders_total_non_negative", sql`${table.total} >= 0`),
+  check(
+    "orders_fulfilment_method_check",
+    sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
+  ),
+  /** Open orders by fulfilment — the Open Orders list's index (migration 047). */
+  index("idx_orders_fulfilment_open")
+    .on(table.orgId, table.fulfilmentMethod)
+    .where(sql`${table.status} <> 'completed'`),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -821,6 +1373,14 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true, 
   updatedAt: true,
   status: true
+}).extend({
+  // An order may not total less than zero. Giving money back is a refund, which
+  // is a separate path with its own controls; a negative order would be the
+  // same payout with none of them. Zero is allowed on purpose — personal use is
+  // a real, recorded, zero-total order. Guarded here, by a check constraint on
+  // the column (migration 055), and with a plain message at the till, because
+  // each catches a different mistake.
+  total: z.coerce.number().min(0, "An order cannot total less than zero"),
 });
 export type InsertOrderData = z.infer<typeof insertOrderSchema>;
 
@@ -833,7 +1393,7 @@ export type UpdateOrderStatus = z.infer<typeof updateOrderStatusSchema>;
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // rent, utilities, insurance, salaries, etc.
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
@@ -861,7 +1421,7 @@ export type InsertOverheadExpenseData = z.infer<typeof insertOverheadExpenseSche
 // Order expenses table (orgId from order; nullable for legacy backfill)
 export const orderExpenses = pgTable("order_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // travel, shipping, packaging, other
   description: varchar("description", { length: 500 }),
@@ -880,7 +1440,7 @@ export type InsertOrderExpenseData = z.infer<typeof insertOrderExpenseSchema>;
 // Order items table (orgId from order; nullable for legacy backfill)
 export const orderItems = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id),
   productId: uuid("product_id").references(() => products.id),
   quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
@@ -1118,7 +1678,7 @@ export const insertResellerTransactionSchema = createInsertSchema(resellerTransa
 // Invoices table (orgId from order; nullable for legacy backfill)
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orgId: uuid("org_id").references(() => organizations.id),
+  orgId: uuid("org_id").references(() => organizations.id).notNull(),
   orderId: uuid("order_id").references(() => orders.id),
   customerId: uuid("customer_id").references(() => customers.id),
   invoiceNumber: varchar("invoice_number", { length: 50 }).notNull(),
@@ -1267,6 +1827,10 @@ export const allowedUsers = pgTable("allowed_users", {
 }, (table) => [
   index("allowed_users_org_id_idx").on(table.orgId),
   index("allowed_users_email_idx").on(table.email),
+  /** One row per auth subject, ignoring the legacy null rows (migration 008). */
+  uniqueIndex("allowed_users_auth_user_id_uq")
+    .on(table.authUserId)
+    .where(sql`${table.authUserId} IS NOT NULL`),
 ]);
 
 export type AllowedUser = typeof allowedUsers.$inferSelect;
@@ -1412,7 +1976,10 @@ export const EVENT_TYPES = [
   'OrderCancelled',
   'ExpenseLogged',
   'ExpenseUpdated',
-  'ExpenseDeleted'
+  'ExpenseDeleted',
+  // Staff took stock for themselves. Not a sale — it exists so a manager is
+  // told, which is the entire control against it becoming theft.
+  'PersonalUseRecorded'
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 
@@ -1427,6 +1994,7 @@ export const WORKER_NAMES = [
   'ExpensesWorker',
   'AutomationWorker',
   'ReceiptEmailWorker',
+  'PersonalUseSignalWorker',
 ] as const;
 export type WorkerName = typeof WORKER_NAMES[number];
 
@@ -1437,6 +2005,71 @@ export type JobStatus = typeof JOB_STATUSES[number];
 // Worker result statuses
 export const WORKER_RESULT_STATUSES = ['success', 'failed', 'already_processed', 'retrying', 'skipped'] as const;
 export type WorkerResultStatus = typeof WORKER_RESULT_STATUSES[number];
+
+/**
+ * Tables that existed only in `migrations/`.
+ *
+ * `drizzle.config.ts` points `drizzle-kit push` at this file alone, and push
+ * drops whatever the file does not declare. `audit_logs`, `domain_outbox` and
+ * `admin_audit_logs.retention_until` were created by migrations 039, 009 and
+ * 014 and declared nowhere, so a push would have taken all three with it --
+ * including the seven-year audit trail. Declaring them here is what makes push
+ * agree with the database rather than argue with it.
+ *
+ * Nothing should push against production regardless (see
+ * docs/DEPLOY_HOSTINGER_VPS.md), but "the runbook says don't" is not a
+ * safeguard.
+ */
+
+/** Legacy domain-engine audit log, used by AuditPortDrizzle (migration 039). */
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: varchar("user_id", { length: 100 }).notNull(),
+    userRole: varchar("user_role", { length: 50 }),
+    action: varchar("action", { length: 100 }).notNull(),
+    entityType: varchar("entity_type", { length: 50 }).notNull(),
+    entityId: varchar("entity_id", { length: 100 }),
+    entityName: varchar("entity_name", { length: 255 }),
+    oldValues: jsonb("old_values"),
+    newValues: jsonb("new_values"),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    userAgent: varchar("user_agent", { length: 1024 }),
+    sessionId: varchar("session_id", { length: 255 }),
+    success: boolean("success").default(true),
+    errorMessage: varchar("error_message", { length: 1024 }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("audit_logs_entity_idx").on(table.entityType, table.entityId),
+    index("audit_logs_created_at_idx").on(table.createdAt.desc()),
+  ],
+);
+
+/** Analytics worker outbox (migration 009). Superseded by eventOutbox below,
+ *  but still present and still written to on existing environments. */
+export const domainOutbox = pgTable(
+  "domain_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "set null" }),
+    type: varchar("type", { length: 128 }).notNull(),
+    data: jsonb("data"),
+    eventType: varchar("event_type", { length: 128 }),
+    aggregateType: varchar("aggregate_type", { length: 128 }),
+    aggregateId: varchar("aggregate_id", { length: 255 }),
+    payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("domain_outbox_unprocessed_idx")
+      .on(table.createdAt)
+      .where(sql`${table.processedAt} IS NULL`),
+  ],
+);
 
 // Event Outbox - stores events before dispatch
 export const eventOutbox = pgTable("event_outbox", {
@@ -1555,6 +2188,10 @@ export const apiKeys = pgTable(
   (table) => [
     index("api_keys_org_idx").on(table.orgId),
     index("api_keys_lookup_idx").on(table.orgId, table.keyLookup),
+    /** One live key per lookup per org; revoked ones may repeat (migration 012). */
+    uniqueIndex("api_keys_org_lookup_active_idx")
+      .on(table.orgId, table.keyLookup)
+      .where(sql`${table.revokedAt} IS NULL`),
   ],
 );
 
@@ -1596,6 +2233,10 @@ export const adminAuditLogs = pgTable(
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: varchar("user_agent", { length: 1024 }),
     createdAt: timestamp("created_at").defaultNow(),
+    /** Seven-year audit retention (migration 014). */
+    retentionUntil: timestamp("retention_until", { withTimezone: true }).default(
+      sql`now() + interval '7 years'`,
+    ),
   },
   (table) => [
     index("admin_audit_logs_created_at_idx").on(table.createdAt),
@@ -1942,4 +2583,5 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   ExpenseLogged: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
+  PersonalUseRecorded: ['PersonalUseSignalWorker'],
 };

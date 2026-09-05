@@ -3,23 +3,21 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, CheckCircle2, ClipboardList, ShoppingBag, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { CONTROL_CENTRE_QUERY_KEY, type ControlCentreSnapshot } from "@/lib/controlCentre";
 
 /**
- * The "what is happening right now" row.
+ * The "what is happening right now" row — every count sourced from the one
+ * Control Centre snapshot rather than fetching /api/orders and
+ * /api/inventory/alerts separately and re-deriving them client-side.
  *
- * Everything here is a count of real rows with a destination attached. No tile
- * renders a figure it cannot substantiate, and no tile is decorative — the
- * previous dashboard had four buttons that did nothing and a Recent Orders panel
- * hardcoded to "No recent orders available", which is what made the whole page
- * untrustworthy at a glance.
+ * "Completed today" in particular used to be computed here by filtering
+ * /api/orders on createdAt falling on the browser's local calendar day. That
+ * missed every order taken one trading day and handed over the next — the
+ * normal case for a pick-and-pack shop — and used a third definition of
+ * "today" from the one revenue and the order count above it were using. The
+ * snapshot now counts it the same way everything else on this page does: by
+ * settlement, within the trading day.
  */
-
-type OrderRow = {
-  id: string;
-  status: string | null;
-  fulfilmentMethod: string | null;
-  createdAt: string | null;
-};
 
 type Tile = {
   label: string;
@@ -31,46 +29,18 @@ type Tile = {
   hint: string;
 };
 
-function isToday(iso: string | null): boolean {
-  if (!iso) return false;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
-
 export function OperationsSnapshot() {
-  const { data: orders = [], isLoading: ordersLoading } = useQuery<OrderRow[]>({
-    queryKey: ["/api/orders"],
+  const { data, isLoading } = useQuery<ControlCentreSnapshot>({
+    queryKey: CONTROL_CENTRE_QUERY_KEY,
+    refetchInterval: 60_000,
   });
 
-  const { data: stock, isLoading: stockLoading } = useQuery<{
-    summary?: { critical: number; high: number; medium: number; total: number };
-  }>({
-    queryKey: ["/api/inventory/alerts"],
-  });
-
-  const open = orders.filter((o) => o.status !== "completed");
-  // Fulfilment defaults to collection at the column level, so an order with a
-  // null here (written before migration 047) counts as a collection rather than
-  // disappearing from both tiles.
-  const toDeliver = open.filter((o) => o.fulfilmentMethod === "delivery").length;
-  const toCollect = open.length - toDeliver;
-  const completedToday = orders.filter(
-    (o) => o.status === "completed" && isToday(o.createdAt),
-  ).length;
-  const lowStock = stock?.summary?.total ?? 0;
-
-  const isLoading = ordersLoading || stockLoading;
+  const lowStock = data?.lowStockCount ?? 0;
 
   const tiles: Tile[] = [
     {
       label: "Open orders",
-      value: open.length,
+      value: data?.openOrders ?? 0,
       href: "/open-orders",
       icon: ClipboardList,
       tone: "neutral",
@@ -79,7 +49,7 @@ export function OperationsSnapshot() {
     },
     {
       label: "To collect",
-      value: toCollect,
+      value: data?.toCollect ?? 0,
       href: "/open-orders",
       icon: ShoppingBag,
       tone: "neutral",
@@ -88,7 +58,7 @@ export function OperationsSnapshot() {
     },
     {
       label: "To deliver",
-      value: toDeliver,
+      value: data?.toDeliver ?? 0,
       href: "/open-orders",
       icon: Truck,
       tone: "neutral",
@@ -97,12 +67,12 @@ export function OperationsSnapshot() {
     },
     {
       label: "Completed today",
-      value: completedToday,
+      value: data?.ordersCompletedToday ?? 0,
       href: "/orders",
       icon: CheckCircle2,
       tone: "neutral",
       testId: "snapshot-completed-today",
-      hint: "Settled since midnight",
+      hint: "Settled this trading day",
     },
     {
       label: "Low stock",
@@ -137,28 +107,21 @@ export function OperationsSnapshot() {
             href={tile.href}
             data-testid={tile.testId}
             className={[
-              "group rounded-xl border p-4 transition-colors",
-              tile.tone === "warn"
-                ? "border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10"
-                : "border-border bg-card hover:bg-muted",
+              "group lm-card rounded-xl p-4 transition-colors",
+              tile.tone === "warn" ? "border-amber-500/40 hover:bg-amber-500/5" : "hover:bg-[hsl(215,10%,18%/0.5)]",
             ].join(" ")}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {tile.label}
-              </span>
+              <span className="text-xs font-medium uppercase tracking-wide text-metal-muted">{tile.label}</span>
               <Icon
-                className={[
-                  "h-4 w-4 shrink-0",
-                  tile.tone === "warn" ? "text-amber-500" : "text-muted-foreground",
-                ].join(" ")}
+                className={["h-4 w-4 shrink-0", tile.tone === "warn" ? "text-warning" : "text-metal-muted"].join(" ")}
                 aria-hidden
               />
             </div>
-            <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+            <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-metal-warm-white">
               {tile.value}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
+            <p className="mt-1 text-xs text-metal-muted">{tile.hint}</p>
           </Link>
         );
       })}

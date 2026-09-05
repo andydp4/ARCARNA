@@ -85,7 +85,9 @@ export function Skeleton({ count = 3, variant = "row", className }: SkeletonProp
   return (
     <div
       className={cn(variant === "card" ? "space-y-4" : "space-y-3", className)}
+      role="status"
       aria-busy="true"
+      aria-live="polite"
       aria-label="Loading content"
     >
       {Array.from({ length: count }).map((_, i) => (

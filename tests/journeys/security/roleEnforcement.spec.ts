@@ -327,7 +327,6 @@ test.describe("5.1 role enforcement on mutating routes", () => {
     test.skip(bypassOn, ROLE_GATE_OFF_REASON);
     const cashier = await apiAs("CASHIER", orgAId);
     const gatedReads = [
-      { path: "/api/locations", where: "server/routes/locations.ts:19" },
       { path: `/api/locations/${records.locationId}/stock`, where: "server/routes/locations.ts:79" },
       { path: "/api/webhooks", where: "server/routes/channels.ts:112" },
       { path: "/api/cashier-commission", where: "server/routes/cashiers.ts:323" },
@@ -339,6 +338,31 @@ test.describe("5.1 role enforcement on mutating routes", () => {
     }
     await cashier.dispose();
     expect(wrongStatus).toEqual([]);
+  });
+
+  test("GET /api/locations is readable by a CASHIER but carries no revenue stats", async () => {
+    test.skip(bypassOn, ROLE_GATE_OFF_REASON);
+    // A cashier cannot open a POS shift without picking a location
+    // (client/src/pages/pos/shift-open.tsx), so the list itself is not gated —
+    // only the admin payload's per-location revenue/order stats are
+    // (server/routes/locations.ts:19).
+    const cashier = await apiAs("CASHIER", orgAId);
+    const res = await cashier.get("/api/locations");
+    const body = res.ok() ? await res.json() : null;
+    await cashier.dispose();
+
+    expect(res.status(), "a CASHIER must be able to list locations").toBe(200);
+    expect(Array.isArray(body), "the list must be an array").toBe(true);
+    const withStats = (body as Array<Record<string, unknown>>).filter((l) => "stats" in l);
+    expect(withStats, "a CASHIER must not receive per-location revenue stats").toEqual([]);
+    for (const loc of body as Array<Record<string, unknown>>) {
+      expect(Object.keys(loc).sort(), "only the picker fields are exposed").toEqual([
+        "id",
+        "isActive",
+        "isDefault",
+        "name",
+      ]);
+    }
   });
 });
 

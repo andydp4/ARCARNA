@@ -34,11 +34,24 @@ function statusTone(status: string | null): "default" | "secondary" | "destructi
   }
 }
 
-function timeOf(iso: string | null): string {
+/**
+ * Time only for a row from today (by the browser's local calendar day — this
+ * is a display disambiguation, not a financial figure, so it does not need
+ * the org's trading day). A date prefix for anything older, because "recent"
+ * spans however far back LIMIT reaches, not just today — a row from three
+ * days ago showing only "19:12" next to one from this morning showing
+ * "10:55" reads as later today when it is not.
+ */
+function whenOf(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (isToday) return time;
+  return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${time}`;
 }
 
 export function RecentOrders() {
@@ -50,12 +63,12 @@ export function RecentOrders() {
   const recent = [...orders].reverse().slice(0, LIMIT);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
+    <div className="lm-card rounded-xl p-4 sm:p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-base font-semibold text-foreground sm:text-lg">Recent orders</h3>
+        <h3 className="text-base font-semibold text-metal-warm-white sm:text-lg">Recent orders</h3>
         <Link
           href="/open-orders"
-          className="text-sm text-secondary hover:underline"
+          className="text-sm text-truth hover:underline"
           data-testid="link-viewallorders"
         >
           View all
@@ -69,11 +82,11 @@ export function RecentOrders() {
           ))}
         </div>
       ) : recent.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">
+        <p className="py-8 text-center text-sm text-metal-muted">
           No orders yet. Takings will appear here as they come in.
         </p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-[hsl(210,15%,78%/0.10)]">
           {recent.map((order) => (
             <li
               key={order.id}
@@ -82,22 +95,20 @@ export function RecentOrders() {
             >
               <div className="flex min-w-0 items-center gap-2">
                 {order.fulfilmentMethod === "delivery" ? (
-                  <Truck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <Truck className="h-4 w-4 shrink-0 text-metal-muted" aria-hidden />
                 ) : (
-                  <ShoppingBag className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <ShoppingBag className="h-4 w-4 shrink-0 text-metal-muted" aria-hidden />
                 )}
-                <span className="truncate text-sm font-medium text-foreground">
+                <span className="truncate text-sm font-medium text-metal-warm-white">
                   {order.customerName || "Walk-in"}
                 </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {timeOf(order.createdAt)}
-                </span>
+                <span className="shrink-0 text-xs text-metal-muted">{whenOf(order.createdAt)}</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Badge variant={statusTone(order.status)} className="text-[10px] capitalize">
                   {order.status || "pending"}
                 </Badge>
-                <span className="text-sm font-semibold tabular-nums text-foreground">
+                <span className="text-sm font-semibold tabular-nums text-metal-warm-white">
                   £{Number(order.total ?? 0).toFixed(2)}
                 </span>
               </div>

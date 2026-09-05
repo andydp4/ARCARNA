@@ -34,6 +34,7 @@ import {
   completeGoodsReceipt,
   getPurchaseDraftReceiving,
 } from "../services/goodsReceipts";
+import { storage } from "../storage";
 
 const hasDb = !!process.env.DATABASE_URL;
 
@@ -233,6 +234,25 @@ describe.skipIf(!hasDb)("getOnOrderQuantities", () => {
       .set({ quantityReceived: 25 })
       .where(eq(purchaseDraftItems.id, line.id));
     expect(await onOrderFor(orgId, productA, locationId)).toBe(0);
+
+    await cleanupDrafts([draft!.id]);
+  });
+
+  it("preserves fractional outstanding quantities", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 1.4 }] },
+    ]);
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draft!.id));
+
+    await db
+      .update(purchaseDraftItems)
+      .set({ quantityReceived: 0.9 })
+      .where(eq(purchaseDraftItems.id, line.id));
+
+    expect(await onOrderFor(orgId, productA, locationId)).toBe(0.5);
 
     await cleanupDrafts([draft!.id]);
   });
@@ -502,6 +522,62 @@ describe.skipIf(!hasDb)("receive cycle", () => {
         ),
       );
     expect(stockIdem.stock).toBe(startingStock + 4);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("keeps fractional receipts pending, received, and stocked", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 1.4 }] },
+    ]);
+    const draftId = draft!.id;
+
+    await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+    await setPurchaseDraftStatus(orgId, draftId, "approved");
+
+    const [stockBefore] = await db
+      .select()
+      .from(productLocationStock)
+      .where(
+        and(
+          eq(productLocationStock.productId, productA),
+          eq(productLocationStock.locationId, locationId),
+        ),
+      );
+    const startingStock = stockBefore.stock;
+
+    const receiving = await getPurchaseDraftReceiving(orgId, draftId);
+    const receipt = await createGoodsReceipt(orgId, {
+      purchaseDraftId: draftId,
+      items: [
+        {
+          purchaseDraftItemId: receiving.items[0].id,
+          productId: productA,
+          quantityReceived: 0.4,
+          quantityDamaged: 0.1,
+        },
+      ],
+    });
+
+    const pending = await getPurchaseDraftReceiving(orgId, draftId);
+    expect(pending.items[0].pendingOnReceipts).toBe(0.4);
+    expect(pending.items[0].remaining).toBe(1);
+
+    await completeGoodsReceipt(orgId, receipt!.id, "test");
+
+    const [stockAfter] = await db
+      .select()
+      .from(productLocationStock)
+      .where(
+        and(
+          eq(productLocationStock.productId, productA),
+          eq(productLocationStock.locationId, locationId),
+        ),
+      );
+    expect(stockAfter.stock).toBe(startingStock + 0.4);
+    const inventoryList = await storage.getProductsWithStock(orgId);
+    expect(inventoryList.find((p) => p.id === productA)?.stock).toBe(startingStock + 0.4);
+    expect(await onOrderFor(orgId, productA, locationId)).toBe(1);
 
     await cleanupDrafts([draftId]);
   });
