@@ -43,6 +43,7 @@ let b: OrgRecords;
  *  org A and race roleEnforcement.spec.ts's org-A fingerprints. */
 let orgCId: string;
 let cApi: APIRequestContext;
+let c: OrgRecords;
 let bypassOn: boolean;
 
 test.beforeAll(async () => {
@@ -55,6 +56,7 @@ test.beforeAll(async () => {
   const createdC = await createOrgB();
   orgCId = createdC.orgId;
   cApi = createdC.api;
+  c = await provisionOrgRecords(cApi, orgCId);
 });
 
 test.afterAll(async () => {
@@ -335,6 +337,69 @@ test.describe("5.3 cross-tenant writes", () => {
     });
     expect(single.status(), "single create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
     expect(batch.status(), "batch create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
+  });
+
+  test("an editable draft must not accept another tenant's references through update routes", async () => {
+    async function createEditableDraft() {
+      const res = await cApi.post("/api/replenishment/create-purchase-draft", {
+        data: {
+          supplierId: c.supplierId,
+          locationId: c.locationId,
+          items: [{ productId: c.productId, quantity: 2, estimatedCost: 1 }],
+        },
+      });
+      if (!res.ok()) {
+        throw new Error(`setup draft create returned ${res.status()} ${await res.text()}`);
+      }
+      return (await res.json()) as { id: string };
+    }
+
+    const beforeB = await orgFingerprint(orgBId);
+    const attempts = [
+      {
+        what: "swap in B's supplier",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { supplierId: b.supplierId } }),
+      },
+      {
+        what: "swap in B's location",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { locationId: b.locationId } }),
+      },
+      {
+        what: "add B's product as a line",
+        run: async (draftId: string) =>
+          cApi.post(`/api/purchase-drafts/${draftId}/items`, {
+            data: { productId: b.productId, quantity: 1, estimatedCost: 1 },
+          }),
+      },
+      {
+        what: "mass-assign status through the supplier/location patch route",
+        run: async (draftId: string) =>
+          cApi.patch(`/api/purchase-drafts/${draftId}`, { data: { status: "approved" } }),
+      },
+    ];
+
+    const accepted: string[] = [];
+    const leaks: string[] = [];
+    const internals: string[] = [];
+    for (const attempt of attempts) {
+      const draft = await createEditableDraft();
+      const res = await attempt.run(draft.id);
+      const body = await res.text();
+      if (res.status() >= 200 && res.status() < 300) {
+        accepted.push(`${attempt.what} → ${res.status()} ${body.slice(0, 240)}`);
+      }
+      const found = leakedValues(body, secrets());
+      if (found.length) leaks.push(`${attempt.what} leaked ${found.join(", ")}`);
+      const internal = internalLeak(body);
+      if (internal) internals.push(`${attempt.what} disclosed ${internal}`);
+    }
+
+    expect(accepted, "an update path accepted a cross-tenant or out-of-contract write").toEqual([]);
+    expect(leaks, "an update refusal disclosed another tenant's identifiers").toEqual([]);
+    expect(internals, "an update refusal disclosed server internals").toEqual([]);
+    expect(await orgFingerprint(orgBId), "org B's data changed").toEqual(beforeB);
   });
 
   test("FINDING PROOF: the injected draft then discloses org B's names to org C", async () => {

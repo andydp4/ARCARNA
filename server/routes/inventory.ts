@@ -14,12 +14,18 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { resolveEditableStockLocationId } from "../services/stockLocationContext";
 
 export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const list = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
+      const stockLocationId = await resolveEditableStockLocationId({
+        orgId: ctx.orgId,
+        locationId: ctx.locationId,
+        userId: req.user?.claims?.sub ?? req.user?.id ?? null,
+      });
+      const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
       res.json(list);
     } catch (error) {
       console.error("Error fetching inventory:", error);
@@ -58,7 +64,12 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
   app.get("/api/inventory/alerts", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const products = await storage.getProductsWithStock(ctx.orgId, ctx.locationId);
+      const stockLocationId = await resolveEditableStockLocationId({
+        orgId: ctx.orgId,
+        locationId: ctx.locationId,
+        userId: req.user?.claims?.sub ?? req.user?.id ?? null,
+      });
+      const products = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
       const alerts = products
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;

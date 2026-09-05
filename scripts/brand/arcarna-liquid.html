@@ -1,0 +1,722 @@
+<title>Arcarna Liquid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ===================================================================
+   ARCARNA — liquid glassmorphism, three cuts.
+
+     backdrop   the Control Centre ground. Liquid only, no card.
+     mark       the a revealing itself out of the liquid. Marketing.
+     endcard    mark, wordmark, spin-out, by viger cloud.
+
+   The liquid moved from a 168px CPU canvas to a WebGL fragment
+   shader between revisions. That is what fixed the softness: the old
+   one rendered at a twentieth of the resolution and was scaled up
+   four times, so every ribbon edge arrived pre-blurred. The shader
+   runs at full device resolution with five octaves instead of three
+   and adds a smoothstep band-hardening pass, which is what gives the
+   edges between light and dark their definition.
+
+   Everything is generated. No video file, no image, no library.
+   =================================================================== */
+
+:root {
+  /* Blue Set — docs/training/brand.css */
+  --deep-shadow: #061327;
+  --navy:        #0B2E66;
+  --deep-blue:   #123B78;
+  --truth-blue:  #3C7AC4;
+  --sky-blue:    #5DB4FF;
+  --light-blue:  #B6D9FF;
+
+  /* liquid-metal tokens */
+  --graphite:   hsl(220, 10%, 7%);
+  --warm-white: hsl(210, 18%, 95%);
+  --success: #3CFF7A;
+  --attention: #FFC107;
+
+  --font-body: "Inter", "Segoe UI", -apple-system, system-ui, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--deep-shadow);
+  color: var(--warm-white);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+:focus-visible { outline: 2px solid var(--sky-blue); outline-offset: 3px; border-radius: 5px; }
+
+/* ------------------------------------------------------------------
+   CONTROL RAIL
+   ------------------------------------------------------------------ */
+.rail {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px;
+  padding: 11px 20px;
+  background: rgba(232, 237, 242, 0.045);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+          backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: inset 0 -1px 0 rgba(232, 237, 242, 0.12);
+}
+.rail-brand {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--light-blue); white-space: nowrap;
+}
+.seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(0,0,0,0.34); }
+.seg button {
+  font: 500 12px/1 var(--font-body); color: rgba(232,237,242,0.62);
+  background: none; border: 0; padding: 7px 13px; border-radius: 7px;
+  cursor: pointer; white-space: nowrap; transition: background .16s, color .16s;
+}
+.seg button:hover { color: var(--warm-white); }
+.seg button[aria-pressed="true"] { background: var(--truth-blue); color: #fff; }
+.replay {
+  font: 500 12px/1 var(--font-body); color: var(--light-blue);
+  background: rgba(60,122,196,0.22); border: 1px solid rgba(93,180,255,0.34);
+  padding: 8px 15px; border-radius: 8px; cursor: pointer;
+}
+.replay:hover { background: rgba(60,122,196,0.34); }
+.replay[hidden] { display: none; }
+.hint { font-size: 12px; color: rgba(232,237,242,0.5); }
+
+/* ------------------------------------------------------------------
+   THE GLOWS — two enormous fixed radials, the light the page sits in
+   ------------------------------------------------------------------ */
+.glow { position: fixed; right: 0; bottom: 0; z-index: 0; pointer-events: none; border-radius: 50%; }
+.glow-truth {
+  width: 200em; height: 200em; margin-right: -135.7em; margin-bottom: -133.1em;
+  background: radial-gradient(circle farthest-corner at 50% 50%, var(--truth-blue), rgba(60,122,196,0) 69%);
+  opacity: 0.55;
+}
+.glow-sky {
+  width: 160em; height: 160em; margin-right: -40.6em; margin-bottom: -133.7em;
+  background: radial-gradient(circle farthest-corner at 50% 50%, var(--sky-blue), rgba(93,180,255,0) 69%);
+  opacity: 0.30;
+}
+
+/* ------------------------------------------------------------------
+   THE LIQUID
+   ------------------------------------------------------------------ */
+.stage { position: relative; z-index: 2; display: grid; place-items: center; overflow: hidden; }
+.page[data-mode="backdrop"] .stage { height: 560px; }
+.page[data-mode="mark"]     .stage,
+.page[data-mode="endcard"]  .stage { height: min(78vh, 720px); }
+
+.liquid-hold {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 680px; height: 680px;
+}
+.page[data-mode="backdrop"] .liquid-hold { width: 900px; height: 900px; }
+.page[data-mode="mark"]     .liquid-hold,
+.page[data-mode="endcard"]  .liquid-hold { width: 528px; height: 528px; }
+
+#liquid { display: block; width: 100%; height: 100%; }
+.page[data-mode="backdrop"] #liquid { opacity: 0.52; }
+
+/* No-WebGL fallback. It is not the same thing and does not pretend to
+   be — it is a still ground so the page is never blank. */
+.gl-fallback {
+  position: absolute; inset: 0; display: none; border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 38%, rgba(148,204,255,0.5), rgba(60,122,196,0.35) 34%, rgba(11,46,102,0.2) 62%, transparent 82%),
+    radial-gradient(circle at 62% 66%, rgba(60,122,196,0.4), transparent 60%);
+}
+.page[data-gl="off"] #liquid { display: none; }
+.page[data-gl="off"] .gl-fallback { display: block; }
+
+/* Fades the mass into the page — the same job the sphere's bottom
+   fade does today, so content below never fights it. */
+.stage::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background: linear-gradient(180deg, rgba(6,19,39,0) 58%, rgba(6,19,39,0.55) 84%, var(--deep-shadow) 100%);
+}
+.page[data-mode="backdrop"] .stage::after {
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(6,19,39,0.30) 0%, rgba(6,19,39,0.10) 34%, rgba(6,19,39,0.62) 82%, var(--deep-shadow) 100%),
+    linear-gradient(90deg, rgba(6,19,39,0.62) 0%, rgba(6,19,39,0.12) 38%, rgba(6,19,39,0) 62%);
+}
+
+/* ------------------------------------------------------------------
+   THE MARK + WORDMARK
+   ------------------------------------------------------------------ */
+.plate {
+  position: absolute; inset: 0; z-index: 4;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 34px; pointer-events: none;
+}
+.page[data-mode="mark"] .plate,
+.page[data-mode="endcard"] .plate { justify-content: flex-end; padding-bottom: 7%; }
+.page[data-mode="backdrop"] .plate { display: none; }
+
+.wordmark {
+  font-size: clamp(30px, 5.2vw, 62px);
+  font-weight: 300;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;          /* balances the trailing letter-space */
+  text-transform: uppercase;
+  color: var(--warm-white);
+  margin: 0;
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+/* Centred on the stage in its own right — by the time it appears the
+   mark has spun away and the wordmark has gone, so nothing collides. */
+.byline {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px;
+  opacity: 0;
+}
+.byline .pre {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.34em;
+  text-transform: uppercase; color: rgba(232,237,242,0.55); margin: 0;
+}
+.byline svg { width: min(54vw, 440px); height: auto; }
+
+/* ------------------------------------------------------------------
+   BACKDROP MODE — mock dashboard so the ground is judged in context
+   ------------------------------------------------------------------ */
+.dash { position: relative; z-index: 5; max-width: 1120px; margin: 0 auto; padding: 0 24px 80px; }
+.page:not([data-mode="backdrop"]) .dash { display: none; }
+
+.dash-head { margin: -300px 0 0; position: relative; z-index: 6; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em;
+  /* Light Blue, not Sky. Sky Blue over the lit part of the liquid
+     measured 3.43:1 — blue text on a blue ground is the one pairing
+     this palette cannot afford. Light Blue clears 4.5 with room. */
+  text-transform: uppercase; color: var(--light-blue); margin: 0 0 10px;
+}
+.dash h1 { font-size: clamp(30px, 4.2vw, 44px); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; }
+.dash .lede { font-size: 16px; color: rgba(232,237,242,0.8); max-width: 46ch; margin: 0; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: 14px; margin-top: 150px; }
+.tile {
+  padding: 18px 20px 16px;
+  border: 1px solid;
+  border-color: rgba(232,237,242,0.13) rgba(232,237,242,0.22) rgba(232,237,242,0.22);
+  border-radius: 15px;
+  background-image: linear-gradient(144deg, rgba(232,237,242,0.11) 0%, rgba(232,237,242,0) 43%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+          backdrop-filter: blur(26px) saturate(150%);
+}
+.tile .k {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.11em;
+  text-transform: uppercase; color: rgba(232,237,242,0.72); margin: 0 0 9px;
+}
+.tile .v { font-size: 27px; font-weight: 600; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; margin: 0; line-height: 1.1; }
+.tile .d { font-size: 12.5px; margin: 6px 0 0; color: rgba(232,237,242,0.72); }
+.up { color: var(--success); }
+.warn { color: var(--attention); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tile, .rail { background: linear-gradient(155deg, hsl(215,12%,14%), hsl(220,10%,11%)); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .tile { -webkit-backdrop-filter: none; backdrop-filter: none;
+          background: linear-gradient(155deg, hsl(215,12%,14%), hsl(220,10%,11%)); }
+}
+
+/* ------------------------------------------------------------------
+   NOTES + GRAIN
+   ------------------------------------------------------------------ */
+#grain { position: fixed; inset: 0; z-index: 50; width: 100%; height: 100%; pointer-events: none; opacity: 0.05; }
+
+.notes { position: relative; z-index: 5; max-width: 1000px; margin: 0 auto; padding: 30px 24px 80px; }
+.note-card {
+  padding: 28px 30px;
+  border: 1px solid;
+  border-color: rgba(232,237,242,0.13) rgba(232,237,242,0.22) rgba(232,237,242,0.22);
+  border-radius: 18px;
+  background-image: linear-gradient(144deg, rgba(232,237,242,0.10) 0%, rgba(232,237,242,0) 43%);
+  -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px);
+}
+.notes h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 4px; }
+.notes .sub { color: rgba(232,237,242,0.7); font-size: 13.5px; margin: 0 0 22px; }
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: grid; grid-template-columns: 108px 1fr; gap: 16px; padding: 11px 0;
+  border-top: 1px solid rgba(232,237,242,0.11); font-size: 13.5px; align-items: baseline;
+}
+.row:last-child { border-bottom: 1px solid rgba(232,237,242,0.11); }
+.row .n { font-family: var(--font-mono); font-size: 11.5px; color: var(--light-blue); }
+.row .w { color: rgba(232,237,242,0.78); }
+code {
+  font-family: var(--font-mono); font-size: 0.9em;
+  background: rgba(60,122,196,0.2); color: var(--light-blue);
+  padding: 1px 5px; border-radius: 4px;
+}
+.foot { position: relative; z-index: 5; max-width: 1000px; margin: 0 auto; padding: 0 24px 60px;
+        color: rgba(232,237,242,0.55); font-size: 12.5px; }
+
+@media (prefers-reduced-motion: reduce) { #grain { display: none; } }
+
+/* ------------------------------------------------------------------
+   BARE — the stage alone, filling the frame. What the video renderer
+   loads, and a clean embed for a site.
+   ------------------------------------------------------------------ */
+.page[data-bare="true"] .rail,
+.page[data-bare="true"] .dash,
+.page[data-bare="true"] .notes,
+.page[data-bare="true"] .foot { display: none; }
+.page[data-bare="true"] .stage { position: fixed; inset: 0; height: 100% !important; }
+.page[data-bare="true"] .stage::after { background: none; }
+html:has(.page[data-bare="true"]), body:has(.page[data-bare="true"]) { height: 100%; overflow: hidden; }
+
+@media (max-width: 760px) {
+  .liquid-hold { width: 108vw; height: 108vw; }
+  .page[data-mode="mark"] .liquid-hold,
+  .page[data-mode="endcard"] .liquid-hold { width: 86vw; height: 86vw; }
+  .page[data-mode="backdrop"] .liquid-hold { width: 132vw; height: 132vw; }
+  .dash-head { margin-top: -220px; }
+  .tiles { margin-top: 96px; }
+}
+</style>
+
+<div class="page" id="page" data-mode="backdrop" data-gl="on">
+
+  <div class="glow glow-truth" aria-hidden="true"></div>
+  <div class="glow glow-sky" aria-hidden="true"></div>
+
+  <div class="rail">
+    <span class="rail-brand">Arcarna&nbsp;·&nbsp;liquid</span>
+    <div class="seg" role="group" aria-label="Cut">
+      <button type="button" id="b-backdrop" aria-pressed="true">Backdrop</button>
+      <button type="button" id="b-mark"     aria-pressed="false">Mark reveal</button>
+      <button type="button" id="b-endcard"  aria-pressed="false">Endcard</button>
+    </div>
+    <button type="button" class="replay" id="replay" hidden>Replay</button>
+    <span class="hint" id="hint">The Control Centre ground &mdash; liquid only, no card.</span>
+  </div>
+
+  <div class="stage">
+    <div class="liquid-hold" id="hold">
+      <canvas id="liquid" aria-hidden="true"></canvas>
+      <div class="gl-fallback" aria-hidden="true"></div>
+    </div>
+
+    <div class="plate">
+      <h1 class="wordmark" id="wordmark">Arcarna</h1>
+      <div class="byline" id="byline">
+        <p class="pre">by</p>
+        <svg aria-label="viger cloud" role="img" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="205 231 1638 638">
+          
+          <defs>
+            <linearGradient id="vg-linear-gradient" x1="975.255" y1="-64.745" x2="1372.07" y2="-64.745" gradientTransform="translate(-337.188 682.429) rotate(-5.394) scale(.738 .822) skewX(-5.756)" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#2563eb"/>
+              <stop offset=".589" stop-color="#27aac8"/>
+            </linearGradient>
+            <linearGradient id="vg-linear-gradient1" x1="305.735" y1="1383.715" x2="709.182" y2="1383.715" gradientTransform="translate(-638.167 -64.66) rotate(-44.877) scale(.738 .825) skewX(-5.89)" xlink:href="#vg-linear-gradient"/>
+            <linearGradient id="vg-linear-gradient2" x1="-1396.102" y1="3070.37" x2="-1308.437" y2="3070.37" gradientTransform="translate(4748.367 2412.276) rotate(84.8958) scale(1.4752 1.3513)" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#27aac8"/>
+              <stop offset=".228" stop-color="#27a7c9"/>
+              <stop offset="1" stop-color="#2563eb"/>
+            </linearGradient>
+            <linearGradient id="vg-linear-gradient3" x1="-1734.551" y1="3158.557" x2="-1646.886" y2="3158.557" xlink:href="#vg-linear-gradient2"/>
+            <linearGradient id="vg-linear-gradient4" x1="-1715.526" y1="2909.453" x2="-1627.861" y2="2909.453" xlink:href="#vg-linear-gradient2"/>
+          </defs>
+          <g>
+            <path d="M1068.821,319.316h18.788l-120.187,182.839c-2.21,3.36-5.525,6.44-10.775,6.44-4.974,0-8.841-2.8-11.052-6.44l-119.634-182.839h19.617l111.345,170.799,111.898-170.799Z" fill="#27aac8" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1107.221,506.636v-187.319h16.025v187.319h-16.025Z" fill="#27aac8" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1255.037,506.636c-59.679,0-103.885-41.16-103.885-95.479,0-54.88,44.207-91.84,103.885-91.84h112.174l-10.775,14.28h-101.399c-50.285,0-87.86,31.08-87.86,78.399,0,47.04,37.299,80.64,87.86,80.64h87.584v-75.879h-113.556l9.946-12.88h119.91v102.76h-103.885Z" fill="#27aac8" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1392.626,506.636v-187.319h187.325l-10.775,14.28h-160.249v71.959h163.564l-9.67,12.6h-153.894v74.479h172.682l-10.775,14h-178.208Z" fill="#27aac8" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1810.098,506.636l-78.743-67.76h-115.489v67.76h-16.025v-81.479h132.067c38.404,0,68.797-13.44,68.797-44.8,0-33.04-28.734-46.76-68.797-46.76h-132.896l11.052-14.28h127.094c43.93,0,80.4,18.2,80.4,60.2,0,35.84-27.629,54.88-68.521,56.28l83.44,70.84h-22.38Z" fill="#27aac8" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1099.564,724.636c-41.622,0-72.182-27.93-72.182-64.791,0-37.24,30.56-62.321,72.182-62.321h79.306l-13.312,17.48h-65.995c-24.561,0-51.934,14.06-51.934,45.791s27.561,46.551,62.995,46.551h68.245l-13.312,17.29h-65.995Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1191.613,724.636v-127.112h20.249v109.822h104.616l-13.311,17.29h-111.554Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1404.594,726.726c-56.058,0-84.181-20.33-84.181-65.741s28.123-65.551,84.181-65.551,84.181,20.14,84.181,65.551-28.123,65.741-84.181,65.741ZM1404.594,612.724c-44.434,0-63.933,12.541-63.933,48.261s19.499,48.451,63.933,48.451,63.932-12.73,63.932-48.451-19.499-48.261-63.932-48.261Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1638.383,597.524h20.436v71.631c0,38.38-24.373,57.57-72.744,57.57-56.058,0-80.244-19.19-80.244-57.57v-71.631h20.249v71.631c0,28.5,16.686,40.47,59.995,40.47s52.308-11.97,52.308-40.47v-71.631Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1679.627,724.636v-79.231h20.248v61.941h57.746c28.685,0,50.058-19.57,50.058-46.551,0-26.791-21.561-45.791-50.058-45.791h-77.994l13.124-17.48h64.87c40.684,0,70.119,25.65,70.119,62.321,0,36.861-29.811,64.791-70.119,64.791h-77.994Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1576.749,856.636v-80.277h6.868v74.277h68.558l-4.618,6h-70.808Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1683.437,856.636v-74.157h-44.521l4.974-6.12h92.477l-4.618,6.12h-41.442v74.157h-6.868Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+            <path d="M1740.746,856.636v-50.038h6.986v44.038h40.377c20.485,0,35.76-14.759,35.76-34.559s-15.274-33.599-35.76-33.599h-47.363l4.618-6.12h42.745c24.629,0,42.627,16.2,42.627,39.358,0,23.279-18.234,40.918-42.627,40.918h-47.363Z" fill="#2563eb" stroke="#fff" stroke-miterlimit="10" stroke-width=".5"/>
+          </g>
+          <g>
+            <path d="M425.958,840.713l-16.976-3.365c-23.358-4.63-34.934-28.362-25.854-53.008l181.881-493.697c9.08-24.646,35.376-40.873,58.735-36.243l16.976,3.365c23.358,4.63,34.934,28.362,25.854,53.008l-181.881,493.697c-9.08,24.646-35.376,40.873-58.735,36.243Z" fill="url(#vg-linear-gradient)"/>
+            <path d="M465.347,844.86l-15.22,8.331c-20.942,11.463-44.778.525-53.238-24.432l-169.473-499.908c-8.46-24.956,1.658-54.48,22.6-65.943l15.22-8.331c20.942-11.463,44.778-.525,53.238,24.432l169.473,499.908c8.46,24.956-1.658,54.48-22.6,65.943Z" fill="url(#vg-linear-gradient1)"/>
+            <path d="M395.845,839.346c-23.571-25.657-23.653-66.546-.182-91.328s61.606-24.073,85.178,1.583,23.653,66.546.182,91.328c-23.471,24.782-61.606,24.073-85.178-1.583Z" fill="url(#vg-linear-gradient2)"/>
+            <path d="M232.732,352.656c-23.571-25.657-23.653-66.546-.182-91.328,23.471-24.782,61.606-24.073,85.178,1.583,23.571,25.657,23.653,66.546.182,91.328-23.471,24.782-61.606,24.073-85.178-1.583Z" fill="url(#vg-linear-gradient3)"/>
+            <path d="M570.509,350.662c-23.571-25.657-23.653-66.546-.182-91.328,23.471-24.782,61.606-24.073,85.178,1.583,23.571,25.657,23.653,66.546.182,91.328s-61.606,24.073-85.178-1.583Z" fill="url(#vg-linear-gradient4)"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash">
+    <div class="dash-head">
+      <p class="eyebrow">Wednesday &middot; 31 August</p>
+      <h1>Control Centre</h1>
+      <p class="lede">Today&rsquo;s takings, profit signal, and what needs your attention.</p>
+    </div>
+    <div class="tiles">
+      <div class="tile"><p class="k">Takings today</p><p class="v">&pound;4,820</p><p class="d"><span class="up">&#9650; 12.4%</span> on last Wednesday</p></div>
+      <div class="tile"><p class="k">Gross margin</p><p class="v">38.6%</p><p class="d"><span class="up">&#9650; 1.9 pts</span> on the 4-week mean</p></div>
+      <div class="tile"><p class="k">Orders</p><p class="v">37</p><p class="d">9 still to pick</p></div>
+      <div class="tile"><p class="k">Owed to you</p><p class="v">&pound;11,240</p><p class="d"><span class="warn">&pound;2,180 overdue</span></p></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note-card">
+      <h2>What changed, and why it is sharper</h2>
+      <p class="sub">The liquid moved from the CPU to the GPU between revisions. That is the whole of the difference.</p>
+      <div class="rows">
+        <div class="row"><span class="n">before</span><span class="w">A 168&times;168 canvas painted in JavaScript and scaled up about four times. Every ribbon edge was interpolated across four screen pixels before it reached the page &mdash; soft by construction, and nothing downstream could recover it.</span></div>
+        <div class="row"><span class="n">after</span><span class="w">A WebGL fragment shader at full device resolution. Same domain-warped fBm &mdash; <code>fbm(p + fbm(p + fbm(p)))</code> &mdash; but every screen pixel is evaluated exactly once, at its own coordinate.</span></div>
+        <div class="row"><span class="n">detail</span><span class="w">Five octaves instead of three. On the CPU the fourth and fifth landed under a pixel after the upscale and cost time for nothing; at full resolution they are the fine structure inside each ribbon.</span></div>
+        <div class="row"><span class="n">edges</span><span class="w">A <code>smoothstep(0.16, 0.84)</code> pass hardens the boundary between light and dark bands. This is what reads as liquid metal rather than haze, and it is only worth doing once the resolution is there to carry it.</span></div>
+        <div class="row"><span class="n">cost</span><span class="w">Lower than before. The CPU version held a whole core at ~17ms a frame; the shader is a single full-screen triangle the GPU finishes in under a millisecond. Software fallback renderers are the slow case, not the common one.</span></div>
+        <div class="row"><span class="n">chroma</span><span class="w">Pushed 1.26&times; at the source. Blue loses saturation through frost, so it has to leave over-saturated &mdash; but less than the CPU build needed, because the shader is not also fighting the upscale.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">Design preview. Figures are illustrative, not live data. The mark is <code>arcarna-mark_white-Logo.svg</code> and the byline is <code>Master Logo viger cloud.svg</code>, both as supplied. Colours are the ARCARNA Blue Set. Every cut is seekable from <code>window.ARCARNA_LIQUID.seek(ms)</code>, so the same page renders to video frame by frame.</p>
+</div>
+
+<canvas id="grain" aria-hidden="true"></canvas>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2      u_res;
+uniform float     u_time;
+uniform float     u_reveal;   /* 0 = the whole mass · 1 = only the mark */
+uniform sampler2D u_mask;
+
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),               hash(i+vec2(1.0,0.0)), u.x),
+             mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), u.x), u.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { v += a * vnoise(p); p *= 2.02; a *= 0.5; }
+  return v;
+}
+vec3 ramp(float t){
+  t = clamp(t, 0.0, 1.0);
+  vec3 c0 = vec3( 16.0, 52.0,112.0)/255.0;
+  vec3 c1 = vec3( 30.0, 84.0,158.0)/255.0;
+  vec3 c2 = vec3( 52.0,116.0,192.0)/255.0;
+  vec3 c3 = vec3( 78.0,150.0,222.0)/255.0;
+  vec3 c4 = vec3(110.0,190.0,255.0)/255.0;
+  vec3 c5 = vec3(148.0,204.0,255.0)/255.0;
+  vec3 c6 = vec3(198.0,228.0,255.0)/255.0;
+  float s = t * 6.0, i = floor(s), f = s - i;
+  vec3 a = c0, b = c1;
+  if      (i > 4.5) { a = c5; b = c6; }
+  else if (i > 3.5) { a = c4; b = c5; }
+  else if (i > 2.5) { a = c3; b = c4; }
+  else if (i > 1.5) { a = c2; b = c3; }
+  else if (i > 0.5) { a = c1; b = c2; }
+  return mix(a, b, f);
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / u_res;
+  vec2 p  = uv * 2.0;
+  float t = u_time;
+
+  vec2 q = vec2(fbm(p), fbm(p + vec2(5.2, 1.3)));
+  vec2 r = vec2(fbm(p + 5.5*q + vec2(1.7, 9.2) + t*vec2( 1.4, 0.9)),
+                fbm(p + 5.5*q + vec2(8.3, 2.8) + t*vec2(-1.1, 1.3)));
+  float v = (fbm(p + 5.5*r) - 0.29) / 0.30;
+  v = pow(clamp(v, 0.0, 1.0), 0.82);
+  /* Harden the band edges — liquid metal rather than haze. Only worth
+     doing at full resolution; on the upscaled canvas it just aliased. */
+  v = mix(v, smoothstep(0.16, 0.84, v), 0.65);
+
+  float rl = min(length(r - 0.5) * 2.2, 1.0);
+  vec3 col = ramp(v * 0.62 + rl * 0.26);
+
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = lum + (col - lum) * 1.26;
+
+  float d = length(uv - 0.5);
+  col *= 1.0 + 0.26 * max(0.0, 1.0 - d * 2.5);
+
+  float m    = 1.0 - d * 2.06;
+  float disc = m > 0.0 ? pow(m, 0.85) : 0.0;
+  float mark = texture2D(u_mask, vec2(uv.x, 1.0 - uv.y)).a;
+
+  /* The mark is not drawn on top of the mass — it is what is left of
+     it. The surround erodes away and the letterform stays, so the
+     liquid inside it is the same liquid, still moving.
+
+     Both terms are gated on u_reveal. Without the gate on the first
+     one the letterform keeps full alpha at reveal 0, and its
+     silhouette shows through the vignette on the backdrop cut where
+     there is meant to be no mark at all. */
+  float markA = mark * smoothstep(0.0, 0.35, u_reveal);
+  float discA = disc * (1.0 - smoothstep(0.10, 0.95, u_reveal));
+  float alpha = max(markA, discA);
+  col *= 1.0 + 0.30 * mark * u_reveal;      /* it warms as it emerges */
+
+  gl_FragColor = vec4(col, alpha);
+}
+</script>
+
+<script>
+(function () {
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var page = document.getElementById('page');
+
+  /* ================= the mark, as a texture =================
+     The letterform is rasterised once into a 1024 square and handed
+     to the shader as an alpha mask. Doing it in the shader rather
+     than with CSS masking keeps it to one element and one code path
+     — CSS mask support for SVG references on HTML elements is still
+     patchy enough to be a silent failure. */
+  var MARK_VIEWBOX = [1444.55, 1188.328];
+  var MARK_PATHS = [
+    'M657.344,633.586c-2.318,141.658-204.189,141.635-206.487-.005,2.318-141.653,204.188-141.631,206.487.005Z',
+    'M812.388,892.272c10.333-4.157,66.093-7.308,81.148-.359,49.462,22.829,102.619,120.742,44.219,141.335,0,0-57.966,25.573-57.966,25.573,0,0-155.144,28.983-155.144,28.983-375.356,64.887-611.432,66.952-689.65-374.01C-22.821,209.116,187.177,232.071,472.06,177.447c411.875-111.465,676.615-424.864,572.361,331.82-5.117,37.14,90.813,242.661,109.744,275.022l144.319,188.21c25.068,42.855,266.77,262.091,30.897,186.592-40.928-13.023-213.922-83.836-257.338-101.423-19.938-8.063-35.698-23.951-43.6-43.955-2.032-8.752-101.896-249.7-96.698-252.038,0-.004-20.93-181.881-20.93-181.881-49.447-464.855-805.163-322.742-730.98,104.968,13.432,203.888,292.114,337.864,530.759,238.58'
+  ];
+  var MASK_SIZE = 1024;
+
+  function buildMarkCanvas() {
+    var c = document.createElement('canvas');
+    c.width = c.height = MASK_SIZE;
+    var x = c.getContext('2d');
+    // Fit the mark to 68% of the square, centred, preserving aspect.
+    var s = MASK_SIZE * 0.68 / Math.max(MARK_VIEWBOX[0], MARK_VIEWBOX[1]);
+    x.translate((MASK_SIZE - MARK_VIEWBOX[0]*s) / 2, (MASK_SIZE - MARK_VIEWBOX[1]*s) / 2);
+    x.scale(s, s);
+    x.fillStyle = '#fff';
+    for (var i = 0; i < MARK_PATHS.length; i++) x.fill(new Path2D(MARK_PATHS[i]));
+    return c;
+  }
+
+  /* ================= WebGL ================= */
+  var cv = document.getElementById('liquid');
+  var gl = null;
+  try {
+    gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: false })
+      || cv.getContext('experimental-webgl', { alpha: true, premultipliedAlpha: false, antialias: false });
+  } catch (e) { gl = null; }
+
+  var uRes, uTime, uReveal, prog;
+  if (gl) {
+    var compile = function (type, src) {
+      var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    };
+    try {
+      prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+      var aLoc = gl.getAttribLocation(prog, 'a');
+      gl.enableVertexAttribArray(aLoc);
+      gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+      var tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, buildMarkCanvas());
+      gl.uniform1i(gl.getUniformLocation(prog, 'u_mask'), 0);
+
+      uRes    = gl.getUniformLocation(prog, 'u_res');
+      uTime   = gl.getUniformLocation(prog, 'u_time');
+      uReveal = gl.getUniformLocation(prog, 'u_reveal');
+    } catch (err) {
+      gl = null;
+    }
+  }
+  if (!gl) page.dataset.gl = 'off';
+
+  function sizeCanvas() {
+    if (!gl) return;
+    var dpr = Math.min(devicePixelRatio || 1, 2);
+    var r = cv.getBoundingClientRect();
+    var w = Math.max(1, Math.round(r.width  * dpr));
+    var h = Math.max(1, Math.round(r.height * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; gl.viewport(0, 0, w, h); }
+  }
+
+  /* ================= the timeline =================
+     One function of time drives every cut, so the page can be played
+     by rAF or stepped by seek() — the video renderer needs the second
+     and there must not be two sources of truth. */
+  var CUTS = {
+    backdrop: { length: Infinity, loop: true },
+    mark:     { length: 4400,     loop: true },
+    endcard:  { length: 8600,     loop: false }
+  };
+  var wordmark = document.getElementById('wordmark');
+  var byline   = document.getElementById('byline');
+  var hold     = document.getElementById('hold');
+
+  // The mark rides above centre in the title cuts to clear the wordmark.
+  var HOLD_Y = { backdrop: '-50%', mark: '-60%', endcard: '-60%' };
+
+  var clamp01 = function (x) { return x < 0 ? 0 : x > 1 ? 1 : x; };
+  var span = function (t, a, b) { return clamp01((t - a) / (b - a)); };
+  var easeOut = function (x) { return 1 - Math.pow(1 - x, 3); };
+  var easeInOut = function (x) { return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2; };
+
+  function apply(t, mode) {
+    var reveal = 0, wOp = 0, wY = 14, bOp = 0, spin = 0, scale = 1, holdOp = 1;
+
+    if (mode === 'mark') {
+      reveal = easeInOut(span(t, 1200, 2900));
+      wOp    = span(t, 2500, 3400);
+      wY     = 14 * (1 - easeOut(span(t, 2500, 3400)));
+    } else if (mode === 'endcard') {
+      reveal = easeInOut(span(t, 1400, 3000));
+      wOp    = span(t, 2600, 3500) * (1 - span(t, 4400, 5100));
+      wY     = 14 * (1 - easeOut(span(t, 2600, 3500)));
+      // The mark spins out once the wordmark has had its moment.
+      var out = easeInOut(span(t, 4500, 5900));
+      spin   = 420 * out;
+      scale  = 1 - 0.72 * out;
+      holdOp = 1 - out;
+      bOp    = span(t, 5600, 6600);
+    }
+
+    if (gl) gl.uniform1f(uReveal, reveal);
+    hold.style.transform = 'translate(-50%, ' + HOLD_Y[mode] + ') rotate(' + spin.toFixed(2) + 'deg) scale(' + scale.toFixed(4) + ')';
+    hold.style.opacity = holdOp.toFixed(3);
+    wordmark.style.opacity = wOp.toFixed(3);
+    wordmark.style.transform = 'translateY(' + wY.toFixed(2) + 'px)';
+    byline.style.opacity = bOp.toFixed(3);
+  }
+
+  var mode = 'backdrop', started = 0, paused = false, pausedAt = 0, pageStart = 0;
+
+  /* The liquid runs on its own monotonic clock rather than the cut's, so a
+     looping cut does not snap the field back to the start every lap. The
+     offset just skips the origin, where the noise is characterless.
+
+     When paused the clock comes from the seek position instead of the wall
+     clock. Without that, seek(ms) returns a different frame every call and
+     a rendered sequence tears — the frames would each be valid and none of
+     them consecutive. */
+  var LIQUID_OFFSET = 42000;
+  function liquidClock(now) {
+    return ((paused ? pausedAt : (now - pageStart)) + LIQUID_OFFSET) * 0.00007;
+  }
+
+  function frame(now) {
+    sizeCanvas();
+    var cut = CUTS[mode];
+    var t = paused ? pausedAt : (now - started);
+    if (cut.loop && cut.length !== Infinity && t > cut.length) { started = now; t = 0; }
+    if (!cut.loop && t > cut.length) t = cut.length;
+
+    if (gl) {
+      gl.uniform2f(uRes, cv.width, cv.height);
+      // The liquid keeps its own clock so it never jumps when a cut restarts.
+      gl.uniform1f(uTime, reduced ? (LIQUID_OFFSET * 0.00007) : liquidClock(now));
+      apply(t, mode);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } else {
+      apply(t, mode);
+    }
+    if (window.__grainTick) window.__grainTick(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(function (now) { started = pageStart = now; frame(now); });
+
+  /* Seek, for rendering to video. Pauses the clock and places the
+     timeline exactly, so a frame grab lands on the millisecond asked
+     for rather than wherever rAF happened to be. */
+  window.ARCARNA_LIQUID = {
+    cuts: CUTS,
+    setMode: function (m) { setMode(m); },
+    seek: function (ms) { paused = true; pausedAt = ms; },
+    play: function () { paused = false; started = performance.now() - pausedAt; },
+    bare: function (on) { page.dataset.bare = on ? 'true' : 'false'; }
+  };
+
+  /* ================= controls ================= */
+  var HINTS = {
+    backdrop: 'The Control Centre ground — liquid only, no card.',
+    mark: 'The mark revealing itself out of the liquid. Loops.',
+    endcard: 'Mark, wordmark, spin-out, by viger cloud. Plays once.'
+  };
+  var buttons = { backdrop: 'b-backdrop', mark: 'b-mark', endcard: 'b-endcard' };
+  function setMode(m) {
+    mode = m;
+    page.dataset.mode = m;
+    paused = false;
+    started = performance.now();
+    for (var k in buttons) document.getElementById(buttons[k]).setAttribute('aria-pressed', String(k === m));
+    document.getElementById('hint').textContent = HINTS[m];
+    document.getElementById('replay').hidden = (m === 'backdrop');
+  }
+  for (var k in buttons) {
+    (function (m) { document.getElementById(buttons[m]).addEventListener('click', function () { setMode(m); }); })(k);
+  }
+  document.getElementById('replay').addEventListener('click', function () { setMode(mode); });
+
+  /* Deep links. ?mode= picks a cut, ?bare=1 strips the page down to the
+     stage alone — that is what the video renderer loads, and it doubles as
+     a clean embed for a site. */
+  var qs = new URLSearchParams(location.search);
+  if (qs.get('bare') === '1') page.dataset.bare = 'true';
+  var wanted = qs.get('mode');
+  if (wanted && CUTS[wanted]) setMode(wanted);
+
+  /* ================= grain =================
+     Ten frames painted once, then cycled — randomising every frame would
+     cost an allocation and a fill for no visible gain.
+
+     Two things here exist for the renderer. The frames are built from a
+     seeded generator rather than Math.random, so two runs produce the same
+     grain; and while the timeline is paused the frame index is derived from
+     the seek position rather than a timer. A free-running timer made
+     seek(ms) non-deterministic — every call caught a different grain frame,
+     and a rendered sequence would have shimmered independently of the cut. */
+  if (!reduced) {
+    var gc = document.getElementById('grain'), gx = gc.getContext('2d');
+    var frames = [], throttle, gseed = 0x9e3779b9;
+    var rnd = function () {
+      gseed ^= gseed << 13; gseed ^= gseed >>> 17; gseed ^= gseed << 5;
+      return (gseed >>> 0) / 4294967296;
+    };
+    function buildGrain() {
+      gc.width = innerWidth; gc.height = innerHeight;
+      frames = []; gseed = 0x9e3779b9;
+      for (var f = 0; f < 10; f++) {
+        var d = gx.createImageData(gc.width, gc.height), b32 = new Uint32Array(d.data.buffer);
+        for (var i = 0; i < b32.length; i++) if (rnd() < 0.1) b32[i] = 0xff000000;
+        frames.push(d);
+      }
+    }
+    buildGrain();
+    var lastGi = -1;
+    window.__grainTick = function (now) {
+      var gi = Math.floor((paused ? pausedAt : (now - pageStart)) / 40) % 10;
+      if (gi !== lastGi) { lastGi = gi; gx.putImageData(frames[gi], 0, 0); }
+    };
+    addEventListener('resize', function () {
+      clearTimeout(throttle);
+      throttle = setTimeout(function () { buildGrain(); lastGi = -1; }, 220);
+    });
+  }
+}());
+</script>

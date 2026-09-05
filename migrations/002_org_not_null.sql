@@ -1,8 +1,42 @@
 -- Phase 2B: Set org_id NOT NULL on org-owned tables
--- Run AFTER: npm run backfill
+-- Self-heals safe single-org orphan rows before enforcing the constraint.
 -- FAILS HARD (aborts transaction) if any org_id is NULL
 
 BEGIN;
+
+-- Adopt orphaned tenant-owned rows when there is exactly one possible owner.
+-- This must live in 002 itself: later migrations run too late to unblock this
+-- pre-check, so a 048-style backfill can only help on the next deploy.
+DO $$
+DECLARE
+  org_count int;
+  target_org uuid;
+  adopted int;
+  tbl text;
+BEGIN
+  SELECT count(*) INTO org_count FROM organizations;
+
+  IF org_count = 1 THEN
+    SELECT id INTO target_org FROM organizations LIMIT 1;
+    FOREACH tbl IN ARRAY ARRAY[
+      'products', 'customers', 'orders', 'order_items', 'order_expenses',
+      'invoices', 'locations', 'loyalty_tiers', 'promotions',
+      'overhead_expenses'
+    ]
+    LOOP
+      EXECUTE format('UPDATE %I SET org_id = $1 WHERE org_id IS NULL', tbl)
+        USING target_org;
+      GET DIAGNOSTICS adopted = ROW_COUNT;
+      IF adopted > 0 THEN
+        RAISE NOTICE '002: adopted % orphaned row(s) in % into org % before NOT NULL', adopted, tbl, target_org;
+      END IF;
+    END LOOP;
+  ELSIF org_count > 1 THEN
+    RAISE NOTICE '002: % organizations present - refusing to guess an owner. Any orphaned rows will abort NOT NULL enforcement.', org_count;
+  ELSE
+    RAISE NOTICE '002: no organizations - orphan adoption skipped.';
+  END IF;
+END $$;
 
 -- Explicit pre-check: abort if any NULLs exist
 DO $$
