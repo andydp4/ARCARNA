@@ -41,12 +41,15 @@ export function BrandLogo({
   const defaultAlt = variant === "wordmark" ? BRAND_PRODUCT_NAME : BRAND_NAME;
   const sizeClass = variant === "wordmark" ? WORDMARK_SIZE_CLASS[size] : SIZE_CLASS[size];
 
+  // width/height below are intrinsic hints only — object-contain does the
+  // fitting. The wordmark master is 2.37:1 since it gained the tagline
+  // line, so 240x101 reserves the right box and avoids a layout shift.
   return (
     <img
       src={resolveAppPath(VARIANT_PATH[variant])}
       alt={alt ?? defaultAlt}
       width={variant === "wordmark" ? 240 : 96}
-      height={variant === "wordmark" ? 96 : 96}
+      height={variant === "wordmark" ? 101 : 96}
       className={cn("shrink-0 object-contain", sizeClass, className)}
     />
   );
