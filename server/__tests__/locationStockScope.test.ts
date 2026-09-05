@@ -148,6 +148,17 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
     expect(productsForEdit.find((p) => p.id === remoteOnlyProductId)?.stock).toBe(0);
   });
 
+  it("falls back to the org's own location when the requested location belongs to another org", async () => {
+    // x-location-id is taken from any role unchecked. A forged id from another
+    // tenant must neither be honoured nor turn the product list into a 500.
+    const resolvedLocationId = await resolveEditableStockLocationId({
+      orgId,
+      locationId: randomUUID(),
+    });
+
+    expect(resolvedLocationId).toBe(locationAId);
+  });
+
   it("does not accept stock from another location when checking an order", async () => {
     await expect(
       ProductsRepoDrizzle.checkStock(remoteOnlyProductId as any, {
