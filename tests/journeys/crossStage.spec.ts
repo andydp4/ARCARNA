@@ -7,6 +7,8 @@
  * any stage in isolation.
  */
 import {
+  activeLocations,
+  type LocationRow,
   test,
   expect,
   ensureOpenShift,
@@ -20,7 +22,7 @@ type Product = { id: string; name: string; defaultSalePrice: string; stock: numb
 
 /** A location other than `notThis`, creating one if the org has only a single site. */
 async function secondLocationId(api: any, notThis: string): Promise<string> {
-  const locations = await okJson<{ id: string; name: string }[]>(await api.get("/api/locations"));
+  const locations = activeLocations(await okJson<LocationRow[]>(await api.get("/api/locations")));
   const other = locations.find((l) => l.id !== notThis);
   if (other) return other.id;
 

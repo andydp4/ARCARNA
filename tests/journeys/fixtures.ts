@@ -186,10 +186,24 @@ export async function okJson<T = any>(res: {
   return (await res.json()) as T;
 }
 
+export type LocationRow = { id: string; name?: string; isActive?: number; isDefault?: number };
+
+/** Locations a shift can actually be opened at. Deactivated sites are listed
+ *  (so admins can reactivate them) but the server refuses to open a shift
+ *  there, and an inactive site left behind by another journey must not be
+ *  handed to the next one. */
+export function activeLocations(locations: LocationRow[]): LocationRow[] {
+  return locations.filter((l) => l.isActive !== 0);
+}
+
+/** The org's default location, or its first active one. The list is sorted by
+ *  name after the default flag, so "first row" alone would pick whichever
+ *  site happens to sort earliest, active or not. */
 export async function firstLocationId(api: APIRequestContext): Promise<string> {
-  const locations = await okJson<{ id: string }[]>(await api.get("/api/locations"));
-  if (!locations.length) throw new Error("No locations — database not seeded?");
-  return locations[0].id;
+  const locations = activeLocations(await okJson<LocationRow[]>(await api.get("/api/locations")));
+  const pick = locations.find((l) => l.isDefault === 1) ?? locations[0];
+  if (!pick) throw new Error("No active locations — database not seeded?");
+  return pick.id;
 }
 
 /**
