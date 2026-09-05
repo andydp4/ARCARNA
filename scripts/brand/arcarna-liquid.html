@@ -391,7 +391,7 @@ html:has(.page[data-bare="true"]), body:has(.page[data-bare="true"]) { height: 1
 <script id="fs" type="x-shader/x-fragment">
 precision highp float;
 uniform vec2      u_res;
-uniform float     u_time;
+uniform float     u_phase;   /* 0..1 around the cycle, so the field loops */
 uniform float     u_reveal;   /* 0 = the whole mass · 1 = only the mark */
 uniform sampler2D u_mask;
 
@@ -428,11 +428,22 @@ vec3 ramp(float t){
 void main(){
   vec2 uv = gl_FragCoord.xy / u_res;
   vec2 p  = uv * 2.0;
-  float t = u_time;
+  /* The warp offsets travel a circle rather than a line. cos and sin are
+     exactly periodic in the phase, so the whole field returns to itself
+     after one turn and the clip loops with no seam and no crossfade.
+
+     A linear drift can never do this: it goes somewhere and stays there.
+     The cost of looping is that the field must come back, so a cycle
+     holds less total variation than an equal span of drift — which is
+     why the two offsets turn in opposite directions, to churn rather
+     than merely orbit. */
+  float a = 6.2831853 * u_phase;
+  vec2 w1 = vec2(cos( a       ), sin( a       )) * 0.34;
+  vec2 w2 = vec2(cos(-a + 2.10), sin(-a + 2.10)) * 0.30;
 
   vec2 q = vec2(fbm(p), fbm(p + vec2(5.2, 1.3)));
-  vec2 r = vec2(fbm(p + 5.5*q + vec2(1.7, 9.2) + t*vec2( 1.4, 0.9)),
-                fbm(p + 5.5*q + vec2(8.3, 2.8) + t*vec2(-1.1, 1.3)));
+  vec2 r = vec2(fbm(p + 5.5*q + vec2(1.7, 9.2) + w1),
+                fbm(p + 5.5*q + vec2(8.3, 2.8) + w2));
   float v = (fbm(p + 5.5*r) - 0.29) / 0.30;
   v = pow(clamp(v, 0.0, 1.0), 0.82);
   /* Harden the band edges — liquid metal rather than haze. Only worth
@@ -508,7 +519,7 @@ void main(){
       || cv.getContext('experimental-webgl', { alpha: true, premultipliedAlpha: false, antialias: false });
   } catch (e) { gl = null; }
 
-  var uRes, uTime, uReveal, prog;
+  var uRes, uPhase, uReveal, prog;
   if (gl) {
     var compile = function (type, src) {
       var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
@@ -540,7 +551,7 @@ void main(){
       gl.uniform1i(gl.getUniformLocation(prog, 'u_mask'), 0);
 
       uRes    = gl.getUniformLocation(prog, 'u_res');
-      uTime   = gl.getUniformLocation(prog, 'u_time');
+      uPhase  = gl.getUniformLocation(prog, 'u_phase');
       uReveal = gl.getUniformLocation(prog, 'u_reveal');
     } catch (err) {
       gl = null;
@@ -616,8 +627,12 @@ void main(){
      a rendered sequence tears — the frames would each be valid and none of
      them consecutive. */
   var LIQUID_OFFSET = 42000;
-  function liquidClock(now) {
-    return ((paused ? pausedAt : (now - pageStart)) + LIQUID_OFFSET) * 0.00007;
+  /* One turn of the field. The backdrop clip is rendered at exactly this
+     length, so it loops on a site with no crossfade. */
+  var LIQUID_PERIOD = 12000;
+  function liquidPhase(now) {
+    var ms = (paused ? pausedAt : (now - pageStart)) + LIQUID_OFFSET;
+    return (ms % LIQUID_PERIOD) / LIQUID_PERIOD;
   }
 
   function frame(now) {
@@ -630,7 +645,7 @@ void main(){
     if (gl) {
       gl.uniform2f(uRes, cv.width, cv.height);
       // The liquid keeps its own clock so it never jumps when a cut restarts.
-      gl.uniform1f(uTime, reduced ? (LIQUID_OFFSET * 0.00007) : liquidClock(now));
+      gl.uniform1f(uPhase, reduced ? ((LIQUID_OFFSET % LIQUID_PERIOD) / LIQUID_PERIOD) : liquidPhase(now));
       apply(t, mode);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else {
@@ -646,6 +661,7 @@ void main(){
      for rather than wherever rAF happened to be. */
   window.ARCARNA_LIQUID = {
     cuts: CUTS,
+    period: LIQUID_PERIOD,
     setMode: function (m) { setMode(m); },
     seek: function (ms) { paused = true; pausedAt = ms; },
     play: function () { paused = false; started = performance.now() - pausedAt; },
