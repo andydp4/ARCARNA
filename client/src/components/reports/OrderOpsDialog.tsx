@@ -30,8 +30,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { DELAY_CAUSES } from "@shared/delayCauses";
 
-const DELAY_CAUSES = ["Stock unavailable", "Queue overload", "System issue", "Prep error", "Other"] as const;
+
 
 export interface OrderOpsDialogProps {
   open: boolean;

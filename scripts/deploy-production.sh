@@ -11,13 +11,56 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# Migration preflight — deliberately BEFORE the pull/build/stop below.
+#
+# Migrations run further down, in the window between stopping the old process
+# and starting the new one. A missing psql or DATABASE_URL discovered *there*
+# aborts with the app already stopped and the new build unable to serve, so the
+# shop is down until someone SSHes in. Both are knowable now, at zero cost and
+# zero downtime, so check them here and refuse to start.
+#
+# The subshell matters: .env sets NODE_ENV=production, and sourcing it into this
+# shell would defeat the `NODE_ENV=` on the build below and change how npm
+# behaves. Read the value, discard the environment.
+if ! command -v psql >/dev/null 2>&1; then
+  echo "ERROR: psql not found, and this deploy applies migrations."
+  echo "  Install it:  sudo apt install -y postgresql-client"
+  exit 1
+fi
+if ! (
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+  [[ -n "${DATABASE_URL:-}" ]]
+); then
+  echo "ERROR: DATABASE_URL is not set in .env, and this deploy applies migrations."
+  exit 1
+fi
+
 mkdir -p logs
 
 echo "=== git pull ==="
-git fetch origin
 BRANCH="${DEPLOY_BRANCH:-main}"
-git checkout "$BRANCH"
-git pull origin "$BRANCH"
+
+# A deploy that quietly discards someone's hotfix is worse than one that stops.
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "ERROR: This checkout has uncommitted changes. Commit, stash or discard"
+  echo "them before deploying — the branch reset below would throw them away."
+  git status --short
+  exit 1
+fi
+
+# Fetch the branch by name rather than trusting the clone's refspec.
+# `git clone --branch X --single-branch` pins remote.origin.fetch to X alone, so
+# a plain `git fetch origin` never produces origin/main and `git checkout main`
+# dies with "pathspec 'main' did not match any file(s) known to git" — an error
+# that says nothing about the cause and stopped a website deploy dead. Naming
+# the branch works on either shape of clone, and resetting to what was just
+# fetched makes the deployed commit exactly the remote's, whatever the local
+# branch was pointing at.
+git fetch origin "$BRANCH"
+git checkout -B "$BRANCH" FETCH_HEAD
 echo "On commit: $(git log -1 --oneline)"
 
 echo "=== npm ci (lockfile-exact) ==="
@@ -27,10 +70,25 @@ echo "=== npm ci (lockfile-exact) ==="
 # same commit produced a 390kB entry chunk; this box produced 649kB).
 # `npm ci` installs the lockfile exactly and fails loudly if package.json and
 # package-lock.json have drifted apart, which is what a deploy should do.
-npm ci
+#
+# --include=dev is REQUIRED, not belt-and-braces. This build needs vite and
+# esbuild, both devDependencies, and npm omits devDependencies entirely when
+# NODE_ENV=production is in the environment. .env sets NODE_ENV=production for
+# the running app, so any operator who sources .env before deploying — which the
+# runbook tells them to do for DATABASE_URL — silently gets a production-only
+# install and the build dies on `sh: 1: vite: not found`. It installed 893
+# packages instead of 1176 and failed on exactly that.
+#
+# Forcing it here means the deploy behaves the same whether .env was sourced or
+# not, rather than depending on the shape of the shell it was launched from.
+# apply-migrations-pm2.sh already carries the same scar for tsx.
+npm ci --include=dev
 
 echo "=== build ==="
-npm run build
+# NODE_ENV=production makes Vite refuse to honour the mode and warn; the build is
+# production by default here. The app still runs as production — PM2 loads
+# NODE_ENV from .env via env_file, independently of this shell.
+NODE_ENV= npm run build
 
 # Backstop for the sourcemap leak. vite.config.ts builds with
 # `sourcemap: "hidden"` whenever SENTRY_AUTH_TOKEN is set, which writes .map
@@ -59,16 +117,79 @@ echo "=== PM2 (re)start with fresh .env ==="
 if pm2 describe arcarna-epos >/dev/null 2>&1; then
   pm2 delete arcarna-epos
 fi
+
+echo "=== migrations ==="
+# Between stop and start, which is the order docs/DEPLOY_HOSTINGER_VPS.md
+# prescribes for schema releases: "build first, then stop the app, migrate, and
+# start the new build ... Never leave a migration applied with the previous
+# build running." Pulling and building above while the old process kept serving
+# was safe — old code against the old schema is a consistent pair — so the
+# outage is only as long as the ALTERs take.
+#
+# This step did not exist, and its absence is not hypothetical. Drizzle names
+# every column explicitly in its SELECTs, so a build that expects a column the
+# database lacks fails every query against that table — for #131 that was
+# `products.available_for_website`, which would have taken out the POS, product
+# management and order placement. The health check below would not have caught
+# it either: /api/health touches no products, so the deploy would have printed
+# SUCCESS over a broken till. apply-migrations-pm2.sh carries the scar of the
+# same class of bug from 045/046.
+#
+# Idempotent: every migration is IF NOT EXISTS, so re-running a deploy that
+# needs no schema change is a no-op that costs a few seconds.
+if ! bash scripts/apply-migrations-pm2.sh; then
+  echo ""
+  echo "ERROR: migrations failed — the app is STOPPED and has NOT been started."
+  echo ""
+  echo "  Deliberate. The new build is on disk and expects the new schema, so"
+  echo "  starting it now would serve errors from every affected table. A"
+  echo "  half-migrated database needs a person, not a retry."
+  echo ""
+  echo "  Diagnose:  npm run migration:sanity"
+  echo "  Once the schema is correct:  pm2 start ecosystem.config.cjs && pm2 save"
+  echo "  To fall back instead: check out the previous release, rebuild, start."
+  exit 1
+fi
+
 pm2 start ecosystem.config.cjs
 pm2 save
 
 echo "=== health check ==="
 sleep 4
-HEALTH_PATH="${APP_BASE_PATH:-/arcarna}/api/health"
-if curl -sf "http://127.0.0.1:5000${HEALTH_PATH}" >/dev/null; then
-  curl -s "http://127.0.0.1:5000${HEALTH_PATH}"
+# Read APP_BASE_PATH from .env rather than from whatever this shell happens to
+# have. PM2 loads .env into the app via env_file; this script never sourced it,
+# so its base path was always the bash default. When the two disagreed the curl
+# below hit a path matching no route, got the SPA shell, and still passed.
+if [[ -f .env ]]; then
+  APP_BASE_PATH="$(grep -E '^APP_BASE_PATH=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"'\r' || true)"
+fi
+# Normalise exactly as shared/appPaths.ts normalizeAppBasePath does: a bare "/"
+# means "served at site root" and becomes the empty string, and trailing slashes
+# are stripped. Without this, APP_BASE_PATH=/ (which is what a root-mounted
+# deployment sets) produced "//api/health" — a path Express matches no route
+# for, so the check reported the app unreachable while it was serving fine.
+APP_BASE_PATH="${APP_BASE_PATH%"${APP_BASE_PATH##*[!/]}"}"
+HEALTH_PATH="${APP_BASE_PATH}/api/health"
+
+# Assert the API answered — not merely that SOMETHING returned 200.
+#
+# The old check was `curl -sf ... >/dev/null`, which succeeds on any 2xx. The SPA
+# fallback answers unmatched paths with index.html and a 200, so a deploy where
+# the API was entirely unreachable still printed "OK: App is responding" — with
+# the whole HTML document above it, which is exactly what happened on 21dea8d.
+# A health check that cannot fail is not a health check.
+HEALTH_BODY="$(curl -s --max-time 10 "http://127.0.0.1:5000${HEALTH_PATH}" || true)"
+if grep -q '"ok"' <<<"$HEALTH_BODY"; then
+  echo "$HEALTH_BODY"
   echo ""
   echo "OK: App is responding."
+elif grep -qi '<!doctype html' <<<"$HEALTH_BODY"; then
+  echo "NOT READY: ${HEALTH_PATH} returned the SPA shell, not JSON."
+  echo "  The app is serving pages but this path reaches no API route."
+  echo "  Check APP_BASE_PATH in .env matches the path above:"
+  echo "    grep APP_BASE_PATH .env"
+  echo "    tr '\0' '\n' < /proc/\$(pm2 pid arcarna-epos)/environ | grep APP_BASE_PATH"
+  exit 1
 else
   echo "NOT READY: /api/health failed"
   echo "--- pm2 status ---"

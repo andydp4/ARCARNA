@@ -15,6 +15,7 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { websiteProductSettingsPatchSchema } from "@shared/website";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { nonNegativeQuantity } from "@shared/quantity";
 
@@ -162,6 +163,34 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     } catch (error: any) {
       console.error("Error updating product aliases:", error);
       res.status(500).json({ message: "Failed to update product aliases" });
+    }
+  });
+
+  app.patch("/api/products/:id/website", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const patch = websiteProductSettingsPatchSchema.parse(req.body ?? {});
+      const product = await storage.updateProductWebsiteSettings(req.params.id, ctx.orgId, patch);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      await recordAdminAudit(req, {
+        actorUserId: req.user?.id ?? "unknown",
+        actorRole: ctx.role,
+        orgId: ctx.orgId,
+        action: "website.product.updated",
+        targetType: "products",
+        targetId: product.id,
+        metadata: {
+          availableForWebsite: product.availableForWebsite,
+          websiteCategory: product.websiteCategory,
+        },
+      });
+      res.json(product);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid website product payload", errors: error.errors });
+      }
+      console.error("Error updating product website settings:", error);
+      res.status(500).json({ message: "Failed to update product website settings" });
     }
   });
 

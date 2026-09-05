@@ -13,6 +13,11 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
+import {
+  WmSuppliesHomePage,
+  WmSuppliesOrderPage,
+  WmSuppliesOrderSuccessPage,
+} from "@/features/wm-supplies/WmSuppliesPublicSite";
 
 // Route-level code splitting: each page ships as its own chunk, fetched on
 // first navigation, instead of one ~1.5MB bundle loaded up front.
@@ -32,6 +37,7 @@ const ProductManagement = lazy(() => import("@/pages/product-management"));
 const Settings = lazy(() => import("@/pages/settings"));
 const ReceiptSettingsPage = lazy(() => import("@/pages/settings/receipts"));
 const LoyaltySettingsPage = lazy(() => import("@/pages/settings/loyalty"));
+const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-supplies-website"));
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
 const Invoices = lazy(() => import("@/pages/invoices"));
@@ -85,7 +91,26 @@ function RouteLoadingFallback() {
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, error: authError, user } = useAuth();
+  const isCustomerOnly = user?.role === "CUSTOMER";
+  const isWmSuppliesCustomerSite = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
+
+  if (isWmSuppliesCustomerSite) {
+    return (
+      <WouterRouter base={APP_BASE}>
+      <Switch>
+        <Route path="/sign-in" component={SignInPage} />
+        <Route path="/sign-out" component={SignOutPage} />
+        <Route path="/order" component={WmSuppliesOrderPage} />
+        <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
+        <Route path="/pending-approval" component={PendingApproval} />
+        <Route path="/no-access" component={NoAccess} />
+        <Route path="/" component={WmSuppliesHomePage} />
+        <Route component={NotFound} />
+      </Switch>
+      </WouterRouter>
+    );
+  }
 
   return (
     <WouterRouter base={APP_BASE}>
@@ -94,13 +119,26 @@ function Router() {
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
       <Route path="/sign-out" component={SignOutPage} />
+      <Route path="/order" component={WmSuppliesOrderPage} />
+      <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/wizard" component={OnboardingWizard} />
       <Route path="/no-access" component={NoAccess} />
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
-      {isLoading || !isAuthenticated ? (
+      {/* Arcarna's own front door. #131 replaced this with the WM Supplies
+          storefront, so a signed-out visitor to the Arcarna domain was met by
+          the shop's padlock gate instead of the Arcarna sign-in. The customer
+          site serves that page from its own branch above, on its own domain
+          and its own process — it does not belong here.
+
+          A signed-in CUSTOMER is the one exception: they are a website
+          customer with nothing to do in Arcarna, so the shop is the right
+          place to put them. */}
+      {isCustomerOnly ? (
+        <Route path="/" component={WmSuppliesHomePage} />
+      ) : isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
         <AccessGate>
@@ -153,6 +191,8 @@ function Router() {
           <Route path="/settings/receipts" component={ReceiptSettingsPage} />
           <Route path="/settings/loyalty" component={LoyaltySettingsPage} />
           <Route path="/settings/developer" component={DeveloperSettingsPage} />
+          <Route path="/settings/wm-supplies-website" component={WmSuppliesWebsiteSettingsPage} />
+          <Route path="/admin/wm-supplies/website" component={WmSuppliesWebsiteSettingsPage} />
           <Route path="/tick-list" component={TickList} />
           <Route path="/user-access" component={UserAccess} />
           <Route path="/worker-logs" component={WorkerLogs} />
@@ -164,7 +204,17 @@ function Router() {
         </Layout>
         </AccessGate>
       )}
-      <Route component={NotFound} />
+      {/* While auth is unresolved the router has not yet been given the
+          authenticated routes, so every real page falls through to here.
+          Saying "this route does not exist" about a page that does is worse
+          than saying nothing — wait, then answer.
+
+          An errored auth query counts as unresolved. A 401 is not an error:
+          it comes back as a null user, which is a real answer and lands on
+          the public site. An error means we could not ask — a 429 from the
+          rate limiter, a 5xx, a dropped connection — and not knowing who you
+          are is never grounds for telling you your page does not exist. */}
+      <Route component={isLoading || authError ? RouteLoadingFallback : NotFound} />
     </Switch>
     </Suspense>
     </WouterRouter>

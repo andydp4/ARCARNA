@@ -554,9 +554,14 @@ describe.skipIf(!hasDb)("6.2 refund route rollback", () => {
       .select({ id: giftCards.id })
       .from(giftCards)
       .where(eq(giftCards.orgId, orgId));
+    // Scoped to this order's correlationId, not a count of the whole table.
+    // A global count silently asserts that no OTHER test wrote an envelope
+    // while this one ran, which is not what this test is about and is not true
+    // once test files run in parallel against a shared database.
     const [outboxBefore] = await db
       .select({ n: sql<number>`count(*)::int` })
-      .from(eventOutbox);
+      .from(eventOutbox)
+      .where(eq(eventOutbox.correlationId, orderId));
 
     const res = await request(app)
       .post(`/api/orders/${orderId}/refunds`)
@@ -590,7 +595,8 @@ describe.skipIf(!hasDb)("6.2 refund route rollback", () => {
     // And no RefundIssued envelope escaped into the outbox.
     const [outboxAfter] = await db
       .select({ n: sql<number>`count(*)::int` })
-      .from(eventOutbox);
+      .from(eventOutbox)
+      .where(eq(eventOutbox.correlationId, orderId));
     expect(Number(outboxAfter.n)).toBe(Number(outboxBefore.n));
   });
 });

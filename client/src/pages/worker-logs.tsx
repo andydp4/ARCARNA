@@ -265,30 +265,30 @@ export default function WorkerLogsPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Event ID</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="input-event-id">Event ID</label>
                   <Input
                     placeholder="Filter by event ID..."
                     value={filters.eventId}
                     onChange={(e) => setFilters({ ...filters, eventId: e.target.value })}
-                    data-testid="input-event-id"
+                    id="input-event-id" data-testid="input-event-id"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Order ID</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="input-correlation-id">Order ID</label>
                   <Input
                     placeholder="Filter by order ID..."
                     value={filters.correlationId}
                     onChange={(e) => setFilters({ ...filters, correlationId: e.target.value })}
-                    data-testid="input-correlation-id"
+                    id="input-correlation-id" data-testid="input-correlation-id"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Worker</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="select-worker">Worker</label>
                   <Select
                     value={filters.workerName || "all"}
                     onValueChange={(value) => setFilters({ ...filters, workerName: value === "all" ? "" : value })}
                   >
-                    <SelectTrigger data-testid="select-worker">
+                    <SelectTrigger id="select-worker" data-testid="select-worker">
                       <SelectValue placeholder="All workers" />
                     </SelectTrigger>
                     <SelectContent>
@@ -300,12 +300,12 @@ export default function WorkerLogsPage() {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Status</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="select-status">Status</label>
                   <Select
                     value={filters.status || "all"}
                     onValueChange={(value) => setFilters({ ...filters, status: value === "all" ? "" : value })}
                   >
-                    <SelectTrigger data-testid="select-status">
+                    <SelectTrigger id="select-status" data-testid="select-status">
                       <SelectValue placeholder="All statuses" />
                     </SelectTrigger>
                     <SelectContent>
@@ -459,12 +459,12 @@ export default function WorkerLogsPage() {
               {/* Job Queue Filters */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Status</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="select-job-status">Status</label>
                   <Select
                     value={jobFilters.status || 'all'}
                     onValueChange={(value) => setJobFilters({ ...jobFilters, status: value === 'all' ? '' : value })}
                   >
-                    <SelectTrigger data-testid="select-job-status">
+                    <SelectTrigger id="select-job-status" data-testid="select-job-status">
                       <SelectValue placeholder="All Statuses" />
                     </SelectTrigger>
                     <SelectContent>
@@ -477,12 +477,12 @@ export default function WorkerLogsPage() {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Worker</label>
+                  <label className="text-sm font-medium mb-1 block" htmlFor="select-job-worker">Worker</label>
                   <Select
                     value={jobFilters.workerName || 'all'}
                     onValueChange={(value) => setJobFilters({ ...jobFilters, workerName: value === 'all' ? '' : value })}
                   >
-                    <SelectTrigger data-testid="select-job-worker">
+                    <SelectTrigger id="select-job-worker" data-testid="select-job-worker">
                       <SelectValue placeholder="All Workers" />
                     </SelectTrigger>
                     <SelectContent>

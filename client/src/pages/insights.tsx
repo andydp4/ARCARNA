@@ -46,6 +46,7 @@ import { SpatialInsightsShell } from "@/components/spatial/SpatialInsightsShell"
 import { useFlag } from "@/hooks/useFlag";
 import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { formatPaymentLabel } from "@/components/orders-row";
 
 interface ReportData {
   revenue: {
@@ -580,7 +581,7 @@ export default function Insights() {
                         {paymentMethods.length > 0 ? (
                           paymentMethods.map((method) => (
                             <TableRow key={method.method} data-testid={`payment-method-${method.method}`}>
-                              <TableCell className="font-medium">{method.method}</TableCell>
+                              <TableCell className="font-medium">{formatPaymentLabel(method.method)}</TableCell>
                               <TableCell className="text-right tabular-nums">{method.count}</TableCell>
                               <TableCell className="text-right tabular-nums font-medium">
                                 £{toNum(method.revenue).toFixed(2)}

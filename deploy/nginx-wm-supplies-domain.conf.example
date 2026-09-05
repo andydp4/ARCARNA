@@ -1,0 +1,51 @@
+# Example Nginx site for the WM Supplies customer website on the same VPS.
+#
+# DNS should point wmsupplies.co.uk and www.wmsupplies.co.uk to the website host.
+# Arcana remains the backend/admin app at https://arcarna.viger.cloud.
+#
+# Customer website launch:
+# - Website process: 127.0.0.1:5001
+# - Build it with VITE_BASE_PATH= and APP_BASE_PATH=
+# - Customer URL: https://wmsupplies.co.uk/
+
+server {
+    listen 80;
+    server_name wmsupplies.co.uk www.wmsupplies.co.uk;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# HTTPS after:
+# certbot --nginx -d wmsupplies.co.uk -d www.wmsupplies.co.uk
+#
+# server {
+#     listen 443 ssl http2;
+#     server_name wmsupplies.co.uk www.wmsupplies.co.uk;
+#
+#     client_max_body_size 25m;
+#     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:5001;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_cache_bypass $http_upgrade;
+#     }
+# }

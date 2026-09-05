@@ -119,6 +119,39 @@
 
 ---
 
+## Phase K — Cashier commission, credit & personal use
+
+Brief: [`PHASE_K_CASHIER_COMMISSION.md`](./PHASE_K_CASHIER_COMMISSION.md). Execute K1 → K6 in order.
+
+| ID | Status | Wave / notes |
+|----|--------|----------------|
+| K1 | **Built** | Order attribution — input vs completing cashier; migration 051 |
+| K2 | **Built** | Per-order commission ledger, 90/10 split; migration 052. Accrues at shift close, since an order's overhead share needs the day's takings |
+| K3 | **Built** | Credit/tick lifecycle, pro-rata part-payments with tender methods; migration 053. Carries the F4 fix |
+| K4 | **Built** | Credit given/resolved on the Z-report, and in the training manual |
+| K5 | **Built** | Personal-use payment type + Signal via `org_notifications`; migration 054 |
+| K6 | **Built** | Negative-order guard (Zod, check constraint, till message) + free-entry rates; migration 055 |
+| K7 | **Built** | Split tender — one sale across several tenders; migration 056 |
+
+Split tender was confirmed as wanted and is built as K7. Instalments against an
+existing debt (£20 one week, £50 the next) were already covered by K3.
+
+---
+
+## Phase L — Shifts as trading days & the daily close
+
+Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md). Execute L1 → L5 in order.
+
+| ID | Status | Wave / notes |
+|----|--------|----------------|
+| L1 | **Built** | Commission by user, not cashier code; migration 057. Everyone on the org default, per-user rate set in user management |
+| L2 | **Built** | Shift = trading day, 06:00–06:00, opened on first sale; migration 058. Open-shift modal removed |
+| L3 | **Built** | The 06:00 daily close, on the existing worker loop; migration 059. Exactly-once per org per day |
+| L4 | **Built** | Z-report-so-far button; running shifts show pending, never a zero variance |
+| L5 | **Built†** | Open Orders counter view — built to a *proposed* spec, not an agreed one; see the brief |
+
+---
+
 ## Phase L — Long horizon
 
 | ID | Status |

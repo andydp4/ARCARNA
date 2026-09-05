@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/input";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg, type Organization } from "@/contexts/OrgContext";
 
-const ASSIGNABLE_ROLES = ["ADMIN", "MANAGER", "CASHIER"] as const;
+const ASSIGNABLE_ROLES = ["CUSTOMER", "CASHIER", "MANAGER", "ADMIN"] as const;
 
 interface AllowedUser {
   id: string;
@@ -41,6 +42,8 @@ interface AllowedUser {
   name: string | null;
   isOwner: number;
   role?: string | null;
+  /** Percentage. Null means the organisation default applies. */
+  commissionRate?: string | null;
   orgId?: string | null;
   createdAt: string;
 }
@@ -57,6 +60,68 @@ interface ApprovalRequest {
   reviewedBy: string | null;
 }
 
+/**
+ * A person's commission rate, editable in place.
+ *
+ * Blank is meaningful and is shown as such: it means the organisation default
+ * applies, which is different from zero. Saving on blur rather than on every
+ * keystroke, so a half-typed "1" on the way to "12" is never written.
+ */
+function CommissionRateCell({
+  user,
+  onSave,
+  saving,
+}: {
+  user: AllowedUser;
+  onSave: (rate: string | null) => void;
+  saving: boolean;
+}) {
+  const stored = user.commissionRate ?? "";
+  const [value, setValue] = useState(stored);
+
+  useEffect(() => {
+    setValue(user.commissionRate ?? "");
+  }, [user.commissionRate]);
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed === stored.trim()) return;
+    if (trimmed === "") {
+      onSave(null);
+      return;
+    }
+    const rate = Number(trimmed);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      setValue(stored);
+      return;
+    }
+    onSave(trimmed);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        type="number"
+        min={0}
+        max={100}
+        step="0.01"
+        value={value}
+        placeholder="Default"
+        disabled={saving}
+        className="h-9 w-[92px]"
+        aria-label={`Commission rate for ${user.name || user.email || "this user"}`}
+        data-testid={`commission-rate-${user.replitUserId}`}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+      <span className="text-sm text-muted-foreground">%</span>
+    </div>
+  );
+}
+
 export default function UserAccess() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
@@ -65,7 +130,7 @@ export default function UserAccess() {
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [approveTarget, setApproveTarget] = useState<ApprovalRequest | null>(null);
-  const [approveRole, setApproveRole] = useState<string>("CASHIER");
+  const [approveRole, setApproveRole] = useState<string>("CUSTOMER");
   const [approveOrgId, setApproveOrgId] = useState<string>("");
 
   const { data: allowedUsers = [], isLoading: loadingUsers } = useQuery<AllowedUser[]>({
@@ -74,6 +139,32 @@ export default function UserAccess() {
 
   const { data: pendingApprovals = [], isLoading: loadingPending } = useQuery<ApprovalRequest[]>({
     queryKey: ["/api/admin/pending-approvals"],
+  });
+
+  // Commission is agreed per person. Blank means the organisation default,
+  // which is where everyone starts — the old per-cashier-code rates could not
+  // be carried across, because nothing ever linked a code to a user account.
+  const updateCommissionMutation = useMutation({
+    mutationFn: async ({
+      replitUserId,
+      commissionRate,
+    }: {
+      replitUserId: string;
+      commissionRate: string | null;
+    }) => {
+      return apiRequest("PATCH", `/api/admin/allowed-users/${replitUserId}`, { commissionRate });
+    },
+    onSuccess: () => {
+      toast({ title: "Commission rate updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not update the commission rate",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const updateRoleMutation = useMutation({
@@ -173,7 +264,7 @@ export default function UserAccess() {
             icon={Shield}
             title="User access"
             question="Who can do what in your business?"
-            explanation="Manage who can access this business. Scope: this workspace."
+            explanation="Approve invited customers for the private WM Supplies website, and staff for Arcana."
             className="mb-0"
           />
           {pendingApprovals.length > 0 && (
@@ -186,7 +277,7 @@ export default function UserAccess() {
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="pending" className="flex items-center gap-2 min-h-[44px]" data-testid="tab-pending">
               <Clock className="h-4 w-4" />
-              Pending Approvals
+              Pending approvals
               {pendingApprovals.length > 0 && (
                 <Badge variant="secondary" className="ml-1">{pendingApprovals.length}</Badge>
               )}
@@ -206,7 +297,7 @@ export default function UserAccess() {
                   Pending Approval Requests
                 </CardTitle>
                 <CardDescription>
-                  New sign-ins appear here until an owner or admin approves them for this organization.
+                  New account requests stay locked out until you approve them. Use CUSTOMER for website-only access.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -218,7 +309,7 @@ export default function UserAccess() {
                   <div className="text-center py-12 text-muted-foreground">
                     <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-30" />
                     <p>No pending approval requests</p>
-                    <p className="text-sm">New login attempts will appear here</p>
+                    <p className="text-sm">New customer and staff sign-ups will appear here</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -248,7 +339,7 @@ export default function UserAccess() {
                             <Button
                               onClick={() => {
                                 setApproveTarget(request);
-                                setApproveRole("CASHIER");
+                                setApproveRole("CUSTOMER");
                                 setApproveOrgId(
                                   currentUser?.role === "SUPER_ADMIN"
                                     ? organizations[0]?.id ?? ""
@@ -290,7 +381,7 @@ export default function UserAccess() {
                   Allowed Users
                 </CardTitle>
                 <CardDescription>
-                  Everyone listed below can sign in to this organization. Owner has full admin rights.
+                  CUSTOMER users can only use the private WM Supplies website. Staff roles can use Arcana.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -311,6 +402,7 @@ export default function UserAccess() {
                         <TableHead>User</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
+                        <TableHead>Commission</TableHead>
                         <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -354,6 +446,18 @@ export default function UserAccess() {
                               </Select>
                             )}
                           </TableCell>
+                          <TableCell>
+                            <CommissionRateCell
+                              user={user}
+                              onSave={(commissionRate) =>
+                                updateCommissionMutation.mutate({
+                                  replitUserId: user.replitUserId,
+                                  commissionRate,
+                                })
+                              }
+                              saving={updateCommissionMutation.isPending}
+                            />
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {formatDate(user.createdAt)}
                           </TableCell>
@@ -390,7 +494,7 @@ export default function UserAccess() {
           <DialogHeader>
             <DialogTitle>Approve access</DialogTitle>
             <DialogDescription>
-              Assign a role{currentUser?.role === "SUPER_ADMIN" ? " and organization" : ""} for{" "}
+              Assign website-only customer access or a staff role{currentUser?.role === "SUPER_ADMIN" ? " and organization" : ""} for{" "}
               <strong>{approveTarget?.name || approveTarget?.email}</strong>.
             </DialogDescription>
           </DialogHeader>

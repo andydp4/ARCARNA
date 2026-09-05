@@ -1,6 +1,14 @@
 import { expect } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
-import { test, pageAs, firstLocationId, okJson } from "./fixtures";
+import {
+  test,
+  pageAs,
+  firstLocationId,
+  okJson,
+  ensureOpenShift,
+  placeOrder,
+  uniqueSuffix,
+} from "./fixtures";
 
 /** A product with a known stock level at `locationId`, created fresh per test. */
 async function productWithStock(
@@ -148,9 +156,6 @@ test.describe("UI seams", () => {
     api,
     orgId,
   }) => {
-    const orders = await okJson<any[]>(await api.get("/api/orders"));
-    const expectedOpen = orders.filter((o) => o.status !== "completed").length;
-
     const page = await pageAs(browser, "ADMIN", orgId);
     await page.goto("/");
     await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
@@ -160,21 +165,339 @@ test.describe("UI seams", () => {
 
     // Reads the number the operator reads, and compares it to the same figure
     // derived from the API. A hardcoded tile passes no version of this.
+    //
+    // Both reads happen inside the poll. Taking the API count once up front
+    // made this test a hostage to the rest of the suite: any sibling that
+    // opens or completes an order — U4 does both — moves the real figure while
+    // this one waits, and the captured number can then never be reached.
     await expect
       .poll(
         async () => {
-          const text = await tile.innerText();
-          const match = text.match(/\d+/);
-          return match ? Number(match[0]) : NaN;
+          const orders = await okJson<any[]>(await api.get("/api/orders"));
+          const open = orders.filter((o) => o.status !== "completed").length;
+          const shown = Number((await tile.innerText()).match(/\d+/)?.[0] ?? NaN);
+          return shown - open;
         },
         {
           message:
             "the Open orders tile must show the real count of open orders, " +
-            "not a placeholder",
+            "not a placeholder. A non-zero difference here is the tile and the " +
+            "API disagreeing after both settled.",
           timeout: 20_000,
         },
       )
-      .toBe(expectedOpen);
+      .toBe(0);
+
+    await page.context().close();
+  });
+
+  test("U4 the row status selector actually writes the order's status", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await productWithStock(api, locationId, 5);
+    const placed = await okJson<any>(
+      await placeOrder(api, locationId, [
+        { productId: product.id, quantity: 1, unitPrice: 5 },
+      ]),
+    );
+    const orderId = placed.orderId ?? placed.id ?? placed.order?.id;
+    expect(orderId, "the order fixture must produce an id to drive the row").toBeTruthy();
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/orders");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // Narrow to the order under test — the list groups by status and grows with
+    // the seeded data, so the row is otherwise not reliably on screen.
+    await page.locator('[data-testid="input-order-search"]').fill(orderId);
+
+    const selector = page
+      .locator(`[data-testid="select-order-status-${orderId}"]`)
+      .locator("visible=true");
+    await expect(
+      selector,
+      "each order row must carry its own status control — status used to be " +
+        "reachable only through a kebab menu and a modal, which is the bug this covers",
+    ).toBeVisible({ timeout: 30_000 });
+
+    await selector.click();
+    await page.locator('[data-testid="status-option-completed"]').locator("visible=true").click();
+
+    // Completion is the moment Arcarna counts an order as taken, so this is the
+    // one status change that must not silently fail. The server is the witness:
+    // the row leaves the default "active" filter the instant the optimistic
+    // update lands, whether or not the write ever reached the database.
+    await expect
+      .poll(
+        async () => {
+          const rows = await okJson<any[]>(await api.get("/api/orders"));
+          return rows.find((o) => o.id === orderId)?.status;
+        },
+        {
+          message:
+            "picking a status in the row must reach the database. If this is " +
+            "still 'pending', the row re-rendered the order out of the list " +
+            "before the write was issued and nothing told the operator.",
+          timeout: 20_000,
+        },
+      )
+      .toBe("completed");
+
+    await page.context().close();
+  });
+
+  test("U5 a new customer can be added from the order being built", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const name = `Seam Customer ${uniqueSuffix()}`;
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/create-order");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    const picker = page.locator('[data-testid="select-customer"]').locator("visible=true");
+    await expect(picker).toBeVisible({ timeout: 30_000 });
+    await picker.click();
+
+    await page.locator('[data-testid="select-customer-new"]').locator("visible=true").click();
+    await page.locator('[data-testid="input-new-customer-name"]').locator("visible=true").fill(name);
+    await page.locator('[data-testid="button-save-new-customer"]').locator("visible=true").click();
+
+    // Two things have to be true, and only one of them is visible. The customer
+    // must exist on the system — the whole point of the bug was that a new face
+    // at the counter got rung through as a walk-in and never recorded.
+    await expect
+      .poll(
+        async () => {
+          const customers = await okJson<any[]>(await api.get("/api/customers"));
+          return customers.some((c) => c.name === name);
+        },
+        {
+          message:
+            "adding a customer from the order must write them to the database, " +
+            "not just fill in the picker for this one sale",
+          timeout: 20_000,
+        },
+      )
+      .toBe(true);
+
+    // And they must be attached to the order in progress, or the operator has
+    // to find them again in a list they just left.
+    await expect(
+      picker,
+      "the customer just added must be the one selected for this order",
+    ).toContainText(name, { timeout: 15_000 });
+
+    await page.context().close();
+  });
+
+  test("U6 Order lines shows one search box, and it searches the whole catalogue", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    const target = await productWithStock(api, locationId, 3);
+    const decoy = await productWithStock(api, locationId, 3);
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/create-order");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // Tiles is the default mode and owns the top search box.
+    const topSearch = page.locator('[data-testid="search-products"]').locator("visible=true");
+    await expect(topSearch).toBeVisible({ timeout: 30_000 });
+
+    // Narrow the grid to the decoy, then switch to Order lines. The top box used
+    // to stay on screen — a second search stacked above the per-line one — and
+    // its query kept filtering what the line picker could offer, so the product
+    // under test was invisible with nothing on screen to explain why.
+    await topSearch.fill(decoy.name);
+    await page.locator('[data-testid="pos-entry-mode-lines"]').locator("visible=true").click();
+
+    await expect(
+      page.locator('[data-testid="search-products"]'),
+      "Order lines searches per line, so the tile grid's search box must not " +
+        "also be on screen",
+    ).toHaveCount(0);
+
+    const linePicker = page.locator('[data-testid="line-product-new"]').locator("visible=true");
+    await expect(linePicker).toBeVisible({ timeout: 15_000 });
+    await linePicker.click();
+    await page
+      .locator('[data-testid="line-product-new-search"]')
+      .locator("visible=true")
+      .fill(target.name);
+
+    await expect(
+      page.getByRole("option", { name: new RegExp(target.name) }),
+      "the line picker must search the whole catalogue — a query left in the " +
+        "tile grid's box must not decide what can be ordered here",
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.context().close();
+  });
+
+  test("U7 the Shifts page names who is on, and looks back further than today", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+
+    // The window is a rolling one now. It used to be "since midnight", which
+    // answered "who was on last night?" with an empty table.
+    const listed = await okJson<any[]>(await api.get("/api/shifts?hours=48"));
+    const onNow = listed.find((shift) => shift.status === "open");
+    expect(onNow, "a shift was just opened, so one must come back open").toBeTruthy();
+    expect(
+      onNow.userName,
+      "the list must say who the shift belongs to — sending only a user id is " +
+        "what stopped this page answering its own question",
+    ).toBeTruthy();
+
+    // A window wider than the ceiling is clamped, not refused, and not obeyed.
+    const absurd = await api.get("/api/shifts?hours=999999");
+    expect(absurd.status(), "an over-wide window must be clamped, not a 500").toBe(200);
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    // A failure here used to say only "element not found", which is the least
+    // useful thing a test can say about a page that did not render. Anything
+    // the app threw is captured so the assertion can report it.
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    // Console errors too: a failing auth request reports itself there, and that
+    // is what took the router's authenticated routes away the first time this
+    // ran on CI.
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(`console: ${message.text()}`);
+    });
+
+    await page.goto("/shifts");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    /**
+     * Nothing else in this suite — journeys or a11y — visits /shifts, so its
+     * route chunk is compiled on demand the first time this test runs, on a
+     * dev server under whatever else the machine is doing. It gets the same
+     * budget the shell does rather than half of it.
+     *
+     * The poll reports what is on screen instead of what is missing: on
+     * failure the received string carries the URL, anything the app threw, and
+     * the start of the body, so the log says whether the page crashed,
+     * redirected, or simply had not arrived.
+     */
+    const onNowCard = page.locator('[data-testid="card-on-now"]');
+    const describeInstead = async () =>
+      [
+        "<no On now card>",
+        `url=${page.url()}`,
+        `pageErrors=${pageErrors.join(" | ") || "none"}`,
+        `body=${(await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400)}`,
+      ].join(" ");
+
+    await expect
+      .poll(
+        async () =>
+          (await onNowCard.count()) > 0
+            ? (await onNowCard.innerText()).replace(/\s+/g, " ").trim()
+            : await describeInstead(),
+        {
+          message: "the page must name whoever is on the till right now",
+          timeout: 60_000,
+        },
+      )
+      .toContain(onNow.userName);
+
+    await expect(
+      page.locator(`[data-testid="shift-row-${onNow.id}"]`),
+      "and the shift must appear in the list with that same name against it",
+    ).toContainText(onNow.userName, { timeout: 30_000 });
+
+    await page.context().close();
+  });
+
+  test("U8 a real page is not called non-existent while the app works out who you are", async ({
+    browser,
+    orgId,
+  }) => {
+    const page = await pageAs(browser, "ADMIN", orgId);
+
+    // Hold the auth answer back. This is the state U7 hit on CI: the request had
+    // not come back, so the router had not been given the authenticated routes
+    // yet, and every real page fell through to the catch-all.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/auth/user", async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.goto("/shifts");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    // A fixed wait, deliberately: the claim is that the page never says this
+    // while auth is outstanding, which is a statement about a stretch of time
+    // rather than about one moment. A web-first assertion would pass on the
+    // first frame and prove nothing.
+    await page.waitForTimeout(3_000);
+    expect(
+      await page.locator("body").innerText(),
+      "an unanswered auth request must not turn a real route into a 404 — " +
+        "telling an operator their page does not exist reads as the system " +
+        "being broken, and it never recovers on its own",
+    ).not.toContain("does not exist");
+
+    // And the wait must not be a dead end: once auth lands, the page arrives.
+    release();
+    await expect(
+      page.locator('[data-testid="card-on-now"]'),
+      "once auth answers, the real page must render rather than stay on the spinner",
+    ).toBeVisible({ timeout: 30_000 });
+
+    await page.context().close();
+  });
+
+  test("U9 the Arcarna domain shows Arcarna's sign-in, not the shop's", async ({
+    browser,
+    orgId,
+  }) => {
+    const page = await pageAs(browser, "ADMIN", orgId);
+
+    // Answer the auth check the way it answers a member of the public: signed
+    // out. The dev bypass would otherwise promote every anonymous caller, so
+    // this is the only way to see what a visitor sees.
+    await page.route("**/api/auth/user", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Unauthorized" }),
+      }),
+    );
+
+    await page.goto("/");
+    await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+
+    await expect(
+      page.getByText("Welcome Back"),
+      "the front door of the Arcarna domain must be Arcarna's own sign-in",
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The shop's own gate belongs on the shop's domain, served by the customer
+    // site process. Finding it here means the two have been crossed again.
+    await expect(
+      page.locator("#wm-private-title"),
+      "the WM Supplies access gate must not be the Arcarna app's landing page",
+    ).toHaveCount(0);
 
     await page.context().close();
   });

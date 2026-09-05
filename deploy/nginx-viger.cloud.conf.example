@@ -4,6 +4,7 @@
 # In the subdomain world the portal is DECOUPLED from the Arcarna Node app:
 # - viger.cloud (this file) → serves the static portal directly (no Node).
 # - arcarna.viger.cloud      → the Arcarna Node app (see deploy/nginx-arcarna.viger.cloud.conf.example).
+# - wmsupplies.com           → the WM Supplies customer website (see deploy/nginx-wm-supplies-domain.conf.example).
 #
 # The portal now lives in its OWN repo: andydp4/VigerPortal. Clone it on the VPS
 # and publish with its deploy script (copies static files to a web-readable path

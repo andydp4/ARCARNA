@@ -21,6 +21,9 @@ export default defineConfig({
           "server/__tests__/devAuthBypass.integration.test.ts",
           "server/__tests__/whatsappStore.integration.test.ts",
           "server/__tests__/purchasingPipeline.integration.test.ts",
+          "server/__tests__/creditCommission.test.ts",
+          "server/__tests__/tradingDayShift.test.ts",
+          "server/__tests__/dailyClose.test.ts",
           // Phase 6 integrity suites — all import ../db at module level.
           "server/__tests__/integrityIdempotency.test.ts",
           "server/__tests__/integrityConcurrency.test.ts",

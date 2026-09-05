@@ -1,0 +1,78 @@
+# Manual production deploy to the Hostinger VPS (PM2 + Nginx).
+#
+# Runs scripts/deploy-production.sh over SSH — the same script an operator
+# would run on the box, so there is one deploy path rather than two that can
+# drift apart. See docs/DEPLOY_HOSTINGER_VPS.md.
+#
+# Deliberately manual (workflow_dispatch) rather than on: push to main.
+# Deploying every merge to a live POS is not something to switch on by
+# accident; add a `push` trigger here when you actually want that.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VPS_HOST     - server hostname or IP
+#   VPS_USER     - SSH user (root, per the runbook)
+#   VPS_SSH_KEY  - PRIVATE half of a keypair whose public half is in the
+#                  server's ~/.ssh/authorized_keys
+# Optional:
+#   VPS_PORT     - SSH port, defaults to 22
+#   VPS_APP_DIR  - app directory, defaults to /root/ARCARNA
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit to deploy"
+        required: false
+        default: main
+
+# Never let two deploys touch the box at once, and never cancel one midway —
+# an interrupted npm ci or build leaves the app in a half-updated state.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_KEY:-}" ] || [ -z "${VPS_HOST:-}" ]; then
+            echo "::error::VPS_SSH_KEY and VPS_HOST secrets must be set."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pin the host key we first see rather than disabling checking
+          # outright, so a swapped host fails the next run instead of being
+          # trusted silently.
+          ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          APP_DIR: ${{ secrets.VPS_APP_DIR }}
+          DEPLOY_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_deploy -p "${VPS_PORT:-22}" \
+            "${VPS_USER:-root}@${VPS_HOST}" \
+            "set -euo pipefail; cd '${APP_DIR:-/root/ARCARNA}'; DEPLOY_BRANCH='${DEPLOY_REF:-main}' bash scripts/deploy-production.sh"
+
+      - name: Clean up key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

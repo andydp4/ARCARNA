@@ -12,13 +12,6 @@ export type DayKpi = {
   refundsTotal: number;
 };
 
-export type DailyKpiResponse = {
-  today: DayKpi;
-  lastWeek: DayKpi;
-  sameWeekdayLtmAvg: DayKpi | null;
-  date: string;
-};
-
 const EMPTY_DAY: DayKpi = { revenue: 0, txns: 0, aov: 0, refundsTotal: 0 };
 
 export function aggregateDay(orders: KpiOrder[]): DayKpi {

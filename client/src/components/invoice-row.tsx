@@ -23,6 +23,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatPaymentLabel } from "@/components/orders-row";
 
 export interface InvoiceListItem {
   id: string;
@@ -127,8 +128,8 @@ function InvoiceRowInner({
         <InvoiceStatusBadge status={invoice.status} />
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <Badge variant="outline" className="font-normal capitalize text-muted-foreground">
-          {invoice.paymentMethod || "—"}
+        <Badge variant="outline" className="font-normal text-muted-foreground">
+          {formatPaymentLabel(invoice.paymentMethod)}
         </Badge>
       </TableCell>
       <TableCell className="w-[1%] whitespace-nowrap text-right">

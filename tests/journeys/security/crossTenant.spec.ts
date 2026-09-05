@@ -309,13 +309,16 @@ test.describe("5.3 cross-tenant writes", () => {
    * `orgId` from the caller's context but never checks that the referenced rows
    * belong to it.
    *
-   * `test.fail()` rather than a characterisation assertion, because unlike the
-   * missing role guards there is no reading of the requirements under which
-   * this is correct. Playwright reports it as an expected failure today, and
-   * turns RED the moment it starts passing — which is the signal to delete the
-   * annotation, not to "fix a regression".
+   * CLOSED. insertDraftWithItems now calls assertReferencesBelongToOrg, which
+   * checks the supplier, the location and every referenced product against the
+   * caller's org before any row is written. The product check does not name
+   * which id failed — the caller has already proved it does not own them, and
+   * saying which exist would turn the error into an existence oracle for
+   * another tenant's catalogue.
+   *
+   * Kept as a live expectation so the create path cannot quietly reopen.
    */
-  test.fail("a create must not be allowed to reference another tenant's supplier, location or product", async () => {
+  test("a create must not be allowed to reference another tenant's supplier, location or product", async () => {
     const single = await cApi.post("/api/replenishment/create-purchase-draft", {
       data: {
         supplierId: b.supplierId,
@@ -330,11 +333,6 @@ test.describe("5.3 cross-tenant writes", () => {
         ],
       },
     });
-    console.log(
-      `[5.3 FINDING] create-purchase-draft with org B's ids → ${single.status()}; ` +
-        `create-purchase-drafts → ${batch.status()} ` +
-        `(no ownership check in insertDraftWithItems, server/services/purchaseDrafts.ts:229)`,
-    );
     expect(single.status(), "single create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
     expect(batch.status(), "batch create must refuse another tenant's ids").toBeGreaterThanOrEqual(400);
   });

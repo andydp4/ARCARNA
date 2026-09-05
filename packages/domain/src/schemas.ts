@@ -16,7 +16,10 @@ export const PlaceOrderInput = z.object({
     .optional()
     .transform((v) => (v === '' || v === null ? undefined : v)),
   lines: z.array(OrderLineInput).min(1),
-  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card']),
+  // 'split' is a label, not a tender: the route sets it when an order has 2+
+  // distinct payment legs (each recorded separately in order_payments), never
+  // a leg's own method. See shared/schema.ts's orderPayments doc comment.
+  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
   // Must be declared even though nothing in the engine branches on it: this is
@@ -28,6 +31,13 @@ export const PlaceOrderInput = z.object({
   // Injected by the route from organizations.default_tax_rate. Optional so
   // existing callers keep the previous fixed 20% behaviour.
   taxRatePercent: z.number().min(0).max(100).optional(),
+  channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
+  status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
+  // The calendar date the order is FOR, when that is not today: a missed day
+  // being keyed in afterwards, or a pre-order. Declared so it survives parsing
+  // (this object strips unknown keys); the route, not the engine, acts on it —
+  // see server/services/orderDating.ts and shared/orders/orderDate.ts.
+  orderDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
 export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })

@@ -16,14 +16,24 @@ Short, brutal, usable. Run through before each release.
 
 **Fresh DB:** `npm run db:push`
 
-**Existing DB with analytics:** Run migration sanity check first:
+**Existing DB with analytics:** Run migration sanity check first.
+
+Load `.env` into the shell first. PM2 reads it via `env_file`, so a bare login
+shell has no `DATABASE_URL` — `psql "$DATABASE_URL"` then silently falls back to
+the local socket and fails with `No such file or directory`, and `npm run
+backfill` throws `DATABASE_URL must be set`. An inline `DATABASE_URL=... cmd`
+does not persist to the next command either.
+
 ```bash
-DATABASE_URL=... npx tsx scripts/migration-sanity-check.ts
+cd /root/ARCARNA
+set -a; source .env; set +a
+
+npx tsx scripts/migration-sanity-check.ts
 ```
 
 Then follow printed instructions:
-- **Single org (or none):** `psql $DATABASE_URL -f migrations/001_analytics_org_pk.sql`
-- **Multiple orgs:** `psql $DATABASE_URL -v org_id=YOUR_ORG_UUID -f migrations/001_analytics_org_pk_with_org.sql` (per org)
+- **Single org (or none):** `psql "$DATABASE_URL" -f migrations/001_analytics_org_pk.sql`
+- **Multiple orgs:** `psql "$DATABASE_URL" -v org_id=YOUR_ORG_UUID -f migrations/001_analytics_org_pk_with_org.sql` (per org)
 
 **Do NOT** use `drizzle push` blindly on DBs with existing analytics; it can conflict with the org-scoped PK migration.
 
