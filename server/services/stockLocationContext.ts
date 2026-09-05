@@ -24,9 +24,16 @@ export async function resolveEditableStockLocationId(
       userId: ctx.userId,
     });
   } catch (error) {
-    if (error instanceof StockError && error.code === "LOCATION_UNRESOLVED") {
-      return null;
+    if (!(error instanceof StockError)) throw error;
+    // A location id that does not belong to the caller's org is not context,
+    // it is noise: x-location-id is taken from any role unchecked, so a forged
+    // header must fall through to the org's own default rather than fail the
+    // list (or, worse, be honoured). The org filter on the rows keeps the
+    // foreign location invisible either way.
+    if (error.code === "LOCATION_NOT_FOUND" && ctx.locationId) {
+      return resolveEditableStockLocationId({ orgId: ctx.orgId, userId: ctx.userId });
     }
+    if (error.code === "LOCATION_UNRESOLVED") return null;
     throw error;
   }
 }
