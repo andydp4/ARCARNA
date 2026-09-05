@@ -9,9 +9,11 @@
  *
  * Three cuts come out of scripts/brand/arcarna-liquid.html:
  *
- *   mark      0 -> 4400ms   the a revealing itself out of the liquid
+ *   mark      0 -> 4400ms   the a revealing itself, then the wordmark
  *   endcard   0 -> 8600     mark, wordmark, spin-out, by viger cloud
  *   backdrop  0 -> 12000    the Control Centre ground, no mark
+ *   marksolo  0 -> 5000     the mark alone, no wordmark. Loops.
+ *   cloud     0 -> 8600     the mark, a five second hold, then viger cloud
  *
  * Determinism is not incidental — it is what makes the sequence hold
  * together. Two things in the page had to be put on the timeline for
@@ -42,6 +44,10 @@ const CLIPS = {
   mark:     { mode: 'mark',     from: 0, to: 4400,  poster: 3600 },
   endcard:  { mode: 'endcard',  from: 0, to: 8600,  poster: 7400 },
   backdrop: { mode: 'backdrop', from: 0, to: 12000, poster: 6000 },
+  // The mark alone, no wordmark. Loops.
+  marksolo: { mode: 'markSolo', from: 0, to: 5000,  poster: 4200 },
+  // The mark, a five second hold, then by viger cloud.
+  cloud:    { mode: 'cloud',    from: 0, to: 8600,  poster: 8500 },
 };
 
 function findChromium() {

@@ -118,7 +118,9 @@ body {
 }
 .page[data-mode="backdrop"] .liquid-hold { width: 900px; height: 900px; }
 .page[data-mode="mark"]     .liquid-hold,
-.page[data-mode="endcard"]  .liquid-hold { width: 528px; height: 528px; }
+.page[data-mode="endcard"]  .liquid-hold,
+.page[data-mode="markSolo"] .liquid-hold,
+.page[data-mode="cloud"]    .liquid-hold { width: 528px; height: 528px; }
 
 #liquid { display: block; width: 100%; height: 100%; }
 .page[data-mode="backdrop"] #liquid { opacity: 0.52; }
@@ -158,6 +160,8 @@ body {
 .page[data-mode="mark"] .plate,
 .page[data-mode="endcard"] .plate { justify-content: flex-end; padding-bottom: 7%; }
 .page[data-mode="backdrop"] .plate { display: none; }
+.page[data-mode="markSolo"] .wordmark { display: none; }
+.page[data-mode="cloud"]    .wordmark { display: none; }
 
 .wordmark {
   font-size: clamp(30px, 5.2vw, 62px);
@@ -296,6 +300,8 @@ html:has(.page[data-bare="true"]), body:has(.page[data-bare="true"]) { height: 1
       <button type="button" id="b-backdrop" aria-pressed="true">Backdrop</button>
       <button type="button" id="b-mark"     aria-pressed="false">Mark reveal</button>
       <button type="button" id="b-endcard"  aria-pressed="false">Endcard</button>
+      <button type="button" id="b-markSolo" aria-pressed="false">Mark only</button>
+      <button type="button" id="b-cloud"    aria-pressed="false">Mark &rarr; viger</button>
     </div>
     <button type="button" class="replay" id="replay" hidden>Replay</button>
     <span class="hint" id="hint">The Control Centre ground &mdash; liquid only, no card.</span>
@@ -493,8 +499,10 @@ void main(){
      patchy enough to be a silent failure. */
   var MARK_VIEWBOX = [1444.55, 1188.328];
   var MARK_PATHS = [
-    'M657.344,633.586c-2.318,141.658-204.189,141.635-206.487-.005,2.318-141.653,204.188-141.631,206.487.005Z',
-    'M812.388,892.272c10.333-4.157,66.093-7.308,81.148-.359,49.462,22.829,102.619,120.742,44.219,141.335,0,0-57.966,25.573-57.966,25.573,0,0-155.144,28.983-155.144,28.983-375.356,64.887-611.432,66.952-689.65-374.01C-22.821,209.116,187.177,232.071,472.06,177.447c411.875-111.465,676.615-424.864,572.361,331.82-5.117,37.14,90.813,242.661,109.744,275.022l144.319,188.21c25.068,42.855,266.77,262.091,30.897,186.592-40.928-13.023-213.922-83.836-257.338-101.423-19.938-8.063-35.698-23.951-43.6-43.955-2.032-8.752-101.896-249.7-96.698-252.038,0-.004-20.93-181.881-20.93-181.881-49.447-464.855-805.163-322.742-730.98,104.968,13.432,203.888,292.114,337.864,530.759,238.58'
+    // The eye, unchanged.
+    'M657.344,633.586c-2.318,141.658-204.189,141.635-206.487-0.005 C453.175,491.928,655.045,491.95,657.344,633.586z',
+    // The body. Redrawn since the first pass — a fuller tail on the leg.
+    'M805.948,904.066c10.333-4.157,72.533-19.102,87.588-12.153c49.462,22.829,102.619,120.742,44.219,141.335 l-57.966,25.573l-155.144,28.983c-375.356,64.887-611.432,66.952-689.65-374.01C-22.821,209.116,187.177,232.071,472.06,177.447 c411.875-111.465,676.615-424.864,572.361,331.82c-5.117,37.14,90.813,242.661,109.744,275.022l144.319,188.21 c25.068,42.855,266.77,262.091,30.897,186.592c-40.928-13.023-213.922-83.836-257.338-101.423 c-19.938-8.063-35.698-23.951-43.6-43.955c-2.032-8.752-101.896-249.7-96.698-252.038c0-0.004-20.93-181.881-20.93-181.881 c-49.447-464.855-805.163-322.742-730.98,104.968C193.267,888.65,567.303,1003.35,805.948,904.066'
   ];
   var MASK_SIZE = 1024;
 
@@ -573,16 +581,22 @@ void main(){
      by rAF or stepped by seek() — the video renderer needs the second
      and there must not be two sources of truth. */
   var CUTS = {
-    backdrop: { length: Infinity, loop: true },
-    mark:     { length: 4400,     loop: true },
-    endcard:  { length: 8600,     loop: false }
+    backdrop:  { length: Infinity, loop: true },
+    mark:      { length: 4400,     loop: true },
+    endcard:   { length: 8600,     loop: false },
+    /* The mark on its own, no wordmark — for a social post or a bumper. */
+    markSolo:  { length: 5000,     loop: true },
+    /* The mark, a five second hold, then by viger cloud. No wordmark and
+       no spin: the mark cross-dissolves rather than being thrown away. */
+    cloud:     { length: 8600,     loop: false }
   };
   var wordmark = document.getElementById('wordmark');
   var byline   = document.getElementById('byline');
   var hold     = document.getElementById('hold');
 
   // The mark rides above centre in the title cuts to clear the wordmark.
-  var HOLD_Y = { backdrop: '-50%', mark: '-60%', endcard: '-60%' };
+  var HOLD_Y = { backdrop: '-50%', mark: '-60%', endcard: '-60%',
+                 markSolo: '-50%', cloud: '-50%' };
 
   var clamp01 = function (x) { return x < 0 ? 0 : x > 1 ? 1 : x; };
   var span = function (t, a, b) { return clamp01((t - a) / (b - a)); };
@@ -596,6 +610,16 @@ void main(){
       reveal = easeInOut(span(t, 1200, 2900));
       wOp    = span(t, 2500, 3400);
       wY     = 14 * (1 - easeOut(span(t, 2500, 3400)));
+    } else if (mode === 'markSolo') {
+      reveal = easeInOut(span(t, 1000, 2700));
+      // No wordmark in this cut at all.
+    } else if (mode === 'cloud') {
+      reveal = easeInOut(span(t, 1000, 2700));
+      // Holds from 2.7s to 7.7s — the five second beat — then hands over.
+      var go = easeInOut(span(t, 7700, 8400));
+      holdOp = 1 - go;
+      scale  = 1 - 0.10 * go;
+      bOp    = span(t, 7800, 8500);
     } else if (mode === 'endcard') {
       reveal = easeInOut(span(t, 1400, 3000));
       wOp    = span(t, 2600, 3500) * (1 - span(t, 4400, 5100));
@@ -672,9 +696,12 @@ void main(){
   var HINTS = {
     backdrop: 'The Control Centre ground — liquid only, no card.',
     mark: 'The mark revealing itself out of the liquid. Loops.',
-    endcard: 'Mark, wordmark, spin-out, by viger cloud. Plays once.'
+    endcard: 'Mark, wordmark, spin-out, by viger cloud. Plays once.',
+    markSolo: 'The mark alone, no wordmark. Loops every 5s.',
+    cloud: 'Mark, a five second hold, then by viger cloud. Plays once.'
   };
-  var buttons = { backdrop: 'b-backdrop', mark: 'b-mark', endcard: 'b-endcard' };
+  var buttons = { backdrop: 'b-backdrop', mark: 'b-mark', endcard: 'b-endcard',
+                  markSolo: 'b-markSolo', cloud: 'b-cloud' };
   function setMode(m) {
     mode = m;
     page.dataset.mode = m;
