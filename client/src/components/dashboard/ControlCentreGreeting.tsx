@@ -4,11 +4,11 @@ import { AlertTriangle, ArrowRight, Info, TriangleAlert } from "lucide-react";
 import { CONTROL_CENTRE_QUERY_KEY, type ControlCentreSnapshot } from "@/lib/controlCentre";
 
 /**
- * The line that sits over the sphere.
+ * The line that sits over the backdrop.
  *
- * Deliberately no card, no background — ControlCentreBackdrop is a decorative
- * brand piece behind the whole hero band, and an opaque box here is exactly
- * what used to hide it. Text reads fine directly over it; that is how the
+ * Deliberately no card, no background — the Control Centre backdrop is a
+ * decorative brand piece behind the whole hero band, and an opaque box here
+ * is exactly what used to hide it. Text reads fine directly over it; that is how the
  * backdrop was designed to be used (see its own doc comment on sitting behind
  * "live figures someone is trying to read").
  */

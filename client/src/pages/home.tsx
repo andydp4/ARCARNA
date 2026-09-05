@@ -7,7 +7,7 @@ import { ControlCentreGreeting } from "@/components/dashboard/ControlCentreGreet
 import { ControlCentreToday } from "@/components/dashboard/ControlCentreToday";
 import { QuickActionCard } from "@/components/dashboard/QuickActionCard";
 import { OperationsSnapshot } from "@/components/dashboard/OperationsSnapshot";
-import { ControlCentreBackdrop } from "@/components/dashboard/ControlCentreBackdrop";
+import { ControlCentreLiquidBackdrop } from "@/components/dashboard/ControlCentreLiquidBackdrop";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { NextMoves } from "@/components/dashboard/NextMoves";
 import { BusinessSignals } from "@/components/dashboard/BusinessSignals";
@@ -98,23 +98,25 @@ export default function Home() {
   }
 
   return (
-    /* `isolate` is load-bearing, not decoration. ControlCentreBackdrop sits at
-       -z-10, and Layout's root carries an opaque bg-background; without a
-       stacking context here the backdrop paints behind that background and is
-       invisible. Removing `isolate` silently hides it. */
-    <div className="relative isolate w-full overflow-x-clip">
-      <ControlCentreBackdrop />
+    /* `isolate` is load-bearing, not decoration. The backdrop sits at -z-10,
+       and Layout's root carries an opaque bg-background; without a stacking
+       context here the backdrop paints behind that background and is
+       invisible. Removing `isolate` silently hides it.
+
+       It does not block the glass below. `isolation: isolate` bounds how far
+       UP the tree a backdrop-filter samples, and the liquid and the glass
+       cards are both inside this wrapper — so the cards still see the liquid,
+       and only Layout's opaque background is excluded, which is the point. */
+    <div className="cc-glass relative isolate w-full overflow-x-clip">
+      <ControlCentreLiquidBackdrop />
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* The hero zone. ControlCentreBackdrop reserves a 420px band for the
-            sphere; this wrapper guarantees the page's content clears it with
-            room rather than an opaque card starting partway down and hiding
-            most of the animation — which is what a KPI card sitting right
-            under the header used to do. min-height (not a fixed height) so a
-            long onboarding banner or wrapped header text still fits; the flex
-            column with a trailing greeting line keeps the visible sphere
-            uncluttered near its centre regardless of how tall the header
-            turns out to be. */}
-        <div className="flex min-h-[440px] flex-col justify-between">
+        {/* The hero zone. The sphere this replaced needed 440px of clearance
+            so an opaque card would not start partway down and hide most of
+            the animation. The liquid is a ground rather than an object — the
+            figures sit ON it, glass over liquid — so it needs far less, and
+            the page gets ~120px back. min-height (not a fixed height) so a
+            long onboarding banner or wrapped header text still fits. */}
+        <div className="flex min-h-[320px] flex-col justify-between">
           <div>
             <PageHeader
               title="Control Centre"
