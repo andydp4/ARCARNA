@@ -4,6 +4,11 @@ All notable changes to the ARCARNA EPOS project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Order form rebuilt without pop-ups.** The tile grid, the cart slide-over and the checkout dialog are gone. The order-line editor is the whole form: type a code or name, scan, or tap one of the new top-seller chips, and fix quantity and price on the line. Payment is a full-screen step that replaces the lines, with a confirm bar pinned to the real bottom of the viewport (sized in `dvh`, so the on-screen keyboard shrinks the page instead of covering the button). The product picker renders its matches inline instead of in a floating layer. This is what made the form flaky on Android: two stacked portals fighting over focus and scroll lock.
+  - New `GET /api/products/top-sellers` (units over the last 30 days, org-scoped, sold statuses only) feeds the chips.
+  - Journeys: `orderForm.spec.ts` drives a whole sale at a phone viewport and asserts no dialog is ever on screen.
+
 ### Added
 - **Backdated orders and pre-orders** (2026-09-03)
   - The POS checkout has an "Order date" field, defaulting to today. It accepts up to 7 days back (a missed day's sales keyed in afterwards) and up to 14 days ahead (pre-orders); anything outside that is refused, not clamped.

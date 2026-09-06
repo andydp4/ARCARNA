@@ -28,7 +28,7 @@ import {
   X,
   UserPlus,
 } from "lucide-react";
-import type { PosProduct } from "@/components/pos-product-card";
+import type { PosProduct } from "@/components/pos-types";
 import { ActionLoader } from "@/components/action-loader";
 import { NewCustomerDialog } from "@/components/customers/NewCustomerDialog";
 import type { TierProgress } from "@shared/loyalty/progress";
@@ -96,6 +96,13 @@ export type PosCartPanelProps = {
   formatPrice: (p: PosProduct) => string;
   handleCheckout: () => void;
   orderSubmitting?: boolean;
+  /**
+   * "summary" leaves out the item list: the order lines editor is the cart
+   * now, so the rail only carries customer, discounts and totals.
+   */
+  variant?: "full" | "summary";
+  /** Off when a sticky bar elsewhere on the page owns the checkout action. */
+  showCheckoutButton?: boolean;
 };
 
 /**
@@ -136,13 +143,16 @@ export function PosCartPanel({
   formatPrice,
   handleCheckout,
   orderSubmitting = false,
+  variant = "full",
+  showCheckoutButton = true,
 }: PosCartPanelProps) {
+  const summaryOnly = variant === "summary";
   const { toast } = useToast();
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
   return (
     <>
-      {cart.length > 0 ? (
+      {summaryOnly ? null : cart.length > 0 ? (
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 2 of 4 · Review cart</p>
       ) : (
         <p className="mb-3 text-sm leading-relaxed text-metal-muted">Add products from the grid to start a sale.</p>
@@ -150,7 +160,7 @@ export function PosCartPanel({
       <div className="mb-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-metal-warm-white sm:text-xl">
           <ShoppingCart className="h-5 w-5 shrink-0" />
-          Cart
+          {summaryOnly ? "Order" : "Cart"}
           {cartItemCount > 0 && (
             <Badge variant="secondary" className="font-normal">
               {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
@@ -338,6 +348,7 @@ export function PosCartPanel({
 
       <Separator className="mb-4" />
 
+      {summaryOnly ? null : (
       <ScrollArea className="mb-4 flex-1">
         {cart.length === 0 ? (
           <div className="py-10 text-center text-metal-muted">
@@ -532,6 +543,7 @@ export function PosCartPanel({
           </div>
         )}
       </ScrollArea>
+      )}
 
       <Card className="pos-summary-card mb-4">
         <CardHeader className="px-4 pb-2 pt-4">
@@ -580,6 +592,7 @@ export function PosCartPanel({
         </CardContent>
       </Card>
 
+      {showCheckoutButton && (
       <Button
         onClick={handleCheckout}
         disabled={cart.length === 0 || orderSubmitting}
@@ -599,10 +612,11 @@ export function PosCartPanel({
         ) : (
           <>
             <Receipt className="h-5 w-5" />
-            {cart.length === 0 ? "Add items to checkout" : "Checkout → Choose payment"}
+            {cart.length === 0 ? "Add items to checkout" : "Checkout → Take payment"}
           </>
         )}
       </Button>
+      )}
     </>
   );
 }

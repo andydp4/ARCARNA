@@ -1,3 +1,19 @@
+/**
+ * The order form.
+ *
+ * Two steps, no pop-ups. Step 1 builds the order on the line editor: type a
+ * code or name, scan a barcode, or tap a top seller, and fix quantity and
+ * price on the line. Step 2 takes the payment on a full-screen step that
+ * replaces the lines rather than floating over them.
+ *
+ * It used to be a tile grid, a cart in a slide-over sheet, and a checkout
+ * dialog stacked on top of the sheet. On Android the stacked layers fought
+ * over focus and scroll lock, the dialog was sized in vh so the keyboard
+ * pushed its buttons off screen, and sometimes the dialog did not render at
+ * all. Everything here is in normal page flow, the shell is sized in dvh, and
+ * the only dialogs left are small and single (redeem points, Z-report, close
+ * shift).
+ */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
@@ -7,39 +23,24 @@ import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Package, Search, Trash2, Plus, CreditCard, DollarSign, Smartphone, Receipt, Mail, Clock, Ticket, ShoppingBag, Truck, UserRound } from "lucide-react";
+import { Package, Receipt, Clock } from "lucide-react";
 import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
 import { ShiftCloseWizard } from "@/pages/pos/shift-close";
 import { ZReportView } from "@/components/ZReport";
 import type { ZReportData } from "@shared/reports/zReport";
 import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
-import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import { Link } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PosProductCard } from "@/components/pos-product-card";
 import { PosOrderLines } from "@/components/pos-order-lines";
-import { STORAGE_POS_ENTRY_MODE } from "@shared/storageKeys";
-import {
-  BACKDATE_LIMIT_DAYS,
-  PREORDER_LIMIT_DAYS,
-  classifyOrderDate,
-  localIsoDate,
-  orderDateWindow,
-} from "@shared/orders/orderDate";
-import type { PosProduct } from "@/components/pos-product-card";
+import { PosTopSellers } from "@/components/pos-top-sellers";
+import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
+import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
+import { formatPosPrice, posPrice, type PosProduct } from "@/components/pos-types";
 import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
@@ -67,31 +68,6 @@ interface CartItem {
   // Local editing states (not in sync with actual values)
   priceInput?: string;
   quantityInput?: string;
-}
-
-/** Fixed-height placeholders matching product card grid to avoid layout jump while products load */
-function PosProductGridSkeleton() {
-  const placeholders = 8;
-  return (
-    <>
-      {Array.from({ length: placeholders }).map((_, i) => (
-        <div
-          key={i}
-          className="lm-card-muted flex min-h-[188px] flex-col overflow-hidden rounded-lg"
-        >
-          <div className="space-y-2 px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-          <div className="flex flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4">
-            <Skeleton className="mb-2 h-8 w-24" />
-            <Skeleton className="mb-2 h-5 w-28" />
-            <Skeleton className="mt-auto h-11 w-full rounded-md" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
 }
 
 /**
@@ -123,50 +99,28 @@ function ShiftSoFar({ shiftId }: { shiftId: string }) {
 export default function POS() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const [cartOpen, setCartOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  /** Which step is on screen. "pay" replaces the lines with the payment step. */
+  const [view, setView] = useState<"build" | "pay">("build");
 
-  /**
-   * Entry mode. "tiles" is the original till-style grid; "lines" is the order
-   * line editor, which suits a coded catalogue and lets price and quantity be
-   * corrected in place instead of bouncing to checkout and back. Remembered per
-   * device so a till keeps whichever the staff there prefer.
-   */
-  const [entryMode, setEntryMode] = useState<"tiles" | "lines">(() => {
-    if (typeof window === "undefined") return "tiles";
-    return window.localStorage.getItem(STORAGE_POS_ENTRY_MODE) === "lines" ? "lines" : "tiles";
-  });
-
-  const changeEntryMode = useCallback((mode: "tiles" | "lines") => {
-    setEntryMode(mode);
-    try {
-      window.localStorage.setItem(STORAGE_POS_ENTRY_MODE, mode);
-    } catch {
-      /* private browsing — mode simply is not remembered */
-    }
-  }, []);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [personalUseReason, setPersonalUseReason] = useState("");
   // Split tender: a £100 sale taken as £50 cash and £50 on tick. Off by
   // default, because most sales are one tender and the extra controls would
   // just slow the till down.
   const [splitPayment, setSplitPayment] = useState(false);
-  const [tenderLegs, setTenderLegs] = useState<Array<{ method: string; amount: string }>>([
+  const [tenderLegs, setTenderLegs] = useState<TenderLeg[]>([
     { method: "cash", amount: "" },
     { method: "card", amount: "" },
   ]);
-  // Defaults to collection: the overwhelming majority of till sales are handed
-  // over at the counter, so the common path stays a single tap.
   // The day the order is for. Today unless the cashier says otherwise — a
   // missed day being keyed in afterwards, or a pre-order. Sent only when it is
   // not today, so an ordinary sale is dated by the server, in the org's zone.
   const [orderDate, setOrderDate] = useState<string>(() => localIsoDate());
-  const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">(
-    "collection",
-  );
+  // Defaults to collection: the overwhelming majority of till sales are handed
+  // over at the counter, so the common path stays a single tap.
+  const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">("collection");
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -177,11 +131,7 @@ export default function POS() {
   const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [redeemInput, setRedeemInput] = useState("");
-  const [orderExpenses, setOrderExpenses] = useState<Array<{
-    category: string;
-    description: string;
-    amount: number;
-  }>>([]);
+  const [orderExpenses, setOrderExpenses] = useState<OrderExpense[]>([]);
   const [expenseCategory, setExpenseCategory] = useState("shipping");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
@@ -252,10 +202,7 @@ export default function POS() {
         unmatched.push(item.name);
         continue;
       }
-      const price =
-        typeof product.defaultSalePrice === "string"
-          ? parseFloat(product.defaultSalePrice)
-          : product.defaultSalePrice;
+      const price = posPrice(product);
       const quantity = Math.max(1, item.quantity || 1);
       matched.push({ product, quantity, customPrice: price, subtotal: price * quantity });
     }
@@ -269,12 +216,11 @@ export default function POS() {
       title: "WhatsApp draft loaded",
       description:
         matched.length > 0
-          ? `${matched.length} item(s) added to cart${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
+          ? `${matched.length} item(s) added${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
           : "No catalogue products matched the message. Add items manually.",
     });
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
-  // Fetch loyalty tiers
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
   // total and charged another.
@@ -301,18 +247,6 @@ export default function POS() {
       })),
     );
   }, [selectedCustomer, loyaltyTiers]);
-
-  // Stable list reference when cart/checkout state changes → memoized product tiles can skip re-render
-  const filteredProducts = useMemo(
-    () =>
-      products.filter(
-        (product) =>
-          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.productId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.barcode && product.barcode.includes(searchTerm))
-      ),
-    [products, searchTerm]
-  );
 
   // Filter customers for search
   const filteredCustomers = customers.filter(
@@ -445,7 +379,7 @@ export default function POS() {
       }
       setCart([]);
       setSelectedCustomer(null);
-      setCheckoutDialogOpen(false);
+      setView("build");
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
@@ -466,12 +400,11 @@ export default function POS() {
     },
   });
 
+  // Adds a line, or bumps the quantity of the line the product is already on.
+  // No toast: the line appearing in the editor is the confirmation.
   const addToCart = useCallback((product: Product) => {
     if (placeOrderMutation.isPending) return;
-    const price =
-      typeof product.defaultSalePrice === "string"
-        ? parseFloat(product.defaultSalePrice)
-        : product.defaultSalePrice;
+    const price = posPrice(product);
 
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
@@ -496,11 +429,7 @@ export default function POS() {
         },
       ];
     });
-    toast({
-      title: "Added to Cart",
-      description: `${product.name} added to cart`,
-    });
-  }, [placeOrderMutation.isPending, toast]);
+  }, [placeOrderMutation.isPending]);
 
   const addProductByBarcode = useCallback(
     async (code: string) => {
@@ -521,23 +450,20 @@ export default function POS() {
         playScanSuccessBeep();
       } catch {
         playScanFailBeep();
-        // The search box exists in tile mode only, so in Order lines this would
-        // set a filter nobody can see — and leave it waiting on the way back.
-        if (entryMode === "tiles") setSearchTerm(code);
         toast({
           title: "Unknown barcode",
-          description:
-            entryMode === "tiles"
-              ? `No product matched "${code}". Search opened with that code.`
-              : `No product matched "${code}". Add it by name or code on a line.`,
+          description: `No product matched "${code}". Add it by name or code instead.`,
           variant: "destructive",
         });
       }
     },
-    [products, addToCart, toast, entryMode],
+    [products, addToCart, toast],
   );
 
   useBarcodeScanner((code) => {
+    // A scan while taking payment is almost always the next customer's first
+    // item. Bring the lines back rather than adding to an order being paid.
+    if (view === "pay") setView("build");
     void addProductByBarcode(code);
   });
 
@@ -617,21 +543,22 @@ export default function POS() {
         100,
     ) / 100;
 
-  // Total item count for cart badge (sum of quantities)
+  // Total item count (sum of quantities)
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Handle checkout
+  // Handle checkout: move to the payment step.
   const handleCheckout = useCallback(() => {
     if (placeOrderMutation.isPending) return;
     if (cart.length === 0) {
       toast({
-        title: "Cart Empty",
-        description: "Please add items to cart before checkout",
+        title: "Nothing on the order",
+        description: "Add at least one line before taking payment",
         variant: "destructive",
       });
       return;
     }
-    setCheckoutDialogOpen(true);
+    setView("pay");
+    window.scrollTo({ top: 0 });
   }, [cart.length, placeOrderMutation.isPending, toast]);
 
   // Add expense to order
@@ -680,8 +607,8 @@ export default function POS() {
   const processPayment = () => {
     if (cart.length === 0) {
       toast({
-        title: "Cart Empty",
-        description: "Add items to cart before processing payment",
+        title: "Nothing on the order",
+        description: "Add at least one line before taking payment",
         variant: "destructive",
       });
       return;
@@ -768,7 +695,7 @@ export default function POS() {
     }
     if (paymentMethod === "personal_use") {
       // Guarded here as well as on the server, so the cashier is told before
-      // the request rather than after it.
+      // the request rather than after.
       if (personalUseReason.trim().length < 3) {
         toast({
           title: "Say what this is for",
@@ -815,19 +742,9 @@ export default function POS() {
     placeOrderMutation.mutate(orderData);
   };
 
-  const formatPrice = (p: Product) =>
-    `£${(typeof p.defaultSalePrice === "string" ? parseFloat(p.defaultSalePrice) || 0 : p.defaultSalePrice || 0).toFixed(2)}`;
+  const formatPrice = (p: Product) => formatPosPrice(p);
 
-  const safeAreaBottom = "env(safe-area-inset-bottom, 0px)";
-  const mobileGridPaddingBottom = isMobile
-    ? `calc(${safeAreaBottom} + ${cart.length > 0 ? "8.25rem" : "5rem"})`
-    : undefined;
-  const mobileFabBottom = cart.length > 0
-    ? `calc(${safeAreaBottom} + 6rem)`
-    : `max(1rem, ${safeAreaBottom})`;
-  const mobileQuickBarBottom = `max(1rem, ${safeAreaBottom})`;
-
-  const cartPanelProps = {
+  const cartPanelProps: PosCartPanelProps = {
     cart,
     setCart,
     cartItemCount,
@@ -861,624 +778,176 @@ export default function POS() {
     formatPrice,
     handleCheckout,
     orderSubmitting: placeOrderMutation.isPending,
+    variant: "summary",
   };
 
+  const submitting = placeOrderMutation.isPending;
+
   return (
-    <div
-      className="pos-shell pos-tablet-shell flex h-screen flex-col lg:flex-row"
-      style={{ paddingBottom: isMobile ? safeAreaBottom : undefined }}
-    >
-      {/* Products Panel - Step 1: Add items (~62% on tablet landscape) */}
-      <div className="pos-products-panel flex-1 overflow-hidden p-4 sm:p-6 lg:max-w-[62%] lg:flex-[1.62]">
-        <div className="pos-section-header mb-6 pb-6">
-          <PageHeader
-            // Below lg, stack the action row under the title instead of
-            // fighting it for horizontal space. The default breakpoint (sm,
-            // 640px) is too eager here: three buttons squeezed the title and
-            // question onto a column a few characters wide, wrapping "Create
-            // Order" and "What is this customer buying?" one word per line.
-            className="mb-4 sm:flex-col sm:items-stretch sm:justify-start lg:flex-row lg:items-start lg:justify-between"
-            eyebrow="Step 1 of 4 · Add items"
-            title="Create Order"
-            question="What is this customer buying?"
-            explanation="Search products, build the cart, then check out."
-            action={
-              <>
-                {/* "Start cashier shift" (assigning a cashier CODE) is gone
-                    from the primary toolbar. Codes were dropped in favour of
-                    user accounts (L1/L2): a shift now opens automatically on
-                    login, and the button's own copy — "select your cashier
-                    code to begin tracking commission" — is no longer true. */}
-                {shiftId && (
-                  <Button
-                    variant="outline"
-                    className="lm-btn-outline min-h-[44px] shrink-0"
-                    onClick={() => setZReportOpen(true)}
-                    data-testid="button-z-report-so-far"
-                  >
-                    <Receipt className="mr-2 h-4 w-4" />
-                    Z-report so far
-                  </Button>
-                )}
-                {shiftId && (
-                  <Button
-                    variant="outline"
-                    className="lm-btn-outline min-h-[44px] shrink-0"
-                    onClick={() => setShiftCloseOpen(true)}
-                  >
-                    <Clock className="mr-2 h-4 w-4" />
-                    Close shift
-                  </Button>
-                )}
-                {!isMobile && (
-                  <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
-                    <Link href="/">
-                      <Package className="mr-2 h-4 w-4" />
-                      Dashboard
-                    </Link>
-                  </Button>
-                )}
-              </>
-            }
+    <div className="pos-shell pos-viewport flex flex-col overflow-hidden lg:flex-row">
+      {view === "pay" ? (
+        <div className="min-h-0 flex-1">
+          <PosCheckoutStep
+            total={total}
+            itemCount={cartItemCount}
+            customerName={selectedCustomer?.name ?? null}
+            customerEmail={selectedCustomer?.email ?? null}
+            paymentMethod={paymentMethod}
+            setPaymentMethod={setPaymentMethod}
+            personalUseReason={personalUseReason}
+            setPersonalUseReason={setPersonalUseReason}
+            splitPayment={splitPayment}
+            setSplitPayment={setSplitPayment}
+            tenderLegs={tenderLegs}
+            setTenderLegs={setTenderLegs}
+            splitRemaining={splitRemaining}
+            orderDate={orderDate}
+            setOrderDate={setOrderDate}
+            fulfilmentMethod={fulfilmentMethod}
+            setFulfilmentMethod={setFulfilmentMethod}
+            giftCardPayment={giftCardPayment}
+            setGiftCardPayment={setGiftCardPayment}
+            expenses={orderExpenses}
+            expenseCategory={expenseCategory}
+            setExpenseCategory={setExpenseCategory}
+            expenseDescription={expenseDescription}
+            setExpenseDescription={setExpenseDescription}
+            expenseAmount={expenseAmount}
+            setExpenseAmount={setExpenseAmount}
+            onAddExpense={addExpense}
+            onRemoveExpense={removeExpense}
+            emailReceipt={emailReceipt}
+            setEmailReceipt={setEmailReceipt}
+            submitting={submitting}
+            onBack={() => setView("build")}
+            onConfirm={processPayment}
           />
-          {/* Belongs to the tile grid, and only the tile grid. Order lines
-              searches per line, so showing this there put two search boxes on
-              one screen — and worse, this one silently narrowed what the line
-              picker could find. */}
-          {entryMode === "tiles" && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-metal-muted" />
-              <Input
-                placeholder="Search by name, SKU, or barcode…"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="min-h-[44px] border-metal-edge bg-metal-charcoal pl-10 text-metal-warm-white placeholder:text-metal-muted"
-                data-testid="search-products"
+        </div>
+      ) : (
+        <>
+          {/* Step 1: the order itself. */}
+          <div className="pos-products-panel flex min-h-0 flex-1 flex-col lg:max-w-[62%] lg:flex-[1.62]">
+            <div className="pos-section-header shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pt-5">
+              <PageHeader
+                // The action row stacks under the title until there is real
+                // room beside it: this panel is ~62% of the page, and three
+                // buttons beside the title squeezed it to a few words a line.
+                className="mb-0 sm:flex-col sm:items-stretch sm:justify-start 2xl:flex-row 2xl:items-start 2xl:justify-between"
+                eyebrow="Step 1 of 2 · Build the order"
+                title="Create Order"
+                question={isMobile ? undefined : "What is this customer buying?"}
+                explanation={isMobile ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
+                action={
+                  <>
+                    {shiftId && (
+                      <Button
+                        variant="outline"
+                        className="lm-btn-outline min-h-[44px] shrink-0"
+                        onClick={() => setZReportOpen(true)}
+                        data-testid="button-z-report-so-far"
+                      >
+                        <Receipt className="mr-2 h-4 w-4" />
+                        Z-report so far
+                      </Button>
+                    )}
+                    {shiftId && (
+                      <Button
+                        variant="outline"
+                        className="lm-btn-outline min-h-[44px] shrink-0"
+                        onClick={() => setShiftCloseOpen(true)}
+                      >
+                        <Clock className="mr-2 h-4 w-4" />
+                        Close shift
+                      </Button>
+                    )}
+                    {!isMobile && (
+                      <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
+                        <Link href="/">
+                          <Package className="mr-2 h-4 w-4" />
+                          Dashboard
+                        </Link>
+                      </Button>
+                    )}
+                  </>
+                }
               />
             </div>
-          )}
-        </div>
 
-        <div className="mb-3 flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-metal-muted">Entry</span>
-          <div className="flex rounded-md border border-metal-edge p-0.5">
-            {(["tiles", "lines"] as const).map((mode) => (
-              <Button
-                key={mode}
-                size="sm"
-                variant={entryMode === mode ? "default" : "ghost"}
-                className="h-8 px-3 text-xs"
-                onClick={() => changeEntryMode(mode)}
-                data-testid={`pos-entry-mode-${mode}`}
-              >
-                {mode === "tiles" ? "Tiles" : "Order lines"}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <ScrollArea className="h-[calc(100vh-180px)] lg:h-[calc(100vh-156px)]">
-          {entryMode === "lines" ? (
-            <div
-              className="p-1"
-              style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
-            >
-              <PosOrderLines
-                products={products}
-                lines={cart}
-                onChange={setCart}
-              />
-            </div>
-          ) : (
-          <div
-            className="pos-product-grid grid grid-cols-2 gap-3 p-1 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-3 lg:gap-3 lg:pb-4 min-[1194px]:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5"
-            style={mobileGridPaddingBottom ? { paddingBottom: mobileGridPaddingBottom } : undefined}
-          >
-            {productsLoading ? (
-              <PosProductGridSkeleton />
-            ) : filteredProducts.length === 0 ? (
-              <div className="pos-empty-state col-span-full rounded-xl px-6 py-12 text-center">
-                <Package className="mx-auto mb-3 h-10 w-10 text-metal-muted" />
-                <p className="font-medium text-metal-warm-white">No products match this search</p>
-                <p className="mt-2 text-sm text-metal-muted">Try another keyword or clear the search box.</p>
-              </div>
-            ) : (
-              filteredProducts.map((product) => (
-                <PosProductCard
-                  key={product.id}
-                  product={product}
-                  onAdd={addToCart}
-                  disabled={placeOrderMutation.isPending}
+            {/* Plain overflow scrolling, not a scroll-area widget: touch
+                scrolling and the on-screen keyboard both behave with the
+                browser's own scroller. */}
+            {/* Extra bottom room on phones so the last card can scroll clear of
+                the app's floating assistant buttons. */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-3 sm:px-6 sm:pb-6">
+              {productsLoading ? (
+                <p className="py-6 text-sm text-metal-muted" data-testid="pos-products-loading">
+                  Loading the catalogue…
+                </p>
+              ) : (
+                <PosOrderLines
+                  products={products}
+                  lines={cart}
+                  onChange={setCart}
+                  disabled={submitting}
+                  aboveLines={<PosTopSellers products={products} onAdd={addToCart} disabled={submitting} />}
                 />
-              ))
+              )}
+
+              {/* On a phone the customer, discounts and totals sit under the
+                  lines rather than in a slide-over. */}
+              {isMobile && (
+                <div className="lm-card mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
+                  <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
+                </div>
+              )}
+            </div>
+
+            {isMobile && (
+              <div
+                // Right padding keeps the button clear of the app's floating
+                // chat launcher, which sits fixed in the bottom-right corner.
+                className="pos-action-bar shrink-0 py-3 pl-4 pr-[4.75rem]"
+                style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-xs text-metal-muted">
+                      {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
+                      {selectedCustomer ? ` · ${selectedCustomer.name}` : ""}
+                    </div>
+                    <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="mobile-order-total">
+                      £{total.toFixed(2)}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleCheckout}
+                    size="lg"
+                    className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
+                    disabled={cart.length === 0 || submitting}
+                    data-testid="mobile-checkout-button"
+                  >
+                    {submitting ? (
+                      <>
+                        <ActionLoader className="text-primary-foreground" />
+                        Wait…
+                      </>
+                    ) : (
+                      "Take payment"
+                    )}
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
-          )}
-        </ScrollArea>
-      </div>
 
-      {/* Desktop Cart Panel */}
-      {!isMobile && (
-        <div className="pos-cart-rail flex w-full max-w-md flex-col border-l border-metal-edge p-4 lg:max-w-[38%] lg:flex-1 lg:pb-24">
-          <PosCartPanel {...cartPanelProps} />
-        </div>
-      )}
-
-      {/* Mobile Cart Sheet + FAB */}
-      {isMobile && (
-        <>
-          <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-            <SheetTrigger asChild>
-              <Button
-                size="lg"
-                className="pos-fab fixed right-4 z-50 h-14 w-14 min-h-[48px] min-w-[48px] rounded-full p-0"
-                style={{ bottom: mobileFabBottom }}
-                data-testid="mobile-cart-button"
-                aria-label={cartItemCount > 0 ? `Cart: ${cartItemCount} items` : "Open cart"}
-              >
-                <div className="relative">
-                  <ShoppingCart className="h-6 w-6" />
-                  {cartItemCount > 0 && (
-                    <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
-                      {cartItemCount}
-                    </Badge>
-                  )}
-                </div>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="liquid-metal pos-cart-rail flex w-full flex-col p-4 sm:w-96">
-              <SheetHeader className="mb-4">
-                <SheetTitle>
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="h-5 w-5 shrink-0" />
-                    Cart
-                    {cartItemCount > 0 && (
-                      <Badge variant="secondary" className="font-normal">
-                        {cartItemCount} items
-                      </Badge>
-                    )}
-                  </div>
-                </SheetTitle>
-              </SheetHeader>
-              <div className="flex flex-1 flex-col overflow-hidden">
-                <PosCartPanel {...cartPanelProps} />
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          {/* Mobile quick bar - visible when cart has items, above FAB */}
-          {cart.length > 0 && (
-            <div className="fixed bottom-0 left-4 right-16 z-40 lg:hidden" style={{ bottom: mobileQuickBarBottom }}>
-              <Card className="pos-quick-bar">
-                <CardContent className="flex items-center justify-between gap-3 p-3">
-                  <div className="min-w-0">
-                    <div className="text-xs text-metal-muted">{cartItemCount} items</div>
-                    <div className="text-lg font-bold text-metal-warm-white">£{total.toFixed(2)}</div>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      onClick={() => setCartOpen(true)}
-                      size="sm"
-                      className="lm-btn-outline min-h-[44px]"
-                      disabled={placeOrderMutation.isPending}
-                      data-testid="view-cart-button"
-                    >
-                      Review
-                    </Button>
-                    <Button
-                      onClick={handleCheckout}
-                      size="sm"
-                      className="lm-btn-metal min-h-[44px] gap-2"
-                      disabled={placeOrderMutation.isPending}
-                      data-testid="mobile-checkout-button"
-                    >
-                      {placeOrderMutation.isPending ? (
-                        <>
-                          <ActionLoader className="text-primary-foreground" />
-                          Wait…
-                        </>
-                      ) : (
-                        "Checkout"
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Desktop and tablet: customer, discounts and totals on the right. */}
+          {!isMobile && (
+            <div className="pos-cart-rail flex w-full max-w-md flex-col overflow-y-auto border-l border-metal-edge p-4 lg:max-w-[38%] lg:flex-1">
+              <PosCartPanel {...cartPanelProps} />
             </div>
           )}
         </>
       )}
-
-      {/* Checkout Dialog - Steps 3 & 4: Choose payment → Confirm */}
-      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="liquid-metal lm-card max-h-[90vh] max-w-lg overflow-y-auto border-metal-edge bg-metal-gunmetal">
-          <DialogHeader className="space-y-1 text-left">
-            <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 3 &amp; 4 of 4</p>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-metal-warm-white">Payment &amp; confirm</DialogTitle>
-            <DialogDescription className="text-sm leading-relaxed text-metal-muted">
-              Choose how the customer paid, then confirm to complete the sale.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Split across payment types</span>
-              <Switch
-                checked={splitPayment}
-                onCheckedChange={setSplitPayment}
-                aria-label="Split across payment types"
-                data-testid="switch-split-payment"
-              />
-            </div>
-
-            {splitPayment ? (
-              <div className="space-y-2">
-                {/* Each row is one tender. They have to add up to the order —
-                    a split that does not is a sale with money unaccounted for. */}
-                {tenderLegs.map((leg, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Select
-                      value={leg.method}
-                      onValueChange={(v) =>
-                        setTenderLegs((legs) =>
-                          legs.map((l, i) => (i === index ? { ...l, method: v } : l)),
-                        )
-                      }
-                    >
-                      <SelectTrigger className="min-h-[44px] flex-1" aria-label={`Payment type ${index + 1}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="transfer">Transfer</SelectItem>
-                        <SelectItem value="tick">On Credit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      placeholder="0.00"
-                      className="min-h-[44px] w-32"
-                      value={leg.amount}
-                      aria-label={`Amount ${index + 1}`}
-                      data-testid={`input-tender-amount-${index}`}
-                      onChange={(e) =>
-                        setTenderLegs((legs) =>
-                          legs.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l)),
-                        )
-                      }
-                    />
-                    {tenderLegs.length > 2 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-[44px]"
-                        aria-label={`Remove payment ${index + 1}`}
-                        onClick={() => setTenderLegs((legs) => legs.filter((_, i) => i !== index))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <div className="flex items-center justify-between">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-[44px]"
-                    onClick={() => setTenderLegs((legs) => [...legs, { method: "cash", amount: "" }])}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add payment
-                  </Button>
-                  {/* The number a cashier actually needs: what is left to take. */}
-                  <span
-                    className={`text-sm font-medium ${splitRemaining === 0 ? "text-metal-muted" : "text-warning"}`}
-                    data-testid="text-split-remaining"
-                  >
-                    {splitRemaining === 0
-                      ? "Adds up"
-                      : splitRemaining > 0
-                        ? `£${splitRemaining.toFixed(2)} left to take`
-                        : `£${Math.abs(splitRemaining).toFixed(2)} over`}
-                  </span>
-                </div>
-              </div>
-            ) : (
-            <div>
-              <label className="text-sm font-medium mb-2 block">Payment Method</label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger data-testid="select-payment" className="min-h-[44px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4" />
-                      Cash
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="card">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
-                      Card
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="transfer">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="h-4 w-4" />
-                      Transfer
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="tick">
-                    <div className="flex items-center gap-2">
-                      <Receipt className="h-4 w-4" />
-                      On Credit
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="gift_card">
-                    <div className="flex items-center gap-2">
-                      <Ticket className="h-4 w-4" />
-                      Gift card
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="personal_use">
-                    <div className="flex items-center gap-2">
-                      <UserRound className="h-4 w-4" />
-                      Personal use (staff)
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            )}
-
-            {!splitPayment && paymentMethod === "personal_use" && (
-              <div>
-                <label className="text-sm font-medium mb-2 block" htmlFor="personal-use-reason">
-                  What is this for?
-                </label>
-                <Input
-                  id="personal-use-reason"
-                  value={personalUseReason}
-                  onChange={(e) => setPersonalUseReason(e.target.value)}
-                  placeholder="e.g. staff lunch, damaged stock written off to staff"
-                  data-testid="input-personal-use-reason"
-                  className="min-h-[44px]"
-                />
-                {/* Said plainly at the till rather than discovered afterwards:
-                    this is recorded, costed, and a manager is told. */}
-                <p className="text-xs text-metal-muted mt-2">
-                  This is not a sale. The stock comes off, the cost goes on today's expenses, and a
-                  manager is notified.
-                </p>
-              </div>
-            )}
-
-            {(() => {
-              const today = localIsoDate();
-              const window = orderDateWindow(today);
-              const verdict = classifyOrderDate(orderDate, today);
-              const kind = verdict.ok ? verdict.dating.kind : null;
-              return (
-                <div>
-                  <label className="text-sm font-medium mb-2 block" htmlFor="order-date">
-                    Order date
-                  </label>
-                  <Input
-                    id="order-date"
-                    type="date"
-                    value={orderDate}
-                    min={window.min}
-                    max={window.max}
-                    onChange={(e) => setOrderDate(e.target.value || today)}
-                    className="min-h-[44px]"
-                    aria-describedby="order-date-hint"
-                    data-testid="input-order-date"
-                  />
-                  {/* Said at the till, before the sale goes through: a dated
-                      order lands on that day's figures, and is marked as
-                      keyed in late or ahead so nobody mistakes it for a live
-                      sale afterwards. */}
-                  <p id="order-date-hint" className="text-xs text-metal-muted mt-2" data-testid="text-order-date-hint">
-                    {!verdict.ok
-                      ? verdict.message
-                      : kind === "backdated"
-                        ? `Backdated: this will be recorded as a sale on ${orderDate} and marked as entered late.`
-                        : kind === "preorder"
-                          ? `Pre-order: this will be recorded against ${orderDate} and marked as a pre-order.`
-                          : `Today. Up to ${BACKDATE_LIMIT_DAYS} days back for a missed day, or ${PREORDER_LIMIT_DAYS} days ahead for a pre-order.`}
-                  </p>
-                </div>
-              );
-            })()}
-
-            <div>
-              <span className="text-sm font-medium mb-2 block" id="fulfilment-label">
-                Fulfilment
-              </span>
-              <div
-                className="grid grid-cols-2 gap-2"
-                role="radiogroup"
-                aria-labelledby="fulfilment-label"
-              >
-                {(["collection", "delivery"] as const).map((method) => (
-                  <Button
-                    key={method}
-                    type="button"
-                    role="radio"
-                    aria-checked={fulfilmentMethod === method}
-                    variant={fulfilmentMethod === method ? "default" : "outline"}
-                    className="min-h-[44px] capitalize"
-                    onClick={() => setFulfilmentMethod(method)}
-                    data-testid={`select-fulfilment-${method}`}
-                  >
-                    {method === "collection" ? (
-                      <ShoppingBag className="mr-2 h-4 w-4" aria-hidden />
-                    ) : (
-                      <Truck className="mr-2 h-4 w-4" aria-hidden />
-                    )}
-                    {method}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {paymentMethod === "gift_card" && (
-              <GiftCardPayment orderTotal={total} value={giftCardPayment} onChange={setGiftCardPayment} />
-            )}
-
-            {/* Order Expenses Section */}
-            <Card className="lm-card-muted">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-metal-warm-white">Order Expenses (Optional)</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                    <SelectTrigger className="w-full sm:w-[130px] min-h-[44px]" data-testid="select-expense-category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="shipping">Shipping</SelectItem>
-                      <SelectItem value="travel">Travel</SelectItem>
-                      <SelectItem value="packaging">Packaging</SelectItem>
-                      <SelectItem value="handling">Handling</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Description"
-                    value={expenseDescription}
-                    onChange={(e) => setExpenseDescription(e.target.value)}
-                    className="flex-1 min-h-[44px]"
-                    data-testid="input-expense-desc"
-                  />
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="0.00"
-                      type="number"
-                      value={expenseAmount}
-                      onChange={(e) => setExpenseAmount(e.target.value)}
-                      className="w-full sm:w-[100px] min-h-[44px]"
-                      data-testid="input-expense-amt"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={addExpense}
-                      variant="outline"
-                      className="min-h-[44px] min-w-[44px]"
-                      data-testid="button-add-order-expense"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                
-                {orderExpenses.length > 0 && (
-                  <div className="space-y-1">
-                    {orderExpenses.map((expense, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm py-2 gap-2">
-                        <span className="text-muted-foreground flex-1 break-words">
-                          {expense.category}: {expense.description}
-                        </span>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="font-medium">£{expense.amount.toFixed(2)}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeExpense(index)}
-                            className="h-8 w-8 p-0 min-h-[32px] min-w-[32px]"
-                            data-testid={`button-remove-expense-${index}`}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    <Separator />
-                    <div className="flex justify-between font-medium pt-1">
-                      <span>Total Expenses</span>
-                      <span>£{orderExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <div className="lm-card-muted flex items-start gap-3 rounded-lg border border-metal-edge p-3">
-              <Checkbox
-                id="email-receipt"
-                checked={emailReceipt}
-                disabled={!selectedCustomer?.email}
-                onCheckedChange={(v) => setEmailReceipt(v === true)}
-                data-testid="checkbox-email-receipt"
-              />
-              <div className="space-y-1">
-                <label
-                  htmlFor="email-receipt"
-                  className="text-sm font-medium leading-none flex items-center gap-2 cursor-pointer"
-                >
-                  <Mail className="h-4 w-4" />
-                  Email receipt
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  {selectedCustomer?.email
-                    ? `Send to ${selectedCustomer.email}`
-                    : "Select a customer with an email address"}
-                </p>
-              </div>
-            </div>
-
-            <Card className="lm-card-muted">
-              <CardContent className="p-4">
-                <div className="space-y-2 text-sm text-metal-warm-white">
-                  <div className="flex justify-between">
-                    <span>Customer</span>
-                    <span className="font-medium">{selectedCustomer?.name || "Walk-in"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Items</span>
-                    <span className="font-medium">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total</span>
-                    <span>£{total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setCheckoutDialogOpen(false)} className="lm-btn-outline w-full min-h-[44px] sm:w-auto">
-              Cancel
-            </Button>
-            <Button
-              onClick={processPayment}
-              disabled={cart.length === 0 || placeOrderMutation.isPending}
-              aria-label={cart.length === 0 ? "Payment disabled – add items to cart" : "Confirm payment"}
-              data-testid="button-confirm-payment"
-              className="lm-btn-metal min-h-[44px] w-full gap-2 sm:w-auto"
-            >
-              {placeOrderMutation.isPending ? (
-                <>
-                  <ActionLoader className="text-primary-foreground" />
-                  Processing…
-                </>
-              ) : (
-                "Confirm payment"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
         <DialogContent>
@@ -1534,7 +1003,7 @@ export default function POS() {
           it opens rather than cached, because a stale figure is the whole
           problem this screen is meant to solve. */}
       <Dialog open={zReportOpen} onOpenChange={setZReportOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Your shift so far</DialogTitle>
             <DialogDescription>
