@@ -46,13 +46,13 @@ const SOURCE = resolve(HERE, 'arcarna-liquid.html');
 // shortening either one to a nicer number puts a jump in the seam.
 // Posters land on the beat the clip is about, not on its final frame.
 const CLIPS = {
-  mark:     { mode: 'mark',     from: 0, to: 24000, poster: 16800 },
-  endcard:  { mode: 'endcard',  from: 0, to: 21000, poster: 20600 },
+  mark:     { mode: 'mark',     from: 0, to: 24000, poster: 14000 },
+  endcard:  { mode: 'endcard',  from: 0, to: 18000, poster: 17600 },
   backdrop: { mode: 'backdrop', from: 0, to: 12000, poster: 6000 },
   // The a alone: rises, drains, goes white, returns. Loops.
-  marksolo: { mode: 'markSolo', from: 0, to: 24000, poster: 14600 },
+  marksolo: { mode: 'markSolo', from: 0, to: 24000, poster: 11600 },
   // The a, a five second hold, then by viger cloud.
-  cloud:    { mode: 'cloud',    from: 0, to: 21000, poster: 20500 },
+  cloud:    { mode: 'cloud',    from: 0, to: 18000, poster: 17500 },
 };
 
 function findChromium() {
