@@ -39,6 +39,7 @@ function round(n: number): number {
 }
 
 type DailyCloseDb = Pick<typeof db, "select" | "insert" | "update">;
+const ACTIVE_TILL_SHIFT_STATUSES = ["open", "reopened"];
 
 export type DailyCloseResult = {
   orgId: string;
@@ -112,7 +113,13 @@ export async function closeTradingDay(
     const [{ count: uncountedDrawers }] = await tx
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(shifts)
-      .where(and(eq(shifts.orgId, orgId), eq(shifts.status, "open"), lt(shifts.openedAt, end)));
+      .where(
+        and(
+          eq(shifts.orgId, orgId),
+          inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
+          lt(shifts.openedAt, end),
+        ),
+      );
 
     const [run] = await tx
       .insert(dailyCloseRuns)

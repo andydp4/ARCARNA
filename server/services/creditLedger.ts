@@ -458,10 +458,29 @@ export async function writeOffCredit(orgId: string, orderId: string): Promise<Or
   const [updated] = await db
     .update(orderCredit)
     .set({ amountOutstanding: "0", status: "written_off", updatedAt: new Date() })
-    .where(and(eq(orderCredit.orderId, orderId), eq(orderCredit.orgId, orgId)))
+    .where(
+      and(
+        eq(orderCredit.orderId, orderId),
+        eq(orderCredit.orgId, orgId),
+        inArray(orderCredit.status, ["outstanding", "partial"]),
+      ),
+    )
     .returning();
-  if (!updated) throw new CreditError("No credit is recorded against this order", 404, "CREDIT_NOT_FOUND");
-  return updated;
+  if (updated) return updated;
+
+  const [existing] = await db
+    .select({ status: orderCredit.status })
+    .from(orderCredit)
+    .where(and(eq(orderCredit.orderId, orderId), eq(orderCredit.orgId, orgId)))
+    .limit(1);
+  if (existing) {
+    throw new CreditError(
+      `This credit is ${String(existing.status).replace("_", " ")}`,
+      409,
+      "CREDIT_CLOSED",
+    );
+  }
+  throw new CreditError("No credit is recorded against this order", 404, "CREDIT_NOT_FOUND");
 }
 
 /**

@@ -1,9 +1,11 @@
 import type { RequestHandler, Request, Response, NextFunction } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { locations, shifts } from "../../shared/schema";
 import { storage } from "../storage";
 import { isDevAuthBypassEnabled } from "../authRuntime";
+
+const ACTIVE_TILL_SHIFT_STATUSES = ["open", "reopened"];
 
 /** Localhost-only test impersonation (PHASE2D_TEST); never active in production. */
 export async function tryPhase2dTestAuth(
@@ -134,7 +136,13 @@ async function resolveLocationFromOpenShift(orgId: string, userId: string): Prom
       locations,
       and(eq(locations.id, shifts.locationId), eq(locations.orgId, orgId)),
     )
-    .where(and(eq(shifts.orgId, orgId), eq(shifts.userId, userId), eq(shifts.status, "open")))
+    .where(
+      and(
+        eq(shifts.orgId, orgId),
+        eq(shifts.userId, userId),
+        inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
+      ),
+    )
     .limit(1);
   return open?.locationId ?? null;
 }

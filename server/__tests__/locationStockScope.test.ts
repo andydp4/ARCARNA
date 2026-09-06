@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   locations,
   organizations,
@@ -15,6 +15,8 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
   let orgId: string;
   let locationAId: string;
   let locationBId: string;
+  let foreignOrgId: string;
+  let foreignLocationId: string;
   let localProductId: string;
   let remoteOnlyProductId: string;
   let db: (typeof import("../db"))["db"];
@@ -33,13 +35,21 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
     orgId = randomUUID();
     locationAId = randomUUID();
     locationBId = randomUUID();
+    foreignOrgId = randomUUID();
+    foreignLocationId = randomUUID();
     localProductId = randomUUID();
     remoteOnlyProductId = randomUUID();
 
-    await db.insert(organizations).values({
-      id: orgId,
-      name: "Location Stock Scope Test",
-    });
+    await db.insert(organizations).values([
+      {
+        id: orgId,
+        name: "Location Stock Scope Test",
+      },
+      {
+        id: foreignOrgId,
+        name: "Foreign Location Stock Scope Test",
+      },
+    ]);
 
     await db.insert(locations).values([
       {
@@ -64,6 +74,17 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
         zipCode: "T2",
         phone: "000",
         email: "b@example.test",
+      },
+      {
+        id: foreignLocationId,
+        orgId: foreignOrgId,
+        name: "Foreign Location",
+        address: "3 Test Street",
+        city: "Elsewhere",
+        state: "Test",
+        zipCode: "T3",
+        phone: "000",
+        email: "foreign@example.test",
       },
     ]);
 
@@ -125,8 +146,8 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
       .where(inArray(products.id, [localProductId, remoteOnlyProductId]));
     await db
       .delete(locations)
-      .where(inArray(locations.id, [locationAId, locationBId]));
-    await db.delete(organizations).where(eq(organizations.id, orgId));
+      .where(inArray(locations.id, [locationAId, locationBId, foreignLocationId]));
+    await db.delete(organizations).where(inArray(organizations.id, [orgId, foreignOrgId]));
   });
 
   it("reports active-location stock instead of org-wide totals", async () => {
@@ -199,5 +220,23 @@ describe.skipIf(!hasDb)("location-scoped product stock", () => {
     expect(locationAProducts.find((p) => p.id === localProductId)?.stock).toBe(50);
     expect(locationBProducts.find((p) => p.id === localProductId)?.stock).toBe(100);
     expect(orgWideProducts.find((p) => p.id === localProductId)?.stock).toBe(150);
+  });
+
+  it("rejects stock edits at another org's location instead of creating a mixed-tenant row", async () => {
+    await expect(
+      storage.updateProductStock(localProductId, 50, "set", "scope-test-user", orgId, foreignLocationId),
+    ).rejects.toMatchObject({ code: "LOCATION_NOT_FOUND" });
+
+    const poisoned = await db
+      .select()
+      .from(productLocationStock)
+      .where(
+        and(
+          eq(productLocationStock.orgId, orgId),
+          eq(productLocationStock.productId, localProductId),
+          eq(productLocationStock.locationId, foreignLocationId),
+        ),
+      );
+    expect(poisoned).toHaveLength(0);
   });
 });
