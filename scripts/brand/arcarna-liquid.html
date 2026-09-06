@@ -10,21 +10,21 @@
      backdrop   the Control Centre ground. Liquid only, no mark.
      mark       the a, then the brand lockup. Loops, 24s.
      markSolo   the a alone. Loops, 24s.
-     endcard    the a, the lockup, spin-out, by viger cloud. 21s.
-     cloud      the a, a five second hold, by viger cloud. 21s.
+     endcard    the a, the lockup, spin-out, by viger cloud. 18s.
+     cloud      the a, a five second hold, by viger cloud. 18s.
 
    Every cut with a mark in it shares one arc, and the arc is three
    separate beats rather than one cross-fade:
 
-     the a rises OUT of the liquid while the mass is still whole
-     the mass then drains from under it, leaving the a alone
-     the a goes solid white
+     the a rises OUT of the liquid while the mass is still whole  3.0s
+     the mass then drains from under it, leaving the a alone      3.7s
+     the a goes solid white                                       1.0s
 
    It used to be a single u_reveal that faded the surround out and the
    letterform in together, over 1.7 seconds. That is why the a never
    appeared to arrive: it was only ever legible once there was nothing
-   behind it. The arc now runs 13.8 seconds and each beat has a hold
-   after it, because the pauses are what make it read as three things.
+   behind it. The arc runs 10.8 seconds and each beat has a hold after
+   it, because the pauses are what make it read as three things.
 
    The liquid moved from a 168px CPU canvas to a WebGL fragment
    shader between revisions. That is what fixed the softness: the old
@@ -617,7 +617,7 @@ void main(){
      One function of time drives every cut, so the page can be played
      by rAF or stepped by seek() — the video renderer needs the second
      and there must not be two sources of truth. */
-  /* Every reveal cut shares one 13.8s arc — see ARC below — so they are
+  /* Every reveal cut shares one 10.8s arc — see ARC below — so they are
      paced alike and only differ in what happens after the a is white.
 
      The two looping cuts run 24000ms: two turns of LIQUID_PERIOD, so the
@@ -630,10 +630,10 @@ void main(){
     /* The a on its own, no lockup — for a social post or a bumper. */
     markSolo:  { length: 24000,    loop: true },
     /* The a, the lockup, a spin-out, then by viger cloud. */
-    endcard:   { length: 21000,    loop: false },
+    endcard:   { length: 18000,    loop: false },
     /* The a, a five second hold, then by viger cloud. No lockup and no
        spin: the a cross-dissolves rather than being thrown away. */
-    cloud:     { length: 21000,    loop: false }
+    cloud:     { length: 18000,    loop: false }
   };
   var wordmark = document.getElementById('wordmark');
   var byline   = document.getElementById('byline');
@@ -658,12 +658,12 @@ void main(){
      Each beat gets its own hold, because the pauses between them are
      what makes it read as three things happening rather than one. */
   var ARC = {
-    markIn: [1500,  5500],   /* the a lifts out of the field         */
-    drain:  [6300, 11000],   /* the mass recedes from under it       */
-    white:  [11800, 13800]   /* the a goes solid white               */
+    markIn: [1500,  4500],   /* the a lifts out of the field         */
+    drain:  [5300,  9000],   /* the mass recedes from under it       */
+    white:  [9800,  10800]   /* the a goes solid white               */
   };
   /* Where the a is finished and alone. Everything after is per-cut. */
-  var ARC_END = 13800;
+  var ARC_END = 10800;
 
   function apply(t, mode) {
     var markIn = 0, drain = 0, white = 0;
@@ -678,40 +678,47 @@ void main(){
     if (mode === 'mark' || mode === 'markSolo') {
       /* The loops return rather than cutting. The arc runs backwards in
          the same order it ran forwards, so t=24000 is byte-identical to
-         t=0 and the seam is a join rather than a jump. */
-      white  *= 1 - easeInOut(span(t, 15800, 17600));
-      drain  *= 1 - easeInOut(span(t, 17400, 21200));
-      markIn *= 1 - easeInOut(span(t, 20600, 23400));
+         t=0 and the seam is a join rather than a jump.
+
+         The return is NOT paced with the forward arc. The loop length is
+         pinned to 24000 by the field period, so when the arc was cut by
+         3s the slack had to go somewhere: it went here, where nobody is
+         looking, rather than into dead liquid before the seam. */
+      white  *= 1 - easeInOut(span(t, 13000, 15000));
+      drain  *= 1 - easeInOut(span(t, 14800, 19600));
+      markIn *= 1 - easeInOut(span(t, 19000, 22800));
     }
 
     if (mode === 'mark') {
       /* The a hands over to the lockup instead of sitting above it. The
          master IS the full lockup, a included, so showing both at once
          would put the mark on screen twice. */
-      var over = easeInOut(span(t, 13900, 15600)) * (1 - easeInOut(span(t, 18800, 20000)));
+      var over = easeInOut(span(t, 11200, 12900)) * (1 - easeInOut(span(t, 15600, 16800)));
       wOp    = over;
-      wY     = 16 * (1 - easeOut(span(t, 13900, 15600)));
+      wY     = 16 * (1 - easeOut(span(t, 11200, 12900)));
       holdOp = 1 - over;
       scale  = 1 - 0.34 * over;
     } else if (mode === 'endcard') {
-      var hand = easeInOut(span(t, 13900, 15600));
+      var hand = easeInOut(span(t, 10900, 12600));
       holdOp = 1 - hand;
       scale  = 1 - 0.34 * hand;
       /* The lockup spins out once it has had its moment, and by viger
          cloud comes up through the tail of it. */
-      var out = easeInOut(span(t, 17800, 19400));
+      var out = easeInOut(span(t, 14800, 16400));
       wOp    = hand * (1 - out);
-      wY     = 16 * (1 - easeOut(span(t, 13900, 15600)));
+      wY     = 16 * (1 - easeOut(span(t, 10900, 12600)));
       wSpin  = 420 * out;
       wScale = 1 - 0.72 * out;
-      bOp    = span(t, 19000, 20600);
+      bOp    = span(t, 16000, 17600);
     } else if (mode === 'cloud') {
-      /* Holds on the white a from 13.8s to 18.8s — the five second beat
-         — and then cross-dissolves to by viger cloud. */
-      var go = easeInOut(span(t, 18800, 19900));
+      /* Holds on the white a from 10.8s to 15.8s. The hold stays five
+         seconds while the arc came down — it is the cut's whole point,
+         not a transition to be trimmed — then cross-dissolves to by
+         viger cloud. */
+      var go = easeInOut(span(t, 15800, 16900));
       holdOp = 1 - go;
       scale  = 1 - 0.10 * go;
-      bOp    = span(t, 19000, 20400);
+      bOp    = span(t, 16000, 17400);
     }
 
     if (gl) {
@@ -783,9 +790,9 @@ void main(){
   var HINTS = {
     backdrop: 'The Control Centre ground — liquid only, no card.',
     mark: 'The a rises, the liquid drains, the a goes white, then the lockup. Loops every 24s.',
-    endcard: 'The a, the lockup, spin-out, by viger cloud. 21s, plays once.',
+    endcard: 'The a, the lockup, spin-out, by viger cloud. 18s, plays once.',
     markSolo: 'The a alone — rises, drains, goes white, returns. Loops every 24s.',
-    cloud: 'The a, a five second hold, then by viger cloud. 21s, plays once.'
+    cloud: 'The a, a five second hold, then by viger cloud. 18s, plays once.'
   };
   var buttons = { backdrop: 'b-backdrop', mark: 'b-mark', endcard: 'b-endcard',
                   markSolo: 'b-markSolo', cloud: 'b-cloud' };

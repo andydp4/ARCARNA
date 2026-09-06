@@ -7,7 +7,7 @@ steps them frame by frame rather than screen-recording them.
 | System | Files | Status |
 |--------|-------|--------|
 | **Core Flare** — a machined shell holding a Truth Blue plasma sphere; toothed doors draw apart, the shine escapes, and it settles to the core breathing behind a part-open aperture. | [`arcarna-core-flare.html`](./arcarna-core-flare.html) · [`render-core-flare.mjs`](./render-core-flare.mjs) · [`sync-core-flare.py`](./sync-core-flare.py) · [`generate-core-etch.py`](./generate-core-etch.py) | **Shipping.** Drives the Control Centre backdrop. |
-| **Liquid** — a domain-warped fBm field in the Blue Set, rendered as a WebGL shader. Five cuts: the dashboard ground, the ARCARNA **a** rising out of the liquid, the **a** alone, and two endcards ending on *by viger cloud*. | [`arcarna-liquid.html`](./arcarna-liquid.html) · [`render-liquid.mjs`](./render-liquid.mjs) | Design source. The backdrop cut ships as [`ControlCentreLiquidBackdrop.tsx`](../../client/src/components/dashboard/ControlCentreLiquidBackdrop.tsx). |
+| **Liquid** — a domain-warped fBm field in the Blue Set, rendered as a WebGL shader. Five cuts: the dashboard ground, the ARCARNA **a** rising out of the liquid, the **a** alone, and two endcards ending on *by viger cloud*. The **a** arrives on a whole field, the liquid drains from under it, then it goes white. | [`arcarna-liquid.html`](./arcarna-liquid.html) · [`render-liquid.mjs`](./render-liquid.mjs) | Design source. The backdrop cut ships as [`ControlCentreLiquidBackdrop.tsx`](../../client/src/components/dashboard/ControlCentreLiquidBackdrop.tsx). |
 
 Rendered video is written to `dist/marketing/`, which is gitignored — the
 sources here are the artefacts worth keeping, and any output can be
@@ -45,14 +45,14 @@ The page exposes `window.ARCARNA_LIQUID.seek(ms)`, `.play()`, `.setMode()`,
 
 ### The reveal arc
 
-Every cut with a mark in it shares one 13.8-second arc, and the arc is three
+Every cut with a mark in it shares one 10.8-second arc, and the arc is three
 separate beats rather than one cross-fade:
 
-| beat | window | what happens |
-|------|--------|--------------|
-| `u_markIn` | 1.5s → 5.5s | the **a** rises out of the field, which is still whole |
-| `u_drain`  | 6.3s → 11.0s | the mass recedes from under it, leaving the **a** |
-| `u_white`  | 11.8s → 13.8s | the **a** goes solid white |
+| beat | window | length | what happens |
+|------|--------|--------|--------------|
+| `u_markIn` | 1.5s → 4.5s | 3.0s | the **a** rises out of the field, which is still whole |
+| `u_drain`  | 5.3s → 9.0s | 3.7s | the mass recedes from under it, leaving the **a** |
+| `u_white`  | 9.8s → 10.8s | 1.0s | the **a** goes solid white |
 
 This replaces a single `u_reveal` that ran 1.7 seconds and faded the surround
 out while fading the letterform in. The two moved together, so the **a** was
@@ -68,6 +68,13 @@ After the arc the cuts diverge: `markSolo` and `mark` run the arc backwards
 and loop, `endcard` hands to the lockup and spins out, `cloud` holds five
 seconds on the white **a** before *by viger cloud*.
 
+The return on the looping cuts is **not** paced with the forward arc, and
+should not be re-synced to it. The loop length is pinned to 24000ms by the
+field period, so slack cut from the arc has to go somewhere; it goes into the
+return, where nobody is watching, rather than into dead liquid before the
+seam. `cloud`'s hold stays at five seconds for the same kind of reason — it is
+the cut's whole point, not a transition.
+
 ### The lockup
 
 The bottom of the title cuts is `arcarna-mark_Master-Wordmark.png` as
@@ -82,8 +89,9 @@ needs a wordmark-only master.
 
 It is Truth Blue `#3C7AC4`, and measures **3.52:1** against its local ground
 on these cuts (3.16:1 against the brightest part of the glow). That clears
-the 3:1 floor for large non-text and a logotype is exempt from 1.4.3 anyway,
-but it is worth knowing it is not a white lockup — the **a** above it is.
+the 3:1 floor for large non-text and a logotype is exempt from 1.4.3 anyway.
+The brand owner has confirmed the blue lockup under a white **a** is
+intended, so this is a recorded decision rather than an open question.
 
 ### Load-bearing properties
 
@@ -153,7 +161,7 @@ node scripts/brand/render-core-flare.mjs --clip loop
 ```
 
 Clip lengths in `render-liquid.mjs` mirror `CUTS` in the page and have to stay
-in step with it — `mark` and `marksolo` 24s, `endcard` and `cloud` 21s,
+in step with it — `mark` and `marksolo` 24s, `endcard` and `cloud` 18s,
 `backdrop` 12s.
 
 Each writes two resolutions — the one rendered and half of it — as MP4 and
