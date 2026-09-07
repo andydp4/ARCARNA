@@ -930,9 +930,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const locId = locationId
-      ? locationId
-      : await resolveStockLocationId({ orgId, userId });
+    const locId = await resolveStockLocationId({ orgId, userId, locationId });
 
     const cond = and(eq(products.id, productId), eq(products.orgId, orgId));
     const [currentProduct] = await db.select().from(products).where(cond);

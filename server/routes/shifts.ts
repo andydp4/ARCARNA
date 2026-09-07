@@ -22,6 +22,7 @@ import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
 /** Default window for the shifts list, and the ceiling a caller may ask for. */
 const DEFAULT_WINDOW_HOURS = 48;
 const MAX_WINDOW_HOURS = 24 * 7;
+const ACTIVE_TILL_SHIFT_STATUSES = ["open", "reopened"];
 
 const openBodySchema = z.object({
   locationId: z.string().uuid(),
@@ -199,7 +200,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
             eq(shifts.orgId, ctx.orgId),
             eq(shifts.locationId, locationId),
             eq(shifts.userId, userId),
-            eq(shifts.status, "open"),
+            inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
           ),
         )
         .limit(1);
@@ -312,7 +313,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
               eq(shifts.orgId, ctx.orgId),
               eq(shifts.locationId, body.locationId),
               eq(shifts.userId, userId),
-              eq(shifts.status, "open"),
+              inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
             ),
           )
           .limit(1);

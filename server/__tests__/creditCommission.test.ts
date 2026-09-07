@@ -300,6 +300,16 @@ describe("credit that is never paid", () => {
     expect((await releasedFor(orderId)).total).toBe(0);
   });
 
+  it("refuses to write off credit that is already settled", async () => {
+    const orderId = await makeOrder(120);
+    await recordCreditPayment({ orgId, orderId, amount: 120, method: "cash" });
+
+    await expect(writeOffCredit(orgId, orderId)).rejects.toMatchObject({ code: "CREDIT_CLOSED" });
+
+    const [credit] = await db.select().from(orderCredit).where(eq(orderCredit.orderId, orderId));
+    expect(credit.status).toBe("settled");
+  });
+
   it("voids an untouched credit and claws nothing back, because nothing accrued", async () => {
     const orderId = await makeOrder(120);
     const credit = await voidCredit(orgId, orderId);

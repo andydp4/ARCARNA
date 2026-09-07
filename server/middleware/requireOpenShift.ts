@@ -1,7 +1,9 @@
 import type { RequestHandler } from "express";
 import { db } from "../db";
 import { locations, shifts } from "../../shared/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+
+const ACTIVE_TILL_SHIFT_STATUSES = ["open", "reopened"];
 
 export type OpenShiftContext = {
   id: string;
@@ -52,6 +54,7 @@ async function openShiftForUser(orgId: string, locationId: string, userId: strin
   const [created] = await db
     .insert(shifts)
     .values({ orgId, locationId, userId, openingFloat, status: "open" })
+    .onConflictDoNothing()
     .returning();
   if (created) return created;
 
@@ -63,7 +66,7 @@ async function openShiftForUser(orgId: string, locationId: string, userId: strin
         eq(shifts.orgId, orgId),
         eq(shifts.locationId, locationId),
         eq(shifts.userId, userId),
-        eq(shifts.status, "open"),
+        inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
       ),
     )
     .limit(1);
@@ -88,7 +91,7 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
           and(
             eq(shifts.orgId, ctx.orgId),
             eq(shifts.userId, user.id),
-            eq(shifts.status, "open"),
+            inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
           ),
         )
         .limit(1);
@@ -118,7 +121,7 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
           eq(shifts.orgId, ctx.orgId),
           eq(shifts.locationId, locationId),
           eq(shifts.userId, user.id),
-          eq(shifts.status, "open"),
+          inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
         ),
       )
       .limit(1);

@@ -15,6 +15,7 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
+import { StockError, stockErrorPayload } from "../services/productLocationStock";
 
 export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
@@ -39,13 +40,20 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
       const { productId } = req.params;
       const { adjustment, type, locationId } = req.body;
       const userId = req.user.claims.sub;
+      const stockLocationId =
+        locationId ??
+        (await resolveEditableStockLocationId({
+          orgId: ctx.orgId,
+          locationId: ctx.locationId,
+          userId,
+        }));
       const product = await storage.updateProductStock(
         productId,
         adjustment,
         type,
         userId,
         ctx.orgId,
-        locationId ?? ctx.locationId ?? undefined,
+        stockLocationId ?? undefined,
       );
       res.json(product);
     } catch (error) {
@@ -55,6 +63,9 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
           code: "LOCATION_REQUIRED",
           message: error.message,
         });
+      }
+      if (error instanceof StockError) {
+        return res.status(400).json(stockErrorPayload(error));
       }
       res.status(500).json({ message: "Failed to update inventory" });
     }
