@@ -12,7 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "../db";
 import { cashierProfiles, cashierShifts, organizations } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
-import { resolveShiftForToday } from "../services/tradingDayShift";
+import { resolveShiftForBackdatedDay, resolveShiftForToday } from "../services/tradingDayShift";
 
 const SUFFIX = Date.now().toString(36);
 let orgId: string;
@@ -161,5 +161,85 @@ describe("opening a shift without anybody opening a shift", () => {
   it("needs both an org and a person", async () => {
     expect(await resolveShiftForToday("", ALICE)).toBeNull();
     expect(await resolveShiftForToday(orgId, "")).toBeNull();
+  });
+});
+
+describe("resolving a backdated day's shift, open or already closed", () => {
+  it("opens one when the day never had a shift", async () => {
+    const userId = `user-backdate-fresh-${SUFFIX}`;
+    const shift = await resolveShiftForBackdatedDay(orgId, userId, "2026-05-05");
+
+    expect(shift).not.toBeNull();
+    expect(shift!.tradingDay).toBe("2026-05-05");
+    expect(shift!.status).toBe("open");
+  });
+
+  // The regression this exists for: settleBackdatedShift closes a backdated
+  // day's shift the moment the first order lands, because that day is
+  // already over. A second backdated order for the same day must find that
+  // same now-closed row — resolveShiftForToday's open-only lookup cannot see
+  // it, which is exactly what fragmented one backdated catch-up day into a
+  // shift per order.
+  it("finds an already-closed shift for the day rather than opening another", async () => {
+    const userId = `user-backdate-closed-${SUFFIX}`;
+    const [closed] = await db
+      .insert(cashierShifts)
+      .values({
+        orgId,
+        userId,
+        tradingDay: "2026-05-06",
+        openedByUserId: userId,
+        status: "auto_closed",
+        closedAt: new Date("2026-05-06T20:00:00Z"),
+      })
+      .returning();
+
+    const found = await resolveShiftForBackdatedDay(orgId, userId, "2026-05-06");
+
+    expect(found!.id).toBe(closed.id);
+    expect(found!.status).toBe("auto_closed");
+  });
+
+  it("still ignores a closed historical coded shift and opens a fresh lazy one", async () => {
+    const userId = `user-backdate-historic-${SUFFIX}`;
+    const [profile] = await db
+      .insert(cashierProfiles)
+      .values({ orgId, cashierCode: `BD${SUFFIX}`.slice(0, 12), displayName: "Backdate historic" })
+      .returning();
+    const [coded] = await db
+      .insert(cashierShifts)
+      .values({
+        orgId,
+        cashierId: profile.id,
+        userId,
+        tradingDay: "2026-05-07",
+        openedByUserId: userId,
+        status: "closed",
+        closedAt: new Date("2026-05-07T20:00:00Z"),
+      })
+      .returning();
+
+    const found = await resolveShiftForBackdatedDay(orgId, userId, "2026-05-07");
+
+    expect(found!.id).not.toBe(coded.id);
+    expect(found!.cashierId).toBeNull();
+  });
+
+  it("does not split a backdated day across two shifts when entries race", async () => {
+    const userId = `user-backdate-race-${SUFFIX}`;
+    const results = await Promise.all([
+      resolveShiftForBackdatedDay(orgId, userId, "2026-05-08"),
+      resolveShiftForBackdatedDay(orgId, userId, "2026-05-08"),
+      resolveShiftForBackdatedDay(orgId, userId, "2026-05-08"),
+    ]);
+
+    const ids = new Set(results.map((r) => r!.id));
+    expect(ids.size).toBe(1);
+  });
+
+  it("needs an org, a person and a day", async () => {
+    expect(await resolveShiftForBackdatedDay("", ALICE, "2026-05-09")).toBeNull();
+    expect(await resolveShiftForBackdatedDay(orgId, "", "2026-05-09")).toBeNull();
+    expect(await resolveShiftForBackdatedDay(orgId, ALICE, "")).toBeNull();
   });
 });

@@ -29,14 +29,32 @@
 --     it never sets a code.
 --
 -- So "cashier_id IS NULL" is precisely "opened lazily on first sale, under the
--- model this index defends", and every shift created from here on is covered.
+-- model this index defends" — but it is not the whole scope. It must also stay
+-- OPEN-only, matching shared/schema.ts's own definition of this index, which
+-- this file failed to mirror when first written:
+--
+--   If somebody closes a same-day lazy shift and keeps selling, the next
+--   sale must open a fresh open shift rather than attaching to a closed one.
+--
+-- Without that "status = 'open'" condition, a shift auto-closed mid-day
+-- (inactivity, or a backdated order settling the moment it lands) becomes a
+-- PERMANENT occupant of this key: no second row for that (org, user, day) can
+-- ever be created again, open or closed, which is the opposite of the
+-- "unique index -> loud failure on a real bug" contract this migration exists
+-- to provide. It surfaced on the first production database with any
+-- already-closed lazily-opened shifts: every subsequent backdated catch-up
+-- entry for an already-settled day opened a fresh shift (finding no OPEN one
+-- to reuse) and closed it again seconds later, fragmenting that day's
+-- commission and report across one shift per order — silently, until this
+-- index tried to enforce uniqueness across ALL of them at once and failed.
 DROP INDEX IF EXISTS cashier_shifts_user_trading_day_idx;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cashier_shifts_user_trading_day_idx
   ON cashier_shifts (org_id, user_id, trading_day)
   WHERE user_id IS NOT NULL
     AND trading_day IS NOT NULL
-    AND cashier_id IS NULL;
+    AND cashier_id IS NULL
+    AND status = 'open';
 
 -- Fail loudly rather than leave the guard off. Nothing under the new model can
 -- violate this, so a violation here means a duplicate was created after the
@@ -50,6 +68,6 @@ BEGIN
        AND indexname = 'cashier_shifts_user_trading_day_idx'
   ) THEN
     RAISE EXCEPTION
-      'cashier_shifts_user_trading_day_idx was not created. Duplicate lazily-opened shifts exist; resolve them before deploying.';
+      'cashier_shifts_user_trading_day_idx was not created. Duplicate lazily-opened OPEN shifts exist; resolve them before deploying.';
   END IF;
 END $$;
