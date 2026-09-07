@@ -383,3 +383,48 @@
 .liquid-metal .text-metal-muted {
   color: var(--lm-muted);
 }
+
+/* ---------------------------------------------------------------------------
+   Order form (pos.tsx) — nothing floats.
+   The viewport is measured in dvh so the on-screen keyboard shrinks the page
+   instead of pushing the confirm bar off the bottom; vh stays as the fallback
+   for browsers without dvh. */
+/* The app shell keeps a sticky 4rem header above every route, so the form
+   gets the viewport minus that, or its confirm bar lands below the fold. */
+.pos-viewport {
+  --pos-header-height: 4rem;
+  height: calc(100vh - var(--pos-header-height));
+  height: calc(100dvh - var(--pos-header-height));
+}
+
+.liquid-metal .pos-search-results {
+  background: var(--lm-surface-gradient);
+  box-shadow: var(--lm-panel-shadow);
+}
+
+.liquid-metal .pos-chip {
+  background: var(--lm-surface-gradient);
+  border-color: var(--lm-edge-highlight);
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.liquid-metal .pos-chip:not(:disabled):hover {
+  border-color: hsl(210, 15%, 78% / 0.4);
+}
+
+/* Sticky action bar at the foot of the order form and the payment step. */
+.liquid-metal .pos-action-bar {
+  background: var(--lm-surface-gradient);
+  border-top: 1px solid var(--lm-edge-highlight);
+  box-shadow: 0 -8px 24px hsl(220, 10%, 6% / 0.5);
+}
+
+/* Payment type as tap targets rather than a dropdown. */
+.liquid-metal .pos-pay-option {
+  background: var(--lm-surface-gradient);
+  border: 1px solid var(--lm-edge-highlight);
+  color: var(--lm-warm-white);
+}
+.liquid-metal .pos-pay-option[aria-checked="true"] {
+  border-color: var(--truth-blue);
+  box-shadow: inset 0 0 0 1px var(--truth-blue);
+}

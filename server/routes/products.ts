@@ -19,6 +19,7 @@ import { websiteProductSettingsPatchSchema } from "@shared/website";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { nonNegativeQuantity } from "@shared/quantity";
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
+import { topSellingProducts } from "../services/topSellers";
 
 /** Bounds mirror the products table column widths in shared/schema.ts. */
 const createProductBody = z.object({
@@ -70,6 +71,24 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     } catch (error) {
       console.error("Error fetching product by barcode:", error);
       res.status(500).json({ message: "Failed to fetch product" });
+    }
+  });
+
+  // The one-tap chips on the order form. Registered ahead of /:id so the
+  // literal path is not swallowed by the parameter route.
+  app.get("/api/products/top-sellers", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const days = Number(req.query?.days);
+      const limit = Number(req.query?.limit);
+      const rows = await topSellingProducts(ctx.orgId, {
+        days: Number.isFinite(days) ? days : undefined,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      });
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching top sellers:", error);
+      res.status(500).json({ message: "Failed to fetch top sellers" });
     }
   });
 
