@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,13 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   ShoppingCart,
@@ -27,6 +20,7 @@ import {
   Tag,
   X,
   UserPlus,
+  ChevronDown,
 } from "lucide-react";
 import type { PosProduct } from "@/components/pos-types";
 import { ActionLoader } from "@/components/action-loader";
@@ -52,10 +46,138 @@ export interface PosCustomer {
 }
 
 /**
- * Sentinel for the "add a new customer" row. Namespaced so it can never collide
- * with a customer id, which is what the other rows carry.
+ * Inline customer picker. A trigger and, directly beneath it when open, a
+ * search box and a listbox of matches. No portal, no popover — same reason
+ * as ProductSearch in pos-order-lines.tsx: a floating menu built from a
+ * listbox-style Select fights a search input placed inside it, and on
+ * Android specifically, tapping the input to raise the keyboard closed the
+ * whole menu before a customer could ever be searched for.
  */
-const NEW_CUSTOMER_VALUE = "__new-customer__";
+function CustomerPicker({
+  filteredCustomers,
+  customerSearch,
+  setCustomerSearch,
+  selectedCustomer,
+  setSelectedCustomer,
+  disabled,
+  onAddNew,
+}: {
+  filteredCustomers: PosCustomer[];
+  customerSearch: string;
+  setCustomerSearch: (v: string) => void;
+  selectedCustomer: PosCustomer | null;
+  setSelectedCustomer: (c: PosCustomer | null) => void;
+  disabled?: boolean;
+  onAddNew: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const listId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeIfOutside);
+    return () => document.removeEventListener("pointerdown", closeIfOutside);
+  }, [open]);
+
+  const pick = (customer: PosCustomer | null) => {
+    setSelectedCustomer(customer);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        data-testid="select-customer"
+        aria-label="Customer"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        className="flex min-h-[44px] w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="truncate">{selectedCustomer ? selectedCustomer.name : "Walk-in Customer"}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
+      </button>
+
+      {open && (
+        <div
+          className="pos-search-results absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-metal-edge bg-popover text-popover-foreground shadow-md"
+        >
+          <div className="p-2">
+            <Input
+              autoFocus
+              placeholder="Search customers..."
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              disabled={disabled}
+              data-testid="search-customer"
+              aria-controls={listId}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setOpen(false);
+              }}
+            />
+          </div>
+          <ul id={listId} role="listbox" aria-label="Customers" className="max-h-64 overflow-y-auto">
+            <li
+              role="option"
+              aria-selected={!selectedCustomer}
+              className="flex min-h-[44px] cursor-pointer items-center px-3 py-2 text-sm hover:bg-metal-surface/60"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => pick(null)}
+            >
+              Walk-in Customer
+            </li>
+            <li
+              role="option"
+              data-testid="select-customer-new"
+              className="flex min-h-[44px] cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-metal-surface/60"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpen(false);
+                // Not a selection — an action, and a different overlay
+                // (NewCustomerDialog) is about to open. Let this one finish
+                // closing first so the two never fight over focus.
+                requestAnimationFrame(onAddNew);
+              }}
+            >
+              <UserPlus className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              Add a new customer
+            </li>
+            {filteredCustomers.map((customer) => (
+              <li
+                key={customer.id}
+                role="option"
+                aria-selected={selectedCustomer?.id === customer.id}
+                className="flex min-h-[44px] cursor-pointer flex-col justify-center px-3 py-2 text-sm hover:bg-metal-surface/60"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => pick(customer)}
+              >
+                <div>{customer.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {customer.category} • {customer.loyaltyPoints} pts
+                </div>
+              </li>
+            ))}
+            {/* A search that matches nobody is where a new customer is most
+                likely to be standing. Say so rather than showing a blank list. */}
+            {customerSearch.trim() && filteredCustomers.length === 0 && (
+              <li role="presentation" className="px-2 py-3 text-center text-xs text-muted-foreground">
+                No customer matches "{customerSearch.trim()}". Add them above.
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export type PosCartPanelProps = {
   cart: PosCartItem[];
@@ -170,71 +292,21 @@ export function PosCartPanel({
       </div>
 
       <div className="mb-4">
-        <Select
-          disabled={orderSubmitting}
-          value={selectedCustomer?.id || "walk-in"}
-          onValueChange={(value) => {
-            if (value === NEW_CUSTOMER_VALUE) {
-              // Not a selection — an action. Radix is mid-close, and opening a
-              // dialog in the same tick leaves the two fighting over focus, so
-              // wait for the menu to finish closing first.
-              requestAnimationFrame(() => setNewCustomerOpen(true));
-              return;
-            }
-            if (value === "walk-in") {
-              setSelectedCustomer(null);
+        <CustomerPicker
+          filteredCustomers={filteredCustomers}
+          customerSearch={customerSearch}
+          setCustomerSearch={setCustomerSearch}
+          selectedCustomer={selectedCustomer}
+          setSelectedCustomer={(customer) => {
+            setSelectedCustomer(customer);
+            if (!customer) {
               setPromoCode("");
               setAppliedPromo(null);
-            } else {
-              const customer = customers.find((c) => c.id === value);
-              setSelectedCustomer(customer || null);
             }
           }}
-        >
-          <SelectTrigger
-            data-testid="select-customer"
-            className="min-h-[44px]"
-            aria-label="Customer"
-          >
-            <SelectValue placeholder="Walk-in Customer" />
-          </SelectTrigger>
-          <SelectContent>
-            <div className="p-2">
-              <Input
-                placeholder="Search customers..."
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                className="mb-2"
-                disabled={orderSubmitting}
-                data-testid="search-customer"
-              />
-            </div>
-            <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-            <SelectItem value={NEW_CUSTOMER_VALUE} data-testid="select-customer-new">
-              <span className="flex items-center gap-2">
-                <UserPlus className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-                Add a new customer
-              </span>
-            </SelectItem>
-            {filteredCustomers.map((customer) => (
-              <SelectItem key={customer.id} value={customer.id}>
-                <div>
-                  <div>{customer.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {customer.category} • {customer.loyaltyPoints} pts
-                  </div>
-                </div>
-              </SelectItem>
-            ))}
-            {/* A search that matches nobody is where a new customer is most
-                likely to be standing. Say so rather than showing a blank list. */}
-            {customerSearch.trim() && filteredCustomers.length === 0 && (
-              <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                No customer matches "{customerSearch.trim()}". Add them above.
-              </p>
-            )}
-          </SelectContent>
-        </Select>
+          disabled={orderSubmitting}
+          onAddNew={() => setNewCustomerOpen(true)}
+        />
 
         <NewCustomerDialog
           open={newCustomerOpen}
