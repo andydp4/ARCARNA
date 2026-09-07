@@ -52,6 +52,7 @@ async function openShiftForUser(orgId: string, locationId: string, userId: strin
   const [created] = await db
     .insert(shifts)
     .values({ orgId, locationId, userId, openingFloat, status: "open" })
+    .onConflictDoNothing()
     .returning();
   if (created) return created;
 

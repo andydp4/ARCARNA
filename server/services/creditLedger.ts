@@ -92,6 +92,7 @@ export async function creditLegTotal(
 export async function openCreditForOrder(
   orgId: string,
   order: { id: string; customerId: string | null; amount: number },
+  client: CreditLedgerDb = db,
 ): Promise<void> {
   if (order.amount <= 0) return;
   if (!order.customerId) {
@@ -101,7 +102,7 @@ export async function openCreditForOrder(
       "CREDIT_CUSTOMER_REQUIRED",
     );
   }
-  await db
+  await client
     .insert(orderCredit)
     .values({
       orderId: order.id,
@@ -110,7 +111,7 @@ export async function openCreditForOrder(
       amountGiven: String(roundMoney(order.amount)),
       amountOutstanding: String(roundMoney(order.amount)),
       status: "outstanding",
-      givenOn: await tradingDayTodayForOrg(orgId),
+      givenOn: await tradingDayTodayForOrg(orgId, client),
     })
     .onConflictDoNothing();
 }
