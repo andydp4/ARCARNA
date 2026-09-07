@@ -149,4 +149,47 @@ test.describe("order form on a phone", () => {
 
     await page.context().close();
   });
+
+  test("customer search stays open when the search box is tapped", async ({ browser, api, orgId }) => {
+    // The customer picker used to be a Radix Select with a search input
+    // dropped inside its portal content — reported closing the whole menu
+    // on Android when tapping that input to raise the keyboard. Rebuilt as
+    // inline content (no portal), like ProductSearch, which cannot be
+    // dismissed by a Popper/focus-guard reacting to the keyboard opening,
+    // because there is no Popper.
+    //
+    // This does not reproduce the reported failure directly: Playwright's
+    // touch emulation taps and focuses but never raises a real on-screen
+    // keyboard or resizes the visual viewport, and the old Select passed
+    // this same assertion in that harness. What it does verify is that the
+    // new implementation behaves correctly end to end (opens, keeps the
+    // list open through typing, selects) — a real Android device is the
+    // only way to confirm the original symptom itself is gone.
+    const suffix = uniqueSuffix();
+    const customer = await okJson<{ id: string; name: string }>(
+      await api.post("/api/customers", { data: { name: `Phone Customer ${suffix}` } }),
+    );
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    await page.goto("/create-order");
+
+    const trigger = page.locator('[data-testid="select-customer"]');
+    await expect(trigger).toBeVisible({ timeout: 60_000 });
+    await trigger.tap();
+
+    const search = page.locator('[data-testid="search-customer"]');
+    await expect(search).toBeVisible();
+    // A real tap, as a thumb bringing up the keyboard would do it — the
+    // reported failure was the menu closing on exactly this.
+    await search.tap();
+    await expect(search).toBeFocused();
+    await search.fill(suffix);
+
+    const option = page.getByRole("option", { name: new RegExp(customer.name) });
+    await expect(option, "the dropdown must still be open after tapping the search box").toBeVisible();
+    await option.tap();
+    await expect(trigger).toContainText(customer.name);
+
+    await page.context().close();
+  });
 });
