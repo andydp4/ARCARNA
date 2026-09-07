@@ -626,11 +626,11 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
   app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), attachActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const { db } = await import('../../apps/server/src/db');
+      const { db, withTransaction } = await import('../../apps/server/src/db');
       const { orders } = await import('../../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
       const { updateOrderStatusSchema } = await import('@shared/schema');
-      const { publishEvent } = await import('../eventBus');
+      const { publishEventTx } = await import('../eventBus');
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       
       const validation = updateOrderStatusSchema.safeParse(req.body);
@@ -724,11 +724,46 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           }
         : {};
 
-      const [updated] = await db.update(orders)
-        .set({ status: validation.data.status, updated_at: new Date(), ...settlementPatch })
-        .where(orderCond)
-        .returning();
-        
+      // Completing a sale on credit is three writes that must land together:
+      // the status flip, the credit-list entry, and the event other services
+      // key off. A crash between them used to leave a "completed" sale with
+      // no receivable and no OrderStatusChanged — money recognised, nothing
+      // to collect it against, and nothing telling anyone.
+      const { updated, eventId } = await withTransaction(async (tx: any) => {
+        const [updated] = await tx.update(orders)
+          .set({ status: validation.data.status, updated_at: new Date(), ...settlementPatch })
+          .where(orderCond)
+          .returning();
+
+        if (!updated) {
+          return { updated: null, eventId: null };
+        }
+
+        // A sale on tick joins the credit list the moment the goods leave. The
+        // sale is recognised now; the money, and the commission it earns, are not.
+        //
+        // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
+        // £50 on tick, £50 is owed — putting the whole £100 on credit would have
+        // the business chasing money it already has in the drawer.
+        if (isSettling && creditAmountToOpen > 0) {
+          const { openCreditForOrder } = await import("../services/creditLedger");
+          await openCreditForOrder(ctx.orgId, {
+            id: req.params.id,
+            customerId: (currentOrder as any)?.customer_id ?? null,
+            amount: creditAmountToOpen,
+          }, tx);
+        }
+
+        const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
+          orderId: req.params.id,
+          from: previousStatus,
+          to: validation.data.status,
+          changedAt: new Date().toISOString(),
+        }, { source: 'api-orders' });
+
+        return { updated, eventId };
+      });
+
       if (!updated) {
         return res.status(404).json({ message: 'Order not found' });
       }
@@ -736,30 +771,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       if (backdatedShift && ctx.orgId) {
         await settleBackdatedShift(ctx.orgId, backdatedShift);
       }
-      
-      // A sale on tick joins the credit list the moment the goods leave. The
-      // sale is recognised now; the money, and the commission it earns, are not.
-      //
-      // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
-      // £50 on tick, £50 is owed — putting the whole £100 on credit would have
-      // the business chasing money it already has in the drawer.
-      if (isSettling && creditAmountToOpen > 0) {
-        const { openCreditForOrder } = await import("../services/creditLedger");
-        await openCreditForOrder(ctx.orgId, {
-          id: req.params.id,
-          customerId: (currentOrder as any)?.customer_id ?? null,
-          amount: creditAmountToOpen,
-        });
-      }
 
-      // Publish OrderStatusChanged event - critical, visible failure
-      const eventId = await publishEvent('OrderStatusChanged', req.params.id, {
-        orderId: req.params.id,
-        from: previousStatus,
-        to: validation.data.status,
-        changedAt: new Date().toISOString(),
-      }, { source: 'api-orders' });
-      
       console.log(`[Orders] Status changed ${req.params.id}: ${previousStatus} → ${validation.data.status} (event: ${eventId})`);
       
       res.json({ ...updated, eventId });
