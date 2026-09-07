@@ -15,6 +15,11 @@ import { currentTradingDay } from "@shared/time/tradingDay";
  * the day both try to insert; the unique index on (org, user, trading day)
  * means one wins and the other reads what it wrote, rather than the day's
  * takings ending up split across two shifts (migration 058).
+ *
+ * Only ever finds an OPEN shift for today. That's correct here: an
+ * auto-closed shift for the day in progress is a finished session, and the
+ * next sale should start a fresh one rather than reopen it. A backdated
+ * order needs the opposite rule — see resolveShiftForBackdatedDay below.
  */
 export async function resolveShiftForToday(
   orgId: string,
@@ -31,8 +36,47 @@ export async function resolveShiftForToday(
   if (!org) return null;
 
   const tradingDay = currentTradingDay(org.timezone ?? "Europe/London", now);
+  return findOrCreateShift(orgId, userId, tradingDay, { anyStatus: false });
+}
 
-  const existing = await findShift(orgId, userId, tradingDay);
+/**
+ * Finds or opens a person's shift for an already-known trading day —
+ * open OR already closed.
+ *
+ * A backdated order's shift for that day is closed the moment it lands
+ * (settleBackdatedShift, since that trading day is already over). Looking
+ * for an OPEN shift only, as resolveShiftForToday does, means a SECOND
+ * backdated order for the same day never finds the shift the first one just
+ * closed — it opens a new one beside it, which settleBackdatedShift then
+ * closes too, and so on for every subsequent entry. That is what fragmented
+ * a day's backdated sales into one shift per order: each carried its own
+ * partial report, and once migration 060's unique index was in place the
+ * fragmentation stopped being silent and started failing the deploy outright
+ * (two "closed" rows for the same org/user/day collide on that index the
+ * same as two open ones would).
+ *
+ * This is the fix: a backdated order looks for its day's shift regardless of
+ * status, so a second (or fifth) entry for an already-settled day lands on
+ * the same row settleBackdatedShift's closed branch already knows how to
+ * bring up to date (refreshClosedCashierShiftSummary), instead of opening a
+ * new one.
+ */
+export async function resolveShiftForBackdatedDay(
+  orgId: string,
+  userId: string,
+  tradingDay: string,
+): Promise<CashierShift | null> {
+  if (!orgId || !userId || !tradingDay) return null;
+  return findOrCreateShift(orgId, userId, tradingDay, { anyStatus: true });
+}
+
+async function findOrCreateShift(
+  orgId: string,
+  userId: string,
+  tradingDay: string,
+  opts: { anyStatus: boolean },
+): Promise<CashierShift | null> {
+  const existing = await findShift(orgId, userId, tradingDay, opts);
   if (existing) return existing;
 
   const [created] = await db
@@ -48,27 +92,28 @@ export async function resolveShiftForToday(
     .returning();
   if (created) return created;
 
-  // Lost the race. Whoever won has written the row we wanted.
-  return findShift(orgId, userId, tradingDay);
+  // Lost the race (or, for a backdated day, the unique index already holds a
+  // closed row for it) — whoever/whatever got there first has the row we want.
+  return findShift(orgId, userId, tradingDay, opts);
 }
 
 async function findShift(
   orgId: string,
   userId: string,
   tradingDay: string,
+  opts: { anyStatus: boolean },
 ): Promise<CashierShift | null> {
+  const conditions = [
+    eq(cashierShifts.orgId, orgId),
+    eq(cashierShifts.userId, userId),
+    eq(cashierShifts.tradingDay, tradingDay),
+    isNull(cashierShifts.cashierId),
+  ];
+  if (!opts.anyStatus) conditions.push(eq(cashierShifts.status, "open"));
   const [row] = await db
     .select()
     .from(cashierShifts)
-    .where(
-      and(
-        eq(cashierShifts.orgId, orgId),
-        eq(cashierShifts.userId, userId),
-        eq(cashierShifts.tradingDay, tradingDay),
-        eq(cashierShifts.status, "open"),
-        isNull(cashierShifts.cashierId),
-      ),
-    )
+    .where(and(...conditions))
     .limit(1);
   return row ?? null;
 }

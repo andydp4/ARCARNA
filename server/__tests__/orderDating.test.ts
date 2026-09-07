@@ -95,7 +95,7 @@ vi.mock("../services/cashierShiftEngine", () => ({
 // The org's clock. Everything else in orderDating.ts is exercised for real.
 vi.mock("../services/tradingDayShift", () => ({
   orgTimeZone: vi.fn().mockResolvedValue("Europe/London"),
-  resolveShiftForToday: resolveShiftMock,
+  resolveShiftForBackdatedDay: resolveShiftMock,
 }));
 vi.mock("../services/orderDating", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/orderDating")>();
@@ -256,9 +256,10 @@ describe("dating an order", () => {
     expect((dated.created_at as Date).toISOString().slice(0, 10)).toBe(soldOn);
     expect(dated.entered_at).toBeInstanceOf(Date);
 
-    // The sold-on day's shift was resolved for the instant the order is
-    // stamped with, and replaced today's on the request.
-    expect(resolveShiftMock).toHaveBeenCalledWith(ORG_ID, "user_1", dated.created_at);
+    // The sold-on day's shift was resolved by trading day (open or already
+    // closed — see tradingDayShift.test.ts for why that matters), and
+    // replaced today's on the request.
+    expect(resolveShiftMock).toHaveBeenCalledWith(ORG_ID, "user_1", soldOn);
     expect(req.cashierShift.cashierShiftId).toBe(OLD_SHIFT);
     expect(patches.some((p) => p.cashier_shift_id === OLD_SHIFT)).toBe(true);
     expect(patches.some((p) => p.cashier_shift_id === TODAY_SHIFT)).toBe(false);

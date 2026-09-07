@@ -23,7 +23,7 @@ import {
   type OrderDating,
 } from "@shared/orders/orderDate";
 import { currentTradingDay } from "@shared/time/tradingDay";
-import { orgTimeZone, resolveShiftForToday } from "./tradingDayShift";
+import { orgTimeZone, resolveShiftForBackdatedDay } from "./tradingDayShift";
 import { closeCashierShift, refreshClosedCashierShiftSummary } from "./cashierShiftEngine";
 
 export type ResolvedOrderDating =
@@ -58,13 +58,21 @@ export async function resolveOrderDating(
 /**
  * The cashier shift a backdated order belongs to: the user's shift for the
  * trading day the order is dated on, opened if the day never had one.
+ *
+ * Looks for that day's shift whether it is open or already closed —
+ * unlike a live sale's shift-for-today, a backdated day's shift is normally
+ * closed the moment the first backdated order for it lands
+ * (settleBackdatedShift), so a second entry for the same day must find that
+ * same row rather than open another one beside it.
  */
 export async function cashierShiftForBackdatedOrder(
   orgId: string,
   userId: string,
   instant: Date,
 ): Promise<CashierShift | null> {
-  return resolveShiftForToday(orgId, userId, instant);
+  const timeZone = await orgTimeZone(orgId);
+  const tradingDay = currentTradingDay(timeZone, instant);
+  return resolveShiftForBackdatedDay(orgId, userId, tradingDay);
 }
 
 /**
