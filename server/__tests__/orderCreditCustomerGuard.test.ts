@@ -59,6 +59,11 @@ const creditLedgerMock = vi.hoisted(() => ({
   openCreditForOrder: vi.fn(),
 }));
 
+const eventBusMock = vi.hoisted(() => ({
+  publishEvent: vi.fn(),
+  publishEventTx: vi.fn(),
+}));
+
 vi.mock("../auth", () => {
   const pass = ((_req, _res, next) => next()) as RequestHandler;
   return {
@@ -71,10 +76,7 @@ vi.mock("../auth", () => {
   };
 });
 
-vi.mock("../eventBus", () => ({
-  publishEvent: vi.fn().mockResolvedValue("evt-1"),
-  publishEventTx: vi.fn().mockResolvedValue("evt-1"),
-}));
+vi.mock("../eventBus", () => eventBusMock);
 
 vi.mock("../../apps/server/src/db", () => ({
   withTransaction: appDbMock.withTransaction,
@@ -181,13 +183,20 @@ async function placeOrder(body: Record<string, unknown>) {
 }
 
 beforeEach(() => {
-  appDbMock.withTransaction.mockClear();
+  appDbMock.withTransaction.mockReset();
+  appDbMock.withTransaction.mockImplementation(async () => {
+    throw new Error("stop-after-guard");
+  });
   appDbMock.db.select.mockClear();
   appDbMock.db.update.mockClear();
   appDbMock.state.currentOrder = null;
   appDbMock.state.updatePatch = null;
   creditLedgerMock.creditLegTotal.mockReset();
   creditLedgerMock.openCreditForOrder.mockReset();
+  eventBusMock.publishEvent.mockReset();
+  eventBusMock.publishEvent.mockResolvedValue("evt-1");
+  eventBusMock.publishEventTx.mockReset();
+  eventBusMock.publishEventTx.mockResolvedValue("evt-1");
 });
 
 describe("a sale on credit needs a customer", () => {
@@ -282,5 +291,58 @@ describe("a sale on credit needs a customer", () => {
     expect(creditLedgerMock.creditLegTotal).toHaveBeenCalledWith("order-1", "tick", 70);
     expect(appDbMock.db.update).not.toHaveBeenCalled();
     expect(creditLedgerMock.openCreditForOrder).not.toHaveBeenCalled();
+  });
+
+  it("opens credit in the same transaction as completing an existing order", async () => {
+    appDbMock.state.currentOrder = {
+      id: "order-1",
+      org_id: ORG_ID,
+      customer_id: CUSTOMER_ID,
+      total: "70.00",
+      payment_method: "tick",
+      status: "pending",
+      settled_total: null,
+    };
+    appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(appDbMock.db),
+    );
+    creditLedgerMock.creditLegTotal.mockResolvedValue(70);
+
+    const handler = patchHandler();
+    const req: any = {
+      params: { id: "order-1" },
+      body: { status: "completed" },
+      orgContext: { orgId: ORG_ID, locationId: null, role: "CASHIER" },
+      user: { id: "user_1" },
+      cashierShift: { cashierId: null, cashierShiftId: "shift-1" },
+    };
+    const res: any = {
+      status() {
+        return this;
+      },
+      json: (p: unknown) => p,
+    };
+
+    await handler(req, res);
+
+    expect(appDbMock.withTransaction).toHaveBeenCalledTimes(1);
+    expect(appDbMock.state.updatePatch).toMatchObject({
+      status: "completed",
+      settled_total: "70.00",
+      completed_user_id: "user_1",
+      completed_cashier_shift_id: "shift-1",
+    });
+    expect(creditLedgerMock.openCreditForOrder).toHaveBeenCalledWith(
+      ORG_ID,
+      { id: "order-1", customerId: CUSTOMER_ID, amount: 70 },
+      appDbMock.db,
+    );
+    expect(eventBusMock.publishEventTx).toHaveBeenCalledWith(
+      appDbMock.db,
+      "OrderStatusChanged",
+      "order-1",
+      expect.objectContaining({ from: "pending", to: "completed" }),
+      { source: "api-orders" },
+    );
   });
 });
