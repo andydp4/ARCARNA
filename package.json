@@ -154,7 +154,7 @@
     "ts-jest": "^29.4.4",
     "typescript": "5.6.3",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
@@ -164,16 +164,18 @@
     "uuid": "^11.1.1",
     "body-parser": "^2.3.0",
     "eslint": {
-      "js-yaml": "^4.3.0"
+      "js-yaml": "^4.3.2"
     },
     "@eslint/eslintrc": {
-      "js-yaml": "^4.3.0"
+      "js-yaml": "^4.3.2"
     },
     "@istanbuljs/load-nyc-config": {
-      "js-yaml": "^3.15.1"
+      "js-yaml": "^3.15.2"
     },
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.12"
-    }
+    },
+    "browserslist": "^4.28.9",
+    "baseline-browser-mapping": "^2.11.21"
   }
 }

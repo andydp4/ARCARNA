@@ -266,6 +266,21 @@
 
 ---
 
+## Workers / event bus
+
+<a id="gap-worker-01"></a>
+
+### GAP-WORKER-01 — Deterministic worker failures retried like transient ones
+
+| | |
+|---|---|
+| **Brief** | Found live in production logs the night of the Phase 1 deploy (2026-09-09) — `InventoryWorker` stuck retrying event `13866ebd-...` (a `StockError: Insufficient stock at location` — an order oversold a product already at 0 stock at that location). Pre-existing, not caused by that deploy. |
+| **Snag** | `failJob()` (`server/eventBus.ts`) applies the same exponential-backoff-then-dead-letter policy (10 attempts, backoff capped at 15 min — so up to ~30-45 min total) to every worker failure alike. That's the right call for a transient failure (a dropped DB connection, a momentary lock), but `StockError: Insufficient stock` (`server/services/productLocationStock.ts`) is deterministic — stock isn't going to become sufficient between retry N and N+1, so those 10 attempts (`server/workers/index.ts`'s `failJob(...)` call sites don't distinguish) just burn a worker slot for the better part of an hour before anyone finds out. Once it does land in `dead_letters`, `controlCentre.ts` does raise a "background job(s) failed permanently" Control Centre alert — but that page is SUPER_ADMIN-only, and it's ~30-45 minutes after the actual oversell. |
+| **Fix** | Classify errors at the point they're thrown (or via an `instanceof`/error-code check in the catch in `server/workers/index.ts`) as retryable vs terminal; route terminal ones (`StockError` and similarly deterministic business errors) straight to `dead_letters` on the first failure instead of scheduling a retry. |
+| **Closed** | [ ] |
+
+---
+
 ## P10b — Product analytics
 
 <a id="gap-p10b-01"></a>
