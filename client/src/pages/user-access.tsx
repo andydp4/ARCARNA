@@ -45,7 +45,19 @@ interface AllowedUser {
   /** Percentage. Null means the organisation default applies. */
   commissionRate?: string | null;
   orgId?: string | null;
+  /**
+   * This person's POS selling location, an override on top of the org's own
+   * default. Null means requireOrgContext falls through to their open shift,
+   * then the org's default active location.
+   */
+  defaultLocationId?: string | null;
   createdAt: string;
+}
+
+interface LocationOption {
+  id: string;
+  name: string;
+  isActive: number;
 }
 
 interface ApprovalRequest {
@@ -141,6 +153,10 @@ export default function UserAccess() {
     queryKey: ["/api/admin/pending-approvals"],
   });
 
+  const { data: locationOptions = [] } = useQuery<LocationOption[]>({
+    queryKey: ["/api/locations"],
+  });
+
   // Commission is agreed per person. Blank means the organisation default,
   // which is where everyone starts — the old per-cashier-code rates could not
   // be carried across, because nothing ever linked a code to a user account.
@@ -177,6 +193,33 @@ export default function UserAccess() {
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // The default location is an override on top of the org's own default
+  // (requireOrgContext falls back there next): setting one here is what lets
+  // an admin fix "Location required for POS" for a cashier without an open
+  // shift, without touching the org-wide setting.
+  const updateDefaultLocationMutation = useMutation({
+    mutationFn: async ({
+      replitUserId,
+      defaultLocationId,
+    }: {
+      replitUserId: string;
+      defaultLocationId: string | null;
+    }) => {
+      return apiRequest("PATCH", `/api/admin/allowed-users/${replitUserId}`, { defaultLocationId });
+    },
+    onSuccess: () => {
+      toast({ title: "Default location updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not update the default location",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -403,6 +446,7 @@ export default function UserAccess() {
                         <TableHead>Email</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead>Commission</TableHead>
+                        <TableHead>Default location</TableHead>
                         <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -457,6 +501,37 @@ export default function UserAccess() {
                               }
                               saving={updateCommissionMutation.isPending}
                             />
+                          </TableCell>
+                          <TableCell>
+                            {user.isOwner === 1 ? (
+                              <span className="text-sm text-muted-foreground">—</span>
+                            ) : (
+                              <Select
+                                value={user.defaultLocationId ?? "__none__"}
+                                onValueChange={(value) =>
+                                  updateDefaultLocationMutation.mutate({
+                                    replitUserId: user.replitUserId,
+                                    defaultLocationId: value === "__none__" ? null : value,
+                                  })
+                                }
+                                disabled={updateDefaultLocationMutation.isPending}
+                              >
+                                <SelectTrigger
+                                  className="h-9 w-[160px]"
+                                  data-testid={`default-location-select-${user.replitUserId}`}
+                                >
+                                  <SelectValue placeholder="No default" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">No default (org default)</SelectItem>
+                                  {locationOptions.map((loc) => (
+                                    <SelectItem key={loc.id} value={loc.id}>
+                                      {loc.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {formatDate(user.createdAt)}

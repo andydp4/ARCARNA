@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { and, eq, inArray, or } from "drizzle-orm";
+import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
@@ -14,7 +16,35 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
   commissionRateSchema,
+  users,
+  locations,
 } from "@shared/schema";
+
+/**
+ * The access list joined with each person's default POS location, keyed on
+ * `users`, not `allowed_users` — same reason commission rate is joined in
+ * rather than duplicated (see attachCommissionRates in storage.ts): the
+ * column lives on `users`, and showing a stale copy would be worse than not
+ * showing it.
+ */
+async function attachDefaultLocationIds<T extends { replitUserId: string }>(
+  rows: T[],
+): Promise<Array<T & { defaultLocationId: string | null }>> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.replitUserId).filter(Boolean);
+  const userRows = ids.length
+    ? await db
+        .select({ id: users.id, replitUserId: users.replitUserId, defaultLocationId: users.defaultLocationId })
+        .from(users)
+        .where(or(inArray(users.id, ids), inArray(users.replitUserId, ids)))
+    : [];
+  const byKey = new Map<string, string | null>();
+  for (const u of userRows) {
+    if (u.id) byKey.set(u.id, u.defaultLocationId);
+    if (u.replitUserId) byKey.set(u.replitUserId, u.defaultLocationId);
+  }
+  return rows.map((r) => ({ ...r, defaultLocationId: byKey.get(r.replitUserId) ?? null }));
+}
 
 export function registerAdminRoutes(app: Express): void {
 
@@ -47,13 +77,13 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       const headerOrg = req.headers["x-org-id"] as string | undefined;
       const queryOrg = req.query?.orgId as string | undefined;
-      const users =
+      const allowedUserRows =
         role === "SUPER_ADMIN" && !headerOrg && !queryOrg
           ? await storage.adminGetAllAllowedUsers()
           : await storage.getAllowedUsers(
               headerOrg || queryOrg || roleAndOrg?.orgId || "",
             );
-      res.json(users);
+      res.json(await attachDefaultLocationIds(allowedUserRows));
     } catch (error) {
       console.error("Error fetching allowed users:", error);
       res.status(500).json({ message: "Failed to fetch allowed users" });
@@ -111,7 +141,7 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.role ??
           roleAndOrg?.role ??
           (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
-      const { role, orgId, commissionRate } = req.body ?? {};
+      const { role, orgId, commissionRate, defaultLocationId } = req.body ?? {};
       if (role && !isRole(role)) {
         return res.status(400).json({ message: "Invalid role" });
       }
@@ -149,6 +179,32 @@ export function registerAdminRoutes(app: Express): void {
       if (!canManageUser(actorRole, roleAndOrg?.orgId ?? null, targetUser.orgId ?? null)) {
         return res.status(403).json({ message: "Access denied" });
       }
+      // A default location is an override on top of the org's own default
+      // (see requireOrgContext), so it must actually belong to whichever org
+      // this user is in — an empty string or null clears it back to that
+      // org-wide fallback.
+      let parsedDefaultLocationId: string | null | undefined;
+      if (defaultLocationId !== undefined) {
+        if (defaultLocationId === null || defaultLocationId === "") {
+          parsedDefaultLocationId = null;
+        } else {
+          const effectiveOrgId = orgId !== undefined ? orgId : targetUser.orgId ?? null;
+          if (!effectiveOrgId) {
+            return res
+              .status(400)
+              .json({ message: "Cannot set a default location before the user has an organization" });
+          }
+          const [location] = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(and(eq(locations.id, defaultLocationId), eq(locations.orgId, effectiveOrgId)))
+            .limit(1);
+          if (!location) {
+            return res.status(400).json({ message: "Invalid default location for this organization" });
+          }
+          parsedDefaultLocationId = defaultLocationId;
+        }
+      }
       const updated = await storage.updateAllowedUserAccess(
         replitUserId,
         { role, orgId },
@@ -157,6 +213,12 @@ export function registerAdminRoutes(app: Express): void {
       if (parsedCommissionRate !== undefined) {
         await storage.setUserCommissionRate(replitUserId, parsedCommissionRate);
       }
+      if (parsedDefaultLocationId !== undefined) {
+        await db
+          .update(users)
+          .set({ defaultLocationId: parsedDefaultLocationId, updatedAt: new Date() })
+          .where(or(eq(users.replitUserId, replitUserId), eq(users.id, replitUserId)));
+      }
       await recordAdminAudit(req, {
         actorUserId: actorId,
         actorRole,
@@ -164,9 +226,10 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: roleAndOrg?.orgId ?? null,
-        metadata: { role, orgId, commissionRate: parsedCommissionRate },
+        metadata: { role, orgId, commissionRate: parsedCommissionRate, defaultLocationId: parsedDefaultLocationId },
       });
-      res.json(updated);
+      const [refreshedWithLocation] = await attachDefaultLocationIds([updated]);
+      res.json(refreshedWithLocation);
     } catch (error: any) {
       console.error("Error updating allowed user:", error);
       res.status(400).json({ message: error.message || "Failed to update user" });
