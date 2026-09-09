@@ -99,11 +99,18 @@ const statusVariant: Record<string, "default" | "secondary" | "destructive" | "o
 
 const NEXT_STATUS: Record<string, string[]> = {
   draft: ["reviewed", "cancelled"],
-  reviewed: ["approved", "cancelled"],
+  // The server (STATUS_FLOW in purchaseDrafts.ts) already allows reviewed →
+  // draft — quantities were previously stuck read-only forever once a draft
+  // was marked reviewed because the client never offered a way back.
+  reviewed: ["approved", "cancelled", "draft"],
   approved: ["cancelled"],
   partially_received: ["cancelled"],
   fully_received: [],
   cancelled: [],
+};
+
+const STATUS_ACTION_LABEL: Record<string, string> = {
+  draft: "Back to draft",
 };
 
 const STATUS_HELP: Record<string, string> = {
@@ -269,38 +276,96 @@ export default function PurchaseDraftsPage() {
             <CardTitle>Drafts</CardTitle>
             <CardDescription>Created from replenishment recommendations or manually</CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent>
             {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Lines</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {drafts.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell>{d.supplierName}</TableCell>
-                    <TableCell>{d.locationName}</TableCell>
-                    <TableCell>
-                      {d.lineCount} lines / {d.totalQty} units
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[d.status] ?? "outline"}>{d.status}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => setDetailId(d.id)}>
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {!isLoading && drafts.length === 0 && (
+              <p className="text-sm text-muted-foreground">No purchase drafts yet.</p>
+            )}
+            {drafts.length > 0 && (
+              <>
+                {/* Desktop table — the whole row opens the draft, plus an explicit
+                    View button for mouse users. */}
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Supplier</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Lines</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {drafts.map((d) => (
+                        <TableRow
+                          key={d.id}
+                          className="cursor-pointer"
+                          onClick={() => setDetailId(d.id)}
+                        >
+                          <TableCell>{d.supplierName}</TableCell>
+                          <TableCell>{d.locationName}</TableCell>
+                          <TableCell>
+                            {d.lineCount} lines / {d.totalQty} units
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant[d.status] ?? "outline"}>{d.status}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailId(d.id);
+                              }}
+                            >
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Mobile cards — the 5-column table above is unusable at phone
+                    widths (the View button scrolls off with no scroll affordance). */}
+                <div className="md:hidden space-y-3">
+                  {drafts.map((d) => (
+                    <Card
+                      key={d.id}
+                      className="cursor-pointer"
+                      onClick={() => setDetailId(d.id)}
+                    >
+                      <CardContent className="pt-4 space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <p className="font-medium">{d.supplierName}</p>
+                            <p className="text-sm text-muted-foreground">{d.locationName}</p>
+                          </div>
+                          <Badge variant={statusVariant[d.status] ?? "outline"}>{d.status}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {d.lineCount} lines / {d.totalQty} units
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full min-h-[44px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetailId(d.id);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -326,7 +391,7 @@ export default function PurchaseDraftsPage() {
                         variant="outline"
                         onClick={() => statusMutation.mutate({ id: detail.id, status: s })}
                       >
-                        Mark {s}
+                        {STATUS_ACTION_LABEL[s] ?? `Mark ${s}`}
                       </Button>
                     ))}
                   <Button size="sm" variant="ghost" onClick={() => exportCsv(detail)}>
@@ -420,7 +485,7 @@ export default function PurchaseDraftsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
-                      <TableHead>SKU</TableHead>
+                      <TableHead className="hidden sm:table-cell">SKU</TableHead>
                       <TableHead>Ordered</TableHead>
                       <TableHead>Received</TableHead>
                       <TableHead>Remaining</TableHead>
@@ -429,15 +494,20 @@ export default function PurchaseDraftsPage() {
                   <TableBody>
                     {detail.items.map((line) => {
                       const rec = receiving?.items.find((i) => i.id === line.id);
+                      const canEditQty =
+                        canMutate && (detail.status === "draft" || detail.status === "reviewed");
                       return (
                         <TableRow key={line.id}>
                           <TableCell>{line.productName}</TableCell>
-                          <TableCell>{line.sku}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{line.sku}</TableCell>
                           <TableCell>
-                            {canMutate && detail.status === "draft" ? (
-                              <div className="flex gap-2 items-center">
+                            {canEditQty ? (
+                              // Stacked, not side-by-side: inside a horizontally
+                              // scrolling table on a phone, a Save button next to
+                              // the input was often scrolled out of reach.
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <Input
-                                  className="w-20"
+                                  className="w-full sm:w-20"
                                   value={editQty[line.id] ?? String(line.quantity)}
                                   onChange={(e) =>
                                     setEditQty({ ...editQty, [line.id]: e.target.value })
@@ -446,16 +516,24 @@ export default function PurchaseDraftsPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    const raw = editQty[line.id] ?? String(line.quantity);
+                                    const parsed = parseQuantityInput(raw);
+                                    if (parsed === null) {
+                                      toast({
+                                        title: "Invalid quantity",
+                                        description:
+                                          "Enter a positive number with up to 3 decimal places.",
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
                                     updateLine.mutate({
                                       draftId: detail.id,
                                       itemId: line.id,
-                                      quantity:
-                                        parseQuantityInput(
-                                          editQty[line.id] ?? String(line.quantity),
-                                        ) ?? line.quantity,
-                                    })
-                                  }
+                                      quantity: parsed,
+                                    });
+                                  }}
                                 >
                                   Save
                                 </Button>

@@ -343,24 +343,34 @@ export function ReceivingTab() {
           <div className="space-y-4">
             <div>
               <Label>Purchase draft</Label>
-              <Select
-                value={createDraftId}
-                onValueChange={(v) => {
-                  setCreateDraftId(v);
-                  setLineQty({});
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select draft" />
-                </SelectTrigger>
-                <SelectContent>
-                  {receivableDrafts.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.supplierName} · {d.locationName} ({d.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {receivableDrafts.length === 0 ? (
+                <p className="text-sm text-muted-foreground border rounded p-3">
+                  No approved drafts yet —{" "}
+                  <Link href="/purchase-drafts" className="text-primary underline">
+                    approve one in Purchase Drafts
+                  </Link>{" "}
+                  before receiving goods against it.
+                </p>
+              ) : (
+                <Select
+                  value={createDraftId}
+                  onValueChange={(v) => {
+                    setCreateDraftId(v);
+                    setLineQty({});
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select draft" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {receivableDrafts.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.supplierName} · {d.locationName} ({d.status})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             {receivingInfo?.items.map((item) => (
               <div key={item.id} className="border rounded p-3 space-y-2">
