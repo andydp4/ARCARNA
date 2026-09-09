@@ -253,6 +253,17 @@
 | **Fix** | Audit motion classes; align with U1 `motion-reduce` pattern |
 | **Closed** | [ ] |
 
+<a id="gap-u5-04"></a>
+
+### GAP-U5-04 — "Order open ≥60min" red label fails WCAG AA contrast
+
+| | |
+|---|---|
+| **Brief** | U5 (found during Phase 1 combined-branch validation, not by any of PRs #175/#176/#178/#179/#180 — confirmed pre-existing, see below) |
+| **Snag** | `orders-row.tsx`'s elapsed-time indicator turns `text-destructive` once an order has been open 60+ minutes (`useElapsed`/`tone` helper, ~line 70). That resolves to `--destructive: var(--danger)` → `--danger: hsl(2 78% 46%)` in `styles/tokens/arcarna.css` (`#d1201a`), which axe measured at **3.05:1** against the row background — needs **4.5:1** for normal-size text (WCAG 1.4.3). Confirmed via CSS trace that no Phase 1 bundle touches this token; it wasn't caught by any PR's own a11y CI run because a fresh, short-lived CI database never has an order old enough to hit the 60-minute threshold — it only surfaced when the (long-running) validation session's shared dev DB had a genuinely stale open order. |
+| **Fix** | Either lighten `--danger` enough to clear 4.5:1 on the dark row background (check knock-on effect everywhere else `--danger`/`--destructive` is used first), or give this specific label a dedicated higher-contrast color instead of reusing the shared destructive token. |
+| **Closed** | [ ] |
+
 ---
 
 ## P10b — Product analytics
