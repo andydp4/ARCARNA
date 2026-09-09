@@ -296,6 +296,23 @@
 
 ---
 
+## Permissions — per-employee feature overrides
+
+<a id="gap-perm-01"></a>
+
+### GAP-PERM-01 — Per-employee section/feature grants beyond role defaults
+
+| | |
+|---|---|
+| **Brief** | Owner request, raised during the Phase 1 settings/nav bundle (PR #180, ARC-006/007/008/009) |
+| **Ask** | Admins should be able to switch on individual sections/functions for one employee beyond what their role gets by default — e.g. give a trusted CASHIER read access to one analytics report to bring to a meeting, without promoting them to MANAGER. Owner's own words: "if org wanted to allow a cashier analytics access to bring a weekly report to a meeting etc we could give them access to that section without making them a full manager." |
+| **Status** | Deliberately deferred, not part of Phase 1. Phase 1 (PRs #175/#176/#178/#179/#180) delivers correct role-based defaults for the four fixed roles (CASHIER/MANAGER/ADMIN/SUPER_ADMIN) — this sits on top of that, as its own feature. |
+| **What it needs** | (1) A per-user override store — something like `user_feature_grants(userId, orgId, featureKey, grantedBy, grantedAt, expiresAt?)`. (2) A defined, enumerable set of grantable feature keys — the natural unit is one per nav item (`client/src/components/nav-items.ts`) or, for Reports Hub specifically, one per report, since that hub currently has no per-report server check at all (flagged as PR #180's judgment call #1 — granting a single report needs that split built first). (3) `rolesForHref`/`RequireRole` (`client/src/components/nav-items.ts`, `client/src/components/RequireRole.tsx`) checking "role default OR explicit grant" instead of role alone. (4) The equivalent check server-side — every `requireRole(...)` call gating a route a grant should unlock needs an "or has an explicit grant for this org+feature" branch, not just the client hidden/shown state (client-only gating would be security theatre). (5) Admin UI to grant/revoke, most likely on `user-access.tsx` next to role/commission/default-location. |
+| **Fix** | New feature — needs its own schema + design pass, not a small PR. |
+| **Closed** | [ ] |
+
+---
+
 ## Ops (not code)
 
 | ID | Task | Closed |
