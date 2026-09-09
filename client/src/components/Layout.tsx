@@ -118,7 +118,7 @@ export function Layout({ children }: LayoutProps) {
                     <div className="border-b border-border p-4">
                       <Link href="/" className="flex items-center gap-3" onClick={() => setSidebarOpen(false)}>
                         <BrandLogo variant="mark" size="sm" alt="" className="rounded-lg" />
-                        <h2 className="text-lg font-semibold tracking-tight text-metal-warm-white">{BRAND_NAME}</h2>
+                        <h2 className="text-lg font-semibold tracking-tight text-metal-warm-white">{BRAND_PRODUCT_NAME}</h2>
                       </Link>
                     </div>
                     <div className="flex-1 overflow-y-auto"><NavLinks /></div>

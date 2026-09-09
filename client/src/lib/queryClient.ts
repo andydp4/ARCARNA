@@ -4,6 +4,18 @@ import { orgScopeHeaders } from "./orgScope";
 import { resolveApiUrl } from "./appPaths";
 import { withClerkAuthHeaders } from "./clerkApiAuth";
 
+/**
+ * Turns a failed API response into a message worth showing a person.
+ *
+ * The API answers errors with JSON like {"code":"VALIDATION_ERROR",
+ * "message":"Invalid body","details":[{"message":"..."}]}, but this used to
+ * throw `${status}: ${rawBody}` unconditionally — pages that toast
+ * `error.message` directly then showed the user a raw
+ * `400: {"code":"VALIDATION_ERROR",...}` string. Pull the human-readable
+ * message out of that JSON when there is one; fall back to the raw
+ * status+text for a genuine non-JSON failure (an HTML 500 page, a proxy
+ * error) where there's nothing better to show.
+ */
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -12,7 +24,21 @@ async function throwIfResNotOk(res: Response) {
         "Upload too large for the server (HTTP 413). Ask your admin to set Nginx client_max_body_size to 25m and redeploy the app.",
       );
     }
-    throw new Error(`${res.status}: ${text}`);
+    let parsedMessage: string | undefined;
+    try {
+      const body = JSON.parse(text);
+      if (body && typeof body === "object") {
+        const detailMessage = Array.isArray(body.details) ? body.details[0]?.message : undefined;
+        if (typeof detailMessage === "string" && detailMessage) {
+          parsedMessage = detailMessage;
+        } else if (typeof body.message === "string" && body.message) {
+          parsedMessage = body.message;
+        }
+      }
+    } catch {
+      // Not JSON — fall through to the raw text below.
+    }
+    throw new Error(parsedMessage ?? `${res.status}: ${text}`);
   }
 }
 

@@ -26,6 +26,8 @@ const createCustomerBody = z.object({
   category: z.string().max(50).optional().nullable(),
 }).passthrough();
 
+const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
 export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
     try {
@@ -84,7 +86,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.post("/api/customers", ...scoped, async (req: any, res) => {
+  app.post("/api/customers", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       // No schema here previously: req.body went straight to the engine, so an
       // empty body or an oversized field failed at the database as a 500.
@@ -105,7 +107,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.put("/api/customers/:id", ...scoped, async (req: any, res) => {
+  app.put("/api/customers/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const existing = await storage.getCustomer(req.params.id, ctx.orgId);
@@ -120,7 +122,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.delete("/api/customers/:id", ...scoped, async (req: any, res) => {
+  app.delete("/api/customers/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const existing = await storage.getCustomer(req.params.id, ctx.orgId);

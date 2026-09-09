@@ -776,6 +776,7 @@ export default function Orders() {
                         onDelete={openDeleteDialog}
                         selected={bulk.isSelected(order.id)}
                         onToggleSelect={() => bulk.toggle(order.id)}
+                        role={user?.role}
                       />
                     ))}
                   </ul>

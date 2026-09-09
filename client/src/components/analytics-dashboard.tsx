@@ -23,18 +23,22 @@ import { DollarSign, ShoppingBag, TrendingUp } from "lucide-react";
  * Section framing belongs to whoever renders this, not to this component.
  */
 export default function AnalyticsDashboard() {
-  const { data: monthlySummary = [], isLoading: isLoadingMonthly } = useQuery<any[]>({
-    queryKey: ["/api/analytics/monthly-summary"],
+  // The cards below are labelled "Last 30 days", so they must be built from a
+  // genuinely 30-day source. /api/analytics/monthly-summary defaults to 12
+  // months of data (server/routes/analytics.ts), which silently made these
+  // cards show a full year's totals under a 30-day label.
+  // /api/analytics/daily-revenue defaults to 30 days and is the correct source.
+  const { data: dailyRevenue = [], isLoading: isLoadingDaily } = useQuery<
+    Array<{ date: string; totalOrders: number; totalRevenue: string }>
+  >({
+    queryKey: ["/api/analytics/daily-revenue"],
   });
 
-  const totalRevenue = Array.isArray(monthlySummary)
-    ? monthlySummary.reduce(
-        (sum: number, month: any) => sum + parseFloat(month.totalRevenue || "0"),
-        0,
-      )
+  const totalRevenue = Array.isArray(dailyRevenue)
+    ? dailyRevenue.reduce((sum: number, day) => sum + parseFloat(day.totalRevenue || "0"), 0)
     : 0;
-  const totalOrders = Array.isArray(monthlySummary)
-    ? monthlySummary.reduce((sum: number, month: any) => sum + (month.totalOrders || 0), 0)
+  const totalOrders = Array.isArray(dailyRevenue)
+    ? dailyRevenue.reduce((sum: number, day) => sum + (day.totalOrders || 0), 0)
     : 0;
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -52,7 +56,7 @@ export default function AnalyticsDashboard() {
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 xl:grid-cols-3">
-        {isLoadingMonthly ? (
+        {isLoadingDaily ? (
           <>
             <Skeleton className="h-40 rounded-xl" />
             <Skeleton className="h-40 rounded-xl" />
