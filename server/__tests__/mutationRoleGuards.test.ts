@@ -14,7 +14,16 @@ import { describe, expect, it, vi } from "vitest";
  * middleware — the one actually wired into the request chain — directly, so
  * a regression here means an unauthenticated attacker's request would truly
  * reach the business handler, not just that a mock recorded the right args.
+ *
+ * `../db` and `../storage` are mocked because registering these routes
+ * transitively imports `server/db.ts` (via `server/auth/commonAuth.ts` and
+ * `server/storage.ts`), which throws synchronously without a live
+ * DATABASE_URL. The business handlers that actually use storage are never
+ * invoked here — only the guard middleware in front of them is — so a stub
+ * is enough.
  */
+vi.mock("../db", () => ({ db: {} }));
+vi.mock("../storage", () => ({ storage: {} }));
 
 import { registerCustomerRoutes } from "../routes/customers";
 import { registerLoyaltyRoutes } from "../routes/loyalty";
