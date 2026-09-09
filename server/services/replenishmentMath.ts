@@ -2,6 +2,7 @@
  * Pure replenishment arithmetic and line grouping, kept free of database
  * imports so it is unit-testable without a provisioned database.
  */
+import { roundQuantity } from "@shared/quantity";
 
 /** Structurally compatible with `PurchaseDraftLineInput` in ./purchaseDrafts. */
 export type GroupedPurchaseLine = {
@@ -34,9 +35,34 @@ export function computeRequiredQty(input: {
   onOrderQty: number;
 }) {
   const targetStock = Math.ceil(input.velocityPerDay * input.targetCoverageDays);
-  const grossRequiredQty = Math.max(0, targetStock - input.stock);
-  const requiredQty = Math.max(0, grossRequiredQty - Math.max(0, input.onOrderQty));
+  // Subtracting decimal stock/on-order figures in float64 leaves noise like
+  // 1.3499999999999996 (5 - 0.65 - 3) that later fails the 3-decimal-place
+  // quantity validator when a purchase draft is raised from it. Rounding each
+  // intermediate to the stored scale keeps both the API payload and the "Why?"
+  // explanation the client renders from these fields clean.
+  const grossRequiredQty = roundQuantity(Math.max(0, targetStock - input.stock));
+  const requiredQty = roundQuantity(
+    Math.max(0, grossRequiredQty - Math.max(0, input.onOrderQty)),
+  );
   return { targetStock, grossRequiredQty, requiredQty };
+}
+
+/**
+ * Turns a raw buy quantity into what actually gets written to a purchase
+ * draft line: rounded to a whole unit, then up to the supplier's pack size.
+ *
+ * `buyQty` is a difference of decimal quantities (stock, on-order, internal
+ * transfers), so float64 can leave it as e.g. 1.3499999999999996 — a value
+ * `positiveQuantity` (shared/quantity.ts) rejects outright because it exceeds
+ * 3 decimal places. Rounding off that noise first, then rounding *up* to the
+ * next whole unit, guarantees a clean, storable quantity regardless of pack
+ * size (a pack size of 1 previously returned the raw float unchanged).
+ */
+export function roundBuyQtyToPack(buyQty: number, packSize: number): number {
+  if (buyQty <= 0) return 0;
+  const wholeUnits = Math.ceil(roundQuantity(buyQty));
+  if (packSize <= 1) return wholeUnits;
+  return Math.ceil(wholeUnits / packSize) * packSize;
 }
 
 /**

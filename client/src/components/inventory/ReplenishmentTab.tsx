@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { HelpCircle, PackagePlus, ArrowRightLeft, ShoppingCart } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatQuantity } from "@shared/quantity";
 
 type Location = { id: string; name: string };
 
@@ -507,18 +508,18 @@ export function ReplenishmentTab() {
                 <strong>Action:</strong> {whyItem.explain.whyAction}
               </p>
               <p>
-                <strong>Stock:</strong> {whyItem.stock} · <strong>Velocity:</strong>{" "}
-                {whyItem.velocityPerDay}/day · <strong>Depletion:</strong>{" "}
+                <strong>Stock:</strong> {formatQuantity(whyItem.stock)} · <strong>Velocity:</strong>{" "}
+                {formatQuantity(whyItem.velocityPerDay)}/day · <strong>Depletion:</strong>{" "}
                 {whyItem.daysToDepletion ?? "n/a"} days
               </p>
               <p>
-                <strong>Gap to target:</strong> {whyItem.grossRequiredQty} ·{" "}
-                <strong>On order:</strong> {whyItem.onOrderQty} · <strong>Still required:</strong>{" "}
-                {whyItem.requiredQty}
+                <strong>Gap to target:</strong> {formatQuantity(whyItem.grossRequiredQty)} ·{" "}
+                <strong>On order:</strong> {formatQuantity(whyItem.onOrderQty)} ·{" "}
+                <strong>Still required:</strong> {formatQuantity(whyItem.requiredQty)}
               </p>
               <p>
-                <strong>Transferable:</strong> {whyItem.transferableQty} ·{" "}
-                <strong>Buy (rounded):</strong> {whyItem.roundedBuyQty}
+                <strong>Transferable:</strong> {formatQuantity(whyItem.transferableQty)} ·{" "}
+                <strong>Buy (rounded):</strong> {formatQuantity(whyItem.roundedBuyQty)}
               </p>
               {whyItem.transferSources.length > 0 && (
                 <div>
@@ -526,7 +527,7 @@ export function ReplenishmentTab() {
                   <ul className="list-disc pl-5">
                     {whyItem.transferSources.map((s) => (
                       <li key={s.locationId}>
-                        {s.locationName}: {s.suggestedQty} units
+                        {s.locationName}: {formatQuantity(s.suggestedQty)} units
                       </li>
                     ))}
                   </ul>
