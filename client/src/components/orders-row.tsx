@@ -123,9 +123,12 @@ export type OrdersRowProps = {
   onDelete: (order: OrdersListOrder) => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Current user's role — edit/delete require MANAGER or above server-side, so a CASHIER never sees menu items that would 403. */
+  role?: string;
 };
 
-function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect }: OrdersRowProps) {
+function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, statusPending, onDelete, selected, onToggleSelect, role }: OrdersRowProps) {
+  const canEditOrDelete = role !== "CASHIER";
   const totalNum = parseFloat(order.total || "0");
   const placed = new Date(order.createdAt).toLocaleString(undefined, {
     dateStyle: "medium",
@@ -271,6 +274,7 @@ function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, sta
             <Eye className="mr-2 h-4 w-4 shrink-0" />
             View
           </Button>
+          {canEditOrDelete && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -299,6 +303,7 @@ function OrdersRowInner({ order, onComplete, onView, onEdit, onStatusChange, sta
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </div>
     </li>
@@ -314,7 +319,8 @@ export const OrdersRow = memo(
     prev.onStatusChange === next.onStatusChange &&
     prev.onComplete === next.onComplete &&
     prev.statusPending === next.statusPending &&
-    prev.onDelete === next.onDelete
+    prev.onDelete === next.onDelete &&
+    prev.role === next.role
 );
 
 export { StatusBadge };

@@ -12,6 +12,7 @@
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
 import { db } from "../db";
+import { storage } from "../storage";
 import {
   orders,
   orderItems,
@@ -239,17 +240,19 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
 
 /** ARC-T1-002 Current Stock Levels — per-product stock, par level, status, weeks remaining. */
 export async function currentStockLevels(orgId: string): Promise<ReportPayload> {
-  // Products with current stock + reorder point.
-  const prodRows = await db
-    .select({
-      id: products.id,
-      name: products.name,
-      sku: products.productId,
-      stock: products.stock,
-      reorderPoint: products.stockLimit,
-    })
-    .from(products)
-    .where(eq(products.orgId, orgId));
+  // Products with current stock + reorder point. Stock comes from
+  // getProductsWithStock (summed per-location stock) rather than the legacy
+  // products.stock column, which is always written as 0 — reading it directly
+  // made every product show as CRITICAL/out of stock and fired a red flag for
+  // each one.
+  const withStock = await storage.getProductsWithStock(orgId);
+  const prodRows = withStock.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.productId,
+    stock: p.stock,
+    reorderPoint: p.stockLimit,
+  }));
 
   // 4-week unit velocity per product (from order_items on completed orders).
   const since = new Date(Date.now() - 28 * 86400000);
@@ -495,10 +498,11 @@ export async function customerLifetimeValue(orgId: string): Promise<ReportPayloa
 
 /** ARC-T3-003 Stock Runway & Demand Forecast. */
 export async function stockRunwayForecast(orgId: string): Promise<ReportPayload> {
-  const prod = await db
-    .select({ id: products.id, name: products.name, stock: products.stock })
-    .from(products)
-    .where(eq(products.orgId, orgId));
+  // See currentStockLevels: stock must come from getProductsWithStock, not the
+  // legacy products.stock column (always 0), or every product reads as out of
+  // stock with zero runway.
+  const withStock = await storage.getProductsWithStock(orgId);
+  const prod = withStock.map((p) => ({ id: p.id, name: p.name, stock: p.stock }));
 
   const since = new Date(Date.now() - 28 * 86400000);
   const velRows = await db

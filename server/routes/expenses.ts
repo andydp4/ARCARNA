@@ -15,6 +15,8 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 
+const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
 export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/overhead-expenses", ...scoped, async (req: any, res) => {
     try {
@@ -27,7 +29,7 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.post("/api/overhead-expenses", ...scoped, async (req: any, res) => {
+  app.post("/api/overhead-expenses", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const parsedBody = insertOverheadExpenseSchema.parse({ ...req.body, orgId: ctx.orgId });
@@ -43,7 +45,7 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.put("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
+  app.put("/api/overhead-expenses/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const parsedBody = insertOverheadExpenseSchema.partial().parse(req.body);
@@ -59,7 +61,7 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.delete("/api/overhead-expenses/:id", ...scoped, async (req: any, res) => {
+  app.delete("/api/overhead-expenses/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       await storage.deleteOverheadExpense(req.params.id, ctx.orgId);

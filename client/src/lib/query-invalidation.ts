@@ -54,14 +54,21 @@ export async function invalidateOperationalData(
 }
 
 export function invalidateAfterPosCheckout(queryClient: QueryClient) {
-  return invalidateOperationalData(queryClient, {
-    includeOrders: true,
-    includeProducts: true,
-    includeInventory: true,
-    includeInvoices: false,
-    includeReports: true,
-    includeAnalytics: true,
-  });
+  return Promise.all([
+    invalidateOperationalData(queryClient, {
+      includeOrders: true,
+      includeProducts: true,
+      includeInventory: true,
+      includeInvoices: false,
+      includeReports: true,
+      includeAnalytics: true,
+    }),
+    // The first sale of the day opens a till shift server-side; without this
+    // the POS page's cached /api/shifts/current never learns about it (queries
+    // default to staleTime: Infinity), so "Shift so far" / "Close shift" only
+    // show up after a manual reload.
+    invalidateEndpointFamily(queryClient, "/api/shifts"),
+  ]);
 }
 
 export function invalidateAfterOrderStatusChange(queryClient: QueryClient) {
