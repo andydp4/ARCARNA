@@ -47,6 +47,8 @@ import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
 import { Label } from "@/components/ui/label";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
+import { useAuth } from "@/hooks/useAuth";
+import type { LocationPickerOption } from "@shared/schema";
 
 type Product = PosProduct;
 
@@ -141,7 +143,7 @@ export default function POS() {
   const [zReportOpen, setZReportOpen] = useState(false);
 
   const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
-    shift: { id: string; status: string } | null;
+    shift: { id: string; status: string; locationId?: string } | null;
   }>({
     queryKey: ["/api/shifts/current"],
     queryFn: async () => {
@@ -150,6 +152,26 @@ export default function POS() {
       return res.json();
     },
   });
+
+  // Which location a sale actually lands in — mirrors requireOrgContext's own
+  // fallback chain (open shift, then this user's default, then the org's
+  // default active location) so the cashier sees it before hitting "Take
+  // payment" rather than after, from a 400. No new endpoint: this is the same
+  // /api/auth/user and /api/locations data other pages already fetch.
+  const { user: authUser } = useAuth();
+  const { data: posLocations = [] } = useQuery<LocationPickerOption[]>({
+    queryKey: ["/api/locations"],
+  });
+  const orgDefaultLocation = posLocations.find((l) => l.isDefault === 1 && l.isActive === 1);
+  const sellingLocationId =
+    currentShiftData?.shift?.locationId ||
+    (authUser as { defaultLocationId?: string | null } | null)?.defaultLocationId ||
+    orgDefaultLocation?.id ||
+    null;
+  const sellingLocation = posLocations.find((l) => l.id === sellingLocationId) ?? null;
+  // Only meaningful once locations have actually loaded — an empty list on
+  // first render must not flash a false "no location configured" warning.
+  const noLocationWillResolve = posLocations.length > 0 && !sellingLocationId;
 
   // The till no longer asks anybody to open a shift. One exists per person per
   // trading day and opens itself on the first sale, so this only mirrors what
@@ -871,6 +893,19 @@ export default function POS() {
                   </>
                 }
               />
+              {sellingLocation ? (
+                <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
+                  Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
+                </p>
+              ) : noLocationWillResolve ? (
+                <p
+                  className="mt-2 text-xs font-medium text-destructive"
+                  data-testid="pos-no-location-warning"
+                >
+                  No selling location is set up. Ask an admin to set an organization default
+                  location, or a default location for this user, before taking payment.
+                </p>
+              ) : null}
             </div>
 
             {/* Plain overflow scrolling, not a scroll-area widget: touch

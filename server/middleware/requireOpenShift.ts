@@ -101,8 +101,15 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
       }
     }
     if (!locationId) {
+      // requireOrgContext already tried the header, this user's personal
+      // default location, their open shift, and the org's own default
+      // active location — reaching here means none of those exist, so the
+      // org itself has no location configured at all (or none marked active
+      // and default). "Set a default location" now means at the org level;
+      // a personal default is a narrower fix that also works.
       return res.status(400).json({
-        message: "Location required for POS. Pass X-Location-Id or set a default location.",
+        message:
+          "Location required for POS. Pass X-Location-Id, set this user's default location, or set an organization default location.",
       });
     }
     const [location] = await db

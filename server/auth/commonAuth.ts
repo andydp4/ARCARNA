@@ -147,6 +147,25 @@ async function resolveLocationFromOpenShift(orgId: string, userId: string): Prom
   return open?.locationId ?? null;
 }
 
+/**
+ * The org's own default location, for a user with no header override, no
+ * personal default, and no till already running. This is the fallback that
+ * was missing: an org can have exactly one active location and a default
+ * flag set on it (the common case for a single-site business), yet a cashier
+ * who has never had a personal default location assigned and has not yet
+ * opened a shift today got null out of every prior branch and a 400 on their
+ * first sale. Same isDefault/isActive pairing used to pick a stock location
+ * in services/productLocationStock.ts.
+ */
+async function resolveOrgDefaultLocation(orgId: string): Promise<string | null> {
+  const [defaultLoc] = await db
+    .select({ id: locations.id })
+    .from(locations)
+    .where(and(eq(locations.orgId, orgId), eq(locations.isDefault, 1), eq(locations.isActive, 1)))
+    .limit(1);
+  return defaultLoc?.id ?? null;
+}
+
 export const requireOrgContext: RequestHandler = async (req, res, next) => {
   try {
     const user = req.user as {
@@ -170,6 +189,9 @@ export const requireOrgContext: RequestHandler = async (req, res, next) => {
       (req.headers["x-location-id"] as string) || user.defaultLocationId || null;
     if (!locationId && orgId && user.id) {
       locationId = await resolveLocationFromOpenShift(orgId, user.id);
+    }
+    if (!locationId && orgId) {
+      locationId = await resolveOrgDefaultLocation(orgId);
     }
     (req as { orgContext?: unknown }).orgContext = {
       orgId: orgId || null,
