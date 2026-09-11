@@ -89,6 +89,8 @@ uniform sampler2D u_words;
 uniform float u_cell;       /* which word: 0, 1, 2                     */
 uniform float u_hole;       /* how present that word is — it breathes  */
 uniform float u_repel;      /* how hard the liquid is pushed off it    */
+uniform vec2  u_wordPos;    /* where it sits — they do not share a spot */
+uniform float u_rise;       /* 0 = under the surface · 1 = fully up     */
 
 const float WM_ASPECT = 3.326;   /* the lockup master, cropped to ink  */
 /* Measured off the master rather than eyeballed: the column gap after
@@ -155,12 +157,24 @@ void main(){
      something rather than a logo laid on top. Both the hole and the
      push ride u_hole, so when a word breathes out the liquid simply
      flows back over it. */
-  const float PH_W = 0.78, PH_ASPECT = 2.421;
-  vec2  pq  = fp / vec2(PH_W, PH_W / PH_ASPECT) + 0.5;
-  float ph  = phraseA(pq);
+  const float PH_W = 0.52, PH_ASPECT = 2.421;
+  vec2  pq  = (fp - u_wordPos) / vec2(PH_W, PH_W / PH_ASPECT) + 0.5;
+
+  /* It surfaces rather than fades up. The hole opens top-down as the
+     word rises, so the crown breaks first and the rest follows it out —
+     and on the way back down the same edge closes over it. */
+  float edge  = mix(1.08, -0.30, u_rise);
+  float wipe  = smoothstep(edge, edge + 0.26, pq.y);
+  /* A bright band riding just under that edge: the water sheeting off
+     as the letterform clears the surface. This is the whole difference
+     between rising out of something and being switched on over it. */
+  float sheet = exp(-pow((pq.y - (edge + 0.10)) / 0.085, 2.0))
+              * step(0.0, u_rise) * (1.0 - step(0.999, u_rise));
+
+  float ph  = phraseA(pq) * wipe;
   float e   = 0.007;
   vec2  pgrad = vec2(phraseA(pq + vec2(e, 0.0)) - phraseA(pq - vec2(e, 0.0)),
-                     phraseA(pq + vec2(0.0, e)) - phraseA(pq - vec2(0.0, e)));
+                     phraseA(pq + vec2(0.0, e)) - phraseA(pq - vec2(0.0, e))) * wipe;
   float rim = min(length(pgrad) * 2.4, 1.0);
 
   /* ---- the liquid, full frame ------------------------------------ */
@@ -182,6 +196,7 @@ void main(){
   /* A meniscus where the field is being held off — the bright lip is
      what makes it read as surface tension rather than a cut-out. */
   liq += rim * u_hole * 0.34;
+  liq += sheet * ph * u_hole * 0.55;
 
   /* ---- the lockup, in three zones -------------------------------- */
   const float WM_W = 0.86;
@@ -207,18 +222,20 @@ void main(){
   mq = mat2(c, -s, s, c) * mq;
   mq = mq / u_markScale + 0.5;
 
+  /* Core and wake are kept apart so they can be coloured separately:
+     the mark itself lifts to Light Blue, the trail it leaves behind
+     stays Truth Blue — the colour it was before it went. */
   float mark = markA(mq);
-  /* Radial streaks on the way out: samples pulled back along the line
-     to centre, so the smear runs the way the mark is travelling. */
+  float wake = 0.0;
   if (u_streak > 0.001) {
-    float acc = 0.0;
-    for (int i = 0; i < 10; i++) {
-      float t = float(i) / 9.0;
+    for (int i = 0; i < 14; i++) {
+      float t = float(i) / 13.0;
       vec2 sq = (mq - 0.5) / (1.0 + u_streak * t) + 0.5;
-      acc += markA(sq);
+      wake += markA(sq) * (1.0 - t * 0.55);
     }
-    mark = max(mark, acc / 10.0);
+    wake = min(wake / 7.0, 1.0);
   }
+  wake = max(wake - mark, 0.0) * u_markFade;
   mark *= u_markFade;
 
   /* ---- composite -------------------------------------------------- */
@@ -227,6 +244,7 @@ void main(){
      u_markMix here it draws from the first frame and sits on top of the
      phrase. */
   float glyph = max(word * (1.0 - u_markMix), mark * u_markMix);
+  float wakeA = wake * u_markMix;
 
   vec3 solidCol = mix(vec3(60.0,122.0,196.0)/255.0, vec3(182.0,217.0,255.0)/255.0, u_light);
   /* The glyph starts as the same liquid, lifted so it reads against a
@@ -268,6 +286,12 @@ void main(){
   col = mix(col, ground, ph * u_hole * keep);
 
   float g = glyph;
+  /* Wake under the mark, in Truth Blue, so the trail reads as what the
+     mark was rather than as a paler copy of what it has become. */
+  vec3 wakeCol = vec3(60.0, 122.0, 196.0) / 255.0;
+  col   = mix(col, wakeCol, wakeA);
+  alpha = max(alpha, wakeA);
+
   col   = mix(col, glyphCol, g);
   alpha = max(alpha, g);
 
@@ -347,7 +371,7 @@ void main(){
   var U = {};
   ['u_res','u_phase','u_bg','u_wordIn','u_solid','u_wordOut','u_tagIn','u_wink1',
    'u_wink2','u_markMix','u_markScale','u_markRot','u_markPos','u_light','u_streak','u_markFade',
-   'u_cell','u_hole','u_repel']
+   'u_cell','u_hole','u_repel','u_wordPos','u_rise']
     .forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
 
   /* ================= the timeline =================
@@ -356,26 +380,26 @@ void main(){
   /* Each word is a hole in the liquid that breathes open and closed.
      They overlap slightly at the seams so the field never fully settles
      between them — the phrase reads as one thought, not three cards. */
+  /* Each word surfaces somewhere different, so the eye travels the frame
+     instead of watching one spot change three times. */
   var PHRASES = [
-    { cell: 0, in: [ 1200,  2600], out: [ 4000,  5100] },   /* reveal */
-    { cell: 1, in: [ 4900,  6100], out: [ 7500,  8600] },   /* your   */
-    { cell: 2, in: [ 8400,  9600], out: [11000, 12200] }    /* truth  */
+    { cell: 0, pos: [-0.29,  0.17], in: [  900, 1900], out: [3000, 3900] },  /* reveal */
+    { cell: 1, pos: [ 0.30, -0.18], in: [ 3700, 4700], out: [5800, 6700] },  /* your   */
+    { cell: 2, pos: [ 0.00, -0.21], in: [ 6500, 7500], out: [8600, 9500] }   /* truth  */
   ];
 
   var T = {
-    wordIn:   [12000, 15200],   /* arcarna hardens over the water      */
-    drain:    [15400, 18800],   /* the water runs inward, into it      */
-    solid:    [18400, 19800],   /* liquid texture -> flat Truth Blue   */
-    tagIn:    [19800, 20800],   /* reveal your truth, under the lockup */
-    hold:     [20800, 22200],
-    wink1:    [22200, 23600],   /* the leading a catches the light     */
-    wordOut:  [23800, 25000],   /* everything but the a leaves         */
-    spin:     [25000, 27400],   /* four turns, each faster, dead stop  */
-    wink2:    [27700, 28200],   /* half a second of glisten            */
-    light:    [28200, 28900],   /* -> Light Blue, on the way out       */
-    takeoff:  [28200, 30000]
+    wordIn:   [ 9300, 12000],   /* arcarna hardens over the water      */
+    drain:    [12200, 15200],   /* the water runs inward, into it      */
+    solid:    [14800, 16200],   /* liquid texture -> flat Truth Blue   */
+    tagIn:    [16200, 17100],   /* reveal your truth, under the lockup */
+    hold:     [17100, 18400],
+    wink1:    [18400, 19600],   /* the a catches the light             */
+    wordOut:  [19700, 20600],   /* the rest of the wording vanishes    */
+    light:    [20300, 21000],   /* -> Light Blue as it goes            */
+    takeoff:  [20300, 22300]
   };
-  var LENGTH = 30600;
+  var LENGTH = 23000;
   var PERIOD = 12000, OFFSET = 42000;
 
   var clamp01 = function (x) { return x < 0 ? 0 : x > 1 ? 1 : x; };
@@ -399,11 +423,12 @@ void main(){
     for (var i = 0; i < PHRASES.length; i++) {
       var ph = PHRASES[i];
       if (t < ph.in[0] || t > ph.out[1]) continue;
-      var env = easeInOut(span(t, ph.in)) * (1 - easeInOut(span(t, ph.out)));
-      var breath = 0.84 + 0.16 * Math.sin((t - ph.in[0]) / 1000 * 1.9);
-      return { cell: ph.cell, amt: env * breath };
+      var rise = easeOut(span(t, ph.in)) * (1 - easeIn(span(t, ph.out)));
+      var env  = easeInOut(span(t, ph.in)) * (1 - easeInOut(span(t, ph.out)));
+      var breath = 0.86 + 0.14 * Math.sin((t - ph.in[0]) / 1000 * 2.4);
+      return { cell: ph.cell, amt: env * breath, rise: rise, pos: ph.pos };
     }
-    return { cell: 0, amt: 0 };
+    return { cell: 0, amt: 0, rise: 0, pos: [0, 0] };
   }
 
   function apply(t) {
@@ -411,33 +436,23 @@ void main(){
     var ph = phraseAt(t);
     gl.uniform1f(U.u_cell, ph.cell);
     gl.uniform1f(U.u_hole, ph.amt);
+    gl.uniform1f(U.u_rise, ph.rise);
+    gl.uniform2f(U.u_wordPos, ph.pos[0], ph.pos[1]);
     /* The push relaxes with the word, so the field washes back over the
        letters as they go rather than the hole simply closing. */
     gl.uniform1f(U.u_repel, ph.amt * 0.55);
 
-    /* Four turns, each faster than the last, stopping dead.
-       Angle goes as t^3, so angular speed rises through the whole move
-       and is at its maximum when it stops — which is what makes the
-       stop read as a stop rather than a drift to rest. A linear or
-       ease-out spin gives the opposite feel. */
-    var sp    = span(t, T.spin);
-    var turns = Math.pow(sp, 3.0);
-    var rot   = -4.0 * TAU * turns;
+    /* No spin. The a winks, the rest of the wording goes, and it comes
+       straight at the viewer — one move rather than a turn followed by a
+       launch. It recentres inside the first quarter of the run, so it
+       converges on the lens as it grows rather than arriving at centre
+       first and then setting off. */
+    var takeoff  = easeIn(span(t, T.takeoff));
+    var recentre = easeOut(clamp01(span(t, T.takeoff) / 0.25));
 
-    /* A few degrees of recoil after the stop. Without it, cutting from
-       maximum angular speed to zero reads as a dropped frame. */
-    if (t > T.spin[1]) {
-      var k = clamp01((t - T.spin[1]) / 340);
-      rot += 0.13 * Math.sin(k * Math.PI) * (1 - k);
-    }
-
-    /* Travel and growth follow the same curve as the spin, so the a
-       arrives at centre on the beat the rotation stops. */
-    var journey = easeInOut(sp);
-    var takeoff = easeIn(span(t, T.takeoff));
-
-    var scale = A_SIZE * (1 + 1.45 * journey) * (1 + 15.0 * takeoff);
-    var px = A_CX * (1 - journey);
+    var rot   = 0.0;
+    var scale = A_SIZE * (1 + 17.0 * takeoff);
+    var px = A_CX * (1 - recentre);
     var py = 0.0;
 
     /* Chosen: it leaves on the axis, so the mark stays centred and
@@ -447,11 +462,10 @@ void main(){
 
     var wink1 = t >= T.wink1[0] && t <= T.wink1[1]
       ? -0.15 + 1.35 * span(t, T.wink1) : -1;
-    var wink2 = t >= T.wink2[0] && t <= T.wink2[1]
-      ? -0.35 + 1.85 * span(t, T.wink2) : -1;
+    var wink2 = -1;   /* the second glisten went with the spin */
 
     gl.uniform1f(U.u_bg, 1 - easeInOut(span(t, T.drain)));
-    gl.uniform1f(U.u_markFade, 1 - easeIn(clamp01((t - 29300) / 900)));
+    gl.uniform1f(U.u_markFade, 1 - easeIn(clamp01((t - 21800) / 900)));
     gl.uniform1f(U.u_wordIn, easeInOut(span(t, T.wordIn)));
     gl.uniform1f(U.u_solid, easeInOut(span(t, T.solid)));
     gl.uniform1f(U.u_wordOut, easeInOut(span(t, T.wordOut)));
@@ -461,9 +475,10 @@ void main(){
     gl.uniform1f(U.u_markRot, rot);
     gl.uniform2f(U.u_markPos, px, py);
     gl.uniform1f(U.u_light, easeInOut(span(t, T.light)));
-    /* The heavier streak from the off-axis version, kept. On the axis
-       it is the only thing selling speed, so it has to do more work. */
-    gl.uniform1f(U.u_streak, takeoff * 1.60);
+    /* On the axis the wake is the only thing selling speed, so it runs
+       long — and it is sampled apart from the mark so it can stay Truth
+       Blue while the mark itself lifts to Light Blue. */
+    gl.uniform1f(U.u_streak, takeoff * 2.60);
     gl.uniform1f(U.u_wink1, wink1);
     gl.uniform1f(U.u_wink2, wink2);
   }
