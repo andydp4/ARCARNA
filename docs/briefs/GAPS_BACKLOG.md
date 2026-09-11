@@ -352,6 +352,89 @@
 
 ---
 
+## Operations Centre — found during the Phase N review (2026-09-11)
+
+All pre-existing; none introduced by Phase N. Each is fixed by the package named, or recorded for a later change.
+
+<a id="gap-ops-01"></a>
+
+### GAP-OPS-01 — Order ops / rating capture unreachable since PR #136
+
+| | |
+|---|---|
+| **Brief** | L5 / ARC-T1-003, ARC-T1-005, ARC-T2-003 |
+| **Snag** | `client/src/pages/orders.tsx` L91: `selectedOrder` is only ever written inside the status mutation behind a `selectedOrder?.id === orderId` guard, so it is always null and the *Collection & delays* / *Rate collection* buttons, `OrderOpsDialog` and `SatisfactionDialog` never render (the setter went with `openStatusDialog` in 0b611ac). No UI has written `eta_given` / `delay_flag` / satisfaction for three weeks; the three reports have had no feed. |
+| **Fix** | N4 replaces the dialog with inline card capture; rating capture gets its own home (GAP-OPS-06). |
+| **Closed** | [ ] |
+
+<a id="gap-ops-02"></a>
+
+### GAP-OPS-02 — Website orders lose their fulfilment method
+
+| | |
+|---|---|
+| **Brief** | C-series / website ingest |
+| **Snag** | `server/services/website.ts` L568–586 never passes `fulfilmentMethod` to `placeOrder`, and `shared/website.ts` L163 uses `pickup` where orders use `collection`. Every web delivery is stored as a collection. |
+| **Fix** | N1: map `pickup → collection`, pass `fulfilmentMethod`, unit test. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-03"></a>
+
+### GAP-OPS-03 — Bulk “Set status” bypasses settlement, attribution, credit and events
+
+| | |
+|---|---|
+| **Brief** | U4 |
+| **Snag** | `server/lib/bulkActionHandler.ts` L157–173 writes any string into `orders.status` with no validation; setting `completed` this way freezes no `settled_total`, records no completer and publishes nothing. `orders.status` has no CHECK constraint. |
+| **Fix** | N4c removes the orders bulk action (the board has no multi-select). If bulk status is ever wanted back, it must call `completeOrderTx`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-04"></a>
+
+### GAP-OPS-04 — Bell leaks cross-tenant counts
+
+| | |
+|---|---|
+| **Brief** | S4 / tenancy |
+| **Snag** | `server/services/operationalIntelligence.ts` `getNotifications` L371–375 (pending approvals) and L392–404 (dead letters) are not filtered by `orgId`; every org's bell shows every org's approvals and dead letters. |
+| **Fix** | N3: org filter + `notificationsOrgScope.test.ts`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-05"></a>
+
+### GAP-OPS-05 — Order expenses collected at checkout are never sent
+
+| | |
+|---|---|
+| **Brief** | U7 / K-series |
+| **Snag** | `client/src/pages/pos.tsx` L136–139 keeps `orderExpenses`, validates them (L647–656) and passes them to the step, but `orderData` (L680–763) never includes them and the server writes `order_expenses` only for personal use. Silent data loss. |
+| **Fix** | N4a removes the dead UI (owner to confirm). Wiring it — client payload, `PlaceOrderInput`, insert inside the create transaction, Z-report effect — is its own money change. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-06"></a>
+
+### GAP-OPS-06 — Collection satisfaction rating has no capture point
+
+| | |
+|---|---|
+| **Brief** | ARC-T2-003 |
+| **Snag** | `SatisfactionDialog` was only reachable from the dead block in GAP-OPS-01 and is deleted in N4c. `POST /api/satisfaction` stays. |
+| **Fix** | Add an optional one-tap rating on the *Recently completed* rail card, after N4. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-07"></a>
+
+### GAP-OPS-07 — `apps/server/src/db/schema.ts` lacks five operational `orders` columns
+
+| | |
+|---|---|
+| **Brief** | S1 / schema drift |
+| **Snag** | `queue_position`, `delay_cause`, `original_eta`, `delay_notification_sent_at`, `delay_resolution` exist in `shared/schema.ts` and the database but not in the snake_case file; `scripts/audit-schema-drift.mjs` ignores columns present in only one file, so CI is silent while `GET /api/orders` cannot select them. |
+| **Fix** | N1 declares them; consider extending the audit to fail on columns present in one file only (and to compare `withTimezone`). |
+| **Closed** | [ ] |
+
+---
+
 ## Docs hygiene
 
 | ID | Task | Closed |

@@ -181,6 +181,19 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 
 ---
 
+## Phase N — The Operations Centre
+
+| ID | Status | Wave / notes |
+|----|--------|----------------|
+| N1 | **Planned** | Timing model (migration 065), `deriveCardState`, `GET /api/orders/board`, coloured rows — [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) |
+| N2 | **Planned** | `POST /api/orders/:id/transition`, stations, ops settings, `completeOrderTx` extraction |
+| N3 | **Planned** | `ops_alerts`, due-soon / late sweep folded into the runner's precise wake |
+| N4 | **Planned** | Form extraction (N4a), board components (N4b), `/operations` page + redirects + deletions (N4c) |
+| N5 | **Planned** | ARC-T2-005 order timing report; Delay Log on `order_events`; ARC-T1-003 retired |
+| N6 | **Planned** | Dead code found during the review (eventBus, cashier-code routes, offline store, jest deps) |
+
+---
+
 ## Migrations on `main`
 
 Applied via `scripts/apply-migrations-pm2.sh`: **001–014, 022–028, 030–035, 032** (gaps 015–021 intentional; 031 onboarding; 033–035 WhatsApp).
