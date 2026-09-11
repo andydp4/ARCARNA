@@ -69,6 +69,10 @@ uniform float u_bg;         /* 1 = full field · 0 = drained away      */
 uniform float u_wordIn;     /* the lockup rising out of the liquid    */
 uniform float u_solid;      /* liquid texture -> flat Truth Blue      */
 uniform float u_wordOut;    /* the rest of the wordmark leaving       */
+uniform float u_tagIn;      /* the tagline, held back until the field
+                               has gone — its strokes are too fine to
+                               survive a lift over live liquid        */
+uniform float u_flyB;       /* 0 = centre zoom · 1 = off-axis fly-past */
 uniform float u_wink1;      /* sweep across the leading a, -1..2      */
 uniform float u_wink2;      /* sweep across the standalone mark       */
 uniform float u_markMix;    /* 0 = a lives in the lockup · 1 = solo   */
@@ -81,8 +85,13 @@ uniform float u_markFade;
 uniform sampler2D u_word;
 uniform sampler2D u_mark;
 
-const float WM_ASPECT = 3.326;   /* the lockup master, cropped to ink */
-const float A_END     = 0.325;   /* where the leading a ends within it */
+const float WM_ASPECT = 3.326;   /* the lockup master, cropped to ink  */
+/* Measured off the master rather than eyeballed: the column gap after
+   the mark, and the row gap between the wordmark and the tagline taken
+   in the right-hand 55% (the a's tail descends past it on the left). */
+const float A_END     = 0.357;
+const float TAG_Y     = 0.255;   /* wq.y below this, and             */
+const float TAG_X     = 0.550;   /* wq.x beyond this, is the tagline */
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 float vnoise(vec2 p){
@@ -146,15 +155,23 @@ void main(){
   float lum = dot(liq, vec3(0.2126, 0.7152, 0.0722));
   liq = lum + (liq - lum) * 1.26;
 
-  /* ---- the lockup ------------------------------------------------ */
+  /* ---- the lockup, in three zones -------------------------------- */
   const float WM_W = 0.86;
-  vec2  wq   = fp / vec2(WM_W, WM_W / WM_ASPECT) + 0.5;
-  float word = wordA(wq);
-  /* Everything but the leading a leaves first, so the a is what is
-     left standing rather than something that fades back in. */
-  float rest = word * step(A_END, wq.x);
-  float lead = word * step(wq.x, A_END);
-  word = lead + rest * (1.0 - u_wordOut);
+  vec2  wq  = fp / vec2(WM_W, WM_W / WM_ASPECT) + 0.5;
+  float ink = wordA(wq);
+
+  float lead = ink * step(wq.x, A_END);                          /* the a      */
+  float tagl = ink * step(wq.y, TAG_Y) * step(TAG_X, wq.x);      /* the tagline */
+  float rest = max(ink - lead - tagl, 0.0);                      /* rcarna      */
+
+  /* arcarna arrives on the liquid; the tagline waits for the field to
+     clear. At a lift the bold glyphs survive, the tagline's hairlines
+     do not — the first pass lost them entirely against live liquid.
+     Everything but the a leaves together, so the a is what is left
+     standing rather than something that fades back in. */
+  float word = lead * u_wordIn
+             + rest * u_wordIn * (1.0 - u_wordOut)
+             + tagl * u_tagIn  * (1.0 - u_wordOut);
 
   /* ---- the standalone mark, free to move ------------------------- */
   float c = cos(u_markRot), s = sin(u_markRot);
@@ -177,17 +194,18 @@ void main(){
   mark *= u_markFade;
 
   /* ---- composite -------------------------------------------------- */
-  float glyph = max(word * (1.0 - u_markMix) + lead * u_markMix * 0.0, mark);
-  glyph = max(word * (1.0 - u_markMix), mark);
+  float glyph = max(word * (1.0 - u_markMix), mark);
 
   vec3 solidCol = mix(vec3(60.0,122.0,196.0)/255.0, vec3(182.0,217.0,255.0)/255.0, u_light);
   /* The glyph starts as the same liquid, lifted so it reads against a
      field that is still whole, then resolves to flat brand colour. */
-  vec3 glyphCol = mix(liq * 1.62 + vec3(0.085, 0.105, 0.130), solidCol, u_solid);
+  vec3 glyphCol = mix(liq * 1.85 + vec3(0.120, 0.145, 0.175), solidCol, u_solid);
 
   /* Winks: a narrow diagonal band crossing the glyph. */
   float band1 = exp(-pow((wq.x - wq.y * 0.30 - u_wink1) / 0.055, 2.0))
               * step(wq.x, A_END) * step(0.0, u_wink1);
+  /* Gated on u_wordIn so the mask's zones cannot flash before the
+     lockup has arrived. */
   float band2 = exp(-pow(((mq.x - mq.y * 0.30) - u_wink2) / 0.10, 2.0))
               * step(0.0, u_wink2);
   float wink = band1 * word + band2 * mark;
@@ -196,10 +214,12 @@ void main(){
   /* Background drains uniformly — this cut is about the words, not the
      field, so the noise-threshold drain the other cuts use would pull
      focus at exactly the wrong moment. */
-  vec3  col   = mix(vec3(0.0), liq, u_bg);
+  /* Deep Shadow, not black — every other cut sits on it, and a true
+     black ground made this one look like a different system. */
+  vec3  col   = mix(vec3(6.0, 19.0, 39.0) / 255.0, liq, u_bg);
   float alpha = u_bg;
 
-  float g = glyph * max(u_wordIn, u_markMix);
+  float g = glyph;
   col   = mix(col, glyphCol, g);
   alpha = max(alpha, g);
 
@@ -268,8 +288,8 @@ void main(){
   gl.uniform1i(gl.getUniformLocation(prog, 'u_mark'), 1);
 
   var U = {};
-  ['u_res','u_phase','u_bg','u_wordIn','u_solid','u_wordOut','u_wink1','u_wink2',
-   'u_markMix','u_markScale','u_markRot','u_markPos','u_light','u_streak','u_markFade']
+  ['u_res','u_phase','u_bg','u_wordIn','u_solid','u_wordOut','u_tagIn','u_flyB','u_wink1',
+   'u_wink2','u_markMix','u_markScale','u_markRot','u_markPos','u_light','u_streak','u_markFade']
     .forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
 
   /* ================= the timeline =================
@@ -277,17 +297,18 @@ void main(){
      this is a direction test, not a locked edit. */
   var T = {
     settle:   [    0,  1500],
-    wordIn:   [ 1500,  5200],   /* the lockup rises out of the liquid  */
+    wordIn:   [ 1500,  5200],   /* arcarna rises out of the liquid     */
     drain:    [ 5600,  8800],   /* the field leaves, the words stay    */
     solid:    [ 9000, 10400],   /* liquid texture -> flat Truth Blue   */
-    wink1:    [11000, 12400],   /* the leading a catches the light     */
-    wordOut:  [12600, 14000],   /* the rest of the wordmark leaves     */
-    fly:      [14000, 16200],   /* the a grows and spins to centre     */
-    wink2:    [16400, 17600],
-    light:    [17400, 18300],   /* -> Light Blue                       */
-    takeoff:  [18300, 19900]
+    tagIn:    [10400, 11300],   /* the tagline joins, field now clear  */
+    wink1:    [11600, 13000],   /* the leading a catches the light     */
+    wordOut:  [13200, 14400],   /* everything but the a leaves         */
+    spin:     [14400, 16800],   /* four turns, each faster, dead stop  */
+    wink2:    [17100, 17600],   /* half a second of glisten            */
+    light:    [17600, 18300],   /* -> Light Blue, on the way out       */
+    takeoff:  [17600, 19400]
   };
-  var LENGTH = 20400;
+  var LENGTH = 20000;
   var PERIOD = 12000, OFFSET = 42000;
 
   var clamp01 = function (x) { return x < 0 ? 0 : x > 1 ? 1 : x; };
@@ -298,41 +319,66 @@ void main(){
 
   /* Where the leading a sits inside the lockup, in frame units. The
      mark has to start exactly there or the hand-off jumps. */
-  var WM_W = 0.86, WM_ASPECT = 3.326, A_END = 0.325;
+  /* ?fly=b swaps the centre zoom for an off-axis pass. Both are built
+     so the two can be compared on the same timeline. */
+  var FLY_B = new URLSearchParams(location.search).get('fly') === 'b' ? 1 : 0;
+  var WM_W = 0.86, WM_ASPECT = 3.326, A_END = 0.357;
   var A_CX = (A_END * 0.5 - 0.5) * WM_W;          /* centre of the a    */
   var A_SIZE = WM_W / WM_ASPECT * 1.30;
 
+  var TAU = 6.2831853;
+
   function apply(t) {
-    var bg = 1 - easeInOut(span(t, T.drain));
-    var wordIn = easeInOut(span(t, T.wordIn));
-    var solid = easeInOut(span(t, T.solid));
-    var wordOut = easeInOut(span(t, T.wordOut));
     var markMix = span(t, [T.wordOut[1] - 200, T.wordOut[1]]);
 
-    var fly = easeInOut(span(t, T.fly));
+    /* Four turns, each faster than the last, stopping dead.
+       Angle goes as t^3, so angular speed rises through the whole move
+       and is at its maximum when it stops — which is what makes the
+       stop read as a stop rather than a drift to rest. A linear or
+       ease-out spin gives the opposite feel. */
+    var sp    = span(t, T.spin);
+    var turns = Math.pow(sp, 3.0);
+    var rot   = -4.0 * TAU * turns;
+
+    /* A few degrees of recoil after the stop. Without it, cutting from
+       maximum angular speed to zero reads as a dropped frame. */
+    if (t > T.spin[1]) {
+      var k = clamp01((t - T.spin[1]) / 340);
+      rot += 0.13 * Math.sin(k * Math.PI) * (1 - k);
+    }
+
+    /* Travel and growth follow the same curve as the spin, so the a
+       arrives at centre on the beat the rotation stops. */
+    var journey = easeInOut(sp);
     var takeoff = easeIn(span(t, T.takeoff));
 
-    var scale = A_SIZE * (1 + 1.45 * fly) * (1 + 14.0 * takeoff);
-    var rot = (1 - fly) * 0.0 + fly * -6.2831853;   /* one full turn in */
-    var px = A_CX * (1 - fly);
+    var scale = A_SIZE * (1 + 1.45 * journey) * (1 + 15.0 * takeoff);
+    var px = A_CX * (1 - journey);
     var py = 0.0;
+
+    /* Variant B leaves the axis as it goes, so it passes the camera
+       rather than growing out of the middle of frame. */
+    px += FLY_B * takeoff * -0.62;
+    py += FLY_B * takeoff *  0.30;
 
     var wink1 = t >= T.wink1[0] && t <= T.wink1[1]
       ? -0.15 + 1.35 * span(t, T.wink1) : -1;
     var wink2 = t >= T.wink2[0] && t <= T.wink2[1]
-      ? -0.30 + 1.70 * span(t, T.wink2) : -1;
+      ? -0.35 + 1.85 * span(t, T.wink2) : -1;
 
-    gl.uniform1f(U.u_bg, bg);
-    gl.uniform1f(U.u_wordIn, wordIn);
-    gl.uniform1f(U.u_solid, solid);
-    gl.uniform1f(U.u_wordOut, wordOut);
+    gl.uniform1f(U.u_bg, 1 - easeInOut(span(t, T.drain)));
+    gl.uniform1f(U.u_wordIn, easeInOut(span(t, T.wordIn)));
+    gl.uniform1f(U.u_solid, easeInOut(span(t, T.solid)));
+    gl.uniform1f(U.u_wordOut, easeInOut(span(t, T.wordOut)));
+    gl.uniform1f(U.u_tagIn, easeInOut(span(t, T.tagIn)));
+    gl.uniform1f(U.u_flyB, FLY_B);
     gl.uniform1f(U.u_markMix, markMix);
     gl.uniform1f(U.u_markScale, scale);
     gl.uniform1f(U.u_markRot, rot);
     gl.uniform2f(U.u_markPos, px, py);
     gl.uniform1f(U.u_light, easeInOut(span(t, T.light)));
-    gl.uniform1f(U.u_streak, takeoff * 0.85);
-    gl.uniform1f(U.u_markFade, 1 - easeIn(clamp01((t - 19100) / 900)));
+    gl.uniform1f(U.u_streak, takeoff * (0.85 + 0.75 * FLY_B));
+    gl.uniform1f(U.u_markFade, 1 - easeIn(clamp01((t - 18700) / 900)));
     gl.uniform1f(U.u_wink1, wink1);
     gl.uniform1f(U.u_wink2, wink2);
   }
