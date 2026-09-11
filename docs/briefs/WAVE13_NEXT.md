@@ -11,7 +11,7 @@
 | **U1** | `feat/u1-import-empty-states` | GAP-U1-03 — import modals |
 | **U5** | `chore/lint-strict-pass` | GAP-U5-01 — `npm run lint:strict` green |
 | **Ops** | — | O2 restore drill, O3 `pm2 startup` + reboot test |
-| **N1–N6** | `claude/affectionate-wozniak-5emvuy` → per-package branches | The Operations Centre — [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md). N1 first (usable on its own); N2 ∥ N4a; N3; N4b/c; N5; N6 |
+| **N0–N9b** | per-package branches off `main` | The Operations Centre — [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md). N0 first, then N1 ‖ N2 ‖ N8; PR1 is floor-usable |
 
 **Optional:** Snag sweep from open branches (`cursor/snag-sweep-system-test-802c`, etc.) — triage before starting.
 

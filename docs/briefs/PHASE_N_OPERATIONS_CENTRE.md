@@ -1,53 +1,39 @@
 # Phase N — The Operations Centre
 
-**Status (2026-09-11):** **Planned** — spec agreed here before anything is built (this is the L5 spec that [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md) said must exist). **Depends on:** Phase L (L1–L5 built). **Mock:** the owner's artifact "Arcarna Operations Centre" (form beside a Collection | Delivery card board).
+**Status (2026-09-11):** **Planned — revision 2, agreed spec.** This is the L5 spec that [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md) said must exist before anything is built. Revision 1 (the first commit on PR #184) was reviewed by three independent designs, a judge panel and five adversarial critics (accessibility and devices; data integrity, concurrency and time; CI gates and scope; cleanup; floor reality); § *Changes from revision 1* lists what moved. **Depends on:** Phase L (L1–L4 built). **Mock:** the owner's artifact "Arcarna Operations Centre" (form beside a Collection | Delivery card board, final colours).
 
-Six work packages in six PRs: **N1** timing model + board read, **N2** transitions + stations, **N3** alerts, **N4** the screen (form extraction, board, combined page), **N5** reporting, **N6** cleanup. N1 is usable on the floor on its own (the old list gets colours and clocks); N4 is the screen the owner asked for.
+Ten work packages in fourteen PRs. **PR1 is on the floor the day it merges**: two lanes of coloured, ticking cards over the fields the orders table already has, with one-tap Handed over / Delivered. Everything it replaces is deleted by the PR that completes the replacement.
 
 ---
 
 ## Why this phase exists
 
-The shop is live on the system. Open Orders is a list: it says what exists, not what needs doing. Nobody can see at a glance who is looking after an order, whether it is on time, when the customer is coming, or that a delivery promised for 17:30 is now 17:44 and still on the shelf. Completion happens on that screen and earns the completer 90% of the commission, so it is the most important screen in the building and it is the least useful one.
+The shop is live. Open Orders is a list: it says what exists, not what needs doing. Nobody can see at a glance who is looking after an order, whether it is on time, when the customer is coming, or that a delivery promised for 17:30 is now 17:44 and still on the shelf. Completion happens on that screen and earns the completer 90 % of the commission, so it is the most important screen in the building and the least useful.
 
-The owner asked for a McDonald's-style operations board: orders as cards in a Collection area and a Delivery area, colour-coded by whether they are on time, running clocks on each, the cashier who owns it, visual and audible alerts when something needs a person (assigned to you; due in ten minutes; late), cashiers assigned to areas so alerts are personal, the order form on the same screen because there is room, and reporting on timing and issues afterwards. And old code gone when it is replaced.
+The owner asked for a McDonald's-style operations board: orders as cards in a Collection area and a Delivery area, colour-coded, with running clocks, the cashier who is dealing with each one, visual and audible alerts when something needs a person (assigned to you; due in ten minutes; late), cashiers assigned to areas so alerts are personal, the order form on the same screen because there is room, reporting on timing and issues afterwards, full testing, and old code gone when it is replaced.
 
 ## The idea, reviewed
 
-What is right and stays exactly as asked:
+**Right, and kept exactly as asked:** cards in two lanes by `fulfilment_method`; colour as the first signal with running clocks; one glance, one tap; the form beside the board; timing captured as facts; station-scoped personal alerts; report on it afterwards.
 
-- Cards, not rows. Two areas: **Collection** and **Delivery** (this is `orders.fulfilment_method`, already on every order).
-- Running clocks on every card, colour as the first signal, one-tap actions.
-- Personal alerts, with a station (Collection / Delivery / Both) per person per day.
-- Timing captured as first-class facts so it can be reported.
-- The order form is good; it moves, it does not change.
+**Missing, and added** (each is small and each closes a real hole):
 
-What the owner's list needed resolving or adding:
-
-| Point | Resolution |
+| Gap | What is added |
 |---|---|
-| "Dark blue = completed" and "green = completed" both listed | **Dark blue = Ready** (made ready, waiting to be handed over or to go out). **Green = Completed.** Truth Blue (the brand accent, `--truth-blue`) = on time. |
-| "On time" needs a time to be on time *against* | Every order gets a **due time**: the collection time or the delivery ETA promised to the customer, captured on the payment step (quick chips: +15 / +30 / +45 / +60 min, or a time). If none is given, the org's prep SLA (default 20 min) is the implicit due time and the card says "no time given". |
-| "Late" vs "delayed" are different things | **Late** is a fact the clock decides: past the due time and not ready (collection) or not delivered (delivery). **Delayed** is a decision a person made: the delay flag with a revised time, which already exists for the Delay Log. A delayed order with a new time in the future is orange, not red. |
-| "Due soon" was described (the 10-minute alert) but had no colour | Added as its own state: bright Truth Blue ring + pulse, from due − 10 min until ready. |
-| Ten minutes is wrong for a five-minute job and a three-day pre-order | Lead time, prep SLA and late grace are **org settings** (defaults 10 / 20 / 5 min). Pre-orders sit in a collapsed "Scheduled" strip until their trading day and are never late before then. |
-| A walk-in till sale handed over on the spot should not sit on a board | POS orders are auto-assigned to the person who keyed them in, and the "Order placed" toast carries a **Handed over** button, so a counter sale is two taps and gone. |
-| Who "owns" an order vs who earns on it | Three different people can be on an order: **loaded by** (input, 10%), **looked after by** (assigned, new), **completed by** (90%, frozen). Assignment never touches commission — that rule is locked in Phase L and this brief does not reopen it. |
-| Notifications are org-wide today | Alerts become **per person** (and per station), stored, acknowledged, and therefore reportable: "told at 17:20, acted at 17:26" is itself a timing metric. |
-| Nobody can tell whether the board is live | Cards carry a server clock; the page shows "updated 4 s ago" and a stale banner when the service worker is serving cache. |
+| Nothing records a promised time at creation; the only writer (`OrderOpsDialog`) has been unreachable since PR #136 | Due-time chips on the payment step (+5 … +60 or a time); "set a due time?" chip on the new card |
+| Nothing records ready / arrived / dispatched / held | Stage timestamps on `orders`, each mirrored by an `order_events` row |
+| No "who is dealing with it" separate from the two commission columns | `assigned_user_id`, atomic Take it, Pass to…, auto-claim on work |
+| A walk-in coffee would become a three-tap card that alerts the whole station | **Handed over now** on the payment step; Handed over always one tap on any collection card; no alerts on a fresh till order while its loader is present |
+| Every till-keyed order is `channel='pos'` — phone and WhatsApp orders are invisible | Walk-in / Phone / WhatsApp chip on the payment step |
+| Two taps on Delivered can both settle; a claim built like today's PATCH lets two cashiers both win | `SELECT … FOR UPDATE`, claim as `UPDATE … WHERE assigned_user_id IS NULL`, one completion transaction |
+| Notifications are org-wide with one read flag | Per-person alert rows, resolved by a colleague's action, acknowledged server-side, reportable |
+| 800 req / 15 min per IP; the whole shop is one IP | The board poll is exempt; board taps invalidate only the board |
+| The 60-minute red text is 3.05:1 (GAP-U5-04); the a11y job has no orders so it never sees it | Every colour pair proven by a token-maths unit test and by a seeded a11y spec from PR1 |
+| The service worker serves cached JSON as 200 when the server is down | The board is never cached; staleness is judged from `serverNow` |
+| Website deliveries land in Collection | `pickup → collection` and a due time on every web order |
+| Open orders from yesterday would sit red at the top of the lane at 06:00 | A "Yesterday" strip with no clocks, no alerts, and an honest "handed over yesterday?" on completion |
 
-Added value the owner did not ask for but the floor needs (effort S/M/L):
-
-- **Unassigned pool** with a station-wide alert when a website / WhatsApp / phone order arrives with nobody on it (S).
-- **Pass to…** and **Take over** on the card, with an audit row, so a break does not strand an order (S).
-- **Undo** on a completed card for ten minutes (reopen, already allowed) so a wrong tap is not a manager job (S).
-- **Customer arrived** for collections, so "waiting at the counter" is measured and a customer standing there for an order that is not ready pulses red on the card (S).
-- **Out for delivery** stage, so delivery ETA-vs-actual is real rather than "completed at" (S).
-- **Scheduled strip** for pre-orders and a **Recently completed** rail so the board is not cluttered with the finished or the far-off (S).
-- **Order history** (an events table) so held time, reassignments and delays are reportable after the fact, not only while the flag is up (M).
-- **Timing report** ARC-T2-005 "Order timing & service levels": prep time, wait, on-time %, ETA accuracy, by day, station, cashier, channel (M).
-- **Sound that actually works** on a tablet: one audio context unlocked on first tap, a visible "tap to enable sound" chip, a per-device mute (S).
-- **Two-cashier safety**: claiming is atomic; two people tapping Claim on the same order cannot both win (S).
+**Changed from the owner's wording, and why** — see *Decisions locked* and the colour section; the short version: no new statuses (money keys on `status='completed'`), green = completed, "dark blue = ready" becomes a second, lighter blue because the app is a single dark theme where a dark blue band is invisible, "light blue = held" is carried by a dashed light-blue border and chip rather than a tinted body, and the blue pulse means "you have something to do now", not "on time".
 
 ---
 
@@ -55,36 +41,57 @@ Added value the owner did not ask for but the floor needs (effort S/M/L):
 
 | Rule | Value |
 |---|---|
-| Terminal status | `completed` stays the one and only settling status. "Handed over" and "Delivered" are the completion transition with a different label. No `delivered`, `ready` or `cancelled` status is added; stages are **timestamps** on the order. |
-| Where completion happens | The board. Whoever taps Handed over / Delivered is `completed_user_id` (90%), as Phase L locked. |
-| Assignment | A third attribution: `assigned_user_id`. Never written into the commission columns. Any staff role may claim, mark ready, arrive, dispatch and complete. Assigning or unassigning **someone else** is MANAGER+ or the current assignee passing it on. |
-| Due time | `eta_given` is the promise (collection time or delivery ETA). `revised_eta` overrides it when a delay is flagged. `original_eta` is frozen on the first delay, as today. No new "due" column. |
-| Colours | Tokens only, never Tailwind palette classes: Truth Blue on time · bright Truth Blue due soon (pulse) · `--danger` late · `--warning` delayed · light blue held · `--truth-blue-strong` ready · `--success` completed. Every colour has an icon and a word beside it. Text on dark surfaces uses new `-text` tokens measured at ≥ 4.5:1 (closes GAP-U5-04). |
-| Time | `entered_at` is "received" (falls back to `created_at` for historic rows). All "today" maths is the org trading day (06:00–06:00). The board compares against the **server** clock (`serverNow` in the payload), not the tablet's. |
-| Live data | Polling, not SSE, for this phase: the board polls one open-only endpoint every 10 s (exempt from the shared-IP rate limit). Alerts are rows in a table, so they are per person, deduped across tabs and reportable. SSE is a follow-on if the shop grows beyond four tablets. |
-| Screen | One route, `/operations`. Desktop and tablet landscape: form left, board right. Phone: two tabs, Order and Board. `/create-order`, `/pos`, `/open-orders`, `/orders` redirect there. The form keeps every test id and the no-dialog rule. |
-| Reports | ARC-T1-003 (Order Status Dashboard) retires; the board is that screen. ARC-T1-005 (Delay Log) stays and is fed from the events table so a cleared flag no longer erases a delay. ARC-T2-005 is new. |
-| Cleanup | Anything the board replaces is deleted in the PR that replaces it, with its tests. Dead code found on the way that is unrelated to the board goes in N6, not in a feature PR. |
+| Terminal status | `completed` stays the only settling status. Handed over / Delivered are the existing completion transaction with a label. No `ready`, `delivered` or `cancelled` status. Stages are **timestamps** on `orders`, written once, each mirrored by an `order_events` row in the same transaction. |
+| Completion | Extracted once into `completeOrderTx(tx, lockedRow, actor)`; the PATCH route, the transition route and `completeNow` at checkout all call it inside the same lock. Whoever completes is `completed_user_id` (90 %) — Phase L, not reopened. |
+| Completed rows | Accept only `reopen` (and idempotent repeats). No hold / ready / arrived / out-for-delivery on a settled row — from the transition route, from PATCH, from anywhere. |
+| Reopen (Undo) | ≤ 10 min by the completer, any time by MANAGER+. Refused (409) if a refund exists or the credit row has payments. Voids the open credit leg in the same transaction. `settled_total`, `settled_at`, `completed_user_id` are **not** reset (Phase L freeze); the card says "completed by A" until completed again. |
+| Assignment | `assigned_user_id` is the auth subject (`req.user.id`), the same string `input_user_id` / `completed_user_id` hold. Never written into commission columns. Claim is atomic; Ready / Out for delivery on an unassigned card claims it for the actor; completion never assigns. Auto-claim on create is an org toggle, default off. |
+| Ready | Derived from `ready_at` only. `awaiting-customer` is retained as a status for the website settings and history; choosing it on the board's status select runs the `ready` transition; PATCH writing it stamps `ready_at` too. |
+| Due time | `eta_given` is the promise; `revised_eta` overrides it when a delay is flagged; `original_eta` frozen on first write. Sent to the server as **minutes or a wall-clock time on the order's date**, never as an absolute instant from the tablet. No promise → the org SLA is the fallback for colour only: the card says "No time given", counts elapsed, never counts down, never alerts (unless the org turns that on). |
+| Late vs delayed | Late is computed (promise passed, work not done; red). Delayed is declared (staff moved the promise and it is still ahead; orange). Both reported. |
+| Concurrency | No version token. Every stamp is first-write-wins under `FOR UPDATE` and returns `changed:false` on repeat; only `claim` can lose (409 naming the winner). The response always carries the fresh row and the client applies it. |
+| Events | Stage taps publish a new `OrderStageChanged` outbox event with **no** required workers. `OrderStatusChanged` is published only when `status` actually changes (complete, hold, unhold, reopen). |
+| Colours | Tokens only. Truth Blue on time · **second blue** (`--ops-ready`) ready / on the road · `--danger` late and customer-waiting · `--warning` delayed · dashed light-blue border + chip held · `--success` completed · bright-blue pulse only while an alert for *you* is open. Every state has a chip with words and an icon; body text is never tinted or reduced in opacity; every pair is asserted by a unit test on the token values. The app is one theme (Liquid Metal, dark). |
+| Time | All new columns naive `timestamp` UTC like every existing column. Rendered in the org timezone. "Today" is the trading day (06:00–06:00). Clocks tick against `serverNow`. |
+| Live data | Polling, 10 s, one endpoint, exempt from the shared-IP limiter, never cached by the service worker, paused while hidden, refetched on becoming visible, screen wake lock while the board is open. Alerts are rows delivered on the same poll. SSE is a follow-on. |
+| Screen | `/operations`: fixed 42 % form pane + board when the main area is ≥ 900 px (the sidebar collapses to its icon rail while the board is mounted); Board / New order tabs below. `/create-order` stays as the standalone form; `/open-orders` and `/orders` redirect. No feature flag. |
+| Keyboard | Tab / arrows / Enter / focus-scoped `/` only. No single-letter shortcuts (the barcode scanner shares the page). Enter is ignored inside a scanner burst. |
+| Stations & presence | `ops_staff (org_id, user_id)`: station (collection / delivery / both), sticky, plus `last_seen_at` written by the board poll and an on-break flag. Recipients of station alerts are members seen in the last 15 min, else everyone on the station. |
+| Reports | ARC-T1-003 retires (the board is that screen). ARC-T1-005 Delay Log stays, fed from events. ARC-T2-005 Timing and ARC-T1-006 Order Issues are new. ARC-T2-003 Satisfaction keeps its feed (rating chips on the completed card). |
+| Cleanup | Everything the board replaces is deleted in the PR that replaces it, with its tests. Unrelated dead code found on the way goes in N9a. |
+| Migrations | 065 = N2 (data), 066 = N5a (alerts). Migrations are re-applied on every deploy, so every statement is idempotent, including the backfill. |
 
 ## What the code does today, and where it conflicts
 
 | # | Finding | Where |
 |---|---|---|
-| **G1** | No assignment concept anywhere. Attribution is `input_user_id` (loaded) and `completed_user_id` (completed, frozen). | `shared/schema.ts` orders; `server/routes/orders.ts` |
-| **G2** | No lifecycle timestamps beyond `entered_at`, `created_at`, `settled_at`. Nothing records ready, arrived, out for delivery, held. Status transitions only exist implicitly in `event_outbox` payloads. | `shared/schema.ts`, `server/routes/orders.ts` L757 |
-| **G3** | The due time (`eta_given`) is never written at creation; the only writer is `OrderOpsDialog`, and that dialog has been **unreachable since PR #136** (`selectedOrder` can never be set). So ARC-T1-003/005 have had no UI feed for three weeks. | `client/src/pages/orders.tsx` L91, L222–251, L1012–1085 |
-| **G4** | `PATCH /api/orders/:id` reads the row outside the transaction with no lock and no from→to rules: two completions race, and any claim built the same way lets two cashiers both win. | `server/routes/orders.ts` L644–736 |
-| **G5** | Notifications are org-wide: `org_notifications` has no user column and "read" is read for everyone. The bell also leaks cross-tenant approval and dead-letter counts. | `shared/schema.ts` L1948; `server/services/operationalIntelligence.ts` L371, L392 |
-| **G6** | The worker loop's housekeeping runs every 15 minutes; nothing can fire "ten minutes before". The loop *does* already compute a precise wake for queued jobs, which a "next alert due" lookahead can join. | `server/workers/index.ts` L245, L347–353 |
-| **G7** | Production rate limit is 800 req / 15 min **per IP**, and every tablet in the shop shares one IP. A 5 s poll from four tablets alone exceeds it. | `server/security.ts` L48–55 |
-| **G8** | `GET /api/orders` returns every order the org has ever taken, completed included, on every 10 s poll. | `server/routes/orders.ts` L393–445 |
-| **G9** | The two Drizzle schema files disagree: `apps/server/src/db/schema.ts` lacks five operational columns (`queue_position`, `delay_cause`, `original_eta`, `delay_notification_sent_at`, `delay_resolution`), and the drift audit ignores columns present in only one file. | `apps/server/src/db/schema.ts` L84–88 |
-| **G10** | The 60-minute red label fails WCAG AA (3.05:1) and CI never renders one because its database has no old orders (GAP-U5-04). A live board would show that failure permanently. | `client/src/components/orders-row.tsx` L70 |
-| **G11** | Website orders lose their fulfilment: `website.ts` never passes `fulfilmentMethod` (and the site says `pickup`), so every web delivery would land in the Collection column. | `server/services/website.ts` L568–586; `shared/website.ts` L163 |
-| **G12** | Bulk "Set status" writes any string with no validation and bypasses settlement, attribution, credit and events. | `server/lib/bulkActionHandler.ts` L157–173 |
-| **G13** | The order form collects order expenses and never sends them (silent data loss); the checkout expenses UI is dead weight. | `client/src/pages/pos.tsx` L136, L680–763 |
-| **G14** | The form is a page that owns its `dvh` shell and header; it is not embeddable. Its line grid uses viewport breakpoints, so it overflows in a ~45% pane on 1024–1279 px screens. | `client/src/pages/pos.tsx` L808–985; `pos-order-lines.tsx` L264 |
-| **G15** | There is no fake-time convention in any test (zero uses of `page.clock`, `vi.useFakeTimers`, `emulateMedia`), no DOM test environment, no seeded orders in the a11y job, only one seeded cashier, and the `visual` Playwright project is unwired and asserts classes that no longer exist. | `tests/`, `vitest.config.ts`, `playwright.config.ts` |
+| G1 | No assignment concept; attribution is `input_user_id` (loaded) and `completed_user_id` (completed, frozen). | `shared/schema.ts` orders; `server/routes/orders.ts` |
+| G2 | No stage timestamps beyond `entered_at`, `created_at`, `settled_at`. | same |
+| G3 | `eta_given` is only written by `OrderOpsDialog`, unreachable since PR #136. | `client/src/pages/orders.tsx` L91, L222–251 |
+| G4 | `PATCH /api/orders/:id` reads the row outside the transaction on the pooled `db`, decides `isSettling` from it, and `creditLegTotal` borrows a second pool client inside the tx (pool max 10 — self-deadlock under ~10 concurrent completions). Two Delivered taps both settle; the second moves `completed_user_id`. | `server/routes/orders.ts` L646–768; `server/services/creditLedger.ts` L67–78; `apps/server/src/db/index.ts` L12–46 |
+| G5 | `orders.updated_at` is a DB default at microsecond precision and PUT/`save()` never touches it — useless as a version token. | `apps/server/src/db/repos.ts` L75–113 |
+| G6 | Migrations are re-applied on every deploy (`apply-migrations-pm2.sh`, CI loop with `ON_ERROR_STOP=0`), so a non-idempotent backfill fabricates data on each release and CI cannot see it because `db:push` already built the tables. | `scripts/apply-migrations-pm2.sh`; `.github/workflows/ci.yml` L92–99 |
+| G7 | `org_notifications` is org-wide with one `read_at`. | `shared/schema.ts` L1948 |
+| G8 | The worker loop wakes for queued jobs only; housekeeping is every 15 min. | `server/workers/index.ts` L343–352 |
+| G9 | 800 req / 15 min per IP; every tablet shares one IP. `skip` is a one-liner. | `server/security.ts` L53–58 |
+| G10 | `OrderStatusChanged` fans out to four workers and the automation rule engine, which matches rules even when `from === to`. | `shared/schema.ts` L2581; `server/services/automationEngine.ts` L129 |
+| G11 | The service worker answers API GETs from cache with the original 200 when the network fails; `navigator.onLine` stays true when the WAN is down. | `client/public/sw.js` fetch handler |
+| G12 | `apps/server/src/db/schema.ts` lacks five operational columns; the drift audit ignores single-file columns. `organizations` exists there as a four-column stub. | `apps/server/src/db/schema.ts` L84–88 |
+| G13 | The 60-minute red label is 3.05:1 (GAP-U5-04); the a11y job seeds no orders (`scripts/seed.ts` inserts none) so it never renders one. axe `color-contrast` covers text only and returns *incomplete* on gradient surfaces (`bg-metal-surface`). | `client/src/components/orders-row.tsx` L70; `.github/workflows/ci.yml` a11y job comment |
+| G14 | On the real surface (`.liquid-metal`, card hsl(215 12 % 13 %)): `--truth-blue-strong` is 2.42:1 (invisible band), `--truth-blue-subtle` tint is 1.22:1, and muted text on a subtle-tinted card is 4.24:1. The app has no light theme. | `client/src/styles/tokens/arcarna.css` L14–17; `liquid-metal.css` L37–59; `Layout.tsx` L99 |
+| G15 | `useBarcodeScanner` lets every keydown of a burst bubble on `window` before it consumes the trailing Enter; anything keyed to bare letters or Enter on a focused card would fire from a scan. | `client/src/hooks/useBarcodeScanner.ts` L60–72; `pos.tsx` L485 |
+| G16 | Chrome grants user activation on `pointerup` / `touchend` / `click` / `keydown`, not on touch `pointerdown`; `posAudio.ts` never unlocks the context at all. | `client/src/lib/posAudio.ts` L1–12 |
+| G17 | The desktop sidebar is 256 px open / 64 px collapsed from localStorage; a 1194 px tablet has 938 or 1130 px of main width depending on a toggle. | `Layout.tsx` L159; `NavigationContext.tsx` L12–19 |
+| G18 | The POS layout is chosen by five JS `isMobile` branches on the viewport, not by CSS breakpoints alone. | `pos.tsx` L103, L860–979; `hooks/use-mobile.tsx` L9 |
+| G19 | Website orders never pass `fulfilmentMethod` (site says `pickup`) and are inserted with `settings.defaultOrderStatus`, which may be `awaiting-customer`. | `server/services/website.ts` L568–586; `shared/website.ts` L129, L163 |
+| G20 | The order form never sends `channel`; the domain schema defaults it to `pos`. | `packages/domain/src/schemas.ts` L34 |
+| G21 | Offline replay: `_offlineQueuedAt` is honoured only with a replay token set by code that is already unmounted (`shift-open.tsx`); a replayed order is born "received now". | `server/middleware/requireActiveCashierShift.ts` L98–113; `client/src/lib/sync-service.ts` L9–15 |
+| G22 | The daily close reads completed rows only; open orders from the day are neither closed nor reported. | `server/services/dailyClose.ts` L173–184 |
+| G23 | `SatisfactionDialog` is the only writer of `POST /api/satisfaction`, which feeds ARC-T2-003. | `client/src/components/reports/SatisfactionDialog.tsx` L56 |
+| G24 | `commandPaletteIndex.ts` imports the `OrdersListOrder` type from `orders-row.tsx`. | `client/src/lib/commandPaletteIndex.ts` L18 |
+| G25 | `vitest.config.ts` excludes twelve DB suites unless `DATABASE_URL` is set — a naive `unit-db` job would switch all twelve on against an unseeded database. | `vitest.config.ts` L17–33 |
+| G26 | `tests/visual/pos-tablet.spec.ts` asserts classes no TSX renders; the `visual` Playwright project is not run by CI. | `playwright.config.ts` L96 |
+| G27 | `queue_position` will have no reader or writer after this phase; `GET /api/delay-causes` has none today; `startReconciliationJob`, `createTransactionalPublisher`, `effectiveCommissionRate` (imported unused in `routes/cashiers.ts`), `ReportRef`, `newCheckout` flag, `applyViewState`, `ShiftOpenModal`, `CashierShiftBadge` are dead now. | see *Cleanup* |
 
 ---
 
@@ -92,393 +99,516 @@ Added value the owner did not ask for but the floor needs (effort S/M/L):
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Received: POST /api/orders (entered_at)
-    Received --> Assigned: claim / auto-assign at POS (assigned_at)
+    [*] --> Received: POST /api/orders (entered_at, event received)
+    Received --> Claimed: take it / assign / auto-claim (assigned_at)
+    Received --> Ready: ready (auto-claims)
+    Claimed --> Ready: ready (ready_at)
+    Ready --> Arrived: customer here [collection] (customer_arrived_at)
+    Received --> Arrived: customer here, not ready = red
+    Arrived --> Ready: ready
+    Ready --> OnTheRoad: out for delivery [delivery] (out_for_delivery_at)
+    Claimed --> OnTheRoad: out for delivery (implies ready, auto-claims)
+    Received --> Completed: handed over (any open stage, collection)
+    Claimed --> Completed: handed over
+    Ready --> Completed: handed over / delivered
+    Arrived --> Completed: handed over
+    OnTheRoad --> Completed: delivered (optional actual time)
     Received --> Held: hold (status on-hold, held_at)
-    Assigned --> Held: hold
-    Held --> Assigned: release
-    Assigned --> Ready: ready (ready_at, status awaiting-customer)
-    Ready --> Arrived: customer arrived (customer_arrived_at) [collection]
-    Ready --> OutForDelivery: out for delivery (out_for_delivery_at) [delivery]
-    Arrived --> Completed: handed over (status completed, settled_at, completed_user_id)
-    Ready --> Completed: handed over [collection, no arrival recorded]
-    OutForDelivery --> Completed: delivered
-    Completed --> Assigned: undo within 10 min (reopen)
+    Claimed --> Held: hold
+    Ready --> Held: hold
+    Held --> Claimed: resume (restores recorded status)
+    Completed --> Claimed: undo ≤ 10 min by completer, any time MANAGER+
     Completed --> [*]
 ```
 
-Every arrow is one call to `POST /api/orders/:id/transition`, one transaction, one `order_events` row, one outbox event. Timestamps are written **once** (first write wins) except `assigned_*`, which changes on reassignment, and `held_at`, which is cleared on release (history stays in `order_events`).
+Every arrow is one call to `POST /api/orders/:id/transition` (or the checkout `completeNow` path): one transaction, one `order_events` row, one outbox event. Timestamps are written once (first write wins) except `assigned_*` (changes on reassignment) and `held_at` (cleared on resume; history stays in events).
 
-### Card state — one rule, shared
+| Milestone | Column | Written by |
+|---|---|---|
+| Received | `entered_at` (exists; `created_at` fallback) | insert; offline replay uses `_offlineQueuedAt` |
+| Promised | `eta_given` (+ `original_eta` frozen) | `POST /api/orders dueInMinutes\|dueTime`, `set_due` |
+| Current promise | `revised_eta`, `delay_*` (exist) | `PATCH …/operations` |
+| Dealing with it | `assigned_user_id`, `assigned_at`, `assigned_by_user_id` | `claim` / `assign` / auto-claim |
+| Held | `held_at` (null when not held; reason in `order_events.meta`) | `hold` / `unhold`; PUT edits that move status sync it |
+| Ready | `ready_at` | `ready`, implied by `out_for_delivery`, PATCH `awaiting-customer` |
+| Customer arrived | `customer_arrived_at` (collection) | `arrived` |
+| Out for delivery | `out_for_delivery_at` (delivery) | `out_for_delivery` |
+| Completed | `settled_at`, `completed_user_id` (exist, frozen) | `completeOrderTx` |
 
-`shared/orders/opsState.ts` exports `deriveCardState(order, now, settings)`; the board, the alert sweep and the timing report all call it, so a card, an alert and a report can never disagree. Precedence, first match wins:
+**Derived** (`shared/orders/opsState.ts`, pure, `now` injected): `receivedAt = entered_at ?? created_at` · `dueAt = revised_eta ?? eta_given ?? null` · `dueSource = dueAt ? 'promise' : 'sla'` · `dueEffective = dueAt ?? receivedAt + (collection ? prepSla : deliveryLead)` (pre-orders: never SLA — they have a promise by rule) · `handoverAt = COALESCE(order_events.completed.meta.actualAt, settled_at)`.
 
-| # | State | Condition | Colour token | Card word / icon | Running clock |
+### Card state — `deriveCardState(order, now, settings)`, first match wins
+
+| # | State | Rule | Band / chip fill | Chip text | Big clock |
 |---|---|---|---|---|---|
-| 1 | **Completed** | `status = completed` | `--success` | Completed · check | Prep, Wait, vs promised (static) |
-| 2 | **Held** | `status = on-hold` | `--held` (new light-blue token) | Held · pause | Held for |
-| 3 | **Late** | collection: `now > due + grace` and `ready_at` null · delivery: `now > due + grace` and not completed | `--danger` | Late · warning | Over by (counts up) |
-| 4 | **Delayed** | `delay_flag` and `revised_eta > now` | `--warning` | Delayed · warning | New time in |
-| 5 | **Ready** | `ready_at` set | `--truth-blue-strong` | Ready · box (+ "Out for delivery" pill / "Customer here" pill) | Ready for; At counter |
-| 6 | **Due soon** | `due − now ≤ lead` | `--truth-blue-bright` + ring pulse | Due soon · clock | Due in (counts down) |
-| 7 | **On time** | otherwise | `--truth-blue` | On time · clock | Waiting (since received), Due in |
+| 1 | `completed` | `status='completed'` | `--success`, text `--ops-completed-text` | DONE · check | static "Done HH:MM · took m:ss" |
+| 2 | `carried-over` | trading day of `receivedAt` < today and not completed | neutral, `--border` outline | YESTERDAY · calendar | none |
+| 3 | `scheduled` | `date_kind='preorder'` and its trading day > today | neutral, `--border` outline | FOR FRI 12 SEP | none |
+| 4 | `held` | `status='on-hold'` | neutral body, dashed `--truth-blue-bright` border, chip `--ops-held` with dark text | HELD · pause (+ red "Past due m:ss" / "Customer here" chips when true) | held m:ss |
+| 5 | `customer-waiting` | collection, `customer_arrived_at` set, `ready_at` null | `--danger`, white text | CUSTOMER WAITING · alert | waiting m:ss |
+| 6 | `late` | `now > dueEffective + grace` and (collection: `ready_at` null · delivery: not completed) | `--danger`, white | LATE m:ss (promise) / OVERDUE · NO TIME GIVEN (sla) | late by m:ss (promise) / elapsed (sla) |
+| 7 | `delayed` | `delay_flag` and `revised_eta > now` | `--warning`, text `--ops-delayed-text` | DELAYED · clock | new time in m:ss |
+| 8 | `ready` | `ready_at` set; delivery sub-label ON THE ROAD when dispatched | `--ops-ready`, dark text | READY · check / ON THE ROAD · truck (+ "Customer late m:ss" chip past due) | ready m:ss / ETA in m:ss |
+| 9 | `due-soon` | `dueSource='promise'` and `dueEffective − now ≤ dueSoonLead` | `--truth-blue`, bold clock | DUE SOON · clock | due in m:ss |
+| 10 | `on-time` | otherwise | `--truth-blue` | ON TIME (promise) / NO TIME GIVEN (sla) | due in m:ss (promise) / elapsed (sla) |
 
-Definitions:
+A small secondary clock shows elapsed since received (rows 1–3 excepted). The pulse (`data-alert="true"`) is applied only while an open alert addressed to the viewer exists on the card, independent of state. `urgent` is a badge and sort key, never a colour. Backdated open orders render on-time with a "Backdated" badge and never go late.
 
-- `due = revised_eta ?? eta_given ?? entered_at + prepSla` (collection) or `entered_at + deliveryLead` (delivery). When the fallback is used the card shows "no time given" and the report excludes it from on-time %.
-- `grace` = `ops_late_grace_minutes` (default 5); `lead` = `ops_due_soon_lead_minutes` (default 10); `prepSla` = `ops_prep_sla_minutes` (default 20); `deliveryLead` = `ops_delivery_lead_minutes` (default 45). All org settings, all readable by cashiers through `GET /api/settings`.
-- `urgent` status is a **priority flag** (icon + sort to top), not a colour.
-- `awaiting-customer` maps to Ready: the transition writes `ready_at` and sets that status, so anything still reading the status keeps working.
-- A collection that is Ready and past due is **not** late (the customer is); the Ready clock turns amber text after `due + grace` and the card says "Waiting for customer".
-- A Ready collection whose customer has arrived and waited more than `grace` shows "Customer waiting" in red text (state stays Ready; this is the exception that pulses red).
-- Pre-orders (`date_kind = preorder`, trading day in the future) sit in the **Scheduled** strip: no clocks, no lateness, no alerts until their trading day starts. Backdated orders never appear on the board unless open, and then carry the Backdated badge with no due time.
-- Cards leave the board 10 minutes after completion (they sit in a **Recently completed** rail with Undo until then).
+**Collection vs delivery.** Collection lateness stops at `ready_at` (a late customer is not our lateness). Delivery lateness runs until completion. Customer here exists only on collection; Out for delivery only on delivery.
 
-### Clocks
+**Pre-orders.** `date_kind='preorder'` requires a due time on the order's trading day (400 otherwise, from every path including the website). In the Scheduled strip until their trading day, no clocks, no alerts; on the day they are on-time until their promise.
 
-One 1-second ticker per page (`client/src/lib/opsClock.ts`), paused when `document.hidden`. Elapsed values are computed against `serverNow + (Date.now() − receivedAt)` so a tablet with a wrong clock still shows the right numbers. Labels: `m:ss` under an hour, `1h 02m` after, `2d` after a day. Live regions announce state **changes** (a card turning late), never ticks.
+**Carried-over.** At 06:00 anything still open from earlier trading days moves to a collapsed "Yesterday (n)" strip per lane: no clocks, no alerts, excluded from `lateNow`. Completing one asks "Handed over yesterday?" and stores the actual time on the `completed` event (`meta.actualAt`, ≥ `receivedAt`, ≤ now); reports use `handoverAt` and exclude carried-over rows from on-time %. The daily close summary gains "n orders still open from this day".
+
+**Legality** (`shared/orders/opsTransitions.ts::assertTransition`): repeats → `200 { changed:false }`, no event · `arrived` on a delivery or `out_for_delivery` on a collection → `409 ORDER_TRANSITION_INVALID` · anything but `reopen` on a completed row → 409 · `complete` needs no prerequisite on an open row · `hold` on open rows only · `set_due` only while `eta_given IS NULL` (afterwards it is a delay) · `unready` clears `ready_at` only · `unhold` restores the status recorded on the matching `held` event, falling back to `pending`.
+
+**Time.** Rendered via `Intl` in `organizations.timezone`; "today" from `currentTradingDay` / `tradingDayBounds`. Clocks: `serverNow + (performance.now() − receivedAtPerf)`, re-synced on every poll. Due times are resolved on the server: `dueInMinutes` against `receivedAt`, `dueTime` via a new minute-granular `localInstantAt(date, 'HH:MM', tz)` beside `localInstant`.
+
+### Colour resolution (the owner listed both "dark blue = completed" and "green = completed")
+
+**Green = completed** — the existing badge, Control Centre and reports already use `--success`. **The owner's "dark blue" = ready / on the road**, but the app is a single dark theme: on the card surface `--truth-blue-strong` measures 2.42:1 and cannot be told from `--truth-blue` (1.33:1 apart). So "dark blue" is rendered as a **second, lighter blue** — `--ops-ready: hsl(196 85% 58%)` with dark text — clearly separable from on-time Truth Blue and from the bright alert ring, with a check icon and a READY chip so the meaning never rests on the hue. **Light blue = held** is carried by a dashed `--truth-blue-bright` border and a light-blue chip with dark text; the card body stays neutral because muted text on a tinted body is 4.24:1. **Orange** means only delayed. **Red** is late and customer-waiting. **Due soon is not an eighth colour**: it stays Truth Blue with a DUE SOON chip and a bold countdown; **bright blue is reserved for the pulse**, which means "an alert for you is open on this card". Under reduced motion the pulse becomes a thick bright-blue left bar plus a bell icon and the alert text.
 
 ---
 
-## Data model & migration (`migrations/065_operations_centre.sql`)
+## Data model & migration
 
-Both `shared/schema.ts` and `apps/server/src/db/schema.ts` for every `orders` column (G9 fixed in the same migration: the five missing operational columns are declared in the snake_case file). All new columns nullable; the release-gate seed inserts bare orders.
+Every `orders` column goes in **both** `shared/schema.ts` and `apps/server/src/db/schema.ts` with identical builders; the four delay columns still missing from the snake_case file (`delay_cause`, `original_eta`, `delay_notification_sent_at`, `delay_resolution`) are declared there in the same PR; `queue_position` is dropped, not declared. `order_events`, `ops_staff`, `ops_alerts` and the `organizations.ops_*` columns live in `shared/schema.ts` only (the snake_case `organizations` is a stub and the paired-table rule is scoped to `orders`). Indexes and CHECKs are also declared in the pgTable third argument (partial indexes only — no expression indexes, so `audit-schema-push-drift` round-trips). User ids are `varchar(255)` with no FK (migration 057 rationale). All new columns nullable or defaulted (`phase2d-seed` inserts bare orders).
+
+**`migrations/065_operations_centre.sql`** (N2). Header: "Architectural principle: stages are timestamps, not statuses. This file is re-applied on every deploy and must stay idempotent. Not wrapped in a transaction (CONCURRENTLY)."
 
 ```sql
--- orders: who is looking after it, and when each stage happened.
-ALTER TABLE orders
-  ADD COLUMN IF NOT EXISTS assigned_user_id     varchar(255),
-  ADD COLUMN IF NOT EXISTS assigned_at          timestamp,
-  ADD COLUMN IF NOT EXISTS assigned_by_user_id  varchar(255),
-  ADD COLUMN IF NOT EXISTS ready_at             timestamp,
-  ADD COLUMN IF NOT EXISTS customer_arrived_at  timestamp,
-  ADD COLUMN IF NOT EXISTS out_for_delivery_at  timestamp,
-  ADD COLUMN IF NOT EXISTS held_at              timestamp;
-
--- The board's read: open orders by who owns them.
-CREATE INDEX IF NOT EXISTS orders_open_assigned_idx
-  ON orders (org_id, assigned_user_id)
-  WHERE status <> 'completed';
-
--- What happened to an order, in order. Written in the same transaction as
--- the transition; the timing report and the Delay Log read this, not flags.
 CREATE TABLE IF NOT EXISTS order_events (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  order_id    uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  kind        varchar(32) NOT NULL,   -- created|assigned|unassigned|ready|unready|held|released|arrived|out_for_delivery|completed|reopened|delayed|due_changed
-  at          timestamp NOT NULL DEFAULT now(),
-  user_id     varchar(255),
-  meta        jsonb
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  order_id uuid NOT NULL,                      -- no FK: 'deleted' rows outlive the order
+  kind varchar(32) NOT NULL,
+  at timestamp NOT NULL DEFAULT now(),
+  user_id varchar(255),                        -- actor; NULL = system / web
+  meta jsonb
 );
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='order_events_kind_check') THEN
+  ALTER TABLE order_events ADD CONSTRAINT order_events_kind_check CHECK (kind IN
+   ('received','assigned','unassigned','ready','unready','arrived','out_for_delivery','held','unheld',
+    'delayed','delay_cleared','due_set','completed','reopened','status_changed','deleted'));
+END IF; END $$;
 CREATE INDEX IF NOT EXISTS order_events_order_idx ON order_events (org_id, order_id, at);
 CREATE INDEX IF NOT EXISTS order_events_kind_idx  ON order_events (org_id, kind, at);
+CREATE INDEX IF NOT EXISTS order_events_actor_idx ON order_events (org_id, user_id, at);
 
--- Who is working which area today. One row per person per trading day; the
--- 06:00 close does not need to touch it because tomorrow is a new key.
-CREATE TABLE IF NOT EXISTS ops_stations (
-  org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id     varchar(255) NOT NULL,
-  trading_day date NOT NULL,
-  station     varchar(16) NOT NULL CHECK (station IN ('collection','delivery','both')),
-  set_at      timestamp NOT NULL DEFAULT now(),
-  PRIMARY KEY (org_id, user_id, trading_day)
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS assigned_user_id varchar(255),
+  ADD COLUMN IF NOT EXISTS assigned_at timestamp,
+  ADD COLUMN IF NOT EXISTS assigned_by_user_id varchar(255),
+  ADD COLUMN IF NOT EXISTS held_at timestamp,
+  ADD COLUMN IF NOT EXISTS ready_at timestamp,
+  ADD COLUMN IF NOT EXISTS customer_arrived_at timestamp,
+  ADD COLUMN IF NOT EXISTS out_for_delivery_at timestamp;
+ALTER TABLE orders DROP COLUMN IF EXISTS queue_position;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_assigned_open_idx ON orders (org_id, assigned_user_id) WHERE status <> 'completed';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_eta_open_idx      ON orders (org_id, eta_given)   WHERE status <> 'completed';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_revised_open_idx  ON orders (org_id, revised_eta) WHERE status <> 'completed';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_nodue_open_idx    ON orders (org_id, entered_at)  WHERE status <> 'completed' AND eta_given IS NULL AND revised_eta IS NULL;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_settled_recent_idx ON orders (org_id, settled_at);
+
+-- ASSUMED backfill, one shot by construction: the second run updates zero rows and so inserts nothing.
+WITH backfilled AS (
+  UPDATE orders o SET ready_at = COALESCE(o.updated_at, o.created_at)
+  WHERE o.ready_at IS NULL AND o.status = 'awaiting-customer'
+    AND NOT EXISTS (SELECT 1 FROM order_events e WHERE e.order_id = o.id AND e.kind = 'ready')
+  RETURNING o.id, o.org_id, o.ready_at)
+INSERT INTO order_events (org_id, order_id, kind, at, user_id, meta)
+SELECT org_id, id, 'ready', ready_at, NULL, '{"assumed":true}'::jsonb FROM backfilled;
+
+CREATE TABLE IF NOT EXISTS ops_staff (
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id varchar(255) NOT NULL,
+  station varchar(16) CHECK (station IS NULL OR station IN ('collection','delivery','both')),
+  station_set_at timestamp,
+  last_seen_at timestamp,
+  on_break boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (org_id, user_id)
 );
 
--- Personal alerts. user_id NULL + station set = everyone on that station.
-CREATE TABLE IF NOT EXISTS ops_alerts (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  order_id    uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  user_id     varchar(255),
-  station     varchar(16),
-  kind        varchar(32) NOT NULL,   -- assigned|due_soon|late|unassigned_new|delayed|customer_waiting
-  severity    varchar(16) NOT NULL DEFAULT 'info',
-  title       varchar(255) NOT NULL,
-  message     text NOT NULL,
-  due_at      timestamp,
-  created_at  timestamp NOT NULL DEFAULT now(),
-  read_at     timestamp,
-  acked_at    timestamp,
-  acked_by_user_id varchar(255)
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ops_alerts_once_idx
-  ON ops_alerts (order_id, kind, COALESCE(user_id, ''), COALESCE(station, ''));
-CREATE INDEX IF NOT EXISTS ops_alerts_user_idx ON ops_alerts (org_id, user_id, created_at) WHERE acked_at IS NULL;
-
--- Org settings (shared/schema.ts only — organizations is not in the snake_case file).
 ALTER TABLE organizations
-  ADD COLUMN IF NOT EXISTS ops_prep_sla_minutes        integer NOT NULL DEFAULT 20,
-  ADD COLUMN IF NOT EXISTS ops_due_soon_lead_minutes   integer NOT NULL DEFAULT 10,
-  ADD COLUMN IF NOT EXISTS ops_late_grace_minutes      integer NOT NULL DEFAULT 5,
-  ADD COLUMN IF NOT EXISTS ops_delivery_lead_minutes   integer NOT NULL DEFAULT 45;
+  ADD COLUMN IF NOT EXISTS ops_prep_sla_minutes integer NOT NULL DEFAULT 20,
+  ADD COLUMN IF NOT EXISTS ops_due_soon_lead_minutes integer NOT NULL DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS ops_late_grace_minutes integer NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS ops_delivery_lead_minutes integer NOT NULL DEFAULT 45,
+  ADD COLUMN IF NOT EXISTS ops_auto_claim_on_create boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ops_alert_on_sla_due boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ops_keep_screen_awake boolean NOT NULL DEFAULT true;
+
+DELETE FROM saved_views WHERE page = 'orders';   -- order saved views retire in favour of the board filter
 ```
 
-Rules: idempotent SQL (the deploy script runs every file, `ON_ERROR_STOP=0`); every CHECK and partial index also declared in `shared/schema.ts` (the push-drift audit); `order_events`, `ops_stations`, `ops_alerts` added to `scripts/migration-sanity-check.ts` REQUIRED_TABLES; user ids are `varchar(255)` with no FK, like `input_user_id` (migration 057's reason: removing a person must not make history unreadable). No `withTimezone` on any timestamp, matching every existing column (the drift audit does not compare it, so the DoD greps for it).
+`meta` shapes: `assigned {from,to,by,auto?}` · `held {reason,fromStatus}` · `unheld {heldSeconds,toStatus}` · `delayed {cause,reason,revisedEta,customerTold}` · `delay_cleared {resolution}` · `due_set {dueAt,source}` · `completed {label:'handed_over'|'delivered', fromStatus, actualAt?}` · `reopened {settledTotal,completedUserId,creditVoided}` · `deleted {customerName,total,fulfilmentMethod,status}` · `status_changed {from,to,via:'patch'|'put'|'bulk'}`.
+
+**`migrations/066_ops_alerts.sql`** (N5a):
+
+```sql
+CREATE TABLE IF NOT EXISTS ops_alerts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  order_id uuid NOT NULL,
+  user_id varchar(255) NOT NULL,               -- always a person (station alerts are one row per member)
+  station varchar(16) NOT NULL DEFAULT '',     -- provenance: '' = addressed personally
+  kind varchar(24) NOT NULL,                   -- assigned|due_soon|late|customer_waiting|delayed|new_unassigned
+  due_key varchar(32) NOT NULL DEFAULT '',     -- ISO of the promise the alert was computed from; a revision is a new cycle
+  due_at timestamp,
+  created_at timestamp NOT NULL DEFAULT now(),
+  acked_at timestamp,
+  acked_by_user_id varchar(255),
+  resolved_at timestamp,
+  resolved_by_user_id varchar(255),
+  resolved_reason varchar(24)                  -- claimed|ready|completed|deleted|held|rolled_over|reassigned
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ops_alerts_once_idx ON ops_alerts (org_id, order_id, kind, user_id, due_key);
+CREATE INDEX IF NOT EXISTS ops_alerts_open_idx ON ops_alerts (org_id, user_id) WHERE acked_at IS NULL AND resolved_at IS NULL;
+```
+
+Scripts: `order_events`, `ops_staff` (065) and `ops_alerts` (066) added to `scripts/migration-sanity-check.ts` REQUIRED_TABLES. `scripts/audit-schema-drift.mjs` gains `PAIRED_TABLES = ['orders']`: a column of a paired table present in only one file fails, and `withTimezone` must match. N2's DoD applies 065 twice against the seeded DB and asserts `count(*) FROM order_events` is unchanged on the second run.
 
 ---
 
 ## API
 
-All routes `...scoped` (org context), roles as stated. Every write is one transaction that updates the order, inserts the `order_events` row, and `publishEventTx('OrderStatusChanged', …)` with `{ stage, actor: { type: 'user', id } }` in the payload (the existing consumers ignore what they do not know; Automation rules can now react to stages).
+All under `scoped`. Appended to `RBAC.md`:
 
-### `GET /api/orders/board` (all staff) — N1
+| Action | CASHIER+ | MANAGER+ only |
+|---|---|---|
+| `claim`, `unclaim` (own), `ready`, `arrived`, `out_for_delivery`, `complete`, `hold`, `unhold`, `set_due`, `reopen` ≤ 10 min (completer), `unready` ≤ 10 min (the person who marked it), station / break (self), alert ack (own), `assign` when passing on one's own order | ✓ | |
+| `assign` to someone else, `unclaim` someone else's, `reopen` / `unready` after 10 min or of someone else's, station for others, PUT / DELETE | | ✓ |
 
-Registered **before** `GET /api/orders/:id` so `board` is not read as an id. Returns open orders (`status <> 'completed'`) plus orders settled in the last 10 minutes, for the org (optional `?locationId=`), joined to customers and names resolved once (`resolveUserNames` for input, assigned, completed). Response:
+The CI gate for this table is `server/__tests__/orderTransitionRoles.test.ts` (captureRoutes / runGuard). `roleEnforcement.spec.ts` is self-skipped under `DEV_AUTH_BYPASS`; its `UNGUARDED_MUTATIONS` / `MANAGER_AND_UP` lists are updated as documentation.
 
-```json
-{
-  "serverNow": "2026-09-11T17:42:10.000Z",
-  "tradingDay": "2026-09-11",
-  "settings": { "prepSlaMinutes": 20, "dueSoonLeadMinutes": 10, "lateGraceMinutes": 5, "deliveryLeadMinutes": 45 },
-  "orders": [ { "id": "…", "customerName": "…", "total": "53.40", "paymentMethod": "cash", "channel": "pos",
-                "fulfilmentMethod": "collection", "status": "pending", "dateKind": "live",
-                "enteredAt": "…", "createdAt": "…", "etaGiven": "…", "originalEta": null, "revisedEta": null,
-                "delayFlag": false, "delayReason": null, "delayCause": null,
-                "assignedUserId": "…", "assignedUserName": "Sam", "inputUserId": "…", "inputUserName": "Ben",
-                "completedUserId": null, "completedUserName": null,
-                "readyAt": null, "customerArrivedAt": null, "outForDeliveryAt": null, "heldAt": null, "settledAt": null,
-                "itemCount": 3, "locationId": "…" } ],
-  "summary": { "open": 9, "collection": 5, "delivery": 4, "unassigned": 2, "mine": 3, "lateNow": 2, "readyWaiting": 3,
-               "todayMedianPrepSeconds": 680, "todayOnTimePct": 91, "todayDeliveryEtaDeltaSeconds": 240, "todayCompleted": 34 }
-}
-```
-
-The client keeps the query key `["/api/orders/board"]` so every existing `invalidateAfterOrderMutation` / `invalidateAfterPosCheckout` family match refreshes it. Poll: 10 s, `refetchIntervalInBackground: true`. The path is added to the rate limiter's skip list (G7) — it is authenticated and org-scoped, so the shared-IP limiter adds nothing there.
-
-### `POST /api/orders/:id/transition` (all staff; some actions MANAGER+) — N2
+**`GET /api/orders/board`** (N3a; registered before `GET /api/orders/:id`; on the limiter skip list; never cached by `sw.js`; the only read the page polls, 10 s, paused while hidden, refetched on `visibilitychange`):
 
 ```ts
-{ action: 'claim' | 'assign' | 'unassign' | 'ready' | 'unready' | 'hold' | 'release'
-        | 'arrived' | 'out_for_delivery' | 'complete' | 'reopen' | 'set_due',
-  userId?: string,      // assign: who; unassign: whom (MANAGER+ unless it is you)
-  dueAt?: string,       // set_due: ISO; also accepted with 'ready'/'out_for_delivery' for a delivery ETA
-  reason?: string }     // hold / unassign
+{ serverNow, tradingDay, timezone,
+  settings: { prepSlaMinutes, dueSoonLeadMinutes, lateGraceMinutes, deliveryLeadMinutes, autoClaimOnCreate, alertOnSlaDue, keepScreenAwake },
+  me: { userId, station, onBreak },
+  staff: [{ userId, name, role, station, onBreak, lastSeenAt, present, openCount }],
+  orders: BoardOrder[],   // status <> 'completed' OR settled_at >= now() − 120 min; pre-orders and carried-over included
+  alerts: OpsAlert[],     // N5: my rows, unacked, unresolved, whose order is in `orders`
+  summary: { open, collection, delivery, unassigned, mine, lateNow, dueSoonNow, readyWaiting, carriedOver, completedToday } }
+BoardOrder = { id, shortCode, customerId, customerName, customerPhone, total, paymentMethod, channel, status, fulfilmentMethod,
+  dateKind, createdAt, enteredAt, etaGiven, originalEta, revisedEta, delayFlag, delayCause, delayReason, delayNotificationSentAt, delayResolution,
+  assignedUserId, assignedUserName, assignedAt, heldAt, readyAt, customerArrivedAt, outForDeliveryAt, settledAt, handoverAt,
+  inputUserId, inputUserName, completedUserId, completedUserName, locationId, itemCount, itemsPreview, updatedAt }
 ```
 
-- `claim`: `UPDATE orders SET assigned_user_id=$me, assigned_at=now(), assigned_by_user_id=$me WHERE id=$id AND org_id=$org AND assigned_user_id IS NULL RETURNING *` — zero rows → `409 { code: 'ORDER_ALREADY_ASSIGNED', assignedUserName }`. That single statement is the whole concurrency story (G4).
-- `assign` to someone else: MANAGER+, or the current assignee passing it on. Writes an `assigned` event with `meta.from/to`, and creates the `assigned` alert for the new person in the same transaction.
-- `ready`: sets `ready_at` (first write wins) and `status = awaiting-customer`. `unready` clears the status only; the timestamp stays and an `unready` event records it.
-- `hold` / `release`: `status = on-hold` + `held_at` / `status = pending` + `held_at = null`; events carry the reason.
-- `arrived`: `customer_arrived_at` (collection only, 400 otherwise). `out_for_delivery`: `out_for_delivery_at` (delivery only).
-- `complete`: calls `completeOrderTx(tx, order, actor, cashierShift)` — the settlement block **extracted** from `PATCH /api/orders/:id` (settled total, credit leg, backdated shift, completed_user_id, event). One completion path, not two. `PATCH /api/orders/:id { status: 'completed' }` keeps working by calling the same function.
-- `reopen`: `status = pending`; allowed for any staff within 10 minutes of `settled_at`, MANAGER+ after. Never touches `settled_*` or `completed_*` (frozen).
-- Illegal moves (`arrived` before `ready`, `out_for_delivery` on a collection, `ready` on a completed order) → `409 { code: 'ORDER_TRANSITION_INVALID', from, action }`; `assertTransition` lives in `shared/orders/opsState.ts` with its spec.
-- Cross-org id → 404, as everywhere.
+Built by `server/services/opsBoard.ts` on the snake_case schema; one `resolveUserNames` call (gains an `allowed_users.name` → email fallback; seeded orgs have no `users` rows). `staff` = `allowed_users` of the org minus CUSTOMER joined to `ops_staff`; `present` = `last_seen_at` within 15 min; `openCount` = claimed open orders. The poll touches `ops_staff.last_seen_at` through an in-memory throttle (one write per org:user per 60 s). Client query key `['/api/orders/board']`; board taps invalidate `['/api/orders/board']` and `['/api/control-centre']` only (inactive queries never refetch, so the existing `/api/orders` family invalidation after a sale costs nothing extra on the board).
 
-### `PATCH /api/orders/:id/operations` (all staff) — kept, fixed in N2
+**`POST /api/orders/:id/transition`** (N3b; `server/routes/orderTransitions.ts` + `server/services/orderTransitions.ts`). Body `{ action, userId?, dueInMinutes?, dueTime?, reason?, actualAt?, label? }`, `action ∈ claim | unclaim | assign | ready | unready | arrived | out_for_delivery | complete | reopen | hold | unhold | set_due` (zod `transitionOrderSchema` in `shared/orders/opsTransitions.ts`). One `withTransaction`: `SELECT … FOR UPDATE` on the org-scoped row → `assertTransition` → the stamp (`SET ready_at = COALESCE(ready_at, now())`, compare RETURNING → `changed`) → auto-claim on `ready` / `out_for_delivery` when unassigned → `order_events` insert → alert resolution (N5a) → `publishEventTx(tx, 'OrderStageChanged', …)` (or `OrderStatusChanged` when status changed). `claim` is `UPDATE … WHERE assigned_user_id IS NULL RETURNING *`; zero rows → `409 { code:'ORDER_ALREADY_ASSIGNED', assignedUserId, assignedUserName }`. `complete` calls `completeOrderTx(tx, lockedRow, actor, { label, actualAt })` from `server/services/orderCompletion.ts` — extracted from PATCH L648–760 **and corrected**: `isSettling` and the credit decision come from the locked row, `creditLegTotal(tx, …)` takes the transaction client (same signature style as `openCreditForOrder`), no bare `db.` read inside; `settleBackdatedShift` stays post-commit (it is its own idempotent update). `reopen`: refuses when a refund exists or the credit row has payments; voids the credit leg; status → `completed.meta.fromStatus`. Response `{ order: BoardOrder, event: {id,kind,at}|null, changed }`. Errors: 400 zod, 404 org-scoped, 409 `ORDER_ALREADY_ASSIGNED` / `ORDER_TRANSITION_INVALID` / `ORDER_REOPEN_REFUSED`, 400 `CREDIT_CUSTOMER_REQUIRED`.
 
-Still the delay-capture write (`delayFlag`, `delayCause`, `delayReason`, `revisedEta`, `notifyCustomerNow`, `delayResolution`). Fixed: `delayFlag` only changes when sent (today a save with the switch off clears a delay); runs in a transaction; writes a `delayed` / `due_changed` event; creates the `delayed` alert for the assignee. `queuePosition` and the `GET /api/delay-causes` endpoint are removed (dead, see Cleanup).
+**`PATCH /api/orders/:id`** (kept): now `FOR UPDATE`, calls `completeOrderTx`, refuses non-reopen changes on completed rows, writes `status_changed` / `completed` / `reopened` / `held` / `unheld` events, stamps `ready_at` when writing `awaiting-customer`. **`PUT /api/orders/:id`** writes a `status_changed` event and syncs `held_at` when the engine moves status. **`DELETE`** writes `deleted` first. **`PATCH /api/orders/:id/operations`** (kept, fixed in N3b): transactional, `FOR UPDATE`, owns `delay_*` and `revised_eta` only (`etaGiven`, `originalEta`, `queuePosition` removed from the schema), writes `delayed` / `delay_cleared`, `delayFlag:false` requires `delayResolution`, `GET /api/delay-causes` removed. **`POST /api/orders`** accepts `dueInMinutes` | `dueTime`, `channel` (already in the domain schema), `completeNow` (collection, `channel` pos|phone|whatsapp: runs `completeOrderTx` in the insert transaction; loader = completer), writes `received` (+ `assigned` under the org toggle, + `completed`); honours `_offlineQueuedAt` for `entered_at` on the lazy-shift path without a token, bounded to the current trading day. **`server/services/website.ts`** passes `fulfilmentMethod` (`pickup → collection`), `dueInMinutes` = prep SLA (collection) / delivery lead (delivery), never `ready_at`. **`POST /api/orders/bulk`** and `handleOrderBulk` are removed (no caller after PR1). 
 
-### `POST /api/orders` — N2
+**`/api/operations/*`** (`server/routes/operations.ts`): `GET /staff` · `PATCH /station { station|null, onBreak? }` (self) · `PATCH /station/:userId` (MANAGER+, `recordAdminAudit('ops.station_set')`) · `PATCH /alerts/:id/ack`, `POST /alerts/ack-all` (own rows; N5a). "Hand over my orders…" is a client loop over `assign`; no endpoint.
 
-Accepts `dueAt` (ISO → `eta_given`) and `assignToMe` (default **true** for `channel = pos`, false otherwise). Declared in `PlaceOrderInput` and written by the route after `placeOrder`, exactly as `input_user_id` is, so nothing is stripped. Writes the `created` (+ `assigned`) events. Website orders map `pickup → collection` and pass `fulfilmentMethod` (G11).
-
-### Stations & staff — N2
-
-- `GET /api/operations/staff` (all staff): `[{ userId, name, role, station, onShiftToday, lastActiveAt }]` from `allowed_users` (staff roles only, no CUSTOMER) left-joined to `users` for names (falls back to `allowed_users.name`, then email — seeded users have no `users` row), today's `ops_stations` row, and today's cashier shift.
-- `PATCH /api/operations/station { station: 'collection' | 'delivery' | 'both' | null }` sets the caller's station for the current trading day; `PATCH /api/operations/station/:userId` is MANAGER+. Both `recordAdminAudit('ops.station_set')`.
-
-### Alerts — N3
-
-- Rows are created (a) in the transition / operations transactions (`assigned`, `delayed`, `unassigned_new` on create when unassigned, addressed to the order's station), and (b) by `sweepOpsAlerts(now)` for `due_soon`, `late` and `customer_waiting`, which runs as a housekeeping task **and** is folded into the runner's precise-wake: `runTick` takes `min(nextQueuedRunAt, nextOpsAlertAt)` where `nextOpsAlertAt()` is one indexed query over open orders with a due time (G6). The unique index makes the sweep idempotent; restarts and overlapping ticks cannot double-fire.
-- `GET /api/operations/alerts?since=<iso>` (all staff): the caller's unacknowledged alerts (`user_id = me` or `station in (my station, 'both')` or `user_id IS NULL AND station IS NULL`), newest first, plus `serverNow`. Polled at 10 s by the Operations Centre only; on the limiter skip list.
-- `PATCH /api/operations/alerts/:id/ack` (own alerts, or MANAGER+): sets `acked_at`, `acked_by_user_id`. `PATCH …/read` marks seen without acting.
-- The existing bell keeps org-wide Signals; the Operations Centre header shows the personal alert count. The bell's cross-tenant leak (G5) is fixed in N3 as a one-line org filter, with a test.
-
-### Settings — N2
-
-`ops_*` columns: added to `orgProfilePatchSchema` (`shared/setup.ts`), the `updateOrgProfile` allow-list (`server/storage.ts`), projected in `GET /api/settings` (cashiers can read that, not `/api/org/setup`), and an "Operations" card in Settings following `CashierCommissionSettings.tsx`. Feature flag `operationsCentre` in `KNOWN_FEATURE_FLAGS` gates the route and nav entry during rollout; the redirects from the old paths are only installed when the flag is on, so the old screens stay until the owner flips it.
+**Settings**: `ops_*` keys in `orgProfilePatchSchema` (`shared/setup.ts`), the `updateOrgProfile` allow-list, projected by `GET /api/settings`. **Limiter**: `skip` adds `req.path === "/api/orders/board"`.
 
 ---
 
-## Assignment & stations, on the floor
+## Assignment, stations & presence
 
-- **Claim** on any unassigned card; **Take over** on someone else's (records `from`); **Pass to…** opens an inline list of today's staff (from `/api/operations/staff`), sorted by station match, then name. Never a dialog.
-- POS orders arrive already on the list of the person who keyed them in. Web / WhatsApp / phone orders arrive **Unassigned** and pulse on the station that matches their fulfilment.
-- Station picker in the header: Collection / Delivery / Both. It sets the server row (so the alert sweep and other people's boards know) and filters the board to that column by default (the other column is one tap away and never hidden entirely; a filter is not a wall).
-- **Mine / Unassigned / All** filter next to it, persisted per device (`STORAGE_OPS_FILTER`).
-- Role rules: any staff can claim / ready / arrive / dispatch / complete; assign or unassign another person is MANAGER+ or the current assignee; edit lines and delete stay MANAGER+ (unchanged). Written into `RBAC.md`.
-- Under `DEV_AUTH_BYPASS` (Playwright) `requireRole` is a no-op, so role gates are proven in vitest with the `captureRoutes` / `runGuard` pattern, not in the browser.
+- **Take it** (`ops-claim-<id>`) is the default action on every unassigned open card; atomic; the loser sees "Sam took #4821" and the fresh row. **Unclaim** own any time; **Pass to…** (assignee) and **Assign** (MANAGER+) open an inline staff strip sorted station-match first, then present, then least loaded. Every change writes `assigned {from,to,by}` and, from N5, an `assigned` alert to the new person and resolves the station's `new_unassigned` rows.
+- **Auto-claim on work**: Ready / Out for delivery on an unassigned card claims it for the actor (`auto:true`). Completion never assigns; "completed by someone other than the assignee" is an Order Issues row.
+- **Station**: `ops_staff.station`, sticky, set from the header picker (`ops-station-picker`: Collection / Delivery / Both / None) and mirrored to `STORAGE_OPS_STATION` for an instant filter; managers change anyone's from the strip or User Access. No station → All and a non-blocking "Pick your station" hint.
+- **Presence**: `last_seen_at` from the board poll; `present` = seen ≤ 15 min. **On break** (`ops-break-toggle`) keeps the station but removes the person from recipients and suggestions and offers **Hand over my orders…** (loops `assign`) and **Release all** (loops `unclaim`).
+- **Who is on** (`ops-staff-strip`): initials, station dot, "seen 3m", greyed when absent or on break.
+- **Commission**: the card shows "Loaded by Ana · Sam dealing · completed by Sam"; whoever taps Handed over / Delivered is `completed_user_id` (90 %).
+
+---
 
 ## Alerts & notifications
 
-| Kind | To whom | When | Card | Sound |
-|---|---|---|---|---|
-| `assigned` | the new assignee (not on self-claim) | in the assign transaction | blue ring pulse + "Assigned to you" pill | two-tone chime |
-| `unassigned_new` | everyone on the matching station | on create, unassigned | pulse on the Unassigned pill + card | chime |
-| `due_soon` | assignee, else the station | `due − lead` while not ready | bright-blue ring pulse, "Due in m:ss" | chime |
-| `late` | assignee + managers | `due + grace`, not ready / not delivered | red stripe, "Over by" | low double tone |
-| `customer_waiting` | assignee | `customer_arrived_at + grace` and not completed | red text on a Ready card | low double tone |
-| `delayed` | assignee | someone else flags a delay | orange stripe | none |
+| Kind | To whom | When | Chime? |
+|---|---|---|---|
+| `assigned` | the new assignee (not on self-claim) | in the assign transaction | yes |
+| `new_unassigned` | present members of the lane's station | 60 s after `received`, still unclaimed; skipped for the first 5 min while the loader is present | yes |
+| `customer_waiting` | assignee, else present Collection members | on `arrived` when not ready | yes |
+| `due_soon` | assignee (pulse only), else station (chime) | `dueEffective − lead`, promise only; skipped when promise − received ≤ lead + 2 min | station only |
+| `late` | assignee (pulse only), else station (chime); also station when the assignee is absent 15 min | `dueEffective + grace`, promise only (org toggle for SLA-derived) | station only |
+| `delayed` | assignee, when someone else declared it | in the `/operations` transaction | no |
 
-Mechanics:
+One row per recipient; unique per `(order, kind, user, due_key)`. **Resolution in the same transaction**: claim / assign resolves `new_unassigned`, `due_soon`, `late` for everyone but the new assignee; `ready` resolves `customer_waiting` and, on collection, `due_soon` / `late`; `hold` resolves `due_soon`; `complete` / `delete` resolve all. The sweep resolves rows whose order is completed, deleted or carried over. `listFor` returns only unacked, unresolved rows whose order is in the board payload.
 
-- The card **pulse is computed client-side** from the timestamps on every tick, so it starts at exactly due − 10:00 whatever the poll phase; the alert **row** is what makes it personal, acknowledged, cross-tab deduped and reportable. Both exist on purpose.
-- Pulse: a Tailwind keyframe `ops-pulse` on `box-shadow` using `--truth-blue-bright`, applied as `animate-ops-pulse motion-reduce:animate-none`; under reduced motion the card gets a static 2 px ring and the same words. Paused when `document.hidden`.
-- Sound: `client/src/lib/posAudio.ts` gains `unlockAudio()` (one `AudioContext`, `resume()` on the first `pointerdown` / `keydown` / `touchstart`, `{ once: true }`), `playOpsAlert(kind)` returning `false` when the context is not running, and the header shows a "Tap to enable sound" chip in that case. `STORAGE_OPS_SOUND` mutes per device. `WhatsAppPanel`'s inline `AudioContext` is routed through the same module (it leaks one context per message today).
-- Cross-tab: `BroadcastChannel('arcarna-ops:<orgId>')`; the first tab to see an alert plays the sound and the others stay quiet. `localStorage` `storage` event as the fallback.
-- Toasts: at most one is on screen (`TOAST_LIMIT = 1`), so the toast is only the "you were assigned" case; everything else is the card and the header count. Never a `role=dialog` anywhere on this page (the order-form journey asserts that at phone width).
-- Stale data: the service worker returns cached JSON with a 200 when offline; the board reads `dataUpdatedAt`, shows "updated N s ago", and a banner after 30 s without a fresh response. Transitions are **not** queued offline (a claim from stale data is worse than a failed tap); the toast says so.
+**Generation.** Transactional kinds via `opsAlerts.createInTx(tx, …)`. Time-based kinds via `sweepOpsAlerts(now)` in `server/services/opsAlerts.ts`, run on every active tick and folded into the runner's precise wake: `runTick` schedules `min(nextQueuedRunAt(), nextOpsAlertAt())`, where `nextOpsAlertAt()` is `MIN` over `orders_revised_open_idx` and `orders_eta_open_idx` (plus `orders_nodue_open_idx` joined to org SLAs only for orgs with `ops_alert_on_sla_due`), excluding backdated, pre-orders before their promise, and carried-over rows. Idempotent by the unique index; restarts cannot double-fire.
 
 ```mermaid
 sequenceDiagram
-    participant Ben as Ben (tablet A)
-    participant API
-    participant DB
-    participant Runner as Worker runner
-    participant Sam as Sam (tablet B)
-    Ben->>API: POST /orders/7f3a/transition {action: assign, userId: sam}
-    API->>DB: tx: update orders, insert order_events(assigned), insert ops_alerts(assigned→sam), outbox
-    API-->>Ben: 200
-    Sam->>API: GET /operations/alerts?since=… (10 s poll)
-    API-->>Sam: [assigned 7f3a]
-    Sam->>Sam: toast + chime (first tab only) + card pulse
-    Note over Runner: nextOpsAlertAt() = 18:05 (due 18:15 − 10)
-    Runner->>DB: sweepOpsAlerts(18:05): insert ops_alerts(due_soon→sam) ON CONFLICT DO NOTHING
-    Sam->>API: GET /operations/alerts
-    API-->>Sam: [due_soon 7f3a]
-    Sam->>Sam: card already pulsing since 18:05:00 (client rule); row makes it acked/reportable
-    Sam->>API: POST /orders/7f3a/transition {action: ready}
-    API->>DB: tx: ready_at, status awaiting-customer, order_events(ready), ack open alerts for 7f3a
+    participant M as Manager tablet
+    participant API as POST /api/orders/:id/transition
+    participant DB as Postgres (one tx)
+    participant W as Worker runner
+    participant S as Sam's tablet (poll 10 s)
+    M->>API: { action: 'assign', userId: sam }
+    API->>DB: SELECT … FOR UPDATE; UPDATE assigned_*; INSERT order_events(assigned)
+    API->>DB: INSERT ops_alerts(kind=assigned, user=sam) ON CONFLICT DO NOTHING; resolve new_unassigned rows
+    API->>DB: publishEventTx(OrderStageChanged); COMMIT
+    API-->>M: { order, event, changed:true }
+    S->>API: GET /api/orders/board
+    API-->>S: orders + alerts [assigned]
+    S->>S: card pulses, one chime, rail entry "Assigned to you"
+    Note over W: precise wake = min(next job, next promise − lead)
+    W->>DB: sweepOpsAlerts(now): due_soon for orders with dueEffective − now ≤ lead (promise only)
+    DB-->>W: 1 row (sam, due_key = promise ISO)
+    S->>API: GET /api/orders/board (≤ 10 s later)
+    API-->>S: alerts [assigned(acked), due_soon]
+    S->>S: card DUE SOON + pulse; assignee's own due_soon is pulse only, no chime
+    S->>API: PATCH /api/operations/alerts/:id/ack (or the card's primary action)
 ```
+
+**Delivery.** Rows ride on the board poll; the client ticker moves the *card state* to due-soon at exactly T−lead whatever the poll phase; the *alert* appears ≤ 10 s after the sweep. On `visibilitychange` → visible the board refetches before the ticker resumes. `navigator.wakeLock.request('screen')` while mounted (org toggle, default on; re-requested on visible).
+
+**Surface.** `OpsAlertTray` (`ops-alerts`) is a plain `<section aria-label="Alerts">` of buttons (`ops-alert-<id>`, Ack `ops-alert-ack-<id>`; tapping a row scrolls to and focuses the card). One visually-hidden board-level `role="status"` announcer receives a single debounced sentence per new alert or per focused-card state change; nothing else on the board is live. Never a toast (`TOAST_LIMIT=1`), never a dialog. The bell keeps org-wide Signals.
+
+**Chime policy** (`shared/orders/opsAlerts.ts::chimeFor(delivered, now)`): at most one chime per poll delivery, highest severity wins (customer_waiting > late > assigned > new_unassigned > due_soon); rows older than 2 min pulse but never chime; the assignee's own due_soon / late never chime. Cross-tab dedupe is a `STORAGE_OPS_CHIMED` set of alert ids in localStorage (no leader election).
+
+**Pulse.** `tailwind.config.ts` keyframe `ops-pulse` (box-shadow ring `--truth-blue-subtle` → `--truth-blue-bright`, 1.6 s) as `animate-ops-pulse motion-reduce:animate-none` on `[data-alert="true"]`; `usePrefersReducedMotion()` (initialised synchronously from `matchMedia`) sets `data-static="true"` → thick bright-blue left bar + bell icon + text; the `data-new` flash and scroll-into-view go through the same hook (`behavior: reduced ? 'auto' : 'smooth'`). Paused when hidden.
+
+**Audio.** `posAudio.ts` gains `unlockAudio()` — listeners on `pointerup`, `touchend`, `click`, `keydown`, creating the context and calling `resume()` inside the handler, removed only once `ctx.state === 'running'` — and `playOpsChime(kind)` (two-tone 660/880 Hz assigned/new, three rising due-soon, low double 220 Hz late/customer-waiting; gain 0.1) returning `false` when not running → header chip "Tap to enable sound" (`ops-audio-toggle`). Mute pref `STORAGE_OPS_SOUND`. iPadOS hardware mute silences WebAudio: the pulse and text are always the primary channel. `WhatsAppPanel` is not touched.
 
 ---
 
-## UI — the Operations Centre
+## UI
 
-Route `/operations` (nav: **Sell → Operations**, replacing the Create Order and Open Orders entries; `/create-order`, `/pos`, `/open-orders`, `/orders` redirect; `/open-orders/:id/refund` stays as is). Test ids fixed here so UI and tests can be written in parallel:
+**Route & nav.** `/operations` (`OperationsCentre`, lazy); `/open-orders` and `/orders` → `<Redirect to="/operations">`; `/open-orders/:id/refund` unchanged (back link → `/operations`); `/create-order` unchanged; `/pos` keeps redirecting to it. `nav-items.ts`: `nav-orders` → label "Operations", href `/operations`, icon `LayoutGrid`; `VOCAB.openOrders` → `VOCAB.operations`; `nav-pos` stays. Palette page entry `/operations`; order rows → `/operations?order=<id>` (opens the sheet). `OperationsSnapshot` tiles → `/operations?lane=…`; `RecentOrders` "View all" and the `invoices.tsx` empty-state cta → `/operations`. No feature flag: PR1 replaces the route outright.
 
-`ops-page`, `ops-header`, `ops-station-picker` (+ `ops-station-collection|delivery|both`), `ops-filter-mine|unassigned|all`, `ops-alert-count`, `ops-audio-toggle`, `ops-audio-unlock`, `ops-updated-ago`, `ops-stale-banner`, `ops-summary-<metric>`, `ops-scheduled-strip`, `ops-column-collection`, `ops-column-delivery`, `ops-column-count-<col>`, `ops-recent-rail`, `ops-card-<id>` (with `data-state` = `on-time|due-soon|late|delayed|held|ready|completed` and `data-pulse` = `true|false` and `data-static` under reduced motion), `ops-card-state-<id>`, `ops-clock-<kind>-<id>` (`waiting|due|over|ready|held|counter`), `ops-assignee-<id>`, `ops-claim-<id>`, `ops-takeover-<id>`, `ops-pass-<id>` (+ `ops-pass-option-<userId>`), `ops-ready-<id>`, `ops-unready-<id>`, `ops-hold-<id>`, `ops-release-<id>`, `ops-arrived-<id>`, `ops-out-<id>`, `ops-complete-<id>`, `ops-undo-<id>`, `ops-delay-<id>` (inline delay form: `input-eta-given`, `switch-delay`, `select-delay-cause`, `input-revised-eta`, `input-delay-reason`, `switch-notify`, `button-save-order-ops`), `ops-details-<id>` (inline expander: lines, refunds, bank/collection copy buttons, `button-download-receipt`, `button-download-invoice`, refund link), `button-view-order-<id>` (kept for the documents journey — it is the details toggle), `input-order-search` (kept: id / customer / phone), `ops-tab-order`, `ops-tab-board` (phone).
+**Layout** (`OpsShell` in `operations.tsx`, slots `formSlot` / `headerExtras` / `alertsSlot`). While mounted the page collapses the sidebar to its icon rail (restored on leave). `useMainWidth()` (ResizeObserver on `<main>`): **≥ 900 px** → fixed 42 % form pane (min 400 px, collapsible to a 56 px "New order" rail via `ops-form-collapse`) beside the board; shell `h-[calc(100dvh-4rem)] overflow-hidden`, each pane its own scroller, the form pane padded by `visualViewport` height changes so the confirm bar clears the iPad keyboard; `pr-[4.75rem] pb-24` reserved for the launchers. **< 900 px** → Radix `Tabs` **Board | New order** (`ops-tab-board`, `ops-tab-order`, `forceMount` + `hidden`); board default; a badge counts arrivals while the Order tab is active; lanes become a segmented control below 640 px board width. Until N6 the `formSlot` is an `ops-new-order` link to `/create-order`. No `ResizablePanelGroup`.
 
-Layout:
+**Form embedding** (N6). `POS` gains `embedded?: { onPlaced(orderId: string): void }`: `h-full` instead of `.pos-viewport`, no PageHeader, Z-report / Close shift / Dashboard buttons move to `OpsShiftControls` in the board header. The five `isMobile` branches read a new `usePosNarrow()` (ResizeObserver on a `@container` root, `narrow = width < 640`) so a 400–540 px pane gets the phone structure; the six viewport classes become `@md:` / `@lg:` container queries (`@tailwindcss/container-queries`). Standalone behaviour is identical because the container equals the viewport. Step 2 gains, under fulfilment: **Channel** chips Walk-in / Phone / WhatsApp (`chip-channel-*`; a consumed WhatsApp draft pre-selects WhatsApp) · **Due** chips `chip-due-5|10|15|30|45|60` + `input-due-time` (delivery pre-selects +45; Phone / WhatsApp pre-select +30; pre-orders require a time) · **Handed over now** (`chip-complete-now`, collection + Walk-in only). All reset after every sale. After a sale: existing toast, `onPlaced` → the board scrolls to and flashes the card (`data-new`, 4 s), "set a due time?" chip if none was chosen, form resets to step 1, focus returns to `line-product-new`. The phone Order tab never mounts a Dialog / Sheet / Popover.
 
-- **≥ 1024 px** (desktop, tablet landscape 1194×834): `ResizablePanelGroup` (already installed, unused) — form pane 34–45%, board pane the rest, inside a `calc(100dvh − 4rem)` shell. The form pane owns its own scroller; the confirm bar stays pinned inside the pane. The board's right and bottom gutters reserve the WhatsApp / assistant launcher space the form already reserves.
-- **768–1023 px** (tablet portrait): stacked, form on top collapsed to a "New order" bar that expands; board below.
-- **< 768 px** (phone): Radix Tabs **Order | Board**, `forceMount` + `hidden` so cart state, the consumed WhatsApp draft and the single barcode-scanner listener survive a tab switch. The Order tab is today's phone form byte-for-byte (the no-dialog journey passes unchanged except for the URL). `?pane=order|board` picks the tab; `/create-order` redirects with `?pane=order`.
-- The form is extracted first (`client/src/components/order-form/OrderForm.tsx` + `useOrderForm()`), keeps every test id and the `pos-*` classes, gains an `onPlaced(orderId)` callback, and loses the page header (the Operations header carries Z-report, Close shift and the selling location). Its line grid and the fulfilment/date/due grid become pane-relative via `@tailwindcss/container-queries` (`@container` on the pane) so a 45% pane at 1024–1279 px does not overflow (G14).
-- Card anatomy (top to bottom): customer + short id + state word/icon; three clocks; reason line (hold / delay); assignee pill (Mine / name / Unassigned), total, channel, received time, stage pills; actions row (primary + secondary + View). Minimum 44 px targets; the primary action is always the next step in the lifecycle for that fulfilment. Icon-only buttons carry `aria-label`s keyed by order id.
-- Columns sort: due soon → late → delayed → on time (by due) → ready → held; urgent flag floats to the top of its state. Column headers show `open · mine · unassigned`.
-- Summary strip (today, trading day): median received→ready, on-time %, late now, ready waiting, delivery ETA delta — from `summary` in the board payload. Big-number tiles are justified here: they are the point of an ops screen.
-- Skeleton: two lanes of three card-shaped bars (`docs/UI_PATTERNS.md`); empty states per column ("Nothing to collect", CTA "New order") and for the whole board.
-- Colour tokens added to `client/src/styles/tokens/arcarna.css`: `--held`, `--held-text`, `--danger-text`, `--warning-text`, `--success-text`, `--truth-blue-text` — the `-text` variants are the ≥ 4.5:1 versions for small text on `--card`; solid fills keep `-foreground` text. Measured by axe in the a11y suite with a seeded red card (G10).
-- After a sale: the form resets as today; the board refetches via the existing invalidation; the new card flashes once (`ops-card-<id>[data-new]`); the "Order placed" toast offers **Handed over** (completes it) for counter sales.
-- Command palette: index `/operations`; order rows deep-link to `/operations?order=<id>` which scrolls to and expands the card.
+**Card** (`OpsCard.tsx`, `ops-card-<id>`, `data-state`, `data-alert`, `data-lane`, `data-new`; `article` labelled by short code + customer only; solid `bg-card`, no gradient; `tabIndex=0`):
+
+```
+┌───────────────────────────────────────────────┐ ← 6 px band = state fill
+│ [LATE 4:12 ⚠]                     [ 04:12 ]   │ chip (fill + AA text + icon) · big tabular clock (role=timer, aria-live off)
+│ #4821  Maria Lopez              £34.50  Card  │
+│ 2× Salmon teriyaki, 1× Miso soup  +1 more     │ itemsPreview = <button aria-expanded>
+│ Due 14:30 · WhatsApp · Loaded by Ana · 12:07  │ meta 12 px weight 500 --muted-foreground; badges URGENT / Backdated / Pre-order / No time given
+│ (Sam) dealing   [   Ready   ] [Handed over] ⋯ │ assignee chip or Take it · primary 44 px · always-visible complete (collection) · overflow
+└───────────────────────────────────────────────┘
+```
+
+Primary by stage: unassigned → **Take it** (`ops-claim-<id>`); claimed → **Ready** (`ops-ready-<id>`); ready + collection → **Handed over** (`button-complete-order-<id>`); ready + delivery → **Out for delivery** (`ops-out-<id>`) then **Delivered** (`button-complete-order-<id>`, optional actual-time inline field); held → **Resume**; completed (60 s) → **Undo** (`ops-undo-<id>`, shown only to the completer or MANAGER+). On every open collection card **Handed over** is also a visible secondary button. Secondary icon button (collection): **Customer here** (`ops-arrived-<id>`, labelled). Overflow (`button-order-actions-<id>`; DropdownMenu on desktop, inline expander on phone): Hold with reason, Delay… (`OpsDelayInline`: `DELAY_CAUSES` chips, +10/+20/+30/pick, "customer told" switch; Clear asks for a resolution), Set due, Pass to…, Not ready, Rate (`OpsRateChips`, 1–5, completed cards only, posts to `/api/satisfaction`), Details, Edit lines / Delete (MANAGER+). **Details** (`OpsDetailsSheet`: `Sheet` ≥ lg, inline full-height section on phone): `order_events` timeline with clocks between stamps, customer + `tel:` link, lines, payment, copy buttons (`button-copy-*`), `button-download-receipt|invoice`, refund link, `OrderStatusSelect` (`select-order-status-<id>` / `status-option-*`; `awaiting-customer` maps to `ready`, `completed` to `complete`), Edit / Delete. Every control uses `size="touch"` (`min-h-11 min-w-11`, added to `button.tsx`).
+
+**Lanes & filters.** `ops-lane-collection|delivery` (`tabIndex=-1` headings), `ops-lane-count-<lane>`; sort customer-waiting → late → due-soon → delayed → on-time by `dueEffective` → ready by `ready_at` → held; `urgent` pins to the top of its state; collapsed "Yesterday (n)", "Scheduled (n)" and "Done today (n)" (`ops-done-tray-<lane>`, last 120 min) per lane. Filter `ops-filter-mine|unassigned|all` (default Mine + Unassigned in my station when set; `STORAGE_OPS_FILTER`); `input-order-search` matches id substring, short code, customer, phone. `EmptyState` per lane; `OpsBoardSkeleton`; `ops-stale-banner` when the last successful poll's `serverNow` did not advance, `dataUpdatedAt` > 30 s, or a poll failed — actions disabled with a reason.
+
+**Keyboard & focus.** Roving tabindex per lane (arrows), Enter activates the focused control, `/` focuses search only while a card or lane has focus (WCAG 2.1.4 "active on focus"). No bare-letter shortcuts. `isScannerBurst()` in `client/src/lib/opsKeys.ts`: Enter is ignored when three or more printable keydowns arrived in the previous 250 ms (the keyboard-wedge scanner). After any transition, if the focused card is no longer rendered, focus moves to the card now at its index, else the lane heading; the 60 s bump and re-sorts never move focus while a card is focused. Clocks are `role="timer"` with a minute-granular `aria-label`, outside every live region.
+
+**Tokens** (`arcarna.css`, single theme, board only): `--ops-ontime: var(--truth-blue)` · `--ops-ready: hsl(196 85% 58%)` with `--ops-ready-text: hsl(210 30% 10%)` · `--ops-held: hsl(208 90% 80%)` (chip fill, dark text) · `--ops-delayed: var(--warning)` with `--ops-delayed-text: hsl(30 20% 12%)` · `--ops-late: var(--danger)` (white text 4.76:1) · `--ops-completed: var(--success)` with `--ops-completed-text: hsl(158 40% 10%)` · `--ops-alert: var(--truth-blue-bright)`. `shared/ui/contrast.spec.ts` computes every fill/text pair (≥ 4.5) and every band/border-on-card pair (≥ 3) from the CSS values so the figures are proven without a browser. No `opacity` / `text-*/NN` on card text.
+
+---
 
 ## Reporting
 
-- **ARC-T2-005 Order timing & service levels** (new, N5): per trading day range, grouped by fulfilment, station, cashier (assigned and completed), channel, hour: orders, median/p90 received→ready, median ready→handed over, median at-counter wait, on-time % (against a given due; "no time given" excluded and counted), late count, delivery ETA delta (median, p90), delays (count, proactive-comms %), alert response (created→acked median). Pure aggregation in `shared/reports/orderTiming.ts` (+ spec); engine function; catalog entry; `client/src/pages/reports/order-timing.tsx`; route. Red flags: "on-time below 80% yesterday" (one string, not per order, so the bell is not flooded).
-- **ARC-T1-005 Delay Log** re-based on `order_events` (`delayed` rows) and trading-day bounds, so a cleared flag no longer erases the record and last night's delays are not hidden by a local-midnight cut.
-- **ARC-T1-003 Order Status Dashboard** retired: engine function, page, catalog entry, route and its `READY` branch that could never fire. The board is the working screen; the timing report is the export.
-- Control Centre tiles (`toCollect`, `toDeliver`, `openOrders`) link to `/operations?station=…` instead of the undifferentiated list.
+Maths in `shared/reports/orderTiming.ts` (pure, `deriveCardState`-consistent), engine functions in `reportsEngine.ts`, trading-day bounded, org timezone. Excluded from timing: `date_kind='backdated'`, carried-over completions, `meta.assumed` ready rows (counted as "entered afterwards" so totals reconcile).
 
-## Cleanup — the delete list
+- **ARC-T2-005 Order Timing & Service Levels** (`/reports/order-timing`): orders; % with a promise; on-time % (collection `ready_at ≤ due`; delivery `handoverAt ≤ due`); promise-kept %; median / p90 received→claimed, received→ready, ready→handover, arrived→handover, dispatch→delivered, received→completed; average lateness; delayed count and revised-promise accuracy; customer-waiting incidents; held time; unassigned time; alert→ack (`COALESCE(acked_at, resolved_at)`) and alert→ready. Groupings: fulfilment, assignee / completer / loader, station, hour of trading day, channel, day. Red flags: "Collection on-time below 80 %", "Delivery p90 over 60 min". CSV/PDF via `ReportView`.
+- **ARC-T1-006 Order Issues** (`/reports/order-issues`): one row per order that was late, overdue with no time given, delayed, held > N min (incl. held past due), unclaimed > N min, reassigned, customer-waiting, reopened, deleted, carried over, or completed by someone other than the assignee — with timeline summary, cause, who, "customer told before promise", resolution. From `order_events`.
+- **ARC-T1-005 Delay Log**: kept, re-sourced from `delayed` / `delay_cleared` events, trading-day bounds, gains assignee and held-duration columns.
+- **ARC-T1-003**: retired (engine fn, page, catalog entry); `/reports/order-status` → `<Redirect to="/operations">`. `T2-002 staffKpiPerformance` re-joined on `completed_user_id` / `input_user_id`. Control Centre gains `lateNow` / `dueSoonNow` tiles. Daily close summary gains "n orders still open from this day".
 
-Deleted in the PR that replaces it (feature PRs), verified by grep and by `node scripts/audit-ui-wiring.mjs --strict` before the PR opens:
+---
 
-| In PR | Path :: symbol | Why it is dead after this |
+## Cleanup — delete list
+
+Deleted by the PR that replaces it; the test touched in the same PR is named.
+
+| PR | Path :: symbol | Note |
 |---|---|---|
-| N4 | `client/src/pages/orders.tsx` (whole file, 1282 lines) | Replaced by `/operations`. Includes the unreachable `selectedOrder` block (G3), the five stat cards, status grouping, the two filter selects, bulk wiring, `window.prompt` status set. |
-| N4 | `client/src/components/orders-row.tsx` :: `OrdersRow`, `describeWait`, `StatusBadge`, `getStatusBorderClass`, `STATUS_CONFIG` re-export | Replaced by `OpsCard` + `opsState`. `formatPaymentLabel` moves to `client/src/lib/paymentLabel.ts` (used by `invoice-row.tsx`, `insights.tsx`). |
-| N4 | `client/src/components/orders-skeleton.tsx`, `orders/OrderStatusSelect.tsx`, `orders/statusConfig.ts` | Board skeleton and state tokens replace them. |
-| N4 | `client/src/components/reports/OrderOpsDialog.tsx`, `SatisfactionDialog.tsx` | Delay capture is inline on the card; rating capture has no home yet → GAP-OPS-06. `shared/delayCauses.spec.ts` re-pointed at `OpsDelayForm.tsx`. |
-| N4 | `client/src/components/__tests__/ordersRow.test.ts` | Replaced by `shared/orders/opsState.spec.ts` + `client/src/lib/__tests__/paymentLabel.test.ts`. |
-| N4 | `shared/bulkActions.ts` :: `ORDER_ACTIONS`; `server/lib/bulkActionHandler.ts` :: `handleOrderBulk`; `POST /api/orders/bulk` | The board has no multi-select; the "tag" action bypassed settlement (G12). Customers / products bulk untouched. |
-| N4 | `client/src/hooks/useSavedViews.ts` 'orders' wiring; `shared/savedViews/state.ts` :: `applyViewState` (+ spec) | No filters to save; `applyViewState` already had no caller. The server `PAGE_IDS` entry stays (stored rows are harmless). |
-| N4 | `tests/journeys/uiSeams.spec.ts` U4 rewritten against `ops-complete-<id>`; `tests/a11y/critical-paths.spec.ts` paths updated | Same PR, or CI goes red. |
-| N2 | `server/routes/reportCapture.ts` :: `GET /api/delay-causes`, `queuePosition` handling; `orders.queue_position` left in place (history) but no longer written or read | Never called; the board has no queue position (sort is by due). |
-| N5 | `server/services/reportsEngine.ts` :: `orderStatusDashboard`, `ReportRef` type, `'COLLECTED'/'collected'` variants; `client/src/pages/reports/order-status.tsx`; catalog entry; App route | Retired report (see Reporting). |
-| N4 | `client/src/pages/pos/shift-open.tsx` :: `ShiftOpenModal`, `CASHIER_SHIFT_CHANGED_EVENT` (keep `getStoredShiftId`/`setStoredShiftId` → `client/src/lib/shiftStorage.ts`); `client/src/pages/pos/cashier-shift.tsx` (whole); `pos.tsx` `arcarna:cashier-shift-required` dispatch (→ readable toast); `orgScope.ts` cashier getters/setters + `STORAGE_CASHIER_*` keys | Unmounted since Phase L2; touched anyway by the form extraction. |
-| N4 | `client/src/components/pos-cart-panel.tsx` :: `variant="full"` branch and its props/handlers in `pos.tsx`; `pos.tsx` `window.scrollTo` no-op | The line editor is the cart. |
-| N4 | `pos.tsx` / `pos-checkout-step.tsx` order-expenses state, validation and `<details>` block (G13) | Collected and never sent. Removed rather than wired: wiring it is a separate money change → GAP-OPS-05. **Owner to confirm.** |
-| N4 | `tests/visual/pos-tablet.spec.ts`; `liquid-metal.css` `.pos-tablet-shell`, `.pos-product-card*` rules | Assert a layout that no longer exists; replaced by `tests/visual/operations-board.spec.ts` and a wired `test:visual` job. |
+| N1 | `client/src/lib/commandPaletteIndex.ts` :: `OrdersListOrder` import | type moves to `shared/orders/opsState.ts` (`BoardOrder`) |
+| N1 | `client/src/lib/vocabulary.ts` :: `openOrders`; `client/src/pages/invoices.tsx` L351 cta | → `operations` / `/operations` |
+| N2 | `orders.queue_position`; `shared/schema.ts` L1324–1326 | `DROP COLUMN IF EXISTS`; `saved_views` rows with `page='orders'` deleted |
+| N3a | `server/services/website.ts` fulfilment omission | fix, not delete |
+| N3b | `server/routes/reportCapture.ts` :: `GET /api/delay-causes`, `orderOpsSchema.queuePosition/etaGiven/originalEta`, header comment L7 | test `reportCaptureLogic.test.ts` rewritten (N7) |
+| N3b | `server/routes/orders.ts` :: unused imports reported by `tsc --noUnusedLocals` (storage, isAuthenticated, isOwner, requireOrgContext, requireOrgScope, requireSuperAdminMfa, getAuthRuntimeSnapshot, getAuthProvider, canAssignRole, canManageUser, isRole, recordAdminAudit, the seven `insert*Schema`, `orderPaymentsTable`), local `items` L190, dynamic `resolveUserNames` import L431 (→ static) | not the whole L2–26 block — `requireRole`, `requireOpenShift`, dating and tender imports are live |
+| N3b | `server/routes/orders.ts` :: `POST /api/orders/bulk`; `server/lib/bulkActionHandler.ts` :: `handleOrderBulk` (L61–75, L157–170) | no caller after PR1 |
+| N4b | `client/src/pages/orders.tsx` (whole) · `components/orders-row.tsx` (`OrdersRow`, `describeWait`, `StatusBadge`; `formatPaymentLabel` moved to `client/src/lib/paymentLabel.ts` in N1) · `orders-skeleton.tsx` · `reports/OrderOpsDialog.tsx` · `reports/SatisfactionDialog.tsx` (replaced by `OpsRateChips`) · `__tests__/ordersRow.test.ts` | `documents.spec.ts` 5.4, `uiSeams.spec.ts` U4, `critical-paths.spec.ts` already migrated in N1 |
+| N4b | `shared/savedViews/state.ts` :: `'orders'`, `applyViewState` (+ spec) · `client/src/hooks/useSavedViews.ts` skip param · `server/routes/savedViews.ts` `'orders'` · `shared/bulkActions.ts` :: `ORDER_ACTIONS` (+ spec L22–24) · `client/src/lib/sync-service.ts` :: replay of `ORDER_UPDATE` mutations (purged, logged) · `App.tsx` lazy `Orders` import · `shared/delayCauses.spec.ts` consumer path → `OpsDelayInline.tsx` | |
+| N6 | `client/src/pages/pos/shift-open.tsx` (`ShiftOpenModal`, `CASHIER_SHIFT_CHANGED_EVENT`; `get/setStoredShiftId` → `client/src/lib/shiftStorage.ts`, `pos/shift-close.tsx` L19 re-pointed) · `pos/cashier-shift.tsx` · `orgScope.ts` cashier getters/setters + `X-Cashier-Id` header L84–87 · `storageKeys.ts` `STORAGE_CASHIER_*` · `pos.tsx` L313–319 replay payload, L337 `sync-orders` registration, L364 `cashier-shift-required` dispatch (→ readable toast), L583 `scrollTo`, expenses state L137–139/586–660, duplicate `Customer`/`CartItem` · `pos-checkout-step.tsx` expenses props · `pos-cart-panel.tsx` `variant="full"` · `sw.js` `sync` listener · `liquid-metal.css` L184–205 `.pos-tablet-shell` / `.pos-product-card*` · `tests/visual/pos-tablet.spec.ts` (rewritten as `tests/journeys/posTablet.spec.ts` against the `@container` root) | server keeps honouring `X-Cashier-Id` for external clients; expenses → GAP-OPS-05 |
+| N7 | `reportsEngine.ts` :: `orderStatusDashboard` L762–820, `case 'ARC-T1-003'`, `ReportRef` L1132, `'COLLECTED'/'collected'` in `COMPLETED_STATUSES` · `client/src/pages/reports/order-status.tsx` · `reportCatalog.ts` ARC-T1-003 · `App.tsx` `OrderStatusReport` import + route → Redirect · `reportCaptureLogic.test.ts` local mirror → real rule | |
+| N9a | `server/eventBus.ts` :: `startReconciliationJob`, `stopReconciliationJob`, `createTransactionalPublisher`, unused `EventEnvelope`/`WorkerName`/`lte` · `server/index.ts` L241–242 · `server/routes/settingsOrg.ts` unused imports L3–8 · `cashierShiftEngine.ts` :: `effectiveCommissionRate` + `routes/cashiers.ts` L21 import · `packages/domain/src/types.ts` L43 `'processing'|'cancelled'` · `server/storage.ts` L1811 and `topSellers.ts` L11 `cancelled` branches (comment as input tolerance) · `shared/featureFlags.ts` :: `newCheckout` · `package.json` `jest`, `ts-jest`, `@types/jest`, `supertest` → devDependencies, plus `jest.server.config.js`, `apps/server/jest.integration.config.cjs`, `server/tests/core/**`, `apps/server/tests/**` **only if** no npm script or CI job runs them (verify) · `apiNotFound.test.ts` L32 sample path · stale comments in `roleEnforcement.spec.ts` L346, `locationRoutes.test.ts` L6, `audit-ui-wiring.mjs` L253, `shared/schema.ts` L1324 | `server/auth.ts` has no unused imports — not touched |
+| N9b | `docs/NAV_STRUCTURE_PROPOSAL.md` L33, `docs/PRODUCT_SPECIFICATION.md` L85, `docs/ARCARNA_REMEDIATION_CHECKLIST.md` L18 | Open Orders references |
 
-Found on the way, unrelated to the board, deleted in **N6** so feature reviews stay focused: `server/eventBus.ts` :: `startReconciliationJob`, `stopReconciliationJob` (+ its `server/index.ts` call), `createTransactionalPublisher`; `server/routes/orders.ts`, `settingsOrg.ts`, `auth.ts` copy-pasted unused import blocks and the shadowing dynamic `resolveUserNames` import; `server/services/cashierShiftEngine.ts` :: `effectiveCommissionRate`, `startCashierShift`, `autoCloseInactiveCashierShifts` (+ housekeeping entry + the `shiftInactivityCloseAfter` Select in settings/setup wizard; the column stays); `server/routes/cashiers.ts` code-based `POST /api/cashier-shifts/start`, `POST …/:id/end`, `GET …/current/:cashierId`, `GET /api/cashier-shifts`; `client/src/lib/offline-storage.ts` :: `saveOfflineOrder`, `getOfflineOrders`, `deleteOrder`, `deleteMutation`, `getPendingMutationsCount`; `client/public/sw.js` no-op `sync` handler + the `registration.sync.register('sync-orders')` call; `client/src/hooks/useSavedViews.ts` unused third parameter; `packages/domain/src/types.ts` `'processing' | 'cancelled'` status members and the unreachable branches that read them (`server/storage.ts` L1811, `topSellers.ts`); `package.json` jest / ts-jest / @types/jest devDependencies (no jest config exists) and `supertest` moved to devDependencies. Docs: `PHASE_U_UX_POLISH.md` U7 and `BRIEF_STATUS.md` U7 rewritten to say what the form is now.
-
-Kept on purpose: `cashier_profiles` and every `*_cashier_id` column (history, Z-reports, payroll); `PATCH /api/orders/:id` (bulk clients, offline replay); `X-Cashier-Id` server handling (external API clients); `saved_views` page enum; `orders.queue_position` column.
+**Kept deliberately:** `input_user_id`, `completed_user_id`, `completed_cashier_*`, `cashier_profiles`, `cashier_shifts`, the code-based cashier-shift routes and the autoclose task, the settlement block (moved, corrected, not re-designed), `PATCH /api/orders/:id`, `PATCH …/operations`, `GET /api/orders` shape, `eta_given/original_eta/revised_eta`, `/open-orders/:id/refund`, `STATUS_CONFIG`, `OrderStatusSelect`, `ORDER_STATUSES` incl. `awaiting-customer`/`urgent`, `POST /api/satisfaction` + ARC-T2-003, `event_outbox` history, `offlineStorage.queueMutation` (other pages), testids `input-order-search`, `button-view-order-<id>`, `button-download-*`, `select-order-status-<id>`, `status-option-*`, `snapshot-open-orders`, `nav-orders`, `nav-pos`.
 
 ---
 
 ## Test matrix — full, not just function
 
-Fixtures first (N1, so every later package tests against the same board): `tests/journeys/opsFixtures.ts` — `orderInState(api, db, state, { fulfilment, minutesAgo, dueIn, assignedTo })` places a real order through the API, drives real transitions, then rewrites timestamps through Drizzle from the runner (precedent `tests/journeys/security/tenants.ts`) so "received 65 minutes ago" is server truth; `secondCashier(db)` inserts and cleans an `allowed_users` row; `headersFor(userId)`; `boardFor(api, station)`. Conventions introduced (none exist today, G15): `page.clock.install()` before `goto` for browser time, `page.emulateMedia({ reducedMotion })`, `vi.useFakeTimers()` only for the ticker helper; server code keeps taking `now` as a parameter.
+Convention (`docs/testing/FAKE_TIME.md`, N8): pure functions take `now`; `vi.useFakeTimers` only in `opsClock.test.ts`; `page.clock` only for label/ticker cases with the board request held (`page.route('**/api/orders/board', …)`) so a poll cannot re-sync the clock; **server-side time is real** — alert and lateness journeys seed promises a few minutes ahead (`orderInState(…, { dueIn: 9 })`) and `expect.poll` within 25 s.
 
-| Layer | Runner / CI job | Files | Proves |
+| Layer | Runner / CI job | Files (PR) | Proves |
 |---|---|---|---|
-| L0 Static gates | `check` | — | tsc; `audit-ui-wiring` (route line lands in the same PR as the first link; no props read off an `apiRequest` Response; icon buttons named); `audit-schema-drift` (both files agree) + DoD grep for `withTimezone`; `audit-migration-numbers` (065 allocated to N1 only); `audit-storage-orgid`; `lint:strict` on every new file (no identifier `item`). |
-| L1 Pure rules | `check` (vitest, no DB) | `shared/orders/opsState.spec.ts`, `shared/orders/opsAlerts.spec.ts`, `shared/reports/orderTiming.spec.ts`, `client/src/lib/__tests__/opsClock.test.ts`, `paymentLabel.test.ts` | Every row of the state table at its boundary minute (± 1 s); precedence; collection vs delivery lateness; pre-order and backdated exclusions; `assertTransition` matrix; alert schedule (due − lead, due + grace, arrived + grace) and idempotency keys; label formatting; `shouldAnimate(prefersReduced, active)`, `shouldBeep(pref, hidden, active, ctxRunning)`; timing aggregation with known timestamps across the 06:00 cut and a BST change day. |
-| L2 Route units | `check` | `server/__tests__/orderTransitions.test.ts`, `orderTransitionRoles.test.ts`, `orderBoardRoute.test.ts`, `opsAlertsRoute.test.ts`, `opsStationRoute.test.ts`, `websiteFulfilment.test.ts` | Per action: 400 on bad body, 404 cross-org, exact `.set()` patch, first-write-wins on `ready_at`, `completed_*` untouched by everything but `complete`, `publishEventTx` once inside the tx with `stage` + actor, 409 codes; role guards via `captureRoutes`/`runGuard`; board projection registered before `/:id`; alerts filtered by `req.user.id` and station; website `pickup → collection`. |
-| L3 DB integration | local + new `unit-db` CI job (postgres service, `DATABASE_URL`; files also in the vitest exclude list) | `server/__tests__/orderClaimRace.test.ts`, `orderTransitionAtomicity.test.ts`, `opsAlertSweep.test.ts`, `orderTimingReport.test.ts`, `orderBoardPerf.test.ts` | Two (then four) concurrent claims via supertest + `makeBarrier`: exactly one 2xx, the rest 409, DB names the winner, one `assigned` event; order row + event + outbox commit or roll back together; sweep with injected `now` is idempotent on rerun and across an overlapping tick; report figures from fixed timestamps; board query p95 < 150 ms with 2,000 open orders. |
-| L4 Migration | `migration-sanity`, `gate` | `migrations/065_operations_centre.sql`, `scripts/migration-sanity-check.ts` | Fresh-DB apply, `db:push` drift audit, REQUIRED_TABLES, release-gate seed inserts bare orders. |
-| L5 API journeys | `journeys` | `tests/journeys/operations.spec.ts` | Collection lifecycle claim→ready→arrived→complete and delivery claim→out→delivered: each timestamp set once, monotonic, exposed by the board; illegal move 409 changes nothing (`orgFingerprint`); claim race through HTTP; A sees A's alerts, B does not; ack is per person; station set/read; cross-tenant 404 on every new route; role probes appended to `roleEnforcement.spec.ts` (self-skipping under bypass, documented). |
-| L6 Browser journeys | `journeys` | `tests/journeys/operationsBoard.spec.ts` (desktop 1280, iPad 1194×834, Pixel 7) | Cards in the right column; column counts equal API counts inside one poll; claim writes and shows the name; clock advances under `page.clock.runFor`; every colour state via fixtures asserted on `data-state`; fresh order turns late with `setFixedTime(+65 min)` and no DB write; due-soon alert appears at T−10 with `data-pulse`, ack clears and stays cleared after reload; audio stub counts one beep, mute stops the second; reduced motion → `data-static` and `animationName === 'none'` with words still visible; two cashiers on two contexts: A claims, B sees it within a poll, B's claim gets the 409 toast; create an order from the combined page and see its card without navigation with zero `[role=dialog]` at phone width; the confirm bar stays inside the viewport in the pane; no horizontal scroll at any of the three widths; the U2 "every visible button is wired" sweep; console/page errors captured into poll messages. |
-| L7 Accessibility | `a11y` | `tests/a11y/critical-paths.spec.ts` (+ `/operations`), `tests/a11y/operations-centre.spec.ts` | Seeds one card per state (including late and an active pulse) **before** axe runs; zero serious/critical at wcag2a/2aa/21a/21aa; explicitly asserts no `color-contrast` violation (closes GAP-U5-04 for this screen); repeats under reduced motion; names on every icon button. |
-| L8 Visual | new `visual` CI job + `test:visual` script | `tests/visual/operations-board.spec.ts` + committed baselines | Six states at 1194×834 and Pixel 7 with `setFixedTime`, clocks masked; replaces the stale tablet spec. |
-| L9 Reports | `check` + `journeys` | `tests/journeys/reports.spec.ts` | Known timestamps → exact figures from the endpoint and rendered on `/reports/order-timing`; CSV/PDF export downloads. |
-| L10 Security & ops | `check`, `journeys`, manual | `roleEnforcement.spec.ts`, `tenants.ts`, `server/__tests__/rateLimitSkip.test.ts` | Org scoping on every new table; role guards; limiter skip list contains only the two ops polls; alerts never include another org's order; `npm audit --omit=dev` clean. |
-| L11 Cleanup verification | `check` | `node scripts/audit-ui-wiring.mjs --strict`, `grep -rn "open-orders\|orders-row\|OrderOpsDialog\|delay-causes"` | No orphan routes or endpoints; every old reference migrated or a redirect. |
+| Static | `check` | — | tsc; `audit-ui-wiring` (route lands with the first link); `audit-schema-drift` + paired-table rule; `audit-migration-numbers` (065 N2, 066 N5a); `audit-storage-orgid`; `npm audit --omit=dev` |
+| Pure rules | `check` (vitest, no DB) | `shared/orders/opsState.spec.ts`, `opsTransitions.spec.ts` (N0) · `shared/ui/contrast.spec.ts` (N0) · `shared/orders/opsAlerts.spec.ts` (N5a) · `shared/reports/orderTiming.spec.ts` (N7) · `client/src/lib/__tests__/opsClock.test.ts`, `opsKeys.test.ts`, `paymentLabel.test.ts` (N1) · `opsAlertsClient.test.ts` (N5b) · `shared/time/tradingDay.spec.ts` `localInstantAt` (N0) | every precedence row at its boundary ±1 s incl. carried-over, sla wording, held-past-due chips; legal/illegal table incl. completed-only-reopen; every token pair ≥ 4.5 / ≥ 3; recipients, presence fallback, chime policy (six rows → one chime; assignee due_soon silent; > 2 min silent), due_key cycles, no alerts for scheduled / backdated / sla-by-default; BST/GMT bucketing across 06:00; a 12-char scanner burst + Enter → zero activations; clock labels, skew |
+| Route units (mocks) | `check` | `server/__tests__/orderBoardRoute.test.ts`, `websiteFulfilment.test.ts`, `offlineQueuedAt.test.ts` (N3a) · `orderTransitions.test.ts`, `orderTransitionRoles.test.ts`, `completionSinglePath.test.ts`, `opsStationRoute.test.ts`, `completeNow.test.ts` (N3b) · `opsAlertsRoute.test.ts` (N5a) · `opsSettings.test.ts` (N2) · `reportCaptureLogic.test.ts` (N7) | registered before `/:id`; predicate; `serverNow`; one `resolveUserNames`; per action 400 / 404 / exact `.set()` / `changed:false` no event on repeat / `OrderStageChanged` for stamps and **no** `OrderStatusChanged` on claim / `completeOrderTx` spied once / 409 codes / auto-claim; `completed_user_id`, `settled_*` written only in `orderCompletion.ts` and no bare `db.` there; role table; ack own rows only; cashier can read `/api/settings` |
+| DB integration | local + `unit-db` CI job running an **explicit file list** (postgres service like `migration-sanity`, `SESSION_SECRET`, `npm run seed`) | `server/__tests__/orderClaimRace.test.ts`, `orderTransitionAtomicity.test.ts`, `opsBoardQuery.test.ts` (N3b) · `opsAlertSweep.test.ts` (N5a) · `orderTimingReport.test.ts` (N7); each also in the vitest exclude list (N8) | 2- and 4-way claim → exactly one 2xx, one `assigned` event; stamp + event + outbox commit/roll back together; two concurrent completes settle once and freeze `completed_user_id`; reopen voids the credit leg and refuses with payments; PATCH and transition produce identical rows; 05:59/06:01 bounds, carried-over, pre-orders, 120-min tray; sweep once, rerun no-op, precise wake, resolution on complete; seeded stamps → exact figures |
+| Migration | `migration-sanity`, `gate` | 065, 066, `migration-sanity-check.ts` REQUIRED_TABLES | fresh apply; second apply leaves `order_events` count unchanged; `audit-schema-push-drift` clean; release-gate seed still inserts bare orders |
+| API journeys | `journeys` | `tests/journeys/operationsApi.spec.ts` (N3b) on `tests/journeys/opsFixtures.ts` (N8: `orderInState`, `secondCashier`, `headersFor`) | both lifecycles read back from the board, monotonic stamps, `changed:false`, illegal 409 leaves `orgFingerprint` unchanged, claim conflict, cross-tenant 404 on every new route, `dueInMinutes` / `dueTime` read back, `completeNow` lands settled, web delivery in Delivery, web pickup has a due time, offline replay 30 min later is on-time with `receivedAt` = queue time |
+| Browser journeys | `journeys` | `operationsBoard.spec.ts` (N4a; alert/audio/reduced-motion cases added N5b) · `operationsPhone.spec.ts` + the 1194×834 pane case (N6) · `posTablet.spec.ts` (N6) · `reportsTiming.spec.ts` (N7) | sidebar state fixed per case; lane counts equal API inside one `expect.poll`; claim from card writes DB; `page.clock` label case with the board held; one seeded card per `data-state`; A/B claim race 409 toast; focus lands on `ops-card-*` or `ops-lane-*` after a claim under the Unassigned filter; every button inside `ops-card-*` / `ops-alerts` / `ops-staff-strip` ≥ 44×44; stale banner when the board route returns 503; Undo; T−lead alert via a real 9-min promise → `ops-alert-<id>` + `[data-alert=true]` ≤ 25 s; ack survives reload; AudioContext recorder: one chime after a click, none muted, none for six rows in one poll beyond one; full phone sale on the Order tab with `[role=dialog]` count 0 and `button-confirm-payment` inside the viewport; confirm bar inside `visualViewport.height` in the pane; no horizontal scroll; `pageerror` captured; U2 wired-buttons sweep |
+| Accessibility | `a11y` | `tests/a11y/critical-paths.spec.ts` (`/operations`, N1) · `tests/a11y/operations-centre.spec.ts` (N1 for v0 states; extended N4a, N5b, N6) | seeds one card per state through the API + drizzle rewrite under `page.clock`; runs axe wcag2a/2aa/21a/21aa **as seed-cashier**; asserts zero serious/critical, zero `color-contrast` violations **and** zero `color-contrast` incompletes; one test per transient surface: Done tray, Yesterday and Scheduled strips, overflow / inline expander, Delay editor, Pass strip, stale banner, 409 toast, audio chip, Undo toast, alert tray with a row, EmptyState, phone Order tab; reduced motion: `data-static`, `getAnimations()` empty on a `data-new` card, alert text visible |
+| Security | `check` (+ manual bypass-off run) | `orderTransitionRoles.test.ts`; `roleEnforcement.spec.ts` lists updated | role table; org scoping on every new table; limiter skip list contains only the board |
+| Cleanup | `check` | `node scripts/audit-ui-wiring.mjs --strict`; `grep -rn "open-orders\|orders-row\|OrderOpsDialog\|delay-causes\|queue_position"` | only redirects, the refund route and this brief remain |
+
+No visual-regression job this wave (platform-specific baselines are more flake than value); layout assertions live in the journeys.
 
 ---
 
-## Delivery plan — work packages for parallel agents
+## Delivery plan — work packages
 
-File ownership is exclusive per package; a package must not edit a file it does not own (it may add a **new** file). Migration number 065 belongs to N1 only. Each package runs `npm run check`, `npm test`, the audit scripts and its own Playwright project before handing back, and is reviewed by a separate adversarial review agent before the lead merges. PRs land in the order below; N2/N3 and N4a/N5 run in parallel worktrees.
+**Rules.** File ownership is exclusive per package at any moment; shared files are sequenced and the hand-over named. Migration numbers 065 (N2) and 066 (N5a). Every PR: `npm run check && npm test && node scripts/audit-storage-orgid.mjs && node scripts/audit-ui-wiring.mjs && node scripts/audit-schema-drift.mjs && node scripts/audit-migration-numbers.mjs && npm run build`, plus the Playwright projects named; adversarial review before the lead merges; no PR merges red. Each spec lands in the PR that makes it pass. No new `withTimezone` column. No `role=dialog` reachable from the phone Order tab. No reduced-opacity or coloured small text on cards. `package-lock.json` follows whoever edits `package.json`.
 
-| WP | PR | Depends on | Owns (`+` new, `~` modified, `−` deleted) | Est. diff |
-|---|---|---|---|---|
-| **N1** Timing model + board read | PR1 | — | `+ migrations/065_operations_centre.sql` · `~ shared/schema.ts` · `~ apps/server/src/db/schema.ts` · `+ shared/orders/opsState.ts` (+ spec) · `+ shared/orders/opsAlerts.ts` (+ spec, schedule only) · `~ server/routes/orders.ts` (board route only, registered before `/:id`) · `+ server/services/opsBoard.ts` · `~ server/security.ts` (skip list) · `~ scripts/migration-sanity-check.ts` · `~ server/services/website.ts` + `shared/website.ts` (G11) · `+ tests/journeys/opsFixtures.ts` · `+ server/__tests__/orderBoardRoute.test.ts`, `websiteFulfilment.test.ts`, `orderBoardPerf.test.ts` · `~ .github/workflows/ci.yml` (`unit-db` job) · `~ vitest.config.ts` (exclude list) · `~ client/src/pages/orders.tsx` **minimal**: consume `/api/orders/board`, colour the existing row stripe from `deriveCardState`, show the due time (the floor gets colours on day one; this file is deleted in N4) | ~750 |
-| **N2** Transitions, stations, settings | PR2 | N1 | `~ server/routes/orders.ts` (extract `completeOrderTx` into `+ server/services/orderCompletion.ts`; `+ transition` route; `dueAt`/`assignToMe` on create) · `+ server/routes/operations.ts` (staff, station) · `~ server/routes.ts` (register) · `~ server/routes/reportCapture.ts` (fix, events, `− delay-causes`, `− queuePosition`) · `~ packages/domain/src/schemas.ts` (`dueAt`, `assignToMe`) · `~ shared/setup.ts`, `~ server/storage.ts`, `~ server/routes/settingsOrg.ts` (ops settings) · `+ client/src/components/settings/OperationsSettings.tsx` · `~ client/src/pages/settings.tsx` (card) · `~ shared/featureFlags.ts` · `~ RBAC.md` · `+ server/__tests__/orderTransitions.test.ts`, `orderTransitionRoles.test.ts`, `opsStationRoute.test.ts`, `orderClaimRace.test.ts`, `orderTransitionAtomicity.test.ts` · `+ tests/journeys/operations.spec.ts` · `~ tests/journeys/security/roleEnforcement.spec.ts` | ~900 |
-| **N3** Alerts | PR3 | N1 (parallel with N2; reads `order_events` rows N2 writes, hooks nothing in N2's files) | `+ server/services/opsAlerts.ts` (create-in-tx helper used by N2 via import, sweep, `nextOpsAlertAt`) · `~ server/workers/index.ts` (housekeeping task + precise wake) · `~ server/routes/operations.ts` **alerts routes only** (N2 owns the file; N3 lands after N2 merges — sequenced, not parallel, for this one file) · `~ server/services/operationalIntelligence.ts` (G5 org filter) · `+ server/__tests__/opsAlertsRoute.test.ts`, `opsAlertSweep.test.ts`, `notificationsOrgScope.test.ts` | ~500 |
-| **N4a** Form extraction | PR4 | — (parallel with N1) | `+ client/src/components/order-form/OrderForm.tsx`, `useOrderForm.ts`, `OrderFormPane.tsx` · `~ client/src/pages/pos.tsx` (thin page rendering the pane) · `~ pos-order-lines.tsx`, `pos-checkout-step.tsx` (container queries; due-time chips + field; `− expenses UI`) · `~ pos-cart-panel.tsx` (`− full variant`) · `+ client/src/lib/shiftStorage.ts` · `− client/src/pages/pos/shift-open.tsx` (modal), `− cashier-shift.tsx` · `~ client/src/lib/orgScope.ts`, `~ shared/storageKeys.ts` (`− cashier keys`, `+ STORAGE_OPS_*`) · `~ tailwind.config.ts` (container-queries plugin, `ops-pulse` keyframe) · `~ package.json` (`@tailwindcss/container-queries`) · `~ liquid-metal.css` (dead POS rules) · `− tests/visual/pos-tablet.spec.ts` · `~ tests/journeys/orderForm.spec.ts` only if a selector must move (goal: unchanged) | ~700 (net negative) |
-| **N4b** Board components | PR5 | N1, N2, N3, N4a | `+ client/src/components/operations/{OpsBoard,OpsColumn,OpsCard,OpsCardClocks,OpsCardActions,OpsCardDetails,OpsDelayForm,OpsPassMenu,OpsHeader,OpsSummary,OpsScheduledStrip,OpsRecentRail,OpsAlerts,OpsSkeleton}.tsx` · `+ client/src/lib/opsClock.ts` (+ test), `+ client/src/lib/opsAlertsClient.ts` (BroadcastChannel, ack) · `~ client/src/lib/posAudio.ts` (unlock, `playOpsAlert`) · `~ client/src/components/whatsapp/WhatsAppPanel.tsx` (use shared audio) · `~ client/src/styles/tokens/arcarna.css` (`-text` tokens, `--held`) · `+ client/src/lib/paymentLabel.ts` (+ test) · `~ invoice-row.tsx`, `insights.tsx` (import path) | ~1,400 |
-| **N4c** The page, routes, deletions | PR5 (same PR as N4b, second commit) | N4b | `+ client/src/pages/operations.tsx` · `~ client/src/App.tsx` (route + redirects behind the flag) · `~ nav-items.ts`, `~ commandPaletteIndex.ts`, `~ dashboard/OperationsSnapshot.tsx`, `~ dashboard/RecentOrders.tsx`, `~ invoices.tsx`, `~ orders/refund.tsx` (links) · `− pages/orders.tsx`, `− orders-row.tsx`, `− orders-skeleton.tsx`, `− orders/OrderStatusSelect.tsx`, `− orders/statusConfig.ts`, `− reports/OrderOpsDialog.tsx`, `− reports/SatisfactionDialog.tsx`, `− __tests__/ordersRow.test.ts` · `~ shared/bulkActions.ts`, `~ server/lib/bulkActionHandler.ts`, `~ server/routes/orders.ts` (`− bulk`) · `~ shared/savedViews/state.ts` (+ spec), `~ hooks/useSavedViews.ts` · `~ shared/delayCauses.spec.ts` · `~ tests/journeys/uiSeams.spec.ts` (U4), `~ tests/journeys/documents.spec.ts` (path), `~ tests/a11y/critical-paths.spec.ts` · `+ tests/journeys/operationsBoard.spec.ts`, `+ tests/a11y/operations-centre.spec.ts`, `+ tests/visual/operations-board.spec.ts` · `~ playwright.config.ts`, `~ package.json` (`test:visual`), `~ ci.yml` (visual job) · `~ docs/POS_USER_GUIDE.md` | ~1,200 net (≈ 2,600 deleted) |
-| **N5** Reporting | PR6 | N1, N2 | `+ shared/reports/orderTiming.ts` (+ spec) · `~ server/services/reportsEngine.ts` (`+ orderTiming`, `~ delayLog` on events, `− orderStatusDashboard`, `− ReportRef`, `− COLLECTED`) · `~ client/src/lib/reportCatalog.ts` · `+ client/src/pages/reports/order-timing.tsx`, `− order-status.tsx` · `~ client/src/App.tsx` (report routes only — coordinated with N4c by landing after it) · `~ server/services/controlCentre.ts` + `dashboard/OperationsSnapshot.tsx` links · `+ server/__tests__/orderTimingReport.test.ts` · `+ tests/journeys/reports.spec.ts` · `~ server/__tests__/reportCaptureLogic.test.ts` (import the real rule) | ~700 |
-| **N6** Cleanup found on the way | PR7 | — (any time; conflicts only with N2's `orders.ts` import block, so land after N2) | the "found on the way" list above · `~ docs/briefs/PHASE_U_UX_POLISH.md`, `BRIEF_STATUS.md` (U7 text) | ~ −900 |
+**Order:** N0 → { N1 ‖ N2 ‖ N8 } → N3a → N3b → { N4a ‖ N7 (maths + engine) } → N4b → N6 → { N5a ‖ N7 (pages + routes) } → N5b → N9a → N9b.
+**Agents:** A = N1 → N4a → N4b → N6 → N5b · B = N2 → N3a → N3b → N5a · C = N8 (then reviews) · D = N7 · E = N9a → N9b · lead = N0 and merges.
 
-Orchestration (the lead runs this as a workflow):
+### N0 — Contracts & tokens (lead) · PR0
 
-1. **Wave A** (parallel, isolated worktrees): N1, N4a, and a test-harness agent that writes `opsFixtures.ts`, the `unit-db` and `visual` CI jobs and the `page.clock` conventions doc comment against the test ids fixed above. N1's PR1 is the first thing on the floor: coloured, clocked rows and a due time.
-2. **Wave B** (after PR1 merges): N2, then N3 (sequenced on `operations.ts`). N4b starts as soon as N2's API shape is merged, against a mocked board.
-3. **Wave C**: N4c, then N5 (both touch `App.tsx`; N5 waits).
-4. **Wave D**: N6; full suite (`check`, `unit-db`, `e2e`, `a11y`, `journeys`, `visual`, `migration-sanity`, `gate`) on the integration branch; a11y and visual reviewed by a human on a real tablet; flag flipped on for the demo org.
-5. Every PR: adversarial review agent (correctness, tenancy, money paths, a11y) → fix → lead review → merge. No PR merges red. `npm run build` before each PR.
+- **Goal:** every type, action name, testid, storage key, token and pure rule the later packages depend on exists and is unit-tested before any agent starts.
+- **Touch:** `+ shared/orders/opsState.ts` (+ spec) · `+ shared/orders/opsTransitions.ts` (+ spec) · `+ shared/ui/contrast.ts` (+ spec) · `+ client/src/hooks/usePrefersReducedMotion.ts` · `~ shared/time/tradingDay.ts` (`localInstantAt`, + spec case) · `~ shared/storageKeys.ts` (`STORAGE_OPS_SOUND|FILTER|STATION|TAB|CHIMED`) · `~ client/src/styles/tokens/arcarna.css` (`--ops-*`) · `~ tailwind.config.ts` (`ops.*` colours, `ops-pulse`, container-queries plugin) · `~ client/src/components/ui/button.tsx` (`size="touch"`) · `~ package.json` (`@tailwindcss/container-queries`) · `~ docs/briefs/PHASE_N_OPERATIONS_CENTRE.md` (this text) · `~ docs/briefs/README.md`.
+- **Steps:** 1 write the state table as `deriveCardState` with fixtures for every row; 2 write `assertTransition` and the zod schema; 3 write the contrast helper and assert every token pair; 4 tokens + keyframe + plugin; 5 the touch size; 6 commit the brief.
+- **Out of scope:** any `server/**`, `migrations/**`, either schema file, `client/src/pages/**`, `ControlCentreBackdrop.tsx`.
+- **DoD:** `npm run check`, `npm test`; every §UI testid and every action name referenced by later packages is defined here; contrast spec green on the chosen values.
+- **Verification:** `npx vitest run shared/orders shared/ui shared/time`.
+- **PR title:** `chore(ops): operations centre contracts, tokens and spec (N0)`
 
-Sizes: total ≈ 6,000 lines changed, of which ≈ 3,500 are deletions and tests; net code added ≈ 2,500. Two PRs (N4b/c, N2) exceed the 600-line guideline; the reason is stated in each PR (a screen cannot ship half a card; a transition endpoint cannot ship half a lifecycle).
+### N1 — Board v0, floor-usable (agent A) · PR1 · ~1,000 lines, additive (exceeds 600: a page cannot ship half a card)
 
-## Per-package DoD & verification
+- **Goal:** `/operations` shows Collection and Delivery lanes of coloured, ticking cards over existing fields with one-tap Handed over / Delivered, and old links redirect.
+- **Touch:** `+ client/src/pages/operations.tsx` (`OpsShell`, `useMainWidth`, sidebar auto-collapse, panes/tabs, `formSlot` = `ops-new-order` link) · `+ client/src/components/operations/{OpsBoard,OpsLane,OpsCard,OpsCardClock,OpsHeader,OpsDetailsSheet,OpsEditDialog,OpsDeleteDialog,OpsBoardSkeleton,OpsAnnouncer}.tsx` · `+ client/src/hooks/{useOpsTicker,useOpsBoard,useWakeLock}.ts` (v0 reads `['/api/orders']`, maps to `BoardOrder` with null stages) · `+ client/src/lib/{opsClock,opsKeys,paymentLabel}.ts` (+ tests) · `~ App.tsx` (route, redirects) · `~ nav-items.ts`, `~ vocabulary.ts`, `~ commandPaletteIndex.ts` (type import + links), `~ dashboard/OperationsSnapshot.tsx`, `~ RecentOrders.tsx`, `~ invoices.tsx`, `~ orders/refund.tsx` (links) · `~ orders-row.tsx`, `invoice-row.tsx`, `insights.tsx` (import `formatPaymentLabel`) · `~ tests/journeys/documents.spec.ts` (5.4), `~ tests/journeys/uiSeams.spec.ts` (U4 via `/orders` redirect, search by id, sheet select), `~ tests/a11y/critical-paths.spec.ts` · `+ tests/a11y/operations-centre.spec.ts` (v0 states seeded via `POST /api/orders` + `PATCH {status}` + drizzle timestamp rewrite).
+- **Steps:** 1 shell + lanes + card from `deriveCardState`; 2 v0 actions through existing `PATCH /api/orders/:id {status}` (Handed over / Delivered, Hold / Resume, Urgent, sheet select) and `PATCH …/operations` from the sheet (delay, pre-filled); 3 ticker, wake lock, stale banner on `serverNow`-less v0 (dataUpdatedAt + failed poll); 4 redirects and links; 5 migrate the three specs; 6 seeded a11y spec.
+- **Out of scope:** `pos.tsx`, `pos/**`, `server/**`, schemas, `tailwind.config.ts`, `arcarna.css`, `ci.yml`, `vitest.config.ts`, deleting `orders.tsx`.
+- **DoD:** lanes render for the seeded org; states available from existing fields (on-time, due-soon, late, delayed, held, completed, scheduled, carried-over); `button-view-order-<id>`, `select-order-status-<id>`, `status-option-*`, `input-order-search`, `button-download-*`, `snapshot-open-orders`, `nav-orders` reachable; a11y spec zero contrast violations and incompletes as seed-cashier; no horizontal scroll at 1194×834 (rail) and Pixel 7; `audit-ui-wiring` clean; scanner-burst test green.
+- **Verification:** `npm run test:a11y`, `npm run test:journeys`, `npx vitest run client/src/lib`.
+- **PR title:** `feat(ops): the Operations Centre board over existing order fields (N1)`
 
-**N1 DoD:** migration applies on a fresh DB and on the seeded one; both schema files agree (`audit-schema-drift`), no `withTimezone` (`grep -n withTimezone shared/schema.ts apps/server/src/db/schema.ts` empty); `GET /api/orders/board` returns open + recently completed with names, `serverNow`, settings and summary in < 150 ms at 2,000 open orders; `deriveCardState` spec covers every table row at ± 1 s; website delivery orders land in Delivery; Open Orders rows show the state colour and due time. **Verify:** `npm run check && npm test && node scripts/audit-*.mjs && npm run migration:sanity`, `unit-db` job green.
+### N2 — Data & settings, migration 065 (agent B) · PR2 · ~550 lines
 
-**N2 DoD:** every action in the table behaves as specified; claim race test proves one winner; `PATCH /api/orders/:id { status: completed }` and `transition complete` produce identical rows (test asserts equality); POS orders arrive assigned to their creator; delay save with the switch untouched does not clear a delay; ops settings round-trip through Settings and `/api/settings`; RBAC.md updated. **Verify:** unit + `unit-db` + `journeys` (`operations.spec.ts`).
+- **Goal:** stage columns, `order_events`, `ops_staff`, org settings and the Settings card exist and both schema files agree.
+- **Touch:** `+ migrations/065_operations_centre.sql` · `+ client/src/components/settings/OperationsSettings.tsx` · `+ server/__tests__/opsSettings.test.ts` · `~ shared/schema.ts` (orders columns, `− queuePosition`, four partial indexes, `orderEvents`, `opsStaff`, `organizations.ops*`, insert schemas) · `~ apps/server/src/db/schema.ts` (orders columns + the four missing delay columns, identical builders) · `~ scripts/migration-sanity-check.ts` · `~ scripts/audit-schema-drift.mjs` (paired-table rule) · `~ packages/domain/src/schemas.ts` (`dueInMinutes`, `dueTime`, `completeNow`) · `~ shared/setup.ts`, `~ server/storage.ts` (allow-list lines), `~ server/routes/settingsOrg.ts` (projection), `~ client/src/pages/settings.tsx`, `~ client/src/pages/user-access.tsx` (station cell, read-only).
+- **Steps:** 1 migration in the order above; 2 both schema files; 3 audit rule; 4 settings round-trip; 5 apply twice against the seeded DB.
+- **Out of scope:** `routes/orders.ts`, `routes.ts`, `security.ts`, `components/operations/**`.
+- **DoD:** migration applies on fresh and seeded DBs; second apply changes no `order_events` count; `audit-schema-drift` passes with the paired rule; `grep withTimezone` on `orders` / `order_events` empty; `audit-schema-push-drift` clean; release gate green; settings card round-trips and cashiers can read `/api/settings`.
+- **Verification:** `npm run migration:sanity`, `node scripts/audit-schema-drift.mjs`, `npm run gate`.
+- **PR title:** `feat(ops): order stage columns, order_events, stations and ops settings (N2)`
 
-**N3 DoD:** an assignment creates one alert for the assignee and none for the assigner; the sweep creates `due_soon` at due − lead once, `late` at due + grace once, and never twice across restarts; the runner wakes within 60 s of the next due alert while idle (test with injected clock); the bell no longer shows other orgs' approvals or dead letters. **Verify:** unit + `unit-db`.
+### N3a — Board read, website fulfilment, offline received time, limiter skip (agent B) · PR3a · ~450 lines
 
-**N4a DoD:** `orderForm.spec.ts` passes unchanged; the form renders inside a 34% pane at 1024 px with no horizontal scroll; the due-time chips write `eta_given`; the cashier-shift and expenses dead code is gone; `uiSeams` U6 still passes. **Verify:** `journeys`, `a11y`.
+- **Goal:** the board polls one lean endpoint with server time and names; web orders land in the right lane with a promise; replayed offline orders keep their received time.
+- **Touch:** `+ server/services/opsBoard.ts` · `+ server/__tests__/{orderBoardRoute,websiteFulfilment,offlineQueuedAt}.test.ts` · `~ server/routes/orders.ts` (board route before `/:id`; `dueInMinutes|dueTime|channel` on POST; `received` event) · `~ server/security.ts` (skip) · `~ server/services/website.ts`, `~ shared/website.ts` · `~ server/middleware/requireActiveCashierShift.ts` (`_offlineQueuedAt` without token, bounded) · `~ server/services/userDisplayName.ts` (fallback) · `~ client/public/sw.js` (never cache the board) · `~ client/src/hooks/useOpsBoard.ts` → `['/api/orders/board']`, `serverNow` staleness (hand-over from N1, merged).
+- **Out of scope:** transitions, completion, `components/operations/**` beyond the hook.
+- **DoD:** board read < 150 ms at 2,000 open orders locally; `GET /api/orders` shape unchanged; web delivery in Delivery with a due time; replay 30 min later reads back `receivedAt` = queue time.
+- **Verification:** unit tests; `npm run test:journeys` (documents/uiSeams still green).
+- **PR title:** `feat(ops): board read, website fulfilment, offline received time, limiter skip (N3a)`
 
-**N4b/c DoD:** every row of the Test matrix L6–L8 green; `/operations` in CRITICAL_PATHS with seeded states and no `color-contrast` violation; old paths redirect; `audit-ui-wiring --strict` clean; the delete list applied; `grep -rn open-orders client tests` shows only redirects and the refund route; POS user guide updated. **Verify:** full Playwright suite + visual baselines committed.
+### N3b — Transitions, completion extraction, stations, presence (agent B) · PR3b · ~950 lines (exceeds 600: an endpoint cannot ship half a lifecycle)
 
-**N5 DoD:** ARC-T2-005 figures match fixed fixtures; Delay Log shows a delay after its flag was cleared; ARC-T1-003 gone from catalog, routes and engine. **Verify:** `check` + `journeys` (`reports.spec.ts`).
+- **Goal:** every stage tap is one locked transaction through one completion path, claims cannot double-win, and stations/presence exist.
+- **Touch:** `+ server/services/{orderCompletion,orderTransitions}.ts` · `+ server/routes/{orderTransitions,operations}.ts` · `+ server/__tests__/{orderTransitions,orderTransitionRoles,completionSinglePath,completeNow,opsStationRoute,orderClaimRace,orderTransitionAtomicity,opsBoardQuery}.test.ts` · `+ tests/journeys/operationsApi.spec.ts` · `~ server/routes/orders.ts` (PATCH via `completeOrderTx` under lock + events + completed-only-reopen; PUT events/`held_at`; DELETE event; `completeNow`; auto-claim toggle; `− bulk`; unused imports) · `~ server/lib/bulkActionHandler.ts` (`− handleOrderBulk`) · `~ server/routes.ts` · `~ server/routes/reportCapture.ts` (tx, events, no-clear rule, `− delay-causes`, schema trims) · `~ server/services/creditLedger.ts` (`creditLegTotal(tx?)`) · `~ shared/schema.ts` (`EVENT_TYPES` + `REQUIRED_WORKERS.OrderStageChanged: []`) · `~ client/src/pages/user-access.tsx` (station editable MANAGER+) · `~ RBAC.md` · `~ vitest.config.ts` exclude entries (listed by N8 first).
+- **Out of scope:** `components/operations/**`, `operations.tsx`, `pos.tsx`, `workers/index.ts`, alerts.
+- **DoD:** race proves one winner; PATCH `{status:'completed'}` and `transition complete` produce identical rows; `completionSinglePath` passes with no bare `db.` in `orderCompletion.ts`; `claim` publishes no `OrderStatusChanged` and creates zero `job_queue` rows; reopen refuses with payments and voids credit; hold on a completed row → 409; `operationsApi.spec.ts` green; `RBAC.md` updated.
+- **Verification:** `npx vitest run server/__tests__/orderTransitions*.test.ts` (+ DB tests with `DATABASE_URL`), `npm run test:journeys`.
+- **PR title:** `feat(ops): order transitions, completion extraction, stations and presence (N3b)`
 
-**N6 DoD:** each deleted symbol has zero references (`grep`), `npm audit --omit=dev` clean, tests for deleted code removed, no behaviour change (full suite green).
+### N4a — Board v1 (agent A) · PR4a · ~1,150 lines (exceeds 600: same reason as PR1)
 
-**PR titles:** `feat(ops): order timing model, board read and coloured rows (N1)` · `feat(ops): order transitions, stations and settings (N2)` · `feat(ops): personal alerts and the due-soon sweep (N3)` · `refactor(pos): extract the order form as an embeddable pane (N4a)` · `feat(ops): the Operations Centre (N4)` · `feat(reports): order timing & service levels; retire the status dashboard (N5)` · `chore: remove code left behind by Phases L and U7 (N6)`.
+- **Goal:** every card action is wired to the transition endpoint with assignment, stations, presence, done tray, undo, rating and the focus/keyboard rules.
+- **Touch:** `+ client/src/components/operations/{OpsCardActions,OpsPassMenu,OpsDelayInline,OpsStaffStrip,OpsStationPicker,OpsDoneTray,OpsScheduledStrip,OpsYesterdayStrip,OpsStaleBanner,OpsTimeline,OpsRateChips}.tsx` · `+ client/src/hooks/useOpsAlerts.ts` (stub) · `+ tests/journeys/operationsBoard.spec.ts` · `~ OpsCard.tsx`, `OpsHeader.tsx`, `OpsLane.tsx`, `OpsDetailsSheet.tsx`, `operations.tsx` (filters, station, break, hand-over loop, undo toast, focus rule, stale/offline disabling, `?order=` / `?lane=`) · `~ client/src/lib/query-invalidation.ts` (`invalidateAfterOpsTransition`) · `~ orders/statusConfig.ts` (on-hold light blue) · `~ tests/a11y/operations-centre.spec.ts` (new surfaces).
+- **Out of scope:** `pos.tsx`, `pos/**`, `posAudio.ts`, `server/**`.
+- **DoD:** every action wired; 409 toast on claim race; offline/stale disables actions; Done tray + Undo (completer / MANAGER+ only); Rate posts to `/api/satisfaction`; focus assertion green; 44 px assertion green; `audit-ui-wiring --strict` clean; a11y still zero contrast issues.
+- **Verification:** `npm run test:journeys`, `npm run test:a11y`.
+- **PR title:** `feat(ops): stages, assignment, stations and the done tray on the board (N4a)`
+
+### N4b — Remove Open Orders (agent A) · PR4b · ~−1,800 lines
+
+- **Goal:** the replaced list, its dialogs, saved-view wiring, bulk client wiring and offline status replay are gone with their tests.
+- **Touch:** the N4b rows of the delete list; `~ App.tsx`, `~ shared/savedViews/state.ts` (+ spec), `~ useSavedViews.ts`, `~ server/routes/savedViews.ts`, `~ shared/bulkActions.ts` (+ spec), `~ client/src/lib/sync-service.ts`, `~ shared/delayCauses.spec.ts`.
+- **Out of scope:** anything with behaviour.
+- **DoD:** `grep -rn "open-orders" client tests` shows only redirects and the refund route; every deleted symbol has zero references; full suite green.
+- **Verification:** `npm run check && npm test && node scripts/audit-ui-wiring.mjs --strict`.
+- **PR title:** `chore(ops): remove Open Orders and its dialogs (N4b)`
+
+### N5a — Alerts server, migration 066 (agent B) · PR5a · ~550 lines
+
+- **Goal:** personal alert rows are created, resolved and swept on time.
+- **Touch:** `+ migrations/066_ops_alerts.sql` · `+ server/services/opsAlerts.ts` · `+ server/routes/opsAlerts.ts` · `+ shared/orders/opsAlerts.ts` (+ spec: recipients, presence, chime policy, due_key) · `+ server/__tests__/{opsAlertSweep,opsAlertsRoute}.test.ts` · `~ shared/schema.ts` (`opsAlerts`) · `~ scripts/migration-sanity-check.ts` · `~ server/workers/index.ts` (sweep on active ticks + precise wake) · `~ server/services/orderTransitions.ts` (`createInTx` + resolution) · `~ server/routes/reportCapture.ts` (`delayed`) · `~ server/services/opsBoard.ts` (`alerts`) · `~ server/routes.ts`.
+- **Out of scope:** client, `OpsCard.tsx`, `reportsEngine.ts`.
+- **DoD:** an assignment creates one row for the assignee only; T−lead and late once each across restarts; no rows for SLA-derived dues by default; a colleague's claim resolves everyone else's rows; runner wakes within 2 s of the next due alert while idle (injected clock); rows for completed orders resolved.
+- **Verification:** unit + `unit-db` (`opsAlertSweep`).
+- **PR title:** `feat(ops): personal alerts table, sweep and precise wake (N5a)`
+
+### N5b — Alerts client (agent A, after N6) · PR5b · ~500 lines
+
+- **Goal:** the pulse, the rail, one chime and the announcer, acknowledged server-side.
+- **Touch:** `+ client/src/components/operations/OpsAlertTray.tsx` · `+ client/src/lib/opsAlertsClient.ts` (+ test) · `~ useOpsAlerts.ts` (real) · `~ posAudio.ts` (`unlockAudio`, `playOpsChime`) · `~ OpsHeader.tsx` (audio toggle, count) · `~ operations.tsx` (`alertsSlot`) · `~ tests/journeys/operationsBoard.spec.ts` (alert / audio / reduced-motion cases) · `~ tests/a11y/operations-centre.spec.ts` (tray, audio chip).
+- **Out of scope:** `pos.tsx`, `WhatsAppPanel.tsx`, server.
+- **DoD:** real 9-min promise → alert ≤ 25 s; one chime per browser and per delivery; ack persists across reload and devices; no toast, no dialog; audio unlocks on touch (`touchend`).
+- **Verification:** `npm run test:journeys`, `npm run test:a11y`.
+- **PR title:** `feat(ops): alert rail, pulse, chime and announcer (N5b)`
+
+### N6 — Form embedding, due / channel / handed-over-now chips (agent A) · PR6 · ~+550 / −850
+
+- **Goal:** the order form sits beside the board, sends a promise, a channel and an optional immediate handover, and the phone Order tab never mounts a dialog.
+- **Touch:** `+ client/src/pages/pos/shift-so-far.tsx` · `+ client/src/components/operations/OpsShiftControls.tsx` · `+ client/src/lib/shiftStorage.ts` · `+ client/src/hooks/usePosNarrow.ts` · `+ tests/journeys/operationsPhone.spec.ts` · `+ tests/journeys/posTablet.spec.ts` · `~ pos.tsx` (`embedded`, `@container` root, `usePosNarrow`, due/channel/complete-now state + payload + reset, readable shift toast, deletions listed) · `~ pos-checkout-step.tsx`, `~ pos-order-lines.tsx`, `~ pos-cart-panel.tsx`, `~ pos-types.ts`, `~ pos/shift-close.tsx` · `~ orgScope.ts`, `~ storageKeys.ts` (`− STORAGE_CASHIER_*`) · `~ liquid-metal.css` · `~ sw.js` (`− sync`) · `~ operations.tsx` (`formSlot`, `headerExtras`, badge) · `~ tests/journeys/orderForm.spec.ts` (channel assertion for a WhatsApp draft; otherwise unchanged) · `~ tests/journeys/operationsBoard.spec.ts` (pane case).
+- **Out of scope:** `server/**`, `OpsCard.tsx`, `OpsHeader.tsx` internals.
+- **DoD:** form renders in the 42 % pane at 1194×834 (rail) and 1024×768 with no clipping or horizontal scroll; `[role=dialog]` count 0 throughout a phone sale; `dueInMinutes` reaches `eta_given`; `completeNow` lands in the Done tray; channel reads back; `/create-order` behaves exactly as before; deleted symbols have zero references.
+- **Verification:** `npm run test:journeys`.
+- **PR title:** `feat(pos): embed the order form in the Operations Centre with due, channel and handed-over-now chips (N6)`
+
+### N7 — Reporting (agent D) · PR7 · ~+900 / −300
+
+- **Goal:** timing and issues are reportable; the status dashboard retires.
+- **Touch:** `+ shared/reports/orderTiming.ts` (+ spec) · `+ client/src/pages/reports/{order-timing,order-issues}.tsx` · `+ server/__tests__/orderTimingReport.test.ts` · `+ tests/journeys/reportsTiming.spec.ts` · `~ reportsEngine.ts` · `~ reportCatalog.ts` · `~ reports/delay-log.tsx` · `~ App.tsx` (after N4b) · `~ server/services/controlCentre.ts`, `~ OperationsSnapshot.tsx` (after N1) · `~ server/services/dailyClose.ts` (open-orders line) · `~ server/__tests__/reportCaptureLogic.test.ts` · `− reports/order-status.tsx`.
+- **Out of scope:** `components/operations/**`, `orders.ts`, `orderTransitions.ts`, schemas.
+- **DoD:** figures match fixtures incl. a BST/GMT case; Delay Log shows a cleared delay; assumed-ready and carried-over rows excluded; ARC-T1-003 gone; `/reports/order-status` redirects.
+- **Verification:** `npx vitest run shared/reports`, `unit-db`, `npm run test:journeys`.
+- **PR title:** `feat(reports): order timing & service levels, order issues; retire the status dashboard (N7)`
+
+### N8 — Test harness & CI (agent C) · PR8 · ~300 lines (day 1, parallel with N1/N2)
+
+- **Goal:** fixtures, the fake-time convention and a DB-test CI job exist before any feature spec needs them.
+- **Touch:** `+ tests/journeys/opsFixtures.ts` · `+ docs/testing/FAKE_TIME.md` · `~ .github/workflows/ci.yml` (`unit-db` job: postgres service, `SESSION_SECRET`, `npm run seed`, `npx vitest run` with the explicit file list) · `~ vitest.config.ts` (the five new DB files in the exclude list) · `~ tests/journeys/security/roleEnforcement.spec.ts` (documentation rows).
+- **Out of scope:** any client or server code; any feature spec.
+- **DoD:** `unit-db` runs only the five named files (green as they land; skipped-if-missing until then); the twelve legacy DB suites stay excluded from CI; fixtures typed against N0's contracts.
+- **Verification:** CI green on the PR.
+- **PR title:** `test(ops): fixtures, fake-time convention and the unit-db job (N8)`
+
+### N9a — Dead code (agent E) · PR9a · ~−450 · **N9b — Docs** · PR9b · ~+200
+
+- **Goal (9a):** the unrelated dead code found on the way is gone with no behaviour change. **Touch:** the N9a rows of the delete list. **DoD:** each symbol zero references; `npm audit --omit=dev` clean; full suite green. **PR title:** `chore: remove dead code found by the Operations Centre work (N9a)`
+- **Goal (9b):** status, backlog, changelog and guides tell the truth. **Touch:** `~ PHASE_N_OPERATIONS_CENTRE.md` (Built), `~ PHASE_L_SHIFTS_AND_DAILY_CLOSE.md` (L5 pointer), `~ PHASE_U_UX_POLISH.md` (U7 superseded), `~ BRIEF_STATUS.md`, `~ GAPS_BACKLOG.md` (close GAP-U5-04 for the board; GAP-OPS-05 expenses; follow-ons: SSE, `useOrderForm` extraction, per-user limiter key, Polish — resizable pane, suggested assignee, cross-tab leader election, bulk assign endpoint), `~ WAVE13_NEXT.md`, `~ CHANGELOG.md`, `~ docs/UI_PATTERNS.md`, `~ docs/POS_USER_GUIDE.md`, the three docs in the delete list. **PR title:** `docs: Phase N status, backlog, changelog (N9b)`
+
+**Estimated total:** ≈ +7,100 / −4,000 lines across 14 PRs. PR1, PR3b and PR4a exceed the 600-line guideline for the reasons stated. **First floor-usable PR:** PR1 (week 1). Claim / Ready / Customer here: PR3b + PR4a (week 2). Combined screen with chips: PR6; personal alerts: PR5a/b (week 3). Reports: PR7 (week 3).
+
+---
+
+## Changes from revision 1
+
+Compared with the first commit on PR #184: `/create-order` and `/pos` no longer redirect; the nav keeps two entries; no feature flag; the per-day `ops_stations` table becomes `ops_staff` (sticky, with presence); Ready leaves `status` alone; alerts move to migration 066 with `resolved_*` columns and `due_key`; auto-assign at POS is off by default; the first PR is the board itself; `SatisfactionDialog` is replaced by rating chips rather than dropped; `ARC-T1-003` retires but `ReportRef` was never linked to it; the visual CI job is cut; `OrderStageChanged` is a new event type; `expectedVersion` is dropped; `queue_position` is dropped rather than declared; C/R/A/H shortcuts, BroadcastChannel leader election, "Suggested: Sam" and `ResizablePanelGroup` are moved to a Polish follow-on.
 
 ## Risks & open questions (answer or the default stands)
 
 | # | Question | Default assumed |
 |---|---|---|
-| 1 | Colours: dark blue = **Ready**, green = **Completed**, bright blue pulse = **Due soon**? | Yes. |
-| 2 | Should a till order be auto-assigned to whoever keyed it in? | Yes for POS; web/WhatsApp/phone arrive Unassigned. |
-| 3 | Defaults: due-soon lead 10 min, prep SLA 20 min, late grace 5 min, delivery lead 45 min? | Yes; all editable in Settings → Operations. |
-| 4 | One nav entry **Operations** replacing Create Order and Open Orders, old URLs redirecting? | Yes, behind the `operationsCentre` flag until you flip it. |
-| 5 | Remove the order-expenses UI from checkout (it never saved anything), and wire it properly later as its own change? | Remove now (GAP-OPS-05 records the follow-up). |
-| 6 | An assignee who does not press Handed over / Delivered earns nothing — the Phase L rule stands? | Stands. Not reopened here. |
-| 7 | Retire the Order Status Dashboard report (the board replaces it)? | Yes. Delay Log stays. |
-| 8 | Cancelled orders: still "delete, MANAGER+"? A `cancelled` status changes what an order is and is its own brief. | Out of scope. |
-| 9 | Customer-facing "your order is ready" (WhatsApp / SMS)? | Out of scope; the `ready` event is the hook for a later phase. |
-| 10 | Multi-location: board org-wide with a location chip, or per selling location? | Org-wide with a chip when the org has more than one active location. |
-| 11 | Sound on tablets requires one tap per page load (browser rule). Acceptable? | Yes; the chip says so. |
+| 1 | Colours: green = completed; the owner's "dark blue = ready" rendered as a second, lighter blue with a READY chip (a dark blue is invisible on the dark theme); held = dashed light-blue border + chip; red = late and customer waiting; orange = delayed; bright-blue pulse only when it needs *you*? | Yes. |
+| 2 | Commission: the person who taps Handed over / Delivered earns 90 %; an assignee who does not complete earns nothing (Phase L). | Stands; Order Issues lists "completed by someone other than the assignee". |
+| 3 | Reopen: settlement facts stay frozen; if lines are edited after an Undo the settled total is not recomputed (same as today's edit-then-complete). | Stands; re-settlement is its own brief. |
+| 4 | Auto-claim on create off; auto-claim on Ready / Out for delivery on. | Yes. |
+| 5 | Defaults: prep SLA 20, delivery lead 45, due-soon 10, grace 5, done tray 120 min, undo 10 min, presence 15 min; no alerts for orders with no time given. | Yes; all in Settings → Operations. |
+| 6 | "Handed over now" on the payment step for walk-ins, so a counter sale never becomes a card. | Yes. |
+| 7 | Delivered actual time captured on the completion event (drivers report on return), not a column. | Yes. |
+| 8 | Carried-over orders: "Yesterday" strip, honest actual time on completion, daily close counts them. | Yes. |
+| 9 | Station sticky per person (per org), with break toggle; no per-device lock. | Yes. |
+| 10 | Tablet count ≤ 8 polling at 10 s; screen wake lock on. | Yes. |
+| 11 | `/create-order` stays; the form is embedded, not moved. | Yes. |
+| 12 | Order expenses UI removed (never saved anything); GAP-OPS-05 records wiring it later. | Remove. |
+| 13 | Retire ARC-T1-003; Delay Log stays; rating stays via chips. | Yes. |
+| 14 | `awaiting-customer` retained only for website settings and history; on the board it means the `ready` transition. | Yes. |
+| 15 | Order saved views retire (rows deleted in 065) in favour of the persisted board filter. | Yes. |
+| 16 | Risk: two schema files — mitigated by the paired-table audit rule. Risk: phone no-dialog rule — enforced by `operationsPhone.spec.ts`. Risk: audio needs one tap — the pulse never depends on sound. Risk: `ready_at` backfill is approximate — marked `assumed`, excluded from prep metrics. Risk: `operations.tsx` hand-overs (N4a → N6 → N5b) — sequenced; slots exist from N1. | — |
 
 ## Out of scope
 
-SSE / WebSockets (polling is enough at this size and the endpoint is designed to be pushed later); customer notifications; a kitchen/prep stage split (one "Ready" is enough for a supplies counter); driver tracking; per-order SLA overrides; a cancelled status; wiring order expenses; scheduled email digests of the timing report.
+SSE / WebSockets / push; customer-facing "ready" messages; per-line prep states; driver tracking; a cancelled status; re-settlement after reopen; bulk assign endpoint; Idempotency-Key replay; a light theme; `useOrderForm` extraction; visual-regression baselines.
