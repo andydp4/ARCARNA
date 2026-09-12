@@ -90,6 +90,33 @@ export default {
         success: "var(--success)",
         warning: "var(--warning)",
         danger: "var(--danger)",
+        // Operations Centre card-state tokens — see arcarna.css and
+        // docs/briefs/PHASE_N_OPERATIONS_CENTRE.md "Colour resolution".
+        // Every fill/text pair is contrast-checked in shared/ui/contrast.spec.ts.
+        ops: {
+          ontime: "var(--ops-ontime)",
+          ready: {
+            DEFAULT: "var(--ops-ready)",
+            foreground: "var(--ops-ready-text)",
+          },
+          held: {
+            DEFAULT: "var(--ops-held)",
+            foreground: "var(--ops-held-text)",
+          },
+          delayed: {
+            DEFAULT: "var(--ops-delayed)",
+            foreground: "var(--ops-delayed-text)",
+          },
+          late: {
+            DEFAULT: "var(--ops-late)",
+            foreground: "var(--ops-late-text)",
+          },
+          completed: {
+            DEFAULT: "var(--ops-completed)",
+            foreground: "var(--ops-completed-text)",
+          },
+          alert: "var(--ops-alert)",
+        },
       },
       boxShadow: {
         "metal-inner": "var(--lm-inner-shadow)",
@@ -120,12 +147,25 @@ export default {
             height: "0",
           },
         },
+        // Operations Centre: "an alert addressed to you is open on this
+        // card" (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md "Alerts &
+        // notifications"). Never applied for "on time" alone — see
+        // usePrefersReducedMotion for the static equivalent this yields to.
+        "ops-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 var(--truth-blue-subtle)" },
+          "50%": { boxShadow: "0 0 0 6px var(--truth-blue-bright)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "ops-pulse": "ops-pulse 1.6s ease-in-out infinite",
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [
+    require("tailwindcss-animate"),
+    require("@tailwindcss/typography"),
+    require("@tailwindcss/container-queries"),
+  ],
 } satisfies Config;
