@@ -444,14 +444,21 @@ test.describe("Operations Centre — accessibility with real cards on the board"
       ...results.incomplete.filter((v) => v.id === "color-contrast"),
     ];
     expect(contrast, formatViolations(contrast)).toEqual([]);
-    // Closes the menu for real — clicking its own trigger again toggles it,
-    // which is more reliable here than Escape: Radix only treats Escape as a
-    // close when its own content has DOM focus, and this menu was opened
-    // with a plain `.click()` rather than a keyboard interaction. Left open,
-    // the NEXT axe scan below would see every OTHER card `aria-hidden` while
-    // it still holds real, focusable buttons — precisely the failure this
-    // section already worked around once above.
-    await page.getByTestId(`button-order-actions-${ids.ready}`).click();
+    // Closes the menu for real. `client/src/components/ui/dropdown-menu.tsx`
+    // is a bare `DropdownMenuPrimitive.Root` (pre-existing, shared, out of
+    // this package's touch list) with no `modal={false}` override, so Radix
+    // runs it in its default MODAL mode: while open, Radix sets
+    // `pointer-events: none` on the rest of the document and only the
+    // portalled content is exempted. That is what the earlier "every OTHER
+    // card aria-hidden" comment above was already about — but it also means
+    // a second real click aimed at the TRIGGER (which lives outside the
+    // portal, in the normal page) can never land; Playwright reports the
+    // click as intercepted by `<html>` itself and retries until its own
+    // timeout, which is exactly what happened here before this fix. Escape
+    // reaches Radix's own key handler regardless of pointer-events lockout
+    // and Radix already moved focus into the menu's first item when it
+    // opened, so it closes the menu the same way a real keyboard user would.
+    await page.keyboard.press("Escape");
     await expect(page.getByTestId(`ops-unready-${ids.ready}`)).toHaveCount(0);
 
     // The Done tray itself — the completed card is in it, whether or not
