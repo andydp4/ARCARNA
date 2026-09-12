@@ -40,6 +40,39 @@ async function getDefaultWebsiteOrderRuntime(): Promise<WebsiteOrderRuntime> {
       const { getOrgTaxRatePercent } = await import("../services/orgTaxRate");
       return getOrgTaxRatePercent(orgId);
     },
+    async getOpsDueMinutes(orgId, fulfilmentMethod) {
+      const [{ db }, { organizations }, { eq }] = await Promise.all([
+        import("../db"),
+        import("@shared/schema"),
+        import("drizzle-orm"),
+      ]);
+      const [org] = await db
+        .select({
+          prepSlaMinutes: organizations.opsPrepSlaMinutes,
+          deliveryLeadMinutes: organizations.opsDeliveryLeadMinutes,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+      return fulfilmentMethod === "delivery"
+        ? (org?.deliveryLeadMinutes ?? 45)
+        : (org?.prepSlaMinutes ?? 20);
+    },
+    async setOrderDuePromise(tx, orderId, etaGiven) {
+      const [{ orders }, { eq }] = await Promise.all([
+        import(appsDbSchemaModulePath),
+        import(drizzleOrmModulePath),
+      ]);
+      const db = tx as {
+        update: (table: unknown) => {
+          set: (values: unknown) => { where: (where: unknown) => Promise<unknown> };
+        };
+      };
+      await db
+        .update(orders)
+        .set({ eta_given: etaGiven, original_eta: etaGiven })
+        .where(eq(orders.id, orderId));
+    },
     publishOrderCreated: (tx, eventType, correlationId, payload, options) =>
       publishEventTx(tx as never, eventType, correlationId, payload, options),
     async loadCreatedOrder(tx, orderId) {

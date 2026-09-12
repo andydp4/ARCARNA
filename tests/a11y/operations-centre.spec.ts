@@ -209,8 +209,13 @@ async function seedBoard(request: APIRequestContext, orgId: string): Promise<See
     etaGiven: new Date(Date.now() - 47 * 60 * 60 * 1000),
   });
 
-  // Scheduled: a pre-order for a trading day that has not started.
-  ids.scheduled = await place({ fulfilmentMethod: "collection", orderDate: isoDateIn(2) });
+  // Scheduled: a pre-order for a trading day that has not started. N3a: a
+  // pre-order needs a due time on its own day, or the create route 400s.
+  ids.scheduled = await place({
+    fulfilmentMethod: "collection",
+    orderDate: isoDateIn(2),
+    dueTime: "12:00",
+  });
 
   return { orgId, ids };
 }

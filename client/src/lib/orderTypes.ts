@@ -10,12 +10,13 @@
  * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, finding G24 and the N1 row of the
  * delete list). The row is deleted with Open Orders in N4b; the type is not.
  *
- * `BoardOrder` is the Operations Centre's card shape — the payload
- * `GET /api/orders/board` will return from N3a. It is declared now, in the
- * client, so the board is written against the real contract from its first
- * commit: v0 fills the stage fields the current orders table has no columns
- * for with `null` (see `toBoardOrder` in hooks/useOpsBoard.ts), and N3a swaps
- * the data source underneath without the cards changing at all.
+ * `BoardOrder` is the Operations Centre's card shape — exactly the payload
+ * `GET /api/orders/board` returns (server/services/opsBoard.ts, N3a) and what
+ * the SSE stream's `order` deltas carry. N1 declared it here ahead of the real
+ * endpoint and filled the stage fields with `null` from an adapter over
+ * `GET /api/orders`; N3a deleted that adapter (`useOpsBoard.ts` now reads the
+ * real endpoint) and extended this type to the endpoint's full shape, so the
+ * cards did not have to change at all.
  */
 import type { DateKind, FulfilmentMethod } from "@shared/orders/opsState";
 
@@ -46,10 +47,13 @@ export interface ApiOrderRow {
 }
 
 /**
- * One card on the board. Mirrors the `BoardOrder` shape in the brief's API
- * section; fields the v0 data source cannot supply are nullable rather than
- * optional so the adapter has to state, explicitly, that it does not have
- * them yet.
+ * One card on the board — exactly the `BoardOrder` shape
+ * `GET /api/orders/board` returns (brief, API section) and what the SSE
+ * stream's `{ type: 'order', order }` deltas carry (server/services/
+ * opsBoard.ts). Every field the server can supply is here now (N3a); none of
+ * this is optional because the real endpoint always sends all of it — a
+ * field a future package cannot yet populate belongs on the server as `null`,
+ * not as `undefined` here.
  */
 export interface BoardOrder {
   id: string;
@@ -67,20 +71,34 @@ export interface BoardOrder {
   createdAt: string;
   enteredAt: string | null;
   etaGiven: string | null;
+  originalEta: string | null;
   revisedEta: string | null;
   delayFlag: boolean;
+  delayCause: string | null;
   delayReason: string | null;
-  /** N3b: who is dealing with it. Always null until the column exists (N2). */
+  delayNotificationSentAt: string | null;
+  delayResolution: string | null;
+  /** N3b: who is dealing with it. Always null until a claim/assign writes it. */
   assignedUserId: string | null;
   assignedUserName: string | null;
-  /** N2 stage stamps. Null in v0 — nothing can write them yet. */
+  assignedAt: string | null;
+  /** N3b: stage stamps. Null until a transition writes them. */
   heldAt: string | null;
   readyAt: string | null;
   customerArrivedAt: string | null;
   outForDeliveryAt: string | null;
   settledAt: string | null;
+  /** `completed` event's `meta.actualAt`, else `settledAt` — see opsBoard.ts. */
+  handoverAt: string | null;
   inputUserId: string | null;
   inputUserName: string | null;
+  completedUserId: string | null;
+  completedUserName: string | null;
+  locationId: string | null;
+  itemCount: number;
+  /** First few order lines, formatted "<qty>× <name>" — see opsBoard.ts. */
+  itemsPreview: string[];
+  updatedAt: string | null;
 }
 
 /** Which lane a card belongs in. The board has exactly two. */

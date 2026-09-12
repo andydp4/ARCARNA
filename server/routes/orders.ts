@@ -30,6 +30,9 @@ import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { resolveUserNames } from "../services/userDisplayName";
+import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
+import { orgTimeZone } from "../services/tradingDayShift";
+import { publishOpsEvent } from "../services/opsBus";
 
 /**
  * What the goods on a personal-use order cost the business.
@@ -55,7 +58,65 @@ async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * The promise made at the till, resolved to an absolute instant server-side
+ * (brief, "Due time"): a wall-clock `dueTime` ("HH:MM") is read against the
+ * order's own trading day in the org's timezone; `dueInMinutes` is read
+ * against when the order was actually received — the offline-replay instant
+ * when there is one, otherwise now — never against the tablet's clock or an
+ * absolute instant it sent. `dueTime` wins when both are sent: it is the more
+ * precise of the two, not a preference either way is likely to hit in
+ * practice since the till only ever sends one.
+ */
+function resolveDuePromise(
+  body: { dueInMinutes?: unknown; dueTime?: unknown },
+  receivedAt: Date,
+  tradingDate: string,
+  timeZone: string,
+): { ok: true; etaGiven: Date | null } | { ok: false; message: string; code: string } {
+  const dueTime = typeof body.dueTime === "string" ? body.dueTime : undefined;
+  if (dueTime) {
+    try {
+      return { ok: true, etaGiven: localInstantAt(tradingDate, dueTime, timeZone) };
+    } catch {
+      return {
+        ok: false,
+        message: "Due time must be a 24-hour HH:MM time.",
+        code: "ORDER_DUE_TIME_INVALID",
+      };
+    }
+  }
+  const dueInMinutes = typeof body.dueInMinutes === "number" ? body.dueInMinutes : undefined;
+  if (dueInMinutes !== undefined) {
+    return { ok: true, etaGiven: new Date(receivedAt.getTime() + dueInMinutes * 60_000) };
+  }
+  return { ok: true, etaGiven: null };
+}
+
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
+  /**
+   * The Operations Centre board. Registered before `GET /api/orders/:id` —
+   * otherwise Express would match "board" as that route's `:id` param and
+   * this handler would never run. On the shared-IP rate limiter's skip list
+   * (server/security.ts) and never cached by the service worker
+   * (client/public/sw.js): every tablet on the counter shares one IP, and a
+   * stale cached board is worse than a slow one (brief finding G11).
+   */
+  app.get("/api/orders/board", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null } | undefined;
+      if (!ctx?.orgId) {
+        return res.status(400).json({ message: "The board requires org context." });
+      }
+      const { getOpsBoard } = await import("../services/opsBoard");
+      const payload = await getOpsBoard(ctx.orgId, req.user?.id ?? null);
+      res.json(payload);
+    } catch (error) {
+      console.error("Error building the operations board:", error);
+      res.status(500).json({ message: "Failed to load the operations board" });
+    }
+  });
+
   app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId: string | null; role: string };
@@ -170,6 +231,34 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         return res.status(400).json({ message: dating.message, code: dating.code });
       }
       const isBackdated = dating.dating.kind === "backdated";
+      const isPreorder = dating.dating.kind === "preorder";
+
+      // The promise made at the till (brief, "Due time"). Resolved here,
+      // before the transaction, against the order's own trading day and the
+      // org's real timezone. Only a wall-clock `dueTime` needs either of
+      // those at all — `dueInMinutes` is read against `receivedAt` alone —
+      // so the extra org lookup is skipped on every order that doesn't send
+      // one, which is most of them. `resolveOrderDating`'s own `timeZone` is
+      // a placeholder ("UTC") on the ordinary live-sale path, where it has
+      // nothing to compute; a backdated/pre-order date already carries the
+      // real one (`resolveOrderDating` fetched it to classify the date).
+      const receivedAt = req.offlineQueuedAt ?? new Date();
+      const needsRealTimeZone = typeof body.dueTime === "string" && !isBackdated && !isPreorder;
+      const timeZone = needsRealTimeZone ? await orgTimeZone(ctx.orgId) : dating.timeZone;
+      const tradingDate = isBackdated || isPreorder ? dating.dating.date : currentTradingDay(timeZone, receivedAt);
+      const duePromise = resolveDuePromise(body, receivedAt, tradingDate, timeZone);
+      if (!duePromise.ok) {
+        return res.status(400).json({ message: duePromise.message, code: duePromise.code });
+      }
+      // Pre-orders exist to hold a slot for a specific time; one with no
+      // promise at all would sit in the Scheduled strip with nothing to
+      // become on its day (brief, "Pre-orders").
+      if (isPreorder && !duePromise.etaGiven) {
+        return res.status(400).json({
+          message: "A pre-order needs a due time on its own day.",
+          code: "ORDER_PREORDER_DUE_REQUIRED",
+        });
+      }
 
       // A backdated sale belongs to the shift of the day it was sold on, the
       // way an offline order replayed after its shift closed already does. The
@@ -235,6 +324,30 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             })
             .where(eq(orders.id, result.orderId));
         }
+        // The order's real received time (finding G21): a lazy-shift offline
+        // replay with no cashier-shift token still carries `_offlineQueuedAt`,
+        // and the board's clocks read `entered_at`, not `created_at` — a
+        // replayed order born "received now" would show the wrong elapsed
+        // time and, worse, count as newly late the moment it lands. Skipped
+        // for a backdated sale, whose own "keyed in now" stamp below is what
+        // that flow means by "received".
+        if (!isBackdated && req.offlineQueuedAt) {
+          await tx
+            .update(orders)
+            .set({ entered_at: req.offlineQueuedAt })
+            .where(eq(orders.id, result.orderId));
+        }
+        // The promise made at the till, resolved above. `original_eta` is
+        // frozen alongside it on this, the only write that can ever leave
+        // `eta_given` NULL-to-set (brief: "`original_eta` frozen on first
+        // write"; every later change is a delay, via `PATCH …/operations` /
+        // `set_due`, and never touches this column again).
+        if (duePromise.etaGiven) {
+          await tx
+            .update(orders)
+            .set({ eta_given: duePromise.etaGiven, original_eta: duePromise.etaGiven })
+            .where(eq(orders.id, result.orderId));
+        }
         // Written last so it wins over the offline-replay stamp above: an order
         // the till dated is dated, whatever queue it arrived through.
         if (dating.instant) {
@@ -249,6 +362,22 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         }
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
+
+        // `received` — the first order_events row for this order, mirroring
+        // the milestone `shared/orders/opsState.ts` calls `receivedAt`
+        // (brief, "Order lifecycle & timing model" table). `userId` is NULL
+        // for a channel with no cashier at all — website and API orders —
+        // exactly what `order_events.userId`'s doc comment says NULL means.
+        {
+          const { orderEvents } = await import("@shared/schema");
+          await tx.insert(orderEvents).values({
+            orgId: ctx.orgId!,
+            orderId: result.orderId,
+            kind: "received",
+            at: createdOrder?.entered_at ?? createdOrder?.created_at ?? new Date(),
+            userId: inputUserId,
+          });
+        }
 
         if (usesGiftCard && createdOrder) {
           const orderTotal = parseFloat(String(createdOrder.total));
@@ -369,8 +498,26 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       if (backdatedShift && ctx.orgId) {
         await settleBackdatedShift(ctx.orgId, backdatedShift);
       }
-      
-      res.status(201).json({ 
+
+      // Pushed AFTER commit, never from inside the transaction — a later
+      // rollback must not have already told every open tablet about a row
+      // that no longer exists. A fresh re-read (rather than reusing what the
+      // transaction built in memory) is deliberate: it is the same query
+      // `GET /api/orders/board` runs for one row, so a card that arrives over
+      // the stream can never disagree with one a poll would have fetched.
+      if (ctx.orgId && result?.orderId) {
+        try {
+          const { getOpsBoardOrder } = await import("../services/opsBoard");
+          const boardOrder = await getOpsBoardOrder(ctx.orgId, result.orderId);
+          if (boardOrder) publishOpsEvent(ctx.orgId, { type: "order", order: boardOrder });
+        } catch (pushError) {
+          // The sale already committed; a tablet that misses the push still
+          // catches up on its next reconciliation poll (brief, "Live data").
+          console.error("[Orders] Failed to push the new order to the board stream:", pushError);
+        }
+      }
+
+      res.status(201).json({
         ...result, 
         eventId, // Include eventId in response for tracing
         order: createdOrder ? {

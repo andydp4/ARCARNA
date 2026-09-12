@@ -8,14 +8,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { useOpsBoard } from "@/hooks/useOpsBoard";
+import { useOpsBoard, type OpsBoardResponse } from "@/hooks/useOpsBoard";
 import { useOpsTicker } from "@/hooks/useOpsTicker";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { invalidateAfterOrderStatusChange } from "@/lib/query-invalidation";
 import { STORAGE_OPS_FILTER, STORAGE_OPS_TAB } from "@shared/storageKeys";
 import type { OrderStatus } from "@shared/schema";
-import type { ApiOrderRow, BoardOrder } from "@/lib/orderTypes";
+import type { BoardOrder } from "@/lib/orderTypes";
 import { OpsBoard } from "@/components/operations/OpsBoard";
 import { OpsAnnouncer } from "@/components/operations/OpsAnnouncer";
 import { OpsDeleteDialog } from "@/components/operations/OpsDeleteDialog";
@@ -338,7 +338,11 @@ export default function OperationsCentre() {
     },
     onMutate: async ({ orderId, status }) => {
       setPending(orderId, true);
-      await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
+      // N3a: the board now reads `['/api/orders/board']`, not `['/api/orders']`
+      // (useOpsBoard.ts) — the optimistic patch has to land in the cache the
+      // board actually renders from, or a tap would wait for the ordinary
+      // reconciliation poll to appear to do anything.
+      await queryClient.cancelQueries({ queryKey: ["/api/orders/board"] });
       // Snapshot only the one row this mutation is about to touch, not the
       // whole array. Two cards can be in flight at once (two cashiers, two
       // taps): if each mutation captured the entire list, whichever one
@@ -348,10 +352,12 @@ export default function OperationsCentre() {
       // predates the failing mutation. Scoping the snapshot to this order's
       // row means a rollback can only ever touch what this mutation changed.
       const previousOrder = queryClient
-        .getQueryData<ApiOrderRow[]>(["/api/orders"])
-        ?.find((row) => row.id === orderId);
-      queryClient.setQueryData<ApiOrderRow[]>(["/api/orders"], (current = []) =>
-        current.map((row) => (row.id === orderId ? { ...row, status } : row)),
+        .getQueryData<OpsBoardResponse>(["/api/orders/board"])
+        ?.orders.find((row) => row.id === orderId);
+      queryClient.setQueryData<OpsBoardResponse>(["/api/orders/board"], (current) =>
+        current
+          ? { ...current, orders: current.orders.map((row) => (row.id === orderId ? { ...row, status } : row)) }
+          : current,
       );
       return { previousOrder };
     },
@@ -362,8 +368,10 @@ export default function OperationsCentre() {
     onError: (error: any, variables, context) => {
       if (context?.previousOrder) {
         const restored = context.previousOrder;
-        queryClient.setQueryData<ApiOrderRow[]>(["/api/orders"], (current = []) =>
-          current.map((row) => (row.id === variables.orderId ? restored : row)),
+        queryClient.setQueryData<OpsBoardResponse>(["/api/orders/board"], (current) =>
+          current
+            ? { ...current, orders: current.orders.map((row) => (row.id === variables.orderId ? restored : row)) }
+            : current,
         );
       }
       toast({

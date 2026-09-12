@@ -35,6 +35,9 @@ function runtime(): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
     getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    // N3a: the board's SLA fallback for a website order (finding G19).
+    getOpsDueMinutes: vi.fn().mockResolvedValue(20),
+    setOrderDuePromise: vi.fn().mockResolvedValue(undefined),
     engine: {
       createCustomer: vi.fn().mockResolvedValue({ id: "customer-1" }),
       placeOrder: vi.fn().mockResolvedValue({ orderId: "order-1", warnings: [] }),
