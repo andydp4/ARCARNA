@@ -621,4 +621,4 @@ Owner's answers applied on 2026-09-12: **re-settlement on re-complete** with reo
 
 ## Out of scope
 
-SSE / WebSockets / push; customer-facing "ready" messages; per-line prep states; driver tracking; a cancelled status; re-settlement after reopen; bulk assign endpoint; Idempotency-Key replay; a light theme; `useOrderForm` extraction; visual-regression baselines.
+SSE / WebSockets / push (superseded by the owner's Q10 answer — the SSE bus in N3a is now in scope, not out of it); customer-facing "ready" messages; per-line prep states; driver tracking; a cancelled status; bulk assign endpoint; Idempotency-Key replay; a light theme; `useOrderForm` extraction; visual-regression baselines.

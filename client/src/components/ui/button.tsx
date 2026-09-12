@@ -26,6 +26,10 @@ const buttonVariants = cva(
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
+        // 44x44 (WCAG 2.5.5 / 2.5.8): the minimum touch target for anything
+        // on a tablet at the counter. Operations Centre card actions use
+        // this; other icon-only counter controls may adopt it over time.
+        touch: "h-11 min-h-11 min-w-11 px-4",
       },
     },
     defaultVariants: {

@@ -25,6 +25,16 @@ export const STORAGE_WHATSAPP_SOUND_LEGACY = "midnight.whatsapp.sound";
 export const STORAGE_VOICE_ENABLED = "arcarna.voice.enabled";
 export const STORAGE_VOICE_STYLE = "arcarna.voice.style";
 
+// Operations Centre — per-device preferences (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md).
+// Station is also stored server-side (ops_staff) so other people can see it;
+// this local copy is only for an instant filter default before the first
+// board fetch returns.
+export const STORAGE_OPS_SOUND = "arcarna.ops.sound";
+export const STORAGE_OPS_FILTER = "arcarna.ops.filter";
+export const STORAGE_OPS_STATION = "arcarna.ops.station";
+export const STORAGE_OPS_TAB = "arcarna.ops.tab";
+export const STORAGE_OPS_CHIMED = "arcarna.ops.chimed";
+
 export const OFFLINE_DB_PREFIX = "arcarna-epos-db";
 export const OFFLINE_DB_PREFIX_LEGACY = "midnight-epos-db";
 

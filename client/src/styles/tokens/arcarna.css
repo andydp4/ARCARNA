@@ -28,6 +28,37 @@
      for the off-white rather than sitting on the threshold.
      Everything red inherits this, including --destructive in liquid-metal.css. */
   --danger: hsl(2 78% 46%);
+
+  /* ── Operations Centre — card-state tokens ────────────────────────────
+   * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Colour resolution": named
+   * separately from the semantic tokens above so the board's colour
+   * language can be tuned without moving Truth Blue, --success, --warning
+   * or --danger everywhere else they are already used.
+   *
+   * --ops-ready is NOT a darkened Truth Blue. On the real card surface
+   * (--lm-gunmetal, liquid-metal.css) --truth-blue-strong measures 2.42:1 —
+   * below the 3:1 a state band needs (WCAG 1.4.11) and only 1.33:1 away
+   * from --truth-blue itself, so a literal "dark blue" is both invisible
+   * and indistinguishable from "on time". --ops-ready is picked from the
+   * bright end instead, clearly separate from both --truth-blue and the
+   * --truth-blue-bright alert pulse.
+   *
+   * Every fill/text pair here is proven >= 4.5:1 and every band/border pair
+   * >= 3:1 by shared/ui/contrast.spec.ts, computed from these exact values
+   * — the WCAG 1.4.3 failure recorded as GAP-U5-04 was a colour nobody ever
+   * ran through the calculator; these are. */
+  --ops-ontime: var(--truth-blue);
+  --ops-ready: hsl(196 85% 58%);
+  --ops-ready-text: hsl(210 30% 10%);
+  --ops-held: hsl(208 90% 80%);
+  --ops-held-text: hsl(210 30% 10%);
+  --ops-delayed: var(--warning);
+  --ops-delayed-text: hsl(30 20% 12%);
+  --ops-late: var(--danger);
+  --ops-late-text: hsl(0 0% 100%);
+  --ops-completed: var(--success);
+  --ops-completed-text: hsl(158 40% 10%);
+  --ops-alert: var(--truth-blue-bright);
 }
 
 /* ── Semantic status badges ───────────────────────────────────────────────
