@@ -282,3 +282,71 @@ describe("dueEffective and receivedAt", () => {
     expect(derived.dueEffective.toISOString()).toBe(expected.toISOString());
   });
 });
+
+describe("carried-over applies only to live orders — regression for a pre-order placed well ahead of its day", () => {
+  it("a pre-order entered days before its own trading day is scheduled, never carried-over, on an intervening day", () => {
+    // Entered 2026-01-09 for collection on 2026-01-12; viewed on the 12th
+    // itself. Before this order's own day, "entered days ago" must not
+    // read as "carried over from days ago".
+    const order = baseOrder({
+      dateKind: "preorder",
+      enteredAt: "2026-01-09T10:00:00.000Z",
+      createdAt: "2026-01-12T12:00:00.000Z",
+      etaGiven: "2026-01-12T16:00:00.000Z",
+    });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("on-time");
+  });
+
+  it("the same order, checked three days before its own trading day, reads scheduled", () => {
+    const order = baseOrder({
+      dateKind: "preorder",
+      enteredAt: "2026-01-09T10:00:00.000Z",
+      createdAt: "2026-01-12T12:00:00.000Z",
+    });
+    const earlier = new Date("2026-01-10T10:00:00.000Z");
+    expect(deriveCardState(order, earlier, SETTINGS).state).toBe("scheduled");
+  });
+
+  it("a live order received before today's cut and still open is carried-over (the ordinary case is unaffected by the fix)", () => {
+    const order = baseOrder({
+      dateKind: "live",
+      createdAt: "2026-01-11T20:00:00.000Z",
+      enteredAt: "2026-01-11T20:00:00.000Z",
+    });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("carried-over");
+  });
+});
+
+describe("backdated orders render on-time and never go late, delayed or due-soon", () => {
+  it("never reads late no matter how far past its promise", () => {
+    const order = baseOrder({ dateKind: "backdated", etaGiven: minutesAgo(500) });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("on-time");
+  });
+
+  it("never reads delayed even when flagged with a revised time still ahead", () => {
+    const order = baseOrder({
+      dateKind: "backdated",
+      etaGiven: minutesAgo(500),
+      delayFlag: true,
+      revisedEta: minutesFromNow(10),
+    });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("on-time");
+  });
+
+  it("never reads due-soon even right up against a promise", () => {
+    const order = baseOrder({ dateKind: "backdated", etaGiven: minutesFromNow(1) });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("on-time");
+  });
+
+  it("can still be held or completed — those are real operational facts, not timing derivations", () => {
+    expect(deriveCardState(baseOrder({ dateKind: "backdated", status: "on-hold" }), NOW, SETTINGS).state).toBe("held");
+    expect(
+      deriveCardState(baseOrder({ dateKind: "backdated", status: "completed", settledAt: minutesAgo(1) }), NOW, SETTINGS).state,
+    ).toBe("completed");
+  });
+
+  it("can still become ready", () => {
+    const order = baseOrder({ dateKind: "backdated", etaGiven: minutesAgo(500), readyAt: minutesAgo(1) });
+    expect(deriveCardState(order, NOW, SETTINGS).state).toBe("ready");
+  });
+});

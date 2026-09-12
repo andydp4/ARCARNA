@@ -168,35 +168,56 @@ export function deriveCardState(
 
   let state: CardState;
 
+  const todayKey = tradingDayKey(now, settings.timezone);
+  // "Carried over" means a LIVE order's own trading day (received ==
+  // dated, for a live sale) already ended while it was still open — NOT
+  // "entered a while ago", which is all `receivedAt` alone would tell you
+  // for a pre-order taken well ahead of its collection day (see the
+  // regression test below: a pre-order entered on the 9th for the 12th
+  // must read as scheduled/on-time on the 12th, never as carried-over from
+  // the 9th). Backdated orders are excluded for the same reason "late" is:
+  // their own day is deliberately in the past by design, not by neglect.
+  const isCarriedOverCandidate = order.dateKind === "live";
+
   if (order.status === "completed") {
     state = "completed";
-  } else if (tradingDayKey(receivedAt, settings.timezone) < tradingDayKey(now, settings.timezone)) {
+  } else if (isCarriedOverCandidate && tradingDayKey(receivedAt, settings.timezone) < todayKey) {
     // Carried over from an earlier trading day — the 06:00 cut already passed
-    // while this order was still open. Never late, never scheduled: it is
-    // simply yesterday's, and gets its own strip (brief, "Carried-over").
+    // while this order was still open. Gets its own strip (brief, "Carried-over").
     state = "carried-over";
-  } else if (order.dateKind === "preorder" && tradingDayKey(toDate(order.createdAt) ?? now, settings.timezone) > tradingDayKey(now, settings.timezone)) {
+  } else if (order.dateKind === "preorder" && tradingDayKey(toDate(order.createdAt) ?? now, settings.timezone) > todayKey) {
     state = "scheduled";
   } else if (order.status === "on-hold") {
     state = "held";
   } else if (order.fulfilmentMethod === "collection" && toDate(order.customerArrivedAt) != null && toDate(order.readyAt) == null) {
     state = "customer-waiting";
   } else if (
-    pastDue &&
-    (order.fulfilmentMethod === "collection" ? toDate(order.readyAt) == null : true)
+    backdated
+      ? false // "Backdated open orders render on-time ... and never go late" (brief).
+      : pastDue && (order.fulfilmentMethod === "collection" ? toDate(order.readyAt) == null : true)
   ) {
     state = "late";
-  } else if (order.delayFlag && toDate(order.revisedEta) != null && (toDate(order.revisedEta) as Date).getTime() > now.getTime()) {
+  } else if (
+    !backdated &&
+    order.delayFlag &&
+    toDate(order.revisedEta) != null &&
+    (toDate(order.revisedEta) as Date).getTime() > now.getTime()
+  ) {
     state = "delayed";
   } else if (toDate(order.readyAt) != null) {
     state = "ready";
-  } else if (dueSource === "promise" && dueEffective.getTime() - now.getTime() <= settings.dueSoonLeadMinutes * 60_000) {
+  } else if (
+    !backdated &&
+    dueSource === "promise" &&
+    dueEffective.getTime() - now.getTime() <= settings.dueSoonLeadMinutes * 60_000
+  ) {
     state = "due-soon";
   } else {
     state = "on-time";
   }
 
   const pastDueWhileHeldOrReady =
+    !backdated &&
     (state === "held" || state === "ready") &&
     now.getTime() > dueEffective.getTime() + settings.lateGraceMinutes * 60_000;
 
