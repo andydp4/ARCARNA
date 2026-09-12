@@ -24,15 +24,31 @@ const appDbMock = vi.hoisted(() => {
   const state: {
     currentOrder: Record<string, unknown> | null;
     updatePatch: Record<string, unknown> | null;
+    /** Table object (identity) → seeded rows. `orders` and `orderEvents` both
+     * flow through here so `completeOrderTx`'s extra `order_events` lookup
+     * (checking for a prior `completed` event, to decide first-settle vs
+     * resettle) gets an answer distinct from the locked order row. */
+    rowsByTable: Map<unknown, unknown[]>;
   } = {
     currentOrder: null,
     updatePatch: null,
+    rowsByTable: new Map(),
   };
-  const select = vi.fn(() => ({
-    from: vi.fn(() => ({
-      where: vi.fn(async () => (state.currentOrder ? [state.currentOrder] : [])),
-    })),
-  }));
+  const selectChain = (table: unknown) => {
+    // The locked-row read (`PATCH`'s own `SELECT … FOR UPDATE`) has no table
+    // registered yet on the first call of a test — fall back to `currentOrder`
+    // for that one case; every other table (order_events, ...) is looked up
+    // by identity.
+    const rows = state.rowsByTable.get(table) ?? (state.currentOrder ? [state.currentOrder] : []);
+    const chain: any = {
+      where: () => chain,
+      orderBy: () => chain,
+      for: () => chain,
+      limit: () => Promise.resolve(rows),
+    };
+    return chain;
+  };
+  const select = vi.fn(() => ({ from: selectChain }));
   const update = vi.fn(() => ({
     set: vi.fn((patch: Record<string, unknown>) => {
       state.updatePatch = patch;
@@ -45,19 +61,51 @@ const appDbMock = vi.hoisted(() => {
       };
     }),
   }));
+  const insert = vi.fn(() => ({
+    values: (values: Record<string, unknown>) => {
+      const promise = Promise.resolve(undefined) as Promise<undefined> & { returning?: () => Promise<unknown[]> };
+      promise.returning = () => Promise.resolve([{ id: "evt-1", ...values }]);
+      return promise;
+    },
+  }));
   return {
     state,
-    db: { select, update },
+    db: { select, update, insert },
     withTransaction: vi.fn(async () => {
       throw new Error("stop-after-guard");
     }),
   };
 });
 
-const creditLedgerMock = vi.hoisted(() => ({
-  creditLegTotal: vi.fn(),
-  openCreditForOrder: vi.fn(),
-}));
+const creditLedgerMock = vi.hoisted(() => {
+  class CreditError extends Error {
+    status: number;
+    code: string;
+    constructor(message: string, status = 400, code = "CREDIT_ERROR") {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  }
+  return {
+    creditLegTotal: vi.fn(),
+    // Mirrors the real function's own guard (server/services/creditLedger.ts):
+    // this is genuinely what raises `CREDIT_CUSTOMER_REQUIRED` now that the
+    // route no longer duplicates the check inline (Phase N, N3b —
+    // `completeOrderTx` calls the real `openCreditForOrder` for that reason).
+    openCreditForOrder: vi.fn(async (_orgId: string, order: { customerId: string | null; amount: number }) => {
+      if (order.amount > 0 && !order.customerId) {
+        throw new CreditError(
+          "Select a customer before putting a sale on credit.",
+          400,
+          "CREDIT_CUSTOMER_REQUIRED",
+        );
+      }
+    }),
+    voidCredit: vi.fn(),
+    CreditError,
+  };
+});
 
 const eventBusMock = vi.hoisted(() => ({
   publishEvent: vi.fn(),
@@ -182,6 +230,8 @@ async function placeOrder(body: Record<string, unknown>) {
   return { status, payload: payload as { message?: string; code?: string } };
 }
 
+const defaultOpenCreditForOrder = creditLedgerMock.openCreditForOrder.getMockImplementation();
+
 beforeEach(() => {
   appDbMock.withTransaction.mockReset();
   appDbMock.withTransaction.mockImplementation(async () => {
@@ -191,8 +241,10 @@ beforeEach(() => {
   appDbMock.db.update.mockClear();
   appDbMock.state.currentOrder = null;
   appDbMock.state.updatePatch = null;
+  appDbMock.state.rowsByTable.clear();
   creditLedgerMock.creditLegTotal.mockReset();
   creditLedgerMock.openCreditForOrder.mockReset();
+  creditLedgerMock.openCreditForOrder.mockImplementation(defaultOpenCreditForOrder);
   eventBusMock.publishEvent.mockReset();
   eventBusMock.publishEvent.mockResolvedValue("evt-1");
   eventBusMock.publishEventTx.mockReset();
@@ -251,7 +303,7 @@ describe("a sale on credit needs a customer", () => {
     expect(payload.code).not.toBe("CREDIT_CUSTOMER_REQUIRED");
   });
 
-  it("refuses to complete an existing customerless credit order before writing status or debt", async () => {
+  it("refuses to complete an existing customerless credit order — the whole transaction throws", async () => {
     appDbMock.state.currentOrder = {
       id: "order-1",
       org_id: ORG_ID,
@@ -261,6 +313,11 @@ describe("a sale on credit needs a customer", () => {
       status: "pending",
       settled_total: null,
     };
+    appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(appDbMock.db),
+    );
+    const { orderEvents } = await import("@shared/schema");
+    appDbMock.state.rowsByTable.set(orderEvents, []); // no prior `completed` event — first settle, not a resettle
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();
@@ -288,9 +345,14 @@ describe("a sale on credit needs a customer", () => {
 
     expect(status).toBe(400);
     expect((payload as { code?: string }).code).toBe("CREDIT_CUSTOMER_REQUIRED");
-    expect(creditLedgerMock.creditLegTotal).toHaveBeenCalledWith("order-1", "tick", 70);
-    expect(appDbMock.db.update).not.toHaveBeenCalled();
-    expect(creditLedgerMock.openCreditForOrder).not.toHaveBeenCalled();
+    expect(creditLedgerMock.creditLegTotal).toHaveBeenCalledWith("order-1", "tick", 70, appDbMock.db);
+    expect(creditLedgerMock.openCreditForOrder).toHaveBeenCalledTimes(1);
+    // This mock does not simulate a real Postgres ROLLBACK (its `update` just
+    // resolves), so it cannot itself prove the settlement patch above did not
+    // stick — that is `orderTransitionAtomicity.test.ts`'s job, against a
+    // real database. What this DOES prove: the credit guard runs from INSIDE
+    // the same transaction as the settlement write, on the LOCKED row, not as
+    // a separate pre-flight check the way the pre-N3b handler ran it.
   });
 
   it("opens credit in the same transaction as completing an existing order", async () => {
@@ -306,6 +368,8 @@ describe("a sale on credit needs a customer", () => {
     appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn(appDbMock.db),
     );
+    const { orderEvents } = await import("@shared/schema");
+    appDbMock.state.rowsByTable.set(orderEvents, []);
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();

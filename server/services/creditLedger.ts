@@ -63,13 +63,25 @@ async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db)
  * Reads the tender legs, so a £100 sale paid £50 cash and £50 on credit puts
  * £50 on the list rather than £100. Falls back to the order's single payment
  * method for orders taken before split tender existed.
+ *
+ * `client` defaults to the module's own pooled `db`, same as
+ * `openCreditForOrder` below — but the completion path (N3b,
+ * `server/services/orderCompletion.ts`) always passes the LOCKED
+ * transaction's client explicitly. Before N3b this read the order's payments
+ * on a second, unrelated pool connection FROM INSIDE the PATCH route's own
+ * transaction: with the pool capped at 10 connections
+ * (`apps/server/src/db/index.ts`), roughly ten concurrent completions could
+ * each hold one connection open waiting on the transaction's pool while
+ * borrowing a second from the very pool they were blocking — a self-deadlock
+ * under ordinary shop load (the brief's finding G4).
  */
 export async function creditLegTotal(
   orderId: string,
   paymentMethod: string,
   orderTotal: number,
+  client: CreditLedgerDb = db,
 ): Promise<number> {
-  const legs = await db
+  const legs = await client
     .select({ method: orderPayments.method, amount: orderPayments.amount })
     .from(orderPayments)
     .where(eq(orderPayments.orderId, orderId));
@@ -87,7 +99,17 @@ export async function creditLegTotal(
 /**
  * Opens a credit record when a sale on tick completes.
  *
- * Idempotent — completing an order twice must not double the debt.
+ * `order_credit` has exactly one row per order (its primary key IS the order
+ * id), so this is an upsert rather than a plain insert. Two cases land here:
+ *
+ *  - the ordinary first completion, where no row exists yet — inserts one;
+ *  - a re-completion after `reopen` voided the prior leg (N3b,
+ *    "re-settlement on re-complete") — the row already exists, `voided`, and
+ *    must come back to `outstanding` for the CURRENT tick amount rather than
+ *    silently doing nothing. `onConflictDoNothing` (the pre-N3b behaviour)
+ *    was written when completing an order twice was a genuine bug (the brief's
+ *    finding G4) rather than an intended lifecycle step, and would leave a
+ *    resettled credit sale permanently voided with no way to collect it.
  */
 export async function openCreditForOrder(
   orgId: string,
@@ -102,18 +124,31 @@ export async function openCreditForOrder(
       "CREDIT_CUSTOMER_REQUIRED",
     );
   }
+  const amount = String(roundMoney(order.amount));
+  const givenOn = await tradingDayTodayForOrg(orgId, client);
   await client
     .insert(orderCredit)
     .values({
       orderId: order.id,
       orgId,
       customerId: order.customerId,
-      amountGiven: String(roundMoney(order.amount)),
-      amountOutstanding: String(roundMoney(order.amount)),
+      amountGiven: amount,
+      amountOutstanding: amount,
       status: "outstanding",
-      givenOn: await tradingDayTodayForOrg(orgId, client),
+      givenOn,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: orderCredit.orderId,
+      set: {
+        customerId: order.customerId,
+        amountGiven: amount,
+        amountOutstanding: amount,
+        status: "outstanding",
+        givenOn,
+        settledOn: null,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 type OrderCommissionBasis = {
@@ -489,9 +524,21 @@ export async function writeOffCredit(orgId: string, orderId: string): Promise<Or
  *
  * Nothing is clawed back because nothing accrued, which is exactly why
  * commission waits for the money in the first place.
+ *
+ * `client` defaults to the module's pooled `db` for the standalone admin
+ * route (`server/routes/credit.ts`), but `reopenOrderTx`
+ * (`server/services/orderCompletion.ts`, N3b) always passes the reopen
+ * transaction's own client: voiding the credit leg must commit or roll back
+ * with the status flip and the `reopened` event, not as a separate,
+ * uncoordinated statement that could survive a later rollback of the rest of
+ * the reopen.
  */
-export async function voidCredit(orgId: string, orderId: string): Promise<OrderCredit> {
-  const [credit] = await db
+export async function voidCredit(
+  orgId: string,
+  orderId: string,
+  client: CreditLedgerDb = db,
+): Promise<OrderCredit> {
+  const [credit] = await client
     .select()
     .from(orderCredit)
     .where(and(eq(orderCredit.orderId, orderId), eq(orderCredit.orgId, orgId)))
@@ -504,7 +551,7 @@ export async function voidCredit(orgId: string, orderId: string): Promise<OrderC
       "CREDIT_PARTIALLY_PAID",
     );
   }
-  const [updated] = await db
+  const [updated] = await client
     .update(orderCredit)
     .set({ amountOutstanding: "0", status: "voided", updatedAt: new Date() })
     .where(eq(orderCredit.orderId, orderId))

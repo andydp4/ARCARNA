@@ -4,7 +4,13 @@
  * These write the data the report views read back:
  *   - satisfaction_scores        → ARC-T2-003 Customer Satisfaction
  *   - reseller_partners / _transactions → ARC-T2-004 Reseller Credit & Payment
- *   - orders operational fields  → ARC-T1-003 Order Status, ARC-T1-005 Delay Log
+ *   - orders delay fields        → ARC-T1-005 Delay Log
+ *
+ * `PATCH /api/orders/:id/operations` no longer owns the promise itself
+ * (`etaGiven` / `originalEta`) or a queue position — those moved to the
+ * Operations Centre's due-time transition and migration 065 respectively
+ * (Phase N, N3b; docs/briefs/PHASE_N_OPERATIONS_CENTRE.md). This route is
+ * narrowed to `delay_*` and `revised_eta`.
  */
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
@@ -44,25 +50,35 @@ const txnSchema = z.object({
 // Shared with the client so the dropdown and this Zod enum cannot drift.
 // See shared/delayCauses.ts.
 
-const orderOpsSchema = z.object({
-  // `queuePosition` was here until migration 065 dropped the column: the
-  // Operations Centre board sorts by due time and state, so a manual queue
-  // number has no reader and nothing left to write to. `etaGiven` and
-  // `originalEta` follow in N3b, when the due-time transition owns the promise
-  // and this route is narrowed to the delay fields alone.
-  etaGiven: z.string().datetime().nullable().optional(),
-  delayFlag: z.boolean().optional(),
-  delayReason: z.string().max(255).nullable().optional(),
-  delayCause: z.enum(DELAY_CAUSES).nullable().optional(),
-  originalEta: z.string().datetime().nullable().optional(),
-  revisedEta: z.string().datetime().nullable().optional(),
-  delayResolution: z
-    .enum(["Collected late", "Rescheduled", "Cancelled", "Escalated to owner"])
-    .nullable()
-    .optional(),
-  /** Set true when the customer has just been told about the delay. */
-  notifyCustomerNow: z.boolean().optional(),
-});
+/**
+ * `PATCH /api/orders/:id/operations` owns `delay_*` and `revised_eta` ONLY
+ * (Phase N, N3b). `queuePosition` was dropped with the column in migration
+ * 065; `etaGiven` and `originalEta` moved to the due-time transition
+ * (`POST /api/orders/:id/transition {action:'set_due'}`,
+ * `server/services/orderTransitions.ts`) — the promise is now owned by one
+ * path, not two, and this route can no longer set it from NULL for the first
+ * time (only `set_due` and order creation ever do that).
+ */
+const orderOpsSchema = z
+  .object({
+    delayFlag: z.boolean().optional(),
+    delayReason: z.string().max(255).nullable().optional(),
+    delayCause: z.enum(DELAY_CAUSES).nullable().optional(),
+    revisedEta: z.string().datetime().nullable().optional(),
+    delayResolution: z
+      .enum(["Collected late", "Rescheduled", "Cancelled", "Escalated to owner"])
+      .nullable()
+      .optional(),
+    /** Set true when the customer has just been told about the delay. */
+    notifyCustomerNow: z.boolean().optional(),
+  })
+  // Clearing a delay without saying how it was resolved would leave the Delay
+  // Log with a row nobody can explain — the same "read, not just recorded"
+  // principle personal-use reasons and hold reasons already follow.
+  .refine((body) => body.delayFlag !== false || body.delayResolution != null, {
+    message: "Clearing a delay needs a resolution.",
+    path: ["delayResolution"],
+  });
 
 export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler[]): void {
   // ── Satisfaction ─────────────────────────────────────────────────────────
@@ -253,7 +269,14 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
     },
   );
 
-  // ── Order operational fields (queue / ETA / delay) ────────────────────────
+  // ── Order operational fields (delay) ────────────────────────────────────
+  /**
+   * Kept, fixed in N3b: transactional and `FOR UPDATE` (previously a bare,
+   * unlocked read-then-write outside any transaction), and narrowed to the
+   * fields this route actually owns. Writes `delayed` when `delayFlag` moves
+   * to true and `delay_cleared` (with the caller's resolution) when it moves
+   * back to false.
+   */
   app.patch(
     "/api/orders/:id/operations",
     ...scoped,
@@ -262,41 +285,73 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
       try {
         const ctx = req.orgContext as { orgId: string };
         const body = orderOpsSchema.parse(req.body ?? {});
+        const { withTransaction } = await import("../../apps/server/src/db");
+        const { orders: opsOrders } = await import("../../apps/server/src/db/schema");
+        const { orderEvents } = await import("@shared/schema");
 
-        const [order] = await db
-          .select({ id: orders.id, originalEta: orders.originalEta, etaGiven: orders.etaGiven })
-          .from(orders)
-          .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
-          .limit(1);
-        if (!order) return res.status(404).json({ message: "Order not found" });
+        const outcome = await withTransaction(async (tx: any) => {
+          const [order] = await tx
+            .select()
+            .from(opsOrders)
+            .where(and(eq(opsOrders.id, req.params.id), eq(opsOrders.org_id, ctx.orgId)))
+            .for("update")
+            .limit(1);
+          if (!order) return { notFound: true as const };
 
-        const patch: Record<string, unknown> = { updatedAt: new Date() };
-        if (body.etaGiven !== undefined) patch.etaGiven = body.etaGiven ? new Date(body.etaGiven) : null;
-        if (body.delayFlag !== undefined) patch.delayFlag = body.delayFlag;
-        if (body.delayReason !== undefined) patch.delayReason = body.delayReason;
-        if (body.delayCause !== undefined) patch.delayCause = body.delayCause;
-        if (body.revisedEta !== undefined) patch.revisedEta = body.revisedEta ? new Date(body.revisedEta) : null;
-        if (body.delayResolution !== undefined) patch.delayResolution = body.delayResolution;
+          const now = new Date();
+          const patch: Record<string, unknown> = { updated_at: now };
+          if (body.delayFlag !== undefined) patch.delay_flag = body.delayFlag;
+          if (body.delayReason !== undefined) patch.delay_reason = body.delayReason;
+          if (body.delayCause !== undefined) patch.delay_cause = body.delayCause;
+          if (body.revisedEta !== undefined) patch.revised_eta = body.revisedEta ? new Date(body.revisedEta) : null;
+          if (body.delayResolution !== undefined) patch.delay_resolution = body.delayResolution;
+          // Stamp comms at the moment they're sent; Delay Log compares this to
+          // originalEta to decide whether the warning was proactive.
+          if (body.notifyCustomerNow) patch.delay_notification_sent_at = now;
 
-        // originalEta is the promise we first made the customer — capture it
-        // once, so Delay Log can measure against it even after later revisions.
-        if (body.originalEta !== undefined) {
-          patch.originalEta = body.originalEta ? new Date(body.originalEta) : null;
-        } else if (body.delayFlag && !order.originalEta) {
-          patch.originalEta = order.etaGiven ?? new Date();
+          const [updated] = await tx
+            .update(opsOrders)
+            .set(patch)
+            .where(eq(opsOrders.id, req.params.id))
+            .returning();
+
+          const wasDelayed = order.delay_flag === true;
+          const nowDelayed = body.delayFlag ?? wasDelayed;
+          if (body.delayFlag !== undefined && nowDelayed !== wasDelayed) {
+            await tx.insert(orderEvents).values({
+              orgId: ctx.orgId,
+              orderId: req.params.id,
+              kind: nowDelayed ? "delayed" : "delay_cleared",
+              userId: req.user?.id ?? null,
+              at: now,
+              meta: nowDelayed
+                ? {
+                    cause: body.delayCause ?? null,
+                    reason: body.delayReason ?? null,
+                    revisedEta: updated.revised_eta ?? null,
+                    customerTold: Boolean(body.notifyCustomerNow),
+                  }
+                : { resolution: body.delayResolution ?? null },
+            });
+          }
+
+          return { notFound: false as const, updated };
+        });
+
+        if (outcome.notFound) return res.status(404).json({ message: "Order not found" });
+
+        if (ctx.orgId) {
+          try {
+            const { getOpsBoardOrder } = await import("../services/opsBoard");
+            const { publishOpsEvent } = await import("../services/opsBus");
+            const boardOrder = await getOpsBoardOrder(ctx.orgId, req.params.id);
+            if (boardOrder) publishOpsEvent(ctx.orgId, { type: "order", order: boardOrder });
+          } catch (pushError) {
+            console.error("[Orders] Failed to push the delay edit to the board stream:", pushError);
+          }
         }
 
-        // Stamp comms at the moment they're sent; Delay Log compares this to
-        // originalEta to decide whether the warning was proactive.
-        if (body.notifyCustomerNow) patch.delayNotificationSentAt = new Date();
-
-        const [updated] = await db
-          .update(orders)
-          .set(patch)
-          .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
-          .returning();
-
-        res.json(updated);
+        res.json(outcome.updated);
       } catch (error: any) {
         if (error?.name === "ZodError") return res.status(400).json({ message: "Invalid input", errors: error.errors });
         console.error("Error updating order operations:", error);
@@ -304,9 +359,4 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
       }
     },
   );
-
-  /** Delay cause options, so the UI and the spec stay in step. */
-  app.get("/api/delay-causes", ...scoped, (_req, res) => {
-    res.json(DELAY_CAUSES);
-  });
 }

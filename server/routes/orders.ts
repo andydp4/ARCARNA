@@ -1,10 +1,5 @@
 import type { Express, RequestHandler } from "express";
-import { storage } from "../storage";
-import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
-import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
-import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
-import type { Role } from "@shared/schema";
-import { recordAdminAudit } from "../adminAudit";
+import { requireRole } from "../auth";
 import { requireOpenShift } from "../middleware/requireOpenShift";
 import { requireActiveCashierShift, attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
@@ -13,26 +8,18 @@ import {
   resolveOrderDating,
   settleBackdatedShift,
 } from "../services/orderDating";
-import {
-  insertLoyaltyTierSchema,
-  insertPromotionSchema,
-  insertOrderSchema,
-  insertCustomerSchema,
-  insertProductSchema,
-  insertOverheadExpenseSchema,
-  insertOrderExpenseSchema,
-} from "@shared/schema";
 import { z } from "zod";
-import { orderTenderLegSchema, orderPayments as orderPaymentsTable, sumTenderLegs } from "@shared/schema";
+import { orderTenderLegSchema, sumTenderLegs } from "@shared/schema";
 import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
 import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
-import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
 import { resolveUserNames } from "../services/userDisplayName";
 import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { publishOpsEvent } from "../services/opsBus";
+import { completeOrderTx, reopenOrderTx, OrderReopenRefusedError } from "../services/orderCompletion";
+import { CreditError } from "../services/creditLedger";
 
 /**
  * What the goods on a personal-use order cost the business.
@@ -68,7 +55,7 @@ async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
  * precise of the two, not a preference either way is likely to hit in
  * practice since the till only ever sends one.
  */
-function resolveDuePromise(
+export function resolveDuePromise(
   body: { dueInMinutes?: unknown; dueTime?: unknown },
   receivedAt: Date,
   tradingDate: string,
@@ -91,6 +78,137 @@ function resolveDuePromise(
     return { ok: true, etaGiven: new Date(receivedAt.getTime() + dueInMinutes * 60_000) };
   }
   return { ok: true, etaGiven: null };
+}
+
+/** A checkout expense line — `POST /api/orders` `expenses[]` (owner, Q12). */
+export const orderExpenseInputSchema = z.object({
+  category: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  amount: z.coerce.number().positive(),
+});
+export type OrderExpenseInput = z.infer<typeof orderExpenseInputSchema>;
+
+/**
+ * Checkout expense lines → insertable `order_expenses` rows (brief, owner
+ * Q12: "costs, never part of the order total"). Pure and deliberately blind
+ * to the order's `total` — it has no parameter for it and cannot reach it —
+ * so an expense line can never, even by a future edit's accident, change
+ * what the order is charged.
+ */
+export function buildOrderExpenseRows(
+  orgId: string,
+  orderId: string,
+  lines: OrderExpenseInput[],
+): Array<{ orgId: string; orderId: string; category: string; description: string | null; amount: string }> {
+  return lines.map((line) => ({
+    orgId,
+    orderId,
+    category: line.category,
+    description: line.description ?? null,
+    amount: String(roundMoney(line.amount)),
+  }));
+}
+
+/** One candidate for the default-owner rule — the shape `resolveDefaultOwner` decides over. */
+export interface DefaultOwnerCandidate {
+  userId: string;
+  station: "collection" | "delivery" | "both" | null;
+  onBreak: boolean;
+  /** Seen within the presence window (15 min) — see `server/services/opsBoard.ts`. */
+  present: boolean;
+  /** Currently-open orders assigned to them. */
+  openCount: number;
+}
+
+/**
+ * The default-owner rule (brief, "Decisions locked" → Assignment; owner's
+ * answer Q4/Q16): the inputter, if they are on the order's station (or
+ * Both) — regardless of the presence window, since keying the order in IS
+ * being present; otherwise the PRESENT, not-on-break station member (or
+ * Both) with the fewest open orders; otherwise nobody (Unassigned — a station
+ * alert is N5a's, not built here).
+ *
+ * Pure and synchronous so `defaultOwner.test.ts` can assert the three cases
+ * (inputter wins, least-loaded wins, nobody eligible) without a database.
+ */
+export function resolveDefaultOwner(
+  fulfilmentMethod: "collection" | "delivery",
+  inputUserId: string | null,
+  candidates: DefaultOwnerCandidate[],
+): string | null {
+  const onStation = (c: DefaultOwnerCandidate) => c.station === fulfilmentMethod || c.station === "both";
+
+  if (inputUserId) {
+    const inputter = candidates.find((c) => c.userId === inputUserId);
+    if (inputter && onStation(inputter)) return inputUserId;
+  }
+
+  const eligible = candidates.filter((c) => onStation(c) && c.present && !c.onBreak);
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => a.openCount - b.openCount);
+  return eligible[0].userId;
+}
+
+/** `ops_staff` for the org, as `resolveDefaultOwner` needs them — read inside the creation transaction. */
+async function loadDefaultOwnerCandidates(
+  tx: any,
+  orgId: string,
+  now: Date,
+): Promise<DefaultOwnerCandidate[]> {
+  const { opsStaff } = await import("@shared/schema");
+  const { orders: opsOrdersTable } = await import("../../apps/server/src/db/schema");
+  const { eq, and, ne, inArray } = await import("drizzle-orm");
+
+  const staffRows = await tx.select().from(opsStaff).where(eq(opsStaff.orgId, orgId));
+  if (staffRows.length === 0) return [];
+
+  const userIds = staffRows.map((r: { userId: string }) => r.userId);
+  const openRows = await tx
+    .select({ assignedUserId: opsOrdersTable.assigned_user_id })
+    .from(opsOrdersTable)
+    .where(
+      and(
+        eq(opsOrdersTable.org_id, orgId),
+        ne(opsOrdersTable.status, "completed"),
+        inArray(opsOrdersTable.assigned_user_id, userIds),
+      ),
+    );
+  const openCounts = new Map<string, number>();
+  for (const row of openRows as Array<{ assignedUserId: string | null }>) {
+    if (!row.assignedUserId) continue;
+    openCounts.set(row.assignedUserId, (openCounts.get(row.assignedUserId) ?? 0) + 1);
+  }
+
+  const presentCutoff = now.getTime() - 15 * 60_000;
+  return staffRows.map(
+    (row: { userId: string; station: string | null; onBreak: boolean; lastSeenAt: Date | null }): DefaultOwnerCandidate => ({
+      userId: row.userId,
+      station: (row.station as DefaultOwnerCandidate["station"]) ?? null,
+      onBreak: row.onBreak,
+      present: row.lastSeenAt != null && row.lastSeenAt.getTime() >= presentCutoff,
+      openCount: openCounts.get(row.userId) ?? 0,
+    }),
+  );
+}
+
+/** `organizations.ops_auto_claim_on_create` — default on (migration 065). */
+async function opsAutoClaimEnabled(orgId: string): Promise<boolean> {
+  try {
+    const { db: mainDb } = await import("../db");
+    const { organizations } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const [org] = await mainDb
+      .select({ autoClaim: organizations.opsAutoClaimOnCreate })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    return org?.autoClaim ?? true;
+  } catch (error) {
+    // The default-owner rule is a nicety, not the sale — a settings-read
+    // hiccup must leave the order Unassigned, never fail the sale itself.
+    console.error("[Orders] Could not read ops_auto_claim_on_create; leaving the order unassigned:", error);
+    return false;
+  }
 }
 
 export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -276,6 +394,29 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         }
       }
 
+      // Checkout expenses (owner, Q12) — costs, never part of the total, and
+      // never trusted from `body.total`: these become `order_expenses` rows in
+      // the same transaction, the same path personal use already takes.
+      const rawExpenses = Array.isArray(body.expenses) ? body.expenses : [];
+      const expensesParsed = z.array(orderExpenseInputSchema).safeParse(rawExpenses);
+      if (!expensesParsed.success) {
+        return res.status(400).json({
+          message: expensesParsed.error.errors[0]?.message ?? "Invalid expenses",
+          code: "ORDER_EXPENSES_INVALID",
+        });
+      }
+      const expenseLines = expensesParsed.data;
+
+      // The inputter's explicit choice at the till (brief, "Assignment").
+      // Validated as a plain non-empty string here; whether that id is a real
+      // member of staff is not this route's job to police — the same way
+      // `assigned_user_id` carries no foreign key (migration 057's rationale).
+      const explicitAssigneeId =
+        typeof body.assignedUserId === "string" && body.assignedUserId.trim() ? body.assignedUserId.trim() : null;
+      const fulfilmentMethodForAssignment: "collection" | "delivery" =
+        body.fulfilmentMethod === "delivery" ? "delivery" : "collection";
+      const autoClaimEnabled = explicitAssigneeId ? false : await opsAutoClaimEnabled(ctx.orgId);
+
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
         // The till shift is the drawer. A backdated sale's money was in a
@@ -377,6 +518,49 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             at: createdOrder?.entered_at ?? createdOrder?.created_at ?? new Date(),
             userId: inputUserId,
           });
+        }
+
+        // Who is dealing with it (brief, "Assignment"). The inputter's
+        // explicit choice at the till always wins; otherwise, under
+        // `ops_auto_claim_on_create`, the default-owner rule picks the
+        // inputter-if-on-station, then the least-loaded present station
+        // member, then nobody at all.
+        {
+          const pickedAssignee = explicitAssigneeId
+            ? explicitAssigneeId
+            : autoClaimEnabled
+              ? resolveDefaultOwner(
+                  fulfilmentMethodForAssignment,
+                  inputUserId,
+                  await loadDefaultOwnerCandidates(tx, ctx.orgId!, new Date()),
+                )
+              : null;
+          if (pickedAssignee) {
+            const assignedAt = new Date();
+            await tx
+              .update(orders)
+              .set({ assigned_user_id: pickedAssignee, assigned_at: assignedAt, assigned_by_user_id: inputUserId })
+              .where(eq(orders.id, result.orderId));
+            if (createdOrder) {
+              createdOrder.assigned_user_id = pickedAssignee;
+              createdOrder.assigned_at = assignedAt;
+            }
+            const { orderEvents } = await import("@shared/schema");
+            await tx.insert(orderEvents).values({
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              kind: "assigned",
+              at: assignedAt,
+              userId: inputUserId,
+              meta: { from: null, to: pickedAssignee, by: inputUserId, auto: !explicitAssigneeId },
+            });
+          }
+        }
+
+        // Checkout expenses (owner, Q12) — rows only, never the total.
+        if (expenseLines.length > 0) {
+          const { orderExpenses } = await import("@shared/schema");
+          await tx.insert(orderExpenses).values(buildOrderExpenseRows(ctx.orgId!, result.orderId, expenseLines));
         }
 
         if (usesGiftCard && createdOrder) {
@@ -575,7 +759,6 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         : await baseQuery.orderBy(orders.created_at);
 
       // Resolve the loader's name once for the page rather than per row.
-      const { resolveUserNames } = await import("../services/userDisplayName");
       const names = await resolveUserNames(
         allOrders.map((o: { inputUserId: string | null }) => o.inputUserId).filter(Boolean) as string[],
       );
@@ -770,161 +953,161 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
+  /**
+   * Kept (brief, "PATCH /api/orders/:id"). Now `FOR UPDATE` throughout: the
+   * row is locked, then EVERY decision — whether this is a first completion,
+   * a reopen, a hold, a resume, or an ordinary status move — is made from
+   * that one locked read, closing the race the brief's finding G4 describes
+   * (two "Delivered" taps outside a lock could both settle).
+   *
+   * `status: 'completed'` on an open row calls `completeOrderTx` — the exact
+   * function `POST /api/orders/:id/transition {action:'complete'}` calls, so
+   * the two produce identical rows. Anything but `reopen` is refused on an
+   * already-completed row: requesting `'completed'` again is refused (only
+   * `reopen` may touch a completed row), and requesting any OTHER status
+   * reopens it — through `reopenOrderTx`, which decides the real destination
+   * status from history rather than trusting the value this request sent.
+   */
   app.patch("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), attachActiveCashierShift, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const { db, withTransaction } = await import('../../apps/server/src/db');
+      const { withTransaction } = await import('../../apps/server/src/db');
       const { orders } = await import('../../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
-      const { updateOrderStatusSchema } = await import('@shared/schema');
+      const { orderEvents, updateOrderStatusSchema } = await import('@shared/schema');
       const { publishEventTx } = await import('../eventBus');
+      const { assertTransitionRoleAllowed } = await import('../services/orderTransitions');
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
-      
+
       const validation = updateOrderStatusSchema.safeParse(req.body);
       if (!validation.success) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'Invalid status value',
           errors: validation.error.errors
         });
       }
-      
-      const [currentOrder] = await db.select().from(orders).where(orderCond);
-      if (!currentOrder) {
-        return res.status(404).json({ message: 'Order not found' });
-      }
-      const previousStatus = currentOrder?.status;
-
-      // SECURITY: snapshot the settlement total the FIRST time this order
-      // reaches "completed". Never overwrite it — otherwise reopening an
-      // order, inflating line prices and re-completing would raise the
-      // refundable ceiling. Refunds cap against this frozen figure.
-      const isSettling =
-        validation.data.status === 'completed' && !(currentOrder as any)?.settled_total;
-      let creditAmountToOpen = 0;
-      if (isSettling) {
-        const { creditLegTotal } = await import("../services/creditLedger");
-        creditAmountToOpen = await creditLegTotal(
-          req.params.id,
-          String((currentOrder as any)?.payment_method ?? ""),
-          parseFloat(String((currentOrder as any)?.total ?? 0)),
-        );
-        if (creditAmountToOpen > 0 && !(currentOrder as any)?.customer_id) {
-          return res.status(400).json({
-            message: "Select a customer before putting a sale on credit.",
-            code: "CREDIT_CUSTOMER_REQUIRED",
-          });
-        }
-      }
-      // The completing cashier is frozen here for the same reason the total is:
-      // 90% of the commission pool follows this column, so reopening an order
-      // and re-completing it under someone else must not move money that has
-      // already accrued. `cashier_id` is kept in step for the reads that still
-      // use it. Resolved softly — a manager closing an order from the back
-      // office has no cashier shift, and that must not block the status change.
-      let completingCashier = (req as any).cashierShift as
+      const requestedStatus = validation.data.status;
+      const actorId = req.user?.id ?? null;
+      const actorRole = req.user?.role ?? 'CASHIER';
+      const cashierShift = (req as any).cashierShift as
         | { cashierId: string | null; cashierShiftId: string }
         | undefined;
-      // A backdated order is completed into the shift of the day it was sold
-      // on, not the day someone got round to completing it: an order belongs
-      // to the shift that completed it, and for a missed day that shift is
-      // the missed day's. Resolved softly, like the attribution itself.
-      let backdatedShift: Awaited<ReturnType<typeof cashierShiftForBackdatedOrder>> = null;
-      const soldOn = (currentOrder as any)?.created_at as Date | null | undefined;
-      if (
-        isSettling &&
-        (currentOrder as any)?.date_kind === "backdated" &&
-        completingCashier &&
-        req.user?.id &&
-        soldOn
-      ) {
-        backdatedShift = await cashierShiftForBackdatedOrder(ctx.orgId, req.user.id, new Date(soldOn));
-        if (backdatedShift) {
-          completingCashier = {
-            cashierId: backdatedShift.cashierId,
-            cashierShiftId: backdatedShift.id,
-          };
-        }
-      }
-      const settlementPatch = isSettling
-        ? {
-            settled_total: (currentOrder as any)?.total,
-            settled_at: new Date(),
-            // The user who completed it — frozen here for the same reason the
-            // total is, since 90% of the pool follows this column.
-            ...(req.user?.id ? { completed_user_id: req.user.id } : {}),
-            ...(completingCashier
-              ? {
-                  completed_cashier_shift_id: completingCashier.cashierShiftId,
-                  // Code columns only when a code was actually used — they are
-                  // uuids into cashier_profiles, and a shift opened on first
-                  // sale has none. `completed_user_id` above is the record that
-                  // matters, and the one commission follows.
-                  ...(completingCashier.cashierId
-                    ? {
-                        completed_cashier_id: completingCashier.cashierId,
-                        cashier_id:
-                          (currentOrder as any)?.cashier_id ?? completingCashier.cashierId,
-                      }
-                    : {}),
-                }
-              : {}),
+
+      const outcome = await withTransaction(async (tx: any) => {
+        const [row] = await tx.select().from(orders).where(orderCond).for('update').limit(1);
+        if (!row) return { notFound: true as const };
+
+        const previousStatus = String(row.status ?? 'pending');
+        let backdatedShiftToSettle: Awaited<ReturnType<typeof cashierShiftForBackdatedOrder>> = null;
+
+        if (previousStatus === 'completed') {
+          if (requestedStatus === 'completed') {
+            const err: any = new Error('This order is already completed — only "reopen" is allowed on it.');
+            err.statusCode = 409;
+            err.code = 'ORDER_TRANSITION_INVALID';
+            throw err;
           }
-        : {};
-
-      // Completing a sale on credit is three writes that must land together:
-      // the status flip, the credit-list entry, and the event other services
-      // key off. A crash between them used to leave a "completed" sale with
-      // no receivable and no OrderStatusChanged — money recognised, nothing
-      // to collect it against, and nothing telling anyone.
-      const { updated, eventId } = await withTransaction(async (tx: any) => {
-        const [updated] = await tx.update(orders)
-          .set({ status: validation.data.status, updated_at: new Date(), ...settlementPatch })
-          .where(orderCond)
-          .returning();
-
-        if (!updated) {
-          return { updated: null, eventId: null };
+          assertTransitionRoleAllowed({
+            action: 'reopen',
+            actorId: actorId ?? '',
+            actorRole,
+            assignedUserId: row.assigned_user_id ?? null,
+            completedUserId: row.completed_user_id ?? null,
+            settledAt: row.settled_at ? new Date(row.settled_at) : null,
+            now: new Date(),
+          });
+          const result = await reopenOrderTx(tx, row, { userId: actorId });
+          const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
+            orderId: req.params.id, from: previousStatus, to: result.row.status, changedAt: new Date().toISOString(),
+          }, { source: 'api-orders' });
+          return { notFound: false as const, updated: result.row, eventId, kind: 'reopened' as const, backdatedShiftToSettle };
         }
 
-        // A sale on tick joins the credit list the moment the goods leave. The
-        // sale is recognised now; the money, and the commission it earns, are not.
-        //
-        // Only the tick LEG goes on the list. On a £100 sale paid £50 cash and
-        // £50 on tick, £50 is owed — putting the whole £100 on credit would have
-        // the business chasing money it already has in the drawer.
-        if (isSettling && creditAmountToOpen > 0) {
-          const { openCreditForOrder } = await import("../services/creditLedger");
-          await openCreditForOrder(ctx.orgId, {
-            id: req.params.id,
-            customerId: (currentOrder as any)?.customer_id ?? null,
-            amount: creditAmountToOpen,
-          }, tx);
+        if (requestedStatus === 'completed') {
+          const result = await completeOrderTx(
+            tx,
+            row,
+            { userId: actorId, cashierShift: cashierShift ?? null },
+            {},
+          );
+          backdatedShiftToSettle = result.backdatedShiftToSettle;
+          const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
+            orderId: req.params.id, from: previousStatus, to: 'completed', changedAt: new Date().toISOString(),
+          }, { source: 'api-orders' });
+          return { notFound: false as const, updated: result.row, eventId, kind: result.event.kind, backdatedShiftToSettle };
         }
 
-        const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
+        if (requestedStatus === previousStatus) {
+          // Repeats are "no news", the same as every transition stamp.
+          return { notFound: false as const, updated: row, eventId: null, kind: null, backdatedShiftToSettle };
+        }
+
+        const now = new Date();
+        const patch: Record<string, unknown> = { status: requestedStatus, updated_at: now };
+        let eventKind: string;
+        let eventMeta: Record<string, unknown>;
+        if (requestedStatus === 'on-hold') {
+          patch.held_at = row.held_at ?? now;
+          eventKind = 'held';
+          eventMeta = { reason: null, fromStatus: previousStatus, via: 'patch' };
+        } else if (previousStatus === 'on-hold') {
+          patch.held_at = null;
+          const heldSeconds = row.held_at
+            ? Math.max(0, Math.round((now.getTime() - new Date(row.held_at).getTime()) / 1000))
+            : 0;
+          eventKind = 'unheld';
+          eventMeta = { heldSeconds, toStatus: requestedStatus, via: 'patch' };
+        } else {
+          eventKind = 'status_changed';
+          eventMeta = { from: previousStatus, to: requestedStatus, via: 'patch' };
+        }
+        // Choosing "awaiting-customer" on the board's status select runs the
+        // `ready` transition in spirit (brief, "Decisions locked" → Ready):
+        // PATCH writing it stamps `ready_at` too, first-write-wins.
+        if (requestedStatus === 'awaiting-customer' && !row.ready_at) {
+          patch.ready_at = now;
+        }
+
+        const [updated] = await tx.update(orders).set(patch).where(eq(orders.id, req.params.id)).returning();
+        await tx.insert(orderEvents).values({
+          orgId: ctx.orgId,
           orderId: req.params.id,
-          from: previousStatus,
-          to: validation.data.status,
-          changedAt: new Date().toISOString(),
+          kind: eventKind,
+          userId: actorId,
+          at: now,
+          meta: eventMeta,
+        });
+        const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
+          orderId: req.params.id, from: previousStatus, to: requestedStatus, changedAt: now.toISOString(),
         }, { source: 'api-orders' });
 
-        return { updated, eventId };
+        return { notFound: false as const, updated, eventId, kind: eventKind, backdatedShiftToSettle };
       });
 
-      if (!updated) {
+      if (outcome.notFound) {
         return res.status(404).json({ message: 'Order not found' });
       }
 
-      if (backdatedShift && ctx.orgId) {
-        await settleBackdatedShift(ctx.orgId, backdatedShift);
+      if (outcome.backdatedShiftToSettle && ctx.orgId) {
+        await settleBackdatedShift(ctx.orgId, outcome.backdatedShiftToSettle);
       }
 
-      console.log(`[Orders] Status changed ${req.params.id}: ${previousStatus} → ${validation.data.status} (event: ${eventId})`);
-      
-      res.json({ ...updated, eventId });
-    } catch (error) {
+      console.log(`[Orders] Status changed ${req.params.id} (kind: ${outcome.kind ?? 'no-op'}, event: ${outcome.eventId})`);
+
+      res.json({ ...outcome.updated, eventId: outcome.eventId });
+    } catch (error: any) {
       console.error("Error updating order:", error);
-      res.status(500).json({ message: "Failed to update order" });
+      if (error instanceof OrderReopenRefusedError) {
+        return res.status(409).json({ message: error.message, code: error.code });
+      }
+      if (error instanceof CreditError) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
+      if (error?.name === 'TransitionForbiddenError') {
+        return res.status(403).json({ message: error.message, code: error.code ?? 'ORDER_TRANSITION_FORBIDDEN' });
+      }
+      const status = error?.statusCode ?? 500;
+      res.status(status).json({ message: error?.message || "Failed to update order", code: error?.code });
     }
   });
 
@@ -949,7 +1132,41 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Fetch updated order details
       const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
       const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
-      
+
+      // The engine can move `status` itself as a side effect of a line edit
+      // (packages/domain/src/engine.ts: a stock shortfall forces `on-hold`,
+      // clearing it promotes back to `pending`) — a `status_changed` event and
+      // `held_at` sync are owed here even though nothing ASKED for a status
+      // change. This runs as its own small transaction immediately after the
+      // engine's — `engine.updateOrder` owns its transaction boundary
+      // internally and does not expose it to route code, so the two cannot
+      // share one without touching `packages/domain/src/engine.ts`, which is
+      // out of this package's scope.
+      if (ctx?.orgId && updatedOrder && existing.status !== updatedOrder.status) {
+        const { withTransaction } = await import('../../apps/server/src/db');
+        const { orderEvents } = await import('@shared/schema');
+        await withTransaction(async (tx: any) => {
+          const now = new Date();
+          const heldPatch: Record<string, unknown> =
+            updatedOrder.status === 'on-hold'
+              ? { held_at: updatedOrder.held_at ?? now }
+              : existing.status === 'on-hold'
+                ? { held_at: null }
+                : {};
+          if (Object.keys(heldPatch).length > 0) {
+            await tx.update(orders).set(heldPatch).where(eq(orders.id, req.params.id));
+          }
+          await tx.insert(orderEvents).values({
+            orgId: ctx.orgId,
+            orderId: req.params.id,
+            kind: 'status_changed',
+            userId: req.user?.id ?? null,
+            at: now,
+            meta: { from: existing.status, to: updatedOrder.status, via: 'put' },
+          });
+        });
+      }
+
       // Publish OrderUpdated event - critical, visible failure
       const eventId = await publishEvent('OrderUpdated', req.params.id, {
         order: {
@@ -998,6 +1215,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         loyaltyLedger,
         giftCardMovements,
         invoices,
+        orderEvents,
       } = await import('@shared/schema');
       const { eq, and, inArray, sql } = await import('drizzle-orm');
       const { adjustProductLocationStock, resolveStockLocationId } = await import(
@@ -1010,6 +1228,31 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       await db.transaction(async (tx) => {
         const [order] = await tx.select().from(orders).where(orderCond);
         if (!order) throw new Error('Order not found');
+
+        // Written FIRST — an `order_events` row for a deleted order carries no
+        // foreign key to `orders` on purpose (its whole point is to outlive
+        // the row it describes), so its `meta` is the only place the order's
+        // identity survives the delete below.
+        if (order.orgId) {
+          let customerName: string | null = null;
+          if (order.customerId) {
+            const [c] = await tx.select({ name: customers.name }).from(customers).where(eq(customers.id, order.customerId));
+            customerName = c?.name ?? null;
+          }
+          await tx.insert(orderEvents).values({
+            orgId: order.orgId,
+            orderId,
+            kind: 'deleted',
+            userId: req.user?.id ?? null,
+            meta: {
+              customerName,
+              total: order.total,
+              fulfilmentMethod: order.fulfilmentMethod,
+              status: order.status,
+            },
+          });
+        }
+
         const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
 
         // Refunded quantity per order line (so we restock only what was NOT
@@ -1108,26 +1351,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.post("/api/orders/bulk", ...scoped, async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string; role: Role };
-      const outcome = await handleBulkAction(req, "orders", {
-        orgId: ctx.orgId,
-        role: ctx.role,
-        userId: req.user?.id,
-      });
-      if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
-      const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
-      if (result.format === "csv" && result.rows) {
-        res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", 'attachment; filename="orders-export.csv"');
-        return res.send(rowsToCsv(result.rows));
-      }
-      res.json(outcome.result);
-    } catch (error: any) {
-      console.error("Error in order bulk action:", error);
-      res.status(500).json({ message: error.message || "Bulk action failed" });
-    }
-  });
-
+  // `POST /api/orders/bulk` and `handleOrderBulk` (server/lib/bulkActionHandler.ts)
+  // are removed here — no caller after PR1 replaced Open Orders' bulk toolbar
+  // with the board (brief, Cleanup).
 }
