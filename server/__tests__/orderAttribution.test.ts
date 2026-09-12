@@ -13,184 +13,135 @@
  *      manager clearing an order from the back office has no till and no
  *      cashier shift; refusing the status change to record an attribution that
  *      does not exist would break order management outright.
+ *
+ * As of Phase N (N3b), this attribution logic lives in ONE place —
+ * `completeOrderTx` (server/services/orderCompletion.ts) — called by both
+ * `PATCH /api/orders/:id` and `POST /api/orders/:id/transition
+ * {action:'complete'}`. This suite exercises that function directly rather
+ * than mounting the route, which is what actually decides these columns now.
  */
-import type { RequestHandler } from "express";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+vi.mock("../services/creditLedger", () => ({
+  creditLegTotal: vi.fn().mockResolvedValue(0),
+  openCreditForOrder: vi.fn().mockResolvedValue(undefined),
+  voidCredit: vi.fn(),
+}));
+vi.mock("../services/orderDating", () => ({
+  cashierShiftForBackdatedOrder: vi.fn().mockResolvedValue(null),
+  settleBackdatedShift: vi.fn(),
+}));
 
-const ORG_ID = "00000000-0000-4000-8000-000000000001";
+import { describe, expect, it, vi } from "vitest";
+import { completeOrderTx, type OrderRow } from "../services/orderCompletion";
+
 const ORDER_ID = "00000000-0000-4000-8000-0000000000aa";
+const ORG_ID = "00000000-0000-4000-8000-000000000001";
 const CASHIER_A = "00000000-0000-4000-8000-00000000000a";
 const CASHIER_B = "00000000-0000-4000-8000-00000000000b";
 const SHIFT_B = "00000000-0000-4000-8000-0000000000bb";
 
-/** The row the route reads before it writes; swapped per test. */
-let currentOrder: Record<string, unknown>;
-/** What the route actually wrote. */
-let updatePatch: Record<string, unknown> | null;
-
-const publishEventMock = vi.hoisted(() => vi.fn().mockResolvedValue("evt-1"));
-
-vi.mock("../auth", () => {
-  const pass = ((_req, _res, next) => next()) as RequestHandler;
-  return {
-    isAuthenticated: pass,
-    isOwner: pass,
-    requireOrgContext: pass,
-    requireOrgScope: pass,
-    requireSuperAdminMfa: pass,
-    requireRole: () => pass,
+/** A minimal fake `tx` supporting exactly the chain shapes `orderCompletion.ts` uses. */
+function makeFakeTx(rowsByTable: Map<unknown, unknown[]>) {
+  const selectChain = (table: unknown) => {
+    const rows = rowsByTable.get(table) ?? [];
+    const chain: any = { where: () => chain, orderBy: () => chain, limit: () => Promise.resolve(rows) };
+    return chain;
   };
-});
-
-vi.mock("../eventBus", () => ({
-  publishEvent: publishEventMock,
-  publishEventTx: publishEventMock,
-}));
-
-vi.mock("../../apps/server/src/db", () => {
-  const appDb = {
-    select: () => ({ from: () => ({ where: async () => [currentOrder] }) }),
-    update: () => ({
-      set: (patch: Record<string, unknown>) => {
-        updatePatch = patch;
-        return {
-          where: () => ({
-            returning: async () => [{ ...currentOrder, ...patch }],
-          }),
-        };
+  return {
+    select: () => ({ from: selectChain }),
+    update: (table: unknown) => ({
+      set: (patch: Record<string, unknown>) => ({
+        where: () => ({
+          returning: () => {
+            const base = (rowsByTable.get(table) as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+            const merged = { ...base, ...patch };
+            rowsByTable.set(table, [merged]);
+            return Promise.resolve([merged]);
+          },
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        const promise = Promise.resolve(undefined) as Promise<undefined> & { returning?: () => Promise<unknown[]> };
+        promise.returning = () => Promise.resolve([{ id: "evt-1", ...values }]);
+        return promise;
       },
     }),
   };
+}
+
+async function completeOrder(row: OrderRow, cashierShift?: { cashierId: string | null; cashierShiftId: string }) {
+  const { orderEvents } = await import("@shared/schema");
+  const { orders } = await import("../../apps/server/src/db/schema");
+  const tx = makeFakeTx(new Map([[orderEvents, []], [orders, [row]]]));
+  return completeOrderTx(tx, row, { userId: "user_1", cashierShift: cashierShift ?? null }, {});
+}
+
+function baseRow(overrides: Partial<OrderRow> = {}): OrderRow {
   return {
-    db: appDb,
-    withTransaction: async (fn: (tx: unknown) => unknown) => fn(appDb),
+    id: ORDER_ID,
+    org_id: ORG_ID,
+    status: "pending",
+    fulfilment_method: "collection",
+    date_kind: "live",
+    payment_method: "cash",
+    total: "120.00",
+    customer_id: null,
+    cashier_id: null,
+    created_at: new Date("2026-09-12T10:00:00Z"),
+    settled_total: null,
+    settled_at: null,
+    completed_user_id: null,
+    ...overrides,
   };
-});
-
-// The route pulls in middleware and services that open a real pool at import
-// time. This suite is about the settlement patch, not the database, and must
-// run in the no-DATABASE_URL CI job.
-vi.mock("../db", () => ({ db: {}, pool: {} }));
-vi.mock("../middleware/requireOpenShift", () => ({
-  requireOpenShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
-}));
-vi.mock("../middleware/requireActiveCashierShift", () => ({
-  requireActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
-  attachActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
-}));
-vi.mock("../services/cashierShiftEngine", () => ({
-  refreshClosedCashierShiftSummary: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("../services/creditLedger", () => ({
-  openCreditForOrder: vi.fn().mockResolvedValue(undefined),
-  // Nothing on tick in these fixtures, so no credit is opened.
-  creditLegTotal: vi.fn().mockResolvedValue(0),
-}));
-
-vi.mock("../storage", () => ({ storage: {} }));
-vi.mock("../adminAudit", () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }));
-
-const { registerOrderRoutes } = await import("../routes/orders");
-
-type Handler = (req: any, res: any) => Promise<void> | void;
-
-/** Mounts the routes and returns the PATCH /api/orders/:id handler chain. */
-function patchHandler(): { middleware: RequestHandler[]; handler: Handler } {
-  const chain: any[] = [];
-  const app: any = {
-    get: () => {},
-    post: () => {},
-    put: () => {},
-    delete: () => {},
-    patch: (path: string, ...rest: any[]) => {
-      if (path === "/api/orders/:id") chain.push(...rest);
-    },
-  };
-  registerOrderRoutes(app, []);
-  return { middleware: chain.slice(0, -1), handler: chain[chain.length - 1] };
 }
-
-async function completeOrder(cashierShift?: {
-  cashierId: string | null;
-  cashierShiftId: string;
-}) {
-  const { handler } = patchHandler();
-  const req: any = {
-    params: { id: ORDER_ID },
-    body: { status: "completed" },
-    orgContext: { orgId: ORG_ID, locationId: null, role: "CASHIER" },
-    cashierShift,
-  };
-  let status = 200;
-  const res: any = {
-    status(code: number) {
-      status = code;
-      return this;
-    },
-    json: (payload: unknown) => payload,
-  };
-  await handler(req, res);
-  return { status };
-}
-
-beforeEach(() => {
-  updatePatch = null;
-  publishEventMock.mockClear();
-});
 
 describe("order attribution — the completing cashier", () => {
   it("records the completing cashier and shift at first settlement", async () => {
-    currentOrder = { id: ORDER_ID, status: "pending", total: "120.00", settled_total: null, cashier_id: CASHIER_A };
-
-    const { status } = await completeOrder({ cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
-
-    expect(status).toBe(200);
-    expect(updatePatch).toMatchObject({
-      completed_cashier_id: CASHIER_B,
-      completed_cashier_shift_id: SHIFT_B,
-      settled_total: "120.00",
-    });
+    const row = baseRow({ cashier_id: CASHIER_A });
+    const result = await completeOrder(row, { cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
+    expect(result.row.completed_cashier_id).toBe(CASHIER_B);
+    expect(result.row.completed_cashier_shift_id).toBe(SHIFT_B);
+    expect(result.row.settled_total).toBe("120.00");
   });
 
   it("leaves the loading cashier's own attribution alone", async () => {
     // B completed what A loaded. `cashier_id` already names A and must stay
     // put — the 10% inputter share is read from it downstream.
-    currentOrder = { id: ORDER_ID, status: "pending", total: "120.00", settled_total: null, cashier_id: CASHIER_A };
-
-    await completeOrder({ cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
-
-    expect(updatePatch?.cashier_id).toBe(CASHIER_A);
+    const row = baseRow({ cashier_id: CASHIER_A });
+    const result = await completeOrder(row, { cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
+    // completeOrderTx only ever WRITES cashier_id when there was none before;
+    // it never overwrites an existing value.
+    expect(result.row.cashier_id).toBe(CASHIER_A);
   });
 
-  it("does not move the completing cashier when an already-settled order is re-completed", async () => {
-    // The attack this mirrors: reopen a settled order, re-complete it under a
-    // different cashier, and walk off with 90% of a pool someone else earned.
-    currentOrder = {
-      id: ORDER_ID,
+  it("does not move the completing cashier on a genuine re-settle unless the actor changes", async () => {
+    // Reopen a settled order, re-complete it under a DIFFERENT cashier: the
+    // new completer legitimately takes over the pool (owner, Q3 — recompute
+    // on re-complete) — but only because THIS actor completed it, never as a
+    // side effect of some other write.
+    const row = baseRow({
       status: "pending",
       total: "500.00",
       settled_total: "120.00",
       cashier_id: CASHIER_A,
       completed_cashier_id: CASHIER_A,
-    };
-
-    await completeOrder({ cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
-
-    expect(updatePatch).not.toHaveProperty("completed_cashier_id");
-    expect(updatePatch).not.toHaveProperty("settled_total");
-    expect(updatePatch).toMatchObject({ status: "completed" });
+      completed_user_id: "user_0",
+    });
+    const result = await completeOrder(row, { cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
+    expect(result.row.completed_cashier_id).toBe(CASHIER_B);
+    expect(result.row.settled_total).toBe("500.00");
+    expect(result.row.status).toBe("completed");
   });
 
   it("completes the order anyway when nobody is on a till", async () => {
-    // A manager clearing an order from the back office. No cashier shift, so no
-    // attribution to record — but the status change must still go through.
-    currentOrder = { id: ORDER_ID, status: "pending", total: "120.00", settled_total: null, cashier_id: null };
-
-    const { status } = await completeOrder(undefined);
-
-    expect(status).toBe(200);
-    expect(updatePatch).toMatchObject({ status: "completed", settled_total: "120.00" });
-    expect(updatePatch).not.toHaveProperty("completed_cashier_id");
+    // A manager clearing an order from the back office. No cashier shift, so
+    // no attribution to record — but the status change must still go through.
+    const row = baseRow({ cashier_id: null });
+    const result = await completeOrder(row, undefined);
+    expect(result.row.status).toBe("completed");
+    expect(result.row.settled_total).toBe("120.00");
+    expect(result.row.completed_cashier_id).toBeUndefined();
   });
 });
 
@@ -207,55 +158,36 @@ describe("a completing shift with no cashier code", () => {
   const USER_ID = "user_3EFIamv0l9IggwK7Ncy6oDEPfWk";
 
   it("records the shift and the user, and writes no code columns", async () => {
-    currentOrder = {
-      id: ORDER_ID,
-      status: "pending",
-      total: "120.00",
-      settled_total: null,
-      cashier_id: null,
-    };
-
-    const { status } = await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
-
-    expect(status).toBe(200);
-    expect(updatePatch).toMatchObject({
-      completed_cashier_shift_id: SHIFT_B,
-      settled_total: "120.00",
-    });
-    expect(updatePatch).not.toHaveProperty("completed_cashier_id");
-    expect(updatePatch).not.toHaveProperty("cashier_id");
+    const row = baseRow({ cashier_id: null });
+    const result = await completeOrder(row, { cashierId: null, cashierShiftId: SHIFT_B });
+    expect(result.row.completed_cashier_shift_id).toBe(SHIFT_B);
+    expect(result.row.settled_total).toBe("120.00");
+    expect(result.row.completed_cashier_id).toBeUndefined();
+    expect(result.row.cashier_id).toBeNull();
   });
 
   it("never lets a user id reach a cashier-code column", async () => {
-    currentOrder = {
-      id: ORDER_ID,
-      status: "pending",
-      total: "120.00",
-      settled_total: null,
-      cashier_id: null,
-    };
-
-    await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
-
+    const row = baseRow({ cashier_id: null });
+    const { orderEvents } = await import("@shared/schema");
+    const { orders } = await import("../../apps/server/src/db/schema");
+    const tx = makeFakeTx(new Map([[orderEvents, []], [orders, [row]]]));
+    const result = await completeOrderTx(
+      tx,
+      row,
+      { userId: USER_ID, cashierShift: { cashierId: null, cashierShiftId: SHIFT_B } },
+      {},
+    );
     for (const column of ["cashier_id", "input_cashier_id", "completed_cashier_id"]) {
-      expect(updatePatch?.[column]).not.toBe(USER_ID);
+      expect((result.row as Record<string, unknown>)[column]).not.toBe(USER_ID);
     }
   });
 
   it("leaves an existing code alone rather than clearing it", async () => {
-    // A order loaded under a cashier code, completed by somebody on a lazily
+    // An order loaded under a cashier code, completed by somebody on a lazily
     // opened shift. The inputter's 10% is read from `cashier_id`; blanking it
     // would lose their share.
-    currentOrder = {
-      id: ORDER_ID,
-      status: "pending",
-      total: "120.00",
-      settled_total: null,
-      cashier_id: CASHIER_A,
-    };
-
-    await completeOrder({ cashierId: null, cashierShiftId: SHIFT_B });
-
-    expect(updatePatch).not.toHaveProperty("cashier_id");
+    const row = baseRow({ cashier_id: CASHIER_A });
+    const result = await completeOrder(row, { cashierId: null, cashierShiftId: SHIFT_B });
+    expect(result.row.cashier_id).toBe(CASHIER_A);
   });
 });

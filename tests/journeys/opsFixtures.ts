@@ -275,6 +275,16 @@ const STAGE_COLUMNS = [
   "out_for_delivery_at",
 ] as const;
 
+/**
+ * `db.execute`'s return shape differs between the node-postgres and neon
+ * drivers (a bare array vs. `{ rows }`) — this normalises it once rather than
+ * repeating the `Array.isArray` check at every call site.
+ */
+async function queryRows<T>(db: OpsDb, query: ReturnType<typeof sql>): Promise<T[]> {
+  const result = (await db.execute(query)) as unknown as { rows?: T[] } | T[];
+  return Array.isArray(result) ? result : (result.rows ?? []);
+}
+
 let orderColumnsCache: Set<string> | null = null;
 
 /**
@@ -288,10 +298,10 @@ let orderColumnsCache: Set<string> | null = null;
  */
 export async function orderColumns(db: OpsDb): Promise<Set<string>> {
   if (orderColumnsCache) return orderColumnsCache;
-  const result = (await db.execute(
+  const rows = await queryRows<{ column_name: string }>(
+    db,
     sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'orders'`,
-  )) as unknown as { rows?: Array<{ column_name: string }> } | Array<{ column_name: string }>;
-  const rows = Array.isArray(result) ? result : (result.rows ?? []);
+  );
   orderColumnsCache = new Set(rows.map((r) => r.column_name));
   return orderColumnsCache;
 }
@@ -438,6 +448,7 @@ export async function orderInState(
     recipe,
     now,
     dueAt,
+    timezone: settings.timezone,
     minutesAgo: opts.minutesAgo,
     assignedTo: opts.assignedTo,
     caveats,
@@ -546,12 +557,13 @@ async function applyState(
     recipe: Recipe;
     now: Date;
     dueAt: Date | null;
+    timezone: string;
     minutesAgo?: number;
     assignedTo?: string;
     caveats: string[];
   },
 ): Promise<void> {
-  const { orderId, orgId, recipe, now, dueAt, minutesAgo, assignedTo, caveats } = args;
+  const { orderId, orgId, recipe, now, dueAt, timezone, minutesAgo, assignedTo, caveats } = args;
   const present = await orderColumns(db);
 
   for (const column of recipe.needsColumns ?? []) {
@@ -563,23 +575,39 @@ async function applyState(
     }
   }
 
-  // 1. The promise. Real endpoint first: `PATCH /api/orders/:id/operations`
-  //    owns `eta_given` today (server/routes/reportCapture.ts:252-297). N3b
-  //    removes `etaGiven` from that schema and moves it to `set_due`, so a
-  //    refusal here is expected one day and falls through to the column.
+  // 1. The promise. `POST /api/orders` (N3a) already resolves a positive
+  //    `dueInMinutes` — and a pre-order's `dueTime` — into `eta_given` at
+  //    creation, so this only ever has work to do for a promise already in
+  //    the past (late/delayed's negative `dueIn`), which creation deliberately
+  //    never sends. `set_due` (N3b, `POST /api/orders/:id/transition`) is the
+  //    real writer now; it 409s ("a due time is already set") on any order
+  //    creation already covered, in which case there is genuinely nothing left
+  //    to do here.
   if (dueAt) {
-    const viaApi = await api.patch(`/api/orders/${orderId}/operations`, {
-      data: { etaGiven: dueAt.toISOString() },
-    });
-    if (!viaApi.ok()) {
-      await db.execute(
-        sql`UPDATE orders SET eta_given = ${dueAt}, original_eta = COALESCE(original_eta, ${dueAt}) WHERE id = ${orderId} AND org_id = ${orgId}`,
-      );
-      caveats.push(
-        `PATCH /api/orders/:id/operations did not accept etaGiven (${viaApi.status()}) — wrote eta_given ` +
-          `directly instead. TODO(N3b): once the transition route exists, set the promise with ` +
-          `{ action: "set_due" } and drop this fallback.`,
-      );
+    const etaRows = await queryRows<{ eta_given: unknown }>(
+      db,
+      sql`SELECT eta_given FROM orders WHERE id = ${orderId} AND org_id = ${orgId}`,
+    );
+    const currentEta = etaRows[0]?.eta_given ?? null;
+    if (!currentEta) {
+      const dueTime = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(dueAt);
+      const viaApi = await api.post(`/api/orders/${orderId}/transition`, {
+        data: { action: "set_due", dueTime },
+      });
+      if (!viaApi.ok()) {
+        await db.execute(
+          sql`UPDATE orders SET eta_given = ${dueAt}, original_eta = COALESCE(original_eta, ${dueAt}) WHERE id = ${orderId} AND org_id = ${orgId}`,
+        );
+        caveats.push(
+          `POST /api/orders/:id/transition {action:"set_due"} did not accept dueTime (${viaApi.status()}) ` +
+            `— wrote eta_given directly instead.`,
+        );
+      }
     }
   }
 

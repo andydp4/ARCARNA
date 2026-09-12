@@ -62,3 +62,27 @@ Headers (SUPER_ADMIN only):
 - `isOwner = 1` in `allowed_users` maps to `role = 'SUPER_ADMIN'`.
 - First user to log in becomes SUPER_ADMIN if no owner exists.
 - Run `npm run seed` after `npm run db:push` to create org, location, roles, and sample products.
+
+## Operations Centre (Phase N)
+
+All under `scoped`. Several rows depend on the ROW, not a static role list — "own"
+means the order is currently assigned to the actor, or the actor is the one who
+completed / marked it ready — so these live in-handler
+(`assertTransitionRoleAllowed`, `server/services/orderTransitions.ts`), not in a
+`requireRole(...)` middleware. The CI gate for this table is
+`server/__tests__/orderTransitionRoles.test.ts` (`captureRoutes` / `runGuard` for
+the plain `requireRole` rows, direct calls to `assertTransitionRoleAllowed` for
+the row-dependent ones).
+
+| Action | CASHIER+ | MANAGER+ only |
+|---|---|---|
+| `claim`, `unclaim` (own), `ready`, `arrived`, `out_for_delivery`, `complete`, `hold`, `unhold`, `set_due`, `reopen` ≤ 10 min (completer), `unready` ≤ 10 min (the person who marked it), station / break (self), `assign` when passing on one's own order | ✓ | |
+| `assign` to someone else, `unclaim` someone else's, `reopen` / `unready` after 10 min or of someone else's, station for others, PUT / DELETE `/api/orders/:id` | | ✓ |
+
+- `POST /api/orders/:id/transition` — every action above CASHIER+ unless the row
+  says otherwise (server/routes/orderTransitions.ts).
+- `GET /api/operations/staff` — any signed-in org member.
+- `PATCH /api/operations/station` (self) — CASHIER+, own row only.
+- `PATCH /api/operations/station/:userId` — MANAGER+, audited (`ops.station_set`).
+- Alert acknowledgement (`PATCH /api/operations/alerts/:id/ack`,
+  `POST /api/operations/alerts/ack-all`) is N5a's, not built yet.

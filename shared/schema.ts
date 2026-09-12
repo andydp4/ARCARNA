@@ -2179,7 +2179,16 @@ export const EVENT_TYPES = [
   'ExpenseDeleted',
   // Staff took stock for themselves. Not a sale — it exists so a manager is
   // told, which is the entire control against it becoming theft.
-  'PersonalUseRecorded'
+  'PersonalUseRecorded',
+  // The Operations Centre's per-stage event (Phase N, N3b). Published by every
+  // transition that stamps a stage timestamp WITHOUT changing `status`
+  // (claim, ready, arrived, ...) — `OrderStatusChanged` is reserved for the
+  // transitions that do (complete, hold, unhold, reopen). No worker reads it
+  // today: REQUIRED_WORKERS declares zero, so publishing one creates no
+  // `job_queue` rows at all (see the brief's "claim creates zero job_queue
+  // rows" DoD) — it exists purely for the outbox history and any future
+  // consumer, never to drive today's dispatch pipeline.
+  'OrderStageChanged',
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 
@@ -2784,4 +2793,7 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   PersonalUseRecorded: ['PersonalUseSignalWorker'],
+  // Deliberately empty — see the EVENT_TYPES entry above. A stage tap must
+  // never enqueue a worker job just to record that it happened.
+  OrderStageChanged: [],
 };

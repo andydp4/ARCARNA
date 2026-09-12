@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import { db } from "../db";
-import { customers, orders, products } from "@shared/schema";
+import { customers, products } from "@shared/schema";
 import { storage } from "../storage";
 import { recordAdminAudit } from "../adminAudit";
 import {
@@ -35,8 +35,8 @@ export async function handleBulkAction(
       return handleCustomerBulk(req, ctx, parsed, actorUserId);
     case "products":
       return handleProductBulk(req, ctx, parsed, actorUserId);
-    case "orders":
-      return handleOrderBulk(req, ctx, parsed, actorUserId);
+    // "orders": handleOrderBulk removed (Phase N, N3b) — no caller after PR1
+    // replaced Open Orders' bulk toolbar with the board.
     default:
       return { ok: false, status: 400, message: "Unknown entity" };
   }
@@ -138,42 +138,6 @@ async function handleProductBulk(
   return { ok: false as const, status: 400, message: "Unsupported action" };
 }
 
-async function handleOrderBulk(
-  req: Request,
-  ctx: OrgContext,
-  parsed: ReturnType<typeof parseBulkRequest> & object,
-  actorUserId: string,
-) {
-  const { ids, action, payload } = parsed;
-
-  if (action === "export") {
-    const rows = await db
-      .select()
-      .from(orders)
-      .where(and(eq(orders.orgId, ctx.orgId), inArray(orders.id, ids)));
-    return { ok: true as const, result: { rows, format: "csv" } };
-  }
-
-  if (action === "tag") {
-    const status = String(payload?.status ?? "").trim();
-    if (!status) return { ok: false as const, status: 400, message: "status required" };
-    await db
-      .update(orders)
-      .set({ status, updatedAt: new Date() })
-      .where(and(eq(orders.orgId, ctx.orgId), inArray(orders.id, ids)));
-    await recordAdminAudit(req, {
-      actorUserId,
-      actorRole: ctx.role,
-      action: "bulk.tag",
-      targetType: "order",
-      orgId: ctx.orgId,
-      metadata: { count: ids.length, ids, status },
-    });
-    return { ok: true as const, result: { updated: ids.length } };
-  }
-
-  return { ok: false as const, status: 400, message: "Unsupported action" };
-}
 
 export function rowsToCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";

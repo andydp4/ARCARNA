@@ -18,6 +18,7 @@ import {
   commissionRateSchema,
   users,
   locations,
+  opsStaff,
 } from "@shared/schema";
 
 /**
@@ -44,6 +45,26 @@ async function attachDefaultLocationIds<T extends { replitUserId: string }>(
     if (u.replitUserId) byKey.set(u.replitUserId, u.defaultLocationId);
   }
   return rows.map((r) => ({ ...r, defaultLocationId: byKey.get(r.replitUserId) ?? null }));
+}
+
+/**
+ * The access list joined with each person's Operations Centre station
+ * (`ops_staff`, migration 065) — read-only enrichment so User Access can show
+ * the same station the board's staff strip does, and MANAGER+ can edit it
+ * here through `PATCH /api/operations/station/:userId`
+ * (server/routes/operations.ts) without this route's own SUPER_ADMIN/ADMIN
+ * gate changing.
+ */
+async function attachOpsStations<T extends { replitUserId: string }>(
+  rows: T[],
+  orgId: string | undefined,
+): Promise<Array<T & { opsStation: "collection" | "delivery" | "both" | null }>> {
+  if (rows.length === 0 || !orgId) {
+    return rows.map((r) => ({ ...r, opsStation: null }));
+  }
+  const staffRows = await db.select().from(opsStaff).where(eq(opsStaff.orgId, orgId));
+  const byUser = new Map(staffRows.map((s) => [s.userId, s.station as "collection" | "delivery" | "both" | null]));
+  return rows.map((r) => ({ ...r, opsStation: byUser.get(r.replitUserId) ?? null }));
 }
 
 export function registerAdminRoutes(app: Express): void {
@@ -77,13 +98,13 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       const headerOrg = req.headers["x-org-id"] as string | undefined;
       const queryOrg = req.query?.orgId as string | undefined;
+      const resolvedOrgId = headerOrg || queryOrg || roleAndOrg?.orgId || undefined;
       const allowedUserRows =
         role === "SUPER_ADMIN" && !headerOrg && !queryOrg
           ? await storage.adminGetAllAllowedUsers()
-          : await storage.getAllowedUsers(
-              headerOrg || queryOrg || roleAndOrg?.orgId || "",
-            );
-      res.json(await attachDefaultLocationIds(allowedUserRows));
+          : await storage.getAllowedUsers(resolvedOrgId || "");
+      const withLocations = await attachDefaultLocationIds(allowedUserRows);
+      res.json(await attachOpsStations(withLocations, resolvedOrgId));
     } catch (error) {
       console.error("Error fetching allowed users:", error);
       res.status(500).json({ message: "Failed to fetch allowed users" });

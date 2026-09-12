@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg, type Organization } from "@/contexts/OrgContext";
+import { roleRank, type Role } from "@shared/rbac";
+import { OPS_STATIONS } from "@shared/schema";
 
 const ASSIGNABLE_ROLES = ["CUSTOMER", "CASHIER", "MANAGER", "ADMIN"] as const;
 
@@ -145,6 +147,8 @@ function CommissionRateCell({
 export default function UserAccess() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const isManagerPlus =
+    !!currentUser?.role && roleRank(currentUser.role as Role) >= roleRank("MANAGER");
   const { organizations } = useOrg();
   const [confirmRemove, setConfirmRemove] = useState<AllowedUser | null>(null);
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
@@ -228,6 +232,27 @@ export default function UserAccess() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  // MANAGER+ (server/routes/operations.ts's own `requireRole` guards the
+  // route itself; this only decides whether to render the control).
+  const updateStationMutation = useMutation({
+    mutationFn: async ({
+      replitUserId,
+      station,
+    }: {
+      replitUserId: string;
+      station: "collection" | "delivery" | "both" | null;
+    }) => {
+      return apiRequest("PATCH", `/api/operations/station/${replitUserId}`, { station });
+    },
+    onSuccess: () => {
+      toast({ title: "Station updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/allowed-users"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not update the station", description: error.message, variant: "destructive" });
     },
   });
 
@@ -542,14 +567,41 @@ export default function UserAccess() {
                               </Select>
                             )}
                           </TableCell>
-                          {/* Read-only until N3b wires the station endpoints;
-                              a manager sets stations from the board's staff
-                              strip. "—" means no station, which reads as All. */}
-                          <TableCell
-                            className="text-muted-foreground text-sm capitalize"
-                            data-testid={`ops-station-${user.replitUserId}`}
-                          >
-                            {user.opsStation ?? '—'}
+                          {/* MANAGER+ can also set this from the board's staff
+                              strip (server/routes/operations.ts); "None"
+                              means no station, which reads as All. */}
+                          <TableCell data-testid={`ops-station-${user.replitUserId}`}>
+                            {user.isOwner === 1 || !isManagerPlus ? (
+                              <span className="text-sm text-muted-foreground capitalize">
+                                {user.opsStation ?? '—'}
+                              </span>
+                            ) : (
+                              <Select
+                                value={user.opsStation ?? "__none__"}
+                                onValueChange={(value) =>
+                                  updateStationMutation.mutate({
+                                    replitUserId: user.replitUserId,
+                                    station: value === "__none__" ? null : (value as "collection" | "delivery" | "both"),
+                                  })
+                                }
+                                disabled={updateStationMutation.isPending}
+                              >
+                                <SelectTrigger
+                                  className="h-9 w-[130px] capitalize"
+                                  data-testid={`ops-station-select-${user.replitUserId}`}
+                                >
+                                  <SelectValue placeholder="None" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">None (All)</SelectItem>
+                                  {OPS_STATIONS.map((s) => (
+                                    <SelectItem key={s} value={s} className="capitalize">
+                                      {s}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {formatDate(user.createdAt)}
