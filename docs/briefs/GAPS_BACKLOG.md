@@ -431,7 +431,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | S1 / schema drift |
 | **Snag** | `queue_position`, `delay_cause`, `original_eta`, `delay_notification_sent_at`, `delay_resolution` exist in `shared/schema.ts` and the database but not in the snake_case file; `scripts/audit-schema-drift.mjs` ignores columns present in only one file, so CI is silent while `GET /api/orders` cannot select them. |
 | **Fix** | N2 declares the four delay columns and drops `queue_position` (no reader or writer after N3b/N7); N2 also gives `scripts/audit-schema-drift.mjs` a paired-table rule for `orders` that fails on single-file columns and compares `withTimezone`. |
-| **Closed** | [ ] |
+| **Closed** | [x] Migration 065 / N2: the four delay columns are declared in both files, `queue_position` is dropped from the database and both schemas, and `PAIRED_TABLES = ['orders']` now fails on a column declared in only one file (the parser also strips comments first, so a commented-out column no longer counts as declared). |
 
 <a id="gap-ops-08"></a>
 

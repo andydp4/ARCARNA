@@ -23,6 +23,12 @@ interface PkInfo {
 
 const REQUIRED_TABLES = [
   "organizations",
+  // The Operations Centre's two tables (migration 065). The board reads its
+  // timeline from order_events and its alert recipients from ops_staff, so a
+  // deploy that applied 065 only half way must fail here rather than on the
+  // floor at opening time.
+  "order_events",
+  "ops_staff",
   "analytics_daily",
   "domain_outbox",
   "event_outbox",

@@ -45,7 +45,11 @@ const txnSchema = z.object({
 // See shared/delayCauses.ts.
 
 const orderOpsSchema = z.object({
-  queuePosition: z.number().int().min(0).max(9999).nullable().optional(),
+  // `queuePosition` was here until migration 065 dropped the column: the
+  // Operations Centre board sorts by due time and state, so a manual queue
+  // number has no reader and nothing left to write to. `etaGiven` and
+  // `originalEta` follow in N3b, when the due-time transition owns the promise
+  // and this route is narrowed to the delay fields alone.
   etaGiven: z.string().datetime().nullable().optional(),
   delayFlag: z.boolean().optional(),
   delayReason: z.string().max(255).nullable().optional(),
@@ -267,7 +271,6 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
         if (!order) return res.status(404).json({ message: "Order not found" });
 
         const patch: Record<string, unknown> = { updatedAt: new Date() };
-        if (body.queuePosition !== undefined) patch.queuePosition = body.queuePosition;
         if (body.etaGiven !== undefined) patch.etaGiven = body.etaGiven ? new Date(body.etaGiven) : null;
         if (body.delayFlag !== undefined) patch.delayFlag = body.delayFlag;
         if (body.delayReason !== undefined) patch.delayReason = body.delayReason;
