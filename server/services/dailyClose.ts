@@ -47,6 +47,16 @@ export type DailyCloseResult = {
   alreadyRun: boolean;
   shiftsClosed: number;
   uncountedDrawers: number;
+  /**
+   * Orders received on this trading day that are still open at close time
+   * (brief finding G22: "the daily close reads completed rows only; open
+   * orders from the day are neither closed nor reported"; Phase N, N7 fix —
+   * these are the Operations Centre's "carried-over" orders the moment the
+   * day that carries them closes). Counted, never closed: an open order is
+   * still real work, and the close only totals what happened, it never acts
+   * on what hasn't.
+   */
+  openOrdersFromDay: number;
 };
 
 /**
@@ -75,7 +85,7 @@ export async function closeTradingDay(
       .limit(1);
 
     if (existing) {
-      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0 };
+      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0, openOrdersFromDay: 0 };
     }
 
     // Close the cashier shifts that traded this day. These are logical shifts —
@@ -141,12 +151,12 @@ export async function closeTradingDay(
       .returning({ id: dailyCloseRuns.id });
 
     if (!run) {
-      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0 };
+      return { orgId, tradingDay, alreadyRun: true, shiftsClosed: 0, uncountedDrawers: 0, openOrdersFromDay: 0 };
     }
 
     await raiseSignals(orgId, tradingDay, { ...totals, shiftsClosed, uncountedDrawers }, tx);
 
-    return { orgId, tradingDay, alreadyRun: false, shiftsClosed, uncountedDrawers };
+    return { orgId, tradingDay, alreadyRun: false, shiftsClosed, uncountedDrawers, openOrdersFromDay: totals.openOrdersFromDay };
   });
 }
 
@@ -159,6 +169,8 @@ type DayTotals = {
   creditResolved: number;
   personalUseCost: number;
   commissionAccrued: number;
+  /** See `DailyCloseResult.openOrdersFromDay`. */
+  openOrdersFromDay: number;
 };
 
 async function totalsForDay(
@@ -236,6 +248,23 @@ async function totalsForDay(
   const total = (rows: Array<{ amount: string }>) =>
     round(rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0));
 
+  // Orders RECEIVED this trading day (entered_at, falling back to created_at
+  // — the same "received" the Operations Centre uses, shared/orders/
+  // opsState.ts) that are still open at close time: the day's own
+  // "carried-over" count, from the same order-state machinery the board
+  // uses rather than a bespoke query (brief finding G22 / N7).
+  const [{ count: openOrdersFromDay }] = await client
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        sql`${orders.status} <> 'completed'`,
+        gte(sql`COALESCE(${orders.enteredAt}, ${orders.createdAt})`, start),
+        lt(sql`COALESCE(${orders.enteredAt}, ${orders.createdAt})`, end),
+      ),
+    );
+
   return {
     orderCount: sales.length,
     grossSales,
@@ -245,6 +274,7 @@ async function totalsForDay(
     creditResolved: total(creditPaidRows),
     personalUseCost,
     commissionAccrued: total(commissionRows),
+    openOrdersFromDay,
   };
 }
 
@@ -261,7 +291,12 @@ async function raiseSignals(
   totals: DayTotals & { shiftsClosed: number; uncountedDrawers: number },
   client: DailyCloseDb = db,
 ): Promise<void> {
-  if (totals.orderCount === 0 && totals.creditResolved === 0 && totals.uncountedDrawers === 0) {
+  if (
+    totals.orderCount === 0 &&
+    totals.creditResolved === 0 &&
+    totals.uncountedDrawers === 0 &&
+    totals.openOrdersFromDay === 0
+  ) {
     return;
   }
 
@@ -273,6 +308,11 @@ async function raiseSignals(
   if (totals.creditResolved > 0) lines.push(`Credit resolved ${money(totals.creditResolved)}.`);
   if (totals.personalUseCost > 0) lines.push(`Personal use ${money(totals.personalUseCost)}.`);
   lines.push(`Commission earned ${money(totals.commissionAccrued)}.`);
+  if (totals.openOrdersFromDay > 0) {
+    lines.push(
+      `${totals.openOrdersFromDay} order${totals.openOrdersFromDay === 1 ? "" : "s"} still open from this day.`,
+    );
+  }
 
   await client.insert(orgNotifications).values({
     orgId,

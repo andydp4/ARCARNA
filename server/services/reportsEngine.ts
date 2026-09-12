@@ -27,8 +27,24 @@ import {
   resellerTransactions,
   cashierProfiles,
   refunds,
+  organizations,
+  orderEvents,
+  opsStaff,
 } from "@shared/schema";
-import { and, eq, sql, gte, lte, inArray } from "drizzle-orm";
+import { and, eq, sql, gte, lte, inArray, or } from "drizzle-orm";
+import { orgTimeZone } from "./tradingDayShift";
+import { currentTradingDay, tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
+import type { OpsTimingSettings } from "@shared/orders/opsState";
+import {
+  deriveOrderTiming,
+  summarizeOrderTiming,
+  orderTimingRedFlags,
+  type TimingOrderInput,
+  type OrderTimingSummary,
+} from "@shared/reports/orderTiming";
+import { wasProactiveDelayComms } from "@shared/reports/delayLog";
+
+export { wasProactiveDelayComms };
 
 /** Statuses that count as realised revenue. Model uses "completed"; spec says COLLECTED. */
 const COMPLETED_STATUSES = ["completed", "COLLECTED", "collected"] as const;
@@ -759,10 +775,27 @@ export async function productAffinity(orgId: string): Promise<ReportPayload> {
   };
 }
 
-/** ARC-T1-003 Order Status Dashboard — live view of in-flight orders today. */
+/**
+ * ARC-T1-003 Order Status Dashboard — live view of in-flight orders today.
+ *
+ * Retiring (brief, "Reporting": "ARC-T1-003 retires (the board is that
+ * screen)") — the client page, its route and this function's own removal are
+ * the second N7 round's job, sequenced after N4b deletes Open Orders. Until
+ * then this keeps working, fixed to stop feeding it the two kinds of row the
+ * DoD calls out: an order whose `ready_at` is migration 065's backfill
+ * (`meta.assumed:true` — a real column with no real "someone marked it ready"
+ * moment behind it, see `shared/reports/orderTiming.ts`) would otherwise sit
+ * here indefinitely looking queued; and one still open from an earlier
+ * trading day (the Operations Centre's own "carried-over" case,
+ * `shared/orders/opsState.ts`) does not belong in "today", which this
+ * function used to define as the SERVER's calendar midnight rather than the
+ * org's 06:00 trading day — fixed to the same trading-day bounds the board
+ * uses, not a new rule invented for this report.
+ */
 export async function orderStatusDashboard(orgId: string): Promise<ReportPayload> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const timezone = await orgTimeZone(orgId);
+  const tradingDay = currentTradingDay(timezone);
+  const { start: startOfDay } = tradingDayBounds(tradingDay, timezone);
 
   const rows = await db
     .select({
@@ -776,6 +809,7 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
       etaGiven: orders.etaGiven,
       delayFlag: orders.delayFlag,
       createdAt: orders.createdAt,
+      enteredAt: orders.enteredAt,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -787,9 +821,31 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
       ),
     );
 
+  const orderIds = rows.map((r) => r.id);
+  const readyEvents = orderIds.length
+    ? await db
+        .select({ orderId: orderEvents.orderId, meta: orderEvents.meta })
+        .from(orderEvents)
+        .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.kind, "ready"), inArray(orderEvents.orderId, orderIds)))
+    : [];
+  // Ordered by nothing in particular, but there is at most one `ready` event
+  // per order at this point in the phase (unready/re-ready cycles exist, but
+  // the assumed-backfill only ever wrote one and never coexists with a real
+  // one for the same order) — a `some()` is exact, not an approximation.
+  const assumedReadyOrderIds = new Set(
+    readyEvents.filter((e) => (e.meta as { assumed?: boolean } | null)?.assumed === true).map((e) => e.orderId),
+  );
+
+  const visibleRows = rows.filter((r) => {
+    if (assumedReadyOrderIds.has(r.id)) return false;
+    const receivedAt = r.enteredAt ?? r.createdAt;
+    if (receivedAt && tradingDayFor(new Date(receivedAt), timezone) < tradingDay) return false; // carried over
+    return true;
+  });
+
   const now = Date.now();
   const redFlags: string[] = [];
-  const mapped = rows
+  const mapped = visibleRows
     .map((r) => {
       const created = r.createdAt ? new Date(r.createdAt).getTime() : now;
       const timeInQueue = Math.floor((now - created) / 60000);
@@ -833,49 +889,149 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
   };
 }
 
-/** ARC-T1-005 Delay Log — every delayed order today, causes and comms. */
+/**
+ * ARC-T1-005 Delay Log — every delay cycle in a trading day, cleared or not.
+ *
+ * Re-sourced from `order_events` (N7; previously read `orders.delayFlag =
+ * true` directly, which is exactly wrong for a LOG — the moment a delay is
+ * cleared, `delayFlag` goes back to `false` and the row vanished from a
+ * report whose entire purpose is to show what happened, not just what is
+ * still happening; DoD: "Delay Log shows a cleared delay"). Each `delayed`
+ * event is paired with the next `delay_cleared` event on the same order (if
+ * any occurred before the trading day ended) to produce one row per delay
+ * cycle — an order delayed twice in one day, cleared each time, is two rows,
+ * not one overwritten row.
+ *
+ * `originalEta` and `delayNotificationSentAt` remain single columns on
+ * `orders` (not per-cycle) — `set_due`/`due_set` freezes `original_eta` once,
+ * and `PATCH …/operations` stamps `delay_notification_sent_at` at whatever
+ * moment a notification was last sent. A order delayed more than once in the
+ * window therefore shares one proactive-comms verdict across its cycles,
+ * exactly the same single-snapshot limitation the pre-N7 implementation had
+ * — now visible because multiple cycles can appear, not newly introduced.
+ */
 export async function delayLog(orgId: string, day: Date): Promise<ReportPayload> {
-  const start = new Date(day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(day);
-  end.setHours(23, 59, 59, 999);
+  const timezone = await orgTimeZone(orgId);
+  const tradingDay = currentTradingDay(timezone, day);
+  const { start, end } = tradingDayBounds(tradingDay, timezone);
 
-  const rows = await db
-    .select({
-      id: orders.id,
-      customer: customers.name,
-      tier: customers.category,
-      originalEta: orders.originalEta,
-      revisedEta: orders.revisedEta,
-      delayCause: orders.delayCause,
-      delayReason: orders.delayReason,
-      delayNotificationSentAt: orders.delayNotificationSentAt,
-      delayResolution: orders.delayResolution,
-    })
-    .from(orders)
-    .leftJoin(customers, eq(orders.customerId, customers.id))
-    .where(and(eq(orders.orgId, orgId), eq(orders.delayFlag, true), gte(orders.createdAt, start), lte(orders.createdAt, end)));
+  const events = await db
+    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta })
+    .from(orderEvents)
+    .where(
+      and(
+        eq(orderEvents.orgId, orgId),
+        inArray(orderEvents.kind, ["delayed", "delay_cleared"]),
+        gte(orderEvents.at, start),
+        lte(orderEvents.at, end),
+      ),
+    )
+    .orderBy(orderEvents.orderId, orderEvents.at);
 
   const redFlags: string[] = [];
-  const mapped = rows.map((r) => {
-    const orig = r.originalEta ? new Date(r.originalEta) : null;
-    const rev = r.revisedEta ? new Date(r.revisedEta) : null;
-    const duration = orig && rev ? Math.round((rev.getTime() - orig.getTime()) / 60000) : 0;
-    const proactive = orig && r.delayNotificationSentAt ? new Date(r.delayNotificationSentAt) < orig : false;
-    if (!proactive) redFlags.push(`Delay for ${r.customer || "customer"} was not proactively communicated.`);
-    if (duration > 60) redFlags.push(`Delay for ${r.customer || "customer"} exceeded 60 minutes.`);
+  if (events.length === 0) {
     return {
-      orderId: r.id.slice(0, 8),
-      customer: r.customer,
-      tier: r.tier,
-      originalEta: orig ? orig.toISOString() : null,
-      revisedEta: rev ? rev.toISOString() : null,
-      delayDuration: duration,
-      delayCause: r.delayCause,
-      proactiveComms: proactive,
-      resolution: r.delayResolution,
+      ref: "ARC-T1-005",
+      title: "Delay Log",
+      generatedAt: new Date().toISOString(),
+      period: { from: start.toISOString(), to: end.toISOString() },
+      summary: { delays: 0, noProactiveComms: 0, over60min: 0, stillOpen: 0 },
+      rows: [],
+      redFlags,
     };
-  });
+  }
+
+  const orderIds = [...new Set(events.map((e) => e.orderId))];
+  const [orderRows, heldEvents] = await Promise.all([
+    db
+      .select({
+        id: orders.id,
+        customer: customers.name,
+        tier: customers.category,
+        originalEta: orders.originalEta,
+        delayNotificationSentAt: orders.delayNotificationSentAt,
+        assignedUserId: orders.assignedUserId,
+      })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .where(inArray(orders.id, orderIds)),
+    db
+      .select({ orderId: orderEvents.orderId, meta: orderEvents.meta })
+      .from(orderEvents)
+      .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.kind, "unheld"), inArray(orderEvents.orderId, orderIds))),
+  ]);
+  const orderById = new Map(orderRows.map((r) => [r.id, r]));
+  const heldMinutesByOrder = new Map<string, number>();
+  for (const e of heldEvents) {
+    const seconds = Number((e.meta as { heldSeconds?: number } | null)?.heldSeconds ?? 0);
+    heldMinutesByOrder.set(e.orderId, (heldMinutesByOrder.get(e.orderId) ?? 0) + seconds / 60);
+  }
+
+  type DelayEventRow = (typeof events)[number];
+  const rows: Record<string, unknown>[] = [];
+
+  function pushRow(delayedEvent: DelayEventRow, clearedEvent: DelayEventRow | null) {
+    const order = orderById.get(delayedEvent.orderId);
+    const meta = (delayedEvent.meta ?? {}) as { cause?: string | null; reason?: string | null; customerTold?: boolean };
+    const clearedMeta = (clearedEvent?.meta ?? null) as { resolution?: string | null } | null;
+    const orig = order?.originalEta ? new Date(order.originalEta) : null;
+    const notifiedAt = order?.delayNotificationSentAt ? new Date(order.delayNotificationSentAt) : null;
+    const clearedAt = clearedEvent ? new Date(clearedEvent.at as unknown as string) : null;
+    const delayedAt = new Date(delayedEvent.at as unknown as string);
+    const duration = clearedAt ? Math.round((clearedAt.getTime() - delayedAt.getTime()) / 60000) : null;
+    const proactive = wasProactiveDelayComms(orig, notifiedAt);
+    const customerName = order?.customer || "customer";
+    if (!proactive) redFlags.push(`Delay for ${customerName} was not proactively communicated.`);
+    if (duration != null && duration > 60) redFlags.push(`Delay for ${customerName} exceeded 60 minutes.`);
+    rows.push({
+      orderId: delayedEvent.orderId.slice(0, 8),
+      customer: order?.customer ?? null,
+      tier: order?.tier ?? null,
+      assignedUserId: order?.assignedUserId ?? null,
+      delayedAt: delayedAt.toISOString(),
+      clearedAt: clearedAt ? clearedAt.toISOString() : null,
+      delayDuration: duration,
+      delayCause: meta.cause ?? null,
+      delayReason: meta.reason ?? null,
+      customerToldAtDelay: Boolean(meta.customerTold),
+      proactiveComms: proactive,
+      resolution: clearedMeta?.resolution ?? null,
+      heldMinutes: Math.round((heldMinutesByOrder.get(delayedEvent.orderId) ?? 0) * 10) / 10,
+    });
+  }
+
+  const eventsByOrder = new Map<string, DelayEventRow[]>();
+  for (const e of events) {
+    const bucket = eventsByOrder.get(e.orderId);
+    if (bucket) bucket.push(e);
+    else eventsByOrder.set(e.orderId, [e]);
+  }
+
+  let stillOpen = 0;
+  for (const orderEventsForOrder of eventsByOrder.values()) {
+    let pending: DelayEventRow | null = null;
+    for (const e of orderEventsForOrder) {
+      if (e.kind === "delayed") {
+        // A second `delayed` with no intervening clear closes the previous
+        // cycle as unresolved (still open at the moment it was superseded)
+        // rather than being silently overwritten.
+        if (pending) pushRow(pending, null);
+        pending = e;
+      } else if (e.kind === "delay_cleared") {
+        if (pending) {
+          pushRow(pending, e);
+          pending = null;
+        }
+        // A `delay_cleared` with no pending `delayed` in THIS window means
+        // the delay was flagged before the trading day started — outside
+        // this report's scope, not an error.
+      }
+    }
+    if (pending) {
+      pushRow(pending, null);
+      stillOpen += 1;
+    }
+  }
 
   return {
     ref: "ARC-T1-005",
@@ -883,11 +1039,271 @@ export async function delayLog(orgId: string, day: Date): Promise<ReportPayload>
     generatedAt: new Date().toISOString(),
     period: { from: start.toISOString(), to: end.toISOString() },
     summary: {
-      delays: mapped.length,
-      noProactiveComms: mapped.filter((r) => !r.proactiveComms).length,
-      over60min: mapped.filter((r) => r.delayDuration > 60).length,
+      delays: rows.length,
+      noProactiveComms: rows.filter((r) => !r.proactiveComms).length,
+      over60min: rows.filter((r) => typeof r.delayDuration === "number" && r.delayDuration > 60).length,
+      stillOpen,
     },
-    rows: mapped,
+    rows,
+    redFlags,
+  };
+}
+
+function flattenTimingSummary(summary: OrderTimingSummary): Record<string, number | string | null> {
+  return {
+    ordersConsidered: summary.ordersConsidered,
+    ordersExcluded: summary.ordersExcluded,
+    excludedBackdated: summary.excludedBackdated,
+    excludedCarriedOver: summary.excludedCarriedOver,
+    excludedAssumedReady: summary.excludedAssumedReady,
+    withPromisePercent: summary.withPromisePercent,
+    onTimePercent: summary.onTimePercent,
+    collectionOnTimePercent: summary.collectionOnTimePercent,
+    deliveryOnTimePercent: summary.deliveryOnTimePercent,
+    deliveryP90ReceivedToCompletedMinutes: summary.deliveryP90ReceivedToCompletedMinutes,
+    promiseKeptPercent: summary.promiseKeptPercent,
+    averageLatenessMinutes: summary.averageLatenessMinutes,
+    medianReceivedToClaimedMinutes: summary.medians.receivedToClaimedMinutes,
+    medianReceivedToReadyMinutes: summary.medians.receivedToReadyMinutes,
+    medianReadyToHandoverMinutes: summary.medians.readyToHandoverMinutes,
+    medianArrivedToHandoverMinutes: summary.medians.arrivedToHandoverMinutes,
+    medianDispatchToDeliveredMinutes: summary.medians.dispatchToDeliveredMinutes,
+    medianReceivedToCompletedMinutes: summary.medians.receivedToCompletedMinutes,
+    p90ReceivedToClaimedMinutes: summary.p90s.receivedToClaimedMinutes,
+    p90ReceivedToReadyMinutes: summary.p90s.receivedToReadyMinutes,
+    p90ReadyToHandoverMinutes: summary.p90s.readyToHandoverMinutes,
+    p90ArrivedToHandoverMinutes: summary.p90s.arrivedToHandoverMinutes,
+    p90DispatchToDeliveredMinutes: summary.p90s.dispatchToDeliveredMinutes,
+    p90ReceivedToCompletedMinutes: summary.p90s.receivedToCompletedMinutes,
+    delayedCount: summary.delayedCount,
+    revisedPromiseAccuracyPercent: summary.revisedPromiseAccuracyPercent,
+    customerWaitingIncidents: summary.customerWaitingIncidents,
+    heldOrdersCount: summary.heldOrdersCount,
+    averageHeldMinutes: summary.averageHeldMinutes,
+    unassignedOrdersCount: summary.unassignedOrdersCount,
+    averageUnassignedMinutes: summary.averageUnassignedMinutes,
+    alertToAckMedianMinutes: summary.alertToAckMedianMinutes,
+    alertToReadyMedianMinutes: summary.alertToReadyMedianMinutes,
+  };
+}
+
+/**
+ * ARC-T2-005 Order Timing & Service Levels — the "engine" half of N7's maths
+ * + engine round (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Reporting"). All
+ * the actual judgement (on-time, promise-kept, exclusions, percentiles,
+ * groupings, red flags) lives in `shared/reports/orderTiming.ts`, pure and
+ * unit-tested on its own; this function's only job is assembling one
+ * `TimingOrderInput` per order from `orders` + `order_events` and handing the
+ * array to it.
+ *
+ * **Window.** An order is IN the report if it was received in `[from, to)`
+ * (fresh work) OR settled in `[from, to)` (a completion the window should
+ * see, including a carried-over one from an earlier trading day — counted,
+ * then excluded from the figures by the pure module rather than missing from
+ * the report altogether). `from`/`to` are ordinary instants, not
+ * trading-day-snapped, by design: a caller reporting on exactly one trading
+ * day passes `tradingDayBounds(...)`.
+ *
+ * **Re-settlement.** `completed` events are read ordered ascending by `at`
+ * and folded into a `Map<orderId, actualAt>` — a resettled order (N3b:
+ * reopened, then re-completed, writing a SECOND `completed` event with
+ * `meta.resettled:true`) simply overwrites its own map entry with the later
+ * event, so the map holds the CURRENT settlement's `meta.actualAt` with no
+ * `resettled`-specific branch needed (the same "last write wins" pattern
+ * `server/services/opsBoard.ts`'s `selectActualHandoverTimes` already uses).
+ * Every other per-order fact here — `orders.settledAt`, `completedUserId`,
+ * `status` — is read straight off the CURRENT `orders` row, which
+ * `orderCompletion.ts` already rewrites in place on re-settle, so a resettled
+ * order is one row in, one row out, everywhere in this function.
+ * `server/__tests__/orderTimingReport.test.ts` proves this against a real
+ * reopen + re-complete.
+ */
+export async function orderTimingReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
+  const timezone = await orgTimeZone(orgId);
+  const [org] = await db
+    .select({
+      prepSlaMinutes: organizations.opsPrepSlaMinutes,
+      deliveryLeadMinutes: organizations.opsDeliveryLeadMinutes,
+      dueSoonLeadMinutes: organizations.opsDueSoonLeadMinutes,
+      lateGraceMinutes: organizations.opsLateGraceMinutes,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  const settings: OpsTimingSettings = {
+    timezone,
+    prepSlaMinutes: org?.prepSlaMinutes ?? 20,
+    deliveryLeadMinutes: org?.deliveryLeadMinutes ?? 45,
+    dueSoonLeadMinutes: org?.dueSoonLeadMinutes ?? 10,
+    lateGraceMinutes: org?.lateGraceMinutes ?? 5,
+  };
+
+  const emptyPayload = (): ReportPayload => ({
+    ref: "ARC-T2-005",
+    title: "Order Timing & Service Levels",
+    generatedAt: new Date().toISOString(),
+    period: { from: from.toISOString(), to: to.toISOString() },
+    summary: flattenTimingSummary(summarizeOrderTiming([])),
+    rows: [],
+    redFlags: [],
+  });
+
+  const orderRows = await db
+    .select({
+      id: orders.id,
+      status: orders.status,
+      fulfilmentMethod: orders.fulfilmentMethod,
+      dateKind: orders.dateKind,
+      channel: orders.channel,
+      createdAt: orders.createdAt,
+      enteredAt: orders.enteredAt,
+      etaGiven: orders.etaGiven,
+      revisedEta: orders.revisedEta,
+      delayFlag: orders.delayFlag,
+      heldAt: orders.heldAt,
+      readyAt: orders.readyAt,
+      customerArrivedAt: orders.customerArrivedAt,
+      outForDeliveryAt: orders.outForDeliveryAt,
+      settledAt: orders.settledAt,
+      assignedUserId: orders.assignedUserId,
+      completedUserId: orders.completedUserId,
+      inputUserId: orders.inputUserId,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        or(
+          and(gte(orders.enteredAt, from), lte(orders.enteredAt, to)),
+          and(eq(orders.status, "completed"), gte(orders.settledAt, from), lte(orders.settledAt, to)),
+        ),
+      ),
+    );
+
+  if (orderRows.length === 0) return emptyPayload();
+
+  const orderIds = orderRows.map((r) => r.id);
+  const events = await db
+    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta })
+    .from(orderEvents)
+    .where(
+      and(
+        eq(orderEvents.orgId, orgId),
+        inArray(orderEvents.orderId, orderIds),
+        inArray(orderEvents.kind, ["assigned", "delayed", "unheld", "ready", "completed"]),
+      ),
+    )
+    .orderBy(orderEvents.orderId, orderEvents.at);
+
+  const claimedAtByOrder = new Map<string, Date>();
+  const wasDelayedByOrder = new Set<string>();
+  const latestRevisedByOrder = new Map<string, Date | null>();
+  const heldSecondsByOrder = new Map<string, number>();
+  const readyAssumedByOrder = new Map<string, boolean>();
+  // Ascending `at` per order (the `orderBy` above), so the LAST write for a
+  // given key below is always the most recent event of that kind — the
+  // dedupe rule this function's own doc comment describes.
+  const handoverOverrideByOrder = new Map<string, Date>();
+
+  for (const e of events) {
+    const meta = (e.meta ?? {}) as Record<string, unknown>;
+    switch (e.kind) {
+      case "assigned":
+        if (!claimedAtByOrder.has(e.orderId)) claimedAtByOrder.set(e.orderId, new Date(e.at as unknown as string));
+        break;
+      case "delayed":
+        wasDelayedByOrder.add(e.orderId);
+        latestRevisedByOrder.set(e.orderId, meta.revisedEta ? new Date(meta.revisedEta as string) : null);
+        break;
+      case "unheld":
+        heldSecondsByOrder.set(e.orderId, (heldSecondsByOrder.get(e.orderId) ?? 0) + Number(meta.heldSeconds ?? 0));
+        break;
+      case "ready":
+        readyAssumedByOrder.set(e.orderId, meta.assumed === true);
+        break;
+      case "completed": {
+        const actualAt = meta.actualAt ? new Date(meta.actualAt as string) : null;
+        if (actualAt) handoverOverrideByOrder.set(e.orderId, actualAt);
+        break;
+      }
+    }
+  }
+
+  const assigneeIds = [...new Set(orderRows.map((r) => r.assignedUserId).filter((v): v is string => Boolean(v)))];
+  const stationByUser = new Map<string, string | null>();
+  if (assigneeIds.length) {
+    const staffRows = await db
+      .select({ userId: opsStaff.userId, station: opsStaff.station })
+      .from(opsStaff)
+      .where(and(eq(opsStaff.orgId, orgId), inArray(opsStaff.userId, assigneeIds)));
+    for (const s of staffRows) stationByUser.set(s.userId, s.station);
+  }
+
+  const timingInputs: TimingOrderInput[] = orderRows.map((r) => ({
+    id: r.id,
+    status: r.status ?? "pending",
+    fulfilmentMethod: r.fulfilmentMethod === "delivery" ? "delivery" : "collection",
+    dateKind: r.dateKind === "backdated" || r.dateKind === "preorder" ? r.dateKind : "live",
+    channel: r.channel ?? "pos",
+    createdAt: r.createdAt ?? new Date(0),
+    enteredAt: r.enteredAt,
+    etaGiven: r.etaGiven,
+    revisedEta: r.revisedEta,
+    delayFlag: r.delayFlag === true,
+    heldAt: r.heldAt,
+    readyAt: r.readyAt,
+    customerArrivedAt: r.customerArrivedAt,
+    outForDeliveryAt: r.outForDeliveryAt,
+    settledAt: r.settledAt,
+    handoverAt: handoverOverrideByOrder.get(r.id) ?? r.settledAt,
+    claimedAt: claimedAtByOrder.get(r.id) ?? null,
+    wasDelayed: wasDelayedByOrder.has(r.id),
+    revisedPromiseAtDelay: latestRevisedByOrder.get(r.id) ?? null,
+    heldSeconds: heldSecondsByOrder.get(r.id) ?? 0,
+    assignedUserId: r.assignedUserId,
+    completedUserId: r.completedUserId,
+    inputUserId: r.inputUserId,
+    station: r.assignedUserId ? (stationByUser.get(r.assignedUserId) ?? null) : null,
+    readyAssumed: readyAssumedByOrder.get(r.id) ?? false,
+  }));
+
+  const facts = timingInputs.map((input) => deriveOrderTiming(input, settings));
+  const summary = summarizeOrderTiming(facts);
+  const redFlags = orderTimingRedFlags(summary);
+
+  const rows = facts.map((f) => ({
+    orderId: f.id.slice(0, 8),
+    fulfilmentMethod: f.fulfilmentMethod,
+    channel: f.channel,
+    tradingDay: f.tradingDay,
+    excluded: f.excluded === false ? null : f.excluded,
+    hasPromise: f.hasPromise,
+    onTime: f.onTime,
+    promiseKept: f.promiseKept,
+    latenessMinutes: f.latenessMinutes,
+    receivedToClaimedMinutes: f.receivedToClaimedMinutes,
+    receivedToReadyMinutes: f.receivedToReadyMinutes,
+    readyToHandoverMinutes: f.readyToHandoverMinutes,
+    arrivedToHandoverMinutes: f.arrivedToHandoverMinutes,
+    dispatchToDeliveredMinutes: f.dispatchToDeliveredMinutes,
+    receivedToCompletedMinutes: f.receivedToCompletedMinutes,
+    wasDelayed: f.wasDelayed,
+    revisedPromiseKept: f.revisedPromiseKept,
+    customerWaitingIncident: f.customerWaitingIncident,
+    heldMinutes: Math.round((f.heldSeconds / 60) * 10) / 10,
+    assignedUserId: f.assignedUserId,
+    completedUserId: f.completedUserId,
+    inputUserId: f.inputUserId,
+    station: f.station,
+  }));
+
+  return {
+    ref: "ARC-T2-005",
+    title: "Order Timing & Service Levels",
+    generatedAt: new Date().toISOString(),
+    period: { from: from.toISOString(), to: to.toISOString() },
+    summary: flattenTimingSummary(summary),
+    rows,
     redFlags,
   };
 }
@@ -1133,7 +1549,7 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
   };
 }
 
-export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004";
+export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004" | "ARC-T2-005";
 
 /** Dispatch a report by reference. */
 export async function runReport(
@@ -1155,6 +1571,11 @@ export async function runReport(
       return orderStatusDashboard(orgId);
     case "ARC-T1-005":
       return delayLog(orgId, opts.from ?? new Date());
+    case "ARC-T2-005": {
+      const to = opts.to ?? new Date();
+      const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
+      return orderTimingReport(orgId, from, to);
+    }
     case "ARC-T2-001": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, CheckCircle2, ClipboardList, ShoppingBag, Truck } from "lucide-react";
+import { AlertOctagon, AlertTriangle, CheckCircle2, ClipboardList, Clock, ShoppingBag, Truck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CONTROL_CENTRE_QUERY_KEY, type ControlCentreSnapshot } from "@/lib/controlCentre";
 
@@ -36,6 +36,8 @@ export function OperationsSnapshot() {
   });
 
   const lowStock = data?.lowStockCount ?? 0;
+  const lateNow = data?.lateNow ?? 0;
+  const dueSoonNow = data?.dueSoonNow ?? 0;
 
   const tiles: Tile[] = [
     {
@@ -73,6 +75,28 @@ export function OperationsSnapshot() {
       tone: "neutral",
       testId: "snapshot-completed-today",
       hint: "Settled this trading day",
+    },
+    {
+      // No board query param names "late"/"due-soon" (brief: ops-filter-mine
+      // | unassigned | all, and ?lane=collection|delivery) — these two link
+      // to the board plain, like "Completed today" above, rather than
+      // inventing an unsupported filter value.
+      label: "Late now",
+      value: lateNow,
+      href: "/operations",
+      icon: AlertOctagon,
+      tone: lateNow > 0 ? "warn" : "neutral",
+      testId: "snapshot-late-now",
+      hint: lateNow > 0 ? "Past their promise" : "Nothing overdue",
+    },
+    {
+      label: "Due soon",
+      value: dueSoonNow,
+      href: "/operations",
+      icon: Clock,
+      tone: "neutral",
+      testId: "snapshot-due-soon",
+      hint: "Inside the due-soon window",
     },
     {
       label: "Low stock",

@@ -34,6 +34,9 @@ export type ControlCentreSnapshot = {
   openOrders: number;
   toCollect: number;
   toDeliver: number;
+  /** From the Operations Centre board's own `deriveCardState`-driven summary — see server/services/controlCentre.ts. */
+  lateNow: number;
+  dueSoonNow: number;
 
   lowStockCount: number;
   highRiskStockCount: number;
