@@ -32,6 +32,8 @@ export interface OpsHeaderProps {
   onRefresh: () => void;
   /** N6 hangs the shift controls here; N5b the audio toggle and alert count. */
   extras?: ReactNode;
+  /** N4a: `OpsStaffStrip` (who is on) and `OpsStationPicker` (your station, your break). Its own row — filters answer "what am I looking at", this answers "who am I, on this board". */
+  stationRow?: ReactNode;
 }
 
 const FILTERS: Array<{ value: OpsFilter; label: string; hint: string }> = [
@@ -41,11 +43,12 @@ const FILTERS: Array<{ value: OpsFilter; label: string; hint: string }> = [
 ];
 
 export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function OpsHeader(
-  { filter, onFilterChange, search, onSearchChange, summary, isFetching, onRefresh, extras },
+  { filter, onFilterChange, search, onSearchChange, summary, isFetching, onRefresh, extras, stationRow },
   searchRef,
 ) {
   return (
     <div className="flex flex-col gap-3">
+      {stationRow}
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[min(100%,16rem)] flex-1 space-y-1">
           <Label htmlFor="ops-order-search" className="text-xs text-muted-foreground">

@@ -1,23 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Check, Copy, Download, Phone, RotateCcw, X } from "lucide-react";
 import { apiFetch } from "@/lib/appPaths";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { invalidateAfterOrderStatusChange } from "@/lib/query-invalidation";
 import { useToast } from "@/hooks/use-toast";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -27,14 +16,15 @@ import {
 } from "@/components/ui/sheet";
 import { OrderStatusSelect } from "@/components/orders/OrderStatusSelect";
 import { ActionLoader } from "@/components/action-loader";
-import { DELAY_CAUSES } from "@shared/delayCauses";
 import { formatOrderChannel } from "@shared/orders/channel";
-import { localInstantAt, currentTradingDay, shiftIsoDate } from "@shared/time/tradingDay";
 import type { OrderStatus } from "@shared/schema";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { formatPaymentLabel } from "@/lib/paymentLabel";
 import { formatTimeOfDay } from "@/lib/opsClock";
+import { OpsDelayInline } from "./OpsDelayInline";
+import { OpsTimeline } from "./OpsTimeline";
+import { OpsRateChips } from "./OpsRateChips";
 
 /**
  * Everything about one order that does not belong on its card.
@@ -329,7 +319,13 @@ function OpsDetailsBody({
         {blockedReason && <p className="text-sm text-muted-foreground">{blockedReason}</p>}
       </div>
 
-      <OpsDelayEditor order={order} settings={settings} blockedReason={blockedReason} />
+      <OpsTimeline order={order} settings={settings} />
+
+      {order.status === "completed" && <OpsRateChips order={order} />}
+
+      {order.status !== "completed" && (
+        <OpsDelayInline order={order} settings={settings} blockedReason={blockedReason} />
+      )}
 
       <div>
         <h3 className="mb-2 text-sm font-medium text-muted-foreground">Line items</h3>
@@ -438,214 +434,3 @@ function OpsDetailsBody({
   );
 }
 
-/**
- * Declaring a delay, from the screen the order is already on.
- *
- * `eta_given` has had exactly one writer since PR #136 — `OrderOpsDialog`,
- * which has been unreachable that whole time (finding G3) — so the Delay Log
- * report has been fed by nothing. This is the replacement path, and it writes
- * through the endpoint that already exists (`PATCH /api/orders/:id/operations`)
- * rather than waiting for the transition route in N3b.
- *
- * A revised time is sent as an absolute instant computed in the ORGANISATION's
- * timezone, not the tablet's: `localInstantAt` resolves "18:30" against the
- * shop's day (N0 added it for exactly this), so a device left on the wrong
- * zone cannot promise a customer an hour that never comes.
- */
-function OpsDelayEditor({
-  order,
-  settings,
-  blockedReason,
-}: {
-  order: BoardOrder;
-  settings: OpsTimingSettings;
-  blockedReason?: string | null;
-}) {
-  const { toast } = useToast();
-  const [cause, setCause] = useState<string>("");
-  const [reason, setReason] = useState("");
-  const [revisedTime, setRevisedTime] = useState("");
-  const [customerTold, setCustomerTold] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Pre-filled from whatever the order already says, so declaring a second
-  // delay is an edit rather than a re-type.
-  useEffect(() => {
-    setReason(order.delayReason ?? "");
-    setRevisedTime(
-      order.revisedEta ? formatTimeOfDay(order.revisedEta, settings.timezone) : "",
-    );
-    setCause("");
-    setCustomerTold(false);
-  }, [order.id, order.delayReason, order.revisedEta, settings.timezone]);
-
-  const revisedIsoFromMinutes = (minutes: number) =>
-    new Date(Date.now() + minutes * 60_000).toISOString();
-
-  /**
-   * "18:30" as an instant on the shop's trading day. A time that has already
-   * passed today means the next one — a revised promise is always ahead, and
-   * a shop open past midnight would otherwise be told 00:30 this morning. The
-   * next day is reached through `shiftIsoDate`, not by adding 24 hours, so the
-   * night the clocks change stays honest.
-   */
-  const revisedIsoFromTime = (hhmm: string): string | null => {
-    const normalised = hhmm.slice(0, 5);
-    try {
-      const today = currentTradingDay(settings.timezone);
-      const instant = localInstantAt(today, normalised, settings.timezone);
-      if (instant.getTime() >= Date.now()) return instant.toISOString();
-      return localInstantAt(shiftIsoDate(today, 1), normalised, settings.timezone).toISOString();
-    } catch {
-      toast({
-        title: "That is not a time we can use",
-        description: "Give the new time as HH:MM, for example 18:30.",
-        variant: "destructive",
-      });
-      return null;
-    }
-  };
-
-  const save = async (revisedEtaIso: string | null, clearing = false) => {
-    setSaving(true);
-    try {
-      const body: Record<string, unknown> = clearing
-        ? { delayFlag: false, delayResolution: "Collected late" }
-        : {
-            delayFlag: true,
-            ...(cause ? { delayCause: cause } : {}),
-            ...(reason.trim() ? { delayReason: reason.trim() } : {}),
-            ...(revisedEtaIso ? { revisedEta: revisedEtaIso } : {}),
-            ...(customerTold ? { notifyCustomerNow: true } : {}),
-          };
-      const response = await apiRequest("PATCH", `/api/orders/${order.id}/operations`, body);
-      await response.json();
-      await invalidateAfterOrderStatusChange(queryClient);
-      toast({
-        title: clearing ? "Delay cleared" : "Delay recorded",
-        description: clearing
-          ? `Order #${order.shortCode} is no longer flagged.`
-          : `Order #${order.shortCode} now shows a new time.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Could not save the delay",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const disabled = saving || Boolean(blockedReason);
-
-  return (
-    <div className="space-y-3 rounded-lg border border-border bg-card p-3" data-testid="ops-delay-editor">
-      <h3 className="text-sm font-medium text-foreground">
-        {order.delayFlag ? "This order is delayed" : "Running late?"}
-      </h3>
-
-      <div className="space-y-1">
-        <Label htmlFor={`ops-delay-cause-${order.id}`} className="text-xs text-muted-foreground">
-          What is holding it up
-        </Label>
-        <Select value={cause} onValueChange={setCause} disabled={disabled}>
-          <SelectTrigger
-            id={`ops-delay-cause-${order.id}`}
-            className="min-h-11"
-            data-testid="select-delay-cause"
-          >
-            <SelectValue placeholder="Choose a cause" />
-          </SelectTrigger>
-          <SelectContent>
-            {DELAY_CAUSES.map((option) => (
-              <SelectItem key={option} value={option} data-testid={`delay-cause-${option}`}>
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor={`ops-delay-reason-${order.id}`} className="text-xs text-muted-foreground">
-          What to tell the customer
-        </Label>
-        <Input
-          id={`ops-delay-reason-${order.id}`}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          className="min-h-11"
-          placeholder="Waiting on the bakery delivery"
-          disabled={disabled}
-          data-testid="input-delay-reason"
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor={`ops-delay-time-${order.id}`} className="text-xs text-muted-foreground">
-          New time
-        </Label>
-        <div className="flex flex-wrap items-center gap-2">
-          {[10, 20, 30].map((minutes) => (
-            <Button
-              key={minutes}
-              size="touch"
-              variant="outline"
-              disabled={disabled}
-              onClick={() => save(revisedIsoFromMinutes(minutes))}
-              data-testid={`chip-delay-${minutes}`}
-            >
-              +{minutes} min
-            </Button>
-          ))}
-          <Input
-            id={`ops-delay-time-${order.id}`}
-            type="time"
-            value={revisedTime}
-            onChange={(event) => setRevisedTime(event.target.value)}
-            className="min-h-11 w-36"
-            disabled={disabled}
-            data-testid="input-delay-time"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Switch
-          id={`ops-delay-told-${order.id}`}
-          checked={customerTold}
-          onCheckedChange={setCustomerTold}
-          disabled={disabled}
-          data-testid="switch-customer-told"
-        />
-        <Label htmlFor={`ops-delay-told-${order.id}`} className="text-sm font-normal">
-          I have just told the customer
-        </Label>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="touch"
-          disabled={disabled}
-          onClick={() => save(revisedTime ? revisedIsoFromTime(revisedTime) : null)}
-          data-testid="button-save-delay"
-        >
-          {saving ? "Saving…" : "Record delay"}
-        </Button>
-        {order.delayFlag && (
-          <Button
-            size="touch"
-            variant="outline"
-            disabled={disabled}
-            onClick={() => save(null, true)}
-            data-testid="button-clear-delay"
-          >
-            Clear delay
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}

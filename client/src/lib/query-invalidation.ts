@@ -1,4 +1,6 @@
 import type { Query, QueryClient, QueryKey } from "@tanstack/react-query";
+import { OPS_BOARD_QUERY_KEY } from "@/hooks/useOpsBoard";
+import type { BoardOrder } from "@/lib/orderTypes";
 
 function isEndpointFamilyMatch(queryKey: QueryKey, endpoint: string): boolean {
   const [head] = queryKey;
@@ -125,6 +127,39 @@ export function invalidatePurchasingPipeline(
   }
 
   return Promise.all(tasks);
+}
+
+/**
+ * After a real `POST /api/orders/:id/transition` write (Phase N, N4a).
+ *
+ * The brief is explicit about this one (§ API, `GET /api/orders/board`):
+ * "board taps apply the returned row and invalidate `['/api/control-centre']`
+ * only." That is narrower than every other helper in this file on purpose —
+ * `runOrderTransition` already returns the fresh `BoardOrder` inside one
+ * locked transaction, so there is nothing stale left to refetch on the board
+ * itself, and `opsBus` is about to push the identical row to every OTHER open
+ * tablet over SSE (`server/services/opsBus.ts`, N3a) within the same
+ * request's commit. Invalidating `/api/orders` or `/api/reports` here as
+ * `invalidateAfterOrderStatusChange` does for the v0 PATCH path would only
+ * cost the tapping tablet a redundant round trip for data it already has the
+ * newest copy of. The Control Centre's `lateNow` / `dueSoonNow` tiles (N7)
+ * are the one thing this response does not carry, so that family alone is
+ * invalidated.
+ */
+export function invalidateAfterOpsTransition(queryClient: QueryClient, order: BoardOrder) {
+  queryClient.setQueryData<{ orders: BoardOrder[] } & Record<string, unknown>>(
+    OPS_BOARD_QUERY_KEY as unknown as QueryKey,
+    (current) =>
+      current
+        ? {
+            ...current,
+            orders: current.orders.some((row) => row.id === order.id)
+              ? current.orders.map((row) => (row.id === order.id ? order : row))
+              : [...current.orders, order],
+          }
+        : current,
+  );
+  return invalidateEndpointFamily(queryClient, "/api/control-centre");
 }
 
 export function invalidateAfterCatalogMutation(queryClient: QueryClient) {

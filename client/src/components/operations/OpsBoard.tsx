@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
 import { deriveCardState, type OpsTimingSettings } from "@shared/orders/opsState";
 import { formatOrderChannel } from "@shared/orders/channel";
 import { isEditableTarget } from "@/hooks/useBarcodeScanner";
@@ -9,8 +8,8 @@ import { BOARD_LANES, type BoardLane, type BoardOrder } from "@/lib/orderTypes";
 import type { OpsStaleness } from "@/hooks/useOpsBoard";
 import { OpsBoardSkeleton } from "./OpsBoardSkeleton";
 import { OpsHeader, type OpsFilter } from "./OpsHeader";
-import { OpsLane, type LaneCard } from "./OpsLane";
-import type { OpsCardProps } from "./OpsCard";
+import { OpsLane, type LaneCard, type StripCardHandlers } from "./OpsLane";
+import { OpsStaleBanner } from "./OpsStaleBanner";
 
 /**
  * Collection and Delivery, side by side, over one read of the orders.
@@ -47,9 +46,13 @@ export interface OpsBoardProps {
   staleness: OpsStaleness;
   onRefresh: () => void;
   headerExtras?: ReactNode;
+  /** N4a: the staff strip and station picker row, passed through to `OpsHeader`. */
+  headerStationRow?: ReactNode;
   /** Ids whose own write is in flight, so only those cards show as busy. */
   pendingIds: Set<string>;
-  cardHandlers: Omit<OpsCardProps, "order" | "derived" | "shouldIgnoreEnter" | "busy">;
+  /** N4a's alert stub always answers false; N5b makes it real. */
+  isAlertForOrder?: (orderId: string) => boolean;
+  cardHandlers: Omit<StripCardHandlers, "shouldIgnoreEnter">;
 }
 
 /** Does this card match what was typed: id, customer, payment or channel. */
@@ -97,7 +100,9 @@ export function OpsBoard({
   staleness,
   onRefresh,
   headerExtras,
+  headerStationRow,
   pendingIds,
+  isAlertForOrder,
   cardHandlers,
 }: OpsBoardProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -228,26 +233,10 @@ export function OpsBoard({
         isFetching={isFetching}
         onRefresh={onRefresh}
         extras={headerExtras}
+        stationRow={headerStationRow}
       />
 
-      {staleness.isStale && (
-        /* Actions are refused while this is showing, and the banner says why.
-           A board whose cards are minutes old still LOOKS authoritative — the
-           service worker will even answer a failed read from cache with a 200
-           (finding G11) — so the only safe thing is to say so and stop taking
-           taps that would be written against a stale row. */
-        <div
-          role="alert"
-          data-testid="ops-stale-banner"
-          className="flex items-start gap-2 rounded-lg border border-ops-delayed bg-card p-3 text-sm text-foreground"
-        >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ops-delayed" aria-hidden />
-          <span>
-            <span className="font-semibold">The board is not up to date.</span>{" "}
-            {staleness.reason} Actions are held until it refreshes.
-          </span>
-        </div>
-      )}
+      <OpsStaleBanner staleness={staleness} />
 
       {/* Container query, not a viewport one: the lanes sit side by side when
           the BOARD is wide enough, which on the tablet this is designed for
@@ -262,6 +251,7 @@ export function OpsBoard({
             filtered={filtered}
             searchActive={search.trim().length > 0}
             pendingIds={pendingIds}
+            isAlertForOrder={isAlertForOrder}
             shouldIgnoreEnter={scannerGuard.shouldIgnoreEnter}
             {...cardHandlers}
           />

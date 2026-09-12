@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigation } from "@/contexts/NavigationContext";
@@ -11,16 +12,21 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOpsBoard, type OpsBoardResponse } from "@/hooks/useOpsBoard";
 import { useOpsTicker } from "@/hooks/useOpsTicker";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useOpsAlerts } from "@/hooks/useOpsAlerts";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { invalidateAfterOrderStatusChange } from "@/lib/query-invalidation";
+import { apiFetch } from "@/lib/appPaths";
+import { invalidateAfterOpsTransition, invalidateAfterOrderStatusChange } from "@/lib/query-invalidation";
 import { STORAGE_OPS_FILTER, STORAGE_OPS_TAB } from "@shared/storageKeys";
 import type { OrderStatus } from "@shared/schema";
+import type { TransitionAction, TransitionOrderInput } from "@shared/orders/opsTransitions";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { OpsBoard } from "@/components/operations/OpsBoard";
 import { OpsAnnouncer } from "@/components/operations/OpsAnnouncer";
 import { OpsDeleteDialog } from "@/components/operations/OpsDeleteDialog";
 import { OpsDetailsSheet } from "@/components/operations/OpsDetailsSheet";
 import { OpsEditDialog } from "@/components/operations/OpsEditDialog";
+import { OpsStaffStrip } from "@/components/operations/OpsStaffStrip";
+import { OpsStationPicker } from "@/components/operations/OpsStationPicker";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 
 /**
@@ -28,10 +34,12 @@ import type { OpsFilter } from "@/components/operations/OpsHeader";
  *
  * One screen that answers the question Open Orders could not: what needs doing
  * now, who is it for, and is it late — see docs/briefs/PHASE_N_OPERATIONS_CENTRE.md.
- * This is v0 (N1): the lanes, the cards, the clocks and one-tap Handed over /
- * Delivered, built over the columns `orders` already has. Assignment, stages,
- * alerts and the embedded order form arrive in N2–N6 and slot into the shell
- * this file establishes.
+ * N1 (v0) built the shell, the lanes, the cards and the clocks over the
+ * columns `orders` already had, with one-tap Handed over / Delivered through
+ * the pre-existing PATCH. This is N4a: every other card action — claim, pass,
+ * ready, arrived, out for delivery, hold, undo, delay, set due, rate — now
+ * calls the real `POST /api/orders/:id/transition` (N3b), plus stations,
+ * presence, the break loop and the Done tray's Undo.
  *
  * Three structural decisions live here rather than in a component:
  *
@@ -249,6 +257,80 @@ function NewOrderSlot() {
   );
 }
 
+/** The exact shape `runOrderTransition` returns (`server/services/orderTransitions.ts`). */
+interface TransitionResult {
+  order: BoardOrder;
+  event: { id: string; kind: string; at: string } | null;
+  changed: boolean;
+}
+
+interface TransitionClientError extends Error {
+  status?: number;
+  code?: string;
+  assignedUserId?: string;
+  assignedUserName?: string;
+}
+
+/**
+ * Calls the real transition endpoint directly with `apiFetch` rather than
+ * through `apiRequest` (`lib/queryClient.ts`): `apiRequest` throws away every
+ * field of a JSON error body except `message`, and the claim-race 409's
+ * `code: 'ORDER_ALREADY_ASSIGNED'` is exactly what tells this page to show a
+ * distinct "someone got there first" toast instead of the generic failure
+ * one. The server's `message` already names the winner
+ * (`OrderAlreadyAssignedError`, N3b), so nothing here has to.
+ */
+async function postOrderTransition(orderId: string, input: TransitionOrderInput): Promise<TransitionResult> {
+  const response = await apiFetch(`/api/orders/${orderId}/transition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body?.message || `Request failed (${response.status})`) as TransitionClientError;
+    error.status = response.status;
+    error.code = body?.code;
+    error.assignedUserId = body?.assignedUserId;
+    error.assignedUserName = body?.assignedUserName;
+    throw error;
+  }
+  return body as TransitionResult;
+}
+
+/** A human sentence for the announcer, one per action — the board's own `role="status"` region (`OpsAnnouncer`). */
+function announceFor(order: BoardOrder, action: TransitionAction): string {
+  const label = order.fulfilmentMethod === "delivery" ? "Delivered" : "Handed over";
+  switch (action) {
+    case "claim":
+      return `You are now dealing with order ${order.shortCode}`;
+    case "unclaim":
+      return `Order ${order.shortCode} released`;
+    case "assign":
+      return `Order ${order.shortCode} passed on`;
+    case "ready":
+      return `Order ${order.shortCode} is ready`;
+    case "unready":
+      return `Order ${order.shortCode} is not ready`;
+    case "arrived":
+      return `Customer here for order ${order.shortCode}`;
+    case "out_for_delivery":
+      return `Order ${order.shortCode} is out for delivery`;
+    case "complete":
+      return `Order ${order.shortCode} ${label.toLowerCase()}`;
+    case "reopen":
+      return `Order ${order.shortCode} reopened`;
+    case "hold":
+      return `Order ${order.shortCode} on hold`;
+    case "unhold":
+      return `Order ${order.shortCode} resumed`;
+    case "set_due":
+      return `Order ${order.shortCode} now has a due time`;
+    default:
+      return `Order ${order.shortCode} updated`;
+  }
+}
+
 export default function OperationsCentre() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -265,6 +347,7 @@ export default function OperationsCentre() {
 
   const now = useOpsTicker();
   const board = useOpsBoard(now);
+  const alerts = useOpsAlerts();
   useWakeLock(true);
 
   const [tab, setTab] = useState<OpsTab>(() =>
@@ -280,6 +363,8 @@ export default function OperationsCentre() {
   const [deleteOrder, setDeleteOrder] = useState<BoardOrder | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  const [handOverPicking, setHandOverPicking] = useState(false);
+  const [loopBusy, setLoopBusy] = useState(false);
 
   const setPending = useCallback((orderId: string, pending: boolean) => {
     setPendingIds((current) => {
@@ -316,41 +401,92 @@ export default function OperationsCentre() {
     writeStored(STORAGE_OPS_FILTER, next);
   }, []);
 
+  const blockedReason = board.staleness.isStale ? board.staleness.reason : null;
+
   /**
-   * Every card action in v0 is one status write.
+   * The one write every stage action in this package makes: `claim`,
+   * `unclaim`, `assign`, `ready`, `unready`, `arrived`, `out_for_delivery`,
+   * `complete`, `reopen`, `hold`, `unhold` and `set_due` all end up here.
    *
-   * The transition endpoint the brief specifies (`POST /api/orders/:id/transition`,
-   * one locked transaction per stage) is N3b. Until it exists the board uses
-   * the endpoint that already settles orders — `PATCH /api/orders/:id` — so
-   * Handed over and Delivered go through exactly the completion path the old
-   * list used, with the same commission consequences and the same invalidation
-   * (`invalidateAfterOrderStatusChange`). Nothing new is invented server-side
-   * by this package.
-   *
-   * The optimistic update is not decoration either: on the counter, the gap
-   * between the tap and the poll is the moment a second cashier completes the
-   * same order.
+   * No optimistic cache write happens in `onMutate` — only `pending` state,
+   * which disables the card's buttons and shows the busy pulse. That is
+   * deliberate: `claim` is a real race (two tablets, one order) and the
+   * brief's whole point is that the LOSER sees a 409 naming the winner
+   * (`server/services/orderTransitions.ts`'s `UPDATE … WHERE
+   * assigned_user_id IS NULL`) — a board that painted "Sam has this" the
+   * instant either tablet tapped would hide exactly the failure this
+   * package has to prove it surfaces. `onSuccess` applies the server's own
+   * fresh row (`invalidateAfterOpsTransition`); nothing here ever assumes
+   * success before the response says so.
    */
-  const statusMutation = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: OrderStatus; announce: string }) => {
+  const transitionMutation = useMutation({
+    mutationFn: ({ order, input }: { order: BoardOrder; input: TransitionOrderInput }) =>
+      postOrderTransition(order.id, input),
+    onMutate: ({ order }) => setPending(order.id, true),
+    onSuccess: (result, { order, input }) => {
+      void invalidateAfterOpsTransition(queryClient, result.order);
+      if (result.changed) setAnnouncement(announceFor(order, input.action));
+      if (input.action === "complete" && result.changed) {
+        const label = order.fulfilmentMethod === "delivery" ? "Delivered" : "Handed over";
+        toast({
+          title: `${label} — order ${order.shortCode}`,
+          description: "Tap Undo if that was a mistake.",
+          action: (
+            <ToastAction
+              altText="Undo"
+              onClick={() => transitionMutation.mutate({ order: result.order, input: { action: "reopen" } })}
+            >
+              Undo
+            </ToastAction>
+          ),
+        });
+      }
+    },
+    onError: (error: TransitionClientError, { order }) => {
+      if (error.code === "ORDER_ALREADY_ASSIGNED") {
+        toast({
+          title: "Someone got there first",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: `Order ${order.shortCode} did not update`,
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+    onSettled: (_result, _error, { order }) => setPending(order.id, false),
+  });
+
+  const runTransition = useCallback(
+    (order: BoardOrder, input: TransitionOrderInput) => {
+      if (blockedReason) {
+        toast({ title: "The board is not up to date", description: blockedReason });
+        return;
+      }
+      transitionMutation.mutate({ order, input });
+    },
+    [blockedReason, transitionMutation, toast],
+  );
+
+  /**
+   * `urgent` is a status flag, not a lifecycle stage — it was never one of
+   * `TRANSITION_ACTIONS` (`shared/orders/opsTransitions.ts`, N0) before N3b
+   * existed and it still is not one now, so it keeps the v0 PATCH write this
+   * page always had. Kept optimistic (unlike the transition mutation above)
+   * for the same reason it always was: nothing about "urgent" can race the
+   * way a claim can — it has no losing side.
+   */
+  const urgentMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: OrderStatus }) => {
       const response = await apiRequest("PATCH", `/api/orders/${orderId}`, { status });
       return response.json();
     },
     onMutate: async ({ orderId, status }) => {
       setPending(orderId, true);
-      // N3a: the board now reads `['/api/orders/board']`, not `['/api/orders']`
-      // (useOpsBoard.ts) — the optimistic patch has to land in the cache the
-      // board actually renders from, or a tap would wait for the ordinary
-      // reconciliation poll to appear to do anything.
       await queryClient.cancelQueries({ queryKey: ["/api/orders/board"] });
-      // Snapshot only the one row this mutation is about to touch, not the
-      // whole array. Two cards can be in flight at once (two cashiers, two
-      // taps): if each mutation captured the entire list, whichever one
-      // errors first would roll the *whole* cache back to its own snapshot —
-      // silently reverting the other order's already-successful optimistic
-      // update, or worse, the server's own recorded change, purely because it
-      // predates the failing mutation. Scoping the snapshot to this order's
-      // row means a rollback can only ever touch what this mutation changed.
       const previousOrder = queryClient
         .getQueryData<OpsBoardResponse>(["/api/orders/board"])
         ?.orders.find((row) => row.id === orderId);
@@ -361,11 +497,11 @@ export default function OperationsCentre() {
       );
       return { previousOrder };
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: async () => {
       await invalidateAfterOrderStatusChange(queryClient);
-      setAnnouncement(variables.announce);
+      setAnnouncement("Order marked urgent");
     },
-    onError: (error: any, variables, context) => {
+    onError: (error: Error, variables, context) => {
       if (context?.previousOrder) {
         const restored = context.previousOrder;
         queryClient.setQueryData<OpsBoardResponse>(["/api/orders/board"], (current) =>
@@ -374,28 +510,69 @@ export default function OperationsCentre() {
             : current,
         );
       }
-      toast({
-        title: "That did not save",
-        description: error?.message ?? "The order was left as it was.",
-        variant: "destructive",
-      });
+      toast({ title: "That did not save", description: error.message, variant: "destructive" });
     },
     onSettled: (_data, _error, variables) => {
       if (variables?.orderId) setPending(variables.orderId, false);
     },
   });
 
-  const blockedReason = board.staleness.isStale ? board.staleness.reason : null;
-
-  const write = useCallback(
-    (order: BoardOrder, status: OrderStatus, announce: string) => {
+  const writeUrgent = useCallback(
+    (order: BoardOrder) => {
       if (blockedReason) {
         toast({ title: "The board is not up to date", description: blockedReason });
         return;
       }
-      statusMutation.mutate({ orderId: order.id, status, announce });
+      urgentMutation.mutate({ orderId: order.id, status: "urgent" });
     },
-    [blockedReason, statusMutation, toast],
+    [blockedReason, urgentMutation, toast],
+  );
+
+  // My own open orders — the break loop's working set ("Hand over my
+  // orders…" / "Release all") and `OpsStationPicker`'s enabled state for
+  // both buttons.
+  const myOpenOrders = useMemo(
+    () => board.orders.filter((order) => order.assignedUserId === user?.id && order.status !== "completed"),
+    [board.orders, user?.id],
+  );
+
+  const runLoop = useCallback(
+    async (input: TransitionOrderInput, successTitle: string) => {
+      if (blockedReason) {
+        toast({ title: "The board is not up to date", description: blockedReason });
+        return;
+      }
+      if (myOpenOrders.length === 0) return;
+      setLoopBusy(true);
+      let ok = 0;
+      let failed = 0;
+      for (const order of myOpenOrders) {
+        try {
+          await transitionMutation.mutateAsync({ order, input });
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      setLoopBusy(false);
+      toast({
+        title: successTitle,
+        description: `${ok} order${ok === 1 ? "" : "s"}.${failed ? ` ${failed} could not be moved.` : ""}`,
+      });
+    },
+    [blockedReason, myOpenOrders, transitionMutation, toast],
+  );
+
+  const releaseAll = useCallback(() => {
+    void runLoop({ action: "unclaim" }, "Orders released");
+  }, [runLoop]);
+
+  const handOverMineTo = useCallback(
+    (targetUserId: string) => {
+      setHandOverPicking(false);
+      void runLoop({ action: "assign", userId: targetUserId }, "Orders handed over");
+    },
+    [runLoop],
   );
 
   const cardHandlers = useMemo(
@@ -403,23 +580,34 @@ export default function OperationsCentre() {
       now,
       settings: board.settings,
       role: user?.role,
+      currentUserId: user?.id,
+      staff: board.staff,
       blockedReason,
-      onComplete: (order: BoardOrder) =>
-        write(
-          order,
-          "completed",
-          order.fulfilmentMethod === "delivery"
-            ? `Order ${order.shortCode} delivered`
-            : `Order ${order.shortCode} handed over`,
-        ),
-      onHold: (order: BoardOrder) => write(order, "on-hold", `Order ${order.shortCode} on hold`),
-      onResume: (order: BoardOrder) => write(order, "pending", `Order ${order.shortCode} resumed`),
-      onUrgent: (order: BoardOrder) => write(order, "urgent", `Order ${order.shortCode} marked urgent`),
+      onClaim: (order: BoardOrder) => runTransition(order, { action: "claim" }),
+      onUnclaim: (order: BoardOrder) => runTransition(order, { action: "unclaim" }),
+      onAssign: (order: BoardOrder, userId: string) => runTransition(order, { action: "assign", userId }),
+      onReady: (order: BoardOrder) => runTransition(order, { action: "ready" }),
+      onUnready: (order: BoardOrder) => runTransition(order, { action: "unready" }),
+      onArrived: (order: BoardOrder) => runTransition(order, { action: "arrived" }),
+      onOutForDelivery: (order: BoardOrder) => runTransition(order, { action: "out_for_delivery" }),
+      onComplete: (order: BoardOrder, actualAt?: string) =>
+        runTransition(order, {
+          action: "complete",
+          label: order.fulfilmentMethod === "delivery" ? "delivered" : "handed_over",
+          ...(actualAt ? { actualAt } : {}),
+        }),
+      onReopen: (order: BoardOrder) => runTransition(order, { action: "reopen" }),
+      onHold: (order: BoardOrder, reason?: string) =>
+        runTransition(order, { action: "hold", ...(reason ? { reason } : {}) }),
+      onUnhold: (order: BoardOrder) => runTransition(order, { action: "unhold" }),
+      onSetDue: (order: BoardOrder, due: { dueInMinutes: number } | { dueTime: string }) =>
+        runTransition(order, "dueInMinutes" in due ? { action: "set_due", dueInMinutes: due.dueInMinutes } : { action: "set_due", dueTime: due.dueTime }),
+      onUrgent: writeUrgent,
       onView: (orderId: string) => setDetailsOrderId(orderId),
       onEdit: (order: BoardOrder) => setEditOrder(order),
       onDelete: (order: BoardOrder) => setDeleteOrder(order),
     }),
-    [now, board.settings, user?.role, blockedReason, write],
+    [now, board.settings, board.staff, user?.role, user?.id, blockedReason, runTransition, writeUrgent],
   );
 
   const detailsOrder = useMemo(
@@ -427,12 +615,96 @@ export default function OperationsCentre() {
     [board.orders, detailsOrderId],
   );
 
-  // A card can be completed from the sheet's status select, which is the same
-  // write as the card's own button and must announce the same way.
+  /**
+   * The details sheet's status select carries the whole `OrderStatus` enum
+   * (`select-order-status-<id>`, kept from v0 — brief: "`awaiting-customer`
+   * maps to `ready`, `completed` to `complete`"). Resuming a held order
+   * through this control is `unhold` regardless of which OTHER status was
+   * picked — `unhold` restores whatever status the matching `held` event
+   * recorded (`assertTransition`, N0), so the dropdown's job is only to say
+   * "not held any more", not to guess the destination itself. `pending` and
+   * `urgent` have no transition of their own (neither ever did — see
+   * `writeUrgent`'s doc comment) and keep the PATCH this control always used.
+   */
   const onSheetStatusChange = useCallback(
-    (order: BoardOrder, status: OrderStatus) =>
-      write(order, status, `Order ${order.shortCode} is now ${status.replace(/-/g, " ")}`),
-    [write],
+    (order: BoardOrder, status: OrderStatus) => {
+      if (order.status === "on-hold" && status !== "on-hold") {
+        runTransition(order, { action: "unhold" });
+        return;
+      }
+      if (status === "on-hold") {
+        runTransition(order, { action: "hold" });
+        return;
+      }
+      if (status === "awaiting-customer") {
+        runTransition(order, { action: "ready" });
+        return;
+      }
+      if (status === "completed") {
+        runTransition(order, {
+          action: "complete",
+          label: order.fulfilmentMethod === "delivery" ? "delivered" : "handed_over",
+        });
+        return;
+      }
+      if (blockedReason) {
+        toast({ title: "The board is not up to date", description: blockedReason });
+        return;
+      }
+      urgentMutation.mutate({ orderId: order.id, status });
+    },
+    [runTransition, blockedReason, urgentMutation, toast],
+  );
+
+  const headerStationRow = (
+    <div className="space-y-2">
+      <OpsStaffStrip staff={board.staff} now={now} />
+      <OpsStationPicker
+        me={board.me}
+        hasOpenAssigned={myOpenOrders.length > 0}
+        onHandOverMine={() => setHandOverPicking(true)}
+        onReleaseAll={releaseAll}
+        handOverPending={loopBusy}
+        releasePending={loopBusy}
+      />
+      {handOverPicking && (
+        <div
+          role="group"
+          aria-label="Hand your orders to"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2"
+          data-testid="ops-hand-over-picker"
+        >
+          {board.staff.filter((member) => member.userId !== user?.id).length === 0 ? (
+            <p className="px-1 py-1 text-sm text-muted-foreground">Nobody else is on the board yet.</p>
+          ) : (
+            board.staff
+              .filter((member) => member.userId !== user?.id)
+              .map((member) => (
+                <Button
+                  key={member.userId}
+                  type="button"
+                  size="touch"
+                  variant="outline"
+                  disabled={loopBusy}
+                  onClick={() => handOverMineTo(member.userId)}
+                  data-testid={`ops-hand-over-to-${member.userId}`}
+                >
+                  {member.name}
+                </Button>
+              ))
+          )}
+          <Button
+            type="button"
+            size="touch"
+            variant="ghost"
+            onClick={() => setHandOverPicking(false)}
+            data-testid="ops-hand-over-cancel"
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
   );
 
   return (
@@ -459,6 +731,8 @@ export default function OperationsCentre() {
               staleness={board.staleness}
               onRefresh={board.refetch}
               pendingIds={pendingIds}
+              isAlertForOrder={alerts.isAlertForOrder}
+              headerStationRow={headerStationRow}
               cardHandlers={cardHandlers}
             />
             {/* On a phone the details panel is inline rather than a Sheet, so

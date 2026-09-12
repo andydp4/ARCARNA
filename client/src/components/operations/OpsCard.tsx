@@ -6,27 +6,14 @@ import {
   CalendarClock,
   Check,
   Clock,
-  Edit2,
-  Eye,
   Globe2,
-  MoreVertical,
   Pause,
-  Play,
-  Trash2,
-  Truck,
   type LucideIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
 import type { CardState, DerivedCardState, OpsTimingSettings } from "@shared/orders/opsState";
+import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { formatPaymentLabel } from "@/lib/paymentLabel";
 import {
@@ -37,6 +24,7 @@ import {
   formatTimeOfDay,
 } from "@/lib/opsClock";
 import { OpsCardClock } from "./OpsCardClock";
+import { OpsCardActions, type OpsActionHandlers } from "./OpsCardActions";
 
 /**
  * One order, as a card on the counter's board.
@@ -58,8 +46,19 @@ import { OpsCardClock } from "./OpsCardClock";
  *     glance down a lane compares like with like.
  *
  * `data-state`, `data-lane` and `data-alert` are the contract the journey and
- * a11y suites assert against, and `data-alert` is already here — always
- * "false" until N5b has real per-person alert rows to pulse for.
+ * a11y suites assert against. `data-alert` (N4a: `alertActive` prop, wired to
+ * `useOpsAlerts` — still always "false" today, since that hook is N4a's own
+ * stub; N5b makes it real) is a pulse-and-chime trigger, never a colour: the
+ * band and chip above already say what STATE the card is in, and an alert is
+ * an orthogonal fact — "this needs someone's attention now" — that can be
+ * true or false in almost any state.
+ *
+ * Every action beyond View/Details moved to `OpsCardActions.tsx` (N4a): claim,
+ * pass, ready, arrived, out for delivery, undo, hold, delay, set due and rate,
+ * every one wired to `POST /api/orders/:id/transition` (or, for a delay and a
+ * rating, the path the brief keeps those two on). This file keeps the parts
+ * that answer "what state is this and what does it say", not "what can I do
+ * about it".
  */
 
 interface StateStyle {
@@ -105,26 +104,23 @@ const STATE_STYLES: Record<CardState, StateStyle> = {
   "on-time": { band: "bg-ops-ontime", chip: "bg-ops-ontime text-truth-foreground", icon: Clock },
 };
 
-export interface OpsCardProps {
+export interface OpsCardProps extends OpsActionHandlers {
   order: BoardOrder;
   derived: DerivedCardState;
   now: Date;
   settings: OpsTimingSettings;
   /** MANAGER+ gets Edit and Delete; a cashier never sees a control that would 403. */
   role?: string;
+  currentUserId?: string;
+  staff: OpsBoardStaffRow[];
   /** True while this card's own write is in flight. */
   busy?: boolean;
   /** Set while the board is stale or offline — every write is refused, with a reason. */
   blockedReason?: string | null;
+  /** True while an open alert addressed to the viewer exists on this card (N5b; always false today — see the module doc comment). */
+  alertActive?: boolean;
   /** Enter on a focused card, unless a barcode scanner sent it (client/src/lib/opsKeys.ts). */
   shouldIgnoreEnter?: (at: number) => boolean;
-  onComplete: (order: BoardOrder) => void;
-  onHold: (order: BoardOrder) => void;
-  onResume: (order: BoardOrder) => void;
-  onUrgent: (order: BoardOrder) => void;
-  onView: (orderId: string) => void;
-  onEdit: (order: BoardOrder) => void;
-  onDelete: (order: BoardOrder) => void;
 }
 
 function OpsCardInner({
@@ -133,12 +129,24 @@ function OpsCardInner({
   now,
   settings,
   role,
+  currentUserId,
+  staff,
   busy,
   blockedReason,
+  alertActive,
   shouldIgnoreEnter,
+  onClaim,
+  onUnclaim,
+  onAssign,
+  onReady,
+  onUnready,
+  onArrived,
+  onOutForDelivery,
   onComplete,
+  onReopen,
   onHold,
-  onResume,
+  onUnhold,
+  onSetDue,
   onUrgent,
   onView,
   onEdit,
@@ -151,11 +159,9 @@ function OpsCardInner({
   const elapsed = elapsedSinceReceived(derived, now);
   const isOpen = order.status !== "completed";
   const isHeld = order.status === "on-hold";
-  const canEditOrDelete = role !== "CASHIER";
   const blocked = Boolean(blockedReason);
   const disabled = busy || blocked;
   const customer = order.customerName ?? "Walk-in";
-  const completeLabel = order.fulfilmentMethod === "delivery" ? "Delivered" : "Handed over";
   const dueText = derived.dueAt ? formatTimeOfDay(derived.dueAt, settings.timezone) : null;
 
   /** Enter on the card itself does what the primary button does. */
@@ -171,7 +177,9 @@ function OpsCardInner({
     }
     if (disabled || !isOpen) return;
     event.preventDefault();
-    if (isHeld) onResume(order);
+    if (isHeld) onUnhold(order);
+    else if (!order.assignedUserId) onClaim(order);
+    else if (!order.readyAt) onReady(order);
     else onComplete(order);
   };
 
@@ -186,7 +194,7 @@ function OpsCardInner({
       data-testid={`ops-card-${order.id}`}
       data-state={derived.state}
       data-lane={order.fulfilmentMethod}
-      data-alert="false"
+      data-alert={alertActive ? "true" : "false"}
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
       aria-label={`Order ${order.shortCode}, ${customer}`}
@@ -196,6 +204,7 @@ function OpsCardInner({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-truth-bright",
         style.cardOutline,
         busy && "animate-pulse motion-reduce:animate-none",
+        alertActive && "animate-ops-pulse motion-reduce:animate-none",
       )}
     >
       {/* The state band. 6px, full width, aria-hidden: the chip below says the
@@ -296,113 +305,32 @@ function OpsCardInner({
           </p>
         )}
 
-        <div className="flex flex-wrap items-stretch gap-2 pt-1">
-          {isOpen && (
-            <Button
-              size="touch"
-              className="flex-1 sm:flex-none"
-              onClick={() => (isHeld ? onResume(order) : onComplete(order))}
-              disabled={disabled}
-              title={blockedReason ?? undefined}
-              data-testid={
-                isHeld ? `ops-resume-${order.id}` : `button-complete-order-${order.id}`
-              }
-            >
-              {isHeld ? (
-                <Play className="h-4 w-4 shrink-0" aria-hidden />
-              ) : (
-                <Check className="h-4 w-4 shrink-0" aria-hidden />
-              )}
-              {isHeld ? "Resume" : completeLabel}
-            </Button>
-          )}
-          <Button
-            size="touch"
-            variant="outline"
-            className="flex-1 sm:flex-none"
-            onClick={() => onView(order.id)}
-            data-testid={`button-view-order-${order.id}`}
-          >
-            <Eye className="h-4 w-4 shrink-0" aria-hidden />
-            View
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="touch"
-                variant="outline"
-                className="px-0 sm:px-3"
-                data-testid={`button-order-actions-${order.id}`}
-                aria-label={`More actions for order ${order.shortCode}`}
-              >
-                <MoreVertical className="h-4 w-4" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              {isOpen && !isHeld && (
-                <DropdownMenuItem
-                  onClick={() => onHold(order)}
-                  disabled={disabled}
-                  data-testid={`ops-hold-${order.id}`}
-                >
-                  <Pause className="mr-2 h-4 w-4" aria-hidden />
-                  Put on hold
-                </DropdownMenuItem>
-              )}
-              {isOpen && isHeld && (
-                <DropdownMenuItem
-                  onClick={() => onResume(order)}
-                  disabled={disabled}
-                  data-testid={`menu-resume-order-${order.id}`}
-                >
-                  <Play className="mr-2 h-4 w-4" aria-hidden />
-                  Resume
-                </DropdownMenuItem>
-              )}
-              {/* `urgent` and `on-hold` are the same `status` column, so this
-                  is hidden rather than merely disabled while held: offering
-                  it would read as "flag this held order urgent" but would
-                  actually un-hold it. Resume first, then mark urgent. */}
-              {isOpen && !isHeld && order.status !== "urgent" && (
-                <DropdownMenuItem
-                  onClick={() => onUrgent(order)}
-                  disabled={disabled}
-                  data-testid={`ops-urgent-${order.id}`}
-                >
-                  <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
-                  Mark urgent
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => onView(order.id)} data-testid={`menu-details-${order.id}`}>
-                <Eye className="mr-2 h-4 w-4" aria-hidden />
-                Details, delay &amp; documents
-              </DropdownMenuItem>
-              {canEditOrDelete && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => onEdit(order)} data-testid="menu-edit-order">
-                    <Edit2 className="mr-2 h-4 w-4" aria-hidden />
-                    Edit lines
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => onDelete(order)}
-                    data-testid="menu-delete-order"
-                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-                    Delete order…
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {order.fulfilmentMethod === "delivery" && derived.onTheRoad && (
-            <span className="inline-flex items-center gap-1 self-center text-xs font-medium text-muted-foreground">
-              <Truck className="h-3.5 w-3.5" aria-hidden />
-              Out for delivery
-            </span>
-          )}
-        </div>
+        <OpsCardActions
+          order={order}
+          derived={derived}
+          settings={settings}
+          role={role}
+          currentUserId={currentUserId}
+          staff={staff}
+          busy={busy}
+          blockedReason={blockedReason}
+          onClaim={onClaim}
+          onUnclaim={onUnclaim}
+          onAssign={onAssign}
+          onReady={onReady}
+          onUnready={onUnready}
+          onArrived={onArrived}
+          onOutForDelivery={onOutForDelivery}
+          onComplete={onComplete}
+          onReopen={onReopen}
+          onHold={onHold}
+          onUnhold={onUnhold}
+          onSetDue={onSetDue}
+          onUrgent={onUrgent}
+          onView={onView}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
       </div>
     </article>
   );
