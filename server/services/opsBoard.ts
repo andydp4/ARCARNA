@@ -276,8 +276,17 @@ async function selectActualHandoverTimes(orgId: string, completedOrderIds: strin
       ),
     )
     .orderBy(desc(orderEvents.at));
+  const seen = new Set<string>();
   for (const row of rows) {
-    if (result.has(row.orderId)) continue; // most recent wins; rows arrive newest-first
+    // Rows arrive newest-first, so the first row seen for an order IS its
+    // current completion — a resettle after `reopen` writes a new `completed`
+    // row rather than mutating the old one, so an order can have several.
+    // Only that current row's `actualAt` is live; an older completion's
+    // `actualAt` was superseded the moment the order was reopened, so once
+    // we've looked at the newest row for an order we must stop, whether or
+    // not it carried an override — never fall through to an earlier row.
+    if (seen.has(row.orderId)) continue;
+    seen.add(row.orderId);
     const actualAt = (row.meta as { actualAt?: string } | null)?.actualAt;
     if (actualAt) result.set(row.orderId, new Date(actualAt));
   }
