@@ -103,6 +103,9 @@ const MANAGER_AND_UP: Probe[] = [
   { method: "patch", path: `/api/inventory/transfers/${ABSENT}/status`, body: { status: "not-a-status" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/inventoryTransfers.ts:103" },
   { method: "patch", path: `/api/inventory/${ABSENT}`, body: { adjustment: 5, type: "adjustment" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/inventory.ts:30" },
 
+  // These two are also the "PUT / DELETE" row of the Operations Centre's role
+  // table (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, § API) — already guarded,
+  // already probed, and unchanged by that phase.
   { method: "put", path: `/api/orders/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orders.ts:324" },
   { method: "delete", path: `/api/orders/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orders.ts:375" },
 
@@ -129,6 +132,71 @@ const MANAGER_AND_UP: Probe[] = [
   { method: "post", path: "/api/products/import", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:121" },
   { method: "post", path: "/api/customers/import/preview", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:176" },
   { method: "post", path: "/api/customers/import", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:216" },
+];
+
+/**
+ * Phase N (Operations Centre) — DOCUMENTATION ONLY, asserted nowhere.
+ *
+ * The brief's API section declares a role table for the board's new routes:
+ * every stage action is CASHIER+, while assigning someone else's work,
+ * unclaiming it, reopening or un-readying after ten minutes, setting another
+ * person's station, and PUT / DELETE are MANAGER+. None of it can be proved
+ * here, for two reasons that are worth writing down rather than discovering
+ * again:
+ *
+ *  1. This whole suite runs under `DEV_AUTH_BYPASS=1`, where `requireRole`
+ *     returns `next()` unconditionally (server/auth/commonAuth.ts:94-95). Every
+ *     test above therefore self-skips, and a new one would too.
+ *  2. Most of this table is not a `requireRole` line at all. "Assign when
+ *     passing on one's OWN order" versus "assign someone else's" depends on the
+ *     row, not the role, so the check lives inside the handler — the same shape
+ *     as `PATCH /api/orgs/:id`, which needed its own test above for exactly
+ *     that reason. A middleware-shaped probe would miss it entirely.
+ *
+ * The real gate is `server/__tests__/orderTransitionRoles.test.ts` (N3b), which
+ * uses the `captureRoutes` / `runGuard` pattern from
+ * `server/__tests__/mutationRoleGuards.test.ts`: it registers the real routes
+ * and runs the real middleware in-process, with no bypass in the way. These
+ * rows exist so that when N3b lands, the probes it needs are already written
+ * and can be lifted into `MANAGER_AND_UP` (or into `UNGUARDED_MUTATIONS`, if a
+ * route turns out to carry no guard) without re-reading the brief.
+ *
+ * `where` names the file each guard is due in, not a line that exists today.
+ */
+const OPS_FUTURE_MANAGER_AND_UP: Probe[] = [
+  // `assign` to somebody else, and `unclaim` somebody else's order: CASHIER may
+  // do both to their own order, so the role check is inside the handler.
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "assign", userId: "someone-else" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orderTransitions.ts (N3b), in-handler" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "unclaim" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orderTransitions.ts (N3b), in-handler — own order is CASHIER+" },
+  // `reopen` and `unready` are CASHIER+ within ten minutes BY the person who
+  // did it, MANAGER+ after that or for someone else. Time-dependent, so also
+  // in-handler.
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "reopen" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orderTransitions.ts (N3b), in-handler — ≤10 min by the completer is CASHIER+" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "unready" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/orderTransitions.ts (N3b), in-handler — ≤10 min by the marker is CASHIER+" },
+  // Setting somebody else's station is a plain `requireRole`, so this one will
+  // move into MANAGER_AND_UP unchanged.
+  { method: "patch", path: `/api/operations/station/${ABSENT}`, body: { station: "collection" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/operations.ts (N3b), requireRole" },
+];
+
+/**
+ * Phase N — DOCUMENTATION ONLY. The CASHIER+ half of the same table: reachable
+ * by any cashier, so these belong beside `UNGUARDED_MUTATIONS` in spirit, with
+ * the difference that being reachable is the INTENDED policy here rather than a
+ * finding. Listed so a future guard added to one of them is a deliberate
+ * change, not a silent one.
+ */
+const OPS_FUTURE_CASHIER_AND_UP: Probe[] = [
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "claim" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "ready" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "arrived" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "out_for_delivery" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "complete" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "hold", reason: "documented" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "unhold" }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "post", path: `/api/orders/${ABSENT}/transition`, body: { action: "set_due", dueInMinutes: 15 }, allow: [], where: "server/routes/orderTransitions.ts (N3b)" },
+  { method: "patch", path: "/api/operations/station", body: { station: "collection" }, allow: [], where: "server/routes/operations.ts (N3b) — self only" },
+  { method: "patch", path: `/api/operations/alerts/${ABSENT}/ack`, allow: [], where: "server/routes/opsAlerts.ts (N5a) — own rows only" },
+  { method: "post", path: "/api/operations/alerts/ack-all", body: {}, allow: [], where: "server/routes/opsAlerts.ts (N5a) — own rows only" },
 ];
 
 /** Routes restricted to SUPER_ADMIN/ADMIN — a MANAGER must be refused too. */
@@ -430,6 +498,40 @@ test.describe("5.1 characterisation — mutating routes with no role guard", () 
     );
     expect(del.status(), "characterised: no role guard, so the delete succeeds").toBe(200);
     expect(after.status(), "and the product is really gone").toBe(404);
+  });
+});
+
+test.describe("Phase N — the Operations Centre role table, recorded not enforced", () => {
+  /**
+   * Deliberately NOT skipped under the bypass, because it asserts nothing about
+   * the server: it prints the table and checks the table itself is coherent.
+   * Anything that did probe these routes would either skip (bypass on) or fail
+   * on a 404 (routes not built yet), and both would be theatre. The enforcing
+   * test is `server/__tests__/orderTransitionRoles.test.ts`, which N3b writes
+   * against the real middleware with no bypass in front of it.
+   */
+  test("the future role table is recorded here and enforced in vitest", async () => {
+    const rows = [...OPS_FUTURE_MANAGER_AND_UP, ...OPS_FUTURE_CASHIER_AND_UP];
+    const keyed = rows.map((p) => `${label(p)} ${JSON.stringify(p.body ?? {})}`);
+
+    expect(new Set(keyed).size, "a duplicated row means one of them is a typo").toBe(keyed.length);
+    expect(
+      rows.filter((p) => !p.where),
+      "every row must name where its guard will live, or it cannot be checked off",
+    ).toEqual([]);
+    expect(
+      OPS_FUTURE_MANAGER_AND_UP.filter((p) => p.allow.length === 0),
+      "a MANAGER+ row with an empty allow-list is a CASHIER+ row in the wrong array",
+    ).toEqual([]);
+
+    console.log(
+      `[Phase N] ${OPS_FUTURE_MANAGER_AND_UP.length} MANAGER+ and ` +
+        `${OPS_FUTURE_CASHIER_AND_UP.length} CASHIER+ Operations Centre actions are declared in the ` +
+        `brief and NOT asserted by this suite (DEV_AUTH_BYPASS, and most are in-handler ` +
+        `ownership checks rather than requireRole). Enforced by ` +
+        `server/__tests__/orderTransitionRoles.test.ts (N3b):\n  ` +
+        rows.map((p) => `${label(p)} — ${p.where}`).join("\n  "),
+    );
   });
 });
 
