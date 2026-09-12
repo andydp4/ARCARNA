@@ -105,6 +105,37 @@ describe("getOpsBoardOrder reflects real transitions", () => {
     expect(board!.handoverAt).toBe(board!.settledAt);
   });
 
+  it("a resettle with no new actualAt reports the current settlement's time, not a stale earlier override", async () => {
+    const orderId = await makeOrder();
+
+    // First completion carries a driver-reported actualAt well in the past —
+    // the ordinary "delivered a bit before the tap" case.
+    const staleActualAt = new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString();
+    await runOrderTransition({
+      orgId,
+      orderId,
+      actor: { userId: "sam", role: "CASHIER" },
+      input: { action: "complete", actualAt: staleActualAt },
+    });
+
+    // Reopened (e.g. to fix a line-item error) and re-completed normally,
+    // with no actualAt override this time — the common resettle case.
+    await runOrderTransition({ orgId, orderId, actor: { userId: "sam", role: "CASHIER" }, input: { action: "reopen" } });
+    await runOrderTransition({
+      orgId,
+      orderId,
+      actor: { userId: "sam", role: "CASHIER" },
+      input: { action: "complete" },
+    });
+
+    const board = await getOpsBoardOrder(orgId, orderId);
+    // The current completion has no actualAt, so the board must fall through
+    // to the order's own settledAt — never reach past the current completion
+    // into the superseded one's stale actualAt.
+    expect(board!.handoverAt).toBe(board!.settledAt);
+    expect(board!.handoverAt).not.toBe(staleActualAt);
+  });
+
   it("set_due writes eta_given and original_eta together on first write", async () => {
     const orderId = await makeOrder();
     await runOrderTransition({
