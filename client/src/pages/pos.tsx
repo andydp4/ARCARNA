@@ -997,7 +997,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   the customer, discounts and totals sit under the lines
                   rather than beside them. */}
               {narrow && (
-                <div className="lm-card mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
+                <div className="pos-mobile-summary mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
                   <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
                 </div>
               )}

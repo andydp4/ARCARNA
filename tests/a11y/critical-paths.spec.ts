@@ -4,12 +4,16 @@ import type { Result } from "axe-core";
 import { prepareTenantContext } from "../helpers/e2eTenant";
 
 const CRITICAL_PATHS = [
-  { name: "POS", path: "/create-order" },
   { name: "Customers", path: "/customers" },
   { name: "Products", path: "/products" },
   // The Operations Centre replaced Open Orders in N1; /open-orders now
   // redirects here, and the assertion below that a critical path does not
   // redirect would fail on the old entry (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md).
+  // N6 folded the order form into this same page (`/create-order` and `/pos`
+  // now redirect here too, for the same reason) — this entry's own scan
+  // already covers the embedded form, so a separate "POS" entry pointing at
+  // `/create-order` would just be a same-page duplicate now, tripping the
+  // same no-redirect assertion the comment above already explains.
   { name: "Operations", path: "/operations" },
   { name: "Settings", path: "/settings" },
 ] as const;
