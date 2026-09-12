@@ -183,14 +183,14 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 
 ## Phase N — The Operations Centre
 
-Spec: [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) (revision 2). Order: N0 → { N1 ‖ N2 ‖ N8 } → N3a → N3b → { N4a ‖ N7 } → N4b → N6 → { N5a ‖ N7 } → N5b → N9a → N9b.
+Spec: [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) (revision 3, owner's answers applied 2026-09-12). Order: N0 → { N1 ‖ N2 ‖ N8 } → N3a → N3b → { N4a ‖ N7 } → N4b → N6 → { N5a ‖ N7 } → N5b → N9a → N9b.
 
 | ID | Status | Wave / notes |
 |----|--------|----------------|
 | N0 | **Planned** | Contracts & tokens: `deriveCardState`, `assertTransition`, contrast spec, `--ops-*` tokens, `size="touch"` |
 | N1 | **Planned** | Board v0 over existing fields at `/operations` — floor-usable the day it merges; old links redirect |
 | N2 | **Planned** | Migration 065: stage columns, `order_events`, `ops_staff`, ops settings; `queue_position` dropped |
-| N3a | **Planned** | `GET /api/orders/board`, website fulfilment fix, offline received time, limiter skip |
+| N3a | **Planned** | `GET /api/orders/board` + SSE stream from an in-process bus (owner: no database polling), website fulfilment fix, offline received time |
 | N3b | **Planned** | `POST /api/orders/:id/transition`, `completeOrderTx` extraction (fixes the completion race), stations, presence |
 | N4a | **Planned** | Board v1: stages, assignment, done tray, undo, rating chips, focus rules |
 | N4b | **Planned** | Remove Open Orders and its dialogs |

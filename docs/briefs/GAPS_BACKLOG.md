@@ -408,7 +408,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 |---|---|
 | **Brief** | U7 / K-series |
 | **Snag** | `client/src/pages/pos.tsx` L136–139 keeps `orderExpenses`, validates them (L647–656) and passes them to the step, but `orderData` (L680–763) never includes them and the server writes `order_expenses` only for personal use. Silent data loss. |
-| **Fix** | N6 removes the dead UI (owner to confirm, question 12). Wiring it — client payload, `PlaceOrderInput`, insert inside the create transaction, Z-report effect — is its own money change. |
+| **Fix** | Owner chose to wire it (2026-09-12, Q12): N6 sends `expenses[]` from checkout, `PlaceOrderInput` declares it, and the create transaction inserts `order_expenses` rows on the path personal use already uses; `orderExpenses.test.ts` proves rows land and `total` is untouched. |
 | **Closed** | [ ] |
 
 <a id="gap-ops-06"></a>
