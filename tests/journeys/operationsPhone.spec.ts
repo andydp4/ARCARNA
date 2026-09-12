@@ -415,4 +415,130 @@ test.describe("order form on a phone, embedded in the Operations Centre", () => 
     const [shiftRow] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, shiftId));
     expect(shiftRow.status, "cancelling must not have closed the shift").toBe("open");
   });
+
+  /**
+   * The third `role="dialog"` a follow-up adversarial review found reachable
+   * from this tab, after the two `8dda00e` already fixed: the customer
+   * picker's "Add a new customer" opened `NewCustomerDialog`, a genuine Radix
+   * dialog, and that component had exactly one caller anywhere in the
+   * codebase — this panel. It is now `NewCustomerPanel`, an inline panel in
+   * `pos-cart-panel.tsx` (same file, same shape as the redeem-points panel
+   * above), and `NewCustomerDialog.tsx` is gone. This polls
+   * `[role="dialog"]` at every step of actually creating a customer through
+   * it, then reads the customer back from the database to prove the panel
+   * does real work, not just a cosmetic swap.
+   */
+  test("adding a new customer from the Order tab's customer picker is an inline panel, not a Dialog, and the customer is really created", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const suffix = uniqueSuffix();
+
+    const product = await okJson<{ id: string; name: string }>(
+      await api.post("/api/products", {
+        data: {
+          name: `Ops Phone New Customer Widget ${suffix}`,
+          productCode: `OPNC-${suffix}`.slice(0, 40),
+          costPrice: 1,
+          salePrice: 10,
+          defaultSalePrice: 10,
+          stock: 0,
+          stockLimit: 100,
+        },
+      }),
+    );
+    await api.patch(`/api/inventory/${product.id}`, {
+      headers: { "x-location-id": locationId },
+      data: { adjustment: 10, type: "set" },
+    });
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    const dialogs = page.locator('[role="dialog"]');
+
+    // A continuous poll running the whole time, alongside the step-by-step
+    // assertions below: `addInitScript` so it starts fresh on the very first
+    // paint (it re-runs on every new document, though this test only
+    // navigates once) rather than racing `page.goto`. Fails at the end if
+    // anything mounted a dialog at any point this test did not happen to
+    // check explicitly.
+    await page.addInitScript(() => {
+      (window as any).__dialogPollSaw = false;
+      const tick = () => {
+        if (document.querySelectorAll('[role="dialog"]').length > 0) {
+          (window as any).__dialogPollSaw = true;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.goto("/operations?pane=order");
+    await expect(page).toHaveURL(/\/operations(\?|$)/);
+    await expect(page.getByTestId("ops-tab-order")).toHaveAttribute("data-state", "active");
+    await expect(dialogs, "no dialog on first paint").toHaveCount(0);
+
+    const search = page.locator('[data-testid="line-product-new"]');
+    await expect(search).toBeVisible({ timeout: 60_000 });
+    await search.fill(`OPNC-${suffix}`);
+    const option = page.getByRole("option", { name: new RegExp(product.name) });
+    await expect(option).toBeVisible({ timeout: 15_000 });
+    await option.tap();
+    await expect(page.locator(`[data-testid="order-line-${product.id}"]`)).toBeVisible();
+    await expect(dialogs, "no dialog after adding a line").toHaveCount(0);
+
+    const newCustomerName = `Ops Phone New Customer ${suffix}`;
+
+    await page.locator('[data-testid="select-customer"]').tap();
+    await expect(dialogs, "the customer listbox is not a dialog").toHaveCount(0);
+    await page.locator('[data-testid="search-customer"]').fill(newCustomerName);
+    const addNewOption = page.locator('[data-testid="select-customer-new"]');
+    await expect(addNewOption).toBeVisible();
+    await addNewOption.tap();
+
+    const panel = page.locator('[data-testid="new-customer-panel"]');
+    await expect(panel, "adding a customer is an inline panel, not a Dialog").toBeVisible();
+    await expect(dialogs, "no dialog once the new-customer panel opens").toHaveCount(0);
+
+    const nameInput = page.locator('[data-testid="input-new-customer-name"]');
+    // Pre-filled from the search that came up empty, and focused on open —
+    // same behavior the Dialog this replaced had via `onOpenAutoFocus`.
+    await expect(nameInput).toHaveValue(newCustomerName);
+    await expect(nameInput, "the name field takes focus on open").toBeFocused();
+    await expect(dialogs, "no dialog while the form is focused").toHaveCount(0);
+
+    await page.locator('[data-testid="input-new-customer-phone"]').fill("+447700900123");
+    await page.locator('[data-testid="input-new-customer-email"]').fill(`${suffix}@example.test`);
+    await expect(dialogs, "no dialog while filling the form").toHaveCount(0);
+
+    const createdResponse = page.waitForResponse(
+      (r) => r.url().endsWith("/api/customers") && r.request().method() === "POST",
+    );
+    await page.locator('[data-testid="button-save-new-customer"]').tap();
+    const createdRes = await createdResponse;
+    expect(createdRes.status(), await createdRes.text()).toBe(200);
+    await expect(panel, "saving closes the panel").toHaveCount(0);
+    await expect(dialogs, "no dialog once the customer is created").toHaveCount(0);
+    await expect(page.locator('[data-testid="select-customer"]'), "the new customer is selected for this order").toContainText(
+      newCustomerName,
+    );
+
+    const finalDialogCount = await dialogs.count();
+    expect(finalDialogCount, "no dialog anywhere at the end of the flow").toBe(0);
+
+    const pollSawDialog = await page.evaluate(() => Boolean((window as any).__dialogPollSaw));
+    expect(pollSawDialog, "the continuous rAF poll must never have observed a dialog").toBe(false);
+
+    await page.context().close();
+
+    // Read the customer back from the database — proof the panel does real
+    // work, not just that the UI looks satisfied.
+    const [customerRow] = await db.select().from(customers).where(eq(customers.name, newCustomerName));
+    expect(customerRow, "the customer must really be created, not merely selected in the UI").toBeTruthy();
+    expect(customerRow.orgId).toBe(orgId);
+    expect(customerRow.phone).toBe("+447700900123");
+    expect(customerRow.email).toBe(`${suffix}@example.test`);
+  });
 });

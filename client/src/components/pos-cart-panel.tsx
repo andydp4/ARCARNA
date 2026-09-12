@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { UseMutationResult } from "@tanstack/react-query";
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,7 +20,6 @@ import {
 } from "lucide-react";
 import type { PosProduct } from "@/components/pos-types";
 import { ActionLoader } from "@/components/action-loader";
-import { NewCustomerDialog } from "@/components/customers/NewCustomerDialog";
 import type { TierProgress } from "@shared/loyalty/progress";
 
 export interface PosCartItem {
@@ -137,9 +138,10 @@ function CustomerPicker({
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => {
                 setOpen(false);
-                // Not a selection — an action, and a different overlay
-                // (NewCustomerDialog) is about to open. Let this one finish
-                // closing first so the two never fight over focus.
+                // Not a selection — an action, and the inline "add a
+                // customer" panel (NewCustomerPanel, below) is about to take
+                // focus. Let this listbox finish closing first so the two
+                // never fight over it.
                 requestAnimationFrame(onAddNew);
               }}
             >
@@ -171,6 +173,173 @@ function CustomerPicker({
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Add a customer without leaving what you were doing — inline, not a Dialog
+ * (N6 follow-up review: `NewCustomerDialog`, formerly opened from here, was
+ * the third `role="dialog"` an adversarial review found reachable from the
+ * Operations Centre's phone Order tab, after the two `8dda00e` already fixed
+ * — loyalty redemption and Z-report/close-shift, this same file and
+ * `OpsShiftControls`. `NewCustomerDialog` had exactly one caller — this
+ * panel — so its form moved here rather than growing an `inline` prop on a
+ * component nothing else uses; the dialog wrapper itself is gone. Same
+ * expand-in-place shape, and the same fields, validation and mutation, as
+ * before).
+ *
+ * Only the name is required: everything else can be filled in later from the
+ * Customers page, and asking for more at the till is how a form stops
+ * getting used.
+ */
+function NewCustomerPanel({
+  initialName,
+  onCreated,
+  onCancel,
+}: {
+  initialName: string;
+  onCreated: (customer: PosCustomer) => void;
+  onCancel: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState(initialName.trim());
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Take focus on open, same as the Dialog this replaced did via
+  // `onOpenAutoFocus` — the one field that has to be filled in should not be
+  // a tab away.
+  useEffect(() => {
+    nameRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/customers", {
+        name: name.trim(),
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        source: "pos",
+      });
+      return (await response.json()) as PosCustomer;
+    },
+    onSuccess: async (customer) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      onCreated(customer);
+      toast({
+        title: "Customer added",
+        description: `${customer.name} is on the system and selected for this order.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Could not add the customer",
+        description:
+          error?.message ||
+          "The customer was not saved. Check the connection and try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Queueing this one offline is not offered: the queue returns no id, and an
+  // order cannot be attached to a customer that does not exist yet. Saying so
+  // beats a success toast followed by a walk-in sale.
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const canSave = name.trim().length > 0 && !createMutation.isPending && !offline;
+
+  return (
+    <div
+      className="mt-2 space-y-3 rounded-lg border border-border bg-card p-3"
+      data-testid="new-customer-panel"
+      // A real user's "never mind" for a panel that looks and behaves like a
+      // small form, even though it is no longer a modal.
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onCancel();
+      }}
+    >
+      <div>
+        <h3 className="text-sm font-medium text-foreground">Add a new customer</h3>
+        <p className="text-xs text-muted-foreground">
+          {offline
+            ? "You are offline. A new customer needs a connection — ring this through as a walk-in and add them when you are back online."
+            : "Name is all that is needed now. The rest can be filled in later."}
+        </p>
+      </div>
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave) createMutation.mutate();
+        }}
+      >
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-name">Name</Label>
+          <Input
+            id="new-customer-name"
+            ref={nameRef}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="min-h-11"
+            required
+            data-testid="input-new-customer-name"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-phone">Phone (optional)</Label>
+          <Input
+            id="new-customer-phone"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            className="min-h-11"
+            inputMode="tel"
+            data-testid="input-new-customer-phone"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-email">Email (optional)</Label>
+          <Input
+            id="new-customer-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="min-h-11"
+            inputMode="email"
+            data-testid="input-new-customer-email"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="submit"
+            disabled={!canSave}
+            size="sm"
+            className="gap-2"
+            data-testid="button-save-new-customer"
+          >
+            {createMutation.isPending ? (
+              <>
+                <ActionLoader className="text-primary-foreground" />
+                Adding…
+              </>
+            ) : (
+              "Add customer"
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={createMutation.isPending}
+            onClick={onCancel}
+            data-testid="button-cancel-new-customer"
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -308,15 +477,17 @@ export function PosCartPanel({
           onAddNew={() => setNewCustomerOpen(true)}
         />
 
-        <NewCustomerDialog
-          open={newCustomerOpen}
-          onOpenChange={setNewCustomerOpen}
-          initialName={customerSearch}
-          onCreated={(customer) => {
-            setSelectedCustomer(customer);
-            setCustomerSearch("");
-          }}
-        />
+        {newCustomerOpen && (
+          <NewCustomerPanel
+            initialName={customerSearch}
+            onCreated={(customer) => {
+              setSelectedCustomer(customer);
+              setCustomerSearch("");
+              setNewCustomerOpen(false);
+            }}
+            onCancel={() => setNewCustomerOpen(false)}
+          />
+        )}
 
         {selectedCustomer && customerTier && (
           <Card className="lm-card-muted mt-2">
