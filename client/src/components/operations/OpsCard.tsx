@@ -309,6 +309,7 @@ function OpsCardInner({
           order={order}
           derived={derived}
           settings={settings}
+          now={now}
           role={role}
           currentUserId={currentUserId}
           staff={staff}

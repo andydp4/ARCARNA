@@ -16,9 +16,11 @@ import { OpsCard, type OpsCardProps } from "./OpsCard";
  *
  * Undo lives on the card itself: `OpsCardActions.tsx` renders it as the
  * completed-card primary button (`ops-undo-<id>`) and shows it only to the
- * completer or MANAGER+ — the same rule `assertTransitionRoleAllowed`'s
- * `reopen` case enforces server-side (`server/services/orderTransitions.ts`),
- * so the button a cashier cannot legally use never appears for them to try.
+ * completer within the same 10-minute window, or MANAGER+ — the same rule
+ * `assertTransitionRoleAllowed`'s `reopen` case enforces server-side
+ * (`server/services/orderTransitions.ts`), so the button a cashier cannot
+ * legally use never appears for them to try, even though this tray itself
+ * keeps a completed card visible for the full 120 minutes.
  *
  * See `OpsYesterdayStrip.tsx`'s doc comment for why this file defines its own
  * small collapsed-strip header rather than importing `OpsLane.tsx`'s.

@@ -82,12 +82,16 @@ export interface OpsCardActionsProps extends OpsActionHandlers {
   order: BoardOrder;
   derived: DerivedCardState;
   settings: OpsTimingSettings;
+  now: Date;
   role?: string;
   currentUserId?: string;
   staff: OpsBoardStaffRow[];
   busy?: boolean;
   blockedReason?: string | null;
 }
+
+/** Mirrors `assertTransitionRoleAllowed`'s `reopen` case (`server/services/orderTransitions.ts`) exactly, so the button never offers what the server will 403. */
+const TEN_MINUTES_MS = 10 * 60_000;
 
 type Panel = "pass" | "delay" | "setDue" | "hold" | "rate" | "completeAt" | null;
 
@@ -125,6 +129,7 @@ export function OpsCardActions({
   order,
   derived,
   settings,
+  now,
   role,
   currentUserId,
   staff,
@@ -165,7 +170,10 @@ export function OpsCardActions({
   // is claimed with "Take it", not assigned to a third party by a cashier who
   // was never on it.
   const canPass = isOpen && (managerPlus || isAssignee);
-  const canUndo = order.status === "completed" && (managerPlus || order.completedUserId === currentUserId);
+  const isCompleter = Boolean(order.completedUserId) && order.completedUserId === currentUserId;
+  const withinUndoWindow =
+    order.settledAt != null && now.getTime() - new Date(order.settledAt).getTime() <= TEN_MINUTES_MS;
+  const canUndo = order.status === "completed" && (managerPlus || (isCompleter && withinUndoWindow));
   // A completion the brief asks to be honest about: a carried-over order's
   // "now" is not when it was actually handed over, so completing one always
   // asks first rather than silently stamping the tap as the moment.
