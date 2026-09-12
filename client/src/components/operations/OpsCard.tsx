@@ -359,6 +359,10 @@ function OpsCardInner({
                   Resume
                 </DropdownMenuItem>
               )}
+              {/* `urgent` and `on-hold` are the same `status` column, so this
+                  is hidden rather than merely disabled while held: offering
+                  it would read as "flag this held order urgent" but would
+                  actually un-hold it. Resume first, then mark urgent. */}
               {isOpen && !isHeld && order.status !== "urgent" && (
                 <DropdownMenuItem
                   onClick={() => onUrgent(order)}
