@@ -78,7 +78,37 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
     formats: ["PNG", "JPEG", "PDF", "CSV"],
     status: "available",
   },
+  {
+    // Operations Centre reporting (Phase N, N7). The page is not built until
+    // N7's second round (after N4b removes Open Orders) — catalogued now,
+    // as "planned", so the hub and the engine agree on the reference before
+    // the route exists; see docs/briefs/PHASE_N_OPERATIONS_CENTRE.md
+    // "Reporting". ARC-T1-003 Order Status Dashboard (above) stays
+    // "available" until that same round deletes its page and this entry
+    // together — the brief's own two-round split for N7 (see the PR
+    // description).
+    ref: "ARC-T1-006",
+    title: "Order Issues",
+    tier: 1,
+    frequency: "DAILY",
+    purpose:
+      "Every order that was late, delayed, held, unclaimed, reassigned or reopened today, with cause and resolution — the exceptions the timing report summarises.",
+    route: "/reports/order-issues",
+    formats: ["PNG", "JPEG", "PDF", "CSV"],
+    status: "planned",
+  },
   // ── Tier 2 — Operational intelligence ─────────────────────────────────────
+  {
+    ref: "ARC-T2-005",
+    title: "Order Timing & Service Levels",
+    tier: 2,
+    frequency: "WEEKLY",
+    purpose:
+      "How fast orders actually move — on-time and promise-kept rates, stage-by-stage timings, and where delays and customer waits happen.",
+    route: "/reports/order-timing",
+    formats: ["PNG", "JPEG", "PDF", "CSV"],
+    status: "planned",
+  },
   {
     ref: "ARC-T2-001",
     title: "Weekly Margin Summary",

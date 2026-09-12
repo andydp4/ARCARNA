@@ -43,6 +43,7 @@ import { settledRevenueByTradingDay } from "./revenue";
 import { getSmartStock } from "./operationalIntelligence";
 import { getJobQueueStats } from "../eventBus";
 import { orgTimeZone } from "./tradingDayShift";
+import { getOpsBoard } from "./opsBoard";
 
 export type NextMoveSeverity = "info" | "warning" | "error";
 
@@ -68,6 +69,14 @@ export type ControlCentreSnapshot = {
   openOrders: number;
   toCollect: number;
   toDeliver: number;
+  /**
+   * Sourced from `server/services/opsBoard.ts`'s own summary — the SAME
+   * `deriveCardState`-driven counts the Operations Centre board shows,
+   * rather than a second, independently-derived notion of "late" (brief,
+   * "Reporting": "Control Centre gains lateNow / dueSoonNow tiles").
+   */
+  lateNow: number;
+  dueSoonNow: number;
 
   lowStockCount: number;
   highRiskStockCount: number;
@@ -131,6 +140,7 @@ export async function getControlCentreSnapshot(
     jobStats,
     smart,
     productsWithStock,
+    opsBoardSummary,
   ] = await Promise.all([
     db
       .select({ c: sql<number>`count(*)::int` })
@@ -203,6 +213,12 @@ export async function getControlCentreSnapshot(
     // risk model below, which answers a related but different question and
     // has always been reported separately as "high-risk stock".
     storage.getProductsWithStock(orgId).catch(() => [] as Awaited<ReturnType<typeof storage.getProductsWithStock>>),
+
+    // `lateNow` / `dueSoonNow` read the board's own `summary`, computed by
+    // `deriveCardState` over the same rows the board itself renders — never
+    // a second, ad hoc lateness rule invented for this dashboard. `userId:
+    // null` because this snapshot is org-wide, not "mine".
+    getOpsBoard(orgId, null, { now }).catch(() => null),
   ]);
 
   // Same shape as /api/inventory/alerts: at or under the stock limit, and
@@ -309,6 +325,9 @@ export async function getControlCentreSnapshot(
     openOrders: openOrdersRow[0]?.c ?? 0,
     toDeliver: openOrdersRow[0]?.toDeliver ?? 0,
     toCollect: (openOrdersRow[0]?.c ?? 0) - (openOrdersRow[0]?.toDeliver ?? 0),
+
+    lateNow: opsBoardSummary?.summary.lateNow ?? 0,
+    dueSoonNow: opsBoardSummary?.summary.dueSoonNow ?? 0,
 
     lowStockCount,
     highRiskStockCount: smart?.summary.highRiskCount ?? 0,

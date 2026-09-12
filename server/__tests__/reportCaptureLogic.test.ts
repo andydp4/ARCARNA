@@ -8,13 +8,27 @@
  *  2. A reseller payment settles whole unpaid supplies oldest-first; a partial
  *     payment must NOT clear a larger invoice, or ageing under-reports and a
  *     supply hold is missed.
+ *
+ * The first used to be pinned down against a hand-copied mirror of the rule.
+ * N7 re-sourced `delayLog` from `order_events` (`delayed` / `delay_cleared`)
+ * rather than the `orders.delayFlag` snapshot — see
+ * `server/services/reportsEngine.ts`'s module doc on `delayLog` for why (DoD:
+ * "Delay Log shows a cleared delay") — and split the comparison itself out
+ * into `shared/reports/delayLog.ts` as `wasProactiveDelayComms`, a pure
+ * function with no database import, so this test exercises the REAL rule
+ * `delayLog` runs rather than a copy of it that could silently drift out of
+ * step (N7 cleanup list: this test's "local mirror → real rule") — importing
+ * it from `reportsEngine.ts` directly would pull in `server/db.ts`, which
+ * throws at import time with no `DATABASE_URL` set, exactly the environment
+ * this `check`-job test runs in.
+ *
+ * The reseller settlement rule has no equivalent server-side export yet — it
+ * lives inline in `POST /api/reseller-transactions`
+ * (`server/routes/reportCapture.ts`) and is out of this package's touch list,
+ * so its mirror below is unchanged.
  */
 import { describe, expect, it } from "vitest";
-
-/** Mirrors the rule in reportsEngine.delayLog. */
-function wasProactive(originalEta: Date | null, notifiedAt: Date | null): boolean {
-  return Boolean(originalEta && notifiedAt && notifiedAt < originalEta);
-}
+import { wasProactiveDelayComms as wasProactive } from "@shared/reports/delayLog";
 
 /** Mirrors the oldest-first settlement in POST /api/reseller-transactions. */
 function settleOldestFirst(payment: number, supplies: { id: string; amount: number }[]): string[] {
