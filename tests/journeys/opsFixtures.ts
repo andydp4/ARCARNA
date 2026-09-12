@@ -521,7 +521,16 @@ const RECIPES: Record<CardState, Recipe> = {
     needsColumns: ["customer_arrived_at"],
   },
   completed: { dueIn: 45, status: "completed" },
+  // Two whole days back, not one: a single day would land within the same
+  // trading day at some hours, and "carried over" is a trading-day comparison.
+  // `date_kind` deliberately stays 'live' — a backdated order is dated in the
+  // past on purpose and never counts as carried over (opsState.ts:180).
   "carried-over": { dueIn: null, carriedOverDaysBack: 2 },
+  // TODO(N3a): the brief requires every pre-order to carry a due time on its
+  // own trading day, and the create route will 400 without one. Until that
+  // rule exists there is nothing to send, so this recipe promises nothing;
+  // when it lands, give it a `dueTime` on the pre-order's date via
+  // `localInstantAt` rather than a `dueIn` offset from now.
   scheduled: { dueIn: null, preorderDaysAhead: 3 },
 };
 
