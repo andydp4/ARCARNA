@@ -5,6 +5,9 @@ import type { CardState, DerivedCardState } from "@shared/orders/opsState";
 import type { BoardLane, BoardOrder } from "@/lib/orderTypes";
 import { laneLabel } from "@/lib/orderTypes";
 import { OpsCard, type OpsCardProps } from "./OpsCard";
+import { OpsYesterdayStrip } from "./OpsYesterdayStrip";
+import { OpsScheduledStrip } from "./OpsScheduledStrip";
+import { OpsDoneTray } from "./OpsDoneTray";
 
 /**
  * One area of the shop: everything to be collected, or everything to go out.
@@ -25,8 +28,15 @@ import { OpsCard, type OpsCardProps } from "./OpsCard";
  * Cards that are not about right now — yesterday's, tomorrow's, and the ones
  * already handed over — go into collapsed strips beneath, where they are
  * reachable but never in the way (brief, "Lanes & filters"). N4a extracts
- * those strips into their own components with the stage actions; here they are
- * deliberately plain.
+ * those strips into their own components (`OpsYesterdayStrip`,
+ * `OpsScheduledStrip`, `OpsDoneTray`) — the stage actions themselves live on
+ * `OpsCard`/`OpsCardActions` regardless of which list renders one, so the
+ * three strips are thin. This lane imports all three of them to render them,
+ * so `CollapsibleStrip` below stays private to this file rather than being
+ * exported for them to share — a value-level import back into this module
+ * would make the four files a genuine ES module cycle. Each of the three
+ * carries its own small copy of the same chrome instead; see
+ * `OpsYesterdayStrip.tsx`'s doc comment.
  */
 
 export interface LaneCard {
@@ -68,9 +78,10 @@ export function sortLaneCards(cards: LaneCard[]): LaneCard[] {
   });
 }
 
-type CardHandlers = Omit<OpsCardProps, "order" | "derived" | "busy">;
+/** Every prop an `OpsCard` needs except the three that vary per card. Shared by the lane's own live list and by the three strip components (N4a). */
+export type StripCardHandlers = Omit<OpsCardProps, "order" | "derived" | "busy" | "alertActive">;
 
-export interface OpsLaneProps extends CardHandlers {
+export interface OpsLaneProps extends StripCardHandlers {
   lane: BoardLane;
   cards: LaneCard[];
   /** True while a search or filter is narrowing the board — changes the empty copy. */
@@ -83,8 +94,20 @@ export interface OpsLaneProps extends CardHandlers {
   searchActive: boolean;
   /** Ids whose own write is in flight. */
   pendingIds: Set<string>;
+  /** N4a's alert stub always answers false; N5b makes it real (see `useOpsAlerts.ts`). */
+  isAlertForOrder?: (orderId: string) => boolean;
 }
 
+/**
+ * The collapsed-strip chrome — a header button with a count and a chevron,
+ * closed by default, forced open while a search is active. Exported so
+ * `OpsYesterdayStrip`, `OpsScheduledStrip` and `OpsDoneTray` (N4a) each render
+ * their own copy of this shape rather than importing it from here — this
+ * lane already imports all three of them, and a value-level import back into
+ * this module would make the four files a genuine ES module cycle. `LaneCard`
+ * and `StripCardHandlers` are types, erased at compile time, so importing
+ * THOSE back into the three strips carries none of that risk.
+ */
 function CollapsibleStrip({
   testId,
   title,
@@ -124,6 +147,7 @@ export function OpsLane({
   filtered,
   searchActive,
   pendingIds,
+  isAlertForOrder,
   ...cardHandlers
 }: OpsLaneProps) {
   const live = sortLaneCards(
@@ -136,9 +160,7 @@ export function OpsLane({
   );
   const carriedOver = cards.filter((card) => card.derived.state === "carried-over");
   const scheduled = cards.filter((card) => card.derived.state === "scheduled");
-  const done = cards
-    .filter((card) => card.derived.state === "completed")
-    .sort((a, b) => b.derived.receivedAt.getTime() - a.derived.receivedAt.getTime());
+  const done = cards.filter((card) => card.derived.state === "completed");
 
   const headingId = `ops-lane-heading-${lane}`;
   const label = laneLabel(lane);
@@ -197,6 +219,7 @@ export function OpsLane({
                 order={card.order}
                 derived={card.derived}
                 busy={pendingIds.has(card.order.id)}
+                alertActive={isAlertForOrder?.(card.order.id) ?? false}
                 {...cardHandlers}
               />
             </li>
@@ -204,60 +227,32 @@ export function OpsLane({
         </ul>
       )}
 
-      <CollapsibleStrip
-        testId={`ops-yesterday-${lane}`}
-        title="Yesterday"
-        count={carriedOver.length}
-        forceOpen={searchActive}
-      >
-        {carriedOver.map((card) => (
-          <OpsCard
-            key={card.order.id}
-            order={card.order}
-            derived={card.derived}
-            busy={pendingIds.has(card.order.id)}
-            {...cardHandlers}
-          />
-        ))}
-      </CollapsibleStrip>
+      <OpsYesterdayStrip
+        lane={lane}
+        cards={carriedOver}
+        searchActive={searchActive}
+        pendingIds={pendingIds}
+        isAlertForOrder={isAlertForOrder}
+        cardHandlers={cardHandlers}
+      />
 
-      <CollapsibleStrip
-        testId={`ops-scheduled-${lane}`}
-        title="Scheduled"
-        count={scheduled.length}
-        forceOpen={searchActive}
-      >
-        {scheduled.map((card) => (
-          <OpsCard
-            key={card.order.id}
-            order={card.order}
-            derived={card.derived}
-            busy={pendingIds.has(card.order.id)}
-            {...cardHandlers}
-          />
-        ))}
-      </CollapsibleStrip>
+      <OpsScheduledStrip
+        lane={lane}
+        cards={scheduled}
+        searchActive={searchActive}
+        pendingIds={pendingIds}
+        isAlertForOrder={isAlertForOrder}
+        cardHandlers={cardHandlers}
+      />
 
-      {/* "Done today" rather than the brief's rolling 120 minutes: v0 reads
-          `GET /api/orders`, which does not project `settled_at`, so there is no
-          honest way to say when a completed order was handed over. N3a's board
-          payload carries it and N4a narrows the tray to the last two hours. */}
-      <CollapsibleStrip
-        testId={`ops-done-tray-${lane}`}
-        title="Done"
-        count={done.length}
-        forceOpen={searchActive}
-      >
-        {done.map((card) => (
-          <OpsCard
-            key={card.order.id}
-            order={card.order}
-            derived={card.derived}
-            busy={pendingIds.has(card.order.id)}
-            {...cardHandlers}
-          />
-        ))}
-      </CollapsibleStrip>
+      <OpsDoneTray
+        lane={lane}
+        cards={done}
+        searchActive={searchActive}
+        pendingIds={pendingIds}
+        isAlertForOrder={isAlertForOrder}
+        cardHandlers={cardHandlers}
+      />
     </section>
   );
 }

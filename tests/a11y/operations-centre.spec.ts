@@ -9,10 +9,14 @@
  * board, so this spec SEEDS one card per state the v0 board can reach and then
  * measures the thing an operator actually looks at.
  *
- * The states seeded here are the ones v0 can reach over the columns `orders`
- * already has: on time, due soon, late, delayed, held, completed, scheduled
- * and carried over. "Ready", "on the road" and "customer waiting" need the
- * stage columns migration 065 adds (N2) and are added to this spec by N4a.
+ * The states seeded here started as the ones v0 could reach over the columns
+ * `orders` already had: on time, due soon, late, delayed, held, completed,
+ * scheduled and carried over. N4a adds the three that need migration 065's
+ * stage columns and the real transition endpoint (N3b): ready, on the road
+ * (a claimed delivery, dispatched) and customer waiting — each built by
+ * calling `POST /api/orders/:id/transition` for real, so this spec also
+ * proves that the cards those actions actually produce are ones axe is happy
+ * with, not just that the state machine allows them.
  *
  * Two assertions, not one: axe reports `color-contrast` as *incomplete* rather
  * than as a violation whenever it cannot compute a background — over a
@@ -217,6 +221,34 @@ async function seedBoard(request: APIRequestContext, orgId: string): Promise<See
     dueTime: "12:00",
   });
 
+  // The three states N4a adds real transitions for (N1's v0 board could not
+  // reach these without the stage columns migration 065 added): ready,
+  // on-the-road (a claimed delivery, dispatched) and customer-waiting (the
+  // customer is here and it is not ready yet). Built through the real
+  // transition endpoint, not a direct rewrite, so this spec also proves that
+  // path renders a card axe is happy with.
+  const transition = async (orderId: string, data: Record<string, unknown>) => {
+    const response = await request.post(`/api/orders/${orderId}/transition`, { headers, data });
+    if (!response.ok()) {
+      throw new Error(`transition ${JSON.stringify(data)} on ${orderId} failed: ${response.status()} ${await response.text()}`);
+    }
+  };
+
+  ids.ready = await place({ fulfilmentMethod: "collection" });
+  await rewrite(ids.ready, { etaGiven: minutesFromNow(45) });
+  await transition(ids.ready, { action: "claim" });
+  await transition(ids.ready, { action: "ready" });
+
+  ids["on-the-road"] = await place({ fulfilmentMethod: "delivery" });
+  await rewrite(ids["on-the-road"], { etaGiven: minutesFromNow(45) });
+  await transition(ids["on-the-road"], { action: "claim" });
+  await transition(ids["on-the-road"], { action: "out_for_delivery" });
+
+  ids["customer-waiting"] = await place({ fulfilmentMethod: "collection" });
+  await rewrite(ids["customer-waiting"], { etaGiven: minutesFromNow(20) });
+  await transition(ids["customer-waiting"], { action: "claim" });
+  await transition(ids["customer-waiting"], { action: "arrived" });
+
   return { orgId, ids };
 }
 
@@ -263,6 +295,9 @@ test.describe("Operations Centre — accessibility with real cards on the board"
       ["completed", "completed"],
       ["carried-over", "carried-over"],
       ["scheduled", "scheduled"],
+      ["ready", "ready"],
+      ["on-the-road", "ready"],
+      ["customer-waiting", "customer-waiting"],
     ];
     for (const [key, state] of expected) {
       const card = page.getByTestId(`ops-card-${ids[key]}`);
@@ -314,6 +349,138 @@ test.describe("Operations Centre — accessibility with real cards on the board"
     );
     expect(serious, formatViolations(serious)).toEqual([]);
     const contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+  });
+
+  /**
+   * N4a's own transient surfaces: the overflow menu, the inline Delay editor
+   * it opens, the Done tray, and the staff/station row in the header. Every
+   * one of these is new since v0 — a green run of the test above would say
+   * nothing about them.
+   *
+   * Not covered here: the Pass-to strip's OPEN state and the Done tray's
+   * Undo BUTTON specifically — both are gated on `currentUserId` (`isAssignee`
+   * / `completedUserId === currentUserId`, `OpsCardActions.tsx`), and this
+   * suite's one fixed identity (`DEV_AUTH_USER_ID=seed-cashier`, the plain
+   * ambient bypass `playwright.config.ts` uses for the whole a11y project —
+   * no PHASE2D impersonation headers here, unlike the journeys suite) hits a
+   * pre-existing gap: `GET /api/auth/user` (`server/routes/auth.ts`) spreads
+   * `storage.getUser(replitUserId)`, which reads the `users` table — empty
+   * for an `allowed_users`-only seeded id — so the response carries `role`
+   * but no `id` at all, confirmed by reading it directly in this environment.
+   * `currentUserId` is therefore `undefined` for every viewer this whole a11y
+   * file can authenticate as, which makes `isAssignee` false regardless of
+   * who actually holds the order, and CASHIER is never `managerPlus` either
+   * — so neither gate can pass here no matter what the seed does. That is a
+   * property of the shared auth route, out of this package's touch list
+   * (`server/**`), not of the RBAC these two controls correctly enforce —
+   * `tests/journeys/operationsBoard.spec.ts` exercises both of them for real,
+   * with a real actor identity (PHASE2D headers resolve a genuine `id`), and
+   * proves the button appears for an allowed viewer and is absent for a
+   * disallowed one. What this test still owns: the strip and the tray render
+   * axe-clean for whichever controls THIS identity can actually reach.
+   */
+  test("N4a's card overflow, delay editor, pass strip, done tray and station row are clean", async ({
+    page,
+    request,
+  }) => {
+    const orgId = await prepareTenantContext(page, request);
+    const { ids } = await seedBoard(request, orgId);
+
+    await gotoBoard(page);
+    await openStrips(page);
+
+    // Overflow menu open on an ordinary open card. Scoped to the menu itself
+    // — same as the details Sheet case below — rather than the whole page:
+    // Radix's `DropdownMenu` marks every OTHER branch of the page
+    // `aria-hidden="true"` while open (`aria-hidden-focus`, a generic
+    // property of `client/src/components/ui/dropdown-menu.tsx` shared by
+    // every menu in the app, not something this package's cards introduce),
+    // and a board of thirty-plus roving-tabindex cards is the first a11y spec
+    // ever to open one of these menus with that much OTHER tabbable content
+    // still on screen. That is a pre-existing shared-component question, out
+    // of this package's touch list; what this test owns is whether the menu
+    // ITSELF, and the panels it opens, are accessible.
+    await page.getByTestId(`button-order-actions-${ids["on-time"]}`).click();
+    await expect(page.getByTestId(`ops-delay-open-${ids["on-time"]}`)).toBeVisible();
+
+    let results = await new AxeBuilder({ page }).include('[role="menu"]').withTags(AXE_TAGS).analyze();
+    let serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    let contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+
+    // The inline Delay editor, opened from that same menu.
+    await page.getByTestId(`ops-delay-open-${ids["on-time"]}`).click();
+    await expect(page.getByTestId(`ops-delay-editor-${ids["on-time"]}`)).toBeVisible();
+
+    results = await new AxeBuilder({ page }).include(`[data-testid="ops-delay-editor-${ids["on-time"]}"]`).withTags(AXE_TAGS).analyze();
+    serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+    await page.getByTestId(`button-delay-cancel-${ids["on-time"]}`).click();
+
+    // The ready card's own overflow — closed the on-time one first — is
+    // still reachable and worth its own axe pass even though its "Pass to…"
+    // item itself does not render for this identity (see the module comment).
+    await page.getByTestId(`button-order-actions-${ids.ready}`).click();
+    await expect(page.getByTestId(`ops-unready-${ids.ready}`)).toBeVisible();
+
+    results = await new AxeBuilder({ page }).include('[role="menu"]').withTags(AXE_TAGS).analyze();
+    serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+    // Closes the menu for real. `client/src/components/ui/dropdown-menu.tsx`
+    // is a bare `DropdownMenuPrimitive.Root` (pre-existing, shared, out of
+    // this package's touch list) with no `modal={false}` override, so Radix
+    // runs it in its default MODAL mode: while open, Radix sets
+    // `pointer-events: none` on the rest of the document and only the
+    // portalled content is exempted. That is what the earlier "every OTHER
+    // card aria-hidden" comment above was already about — but it also means
+    // a second real click aimed at the TRIGGER (which lives outside the
+    // portal, in the normal page) can never land; Playwright reports the
+    // click as intercepted by `<html>` itself and retries until its own
+    // timeout, which is exactly what happened here before this fix. Escape
+    // reaches Radix's own key handler regardless of pointer-events lockout
+    // and Radix already moved focus into the menu's first item when it
+    // opened, so it closes the menu the same way a real keyboard user would.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId(`ops-unready-${ids.ready}`)).toHaveCount(0);
+
+    // The Done tray itself — the completed card is in it, whether or not
+    // Undo renders for this identity (see the module comment).
+    await expect(page.getByTestId(`ops-card-${ids.completed}`)).toBeVisible();
+
+    results = await new AxeBuilder({ page }).include(`[data-testid="ops-done-tray-collection"]`).withTags(AXE_TAGS).analyze();
+    serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+
+    // The header's staff strip and station picker.
+    await expect(page.getByTestId("ops-station-picker")).toBeVisible();
+
+    results = await new AxeBuilder({ page }).include('[data-testid="ops-station-picker"]').withTags(AXE_TAGS).analyze();
+    serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    contrast = [
       ...results.violations.filter((v) => v.id === "color-contrast"),
       ...results.incomplete.filter((v) => v.id === "color-contrast"),
     ];
