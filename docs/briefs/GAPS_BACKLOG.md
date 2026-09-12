@@ -352,6 +352,155 @@
 
 ---
 
+## Operations Centre — found during the Phase N review (2026-09-11)
+
+All pre-existing; none introduced by Phase N. Each is fixed by the package named, or recorded for a later change.
+
+<a id="gap-ops-01"></a>
+
+### GAP-OPS-01 — Order ops / rating capture unreachable since PR #136
+
+| | |
+|---|---|
+| **Brief** | L5 / ARC-T1-003, ARC-T1-005, ARC-T2-003 |
+| **Snag** | `client/src/pages/orders.tsx` L91: `selectedOrder` is only ever written inside the status mutation behind a `selectedOrder?.id === orderId` guard, so it is always null and the *Collection & delays* / *Rate collection* buttons, `OrderOpsDialog` and `SatisfactionDialog` never render (the setter went with `openStatusDialog` in 0b611ac). No UI has written `eta_given` / `delay_flag` / satisfaction for three weeks; the three reports have had no feed. |
+| **Fix** | N4a replaces the dialog with inline delay capture on the card and rating chips on completed cards; N4b deletes both dialogs. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-02"></a>
+
+### GAP-OPS-02 — Website orders lose their fulfilment method
+
+| | |
+|---|---|
+| **Brief** | C-series / website ingest |
+| **Snag** | `server/services/website.ts` L568–586 never passes `fulfilmentMethod` to `placeOrder`, and `shared/website.ts` L163 uses `pickup` where orders use `collection`. Every web delivery is stored as a collection. |
+| **Fix** | N3a: map `pickup → collection`, pass `fulfilmentMethod`, give web orders a promise, unit test. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-03"></a>
+
+### GAP-OPS-03 — Bulk “Set status” bypasses settlement, attribution, credit and events
+
+| | |
+|---|---|
+| **Brief** | U4 |
+| **Snag** | `server/lib/bulkActionHandler.ts` L157–173 writes any string into `orders.status` with no validation; setting `completed` this way freezes no `settled_total`, records no completer and publishes nothing. `orders.status` has no CHECK constraint. |
+| **Fix** | N3b removes `POST /api/orders/bulk` and `handleOrderBulk` (no caller after N1). If bulk status is ever wanted back, it must call `completeOrderTx`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-04"></a>
+
+### GAP-OPS-04 — Bell leaks cross-tenant counts
+
+| | |
+|---|---|
+| **Brief** | S4 / tenancy |
+| **Snag** | `server/services/operationalIntelligence.ts` `getNotifications` L371–375 (pending approvals) and L392–404 (dead letters) are not filtered by `orgId`; every org's bell shows every org's approvals and dead letters. |
+| **Fix** | Not in the Phase N packages (the board has its own alert feed). A one-line org filter plus `notificationsOrgScope.test.ts`, any time. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-05"></a>
+
+### GAP-OPS-05 — Order expenses collected at checkout are never sent
+
+| | |
+|---|---|
+| **Brief** | U7 / K-series |
+| **Snag** | `client/src/pages/pos.tsx` L136–139 keeps `orderExpenses`, validates them (L647–656) and passes them to the step, but `orderData` (L680–763) never includes them and the server writes `order_expenses` only for personal use. Silent data loss. |
+| **Fix** | Owner chose to wire it (2026-09-12, Q12): N6 sends `expenses[]` from checkout, `PlaceOrderInput` declares it, and the create transaction inserts `order_expenses` rows on the path personal use already uses; `orderExpenses.test.ts` proves rows land and `total` is untouched. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-06"></a>
+
+### GAP-OPS-06 — Collection satisfaction rating has no capture point
+
+| | |
+|---|---|
+| **Brief** | ARC-T2-003 |
+| **Snag** | `SatisfactionDialog` was only reachable from the dead block in GAP-OPS-01, so ARC-T2-003 has had no feed since #136. |
+| **Fix** | N4a adds `OpsRateChips` (1–5) on completed cards posting to `POST /api/satisfaction`; N4b deletes the dialog. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-07"></a>
+
+### GAP-OPS-07 — `apps/server/src/db/schema.ts` lacks five operational `orders` columns
+
+| | |
+|---|---|
+| **Brief** | S1 / schema drift |
+| **Snag** | `queue_position`, `delay_cause`, `original_eta`, `delay_notification_sent_at`, `delay_resolution` exist in `shared/schema.ts` and the database but not in the snake_case file; `scripts/audit-schema-drift.mjs` ignores columns present in only one file, so CI is silent while `GET /api/orders` cannot select them. |
+| **Fix** | N2 declares the four delay columns and drops `queue_position` (no reader or writer after N3b/N7); N2 also gives `scripts/audit-schema-drift.mjs` a paired-table rule for `orders` that fails on single-file columns and compares `withTimezone`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-08"></a>
+
+### GAP-OPS-08 — Order completion can settle twice and borrows a second pool client inside the transaction
+
+| | |
+|---|---|
+| **Brief** | K / L (settlement) |
+| **Snag** | `server/routes/orders.ts` L644 reads the row on the pooled `db` *before* `withTransaction`, decides `isSettling` from it, and `creditLegTotal` (L659, `server/services/creditLedger.ts` L67) reads through the module-level `db` rather than the transaction client. Two Delivered taps a second apart both see `settled_total` null, both build a settlement patch, and the second overwrites `settled_at` and `completed_user_id`; under ~10 concurrent completions the pool (max 10) can self-deadlock. |
+| **Fix** | N3b: extract `completeOrderTx(tx, lockedRow, actor)`, read the row with `SELECT … FOR UPDATE` inside the transaction, pass `tx` into `creditLegTotal`, and prove it with `orderTransitionAtomicity.test.ts` and `completionSinglePath.test.ts`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-09"></a>
+
+### GAP-OPS-09 — `OrderStatusChanged` fans out on no-op status writes
+
+| | |
+|---|---|
+| **Brief** | S2 / automation |
+| **Snag** | `PATCH /api/orders/:id` publishes `OrderStatusChanged` even when `from === to`; the event reaches four workers and `server/services/automationEngine.ts`, which loads every enabled rule for the type without checking that the status changed. A stage write reusing this event would fire customer-facing rules once per tap. |
+| **Fix** | N3b: add `OrderStageChanged` to `EVENT_TYPES` with no required workers for stamps; publish `OrderStatusChanged` only when `status` actually changes; test that a `claim` publishes none. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-10"></a>
+
+### GAP-OPS-10 — Service worker serves cached API JSON as a fresh 200 when the server is down
+
+| | |
+|---|---|
+| **Brief** | P10 / PWA |
+| **Snag** | `client/public/sw.js` fetch handler caches every API GET and answers from cache with the original 200 on network failure, so React Query records a successful fetch and `navigator.onLine` stays true whenever Wi-Fi is up but the WAN or server is down. Any live screen looks live while stale. |
+| **Fix** | N3a: never cache `/api/orders/board`; the board judges staleness from `serverNow` in the payload. General fix (a `X-From-Cache` header on cache hits, honoured by `queryClient`) is a follow-on. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-11"></a>
+
+### GAP-OPS-11 — Offline-replayed orders are born “received now”
+
+| | |
+|---|---|
+| **Brief** | F6 / offline |
+| **Snag** | `server/middleware/requireActiveCashierShift.ts` L98–113 honours `_offlineQueuedAt` only with a replay token that is set by `pos/shift-open.tsx`, which is no longer mounted; on the lazy-shift path a replayed order's `entered_at`/`created_at` are the replay time, so its wait clock and any promise are wrong. |
+| **Fix** | N3a: honour `_offlineQueuedAt` without a token on the lazy-shift path, bounded to the current trading day; `offlineQueuedAt.test.ts`. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-12"></a>
+
+### GAP-OPS-12 — Daily close ignores orders still open from the day
+
+| | |
+|---|---|
+| **Brief** | L3 |
+| **Snag** | `server/services/dailyClose.ts` L173–184 totals completed rows only; orders left open are neither reported nor carried anywhere, so at 06:00 they would sit red at the top of a live board and a next-morning completion records a 14-hour handover. |
+| **Fix** | N7: the close summary gains “n orders still open from this day”; the board shows a Yesterday strip with no clocks or alerts and asks for the actual handover time on completion. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-13"></a>
+
+### GAP-OPS-13 — Migrations are re-applied on every deploy, so a backfill must be idempotent
+
+| | |
+|---|---|
+| **Brief** | S1 / schema evolution |
+| **Snag** | `scripts/apply-migrations-pm2.sh` and the CI loop run every `migrations/*.sql` on every deploy with `ON_ERROR_STOP=0`. DDL is `IF NOT EXISTS` throughout, but any data backfill that is not a no-op on re-run fabricates rows on each release, and CI cannot see it because `db:push` already built the tables. |
+| **Fix** | Rule recorded in `docs/SCHEMA_EVOLUTION.md` by N9b; N2's DoD applies 065 twice against the seeded database and asserts the `order_events` count is unchanged. |
+| **Closed** | [ ] |
+
+---
+
 ## Docs hygiene
 
 | ID | Task | Closed |

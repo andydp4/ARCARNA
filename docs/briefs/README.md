@@ -74,6 +74,9 @@ Original sequence from the architecture review. **Current truth:** [`BRIEF_STATU
 ### Phase L — Shifts as trading days & the daily close
 - [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md) — **L1** commission attributed to users rather than cashier codes, **L2** a shift becomes a trading day opened at login (06:00–06:00), **L3** the 06:00 daily close, **L4** the Z-report-so-far button, **L5** the Open Orders redesign. One blocking question — see the brief's *Open questions*.
 
+### Phase N — The Operations Centre
+- [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) — the agreed L5 spec (revision 2, after a judge panel and five adversarial critiques): **N0** contracts & tokens, **N1** the board over existing fields (floor-usable first PR), **N2** stage columns + `order_events` + stations + settings (migration 065), **N3a/b** board read and transitions through one locked completion path, **N4a/b** board v1 and the removal of Open Orders, **N5a/b** personal alerts (migration 066), **N6** the order form embedded with due / channel / handed-over-now chips, **N7** timing and issues reports, **N8** test harness + `unit-db` job, **N9** cleanup and docs. Sixteen decisions with defaults in *Risks & open questions*.
+
 ### Phase L (long horizon, unrelated to the above)
 Not yet briefed. Surface from the plan when prioritised:
 - L1 mobile manager view · L2 public storefront · L3 WhatsApp ingest · L4 multi-currency · L5 i18n + RTL · L6 Postgres RLS · L7 AI features.
