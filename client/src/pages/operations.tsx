@@ -339,18 +339,33 @@ export default function OperationsCentre() {
     onMutate: async ({ orderId, status }) => {
       setPending(orderId, true);
       await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
-      const previous = queryClient.getQueryData<ApiOrderRow[]>(["/api/orders"]);
+      // Snapshot only the one row this mutation is about to touch, not the
+      // whole array. Two cards can be in flight at once (two cashiers, two
+      // taps): if each mutation captured the entire list, whichever one
+      // errors first would roll the *whole* cache back to its own snapshot —
+      // silently reverting the other order's already-successful optimistic
+      // update, or worse, the server's own recorded change, purely because it
+      // predates the failing mutation. Scoping the snapshot to this order's
+      // row means a rollback can only ever touch what this mutation changed.
+      const previousOrder = queryClient
+        .getQueryData<ApiOrderRow[]>(["/api/orders"])
+        ?.find((row) => row.id === orderId);
       queryClient.setQueryData<ApiOrderRow[]>(["/api/orders"], (current = []) =>
         current.map((row) => (row.id === orderId ? { ...row, status } : row)),
       );
-      return { previous };
+      return { previousOrder };
     },
     onSuccess: async (_data, variables) => {
       await invalidateAfterOrderStatusChange(queryClient);
       setAnnouncement(variables.announce);
     },
-    onError: (error: any, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(["/api/orders"], context.previous);
+    onError: (error: any, variables, context) => {
+      if (context?.previousOrder) {
+        const restored = context.previousOrder;
+        queryClient.setQueryData<ApiOrderRow[]>(["/api/orders"], (current = []) =>
+          current.map((row) => (row.id === variables.orderId ? restored : row)),
+        );
+      }
       toast({
         title: "That did not save",
         description: error?.message ?? "The order was left as it was.",

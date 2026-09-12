@@ -359,7 +359,7 @@ function OpsCardInner({
                   Resume
                 </DropdownMenuItem>
               )}
-              {isOpen && order.status !== "urgent" && (
+              {isOpen && !isHeld && order.status !== "urgent" && (
                 <DropdownMenuItem
                   onClick={() => onUrgent(order)}
                   disabled={disabled}
