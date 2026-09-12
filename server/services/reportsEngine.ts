@@ -1105,18 +1105,21 @@ function flattenTimingSummary(summary: OrderTimingSummary): Record<string, numbe
  * day passes `tradingDayBounds(...)`.
  *
  * **Re-settlement.** `completed` events are read ordered ascending by `at`
- * and folded into a `Map<orderId, actualAt>` — a resettled order (N3b:
+ * and folded into a `Map<orderId, actualAt | null>` — a resettled order (N3b:
  * reopened, then re-completed, writing a SECOND `completed` event with
  * `meta.resettled:true`) simply overwrites its own map entry with the later
  * event, so the map holds the CURRENT settlement's `meta.actualAt` with no
- * `resettled`-specific branch needed (the same "last write wins" pattern
- * `server/services/opsBoard.ts`'s `selectActualHandoverTimes` already uses).
- * Every other per-order fact here — `orders.settledAt`, `completedUserId`,
- * `status` — is read straight off the CURRENT `orders` row, which
- * `orderCompletion.ts` already rewrites in place on re-settle, so a resettled
- * order is one row in, one row out, everywhere in this function.
- * `server/__tests__/orderTimingReport.test.ts` proves this against a real
- * reopen + re-complete.
+ * `resettled`-specific branch needed. The overwrite on each `completed` event
+ * is UNCONDITIONAL — including writing `null` when that particular event
+ * carries no `actualAt` — so the LAST event ascending by `at` always wins,
+ * never merely the last one that happens to carry a value: a driver-reported
+ * `actualAt` on an early completion must not survive an ordinary
+ * (no-`actualAt`) re-completion. Every other per-order fact here —
+ * `orders.settledAt`, `completedUserId`, `status` — is read straight off the
+ * CURRENT `orders` row, which `orderCompletion.ts` already rewrites in place
+ * on re-settle, so a resettled order is one row in, one row out, everywhere
+ * in this function. `server/__tests__/orderTimingReport.test.ts` proves both
+ * of these against a real reopen + re-complete.
  */
 export async function orderTimingReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
   const timezone = await orgTimeZone(orgId);
@@ -1202,8 +1205,12 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
   const readyAssumedByOrder = new Map<string, boolean>();
   // Ascending `at` per order (the `orderBy` above), so the LAST write for a
   // given key below is always the most recent event of that kind — the
-  // dedupe rule this function's own doc comment describes.
-  const handoverOverrideByOrder = new Map<string, Date>();
+  // dedupe rule this function's own doc comment describes. Every `completed`
+  // event is written unconditionally (including `null` when that particular
+  // event carries no `actualAt`), so a later ORDINARY re-completion correctly
+  // clears an earlier event's override rather than leaving it stuck — see
+  // the "driver-reported actualAt on the FIRST completion" test.
+  const handoverOverrideByOrder = new Map<string, Date | null>();
 
   for (const e of events) {
     const meta = (e.meta ?? {}) as Record<string, unknown>;
@@ -1222,8 +1229,14 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
         readyAssumedByOrder.set(e.orderId, meta.assumed === true);
         break;
       case "completed": {
+        // Always overwrite — including with `null` when THIS event has no
+        // `actualAt` — so the LAST `completed` event ascending by `at` wins,
+        // not merely the last one that happens to carry a value. Otherwise a
+        // driver-reported `actualAt` on an early completion would survive a
+        // reopen + ordinary re-complete forever, reading the report off a
+        // stale, superseded handover time instead of the current settlement.
         const actualAt = meta.actualAt ? new Date(meta.actualAt as string) : null;
-        if (actualAt) handoverOverrideByOrder.set(e.orderId, actualAt);
+        handoverOverrideByOrder.set(e.orderId, actualAt);
         break;
       }
     }

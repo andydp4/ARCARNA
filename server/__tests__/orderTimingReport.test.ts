@@ -152,6 +152,75 @@ describe("orderTimingReport — a resettled order is counted once, not twice", (
     const [row] = await db.select({ settledTotal: orders.settledTotal }).from(orders).where(eq(orders.id, orderId));
     expect(row.settledTotal).toBe("35.00");
   });
+
+  it("a driver-reported actualAt on the FIRST completion must not survive a reopen + ordinary re-complete", async () => {
+    // Adversarial-review repro: the first completion carries a driver-reported
+    // `actualAt` (a real feature — Q7 owner answer). The order is then
+    // reopened and re-completed NORMALLY (no actualAt supplied on the second
+    // completion — the ordinary case). The handover-map dedupe must not keep
+    // using the stale, superseded actualAt from the first completion — it
+    // must fall through to the CURRENT `orders.settledAt` once the final
+    // completion event in `at` order carries no override of its own.
+    const enteredAt = new Date("2026-06-15T09:00:00.000Z");
+    const orderId = await makeOrder({
+      fulfilmentMethod: "delivery",
+      status: "pending",
+      enteredAt,
+      createdAt: enteredAt,
+      etaGiven: new Date("2026-06-15T09:30:00.000Z"),
+    });
+    const actor = { userId: `dana-${SUFFIX}`, role: "MANAGER" };
+
+    // First completion: driver-reported actualAt just 10 minutes after
+    // enteredAt (comfortably on time) — this is the value the bug
+    // incorrectly keeps forever.
+    await runOrderTransition({
+      orgId,
+      orderId,
+      actor,
+      input: { action: "complete", actualAt: "2026-06-15T09:10:00.000Z" },
+    });
+
+    await runOrderTransition({ orgId, orderId, actor, input: { action: "reopen" } });
+
+    // Second completion: the ordinary case — no actualAt override, so it
+    // writes a `completed` event whose `meta` carries no `actualAt` at all.
+    const second = await runOrderTransition({ orgId, orderId, actor, input: { action: "complete" } });
+    expect(second.order.status).toBe("completed");
+
+    // Pin the real settlement to a deterministic, LATE instant on the same
+    // trading day (avoiding a real "months later" re-complete, which would
+    // land on a different trading day and get excluded as carried-over
+    // instead of exercising the onTime judgement this test is about) — the
+    // same fixture-patching technique the resettle test above uses for
+    // `orders.total`.
+    const currentSettledAt = new Date("2026-06-15T10:30:00.000Z"); // 90 min after enteredAt, 60 min past the 09:30 promise
+    await db.update(orders).set({ settledAt: currentSettledAt }).where(eq(orders.id, orderId));
+
+    // Prove the fixture really did write two `completed` events, and that
+    // the SECOND (current) one carries no `actualAt` — otherwise this test
+    // would not be exercising the bug's exact trigger.
+    const completedEvents = await db
+      .select({ at: orderEvents.at, meta: orderEvents.meta })
+      .from(orderEvents)
+      .where(and(eq(orderEvents.orgId, orgId), eq(orderEvents.orderId, orderId), eq(orderEvents.kind, "completed")))
+      .orderBy(orderEvents.at);
+    expect(completedEvents).toHaveLength(2);
+    expect((completedEvents[0]?.meta as { actualAt?: string } | null)?.actualAt).toBe("2026-06-15T09:10:00.000Z");
+    expect((completedEvents[1]?.meta as { actualAt?: string } | null)?.actualAt).toBeUndefined();
+
+    const report = await orderTimingReport(orgId, FAR_PAST, FAR_FUTURE);
+    const row = await findRow(report.rows, orderId);
+    expect(row).toBeDefined();
+    expect(row?.excluded).toBeNull();
+
+    // The stale-bug value would be exactly 10 minutes and onTime:true (judged
+    // against the superseded first completion). The CURRENT settlement is 90
+    // minutes after enteredAt and 60 minutes past the 09:30 promise.
+    expect(row?.receivedToCompletedMinutes).not.toBeCloseTo(10, 5);
+    expect(row?.receivedToCompletedMinutes).toBeCloseTo(90, 5);
+    expect(row?.onTime).toBe(false);
+  });
 });
 
 describe("orderTimingReport — exclusions", () => {
