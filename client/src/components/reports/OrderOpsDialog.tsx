@@ -50,7 +50,6 @@ function toIso(v: string): string | undefined {
 
 export function OrderOpsDialog({ open, onOpenChange, orderId, customerName }: OrderOpsDialogProps) {
   const { toast } = useToast();
-  const [queuePosition, setQueuePosition] = useState("");
   const [etaGiven, setEtaGiven] = useState("");
   const [delayFlag, setDelayFlag] = useState(false);
   const [delayCause, setDelayCause] = useState<string>("");
@@ -61,7 +60,6 @@ export function OrderOpsDialog({ open, onOpenChange, orderId, customerName }: Or
   const save = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {};
-      if (queuePosition !== "") body.queuePosition = parseInt(queuePosition, 10);
       const eta = toIso(etaGiven);
       if (eta) body.etaGiven = eta;
       body.delayFlag = delayFlag;
@@ -107,25 +105,16 @@ export function OrderOpsDialog({ open, onOpenChange, orderId, customerName }: Or
         <DialogHeader>
           <DialogTitle>Collection details</DialogTitle>
           <DialogDescription>
-            {customerName ? `${customerName}'s order.` : "This order."} Sets the queue and ETA shown on the Order
+            {customerName ? `${customerName}'s order.` : "This order."} Sets the ETA shown on the Order
             Status Dashboard.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Queue position was here until migration 065 dropped the column:
+              the Operations Centre board sorts by due time and state, so a
+              manual queue number had nothing left to write to. */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="queue-pos">Queue position</Label>
-              <Input
-                id="queue-pos"
-                type="number"
-                min="0"
-                value={queuePosition}
-                onChange={(e) => setQueuePosition(e.target.value)}
-                placeholder="1 = next"
-                data-testid="input-queue-position"
-              />
-            </div>
             <div className="space-y-2">
               <Label htmlFor="eta-given">Collection ETA</Label>
               <Input

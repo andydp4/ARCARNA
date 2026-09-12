@@ -780,6 +780,13 @@ export class DatabaseStorage implements IStorage {
       "invoiceBankName", "invoiceBankSortCode", "invoiceBankAccountNumber", "invoicePaymentLink",
       "cashierCommissionEnabled", "defaultCashierCommissionRate", "requireCashierForSale",
       "shiftInactivityCloseAfter", "globalExpenseAllocationMode",
+      // Operations Centre timing policy (migration 065). This list is an
+      // allow-list, not a filter of known-bad keys: anything absent from it is
+      // dropped in silence, so a setting wired into the schema and the card but
+      // missed here would save, toast "updated", and change nothing.
+      "opsPrepSlaMinutes", "opsDueSoonLeadMinutes", "opsLateGraceMinutes",
+      "opsDeliveryLeadMinutes", "opsAutoClaimOnCreate", "opsReconcilePollSeconds",
+      "opsAlertOnSlaDue", "opsKeepScreenAwake",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];

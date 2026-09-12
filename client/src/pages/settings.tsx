@@ -42,6 +42,7 @@ import { ImportsHub } from '@/components/settings/ImportsHub'
 import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
+import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
@@ -183,6 +184,7 @@ export default function Settings() {
             <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             {canViewCashiers && <TabsTrigger value="cashiers" data-testid="tab-cashiers">Cashiers</TabsTrigger>}
+            {canViewCashiers && <TabsTrigger value="operations" data-testid="tab-operations">Operations</TabsTrigger>}
             <TabsTrigger value="users">Users</TabsTrigger>
             {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
@@ -216,6 +218,15 @@ export default function Settings() {
           {canViewCashiers && (
             <TabsContent value="cashiers" className="space-y-6">
               <CashierCommissionSettings />
+            </TabsContent>
+          )}
+
+          {/* Operations board timing. Its own tab rather than a card under
+              System, because everything on System saves to this browser only
+              and these eight settings save to the account for every tablet. */}
+          {canViewCashiers && (
+            <TabsContent value="operations" className="space-y-6">
+              <OperationsSettings />
             </TabsContent>
           )}
 

@@ -773,7 +773,6 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
       status: orders.status,
       channel: orders.channel,
       paymentMethod: orders.paymentMethod,
-      queuePosition: orders.queuePosition,
       etaGiven: orders.etaGiven,
       delayFlag: orders.delayFlag,
       createdAt: orders.createdAt,
@@ -802,7 +801,12 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
         tier: r.tier,
         orderValue: num(r.total),
         status: r.delayFlag ? "DELAYED" : (r.status || "PENDING").toUpperCase(),
-        queuePosition: r.queuePosition ?? null,
+        // Always null since migration 065 dropped `orders.queue_position`: the
+        // manual queue number has no writer, the Operations Centre board sorts
+        // by due time and state instead, and this report (ARC-T1-003) retires
+        // in N7. Kept in the payload only so the column renders "—" rather than
+        // the page breaking between the two PRs.
+        queuePosition: null as number | null,
         etaGiven: r.etaGiven ? new Date(r.etaGiven).toISOString() : null,
         timeInQueue,
         stalled,
@@ -811,7 +815,7 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
     })
     .sort((a, b) => {
       const vip = (t: string | null) => (VIP_TIERS.some((v) => (t || "").toLowerCase().includes(v)) ? 0 : 1);
-      return vip(a.tier) - vip(b.tier) || (a.queuePosition ?? 999) - (b.queuePosition ?? 999);
+      return vip(a.tier) - vip(b.tier);
     });
 
   return {

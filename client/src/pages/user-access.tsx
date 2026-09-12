@@ -51,6 +51,14 @@ interface AllowedUser {
    * then the org's default active location.
    */
   defaultLocationId?: string | null;
+  /**
+   * Operations Centre station — collection, delivery, both, or null for none.
+   * Read-only here and not yet served by the API: `ops_staff` exists from
+   * migration 065 but its endpoints (GET /api/operations/staff, PATCH
+   * /station/:userId) arrive with N3b. The column is rendered now so that
+   * package only has to feed it, not add it.
+   */
+  opsStation?: 'collection' | 'delivery' | 'both' | null;
   createdAt: string;
 }
 
@@ -447,6 +455,7 @@ export default function UserAccess() {
                         <TableHead>Role</TableHead>
                         <TableHead>Commission</TableHead>
                         <TableHead>Default location</TableHead>
+                        <TableHead>Station</TableHead>
                         <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -532,6 +541,15 @@ export default function UserAccess() {
                                 </SelectContent>
                               </Select>
                             )}
+                          </TableCell>
+                          {/* Read-only until N3b wires the station endpoints;
+                              a manager sets stations from the board's staff
+                              strip. "—" means no station, which reads as All. */}
+                          <TableCell
+                            className="text-muted-foreground text-sm capitalize"
+                            data-testid={`ops-station-${user.replitUserId}`}
+                          >
+                            {user.opsStation ?? '—'}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {formatDate(user.createdAt)}
