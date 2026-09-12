@@ -14,8 +14,21 @@ import { and, eq } from "drizzle-orm";
 import { expect, type Browser, type Page } from "@playwright/test";
 import { db } from "../../server/db";
 import { orders as ordersTable, satisfactionScores } from "@shared/schema";
-import { firstLocationId, okJson, placeOrder, uniqueSuffix } from "./fixtures";
+import { authHeaders, ensureOpenShift, firstLocationId, okJson, placeOrder, uniqueSuffix } from "./fixtures";
 import { apiForUser, headersFor, opsTest as test, orderInState } from "./opsFixtures";
+
+/** ADMIN, at a specific viewport — `adminPage` (fixtures.ts) does not take one. */
+async function pageAtViewport(
+  browser: Browser,
+  orgId: string,
+  viewport: { width: number; height: number },
+): Promise<Page> {
+  const context = await browser.newContext({ viewport, extraHTTPHeaders: authHeaders("ADMIN", orgId) });
+  await context.addInitScript((id) => {
+    window.localStorage.setItem("arcarna.selectedOrgId", id);
+  }, orgId);
+  return context.newPage();
+}
 
 /** A page authenticated as an arbitrary (non-seeded) user id, org pre-set — the `pageAs` (fixtures.ts) equivalent for a colleague `secondCashier` creates. */
 async function pageForUser(browser: Browser, userId: string, orgId: string): Promise<Page> {
@@ -455,5 +468,71 @@ test.describe("Operations Centre board — every action is a real write", () => 
       // leaking into the rest of the suite or the shared dev database.
       await api.patch("/api/operations/station", { data: { station: null } });
     }
+  });
+
+  /**
+   * The form pane (N6): a sale placed through the embedded order form beside
+   * the board — not through the API, the way every other test in this file
+   * does it — lands on the board, and the form's `onPlaced` callback finds,
+   * scrolls to and flashes its card (`data-new`, cleared after 4 s).
+   * 1194×834 is the brief's own pane reference viewport; `posTablet.spec.ts`
+   * covers the form's own layout there and at 1024×768, so this covers what
+   * happens on the BOARD side of that same pane.
+   */
+  test("a sale placed through the pane's embedded form flashes its new card on the board", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const suffix = uniqueSuffix();
+    const product = await okJson<{ id: string; name: string }>(
+      await api.post("/api/products", {
+        data: {
+          name: `Ops Pane Widget ${suffix}`,
+          productCode: `OPW3-${suffix}`.slice(0, 40),
+          costPrice: 1,
+          salePrice: 7,
+          defaultSalePrice: 7,
+          stock: 0,
+          stockLimit: 100,
+        },
+      }),
+    );
+    await api.patch(`/api/inventory/${product.id}`, {
+      headers: { "x-location-id": locationId },
+      data: { adjustment: 10, type: "set" },
+    });
+
+    const page = await pageAtViewport(browser, orgId, { width: 1194, height: 834 });
+    await page.goto("/operations");
+    const pane = page.getByTestId("ops-form-pane");
+    await expect(page.getByTestId("ops-lane-collection")).toBeVisible({ timeout: 60_000 });
+    const search = pane.getByTestId("line-product-new");
+    await expect(search).toBeVisible({ timeout: 30_000 });
+
+    await search.fill(`OPW3-${suffix}`);
+    const option = page.getByRole("option", { name: new RegExp(product.name) });
+    await expect(option).toBeVisible({ timeout: 15_000 });
+    await option.click();
+    await expect(pane.getByTestId(`order-line-${product.id}`)).toBeVisible();
+
+    await pane.getByTestId("mobile-checkout-button").click();
+    const confirm = pane.getByTestId("button-confirm-payment");
+    const placed = page.waitForResponse((r) => r.url().endsWith("/api/orders") && r.request().method() === "POST");
+    await confirm.click();
+    const res = await placed;
+    expect(res.status(), await res.text()).toBe(201);
+    const created = (await res.json()) as { orderId?: string; order?: { id?: string } };
+    const orderId = created.orderId ?? created.order?.id;
+    expect(orderId).toBeTruthy();
+
+    const card = page.getByTestId(`ops-card-${orderId}`);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card).toHaveAttribute("data-new", "true", { timeout: 15_000 });
+    await expect(card).not.toHaveAttribute("data-new", "true", { timeout: 6_000 });
+
+    await page.context().close();
   });
 });

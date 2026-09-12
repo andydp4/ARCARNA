@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ZReportView } from "@/components/ZReport";
 import type { ZReportData } from "@shared/reports/zReport";
 import { useToast } from "@/hooks/use-toast";
-import { setStoredShiftId } from "./shift-open";
+import { setStoredShiftId } from "@/lib/shiftStorage";
 
 const DENOMS = [
   { label: "£50", value: 50 },

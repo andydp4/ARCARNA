@@ -250,13 +250,3 @@ self.addEventListener("fetch", (event) => {
       : handleAssetRequest(request),
   );
 });
-
-self.addEventListener("sync", (event) => {
-  if (event.tag === "sync-orders") {
-    event.waitUntil(syncOfflineOrders());
-  }
-});
-
-async function syncOfflineOrders() {
-  console.warn("[Service Worker] sync-orders uses client IndexedDB; no-op in SW");
-}

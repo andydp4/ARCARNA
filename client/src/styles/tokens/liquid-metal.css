@@ -179,48 +179,30 @@
   border-left: 1px solid var(--lm-edge-highlight);
 }
 
-/* U7: tablet landscape — reserve bottom drawer / thumb zone */
-@media (min-width: 1024px) {
-  .pos-tablet-shell .pos-cart-rail {
-    padding-bottom: 6rem;
-  }
-  .pos-tablet-shell .pos-product-grid {
-    row-gap: 0.5rem;
-  }
-}
-
-.liquid-metal .pos-product-card {
-  background: var(--lm-surface-gradient);
-  border: 1px solid var(--lm-edge-highlight);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
-}
-
-.liquid-metal .pos-product-card:hover:not(.pos-product-card-disabled) {
-  border-color: hsl(213, 90%, 60% / 0.4);
-  box-shadow: 0 4px 16px hsl(0, 0% / 0.25);
-}
-
-.liquid-metal .pos-product-card:active:not(.pos-product-card-disabled) {
-  transform: scale(0.98);
-}
-
 /**
- * Unavailable product card.
- *
- * This was `opacity: 0.65`, which dimmed the whole subtree — including the
- * stock badge, whose text then measured 3.64:1 against its own background.
- * Opacity creates a stacking context, so no child can opt back out: the only
- * values that keep the badge readable are 0.95 and up, which dims nothing.
- *
- * The state is already carried by the badge itself, the "Unavailable until
- * stock is replenished" line, the not-allowed cursor and the disabled button,
- * so it is signalled here by the surface instead and every label stays at full
- * contrast.
+ * A freshly placed order flashes its card for a few seconds (N6): the
+ * embedded form's `onPlaced` scrolls to the new card and sets this attribute
+ * directly with the DOM API, clearing it again after 4 s — `OpsCard.tsx` is
+ * out of this package's scope to touch, so nothing hands the card a "just
+ * placed" prop; this is the plain-CSS equivalent, keyed on an attribute any
+ * element can carry regardless of how it got there.
  */
-.liquid-metal .pos-product-card-disabled {
-  background: linear-gradient(155deg, hsl(215, 8%, 12%) 0%, hsl(220, 7%, 10%) 100%);
-  border-color: hsl(215, 8%, 20%);
-  box-shadow: none;
+@keyframes ops-card-new-flash {
+  0% {
+    box-shadow: 0 0 0 3px var(--truth-blue-bright);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.liquid-metal [data-new="true"] {
+  animation: ops-card-new-flash 4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .liquid-metal [data-new="true"] {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--truth-blue-bright);
+  }
 }
 
 .liquid-metal .pos-price {

@@ -192,4 +192,58 @@ test.describe("order form on a phone", () => {
 
     await page.context().close();
   });
+
+  test("a consumed WhatsApp draft pre-selects the WhatsApp channel chip (N6)", async ({ browser, api, orgId }) => {
+    const suffix = uniqueSuffix();
+    // POST /api/products answers with this field named `productCode`; GET
+    // /api/products (what pos.tsx actually reads) renames it to `productId`
+    // (`PosProduct.productId`) — the code this test created it with either
+    // way, kept locally rather than trusted from either response shape.
+    const code = `WDW-${suffix}`.slice(0, 40);
+    const product = await okJson<{ id: string; name: string }>(
+      await api.post("/api/products", {
+        data: {
+          name: `WA Draft Widget ${suffix}`,
+          productCode: code,
+          costPrice: 1,
+          salePrice: 5,
+          defaultSalePrice: 5,
+          stock: 0,
+          stockLimit: 100,
+        },
+      }),
+    );
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    // Mirrors `stashWhatsappDraft` (client/src/lib/whatsappDraft.ts): the
+    // panel writes this before navigating to the till, and `consumeWhatsappDraft`
+    // reads and clears it once on mount. Written via `addInitScript` so it is
+    // there before the form's own consuming effect ever runs. `sku` is matched
+    // against the catalogue's own code (`PosProduct.productId`), not the
+    // database row id — see `pos.tsx`'s draft-consuming effect.
+    await page.addInitScript(
+      (value) => window.sessionStorage.setItem("arcarna.whatsapp.draftOrder", JSON.stringify(value)),
+      { conversationId: `wa-${suffix}`, customerId: null, items: [{ sku: code, name: product.name, quantity: 1 }] },
+    );
+
+    await page.goto("/create-order");
+    await expect(page.locator('[data-testid="line-product-new"]')).toBeVisible({ timeout: 60_000 });
+    // Not the toast: the confirming toast this same effect fires auto-dismisses
+    // after 5 s (`TOAST_REMOVE_DELAY`, use-toast.ts) and the consuming effect
+    // itself waits on customers as well as products loading, so a toast
+    // assertion sequenced after the line-product-new wait above races that
+    // window and can miss it though the effect ran perfectly correctly. The
+    // durable claims — the matched line, and below, the channel chip — do not
+    // expire, so they are what this test checks.
+    await expect(page.locator(`[data-testid="order-line-${product.id}"]`)).toBeVisible({ timeout: 45_000 });
+
+    await page.locator('[data-testid="mobile-checkout-button"]').tap();
+    await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
+    // The order came in over WhatsApp — the channel chip must say so without
+    // the cashier having to remember to pick it (brief, "Form embedding").
+    await expect(page.locator('[data-testid="chip-channel-whatsapp"]')).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator('[data-testid="chip-channel-walkin"]')).toHaveAttribute("aria-checked", "false");
+
+    await page.context().close();
+  });
 });

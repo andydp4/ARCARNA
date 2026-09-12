@@ -260,8 +260,12 @@ export function PosOrderLines({
         </div>
       ) : (
         <div className="space-y-2">
-          {/* Column headings, wide screens only — each row is self-labelling on a phone. */}
-          <div className="hidden gap-2 px-2 text-xs uppercase tracking-wide text-metal-muted sm:grid sm:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
+          {/* Column headings, wide containers only — each row is self-labelling
+              on a phone, or in the Operations Centre's narrow pane (N6): this
+              reads the FORM's own rendered width via the `@container` root in
+              pos.tsx, not the browser viewport, so a 1194 px tablet with a
+              ~460 px pane still gets the phone row layout below. */}
+          <div className="hidden gap-2 px-2 text-xs uppercase tracking-wide text-metal-muted @[640px]:grid @[640px]:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
             <span>Product</span>
             <span className="text-center">Qty</span>
             <span className="text-right">Price</span>
@@ -277,7 +281,7 @@ export function PosOrderLines({
                 className="lm-card-muted rounded-lg p-2"
                 data-testid={`order-line-${line.product.id}`}
               >
-                <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-2 sm:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-2 @[640px]:grid-cols-[1fr_9.5rem_6.5rem_5.5rem_2.75rem]">
                   <div className="min-w-0">
                     <div className="truncate font-medium text-metal-warm-white" data-testid={`line-name-${index}`}>
                       {line.product.name}
@@ -288,7 +292,7 @@ export function PosOrderLines({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-11 w-11 shrink-0 justify-self-end sm:order-last"
+                    className="h-11 w-11 shrink-0 justify-self-end @[640px]:order-last"
                     aria-label={`Remove ${line.product.name}`}
                     data-testid={`line-remove-${index}`}
                     disabled={disabled}
@@ -345,7 +349,7 @@ export function PosOrderLines({
                       type="text"
                       inputMode="decimal"
                       aria-label={`Price for ${line.product.name}`}
-                      className="h-10 w-24 sm:w-full"
+                      className="h-10 w-24 @[640px]:w-full"
                       value={line.priceInput ?? line.customPrice.toFixed(2)}
                       data-testid={`line-price-${index}`}
                       disabled={disabled}
@@ -362,7 +366,7 @@ export function PosOrderLines({
                   </div>
 
                   <span
-                    className="col-span-2 text-right text-base font-semibold tabular-nums text-metal-warm-white sm:col-span-1"
+                    className="col-span-2 text-right text-base font-semibold tabular-nums text-metal-warm-white @[640px]:col-span-1"
                     data-testid={`line-total-${index}`}
                   >
                     £{line.subtotal.toFixed(2)}

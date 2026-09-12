@@ -10,9 +10,21 @@
  * dialog stacked on top of the sheet. On Android the stacked layers fought
  * over focus and scroll lock, the dialog was sized in vh so the keyboard
  * pushed its buttons off screen, and sometimes the dialog did not render at
- * all. Everything here is in normal page flow, the shell is sized in dvh, and
- * the only dialogs left are small and single (redeem points, Z-report, close
- * shift).
+ * all. Everything here is in normal page flow, and the only dialog left is
+ * the small, single "Redeem loyalty points" one.
+ *
+ * Since N6 this also embeds beside the Operations Centre board
+ * (`operations.tsx`'s form pane, and the phone's "New order" tab): pass
+ * `embedded` and the shell fills its container (`h-full`) instead of the
+ * standalone `.pos-viewport`, drops its own page header, and calls
+ * `onPlaced` after every sale so the board can find and flash the new card.
+ * `usePosNarrow` reads the form's OWN rendered width via a `@container` root
+ * — not the browser viewport (`useIsMobile`, finding G18) — so the same
+ * five structural branches and the same `@[640px]:` layout classes give the
+ * phone structure to a ~460 px form pane on a 1194 px tablet exactly as they
+ * do to a genuinely narrow phone screen. Standalone behaviour (`embedded`
+ * omitted) is unchanged, because a standalone form's container is the
+ * viewport.
  */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -26,21 +38,13 @@ import { PageHeader } from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Receipt, Clock } from "lucide-react";
-import { getStoredShiftId, setStoredShiftId } from "@/pages/pos/shift-open";
-import { ShiftCloseWizard } from "@/pages/pos/shift-close";
-import { ZReportView } from "@/components/ZReport";
-import type { ZReportData } from "@shared/reports/zReport";
-import { getActiveCashierId, getActiveCashierShiftId, getActiveCashierShiftReplayToken } from "@/lib/orgScope";
-import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
-import { Link } from "wouter";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { ToastAction } from "@/components/ui/toast";
 import { PosOrderLines } from "@/components/pos-order-lines";
 import { PosTopSellers } from "@/components/pos-top-sellers";
 import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
 import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
-import { formatPosPrice, posPrice, type PosProduct } from "@/components/pos-types";
-import { PosCartPanel, type PosCartPanelProps } from "@/components/pos-cart-panel";
+import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-types";
+import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
@@ -48,59 +52,25 @@ import { Label } from "@/components/ui/label";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
+import { usePosNarrow } from "@/hooks/usePosNarrow";
 import type { LocationPickerOption } from "@shared/schema";
+import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
+import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
+import { cn } from "@/lib/utils";
 
 type Product = PosProduct;
+type Customer = PosCustomer;
+type CartItem = PosCartItem;
 
-interface Customer {
-  id: string;
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  receiptEmailOptIn?: boolean;
-  category: string;
-  loyaltyPoints: number;
+export interface PosEmbeddedProps {
+  /** Called after a sale places successfully, with the new order's id, so the
+   *  board can scroll to and flash the card that just landed on it. */
+  onPlaced: (orderId: string) => void;
 }
 
-interface CartItem {
-  product: Product;
-  quantity: number;
-  customPrice: number;
-  subtotal: number;
-  // Local editing states (not in sync with actual values)
-  priceInput?: string;
-  quantityInput?: string;
-}
-
-/**
- * The Z-report for a shift that is still running.
- *
- * Loaded on open rather than kept in cache: a cashier checking where they are
- * up to needs the figure as of now, and a stale one is exactly the problem this
- * is meant to solve.
- */
-function ShiftSoFar({ shiftId }: { shiftId: string }) {
-  const { data, isLoading, isError } = useQuery<{ report: ZReportData }>({
-    queryKey: ["/api/shifts", shiftId, "report"],
-    queryFn: async () => {
-      const res = await apiFetch(`/api/shifts/${shiftId}/report`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load the report");
-      return res.json();
-    },
-    staleTime: 0,
-    gcTime: 0,
-  });
-
-  if (isLoading) return <p className="text-sm text-metal-muted">Working out where you are up to…</p>;
-  if (isError || !data?.report) {
-    return <p className="text-sm text-destructive">Could not load your shift figures.</p>;
-  }
-  return <ZReportView report={data.report} />;
-}
-
-export default function POS() {
+export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) {
   const { toast } = useToast();
-  const isMobile = useIsMobile();
+  const [narrowRef, narrow] = usePosNarrow();
   const [cart, setCart] = useState<CartItem[]>([]);
   /** Which step is on screen. "pay" replaces the lines with the payment step. */
   const [view, setView] = useState<"build" | "pay">("build");
@@ -138,11 +108,22 @@ export default function POS() {
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [emailReceipt, setEmailReceipt] = useState(false);
-  const [shiftId, setShiftId] = useState<string | null>(() => getStoredShiftId());
-  const [shiftCloseOpen, setShiftCloseOpen] = useState(false);
-  const [zReportOpen, setZReportOpen] = useState(false);
 
-  const { data: currentShiftData, isLoading: shiftLoading } = useQuery<{
+  // Fulfilment channel, the promise made to the customer, and who is dealing
+  // with it — the board needs all three and, until N6, the form collected
+  // none of them (brief, "Form embedding"; G20).
+  const [channel, setChannel] = useState<PosChannel>("pos");
+  const [dueMinutes, setDueMinutes] = useState<number | null>(null);
+  const [dueTime, setDueTime] = useState("");
+  // Once the cashier has picked (or explicitly cleared) a due time
+  // themselves, the fulfilment/channel defaults below stop overwriting it.
+  const [dueTouched, setDueTouched] = useState(false);
+  // "" defers to the server's default-owner rule (inputter-if-on-station →
+  // least-loaded present station member → Unassigned); a specific id is the
+  // inputter's explicit override, sent as `assignedUserId`.
+  const [assigneeUserId, setAssigneeUserId] = useState("");
+
+  const { data: currentShiftData } = useQuery<{
     shift: { id: string; status: string; locationId?: string } | null;
   }>({
     queryKey: ["/api/shifts/current"],
@@ -173,19 +154,13 @@ export default function POS() {
   // first render must not flash a false "no location configured" warning.
   const noLocationWillResolve = posLocations.length > 0 && !sellingLocationId;
 
-  // The till no longer asks anybody to open a shift. One exists per person per
-  // trading day and opens itself on the first sale, so this only mirrors what
-  // the server already decided (migration 058).
-  useEffect(() => {
-    const serverShift = currentShiftData?.shift;
-    if (serverShift?.id) {
-      setShiftId(serverShift.id);
-      setStoredShiftId(serverShift.id);
-    } else if (!shiftLoading && currentShiftData && !serverShift) {
-      setShiftId(null);
-      setStoredShiftId(null);
-    }
-  }, [currentShiftData, shiftLoading]);
+  // "Looked after by" (brief, "Assignment") — the same staff list the board's
+  // header strip uses, so the picker and the default-owner rule agree on who
+  // is on shift.
+  const { data: staffData } = useQuery<{ staff: OpsBoardStaffRow[] }>({
+    queryKey: ["/api/operations/staff"],
+  });
+  const staff = staffData?.staff ?? [];
 
   useEffect(() => {
     if (selectedCustomer?.email && selectedCustomer.receiptEmailOptIn !== false) {
@@ -233,6 +208,8 @@ export default function POS() {
       const customer = customers.find((c) => c.id === draft.customerId);
       if (customer) setSelectedCustomer(customer);
     }
+    // The order came in over WhatsApp regardless of whether every line matched.
+    setChannel("whatsapp");
     setDraftConsumed(true);
     toast({
       title: "WhatsApp draft loaded",
@@ -301,53 +278,51 @@ export default function POS() {
     },
   });
 
+  /** A single-tap way to add the promise a sale went out without (toast action below). */
+  const setDueFromToastMutation = useMutation({
+    mutationFn: async ({ orderId, minutes }: { orderId: string; minutes: number }) => {
+      const res = await apiFetch(`/api/orders/${orderId}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "set_due", dueInMinutes: minutes }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || res.statusText);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Due time set" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not set a due time", description: error.message, variant: "destructive" });
+    },
+  });
+
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
       const queueOffline = async () => {
         console.log('[POS] Queueing order mutation offline');
         try {
-          // Snapshot the cashier/shift context now, so a sync that happens after
-          // the shift auto-closes still attributes the sale to the original cashier.
-          const cashierId = getActiveCashierId();
-          const cashierShiftId = getActiveCashierShiftId();
-          const cashierShiftReplayToken = getActiveCashierShiftReplayToken();
-          const offlineOrderData = {
-            ...orderData,
-            ...(cashierId ? { cashierId } : {}),
-            ...(cashierShiftId ? { cashierShiftId } : {}),
-            ...(cashierShiftReplayToken ? { _cashierShiftReplayToken: cashierShiftReplayToken } : {}),
-          };
           await offlineStorage.queueMutation({
             type: 'ORDER_CREATE',
             method: 'POST',
             endpoint: '/api/orders',
-            data: offlineOrderData
+            data: orderData,
           });
           console.log('[POS] Order mutation queued successfully');
         } catch (queueError) {
           console.error('[POS] Failed to queue mutation:', queueError);
           throw queueError;
         }
-        
-        try {
-          if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.ready;
-            if ('sync' in registration) {
-              await (registration as any).sync.register('sync-orders');
-            }
-          }
-        } catch (swError) {
-          console.log('[PWA] Background sync not supported, will sync on next online event');
-        }
-        
+
         return { offline: true, orderId: null };
       };
 
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
+
         const response = await apiFetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -355,24 +330,36 @@ export default function POS() {
           credentials: 'include',
           signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
           const text = await response.text() || response.statusText;
           if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
-            window.dispatchEvent(new CustomEvent("arcarna:cashier-shift-required"));
+            // A readable toast rather than the raw response body (which is
+            // what fell through to the generic `throw` below before N6) —
+            // it used to also fire a CustomEvent for `CashierShiftBadge` to
+            // catch, but that component was never mounted anywhere, so
+            // nothing ever showed the cashier what had gone wrong.
+            let message = "An active cashier shift is required before taking sales.";
+            try {
+              const parsed = JSON.parse(text);
+              if (typeof parsed?.message === "string") message = parsed.message;
+            } catch {
+              /* the default message above already covers this */
+            }
+            throw new Error(message);
           }
           throw new Error(`${response.status}: ${text}`);
         }
-        
+
         return response.json();
       } catch (error) {
-        const isNetworkError = !navigator.onLine || 
+        const isNetworkError = !navigator.onLine ||
           (error as Error).name === 'AbortError' ||
           (error as Error).message.includes('Failed to fetch') ||
           (error as Error).message.includes('NetworkError');
-        
+
         if (isNetworkError) {
           return queueOffline();
         }
@@ -380,6 +367,9 @@ export default function POS() {
       }
     },
     onSuccess: async (data: any) => {
+      const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
+      const hadNoDueTime = dueMinutes == null && !dueTime;
+
       if (data?.offline) {
         toast({
           title: "Order Saved Offline",
@@ -397,8 +387,30 @@ export default function POS() {
         toast({
           title: "Order Placed",
           description: "Order has been successfully processed.",
+          ...(createdOrderId && hadNoDueTime
+            ? {
+                action: (
+                  <ToastAction
+                    altText="Set a due time"
+                    onClick={() =>
+                      setDueFromToastMutation.mutate({
+                        orderId: createdOrderId,
+                        minutes: fulfilmentMethod === "delivery" ? 45 : 30,
+                      })
+                    }
+                  >
+                    Set a due time?
+                  </ToastAction>
+                ),
+              }
+            : {}),
         });
       }
+
+      if (createdOrderId && !data?.offline) {
+        embedded?.onPlaced(createdOrderId);
+      }
+
       setCart([]);
       setSelectedCustomer(null);
       setView("build");
@@ -411,7 +423,29 @@ export default function POS() {
       setOrderExpenses([]);
       setExpenseDescription("");
       setExpenseAmount("");
+      setChannel("pos");
+      setDueMinutes(null);
+      setDueTime("");
+      setDueTouched(false);
+      setAssigneeUserId("");
       await invalidateAfterPosCheckout(queryClient);
+
+      // The lines editor is back on screen the instant the mutation settles;
+      // give it focus so the next code can be rattled straight in. Retried
+      // for a moment rather than one `requestAnimationFrame`: the element is
+      // briefly `disabled` (still `submitting` for the render or two this
+      // reset and the query invalidation above take to land), and a browser
+      // silently refuses to focus a disabled control — the retry is what
+      // makes this land once it stops being disabled rather than racing it.
+      const focusProductSearch = (attempt: number) => {
+        const input = document.querySelector<HTMLInputElement>('[data-testid="line-product-new"]');
+        if (input && !input.disabled) {
+          input.focus();
+          return;
+        }
+        if (attempt < 10) setTimeout(() => focusProductSearch(attempt + 1), 100);
+      };
+      focusProductSearch(0);
     },
     onError: (error: any) => {
       toast({
@@ -489,39 +523,13 @@ export default function POS() {
     void addProductByBarcode(code);
   });
 
-  // Update cart quantity
-  const updateQuantity = (productId: string, delta: number) => {
-    if (placeOrderMutation.isPending) return;
-    setCart((prev) =>
-      prev
-        .map((item) => {
-          if (item.product.id === productId) {
-            const newQuantity = Math.max(0, item.quantity + delta);
-            return {
-              ...item,
-              quantity: newQuantity,
-              subtotal: newQuantity * item.customPrice,
-            };
-          }
-          return item;
-        })
-        .filter((item) => item.quantity > 0)
-    );
-  };
-  
-  // Remove from cart
-  const removeFromCart = (productId: string) => {
-    if (placeOrderMutation.isPending) return;
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
-  };
-
   // Update customer tier when customer is selected
   useEffect(() => {
     if (selectedCustomer && loyaltyTiers.length > 0) {
       const sortedTiers = [...loyaltyTiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
       const tier = sortedTiers.find((t: any) => selectedCustomer.loyaltyPoints >= t.pointsRequired);
       setCustomerTier(tier);
-      
+
       // Calculate loyalty discount based on tier
       if (tier) {
         setLoyaltyDiscount(parseFloat(tier.discountPercentage || 0));
@@ -540,10 +548,43 @@ export default function POS() {
     setRedeemInput("");
   }, [selectedCustomer?.id]);
 
+  // Suggested due time follows fulfilment/channel (brief: delivery pre-selects
+  // +45, Phone/WhatsApp pre-select +30) until the cashier picks — or explicitly
+  // clears — one themselves.
+  useEffect(() => {
+    if (dueTouched) return;
+    setDueTime("");
+    if (fulfilmentMethod === "delivery") {
+      setDueMinutes(45);
+    } else if (channel === "phone" || channel === "whatsapp") {
+      setDueMinutes(30);
+    } else {
+      setDueMinutes(null);
+    }
+  }, [fulfilmentMethod, channel, dueTouched]);
+
+  const selectDueMinutes = useCallback((minutes: number) => {
+    setDueTouched(true);
+    setDueTime("");
+    setDueMinutes((current) => (current === minutes ? null : minutes));
+  }, []);
+
+  const selectDueTime = useCallback((time: string) => {
+    setDueTouched(true);
+    setDueMinutes(null);
+    setDueTime(time);
+  }, []);
+
+  const clearDue = useCallback(() => {
+    setDueTouched(true);
+    setDueMinutes(null);
+    setDueTime("");
+  }, []);
+
   // Calculate totals with discounts
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
-  const promoDiscountAmount = appliedPromo ? 
+  const promoDiscountAmount = appliedPromo ?
     (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
     : 0;
   const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
@@ -553,7 +594,7 @@ export default function POS() {
     orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
   const tax = +(discountedSubtotal * (taxRatePercent / 100)).toFixed(2);
   const total = +(discountedSubtotal + tax).toFixed(2);
-  
+
   // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
   const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
 
@@ -568,6 +609,14 @@ export default function POS() {
   // Total item count (sum of quantities)
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // A pre-order (dated ahead) always needs a promise (brief, "Pre-orders") —
+  // recomputed reactively so the payment step's hint and the guard below
+  // agree with whatever `orderDate` is showing right now.
+  const isPreorderDate = useMemo(() => {
+    const verdict = classifyOrderDate(orderDate, localIsoDate());
+    return verdict.ok && verdict.dating.kind === "preorder";
+  }, [orderDate]);
+
   // Handle checkout: move to the payment step.
   const handleCheckout = useCallback(() => {
     if (placeOrderMutation.isPending) return;
@@ -580,7 +629,6 @@ export default function POS() {
       return;
     }
     setView("pay");
-    window.scrollTo({ top: 0 });
   }, [cart.length, placeOrderMutation.isPending, toast]);
 
   // Add expense to order
@@ -613,7 +661,7 @@ export default function POS() {
     // Reset form
     setExpenseDescription("");
     setExpenseAmount("");
-    
+
     toast({
       title: "Expense Added",
       description: `Added ${expenseCategory} expense: £${(isNaN(amount) ? 0 : amount).toFixed(2)}`,
@@ -677,6 +725,18 @@ export default function POS() {
       return;
     }
 
+    // A pre-order with no promise is refused server-side too (every path,
+    // including the website) — said here before the round trip rather than
+    // after it.
+    if (isPreorderDate && dueMinutes == null && !dueTime) {
+      toast({
+        title: "Set a due time",
+        description: "Pre-orders need a due time before payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const orderData: any = {
       lines: cart.map((item) => ({
         productId: item.product.id,
@@ -685,11 +745,23 @@ export default function POS() {
       })),
       paymentMethod: paymentMethod,
       fulfilmentMethod,
+      channel,
       // Omitted for today: the server dates a live sale itself, in the org's
       // own timezone, so a till and a server either side of midnight cannot
       // disagree about which day "today" is.
       ...(dateVerdict.dating.kind !== "live" ? { orderDate: dateVerdict.dating.date } : {}),
     };
+    if (dueTime) {
+      orderData.dueTime = dueTime;
+    } else if (dueMinutes != null) {
+      orderData.dueInMinutes = dueMinutes;
+    }
+    if (assigneeUserId) {
+      orderData.assignedUserId = assigneeUserId;
+    }
+    if (orderExpenses.length > 0) {
+      orderData.expenses = orderExpenses;
+    }
     if (splitPayment) {
       const legs = tenderLegs
         .map((leg) => ({ method: leg.method, amount: Number(leg.amount) }))
@@ -764,11 +836,8 @@ export default function POS() {
     placeOrderMutation.mutate(orderData);
   };
 
-  const formatPrice = (p: Product) => formatPosPrice(p);
-
   const cartPanelProps: PosCartPanelProps = {
     cart,
-    setCart,
     cartItemCount,
     customers,
     filteredCustomers,
@@ -795,18 +864,20 @@ export default function POS() {
     redeemPoints,
     pointsRedemptionAmount,
     onRedeemPointsClick: () => setRedeemDialogOpen(true),
-    removeFromCart,
-    updateQuantity,
-    formatPrice,
     handleCheckout,
     orderSubmitting: placeOrderMutation.isPending,
-    variant: "summary",
   };
 
   const submitting = placeOrderMutation.isPending;
 
   return (
-    <div className="pos-shell pos-viewport flex flex-col overflow-hidden lg:flex-row">
+    <div
+      ref={narrowRef}
+      className={cn(
+        "pos-shell @container flex flex-col overflow-hidden @[640px]:flex-row",
+        embedded ? "h-full" : "pos-viewport",
+      )}
+    >
       {view === "pay" ? (
         <div className="min-h-0 flex-1">
           <PosCheckoutStep
@@ -829,6 +900,18 @@ export default function POS() {
             setFulfilmentMethod={setFulfilmentMethod}
             giftCardPayment={giftCardPayment}
             setGiftCardPayment={setGiftCardPayment}
+            channel={channel}
+            setChannel={setChannel}
+            dueMinutes={dueMinutes}
+            dueTime={dueTime}
+            onSelectDueMinutes={selectDueMinutes}
+            onSelectDueTime={selectDueTime}
+            onClearDue={clearDue}
+            duePreorderRequired={isPreorderDate}
+            assigneeUserId={assigneeUserId}
+            setAssigneeUserId={setAssigneeUserId}
+            staff={staff}
+            currentUserId={(authUser as { id?: string } | null)?.id ?? null}
             expenses={orderExpenses}
             expenseCategory={expenseCategory}
             setExpenseCategory={setExpenseCategory}
@@ -848,65 +931,47 @@ export default function POS() {
       ) : (
         <>
           {/* Step 1: the order itself. */}
-          <div className="pos-products-panel flex min-h-0 flex-1 flex-col lg:max-w-[62%] lg:flex-[1.62]">
-            <div className="pos-section-header shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pt-5">
-              <PageHeader
-                // The action row stacks under the title until there is real
-                // room beside it: this panel is ~62% of the page, and three
-                // buttons beside the title squeezed it to a few words a line.
-                className="mb-0 sm:flex-col sm:items-stretch sm:justify-start 2xl:flex-row 2xl:items-start 2xl:justify-between"
-                eyebrow="Step 1 of 2 · Build the order"
-                title="Create Order"
-                question={isMobile ? undefined : "What is this customer buying?"}
-                explanation={isMobile ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
-                action={
-                  <>
-                    {shiftId && (
-                      <Button
-                        variant="outline"
-                        className="lm-btn-outline min-h-[44px] shrink-0"
-                        onClick={() => setZReportOpen(true)}
-                        data-testid="button-z-report-so-far"
-                      >
-                        <Receipt className="mr-2 h-4 w-4" />
-                        Z-report so far
-                      </Button>
-                    )}
-                    {shiftId && (
-                      <Button
-                        variant="outline"
-                        className="lm-btn-outline min-h-[44px] shrink-0"
-                        onClick={() => setShiftCloseOpen(true)}
-                      >
-                        <Clock className="mr-2 h-4 w-4" />
-                        Close shift
-                      </Button>
-                    )}
-                    {!isMobile && (
-                      <Button asChild variant="outline" className="lm-btn-outline min-h-[44px] shrink-0" data-testid="link-dashboard">
-                        <Link href="/">
-                          <Package className="mr-2 h-4 w-4" />
-                          Dashboard
-                        </Link>
-                      </Button>
-                    )}
-                  </>
-                }
-              />
-              {sellingLocation ? (
-                <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
-                  Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
-                </p>
-              ) : noLocationWillResolve ? (
-                <p
-                  className="mt-2 text-xs font-medium text-destructive"
-                  data-testid="pos-no-location-warning"
-                >
-                  No selling location is set up. Ask an admin to set an organization default
-                  location, or a default location for this user, before taking payment.
-                </p>
-              ) : null}
-            </div>
+          <div className="pos-products-panel flex min-h-0 flex-1 flex-col @[640px]:max-w-[62%] @[640px]:flex-[1.62]">
+            {embedded ? (
+              (sellingLocation || noLocationWillResolve) && (
+                <div className="shrink-0 px-4 pb-2 pt-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
+                  {sellingLocation ? (
+                    <p className="mt-1 text-xs text-metal-muted" data-testid="pos-selling-location">
+                      Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs font-medium text-destructive" data-testid="pos-no-location-warning">
+                      No selling location is set up. Ask an admin to set an organization default
+                      location, or a default location for this user, before taking payment.
+                    </p>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="pos-section-header shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pt-5">
+                <PageHeader
+                  className="mb-0 sm:flex-col sm:items-stretch sm:justify-start 2xl:flex-row 2xl:items-start 2xl:justify-between"
+                  eyebrow="Step 1 of 2 · Build the order"
+                  title="Create Order"
+                  question={narrow ? undefined : "What is this customer buying?"}
+                  explanation={narrow ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
+                />
+                {sellingLocation ? (
+                  <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
+                    Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
+                  </p>
+                ) : noLocationWillResolve ? (
+                  <p
+                    className="mt-2 text-xs font-medium text-destructive"
+                    data-testid="pos-no-location-warning"
+                  >
+                    No selling location is set up. Ask an admin to set an organization default
+                    location, or a default location for this user, before taking payment.
+                  </p>
+                ) : null}
+              </div>
+            )}
 
             {/* Plain overflow scrolling, not a scroll-area widget: touch
                 scrolling and the on-screen keyboard both behave with the
@@ -928,16 +993,17 @@ export default function POS() {
                 />
               )}
 
-              {/* On a phone the customer, discounts and totals sit under the
-                  lines rather than in a slide-over. */}
-              {isMobile && (
+              {/* On a narrow form — a phone, or the Operations Centre's pane —
+                  the customer, discounts and totals sit under the lines
+                  rather than beside them. */}
+              {narrow && (
                 <div className="lm-card mt-6 rounded-xl border border-metal-edge p-4" data-testid="pos-mobile-summary">
                   <PosCartPanel {...cartPanelProps} showCheckoutButton={false} />
                 </div>
               )}
             </div>
 
-            {isMobile && (
+            {narrow && (
               <div
                 // Right padding keeps the button clear of the app's floating
                 // chat launcher, which sits fixed in the bottom-right corner.
@@ -975,9 +1041,10 @@ export default function POS() {
             )}
           </div>
 
-          {/* Desktop and tablet: customer, discounts and totals on the right. */}
-          {!isMobile && (
-            <div className="pos-cart-rail flex w-full max-w-md flex-col overflow-y-auto border-l border-metal-edge p-4 lg:max-w-[38%] lg:flex-1">
+          {/* A wide enough form: customer, discounts and totals in a rail
+              beside the lines rather than under them. */}
+          {!narrow && (
+            <div className="pos-cart-rail flex w-full flex-col overflow-y-auto border-l border-metal-edge p-4 max-w-[38%] flex-1">
               <PosCartPanel {...cartPanelProps} />
             </div>
           )}
@@ -1033,36 +1100,6 @@ export default function POS() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Where you are up to, without closing anything. Fetched fresh each time
-          it opens rather than cached, because a stale figure is the whole
-          problem this screen is meant to solve. */}
-      <Dialog open={zReportOpen} onOpenChange={setZReportOpen}>
-        <DialogContent className="max-w-2xl max-h-[85dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Your shift so far</DialogTitle>
-            <DialogDescription>
-              Everything you have taken since the shift began. Nothing is closed by looking.
-            </DialogDescription>
-          </DialogHeader>
-          {zReportOpen && shiftId && <ShiftSoFar shiftId={shiftId} />}
-        </DialogContent>
-      </Dialog>
-
-      {shiftId && (
-        <ShiftCloseWizard
-          open={shiftCloseOpen}
-          shiftId={shiftId}
-          onClosed={() => {
-            // Closing the drawer no longer prompts to open another. The next
-            // sale opens one by itself, on whatever trading day it falls in.
-            setShiftCloseOpen(false);
-            setShiftId(null);
-            setStoredShiftId(null);
-          }}
-          onCancel={() => setShiftCloseOpen(false)}
-        />
-      )}
     </div>
   );
 }

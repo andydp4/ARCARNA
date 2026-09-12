@@ -3,17 +3,10 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { formatQuantity, parseQuantityInput } from "@shared/quantity";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 import {
   ShoppingCart,
-  Trash2,
-  Plus,
-  Minus,
   Receipt,
   Award,
   Star,
@@ -41,6 +34,8 @@ export interface PosCustomer {
   name: string;
   phone?: string | null;
   email?: string | null;
+  /** Undefined/true = the customer accepts a receipt email; false opts out. */
+  receiptEmailOptIn?: boolean | null;
   category: string;
   loyaltyPoints: number;
 }
@@ -180,8 +175,9 @@ function CustomerPicker({
 }
 
 export type PosCartPanelProps = {
+  /** Only its length is read here (the checkout button's disabled state) — the
+   *  line editor is `PosOrderLines` (pos.tsx), not this panel (N6). */
   cart: PosCartItem[];
-  setCart: React.Dispatch<React.SetStateAction<PosCartItem[]>>;
   cartItemCount: number;
   customers: PosCustomer[];
   filteredCustomers: PosCustomer[];
@@ -213,16 +209,8 @@ export type PosCartPanelProps = {
   redeemPoints: number;
   pointsRedemptionAmount: number;
   onRedeemPointsClick: () => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, delta: number) => void;
-  formatPrice: (p: PosProduct) => string;
   handleCheckout: () => void;
   orderSubmitting?: boolean;
-  /**
-   * "summary" leaves out the item list: the order lines editor is the cart
-   * now, so the rail only carries customer, discounts and totals.
-   */
-  variant?: "full" | "summary";
   /** Off when a sticky bar elsewhere on the page owns the checkout action. */
   showCheckoutButton?: boolean;
 };
@@ -230,10 +218,16 @@ export type PosCartPanelProps = {
 /**
  * Module-level cart UI so React does not remount the whole panel on every POS render
  * (inline `const CartPanel = () => …` inside the page created a new component type each render).
+ *
+ * Customer, discounts and totals only — the per-line cart editor this used to
+ * carry (`variant="full"`, price/quantity inputs, a remove button per row) was
+ * dead code once `pos.tsx` gained its own line editor (`PosOrderLines`) and
+ * started passing `variant="summary"` on every call: nothing has passed
+ * `"full"` since, so this panel now does only the one job it was actually
+ * asked to do (Phase N, N6).
  */
 export function PosCartPanel({
   cart,
-  setCart,
   cartItemCount,
   customers,
   filteredCustomers,
@@ -260,21 +254,15 @@ export function PosCartPanel({
   redeemPoints,
   pointsRedemptionAmount,
   onRedeemPointsClick,
-  removeFromCart,
-  updateQuantity,
-  formatPrice,
   handleCheckout,
   orderSubmitting = false,
-  variant = "full",
   showCheckoutButton = true,
 }: PosCartPanelProps) {
-  const summaryOnly = variant === "summary";
-  const { toast } = useToast();
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
   return (
     <>
-      {summaryOnly ? null : cart.length > 0 ? (
+      {cart.length > 0 ? (
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 2 of 4 · Review cart</p>
       ) : (
         <p className="mb-3 text-sm leading-relaxed text-metal-muted">Add products from the grid to start a sale.</p>
@@ -282,7 +270,7 @@ export function PosCartPanel({
       <div className="mb-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-metal-warm-white sm:text-xl">
           <ShoppingCart className="h-5 w-5 shrink-0" />
-          {summaryOnly ? "Order" : "Cart"}
+          Order
           {cartItemCount > 0 && (
             <Badge variant="secondary" className="font-normal">
               {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
@@ -419,203 +407,6 @@ export function PosCartPanel({
       )}
 
       <Separator className="mb-4" />
-
-      {summaryOnly ? null : (
-      <ScrollArea className="mb-4 flex-1">
-        {cart.length === 0 ? (
-          <div className="py-10 text-center text-metal-muted">
-            <ShoppingCart className="mx-auto mb-2 h-12 w-12 opacity-40" />
-            <p className="font-medium text-metal-warm-white">Your cart is empty</p>
-            <p className="mt-1 text-sm">Tap a product to add it</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {cart.map((item) => (
-              <Card
-                key={item.product.id}
-                data-testid={`cart-item-${item.product.id}`}
-                className="lm-card-muted overflow-hidden"
-              >
-                <CardContent className="p-3">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="line-clamp-2 font-medium">{item.product.name}</div>
-                      <div className="text-xs text-metal-muted">
-                        Default: {formatPrice(item.product)}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 min-h-[44px] min-w-[44px] shrink-0"
-                      onClick={() => removeFromCart(item.product.id)}
-                      data-testid={`remove-item-${item.product.id}`}
-                      aria-label={`Remove ${item.product.name}`}
-                      disabled={orderSubmitting}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="mb-3 flex items-center gap-2">
-                    <Label className="shrink-0 text-xs">Price</Label>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm">£</span>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.priceInput ?? item.customPrice.toFixed(2)}
-                        onChange={(e) =>
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? { ...cartItem, priceInput: e.target.value }
-                                : cartItem
-                            )
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                        onBlur={(e) => {
-                          const newPrice = parseFloat(e.target.value);
-                          if (!isNaN(newPrice) && newPrice >= 0) {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? {
-                                      ...cartItem,
-                                      customPrice: newPrice,
-                                      subtotal: cartItem.quantity * newPrice,
-                                      priceInput: undefined,
-                                    }
-                                  : cartItem
-                              )
-                            );
-                          } else {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, priceInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            toast({
-                              title: "Invalid Price",
-                              description: "Please enter a valid price",
-                              variant: "destructive",
-                            });
-                          }
-                        }}
-                        className="h-10 min-h-[44px] w-24"
-                        data-testid={`price-input-${item.product.id}`}
-                        disabled={orderSubmitting}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1 rounded-md border border-metal-edge p-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
-                        onClick={() => updateQuantity(item.product.id, -1)}
-                        data-testid={`decrease-qty-${item.product.id}`}
-                        aria-label="Decrease quantity"
-                        disabled={orderSubmitting}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <Input
-                        type="text"
-                        // "numeric" shows a keypad with no decimal point, so a
-                        // fractional quantity could not even be typed on a phone.
-                        inputMode="decimal"
-                        value={item.quantityInput ?? formatQuantity(item.quantity)}
-                        onChange={(e) =>
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? { ...cartItem, quantityInput: e.target.value }
-                                : cartItem
-                            )
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === "") {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, quantityInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            return;
-                          }
-                          // parseInt("0.4") is 0, so a fractional quantity
-                          // silently removed the line — the reported bug.
-                          const parsedQty = parseQuantityInput(raw);
-                          const newQty = parsedQty ?? Number.NaN;
-                          if (parsedQty === null) {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, quantityInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            if (Number(raw) === 0) removeFromCart(item.product.id);
-                            else
-                              toast({
-                                title: "Invalid quantity",
-                                description: "Enter a number greater than zero, e.g. 1 or 0.4",
-                                variant: "destructive",
-                              });
-                            return;
-                          }
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? {
-                                    ...cartItem,
-                                    quantity: newQty,
-                                    subtotal: newQty * cartItem.customPrice,
-                                    quantityInput: undefined,
-                                  }
-                                : cartItem
-                            )
-                          );
-                        }}
-                        className="h-11 min-h-[44px] w-14 border-0 bg-transparent text-center font-medium focus-visible:ring-0"
-                        data-testid={`qty-input-${item.product.id}`}
-                        disabled={orderSubmitting}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
-                        onClick={() => updateQuantity(item.product.id, 1)}
-                        data-testid={`increase-qty-${item.product.id}`}
-                        aria-label="Increase quantity"
-                        disabled={orderSubmitting}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <span className="shrink-0 text-lg font-bold">£{item.subtotal.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-      )}
 
       <Card className="pos-summary-card mb-4">
         <CardHeader className="px-4 pb-2 pt-4">
