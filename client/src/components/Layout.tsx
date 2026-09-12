@@ -79,6 +79,14 @@ export function Layout({ children }: LayoutProps) {
                 )}
                 data-testid={navItem.testId}
                 aria-current={isActive ? 'page' : undefined}
+                // Collapsed to the icon rail, the link's only child is an icon
+                // — axe reports `link-name` (serious) and a screen reader
+                // announces the href. The label is hidden, not absent, so it is
+                // given here. The Operations Centre collapses the rail on entry
+                // (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md), which is how this
+                // long-standing gap in the collapsed state came to be measured.
+                aria-label={showLabels ? undefined : navItem.label}
+                title={showLabels ? undefined : navItem.label}
                 onClick={() => isMobile && setSidebarOpen(false)}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -160,7 +168,16 @@ export function Layout({ children }: LayoutProps) {
             <div className="flex h-full flex-col">
               <div className="flex-1 overflow-y-auto"><NavLinks /></div>
               <div className="border-t border-border p-4">
-                <button type="button" onClick={navigateToLogout} className={cn(logoutButtonClass, !sidebarOpen && 'justify-center px-0')} data-testid="sidebar-logout">
+                <button
+                  type="button"
+                  onClick={navigateToLogout}
+                  className={cn(logoutButtonClass, !sidebarOpen && 'justify-center px-0')}
+                  // Same reason as the nav links above: on the icon rail this
+                  // button is an icon and nothing else.
+                  aria-label={sidebarOpen ? undefined : 'Sign Out'}
+                  title={sidebarOpen ? undefined : 'Sign Out'}
+                  data-testid="sidebar-logout"
+                >
                   <LogOut className="h-4 w-4" />{sidebarOpen && <span>Sign Out</span>}
                 </button>
               </div>

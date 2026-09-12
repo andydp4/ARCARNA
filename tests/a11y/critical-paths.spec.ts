@@ -7,7 +7,10 @@ const CRITICAL_PATHS = [
   { name: "POS", path: "/create-order" },
   { name: "Customers", path: "/customers" },
   { name: "Products", path: "/products" },
-  { name: "Orders", path: "/open-orders" },
+  // The Operations Centre replaced Open Orders in N1; /open-orders now
+  // redirects here, and the assertion below that a critical path does not
+  // redirect would fail on the old entry (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md).
+  { name: "Operations", path: "/operations" },
   { name: "Settings", path: "/settings" },
 ] as const;
 

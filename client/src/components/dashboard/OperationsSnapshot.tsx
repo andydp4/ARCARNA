@@ -41,7 +41,7 @@ export function OperationsSnapshot() {
     {
       label: "Open orders",
       value: data?.openOrders ?? 0,
-      href: "/open-orders",
+      href: "/operations",
       icon: ClipboardList,
       tone: "neutral",
       testId: "snapshot-open-orders",
@@ -50,7 +50,7 @@ export function OperationsSnapshot() {
     {
       label: "To collect",
       value: data?.toCollect ?? 0,
-      href: "/open-orders",
+      href: "/operations?lane=collection",
       icon: ShoppingBag,
       tone: "neutral",
       testId: "snapshot-to-collect",
@@ -59,7 +59,7 @@ export function OperationsSnapshot() {
     {
       label: "To deliver",
       value: data?.toDeliver ?? 0,
-      href: "/open-orders",
+      href: "/operations?lane=delivery",
       icon: Truck,
       tone: "neutral",
       testId: "snapshot-to-deliver",
@@ -68,7 +68,7 @@ export function OperationsSnapshot() {
     {
       label: "Completed today",
       value: data?.ordersCompletedToday ?? 0,
-      href: "/orders",
+      href: "/operations",
       icon: CheckCircle2,
       tone: "neutral",
       testId: "snapshot-completed-today",
