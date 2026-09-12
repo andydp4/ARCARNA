@@ -377,7 +377,8 @@ export default function Settings() {
                       <Label>Interface theme</Label>
                       <p className="text-sm text-muted-foreground">
                         Arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
-                        and shop-floor lighting. There is no light mode.
+                        and shop-floor lighting. There is no light mode — it applies everywhere,
+                        including menus, dropdowns and dialogs.
                       </p>
                     </div>
                   </div>
