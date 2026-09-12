@@ -1,14 +1,6 @@
 import { useState, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +28,17 @@ interface ShiftCloseWizardProps {
   onCancel: () => void;
 }
 
+/**
+ * The cash-count-then-report wizard for closing a shift.
+ *
+ * An inline panel, not a `<Dialog>`: its only caller, `OpsShiftControls.tsx`,
+ * renders in the Operations Centre's `headerExtras` slot so it stays reachable
+ * while a phone cashier is on the "New order" tab — and that tab's own DoD
+ * (Phase N, N6) is zero `role="dialog"` mounts, no exceptions. Nothing else in
+ * the app uses this component, so it converts in place rather than gaining a
+ * parallel non-dialog sibling; `open` still gates whether anything renders at
+ * all, exactly as it gated the old `<Dialog>`.
+ */
 export function ShiftCloseWizard({
   open,
   shiftId,
@@ -89,75 +92,79 @@ export function ShiftCloseWizard({
     },
   });
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        {step === "count" ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Close shift</DialogTitle>
-              <DialogDescription>
-                Count cash in the drawer (denominations or enter a total).
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3 py-2">
-              {DENOMS.map((d) => (
-                <div key={d.label} className="flex items-center gap-2">
-                  <Label className="w-10 shrink-0 text-xs">{d.label}</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    className="h-8"
-                    value={counts[d.label] ?? ""}
-                    onChange={(e) =>
-                      setCounts((c) => ({
-                        ...c,
-                        [d.label]: parseInt(e.target.value, 10) || 0,
-                      }))
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="space-y-2">
-              <Label>Or total counted (£)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={manualTotal}
-                onChange={(e) => setManualTotal(e.target.value)}
-                placeholder={denomTotal > 0 ? String(denomTotal.toFixed(2)) : ""}
-              />
-              <p className="text-sm text-muted-foreground">
-                Counted: £{closingCount.toFixed(2)}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-            </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={onCancel}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => closeMutation.mutate()}
-                disabled={closeMutation.isPending}
-              >
-                Confirm close
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            {report && <ZReportView report={report} />}
-            <DialogFooter>
-              <Button onClick={onClosed}>Done</Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+    <div
+      className="w-full max-w-lg space-y-3 rounded-lg border border-border bg-card p-3 max-h-[90dvh] overflow-y-auto"
+      data-testid="shift-close-panel"
+    >
+      {step === "count" ? (
+        <>
+          <div>
+            <h3 className="text-sm font-medium text-foreground">Close shift</h3>
+            <p className="text-sm text-muted-foreground">
+              Count cash in the drawer (denominations or enter a total).
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            {DENOMS.map((d) => (
+              <div key={d.label} className="flex items-center gap-2">
+                <Label className="w-10 shrink-0 text-xs">{d.label}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="h-8"
+                  value={counts[d.label] ?? ""}
+                  onChange={(e) =>
+                    setCounts((c) => ({
+                      ...c,
+                      [d.label]: parseInt(e.target.value, 10) || 0,
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <Label>Or total counted (£)</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={manualTotal}
+              onChange={(e) => setManualTotal(e.target.value)}
+              placeholder={denomTotal > 0 ? String(denomTotal.toFixed(2)) : ""}
+            />
+            <p className="text-sm text-muted-foreground">
+              Counted: £{closingCount.toFixed(2)}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={onCancel} data-testid="button-shift-close-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => closeMutation.mutate()}
+              disabled={closeMutation.isPending}
+              data-testid="button-shift-close-confirm"
+            >
+              Confirm close
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          {report && <ZReportView report={report} />}
+          <div className="flex justify-end">
+            <Button onClick={onClosed} data-testid="button-shift-close-done">Done</Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

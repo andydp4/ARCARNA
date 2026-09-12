@@ -10,8 +10,13 @@
  * dialog stacked on top of the sheet. On Android the stacked layers fought
  * over focus and scroll lock, the dialog was sized in vh so the keyboard
  * pushed its buttons off screen, and sometimes the dialog did not render at
- * all. Everything here is in normal page flow, and the only dialog left is
- * the small, single "Redeem loyalty points" one.
+ * all. Everything here is in normal page flow — no dialog at all, not even
+ * the small "Redeem loyalty points" one this file used to keep: since N6
+ * embeds this form in the Operations Centre's phone Order tab, that dialog
+ * became reachable from a screen whose own DoD is zero `role="dialog"`
+ * mounts, so it is now an inline expanding panel in `PosCartPanel` instead
+ * (same shape as `OpsDelayInline`/`OpsCardActions`'s panels), triggered and
+ * driven from state that still lives here.
  *
  * Since N6 this also embeds beside the Operations Centre board
  * (`operations.tsx`'s form pane, and the phone's "New order" tab): pass
@@ -35,8 +40,6 @@ import { offlineStorage } from "@/lib/offline-storage";
 import { invalidateAfterPosCheckout } from "@/lib/query-invalidation";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { PosOrderLines } from "@/components/pos-order-lines";
@@ -48,7 +51,6 @@ import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustome
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
-import { Label } from "@/components/ui/label";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
@@ -101,7 +103,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const [customerTier, setCustomerTier] = useState<any>(null);
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
-  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [redeemPanelOpen, setRedeemPanelOpen] = useState(false);
   const [redeemInput, setRedeemInput] = useState("");
   const [orderExpenses, setOrderExpenses] = useState<OrderExpense[]>([]);
   const [expenseCategory, setExpenseCategory] = useState("shipping");
@@ -836,6 +838,27 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     placeOrderMutation.mutate(orderData);
   };
 
+  const handleApplyRedeem = async () => {
+    const pts = parseInt(redeemInput, 10);
+    if (!selectedCustomer?.id || !pts) return;
+    try {
+      const res = await apiFetch("/api/loyalty/redeem-preview", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: selectedCustomer.id, points: pts }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Redemption failed");
+      setRedeemPoints(pts);
+      setPointsRedemptionAmount(data.discountAmount);
+      setRedeemPanelOpen(false);
+      toast({ title: "Points applied", description: `£${data.discountAmount.toFixed(2)} discount` });
+    } catch (e: any) {
+      toast({ title: "Cannot redeem", description: e.message, variant: "destructive" });
+    }
+  };
+
   const cartPanelProps: PosCartPanelProps = {
     cart,
     cartItemCount,
@@ -863,7 +886,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 100,
     redeemPoints,
     pointsRedemptionAmount,
-    onRedeemPointsClick: () => setRedeemDialogOpen(true),
+    redeemPanelOpen,
+    redeemInput,
+    setRedeemInput,
+    onOpenRedeemPanel: () => setRedeemPanelOpen(true),
+    onApplyRedeem: handleApplyRedeem,
+    onCancelRedeem: () => setRedeemPanelOpen(false),
     handleCheckout,
     orderSubmitting: placeOrderMutation.isPending,
   };
@@ -1050,56 +1078,6 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           )}
         </>
       )}
-
-      <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Redeem loyalty points</DialogTitle>
-            <DialogDescription>
-              {selectedCustomer?.name} has {selectedCustomer?.loyaltyPoints ?? 0} points.
-              Minimum redemption: {loyaltySettings?.minRedeemPoints ?? 100} points.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="redeem-points-input">Points to redeem</Label>
-            <Input
-              id="redeem-points-input"
-              type="number"
-              min={loyaltySettings?.minRedeemPoints ?? 100}
-              max={selectedCustomer?.loyaltyPoints ?? 0}
-              value={redeemInput}
-              onChange={(e) => setRedeemInput(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRedeemDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={async () => {
-                const pts = parseInt(redeemInput, 10);
-                if (!selectedCustomer?.id || !pts) return;
-                try {
-                  const res = await apiFetch("/api/loyalty/redeem-preview", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ customerId: selectedCustomer.id, points: pts }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok) throw new Error(data.message || "Redemption failed");
-                  setRedeemPoints(pts);
-                  setPointsRedemptionAmount(data.discountAmount);
-                  setRedeemDialogOpen(false);
-                  toast({ title: "Points applied", description: `£${data.discountAmount.toFixed(2)} discount` });
-                } catch (e: any) {
-                  toast({ title: "Cannot redeem", description: e.message, variant: "destructive" });
-                }
-              }}
-            >
-              Apply discount
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

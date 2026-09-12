@@ -3,6 +3,7 @@ import type { UseMutationResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -208,7 +209,13 @@ export type PosCartPanelProps = {
   minRedeemPoints: number;
   redeemPoints: number;
   pointsRedemptionAmount: number;
-  onRedeemPointsClick: () => void;
+  /** Whether the inline "points to redeem" panel is expanded (N6 — see the panel itself for why this is a `<div>`, not a `<Dialog>`). */
+  redeemPanelOpen: boolean;
+  redeemInput: string;
+  setRedeemInput: (v: string) => void;
+  onOpenRedeemPanel: () => void;
+  onApplyRedeem: () => void;
+  onCancelRedeem: () => void;
   handleCheckout: () => void;
   orderSubmitting?: boolean;
   /** Off when a sticky bar elsewhere on the page owns the checkout action. */
@@ -253,7 +260,12 @@ export function PosCartPanel({
   minRedeemPoints,
   redeemPoints,
   pointsRedemptionAmount,
-  onRedeemPointsClick,
+  redeemPanelOpen,
+  redeemInput,
+  setRedeemInput,
+  onOpenRedeemPanel,
+  onApplyRedeem,
+  onCancelRedeem,
   handleCheckout,
   orderSubmitting = false,
   showCheckoutButton = true,
@@ -350,11 +362,48 @@ export function PosCartPanel({
                     ? `Need at least ${minRedeemPoints} points`
                     : undefined
                 }
-                onClick={onRedeemPointsClick}
+                onClick={onOpenRedeemPanel}
+                data-testid="button-redeem-points"
               >
                 Redeem points
                 {redeemPoints > 0 ? ` (${redeemPoints} applied)` : ""}
               </Button>
+
+              {/* Inline, not a Dialog: on the Operations Centre's phone Order
+                  tab this button is reachable with no board underneath it to
+                  provide a modal a sensible place to land, and N6's DoD is
+                  zero `role="dialog"` mounts on that screen regardless. Same
+                  expand-in-place shape as `OpsDelayInline` and
+                  `OpsCardActions`'s own panels. */}
+              {redeemPanelOpen && (
+                <div
+                  className="mt-2 space-y-2 rounded-lg border border-border bg-card p-3"
+                  data-testid="redeem-points-panel"
+                >
+                  <Label htmlFor="redeem-points-input" className="text-xs text-muted-foreground">
+                    {selectedCustomer?.name ?? "This customer"} has {selectedCustomer?.loyaltyPoints ?? 0} points.
+                    Minimum redemption: {minRedeemPoints} points.
+                  </Label>
+                  <Input
+                    id="redeem-points-input"
+                    type="number"
+                    min={minRedeemPoints}
+                    max={selectedCustomer?.loyaltyPoints ?? 0}
+                    value={redeemInput}
+                    onChange={(e) => setRedeemInput(e.target.value)}
+                    className="min-h-11"
+                    data-testid="input-redeem-points"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={onApplyRedeem} data-testid="button-apply-redeem">
+                      Apply discount
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={onCancelRedeem} data-testid="button-cancel-redeem">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

@@ -13,7 +13,7 @@
 import { devices, expect } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { db } from "../../server/db";
-import { orderExpenses, orders as ordersTable } from "@shared/schema";
+import { customers, orderExpenses, orders as ordersTable, shifts as shiftsTable } from "@shared/schema";
 import { ensureOpenShift, firstLocationId, okJson, pageAs, uniqueSuffix } from "./fixtures";
 import { opsTest as test } from "./opsFixtures";
 
@@ -171,5 +171,248 @@ test.describe("order form on a phone, embedded in the Operations Centre", () => 
     expect(expenseRows[0].orgId).toBe(orgId);
 
     await page.context().close();
+  });
+
+  /**
+   * N6's own DoD ("[role=dialog] count 0 throughout a full phone sale") had
+   * two holes an adversarial review found: the pre-existing "Redeem loyalty
+   * points" `Dialog` in `pos.tsx`, newly reachable from this embedded phone
+   * context, and `OpsShiftControls`'s "Z-report so far"/"Close shift", which
+   * this package's own module comment says must stay reachable from this
+   * exact tab. Both are now inline panels (this file's own `PosCartPanel`
+   * and `ShiftCloseWizard`/`ShiftSoFar` change, not a new component) — this
+   * proves it with the same continuous poll the rest of this file uses, and
+   * proves the loyalty redemption is not just cosmetic by comparing a
+   * redeemed sale's real database total against an identical, undiscounted
+   * one.
+   */
+  test("redeeming loyalty points on the Order tab is an inline panel, and the discount really lands on the order and the customer's balance", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const suffix = uniqueSuffix();
+
+    const product = await okJson<{ id: string; name: string }>(
+      await api.post("/api/products", {
+        data: {
+          name: `Ops Phone Loyalty Widget ${suffix}`,
+          productCode: `OPLW-${suffix}`.slice(0, 40),
+          costPrice: 5,
+          salePrice: 50,
+          defaultSalePrice: 50,
+          stock: 0,
+          stockLimit: 100,
+        },
+      }),
+    );
+    await api.patch(`/api/inventory/${product.id}`, {
+      headers: { "x-location-id": locationId },
+      data: { adjustment: 20, type: "set" },
+    });
+
+    // A tier the customer's balance clears, so the redeem card actually
+    // shows (`selectedCustomer && customerTier` in pos-cart-panel.tsx).
+    const tier = await okJson<{ id: string }>(
+      await api.post("/api/loyalty-tiers", {
+        data: { name: `Ops Phone Tier ${suffix}`, pointsRequired: 50, discountPercentage: "5" },
+      }),
+    );
+    const customer = await okJson<{ id: string; name: string }>(
+      await api.post("/api/customers", {
+        data: {
+          name: `Ops Phone Loyalty Customer ${suffix}`,
+          phone: `+4470${Math.floor(Math.random() * 100_000_000)}`,
+        },
+      }),
+    );
+    // loyaltyPoints is write-omitted from insertCustomerSchema (shared/schema.ts)
+    // — deliberately not settable through the create route — so it is written
+    // directly, the same way `security/tenants.ts` reaches columns no route exposes.
+    const startingPoints = 1000;
+    await db
+      .update(customers)
+      .set({ loyaltyPoints: startingPoints, tierId: tier.id })
+      .where(eq(customers.id, customer.id));
+
+    const settings = await okJson<{ redemptionRate: number; minRedeemPoints: number }>(
+      await api.get("/api/loyalty/settings"),
+    );
+    const redeemPts = settings.minRedeemPoints;
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    const dialogs = page.locator('[role="dialog"]');
+
+    await page.goto("/operations?pane=order");
+    await expect(page).toHaveURL(/\/operations(\?|$)/);
+    await expect(page.getByTestId("ops-tab-order")).toHaveAttribute("data-state", "active");
+    await expect(dialogs, "no dialog on first paint").toHaveCount(0);
+
+    const search = page.locator('[data-testid="line-product-new"]');
+    const option = page.getByRole("option", { name: new RegExp(product.name) });
+    const addProductLine = async () => {
+      await expect(search).toBeVisible({ timeout: 60_000 });
+      await search.fill(`OPLW-${suffix}`);
+      await expect(option).toBeVisible({ timeout: 15_000 });
+      await option.tap();
+      await expect(page.locator(`[data-testid="order-line-${product.id}"]`)).toBeVisible();
+    };
+
+    // Baseline sale: same product, no customer, no redemption — the figure
+    // the discounted sale below is measured against.
+    await addProductLine();
+    await expect(dialogs, "no dialog after adding the baseline line").toHaveCount(0);
+    await page.locator('[data-testid="mobile-checkout-button"]').tap();
+    await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
+    await expect(dialogs, "no dialog on the baseline payment step").toHaveCount(0);
+    const baselinePlaced = page.waitForResponse(
+      (r) => r.url().endsWith("/api/orders") && r.request().method() === "POST",
+    );
+    await page.locator('[data-testid="button-confirm-payment"]').tap();
+    const baselineRes = await baselinePlaced;
+    expect(baselineRes.status(), await baselineRes.text()).toBe(201);
+    const baselineCreated = (await baselineRes.json()) as { orderId?: string; order?: { id?: string } };
+    const baselineOrderId = baselineCreated.orderId ?? baselineCreated.order?.id;
+    expect(baselineOrderId, "the baseline response must name the order").toBeTruthy();
+    await expect(search, "back on an empty form").toBeVisible({ timeout: 15_000 });
+    await expect(dialogs, "no dialog once the baseline sale resets").toHaveCount(0);
+
+    // Second sale: the redeeming customer, redeemed through the inline panel.
+    await addProductLine();
+
+    await page.locator('[data-testid="select-customer"]').tap();
+    await expect(dialogs, "the customer listbox is not a dialog").toHaveCount(0);
+    await page.locator('[data-testid="search-customer"]').fill(customer.name);
+    const customerOption = page.getByRole("option", { name: new RegExp(customer.name) });
+    await expect(customerOption).toBeVisible({ timeout: 15_000 });
+    await customerOption.click();
+    await expect(page.locator('[data-testid="select-customer"]')).toContainText(customer.name);
+    await expect(dialogs, "no dialog after selecting a loyalty customer").toHaveCount(0);
+
+    const redeemButton = page.locator('[data-testid="button-redeem-points"]');
+    await expect(redeemButton, "enough points and a matching tier must enable it").toBeEnabled();
+    await redeemButton.tap();
+    const redeemPanel = page.locator('[data-testid="redeem-points-panel"]');
+    await expect(redeemPanel, "the redeem UI is an inline panel, not a Dialog").toBeVisible();
+    await expect(dialogs, "still no dialog with the redeem panel open").toHaveCount(0);
+
+    await page.locator('[data-testid="input-redeem-points"]').fill(String(redeemPts));
+    const preview = page.waitForResponse(
+      (r) => r.url().endsWith("/api/loyalty/redeem-preview") && r.request().method() === "POST",
+    );
+    await page.locator('[data-testid="button-apply-redeem"]').tap();
+    const previewRes = await preview;
+    expect(previewRes.status(), await previewRes.text()).toBe(200);
+    const previewBody = (await previewRes.json()) as { discountAmount: number };
+    await expect(redeemPanel, "applying closes the panel").toHaveCount(0);
+    await expect(page.locator('[data-testid="points-redemption"]')).toContainText(
+      `£${previewBody.discountAmount.toFixed(2)}`,
+    );
+    await expect(dialogs, "no dialog once the discount is applied").toHaveCount(0);
+
+    await page.locator('[data-testid="mobile-checkout-button"]').tap();
+    await expect(page.locator('[data-testid="pos-checkout-step"]')).toBeVisible();
+    await expect(dialogs, "no dialog on the discounted payment step").toHaveCount(0);
+    const discountedPlaced = page.waitForResponse(
+      (r) => r.url().endsWith("/api/orders") && r.request().method() === "POST",
+    );
+    await page.locator('[data-testid="button-confirm-payment"]').tap();
+    const discountedRes = await discountedPlaced;
+    expect(discountedRes.status(), await discountedRes.text()).toBe(201);
+    const discountedCreated = (await discountedRes.json()) as { orderId?: string; order?: { id?: string } };
+    const discountedOrderId = discountedCreated.orderId ?? discountedCreated.order?.id;
+    expect(discountedOrderId, "the discounted response must name the order").toBeTruthy();
+    await expect(search, "back on an empty form again").toBeVisible({ timeout: 15_000 });
+    await expect(dialogs, "no dialog once the discounted sale resets").toHaveCount(0);
+
+    await page.context().close();
+
+    // Real numbers, from the database — not the UI's own idea of what happened.
+    const baselineRow = await orderRow(baselineOrderId!);
+    const discountedRow = await orderRow(discountedOrderId!);
+    const baselineTotal = parseFloat(String(baselineRow.total));
+    const discountedTotal = parseFloat(String(discountedRow.total));
+    expect(
+      discountedTotal,
+      "the redeemed sale must be cheaper than the identical baseline sale by exactly the previewed discount",
+    ).toBeCloseTo(baselineTotal - previewBody.discountAmount, 2);
+
+    // The discounted sale is a real, completed order against this customer,
+    // so — independently of this redemption — `LoyaltyWorker` also earns it
+    // fresh points on its own tick (1 per £1 of the order's own, already
+    // discounted, total; server/workers/loyaltyWorker.ts). Both land on the
+    // same balance, so the number this test can assert is the net of the
+    // two, polled because the earn is asynchronous rather than inline with
+    // the request that created the order.
+    const expectedBalance = startingPoints - redeemPts + Math.floor(discountedTotal);
+    await expect
+      .poll(
+        async () => {
+          const [row] = await db.select().from(customers).where(eq(customers.id, customer.id));
+          return row.loyaltyPoints;
+        },
+        {
+          timeout: 15_000,
+          message:
+            "the redeemed points must leave, and the sale's own earned points must land on, the customer's balance",
+        },
+      )
+      .toBe(expectedBalance);
+  });
+
+  test("Z-report so far and Close shift are inline panels on the Order tab, not dialogs", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    const locationId = await firstLocationId(api);
+    const shiftId = await ensureOpenShift(api, locationId);
+
+    const page = await pageAs(browser, "ADMIN", orgId);
+    const dialogs = page.locator('[role="dialog"]');
+
+    await page.goto("/operations?pane=order");
+    await expect(page).toHaveURL(/\/operations(\?|$)/);
+    await expect(page.getByTestId("ops-tab-order")).toHaveAttribute("data-state", "active");
+    // headerExtras (`OpsShiftControls`) sits above the tabs themselves, so it
+    // is on screen regardless of which tab is active — the exact reason it
+    // must never mount a dialog while a phone cashier is on this one.
+    await expect(page.getByTestId("ops-header-extras")).toBeVisible();
+    await expect(dialogs, "no dialog on first paint").toHaveCount(0);
+
+    const zReportButton = page.getByTestId("button-z-report-so-far");
+    await expect(zReportButton, "an open shift must show the housekeeping buttons").toBeVisible({
+      timeout: 15_000,
+    });
+
+    await zReportButton.tap();
+    const zReportPanel = page.getByTestId("ops-z-report-panel");
+    await expect(zReportPanel, "Z-report so far is an inline panel, not a Dialog").toBeVisible();
+    await expect(dialogs, "no dialog with the Z-report panel open").toHaveCount(0);
+    // Proves it actually loaded a real report, not just an empty shell.
+    await expect(zReportPanel.getByText("Z-Report so far")).toBeVisible({ timeout: 15_000 });
+    await expect(dialogs, "still no dialog once the figures load").toHaveCount(0);
+    await page.getByTestId("button-z-report-close").tap();
+    await expect(zReportPanel).toHaveCount(0);
+
+    // Close shift: also inline. Cancelled, not confirmed — this shift stays
+    // open for whatever else in this worker still needs it, and a real close
+    // is verified separately (see this PR's own notes), not in a suite that
+    // runs against a shared database.
+    await page.getByTestId("button-close-shift").tap();
+    const closePanel = page.getByTestId("shift-close-panel");
+    await expect(closePanel, "Close shift is an inline panel, not a Dialog").toBeVisible();
+    await expect(dialogs, "no dialog with the close-shift panel open").toHaveCount(0);
+    await expect(closePanel.getByText("Close shift")).toBeVisible();
+    await page.getByTestId("button-shift-close-cancel").tap();
+    await expect(closePanel).toHaveCount(0);
+    await expect(dialogs, "no dialog once the close-shift panel is dismissed").toHaveCount(0);
+
+    await page.context().close();
+
+    const [shiftRow] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, shiftId));
+    expect(shiftRow.status, "cancelling must not have closed the shift").toBe("open");
   });
 });
