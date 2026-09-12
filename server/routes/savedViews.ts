@@ -4,7 +4,7 @@ import { db } from "../db";
 import { savedViews } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 
-const PAGE_IDS = ["customers", "products", "orders"] as const;
+const PAGE_IDS = ["customers", "products"] as const;
 type PageId = (typeof PAGE_IDS)[number];
 
 const viewBodySchema = z.object({

@@ -69,6 +69,19 @@ export class SyncService {
       }
 
       for (const mutation of unsyncedMutations) {
+        if (mutation.type === "ORDER_UPDATE") {
+          // Open Orders — the only screen that ever queued this mutation type —
+          // was removed in the Operations Centre work (N4b). A browser that
+          // queued one before the upgrade could still be carrying it; replaying
+          // it now would resubmit a stale status write against today's
+          // completion path (re-settlement on repeat, N3b) rather than the one
+          // it was queued against, so it is discarded instead of replayed.
+          console.warn('[Sync] Discarding stale ORDER_UPDATE mutation (Open Orders removed):', mutation.id);
+          if (mutation.id) {
+            await offlineStorage.deleteMutation(mutation.id);
+          }
+          continue;
+        }
         try {
           const payload =
             mutation.type === "ORDER_CREATE"
