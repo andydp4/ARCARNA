@@ -9,6 +9,7 @@ import { NavigationProvider } from "@/contexts/NavigationContext";
 import { OrgProvider } from "@/contexts/OrgContext";
 import { AccessGate } from "@/components/AccessGate";
 import { Layout } from "@/components/Layout";
+import { RequireRole } from "@/components/RequireRole";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
@@ -153,54 +154,143 @@ function Router() {
             {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
           </Route>
           <Route path="/shifts" component={ShiftsPage} />
-          <Route path="/gift-cards" component={GiftCardsPage} />
-          <Route path="/inventory" component={Inventory} />
-          <Route path="/products" component={ProductManagement} />
-          <Route path="/insights" component={Insights} />
-          <Route path="/reports" component={ReportsHub} />
-          <Route path="/reseller-partners" component={ResellerPartnersPage} />
-          <Route path="/reports/daily-sales" component={DailySalesReport} />
-          <Route path="/reports/current-stock" component={CurrentStockReport} />
-          <Route path="/reports/weekly-sales" component={WeeklySalesReport} />
-          <Route path="/reports/weekly-margin" component={WeeklyMarginReport} />
-          <Route path="/reports/lapse-retention" component={LapseRetentionReport} />
-          <Route path="/reports/clv" component={ClvReport} />
-          <Route path="/reports/stock-runway" component={StockRunwayReport} />
-          <Route path="/reports/rfm" component={RfmReport} />
-          <Route path="/reports/churn-risk" component={ChurnRiskReport} />
-          <Route path="/reports/affinity" component={AffinityReport} />
-          <Route path="/reports/order-status" component={OrderStatusReport} />
-          <Route path="/reports/delay-log" component={DelayLogReport} />
-          <Route path="/reports/staff-kpi" component={StaffKpiReport} />
-          <Route path="/reports/satisfaction" component={SatisfactionReport} />
-          <Route path="/reports/reseller-credit" component={ResellerCreditReport} />
+          <Route path="/gift-cards">
+            <RequireRole href="/gift-cards"><GiftCardsPage /></RequireRole>
+          </Route>
+          <Route path="/inventory">
+            <RequireRole href="/inventory"><Inventory /></RequireRole>
+          </Route>
+          <Route path="/products">
+            <RequireRole href="/products"><ProductManagement /></RequireRole>
+          </Route>
+          <Route path="/insights">
+            <RequireRole href="/insights"><Insights /></RequireRole>
+          </Route>
+          <Route path="/reports">
+            <RequireRole href="/reports"><ReportsHub /></RequireRole>
+          </Route>
+          <Route path="/reseller-partners">
+            <RequireRole href="/reseller-partners"><ResellerPartnersPage /></RequireRole>
+          </Route>
+          {/* The individual report pages below are reached only through
+              /reports (Reports Hub, gated above) — they carry no nav item and
+              no server-side per-report role check of their own
+              (server/routes/reports.ts), so a direct URL visit is gated the
+              same as the hub itself rather than left open. */}
+          <Route path="/reports/daily-sales">
+            <RequireRole href="/reports"><DailySalesReport /></RequireRole>
+          </Route>
+          <Route path="/reports/current-stock">
+            <RequireRole href="/reports"><CurrentStockReport /></RequireRole>
+          </Route>
+          <Route path="/reports/weekly-sales">
+            <RequireRole href="/reports"><WeeklySalesReport /></RequireRole>
+          </Route>
+          <Route path="/reports/weekly-margin">
+            <RequireRole href="/reports"><WeeklyMarginReport /></RequireRole>
+          </Route>
+          <Route path="/reports/lapse-retention">
+            <RequireRole href="/reports"><LapseRetentionReport /></RequireRole>
+          </Route>
+          <Route path="/reports/clv">
+            <RequireRole href="/reports"><ClvReport /></RequireRole>
+          </Route>
+          <Route path="/reports/stock-runway">
+            <RequireRole href="/reports"><StockRunwayReport /></RequireRole>
+          </Route>
+          <Route path="/reports/rfm">
+            <RequireRole href="/reports"><RfmReport /></RequireRole>
+          </Route>
+          <Route path="/reports/churn-risk">
+            <RequireRole href="/reports"><ChurnRiskReport /></RequireRole>
+          </Route>
+          <Route path="/reports/affinity">
+            <RequireRole href="/reports"><AffinityReport /></RequireRole>
+          </Route>
+          <Route path="/reports/order-status">
+            <RequireRole href="/reports"><OrderStatusReport /></RequireRole>
+          </Route>
+          <Route path="/reports/delay-log">
+            <RequireRole href="/reports"><DelayLogReport /></RequireRole>
+          </Route>
+          <Route path="/reports/staff-kpi">
+            <RequireRole href="/reports"><StaffKpiReport /></RequireRole>
+          </Route>
+          <Route path="/reports/satisfaction">
+            <RequireRole href="/reports"><SatisfactionReport /></RequireRole>
+          </Route>
+          <Route path="/reports/reseller-credit">
+            <RequireRole href="/reports"><ResellerCreditReport /></RequireRole>
+          </Route>
           <Route path="/analytics"><Redirect to="/insights" /></Route>
-          <Route path="/analytics/rfm" component={RfmAnalyticsPage} />
-          <Route path="/analytics/hour-of-day" component={HourOfDayAnalyticsPage} />
-          <Route path="/analytics/channels" component={ChannelAttributionPage} />
-          <Route path="/analytics/stock-turn" component={StockTurnAnalyticsPage} />
-          <Route path="/locations" component={Locations} />
-          <Route path="/customers" component={Customers} />
-          <Route path="/loyalty" component={Loyalty} />
-          <Route path="/promotions" component={Promotions} />
-          <Route path="/promotions/:id/lift" component={PromotionLiftPage} />
-          <Route path="/expenses" component={ExpensesPage} />
-          <Route path="/expense-reports" component={ExpenseReportsPage} />
+          <Route path="/analytics/rfm">
+            <RequireRole href="/analytics/rfm"><RfmAnalyticsPage /></RequireRole>
+          </Route>
+          <Route path="/analytics/hour-of-day">
+            <RequireRole href="/analytics/hour-of-day"><HourOfDayAnalyticsPage /></RequireRole>
+          </Route>
+          <Route path="/analytics/channels">
+            <RequireRole href="/analytics/channels"><ChannelAttributionPage /></RequireRole>
+          </Route>
+          <Route path="/analytics/stock-turn">
+            <RequireRole href="/analytics/stock-turn"><StockTurnAnalyticsPage /></RequireRole>
+          </Route>
+          <Route path="/locations">
+            <RequireRole href="/locations"><Locations /></RequireRole>
+          </Route>
+          <Route path="/customers">
+            <RequireRole href="/customers"><Customers /></RequireRole>
+          </Route>
+          <Route path="/loyalty">
+            <RequireRole href="/loyalty"><Loyalty /></RequireRole>
+          </Route>
+          <Route path="/promotions">
+            <RequireRole href="/promotions"><Promotions /></RequireRole>
+          </Route>
+          <Route path="/promotions/:id/lift">
+            <RequireRole href="/promotions/:id/lift"><PromotionLiftPage /></RequireRole>
+          </Route>
+          <Route path="/expenses">
+            <RequireRole href="/expenses"><ExpensesPage /></RequireRole>
+          </Route>
+          <Route path="/expense-reports">
+            <RequireRole href="/expense-reports"><ExpenseReportsPage /></RequireRole>
+          </Route>
           <Route path="/invoices" component={Invoices} />
           <Route path="/settings" component={Settings} />
-          <Route path="/settings/receipts" component={ReceiptSettingsPage} />
-          <Route path="/settings/loyalty" component={LoyaltySettingsPage} />
-          <Route path="/settings/developer" component={DeveloperSettingsPage} />
+          <Route path="/settings/receipts">
+            <RequireRole href="/settings/receipts"><ReceiptSettingsPage /></RequireRole>
+          </Route>
+          <Route path="/settings/loyalty">
+            <RequireRole href="/settings/loyalty"><LoyaltySettingsPage /></RequireRole>
+          </Route>
+          <Route path="/settings/developer">
+            <RequireRole href="/settings/developer"><DeveloperSettingsPage /></RequireRole>
+          </Route>
           <Route path="/settings/wm-supplies-website" component={WmSuppliesWebsiteSettingsPage} />
           <Route path="/admin/wm-supplies/website" component={WmSuppliesWebsiteSettingsPage} />
           <Route path="/tick-list" component={TickList} />
-          <Route path="/user-access" component={UserAccess} />
-          <Route path="/worker-logs" component={WorkerLogs} />
-          <Route path="/audit-logs" component={AuditLogsPage} />
-          <Route path="/rules" component={RulesPage} />
-          <Route path="/scheduled-reports" component={ScheduledReportsPage} />
-          <Route path="/cashier-payroll" component={CashierPayrollPage} />
-          <Route path="/purchase-drafts" component={PurchaseDraftsPage} />
+          <Route path="/user-access">
+            <RequireRole href="/user-access"><UserAccess /></RequireRole>
+          </Route>
+          <Route path="/worker-logs">
+            <RequireRole href="/worker-logs"><WorkerLogs /></RequireRole>
+          </Route>
+          <Route path="/audit-logs">
+            <RequireRole href="/audit-logs"><AuditLogsPage /></RequireRole>
+          </Route>
+          <Route path="/rules">
+            <RequireRole href="/rules"><RulesPage /></RequireRole>
+          </Route>
+          <Route path="/scheduled-reports">
+            <RequireRole href="/scheduled-reports"><ScheduledReportsPage /></RequireRole>
+          </Route>
+          <Route path="/cashier-payroll">
+            <RequireRole href="/cashier-payroll"><CashierPayrollPage /></RequireRole>
+          </Route>
+          <Route path="/purchase-drafts">
+            <RequireRole href="/purchase-drafts"><PurchaseDraftsPage /></RequireRole>
+          </Route>
         </Layout>
         </AccessGate>
       )}
