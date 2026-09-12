@@ -14,6 +14,30 @@ server {
     listen [::]:80;
     server_name arcarna.viger.cloud;
 
+    # Operations Centre board stream (N3a): SSE, one long-lived GET per
+    # tablet. Must come before `location /` — nginx picks the most specific
+    # matching `location`, but this is still listed first for a human reading
+    # top to bottom. `proxy_buffering off` is the whole point: nginx buffers a
+    # proxied response by default, which would hold every event until its
+    # buffer filled or the connection closed — the opposite of a push. The
+    # server itself already calls `res.flushHeaders()` / `res.flush()` after
+    # every write (server/routes/opsStream.ts); this is what stops nginx
+    # undoing that between the app and the tablet. `proxy_read_timeout` is
+    # inherited from the block below (120s) — comfortably longer than the
+    # 25s `: ping` the route sends, which is itself sized for Cloudflare's
+    # ~100s idle-connection drop in front of this.
+    location = /api/orders/board/stream {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 120s;
+    }
+
     # App is served at root on this subdomain (VITE_BASE_PATH=/).
     location / {
         proxy_pass http://127.0.0.1:5000;

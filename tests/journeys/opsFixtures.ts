@@ -396,6 +396,10 @@ export async function orderInState(
   const orderDate = recipe.preorderDaysAhead
     ? isoDateIn(settings.timezone, addDays(now, recipe.preorderDaysAhead))
     : undefined;
+  // N3a landed the rule this file's own TODO anticipated: a pre-order 400s
+  // without a due time on its own day. Midday is arbitrary and safely inside
+  // every trading day regardless of timezone or DST.
+  const preorderDueTime = recipe.preorderDaysAhead ? "12:00" : undefined;
 
   const created = await okJson<{ orderId?: string; id?: string; order?: { id?: string } }>(
     await placeOrder(
@@ -414,13 +418,11 @@ export async function orderInState(
         channel: opts.channel ?? "pos",
         ...(opts.customerId ? { customerId: opts.customerId } : {}),
         ...(orderDate ? { orderDate } : {}),
-        // Forward compatibility, not wishful thinking: `PlaceOrderInput` is a
-        // plain z.object, so it strips keys it does not declare
-        // (packages/domain/src/schemas.ts:10-41) and this is silently dropped
-        // today. When N3a declares `dueInMinutes`, the promise starts being
-        // set by the create call itself — the way the floor will do it — and
-        // the fallback below simply stops finding work to do.
-        ...(dueIn !== null && dueIn > 0 ? { dueInMinutes: dueIn } : {}),
+        ...(preorderDueTime ? { dueTime: preorderDueTime } : {}),
+        // N3a: the create route resolves this into `eta_given` itself now —
+        // the direct-write fallback in `applyState` below simply never finds
+        // work to do for any state this already covers.
+        ...(dueIn !== null && dueIn > 0 && !preorderDueTime ? { dueInMinutes: dueIn } : {}),
       },
     ),
   );
@@ -526,11 +528,11 @@ const RECIPES: Record<CardState, Recipe> = {
   // `date_kind` deliberately stays 'live' — a backdated order is dated in the
   // past on purpose and never counts as carried over (opsState.ts:180).
   "carried-over": { dueIn: null, carriedOverDaysBack: 2 },
-  // TODO(N3a): the brief requires every pre-order to carry a due time on its
-  // own trading day, and the create route will 400 without one. Until that
-  // rule exists there is nothing to send, so this recipe promises nothing;
-  // when it lands, give it a `dueTime` on the pre-order's date via
-  // `localInstantAt` rather than a `dueIn` offset from now.
+  // `dueIn: null` here means "no offset from now", not "no promise" — a
+  // pre-order needs one on its OWN day, which `orderInState` sends as
+  // `dueTime: "12:00"` (see `preorderDueTime` above) rather than a `dueIn`
+  // offset, since "now" is not the day the promise is for (N3a: the create
+  // route 400s a pre-order with no due time at all).
   scheduled: { dueIn: null, preorderDaysAhead: 3 },
 };
 

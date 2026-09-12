@@ -3,8 +3,13 @@ const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
 
 /** Bump when cache layout changes; activate deletes older arcarna-epos-* and midnight-epos-* caches.
  *  Bumped 5 -> 6 to force stale clients to drop cached app shell / API responses
- *  (fixes "saved but no change shown" caused by an old cached bundle). */
-const CACHE_VERSION = "6";
+ *  (fixes "saved but no change shown" caused by an old cached bundle).
+ *  Bumped 6 -> 7 (N3a): the fetch handler now bypasses the Operations Centre
+ *  board and any text/event-stream request instead of caching them — a
+ *  client still running the old handler would answer the board from a stale
+ *  cache and silently swallow the SSE stream's `text/event-stream` body into
+ *  its API cache logic, which reads and re-serves it as ordinary JSON. */
+const CACHE_VERSION = "7";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
@@ -39,6 +44,23 @@ function cacheRequestForOrg(request) {
 
 function isApiRequest(pathname) {
   return pathname.startsWith(API_PREFIX) || pathname.startsWith("/api/");
+}
+
+/**
+ * The Operations Centre board and its push stream (N3a).
+ *
+ * Both are checked by PATH — `/orders/board` and `/orders/board/stream` under
+ * either base — plus, belt and braces, by the request's own `Accept` header
+ * for ANY `text/event-stream` request this service worker does not yet know
+ * the path of. Matched literally rather than by a broader "/orders" prefix so
+ * this stays exactly the two endpoints the brief names, the same discipline
+ * `server/security.ts`'s limiter skip list keeps.
+ */
+function isOpsBoardOrStreamRequest(request, pathname) {
+  const boardPath = `${API_PREFIX}/orders/board`;
+  if (pathname === boardPath || pathname === `${boardPath}/stream`) return true;
+  const accept = request.headers.get("accept") || "";
+  return accept.includes("text/event-stream");
 }
 
 function isNavigationRequest(request) {
@@ -180,6 +202,18 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.method !== "GET") {
+    return;
+  }
+
+  // Never intercepted, never cached, never even seen by the API branch below:
+  // an SSE connection has to reach the network directly (the API branch
+  // below buffers a whole response before deciding whether to cache it,
+  // which would hang the stream open forever), and the board must always be
+  // fresh — a cached 200 is exactly the "stale but still looks
+  // authoritative" failure mode `sw.js`'s API branch exists to avoid for
+  // ordinary GETs (finding G11), except here staleness is invisible until
+  // someone acts on a card that has not actually moved.
+  if (isOpsBoardOrStreamRequest(request, url.pathname)) {
     return;
   }
 

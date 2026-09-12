@@ -116,6 +116,34 @@ function addMinutes(date: Date, minutes: number): Date {
 }
 
 /**
+ * `Intl.DateTimeFormat` construction is the expensive part of `tradingDayKey`
+ * below (V8's ICU locale/zone setup runs on every `new`, not on every
+ * `.formatToParts()` call) — cached per timezone rather than per call, since
+ * a board of 2,000 open orders calls `deriveCardState` 2,000 times against
+ * the SAME one or two timezones and once was measured to cost over 300ms of
+ * the ~450ms `GET /api/orders/board` took before this cache existed (N3a's
+ * own <150ms DoD; see the PR description for the before/after numbers). The
+ * formatter itself is stateless across different instants, so reusing one is
+ * not an approximation — it is the same computation, done once.
+ */
+const tradingDayFormatters = new Map<string, Intl.DateTimeFormat>();
+function tradingDayFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = tradingDayFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+    });
+    tradingDayFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/**
  * Which trading day an instant falls on, as an ISO date, without importing
  * the whole tradingDay module's dependency surface into every caller — kept
  * tiny and local because this is the one comparison `deriveCardState` needs
@@ -123,14 +151,7 @@ function addMinutes(date: Date, minutes: number): Date {
  * this mirrors exactly: 06:00 local is the cut).
  */
 function tradingDayKey(instant: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(instant);
+  const parts = tradingDayFormatter(timeZone).formatToParts(instant);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   const year = get("year");
   const month = get("month");
