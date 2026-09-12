@@ -41,7 +41,7 @@ const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-sup
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
 const Invoices = lazy(() => import("@/pages/invoices"));
-const Orders = lazy(() => import("@/pages/orders"));
+const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
 const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
@@ -146,8 +146,14 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/create-order" component={POS} />
           <Route path="/pos"><Redirect to="/create-order" /></Route>
-          <Route path="/open-orders" component={Orders} />
-          <Route path="/orders"><Redirect to="/open-orders" /></Route>
+          {/* The Operations Centre replaces Open Orders outright — no feature
+              flag, and the old paths redirect from the day the board lands
+              (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Route & nav"). The
+              refund route below keeps its own URL: it is linked from receipts
+              and emails that are already in the world. */}
+          <Route path="/operations" component={OperationsCentre} />
+          <Route path="/open-orders"><Redirect to="/operations" /></Route>
+          <Route path="/orders"><Redirect to="/operations" /></Route>
           <Route path="/open-orders/:id/refund" component={OrderRefundPage} />
           <Route path="/orders/:id/refund">
             {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}

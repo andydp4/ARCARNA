@@ -134,7 +134,7 @@ export default function OrderRefundPage() {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <Link href="/open-orders">
+      <Link href="/operations">
         <Button variant="ghost" size="sm" className="mb-2">
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back to orders

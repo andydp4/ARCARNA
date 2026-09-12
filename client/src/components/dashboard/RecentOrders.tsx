@@ -67,7 +67,7 @@ export function RecentOrders() {
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-base font-semibold text-metal-warm-white sm:text-lg">Recent orders</h3>
         <Link
-          href="/open-orders"
+          href="/operations"
           className="text-sm text-truth hover:underline"
           data-testid="link-viewallorders"
         >

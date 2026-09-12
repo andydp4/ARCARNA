@@ -27,26 +27,21 @@ import { STATUS_CONFIG as STATUS_CONFIG_INTERNAL } from "@/components/orders/sta
 import { Checkbox } from "@/components/ui/checkbox";
 import type { OrderStatus } from "@shared/schema";
 import { formatOrderChannel, isWebsiteOrder } from "@shared/orders/channel";
+import type { ApiOrderRow } from "@/lib/orderTypes";
+// Moved to its own module in N1 of the Operations Centre work: invoices,
+// insights and the board's cards all need it, and none of them should have to
+// import a row component to get it. Re-exported for the page this row still
+// serves until N4b removes both.
+import { formatPaymentLabel } from "@/lib/paymentLabel";
 
-export interface OrdersListOrder {
-  id: string;
-  customerId?: string;
-  customerName?: string;
-  total: string;
-  paymentMethod: string;
-  channel?: string;
-  status: string;
-  createdAt: string;
-  /** live | backdated | preorder — whether createdAt is when it was keyed in or the day it is for. */
-  dateKind?: string | null;
-  /** Who loaded it — this is where the inputter's 10% goes. */
-  inputUserName?: string | null;
-  /** Already on the order and never shown: what is holding it up. */
-  delayFlag?: boolean;
-  delayReason?: string | null;
-  revisedEta?: string | null;
-  etaGiven?: string | null;
-}
+/**
+ * The list row's order shape now lives in `client/src/lib/orderTypes.ts` as
+ * `ApiOrderRow` — a type describing a cached API array had no business living
+ * inside a React component that is deleted with Open Orders in N4b (finding
+ * G24 in docs/briefs/PHASE_N_OPERATIONS_CENTRE.md). Re-exported under its old
+ * name so this page keeps reading as it did until it goes.
+ */
+export type OrdersListOrder = ApiOrderRow;
 
 /**
  * How long an order has been waiting, and how loudly to say so.
@@ -72,23 +67,7 @@ export function describeWait(createdAt: string, now: number = Date.now()) {
 }
 
 export { STATUS_CONFIG } from "@/components/orders/statusConfig";
-
-// Tender values that read as something other than their own name — "tick" is
-// the one case: the internal payment_method value stayed "tick" (it is a
-// stored data value across every historic order, not just a label) after the
-// credit rework, but nothing anywhere should show a customer or a member of
-// staff the word "tick" any more.
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  tick: "Credit",
-};
-
-export function formatPaymentLabel(method: string) {
-  if (!method) return "—";
-  const known = PAYMENT_METHOD_LABELS[method.toLowerCase()];
-  if (known) return known;
-  const spaced = method.replace(/[-_]/g, " ");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
+export { formatPaymentLabel };
 
 function getStatusBorderClass(status: string) {
   const config = STATUS_CONFIG_INTERNAL[status as OrderStatus];

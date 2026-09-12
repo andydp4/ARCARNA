@@ -17,7 +17,9 @@ export const VOCAB = {
   businessTruths: "Business Truths", // was: Business Health
   discoveryJourney: "Discovery Journey", // was: Onboarding / Setup
   createOrder: "Create Order", // POS — single term
-  openOrders: "Open Orders",
+  // The order board replaces the Open Orders list (Phase N). One name for the
+  // screen where orders are worked, in the nav, the page and the palette.
+  operations: "Operations",
   notifications: "Notifications", // kept per owner (not "Signals")
 } as const;
 

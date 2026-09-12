@@ -14,7 +14,7 @@ import {
   Boxes,
   Settings,
   CreditCard,
-  PackageCheck,
+  LayoutGrid,
   Shield,
   CalendarClock,
   Timer,
@@ -96,10 +96,14 @@ export const navGroups: NavGroup[] = [
         testId: 'nav-pos'
       },
       {
+        // The Operations Centre — the board that replaced the Open Orders list
+        // (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md). The testid is kept so the
+        // one nav entry for "where orders are worked" has one name across the
+        // suites that already assert on it.
         key: 'orders',
-        label: VOCAB.openOrders,
-        href: '/open-orders',
-        icon: PackageCheck,
+        label: VOCAB.operations,
+        href: '/operations',
+        icon: LayoutGrid,
         testId: 'nav-orders'
       },
       {

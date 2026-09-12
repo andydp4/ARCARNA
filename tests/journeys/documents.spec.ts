@@ -166,14 +166,17 @@ test.describe("documents: download buttons in the UI", () => {
       const { pageAs } = await import("./fixtures");
       const page = await pageAs(browser, "ADMIN", orgId);
 
-      await page.goto("/open-orders");
-      // The order list polls; wait for our order's row to appear.
+      await page.goto("/operations");
+      // The board polls, and a completed order sits in its lane's Done tray.
+      // Searching for the order's id is what a cashier would do, and it opens
+      // the trays so the card they are looking for is on screen.
+      await page.locator('[data-testid="input-order-search"]').fill(orderId);
       const viewButton = page.getByTestId(`button-view-order-${orderId}`);
       await expect(viewButton).toBeVisible({ timeout: 30_000 });
       await viewButton.click();
 
       const button = page.getByTestId(`button-download-${kind}`);
-      await expect(button, `${kind} download button should be on the order dialog`).toBeVisible({
+      await expect(button, `${kind} download button should be on the order's details`).toBeVisible({
         timeout: 15_000,
       });
 
