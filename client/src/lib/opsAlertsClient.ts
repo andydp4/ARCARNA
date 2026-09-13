@@ -112,6 +112,48 @@ export function markChimed(alertId: string): void {
   writeChimedIds([...ids, alertId]);
 }
 
+/** One name, one lock, shared by every tab of this browser for this one purpose. */
+const CHIME_LOCK_NAME = "arcarna-ops-alert-chime";
+
+/**
+ * Atomically decides whether THIS caller gets to chime for `alertId`, across
+ * every tab of this browser — the one thing `hasChimed` + `markChimed` alone
+ * cannot guarantee. Two tabs calling `hasChimed` and `markChimed` as separate
+ * steps (this file's own original shape, and still what each does alone) is
+ * a plain check-then-write: fine when deliveries are staggered by an ordinary
+ * amount (a colleague's own separate poll, an independent action), but N5b's
+ * live `opsBus` push (server/services/opsAlerts.ts's `publishAlertRows`)
+ * delivers the SAME event to every open tab within the same instant, turning
+ * what used to be a rare coincidence into the ordinary case for two idle
+ * tablets. `navigator.locks` (the Web Locks API — Chromium, Safari 15.4+,
+ * Firefox 96+, i.e. every ordinary tablet browser this app ships to) is
+ * scoped per ORIGIN, exactly like `localStorage`, and serialises callers
+ * across tabs for real, so wrapping the check-then-write in one lock request
+ * makes "exactly one winner" an actual guarantee instead of a best effort.
+ * Falls back to the old check-then-write when the API is unavailable (an
+ * older WebView, say) or its own call throws — worse than a guarantee, but
+ * strictly no worse than this file's behaviour before N5b's live push
+ * existed at all.
+ */
+export async function claimChime(alertId: string): Promise<boolean> {
+  const locks = typeof navigator !== "undefined" ? (navigator as Navigator & { locks?: LockManager }).locks : undefined;
+  if (locks?.request) {
+    try {
+      return await locks.request(CHIME_LOCK_NAME, () => {
+        if (hasChimed(alertId)) return false;
+        markChimed(alertId);
+        return true;
+      });
+    } catch {
+      // Fall through to the best-effort path below (e.g. the lock request
+      // itself was rejected — a browser policy, a torn-down page).
+    }
+  }
+  if (hasChimed(alertId)) return false;
+  markChimed(alertId);
+  return true;
+}
+
 // ------------------------------------------------------------------- mute preference
 
 /** `STORAGE_OPS_SOUND` — per-device, defaults to sound ON (a silent counter alerts nobody). */

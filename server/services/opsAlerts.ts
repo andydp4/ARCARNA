@@ -41,6 +41,15 @@ import {
   type OpsAlertKind,
   type OpsStaffPresence,
 } from "@shared/orders/opsAlerts";
+// `opsBus.ts` only imports `type BoardOrderPayload` from `./opsBoard` (a
+// type-only import, erased at build time — see its own header) and nothing
+// from this module, so a static import here creates no runtime cycle with
+// `opsBoard.ts` (which DOES import `listFor` from this file). Static, not the
+// dynamic `await import(...)` this file uses for `../db` and `@shared/schema`
+// elsewhere: those are lazy purely to avoid pulling in a live DB pool for
+// callers (tests) that only want the pure recipient helpers, a concern that
+// does not apply to `opsBus.ts`.
+import { publishOpsEvent } from "./opsBus";
 
 /** Presence window — same 15 minutes the board and the default-owner rule use. */
 const PRESENT_WITHIN_MINUTES = 15;
@@ -61,13 +70,29 @@ export interface OpsAlertRow {
 }
 
 /**
+ * One row `createInTx` (its per-kind wrappers, and `sweepOpsAlerts`'s own
+ * direct insert) actually inserted (post `ON CONFLICT DO NOTHING`) — enough
+ * to build the `{ type: 'alert' }` `opsBus` event `publishAlertRows` sends:
+ * `orgId` to route it to the right org's stream, everything else identical to
+ * `OpsAlertListItem` (the shape a poll of `GET /api/orders/board` would have
+ * returned for this same row) plus `userId`, which a poll's response never
+ * carries (it is implicitly "whoever asked") but a per-org broadcast MUST, so
+ * every connected tablet can filter down to only the alert rows addressed to
+ * ITS signed-in user (see `client/src/hooks/useOpsBoard.ts`'s `applyOpsBusEvent`).
+ */
+export interface OpsAlertCreatedRow extends OpsAlertListItem {
+  orgId: string;
+  userId: string;
+}
+
+/**
  * The one insert path every alert — transactional or swept — goes through.
  * `ON CONFLICT DO NOTHING` against `ops_alerts_once_idx` is the whole
  * idempotency contract (module doc); no caller may bypass it with a plain
  * `.insert()`.
  */
-export async function createInTx(tx: any, rows: OpsAlertRow[]): Promise<number> {
-  if (rows.length === 0) return 0;
+export async function createInTx(tx: any, rows: OpsAlertRow[]): Promise<OpsAlertCreatedRow[]> {
+  if (rows.length === 0) return [];
   const { opsAlerts } = await import("@shared/schema");
   const inserted = await tx
     .insert(opsAlerts)
@@ -85,8 +110,60 @@ export async function createInTx(tx: any, rows: OpsAlertRow[]): Promise<number> 
     .onConflictDoNothing({
       target: [opsAlerts.orgId, opsAlerts.orderId, opsAlerts.kind, opsAlerts.userId, opsAlerts.dueKey],
     })
-    .returning({ id: opsAlerts.id });
-  return inserted.length;
+    .returning({
+      id: opsAlerts.id,
+      orgId: opsAlerts.orgId,
+      orderId: opsAlerts.orderId,
+      userId: opsAlerts.userId,
+      station: opsAlerts.station,
+      kind: opsAlerts.kind,
+      dueAt: opsAlerts.dueAt,
+      createdAt: opsAlerts.createdAt,
+    });
+  return inserted.map(toCreatedRow);
+}
+
+/** Shared by every insert path (`createInTx`, `sweepOpsAlerts`) so the pushed shape can never drift between them. */
+function toCreatedRow(r: {
+  id: string;
+  orgId: string;
+  orderId: string;
+  userId: string;
+  station: string;
+  kind: string;
+  dueAt: Date | null;
+  createdAt: Date;
+}): OpsAlertCreatedRow {
+  return {
+    id: r.id,
+    orgId: r.orgId,
+    orderId: r.orderId,
+    userId: r.userId,
+    kind: r.kind as OpsAlertKind,
+    station: r.station as OpsAlertListItem["station"],
+    dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Publishes one `{ type: 'alert' }` opsBus event per newly-inserted row.
+ * Callers MUST call this only AFTER the transaction that inserted the rows
+ * has committed — never from inside it, where a later rollback would make the
+ * push a lie (the exact discipline `orderTransitions.ts` already applies to
+ * its own `{ type: 'order' }` push). Best-effort: one row's publish failure is
+ * logged and skipped, never thrown — a push failure must not be able to
+ * unwind or fail work that has already durably committed.
+ */
+export function publishAlertRows(rows: OpsAlertCreatedRow[]): void {
+  for (const row of rows) {
+    try {
+      const { orgId, ...alert } = row;
+      publishOpsEvent(orgId, { type: "alert", alert });
+    } catch (pushError) {
+      console.error("[OpsAlerts] Failed to push a new alert to the board stream:", pushError);
+    }
+  }
 }
 
 /** `ops_staff` for one org, in the shape the pure recipient functions need — read inside the caller's own transaction. */
@@ -121,7 +198,7 @@ export async function alertAssignedInTx(
     inputUserId?: string | null;
     assignedAt: Date;
   },
-): Promise<number> {
+): Promise<OpsAlertCreatedRow[]> {
   if (
     !shouldAlertAssigned({
       assigneeId: params.assigneeId,
@@ -130,7 +207,7 @@ export async function alertAssignedInTx(
       inputUserId: params.inputUserId ?? null,
     })
   ) {
-    return 0;
+    return [];
   }
   return createInTx(tx, [
     {
@@ -153,7 +230,7 @@ export async function alertAssignedInTx(
 export async function alertCustomerWaitingInTx(
   tx: any,
   params: { orgId: string; orderId: string; assigneeId: string | null; staff: OpsStaffPresence[]; arrivedAt: Date },
-): Promise<number> {
+): Promise<OpsAlertCreatedRow[]> {
   const recipients = customerWaitingRecipients(params.assigneeId, params.staff);
   return createInTx(
     tx,
@@ -173,7 +250,7 @@ export async function alertCustomerWaitingInTx(
 export async function alertDelayedInTx(
   tx: any,
   params: { orgId: string; orderId: string; assigneeId: string | null; actorId: string | null; revisedEta: Date | null; declaredAt: Date },
-): Promise<number> {
+): Promise<OpsAlertCreatedRow[]> {
   const recipients = delayedRecipients(params.assigneeId, params.actorId);
   // A delay declared with no explicit revised time still needs a fresh cycle
   // per declaration, or a second delay minutes later would collide on the
@@ -588,8 +665,24 @@ export async function sweepOpsAlerts(now: Date = new Date()): Promise<OpsAlertSw
       .onConflictDoNothing({
         target: [opsAlerts.orgId, opsAlerts.orderId, opsAlerts.kind, opsAlerts.userId, opsAlerts.dueKey],
       })
-      .returning({ id: opsAlerts.id });
+      .returning({
+        id: opsAlerts.id,
+        orgId: opsAlerts.orgId,
+        orderId: opsAlerts.orderId,
+        userId: opsAlerts.userId,
+        station: opsAlerts.station,
+        kind: opsAlerts.kind,
+        dueAt: opsAlerts.dueAt,
+        createdAt: opsAlerts.createdAt,
+      });
     created += inserted.length;
+    // This insert commits per-statement through the pooled `db` (not a `tx`)
+    // — there is no later "after commit" boundary to wait for the way
+    // `orderTransitions.ts` waits for `withTransaction` to return, so publish
+    // each chunk's rows immediately once Postgres has confirmed them.
+    // `publishAlertRows` is itself best-effort (catches per row), so a push
+    // failure here can never fail the sweep.
+    publishAlertRows(inserted.map(toCreatedRow));
   }
 
   if (carriedOverOrderIds.length > 0) {

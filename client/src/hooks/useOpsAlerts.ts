@@ -3,9 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ackOpsAlert,
   chimeDecisionFor,
-  hasChimed,
+  claimChime,
   isOpsSoundMuted,
-  markChimed,
   setOpsSoundMuted,
 } from "@/lib/opsAlertsClient";
 import { isAudioUnlocked, onAudioUnlocked, playOpsChime, unlockAudio } from "@/lib/posAudio";
@@ -114,9 +113,16 @@ export function useOpsAlerts(
 
     const decision = chimeDecisionFor(delivered, nowRef.current);
     if (!decision) return;
-    if (hasChimed(decision.alertId)) return; // another tab of this browser already chimed for this row
-    markChimed(decision.alertId);
-    if (!soundMuted) playOpsChime(decision.kind);
+    // N5b live push (server/services/opsAlerts.ts's `publishAlertRows`)
+    // delivers the same event to every open tab within the same instant, so
+    // the dedupe check-and-mark below has to be one atomic step
+    // (`claimChime`), not two — otherwise two tabs racing the exact same
+    // delivery could both read "not yet chimed" before either one's write
+    // lands. `soundMuted` is read from the closure at the moment the effect
+    // ran, exactly as the old synchronous version read it.
+    void claimChime(decision.alertId).then((won) => {
+      if (won && !soundMuted) playOpsChime(decision.kind);
+    });
   }, [alerts, soundMuted, onAnnounce]);
 
   const isAlertForOrder = useCallback((orderId: string) => alerts.some((a) => a.orderId === orderId), [alerts]);

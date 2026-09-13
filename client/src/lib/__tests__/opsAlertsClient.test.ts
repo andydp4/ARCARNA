@@ -23,6 +23,7 @@ vi.mock("../queryClient", () => ({
 import {
   ackOpsAlert,
   chimeDecisionFor,
+  claimChime,
   hasChimed,
   isOpsSoundMuted,
   markChimed,
@@ -138,6 +139,72 @@ describe("opsAlertsClient", () => {
       });
       expect(hasChimed("alert-1")).toBe(false);
       expect(() => markChimed("alert-1")).not.toThrow();
+    });
+  });
+
+  /**
+   * N5b gap fix: `hasChimed` + `markChimed` as two separate steps is a plain
+   * check-then-write, fine for deliveries an ordinary amount of time apart
+   * but not for `opsBus`'s live push, which can deliver the SAME alert to
+   * every open tab within the same instant. `claimChime` wraps both in one
+   * `navigator.locks` request so cross-tab exclusion is real, with a
+   * fallback to the old check-then-write when Web Locks is unavailable.
+   */
+  describe("claimChime (atomic cross-tab dedupe)", () => {
+    it("the first caller wins and marks the id", async () => {
+      const won = await claimChime("alert-1");
+      expect(won).toBe(true);
+      expect(hasChimed("alert-1")).toBe(true);
+    });
+
+    it("a second caller for the SAME id loses, even without navigator.locks (falls back to check-then-write)", async () => {
+      expect(await claimChime("alert-1")).toBe(true);
+      expect(await claimChime("alert-1")).toBe(false);
+    });
+
+    it("uses navigator.locks for real mutual exclusion when it is available", async () => {
+      const requestMock = vi.fn(async (_name: string, cb: () => unknown) => cb());
+      vi.stubGlobal("navigator", { locks: { request: requestMock } });
+
+      const won = await claimChime("alert-2");
+
+      expect(won).toBe(true);
+      expect(requestMock).toHaveBeenCalledWith("arcarna-ops-alert-chime", expect.any(Function));
+      expect(hasChimed("alert-2")).toBe(true);
+    });
+
+    it("two concurrent claims serialised through navigator.locks produce exactly one winner", async () => {
+      // A minimal in-memory stand-in for the Web Locks API's own mutual
+      // exclusion: only one callback runs at a time, queued FIFO — enough to
+      // prove `claimChime` composes correctly with a REAL exclusive lock,
+      // without depending on a browser's actual lock manager in a node test
+      // environment.
+      let busy: Promise<unknown> = Promise.resolve();
+      const fakeLocks = {
+        request: (_name: string, cb: () => unknown) => {
+          const run = busy.then(cb);
+          busy = run.catch(() => {});
+          return run;
+        },
+      };
+      vi.stubGlobal("navigator", { locks: fakeLocks });
+
+      const [a, b] = await Promise.all([claimChime("alert-3"), claimChime("alert-3")]);
+
+      expect([a, b].sort()).toEqual([false, true]);
+    });
+
+    it("falls back to the best-effort path when navigator.locks itself throws", async () => {
+      vi.stubGlobal("navigator", {
+        locks: {
+          request: () => {
+            throw new Error("locks unavailable");
+          },
+        },
+      });
+      const won = await claimChime("alert-4");
+      expect(won).toBe(true);
+      expect(hasChimed("alert-4")).toBe(true);
     });
   });
 

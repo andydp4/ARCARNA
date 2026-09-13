@@ -98,11 +98,21 @@ export interface OpsBoardResponse {
   summary: OpsBoardSummary;
 }
 
+/**
+ * `OpsBoardAlert` plus the `userId` it's addressed to. A poll of
+ * `GET /api/orders/board` never carries this (its `alerts` array is already
+ * scoped to whoever asked), but `opsBus` broadcasts per ORG, not per user —
+ * every connected tablet gets every event — so the pushed payload must name
+ * its recipient for the client to filter on (see `applyOpsBusEvent`'s "alert"
+ * case below).
+ */
+export type OpsAlertPush = OpsBoardAlert & { userId: string };
+
 /** One `opsBus` delta, exactly as `server/services/opsBus.ts` defines it. */
 export type OpsBusEvent =
   | { type: "order"; order: BoardOrder }
   | { type: "order_removed"; id: string }
-  | { type: "alert"; alert: OpsBoardAlert }
+  | { type: "alert"; alert: OpsAlertPush }
   | { type: "staff"; staff: OpsBoardStaffRow[] }
   | { type: "summary"; summary: OpsBoardSummary };
 
@@ -150,16 +160,24 @@ export function applyOpsBusEvent(queryClient: QueryClient, event: OpsBusEvent): 
         return { ...current, staff: event.staff };
       case "summary":
         return { ...current, summary: event.summary };
-      case "alert":
-        // No caller publishes this event yet: `server/services/opsBus.ts`'s
-        // "alert" variant has existed since N3a but nothing in this phase's
-        // touch lists (N5a's included — its own alert generation runs through
-        // `createInTx`/`sweepOpsAlerts`, not `publishOpsEvent`) ever emits
-        // one. The board's reconciliation poll is what actually delivers
-        // fresh `alerts` rows today (`useOpsAlerts.ts`); this case stays a
-        // documented no-op rather than a guess at a merge shape for an event
-        // this server version never sends.
-        return current;
+      case "alert": {
+        // Privacy: `opsBus` broadcasts to every tablet connected to this ORG,
+        // but the board's `alerts` field is the SIGNED-IN USER's own unacked,
+        // unresolved rows only (server/services/opsBoard.ts's own doc
+        // comment) — never per-org. Merging a colleague's alert here would
+        // leak it onto this tablet's rail, so anything not addressed to the
+        // current user is dropped, exactly as if this tablet had never heard
+        // of it (server/services/opsAlerts.ts's `publishAlertRows` is what
+        // emits these, from `createInTx`'s transactional kinds and
+        // `sweepOpsAlerts`'s time-based ones).
+        if (event.alert.userId !== current.me.userId) return current;
+        const { userId: _userId, ...alert } = event.alert;
+        const exists = current.alerts.some((a) => a.id === alert.id);
+        const alerts = exists
+          ? current.alerts.map((a) => (a.id === alert.id ? alert : a))
+          : [...current.alerts, alert];
+        return { ...current, alerts };
+      }
       default:
         return current;
     }

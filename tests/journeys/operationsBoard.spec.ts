@@ -640,6 +640,26 @@ test.describe("Operations Centre board — every action is a real write", () => 
  * eligible) while `dueAt` itself is already one minute past its own
  * due-soon threshold (`dueAt − lead` is 9 minutes in the past) — immediately
  * due, the very next active tick.
+ *
+ * The order of operations below is load-bearing, not incidental: the board
+ * navigates and settles to idle BEFORE the alert-triggering order is ever
+ * created. An earlier version of this test created the order first and
+ * navigated second — the ~10-30s Vite dev-server SPA compile the very first
+ * `page.goto` pays for was enough, on its own, to burn most of the 25s
+ * budget, so the sweep had usually already written the `ops_alerts` row (and
+ * the board's very first `GET /api/orders/board` had usually already picked
+ * it up) before the 25s assertion ever started polling. That proved the
+ * timing budget, not the delivery MECHANISM: a server that never pushed a
+ * single live `{ type: 'alert' }` event, and relied solely on the ~60s
+ * reconciliation poll, could pass the exact same assertion the exact same
+ * way, purely because the order (and usually the alert row with it) already
+ * existed by the time the timeout clock started. Navigating first and
+ * creating the order second — with the 25s clock starting at
+ * `orderInState`'s own return, after the board is already open, mounted and
+ * idle — closes that hole: `settings.reconcilePollSeconds` defaults to 60s
+ * (`shared/schema.ts`), so any success within this test's 25s window can only
+ * be the live `opsBus` push landing on an `EventSource` this tab already has
+ * open, never the poll.
  */
 const DUE_SOON_ORDER_OPTS = { dueIn: 1, minutesAgo: 20, fulfilment: "collection" as const };
 test.describe("Operations Centre alert rail (N5b)", () => {
@@ -653,14 +673,25 @@ test.describe("Operations Centre alert rail (N5b)", () => {
       // set for this order's own alert to be addressed to them at all.
       await api.patch("/api/operations/station", { data: { station: "collection" } });
 
-      const order = await orderInState(api, db, "due-soon", DUE_SOON_ORDER_OPTS);
+      // Board first, order second (see the module doc above): the board must
+      // be open, mounted and idle, with its `EventSource` already connected,
+      // before the alert-triggering order exists at all — otherwise a slow
+      // first navigation can let the sweep (and even the board's own first
+      // GET) win the race before this test's clock ever starts.
       await gotoBoard(adminPage);
-      const card = adminPage.getByTestId(`ops-card-${order.id}`);
-      await card.scrollIntoViewIfNeeded();
+      await expect(adminPage.getByTestId("ops-lane-collection")).toBeVisible();
 
-      // Server-side generation (the sweep) and client-side delivery (the
-      // board's reconciliation poll) both happen inside this one window.
+      const order = await orderInState(api, db, "due-soon", DUE_SOON_ORDER_OPTS);
+      const card = adminPage.getByTestId(`ops-card-${order.id}`);
+
+      // The card itself does not exist on this already-loaded board yet — its
+      // own `{ type: 'order' }` opsBus push has to arrive first, exactly like
+      // a real second order landing on a tablet mid-shift. `toHaveAttribute`
+      // polls until both the element appears AND the attribute matches, so
+      // this one assertion covers "the new card arrives" and "it arrives
+      // already alerted" without a separate wait for the card's existence.
       await expect(card).toHaveAttribute("data-alert", "true", { timeout: 25_000 });
+      await card.scrollIntoViewIfNeeded();
 
       let alert: { id: string } | null = null;
       await expect
@@ -713,20 +744,23 @@ test.describe("Operations Centre alert rail (N5b)", () => {
    * plumbing — `useOpsAlerts.ts` + `opsAlertsClient.ts`'s cross-tab dedupe —
    * actually stops a tab from re-playing tones a sibling tab already did.
    *
-   * Each tab's delivery is driven by its own `ops-refresh` click, ONE AT A
-   * TIME, rather than by waiting on the natural reconciliation poll for both:
-   * the dedupe itself is a plain check-then-write against localStorage with
-   * "no leader election" — the brief's own words — a best-effort guard
-   * against two ordinary tabs, not an atomic lock against two independent
-   * poll timers landing in the SAME millisecond. Racing both tabs' own
-   * `useQuery` poll cycles through `Promise.all` (tried first while writing
-   * this suite) reproduced exactly that narrow, ACKNOWLEDGED race — both
-   * tabs' checks read the dedupe set before either one's write had landed —
-   * which is a property of "no leader election", not a defect in the
-   * one-tab-wins mechanism this test exists to prove. Driving each tab's
-   * OWN delivery explicitly, in a controlled order, is what a real pair of
-   * tabs effectively is anyway (two independent people/moments, not one
-   * simultaneous instant) and is what this test actually owns proving.
+   * Each tab used to have its delivery driven by its own `ops-refresh`
+   * click, ONE AT A TIME, rather than by waiting on the natural
+   * reconciliation poll for both — because the OLD dedupe was a plain
+   * check-then-write against localStorage with "no leader election" (the
+   * brief's own words): a best-effort guard against two ordinary tabs, not
+   * an atomic lock against two independent deliveries landing in the SAME
+   * millisecond. N5b's live `opsBus` push (this suite's own gap fix) delivers
+   * the SAME `{ type: 'alert' }` event to every open tab within the same
+   * instant, turning that "same millisecond" collision from a rare,
+   * manually-avoided coincidence into the ordinary case for two idle tablets
+   * — so `opsAlertsClient.ts`'s dedupe was upgraded alongside this fix to a
+   * real cross-tab lock (`claimChime`, the Web Locks API — every tablet
+   * browser this app ships to supports it) rather than papering over the
+   * race in this test. With that lock in place, delivery order genuinely
+   * does not matter: both tabs below receive the live push with no manual
+   * trigger at all, and exactly one of them wins the chime regardless of
+   * which one's `EventSource` frame happens to be processed first.
    */
   test("one chime per browser: two tabs share the dedupe, so only one chime's tones are ever heard", async ({
     browser,
@@ -749,28 +783,24 @@ test.describe("Operations Centre alert rail (N5b)", () => {
       });
       expect(assign.ok(), await assign.text()).toBe(true);
 
-      // Tab A refreshes first and delivers the alert; its own chime effect
-      // marks the row in the shared dedupe set before tab B ever looks.
-      await pageA.getByTestId("ops-refresh").click();
-      await expect(pageA.getByTestId(`ops-card-${order.id}`)).toHaveAttribute("data-alert", "true", {
-        timeout: 15_000,
-      });
-      await expect.poll(() => toneCount(pageA), { timeout: 5_000 }).toBeGreaterThan(0);
-      const tonesA = await toneCount(pageA);
-      // "assigned" schedules exactly two tones (posAudio.ts).
-      expect(tonesA, "the first tab to deliver the alert should chime it").toBe(2);
+      // Both tabs receive the SAME live push with no manual trigger — proves
+      // this suite's own alert-push fix delivers to more than one connected
+      // client at once, not just the one that happens to poll or click.
+      const cardA = pageA.getByTestId(`ops-card-${order.id}`);
+      const cardB = pageB.getByTestId(`ops-card-${order.id}`);
+      await expect(cardA).toHaveAttribute("data-alert", "true", { timeout: 15_000 });
+      await expect(cardB).toHaveAttribute("data-alert", "true", { timeout: 15_000 });
 
-      // Tab B refreshes second, delivering the SAME alert row — it must see
-      // it (the pulse and text are the primary channel, always shown) but
-      // must NOT chime again, because tab A already marked this alert id in
-      // `STORAGE_OPS_CHIMED`.
-      await pageB.getByTestId("ops-refresh").click();
-      await expect(pageB.getByTestId(`ops-card-${order.id}`)).toHaveAttribute("data-alert", "true", {
-        timeout: 15_000,
-      });
-      await pageB.waitForTimeout(500);
+      // Exactly one chime total, wherever it lands — `claimChime`'s cross-tab
+      // lock makes which tab wins irrelevant, only that only one of them does.
+      await expect.poll(async () => (await toneCount(pageA)) + (await toneCount(pageB)), { timeout: 10_000 }).toBe(2);
+      // Give the loser every chance to (wrongly) chime before declaring victory.
+      await pageA.waitForTimeout(500);
+      const tonesA = await toneCount(pageA);
       const tonesB = await toneCount(pageB);
-      expect(tonesB, "the second tab must not re-chime an alert its sibling already sounded").toBe(0);
+      // "assigned" schedules exactly two tones per chime (posAudio.ts) — one
+      // tab gets both, the other gets none, never a split or a double-chime.
+      expect([tonesA, tonesB].sort(), "exactly one tab chimes, the other stays silent").toEqual([0, 2]);
     } finally {
       await context.close();
     }

@@ -13,7 +13,12 @@
  * (N5a, `server/services/opsAlerts.ts`) → `publishEventTx`. After commit: settle a
  * backdated shift if `complete` touched one, re-read the row as a `BoardOrder`
  * (`server/services/opsBoard.ts`) and push it to `opsBus` — the identical
- * post-commit pattern `POST /api/orders` already uses.
+ * post-commit pattern `POST /api/orders` already uses — then push one
+ * `{ type: 'alert' }` event per row `alertAssignedInTx`/`alertCustomerWaitingInTx`
+ * actually inserted this transition (N5b gap fix: alert rows used to be
+ * written with no live-push counterpart at all, leaving the reconciliation
+ * poll — default 60s — as the only delivery path against the brief's ≤25s
+ * DoD).
  *
  * `claim` is the one action whose "stamp" is a conditional
  * `UPDATE … WHERE assigned_user_id IS NULL`, per the brief, rather than the
@@ -40,7 +45,14 @@ import { completeOrderTx, reopenOrderTx, type CompleteOrderActor } from "./order
 import { getOpsBoardOrder, type BoardOrderPayload } from "./opsBoard";
 import { publishOpsEvent } from "./opsBus";
 import { resolveDuePromise } from "../routes/orders";
-import { alertAssignedInTx, alertCustomerWaitingInTx, loadStaffPresenceInTx, resolveOpsAlertsForTransition } from "./opsAlerts";
+import {
+  alertAssignedInTx,
+  alertCustomerWaitingInTx,
+  loadStaffPresenceInTx,
+  publishAlertRows,
+  resolveOpsAlertsForTransition,
+  type OpsAlertCreatedRow,
+} from "./opsAlerts";
 
 const TEN_MINUTES_MS = 10 * 60_000;
 
@@ -195,6 +207,8 @@ interface ActionOutcome {
   statusChanged: boolean;
   event: { id: string; kind: string; at: Date } | null;
   backdatedShiftToSettle?: CashierShift | null;
+  /** Rows `alertAssignedInTx`/`alertCustomerWaitingInTx` actually inserted this transition — pushed to `opsBus` AFTER commit, below. */
+  newAlerts?: OpsAlertCreatedRow[];
 }
 
 const NO_CHANGE: ActionOutcome = { changed: false, statusChanged: false, event: null };
@@ -345,7 +359,7 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         // brief: "the new assignee (not on self-claim...)" — `shouldAlertAssigned`
         // inside `alertAssignedInTx` still silences this when `targetUserId
         // === actor.userId` (someone assigning the order to themselves).
-        await alertAssignedInTx(tx, {
+        const assignAlerts = await alertAssignedInTx(tx, {
           orgId,
           orderId,
           assigneeId: targetUserId,
@@ -359,7 +373,7 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           newAssigneeId: targetUserId,
           resolvedByUserId: actor.userId,
         });
-        outcome = { changed: true, statusChanged: false, event };
+        outcome = { changed: true, statusChanged: false, event, newAlerts: assignAlerts };
         break;
       }
       case "ready": {
@@ -411,9 +425,10 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         // brief: "`customer_waiting` | assignee, else present Collection
         // members | on `arrived` WHEN NOT READY". `assertTransition` already
         // confines `arrived` to collection orders.
+        let arrivedAlerts: OpsAlertCreatedRow[] = [];
         if (!row.ready_at) {
           const staff = await loadStaffPresenceInTx(tx, orgId, now);
-          await alertCustomerWaitingInTx(tx, {
+          arrivedAlerts = await alertCustomerWaitingInTx(tx, {
             orgId,
             orderId,
             assigneeId: (row.assigned_user_id as string | null) ?? null,
@@ -421,7 +436,7 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
             arrivedAt: now,
           });
         }
-        outcome = { changed: true, statusChanged: false, event };
+        outcome = { changed: true, statusChanged: false, event, newAlerts: arrivedAlerts };
         break;
       }
       case "out_for_delivery": {
@@ -588,6 +603,13 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
     publishOpsEvent(orgId, { type: "order", order: boardOrder });
   } catch (pushError) {
     console.error("[OrderTransitions] Failed to push the transitioned order to the board stream:", pushError);
+  }
+  // brief, architecture: `orderTransitions` emits `{ type: 'alert', alert }`
+  // after commit alongside the order delta — `publishAlertRows` is itself
+  // best-effort per row, so a push failure here can never undo the
+  // already-committed transition or its alert row.
+  if (outcome.newAlerts && outcome.newAlerts.length > 0) {
+    publishAlertRows(outcome.newAlerts);
   }
 
   return {
