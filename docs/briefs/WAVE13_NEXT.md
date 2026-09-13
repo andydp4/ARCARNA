@@ -4,6 +4,15 @@
 
 ---
 
+## Done since this was written
+
+**N0–N9b — The Operations Centre — Built** (PRs #185–#198, 2026-09-12 →
+2026-09-13). All fourteen packages merged in brief order; see
+[`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) and
+[`BRIEF_STATUS.md`](./BRIEF_STATUS.md) for the per-package table. Genuinely
+outstanding follow-ons from the phase (never promised by the brief, not
+gaps) are tracked in [`GAPS_BACKLOG.md`](./GAPS_BACKLOG.md#operations-centre--follow-ons-recorded-at-close-out-n9b-2026-09-13).
+
 ## Suggested scope
 
 | Brief ID | Branch | Notes |
@@ -11,7 +20,6 @@
 | **U1** | `feat/u1-import-empty-states` | GAP-U1-03 — import modals |
 | **U5** | `chore/lint-strict-pass` | GAP-U5-01 — `npm run lint:strict` green |
 | **Ops** | — | O2 restore drill, O3 `pm2 startup` + reboot test |
-| **N0–N9b** | per-package branches off `main` | The Operations Centre — [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md). N0 first, then N1 ‖ N2 ‖ N8; PR1 is floor-usable |
 
 **Optional:** Snag sweep from open branches (`cursor/snag-sweep-system-test-802c`, etc.) — triage before starting.
 

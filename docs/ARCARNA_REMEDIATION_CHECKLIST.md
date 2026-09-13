@@ -15,7 +15,7 @@ Approved direction (owner, this session): implement **everything**, including th
 
 - [x] **B-P0-01** `/brand/` assets exist (`client/public/brand/arcarna-mark.png`, `arcarna-wordmark.png`, lockups)
 - [x] **R-P0-01** orphan `reports.tsx` removed (absent, not in `App.tsx`)
-- [x] **R-P0-03** Orders page H1 already `"Open Orders"` (matches nav)
+- [x] **R-P0-03** ~~Orders page H1 already `"Open Orders"` (matches nav)~~ — **superseded 2026-09-13:** the Orders page and its `"Open Orders"` H1 were deleted outright by Phase N (N4b); `/open-orders` now redirects to `/operations`, and the nav entry is `"Operations"`, not `"Open Orders"`. This line is kept for history, not as a current fact.
 - [x] **X-P2-02** `scripts/check-brand-strings.sh` CI guard exists
 - [x] **T-P1-09** Font Awesome gone — `client/src` is Lucide-only
 

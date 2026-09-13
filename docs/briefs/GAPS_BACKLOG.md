@@ -262,7 +262,7 @@
 | **Brief** | U5 (found during Phase 1 combined-branch validation, not by any of PRs #175/#176/#178/#179/#180 — confirmed pre-existing, see below) |
 | **Snag** | `orders-row.tsx`'s elapsed-time indicator turns `text-destructive` once an order has been open 60+ minutes (`useElapsed`/`tone` helper, ~line 70). That resolves to `--destructive: var(--danger)` → `--danger: hsl(2 78% 46%)` in `styles/tokens/arcarna.css` (`#d1201a`), which axe measured at **3.05:1** against the row background — needs **4.5:1** for normal-size text (WCAG 1.4.3). Confirmed via CSS trace that no Phase 1 bundle touches this token; it wasn't caught by any PR's own a11y CI run because a fresh, short-lived CI database never has an order old enough to hit the 60-minute threshold — it only surfaced when the (long-running) validation session's shared dev DB had a genuinely stale open order. |
 | **Fix** | Either lighten `--danger` enough to clear 4.5:1 on the dark row background (check knock-on effect everywhere else `--danger`/`--destructive` is used first), or give this specific label a dedicated higher-contrast color instead of reusing the shared destructive token. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — **for the board.** `orders-row.tsx` (the file this gap was filed against) no longer exists: N4b deleted `orders.tsx`/`orders-row.tsx` outright and the board at `/operations` is now the only surface an elapsed-time / late indicator renders on. Its `--ops-late` fill/text pair is a token asserted at ≥ 4.5:1 by `shared/ui/contrast.spec.ts` (N0), not a reused `--destructive`, so the specific defect this gap named cannot recur. Verified against `client/src/components/orders-row.tsx` (absent) and `shared/ui/contrast.spec.ts`'s `ops-late` pair. |
 
 ---
 
@@ -365,7 +365,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | L5 / ARC-T1-003, ARC-T1-005, ARC-T2-003 |
 | **Snag** | `client/src/pages/orders.tsx` L91: `selectedOrder` is only ever written inside the status mutation behind a `selectedOrder?.id === orderId` guard, so it is always null and the *Collection & delays* / *Rate collection* buttons, `OrderOpsDialog` and `SatisfactionDialog` never render (the setter went with `openStatusDialog` in 0b611ac). No UI has written `eta_given` / `delay_flag` / satisfaction for three weeks; the three reports have had no feed. |
 | **Fix** | N4a replaces the dialog with inline delay capture on the card and rating chips on completed cards; N4b deletes both dialogs. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `client/src/components/reports/OrderOpsDialog.tsx` and `SatisfactionDialog.tsx` no longer exist; `OpsCardActions.tsx` mounts `OpsDelayInline` (delay capture) and `OpsRateChips` (rating, completed cards only). Verified by grep (no file, no import) and by reading `OpsCardActions.tsx`. |
 
 <a id="gap-ops-02"></a>
 
@@ -376,7 +376,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | C-series / website ingest |
 | **Snag** | `server/services/website.ts` L568–586 never passes `fulfilmentMethod` to `placeOrder`, and `shared/website.ts` L163 uses `pickup` where orders use `collection`. Every web delivery is stored as a collection. |
 | **Fix** | N3a: map `pickup → collection`, pass `fulfilmentMethod`, give web orders a promise, unit test. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `server/services/website.ts` now computes and passes `fulfilmentMethod: "collection" | "delivery"` and a `dueMinutes` from `getOpsDueMinutes(orgId, fulfilmentMethod)`. Verified by reading `website.ts` around the order-placement call. |
 
 <a id="gap-ops-03"></a>
 
@@ -387,7 +387,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | U4 |
 | **Snag** | `server/lib/bulkActionHandler.ts` L157–173 writes any string into `orders.status` with no validation; setting `completed` this way freezes no `settled_total`, records no completer and publishes nothing. `orders.status` has no CHECK constraint. |
 | **Fix** | N3b removes `POST /api/orders/bulk` and `handleOrderBulk` (no caller after N1). If bulk status is ever wanted back, it must call `completeOrderTx`. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `POST /api/orders/bulk` and `handleOrderBulk` are gone; `server/lib/bulkActionHandler.ts` carries only a comment noting the removal. Verified by grep: no route, no handler, no caller. A bulk assign endpoint (a different, narrower operation that still calls the safe per-order transition path) is recorded as a follow-on below, not reopened here. |
 
 <a id="gap-ops-04"></a>
 
@@ -398,7 +398,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | S4 / tenancy |
 | **Snag** | `server/services/operationalIntelligence.ts` `getNotifications` L371–375 (pending approvals) and L392–404 (dead letters) are not filtered by `orgId`; every org's bell shows every org's approvals and dead letters. |
 | **Fix** | Not in the Phase N packages (the board has its own alert feed). A one-line org filter plus `notificationsOrgScope.test.ts`, any time. |
-| **Closed** | [ ] |
+| **Closed** | [ ] — confirmed still open 2026-09-13: `getNotifications` in `server/services/operationalIntelligence.ts` still queries `userApprovalRequests` and `deadLetters` with no `orgId` filter. Genuinely not touched by any Phase N package, as the brief said. |
 
 <a id="gap-ops-05"></a>
 
@@ -409,7 +409,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | U7 / K-series |
 | **Snag** | `client/src/pages/pos.tsx` L136–139 keeps `orderExpenses`, validates them (L647–656) and passes them to the step, but `orderData` (L680–763) never includes them and the server writes `order_expenses` only for personal use. Silent data loss. |
 | **Fix** | Owner chose to wire it (2026-09-12, Q12): N6 sends `expenses[]` from checkout, `PlaceOrderInput` declares it, and the create transaction inserts `order_expenses` rows on the path personal use already uses; `orderExpenses.test.ts` proves rows land and `total` is untouched. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 (N6, PR #195) — `server/routes/orders.ts` parses `body.expenses` with `orderExpenseInputSchema` and inserts `order_expenses` rows in the create transaction; the comment there is explicit that these are costs and never trusted from `body.total`. Verified by reading the create-order handler. |
 
 <a id="gap-ops-06"></a>
 
@@ -420,7 +420,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | ARC-T2-003 |
 | **Snag** | `SatisfactionDialog` was only reachable from the dead block in GAP-OPS-01, so ARC-T2-003 has had no feed since #136. |
 | **Fix** | N4a adds `OpsRateChips` (1–5) on completed cards posting to `POST /api/satisfaction`; N4b deletes the dialog. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `client/src/components/operations/OpsRateChips.tsx` posts to `/api/satisfaction` and is mounted on completed cards in `OpsCardActions.tsx`. Verified by reading `OpsRateChips.tsx`. |
 
 <a id="gap-ops-07"></a>
 
@@ -442,7 +442,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | K / L (settlement) |
 | **Snag** | `server/routes/orders.ts` L644 reads the row on the pooled `db` *before* `withTransaction`, decides `isSettling` from it, and `creditLegTotal` (L659, `server/services/creditLedger.ts` L67) reads through the module-level `db` rather than the transaction client. Two Delivered taps a second apart both see `settled_total` null, both build a settlement patch, and the second overwrites `settled_at` and `completed_user_id`; under ~10 concurrent completions the pool (max 10) can self-deadlock. |
 | **Fix** | N3b: extract `completeOrderTx(tx, lockedRow, actor)`, read the row with `SELECT … FOR UPDATE` inside the transaction, pass `tx` into `creditLegTotal`, and prove it with `orderTransitionAtomicity.test.ts` and `completionSinglePath.test.ts`. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 (N3b) — **spot-checked, being money-relevant.** `server/services/orderCompletion.ts` exports `completeOrderTx(tx, lockedRow, actor, …)`, its own header comment states no bare `db.` read lives in the file (a script enforces this), and `creditLegTotal` takes `tx` as its last argument. Both `PATCH /api/orders/:id` (`server/routes/orders.ts`) and the transition route (`server/services/orderTransitions.ts`) call it after their own `SELECT … FOR UPDATE`. Verified by reading `orderCompletion.ts` and grepping both call sites. |
 
 <a id="gap-ops-09"></a>
 
@@ -453,7 +453,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | S2 / automation |
 | **Snag** | `PATCH /api/orders/:id` publishes `OrderStatusChanged` even when `from === to`; the event reaches four workers and `server/services/automationEngine.ts`, which loads every enabled rule for the type without checking that the status changed. A stage write reusing this event would fire customer-facing rules once per tap. |
 | **Fix** | N3b: add `OrderStageChanged` to `EVENT_TYPES` with no required workers for stamps; publish `OrderStatusChanged` only when `status` actually changes; test that a `claim` publishes none. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `shared/schema.ts`'s `REQUIRED_WORKERS.OrderStageChanged: []`; stage taps (`claim`, `ready`, etc.) publish `OrderStageChanged` while `OrderStatusChanged` is published only from the code paths that actually change `status` (PATCH's settle/hold/reopen branches, the transition route's `complete`/`hold`/`reopen`). Verified by reading `shared/schema.ts` and grepping `OrderStatusChanged` call sites. |
 
 <a id="gap-ops-10"></a>
 
@@ -464,7 +464,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | P10 / PWA |
 | **Snag** | `client/public/sw.js` fetch handler caches every API GET and answers from cache with the original 200 on network failure, so React Query records a successful fetch and `navigator.onLine` stays true whenever Wi-Fi is up but the WAN or server is down. Any live screen looks live while stale. |
 | **Fix** | N3a: never cache `/api/orders/board`; the board judges staleness from `serverNow` in the payload. General fix (a `X-From-Cache` header on cache hits, honoured by `queryClient`) is a follow-on. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 (for the board) — `client/public/sw.js` bypasses caching for `/orders/board`, `/orders/board/stream` and any `Accept: text/event-stream` request. Verified by reading `sw.js`. The general `X-From-Cache` fix for every other cached API GET remains out of scope (unchanged, still a follow-on — not opened as a new gap here since GAP-OPS-10 was scoped to the board). |
 
 <a id="gap-ops-11"></a>
 
@@ -475,7 +475,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | F6 / offline |
 | **Snag** | `server/middleware/requireActiveCashierShift.ts` L98–113 honours `_offlineQueuedAt` only with a replay token that is set by `pos/shift-open.tsx`, which is no longer mounted; on the lazy-shift path a replayed order's `entered_at`/`created_at` are the replay time, so its wait clock and any promise are wrong. |
 | **Fix** | N3a: honour `_offlineQueuedAt` without a token on the lazy-shift path, bounded to the current trading day; `offlineQueuedAt.test.ts`. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `server/middleware/requireActiveCashierShift.ts` reads `req.body._offlineQueuedAt` and resolves it via `resolveOfflineQueuedAt(…, timeZone)`, bounded per its own header comment, with no token requirement. Verified by reading the middleware. |
 
 <a id="gap-ops-12"></a>
 
@@ -486,7 +486,7 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | L3 |
 | **Snag** | `server/services/dailyClose.ts` L173–184 totals completed rows only; orders left open are neither reported nor carried anywhere, so at 06:00 they would sit red at the top of a live board and a next-morning completion records a 14-hour handover. |
 | **Fix** | N7: the close summary gains “n orders still open from this day”; the board shows a Yesterday strip with no clocks or alerts and asks for the actual handover time on completion. |
-| **Closed** | [ ] |
+| **Closed** | [x] 2026-09-13 — `server/services/dailyClose.ts` carries `openOrdersFromDay` on its result type, computed and returned from the close. Verified by reading `dailyClose.ts`; the board's Yesterday strip (`OpsYesterdayStrip.tsx`) is the N4a/N7 counterpart. |
 
 <a id="gap-ops-13"></a>
 
@@ -497,6 +497,92 @@ All pre-existing; none introduced by Phase N. Each is fixed by the package named
 | **Brief** | S1 / schema evolution |
 | **Snag** | `scripts/apply-migrations-pm2.sh` and the CI loop run every `migrations/*.sql` on every deploy with `ON_ERROR_STOP=0`. DDL is `IF NOT EXISTS` throughout, but any data backfill that is not a no-op on re-run fabricates rows on each release, and CI cannot see it because `db:push` already built the tables. |
 | **Fix** | Rule recorded in `docs/SCHEMA_EVOLUTION.md` by N9b; N2's DoD applies 065 twice against the seeded database and asserts the `order_events` count is unchanged. |
+| **Closed** | [ ] — the re-run guard itself is real (065's backfill is `WHERE … NOT EXISTS`, proven by N2's DoD), but the documentation half of this fix — recording the "migrations are re-applied on every deploy, so a backfill must be idempotent" rule in `docs/SCHEMA_EVOLUTION.md` — was not in N9b's actual touch list and was not done here. Left open rather than silently dropped; a small follow-up PR to `docs/SCHEMA_EVOLUTION.md` closes it. |
+
+---
+
+## Operations Centre — follow-ons recorded at close-out (N9b, 2026-09-13)
+
+Deliberately deferred by the Phase N brief itself (see its *Out of scope* and
+*Changes from revision 1* sections), not gaps against anything Phase N
+promised to deliver. None are urgent; none block using the board.
+
+**Live alert delivery over SSE is not one of these — it is done, not
+outstanding.** The brief's own N9b touch-list line (written before N5b
+existed) named "SSE" as an expected follow-on, but two rounds of adversarial
+review of N5b (PR #197) found that no alert-creating path pushed to `opsBus`
+before that PR merged, and fixed it within the same PR (commits `59b1cc9`,
+`05bbf92`): `orderTransitions.ts`'s `assign`/`arrived`, `reportCapture.ts`'s
+`delayed`, `sweepOpsAlerts`, and `POST /api/orders`'s create-time auto-claim
+all now call `publishAlertRows` immediately after their transaction commits.
+Verified 2026-09-13 by reading `server/services/opsAlerts.ts`'s
+`publishAlertRows` and grepping its four call sites. If it regresses, file a
+fresh gap against `opsAlerts.ts` — this note is not one.
+
+<a id="gap-ops-14"></a>
+
+### GAP-OPS-14 — `useOrderForm` not extracted from `pos.tsx`
+
+| | |
+|---|---|
+| **Brief** | N brief, *Out of scope* |
+| **Snag** | The order form's state and submit logic still live inline in `pos.tsx` rather than in a reusable hook, now that the same form is embedded on `/operations?pane=order` as well as (formerly) standalone. |
+| **Fix** | Extract `useOrderForm` once a second real consumer of the form exists; no functional problem today, `pos.tsx` just carries more than a thin wrapper would need to. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-15"></a>
+
+### GAP-OPS-15 — Rate limiter keys on IP, not per user/tablet
+
+| | |
+|---|---|
+| **Brief** | N brief, decisions-locked row G9 / "800 req / 15 min per IP" |
+| **Snag** | `server/security.ts`'s `apiLimiter` has no `keyGenerator` override, so it still buckets by IP. Phase N's fix was narrower and sufficient for the DoD: the board and stream routes are exempt (`skip`) since they are the high-frequency paths a shared-IP shop would otherwise throttle. Every other endpoint on a four-to-eight-tablet shared IP still shares one bucket. |
+| **Fix** | A `keyGenerator` that buckets by authenticated user (or device) id when present, IP otherwise, so one busy tablet cannot exhaust the budget for the rest of the shop on non-board endpoints. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-16"></a>
+
+### GAP-OPS-16 — Polish: resizable form/board pane
+
+| | |
+|---|---|
+| **Brief** | N brief, *Changes from revision 1* ("`ResizablePanelGroup` … moved to a Polish follow-on") |
+| **Snag** | The 42% form pane width (`OpsShell`/`useMainWidth` in `operations.tsx`) is fixed, not user-adjustable. `client/src/components/ui/resizable.tsx` exports a working `ResizablePanelGroup` primitive that nothing in Operations Centre uses. |
+| **Fix** | Let the divider between the board and the form pane drag, persisting the chosen split per user (`localStorage`), bounded to the 400px minimum the brief already sets for the pane. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-17"></a>
+
+### GAP-OPS-17 — Polish: suggested assignee ("Suggested: Sam")
+
+| | |
+|---|---|
+| **Brief** | N brief, *Changes from revision 1* |
+| **Snag** | `OpsPassMenu`'s staff strip sorts station-match first, then present, then least loaded, but never surfaces a single suggested name — the cashier reads the sorted list rather than being told "Suggested: Sam". |
+| **Fix** | Surface the top of that same sort as a highlighted default suggestion in `OpsPassMenu`, keeping the full list for override. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-18"></a>
+
+### GAP-OPS-18 — Polish: cross-tab leader election for the chime dedupe
+
+| | |
+|---|---|
+| **Brief** | N brief, *Changes from revision 1* ("BroadcastChannel leader election … moved to a Polish follow-on") |
+| **Snag** | `client/src/lib/opsAlertsClient.ts`'s cross-tab chime dedupe is a `STORAGE_OPS_CHIMED` set of alert ids in `localStorage`, deliberately with "no leader election" (its own comment). Two tabs open to the same station can both decide they're first and both chime for the same alert in a narrow race. |
+| **Fix** | A `BroadcastChannel`-based leader election so exactly one tab per station/browser owns the chime; the pulse and text (the primary channel per the brief) are unaffected either way. |
+| **Closed** | [ ] |
+
+<a id="gap-ops-19"></a>
+
+### GAP-OPS-19 — Polish: bulk assign endpoint
+
+| | |
+|---|---|
+| **Brief** | N brief, *Out of scope* |
+| **Snag** | Reassigning several open orders at once (e.g. handing over a whole station at shift end) is a client-side loop over individual `assign` transitions ("Hand over my orders…" — see the brief's *Assignment, stations & presence* section), not a single request. |
+| **Fix** | A `POST /api/orders/bulk-assign` (or similar) that still routes each order through the same atomic per-order `assign` transition server-side — GAP-OPS-03 is the cautionary tale for why this must never write `assigned_user_id` directly. |
 | **Closed** | [ ] |
 
 ---
