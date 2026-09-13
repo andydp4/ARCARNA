@@ -21,6 +21,7 @@ import type { OrderStatus } from "@shared/schema";
 import type { TransitionAction, TransitionOrderInput } from "@shared/orders/opsTransitions";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { OpsBoard } from "@/components/operations/OpsBoard";
+import { OpsAlertTray } from "@/components/operations/OpsAlertTray";
 import { OpsAnnouncer } from "@/components/operations/OpsAnnouncer";
 import { OpsDeleteDialog } from "@/components/operations/OpsDeleteDialog";
 import { OpsDetailsSheet } from "@/components/operations/OpsDetailsSheet";
@@ -357,7 +358,8 @@ export default function OperationsCentre() {
 
   const now = useOpsTicker();
   const board = useOpsBoard(now);
-  const alerts = useOpsAlerts();
+  const [announcement, setAnnouncement] = useState("");
+  const alerts = useOpsAlerts(board.alerts, now, setAnnouncement);
   useWakeLock(true);
 
   const [tab, setTab] = useState<OpsTab>(() =>
@@ -371,7 +373,6 @@ export default function OperationsCentre() {
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [editOrder, setEditOrder] = useState<BoardOrder | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<BoardOrder | null>(null);
-  const [announcement, setAnnouncement] = useState("");
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [handOverPicking, setHandOverPicking] = useState(false);
   const [loopBusy, setLoopBusy] = useState(false);
@@ -789,6 +790,15 @@ export default function OperationsCentre() {
         formSlot={<POS embedded={embeddedPosProps} />}
         headerExtras={<OpsShiftControls />}
         boardArrivalCount={boardArrivalCount}
+        alertsSlot={
+          <OpsAlertTray
+            alerts={alerts.alerts}
+            orders={board.orders}
+            ackingIds={alerts.ackingIds}
+            onAck={alerts.ack}
+            onAnnounce={setAnnouncement}
+          />
+        }
         board={
           <>
             <OpsBoard
@@ -806,6 +816,10 @@ export default function OperationsCentre() {
               onRefresh={board.refetch}
               pendingIds={pendingIds}
               isAlertForOrder={alerts.isAlertForOrder}
+              alertCount={alerts.alerts.length}
+              audioUnlocked={alerts.audioUnlocked}
+              soundMuted={alerts.soundMuted}
+              onToggleSound={alerts.toggleSound}
               headerStationRow={headerStationRow}
               cardHandlers={cardHandlers}
             />

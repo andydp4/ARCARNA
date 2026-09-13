@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
+import type { OpsAlertKind, OpsAlertStation } from "@shared/orders/opsAlerts";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { resolveApiUrl } from "@/lib/appPaths";
 import { getSelectedOrgId } from "@/lib/orgScope";
@@ -64,6 +65,26 @@ export interface OpsBoardSummary {
   completedToday: number;
 }
 
+/**
+ * One row of the board's `alerts` array — the signed-in user's own unacked,
+ * unresolved alerts, exactly as `server/services/opsAlerts.ts`'s
+ * `OpsAlertListItem` (and `listFor`, which the board route calls) shapes it.
+ * Mirrored here rather than imported from `server/services/opsAlerts.ts`
+ * itself: that module also does `await import("../db")` inside several of its
+ * exports, and nothing in the client bundle should import from `server/**`
+ * even for a type, the same reason `operations.tsx`'s `TransitionResult`
+ * mirrors `runOrderTransition`'s return shape instead of importing it (N5a).
+ */
+export interface OpsBoardAlert {
+  id: string;
+  orderId: string;
+  kind: OpsAlertKind;
+  /** '' = addressed to the assignee personally (pulse only); a station name = a station-wide broadcast. */
+  station: OpsAlertStation;
+  dueAt: string | null;
+  createdAt: string;
+}
+
 /** The exact `GET /api/orders/board` response shape (brief, API section). */
 export interface OpsBoardResponse {
   serverNow: string;
@@ -73,7 +94,7 @@ export interface OpsBoardResponse {
   me: { userId: string | null; station: string | null; onBreak: boolean };
   staff: OpsBoardStaffRow[];
   orders: BoardOrder[];
-  alerts: unknown[];
+  alerts: OpsBoardAlert[];
   summary: OpsBoardSummary;
 }
 
@@ -81,7 +102,7 @@ export interface OpsBoardResponse {
 export type OpsBusEvent =
   | { type: "order"; order: BoardOrder }
   | { type: "order_removed"; id: string }
-  | { type: "alert"; alert: unknown }
+  | { type: "alert"; alert: OpsBoardAlert }
   | { type: "staff"; staff: OpsBoardStaffRow[] }
   | { type: "summary"; summary: OpsBoardSummary };
 
@@ -99,6 +120,8 @@ export interface OpsBoardData {
   settings: OpsTimingSettings;
   me: OpsBoardResponse["me"];
   staff: OpsBoardStaffRow[];
+  /** The signed-in user's own open alerts (N5b) — always `[]` before the first successful load. */
+  alerts: OpsBoardAlert[];
   summary: OpsBoardSummary | null;
   /** True only on the very first load, when there is nothing to show yet. */
   isInitialLoading: boolean;
@@ -128,8 +151,14 @@ export function applyOpsBusEvent(queryClient: QueryClient, event: OpsBusEvent): 
       case "summary":
         return { ...current, summary: event.summary };
       case "alert":
-        // N5a: `ops_alerts` does not exist yet, and `alerts` is always `[]`
-        // from the server today — nothing to apply.
+        // No caller publishes this event yet: `server/services/opsBus.ts`'s
+        // "alert" variant has existed since N3a but nothing in this phase's
+        // touch lists (N5a's included — its own alert generation runs through
+        // `createInTx`/`sweepOpsAlerts`, not `publishOpsEvent`) ever emits
+        // one. The board's reconciliation poll is what actually delivers
+        // fresh `alerts` rows today (`useOpsAlerts.ts`); this case stays a
+        // documented no-op rather than a guess at a merge shape for an event
+        // this server version never sends.
         return current;
       default:
         return current;
@@ -291,6 +320,7 @@ export function useOpsBoard(now: Date): OpsBoardData {
     settings,
     me: boardQuery.data?.me ?? { userId: null, station: null, onBreak: false },
     staff: boardQuery.data?.staff ?? [],
+    alerts: boardQuery.data?.alerts ?? [],
     summary: boardQuery.data?.summary ?? null,
     isInitialLoading: boardQuery.isPending && boardQuery.data === undefined,
     isFetching: boardQuery.isFetching,

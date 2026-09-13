@@ -32,8 +32,11 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import type { Result } from "axe-core";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../server/db";
-import { orders as ordersTable } from "@shared/schema";
+import { opsAlerts, orders as ordersTable } from "@shared/schema";
 import { prepareTenantContext } from "../helpers/e2eTenant";
+
+/** The identity `playwright.config.ts`'s `DEV_AUTH_USER_ID` pins this whole project to. */
+const A11Y_VIEWER_ID = "seed-cashier";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -270,6 +273,31 @@ async function gotoBoard(page: Page): Promise<void> {
   await page.goto("/operations");
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByTestId("ops-lane-collection")).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * A real, unacked `ops_alerts` row addressed to whichever identity this a11y
+ * project authenticates as (`A11Y_VIEWER_ID`), for one of `seedBoard`'s own
+ * orders. Written directly rather than through a real assignment or a real
+ * nine-minute wait — N5a's own generation and resolution rules already have
+ * their own unit and journey coverage; what THIS suite owns is whether the
+ * rendered tray and audio chip are accessible once a row exists, not how one
+ * comes to exist.
+ */
+async function seedAlert(orgId: string, orderId: string, kind: "due_soon" | "late" | "assigned" = "due_soon") {
+  const [row] = await db
+    .insert(opsAlerts)
+    .values({
+      orgId,
+      orderId,
+      userId: A11Y_VIEWER_ID,
+      station: kind === "assigned" ? "" : "collection",
+      kind,
+      dueKey: `a11y-${Date.now()}`,
+      dueAt: null,
+    })
+    .returning({ id: opsAlerts.id });
+  return row.id as string;
 }
 
 test.describe("Operations Centre — accessibility with real cards on the board", () => {
@@ -527,4 +555,82 @@ test.describe("Operations Centre — accessibility with real cards on the board"
       expect(contrast, formatViolations(contrast)).toEqual([]);
     });
   }
+
+  /**
+   * The alert rail and the header's audio chip (Phase N, N5b). A real
+   * `ops_alerts` row (`seedAlert`) makes the tray render at all — an empty
+   * `OpsAlertTray` paints nothing, so a run against an alert-free board would
+   * prove nothing about it, the same reason the module doc above seeds a
+   * card per state rather than trusting an empty one.
+   */
+  test("the alert tray and the audio chip are accessible, and Ack removes the row", async ({ page, request }) => {
+    const orgId = await prepareTenantContext(page, request);
+    const { ids } = await seedBoard(request, orgId);
+    const alertId = await seedAlert(orgId, ids["due-soon"]);
+
+    await gotoBoard(page);
+
+    const tray = page.getByTestId("ops-alerts");
+    await expect(tray).toBeVisible({ timeout: 15_000 });
+    const row = page.getByTestId(`ops-alert-${alertId}`);
+    await expect(row).toBeVisible();
+    // The brief's own surface line: alert text visible, not icon-only.
+    await expect(row).toHaveText(/due soon/i);
+    await expect(page.getByTestId("ops-audio-toggle")).toBeVisible();
+
+    let results = await new AxeBuilder({ page }).include('[data-testid="ops-alerts"]').withTags(AXE_TAGS).analyze();
+    let serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    let contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+
+    results = await new AxeBuilder({ page }).include('[data-testid="ops-audio-toggle"]').withTags(AXE_TAGS).analyze();
+    serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious, formatViolations(serious)).toEqual([]);
+    contrast = [
+      ...results.violations.filter((v) => v.id === "color-contrast"),
+      ...results.incomplete.filter((v) => v.id === "color-contrast"),
+    ];
+    expect(contrast, formatViolations(contrast)).toEqual([]);
+
+    // Never a dialog, never a toast, anywhere in this surface.
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+
+    await page.getByTestId(`ops-alert-ack-${alertId}`).click();
+    await expect(row).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test("reduced motion: the alert row is data-static, and axe still finds nothing", async ({ page, request }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const orgId = await prepareTenantContext(page, request);
+    const { ids } = await seedBoard(request, orgId);
+    const alertId = await seedAlert(orgId, ids["due-soon"]);
+
+    try {
+      await gotoBoard(page);
+
+      const row = page.getByTestId(`ops-alert-row-${alertId}`);
+      await expect(row).toHaveAttribute("data-static", "true");
+      const dotAnimationCount = await row.evaluate((el) => el.getAnimations().length);
+      expect(dotAnimationCount, "the tray row's pulse dot must not animate under prefers-reduced-motion").toBe(0);
+
+      const results = await new AxeBuilder({ page }).include('[data-testid="ops-alerts"]').withTags(AXE_TAGS).analyze();
+      const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      expect(serious, formatViolations(serious)).toEqual([]);
+      const contrast = [
+        ...results.violations.filter((v) => v.id === "color-contrast"),
+        ...results.incomplete.filter((v) => v.id === "color-contrast"),
+      ];
+      expect(contrast, formatViolations(contrast)).toEqual([]);
+    } finally {
+      // Unlike the previous test (which acks its own row through the UI),
+      // this one never taps Ack — clean it up directly so an unacked row
+      // addressed to A11Y_VIEWER_ID does not leak into whichever test runs
+      // against this shared dev database next.
+      await db.delete(opsAlerts).where(eq(opsAlerts.id, alertId));
+    }
+  });
 });
