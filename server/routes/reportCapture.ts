@@ -298,6 +298,8 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
             .limit(1);
           if (!order) return { notFound: true as const };
 
+          let newAlerts: import("../services/opsAlerts").OpsAlertCreatedRow[] = [];
+
           const now = new Date();
           const patch: Record<string, unknown> = { updated_at: now };
           if (body.delayFlag !== undefined) patch.delay_flag = body.delayFlag;
@@ -341,7 +343,7 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
             // `delayedRecipients`).
             if (nowDelayed) {
               const { alertDelayedInTx } = await import("../services/opsAlerts");
-              await alertDelayedInTx(tx, {
+              newAlerts = await alertDelayedInTx(tx, {
                 orgId: ctx.orgId,
                 orderId: req.params.id,
                 assigneeId: (order.assigned_user_id as string | null) ?? null,
@@ -352,7 +354,7 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
             }
           }
 
-          return { notFound: false as const, updated };
+          return { notFound: false as const, updated, newAlerts };
         });
 
         if (outcome.notFound) return res.status(404).json({ message: "Order not found" });
@@ -365,6 +367,17 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
             if (boardOrder) publishOpsEvent(ctx.orgId, { type: "order", order: boardOrder });
           } catch (pushError) {
             console.error("[Orders] Failed to push the delay edit to the board stream:", pushError);
+          }
+          // N5b gap fix: `alertDelayedInTx` used to only ever write the DB
+          // row — nothing ever pushed it, so a live board only ever learned
+          // of a fresh `delayed` alert on its next reconciliation poll.
+          if (outcome.newAlerts.length > 0) {
+            try {
+              const { publishAlertRows } = await import("../services/opsAlerts");
+              publishAlertRows(outcome.newAlerts);
+            } catch (pushError) {
+              console.error("[Orders] Failed to push the delay alert to the board stream:", pushError);
+            }
           }
         }
 

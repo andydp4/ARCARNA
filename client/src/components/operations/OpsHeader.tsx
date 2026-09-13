@@ -1,5 +1,5 @@
 import { forwardRef, type ReactNode } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,13 @@ export interface OpsHeaderProps {
   extras?: ReactNode;
   /** N4a: `OpsStaffStrip` (who is on) and `OpsStationPicker` (your station, your break). Its own row — filters answer "what am I looking at", this answers "who am I, on this board". */
   stationRow?: ReactNode;
+  /** N5b: how many of the signed-in user's own alerts are still open. Omitted (not zero) hides the chip entirely. */
+  alertCount?: number;
+  /** N5b: whether the shared `AudioContext` has actually been unlocked by a gesture yet (`posAudio.ts`). */
+  audioUnlocked?: boolean;
+  /** N5b: the viewer's own mute preference (`STORAGE_OPS_SOUND`). */
+  soundMuted?: boolean;
+  onToggleSound?: () => void;
 }
 
 const FILTERS: Array<{ value: OpsFilter; label: string; hint: string }> = [
@@ -43,9 +50,25 @@ const FILTERS: Array<{ value: OpsFilter; label: string; hint: string }> = [
 ];
 
 export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function OpsHeader(
-  { filter, onFilterChange, search, onSearchChange, summary, isFetching, onRefresh, extras, stationRow },
+  {
+    filter,
+    onFilterChange,
+    search,
+    onSearchChange,
+    summary,
+    isFetching,
+    onRefresh,
+    extras,
+    stationRow,
+    alertCount,
+    audioUnlocked,
+    soundMuted,
+    onToggleSound,
+  },
   searchRef,
 ) {
+  const SoundIcon = soundMuted ? VolumeX : Volume2;
+  const audioLabel = audioUnlocked === false ? "Tap to enable sound" : soundMuted ? "Sound off" : "Sound on";
   return (
     <div className="flex flex-col gap-3">
       {stationRow}
@@ -102,6 +125,38 @@ export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function O
           </Button>
           {extras}
         </div>
+
+        {onToggleSound && (
+          <div className="flex items-center gap-2">
+            {Boolean(alertCount) && (
+              <span
+                // `--ops-alert` (`--truth-blue-bright`) is the PULSE ring's own
+                // colour — proven >= 3:1 as a non-text band/border
+                // (shared/ui/contrast.spec.ts), never as a text fill: it
+                // measures 2.39:1 against white, nowhere near AA's 4.5:1 text
+                // floor. `ops-late`/`ops-late-foreground` is the chip pair
+                // that IS proven for text (same file), and reads as
+                // "needs attention now" exactly as well.
+                className="inline-flex min-w-5 items-center justify-center gap-1 rounded-full bg-ops-late px-1.5 text-xs font-semibold text-ops-late-foreground"
+                data-testid="ops-alert-count"
+                aria-label={`${alertCount} open alert${alertCount === 1 ? "" : "s"}`}
+              >
+                {alertCount}
+              </span>
+            )}
+            <Button
+              type="button"
+              size="touch"
+              variant="outline"
+              onClick={onToggleSound}
+              aria-pressed={audioUnlocked ? !soundMuted : undefined}
+              data-testid="ops-audio-toggle"
+            >
+              <SoundIcon className="h-4 w-4" aria-hidden />
+              {audioLabel}
+            </Button>
+          </div>
+        )}
       </div>
 
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">

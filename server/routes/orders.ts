@@ -18,6 +18,7 @@ import { resolveUserNames } from "../services/userDisplayName";
 import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { publishOpsEvent } from "../services/opsBus";
+import { publishAlertRows, type OpsAlertCreatedRow } from "../services/opsAlerts";
 import { completeOrderTx, reopenOrderTx, OrderReopenRefusedError } from "../services/orderCompletion";
 import { CreditError } from "../services/creditLedger";
 
@@ -417,6 +418,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         body.fulfilmentMethod === "delivery" ? "delivery" : "collection";
       const autoClaimEnabled = explicitAssigneeId ? false : await opsAutoClaimEnabled(ctx.orgId);
 
+      // Rows `alertAssignedInTx` actually inserts below — pushed to `opsBus`
+      // AFTER commit, the same discipline `orderTransitions.ts` and
+      // `reportCapture.ts` already apply to their own alert-creating paths.
+      let newAlerts: OpsAlertCreatedRow[] = [];
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
         const result = await engine.placeOrder(body);
         // The till shift is the drawer. A backdated sale's money was in a
@@ -560,7 +565,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             // themselves, explicitly or because the default-owner rule
             // picked them) — the two carve-outs this same row documents.
             const { alertAssignedInTx } = await import("../services/opsAlerts");
-            await alertAssignedInTx(tx, {
+            newAlerts = await alertAssignedInTx(tx, {
               orgId: ctx.orgId!,
               orderId: result.orderId,
               assigneeId: pickedAssignee,
@@ -714,6 +719,14 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           // catches up on its next reconciliation poll (brief, "Live data").
           console.error("[Orders] Failed to push the new order to the board stream:", pushError);
         }
+      }
+      // brief, alerts table: "assigned | ... | in the assign / create
+      // transaction" — the OTHER place an order gets an assignee, alongside
+      // `orderTransitions.ts`'s `assign` action. `publishAlertRows` is itself
+      // best-effort per row, so a push failure here can never undo the
+      // already-committed order or its alert row.
+      if (newAlerts.length > 0) {
+        publishAlertRows(newAlerts);
       }
 
       res.status(201).json({

@@ -25,6 +25,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { runOrderTransition } from "../services/orderTransitions";
 import { nextOpsAlertAt, sweepOpsAlerts } from "../services/opsAlerts";
 import { computeNextWakeDelayMs } from "../workers";
+import { subscribeOpsEvents, type OpsBusEntry } from "../services/opsBus";
 
 const SUFFIX = Date.now().toString(36);
 let orgId: string;
@@ -321,6 +322,190 @@ describe("sweepOpsAlerts — time-based generation", () => {
     expect((await alertRows(skipped)).filter((r) => r.kind === "new_unassigned")).toHaveLength(0);
     const dueRows = (await alertRows(due)).filter((r) => r.kind === "new_unassigned");
     expect(dueRows.map((r) => r.userId).sort()).toEqual(["ana", "ravi"]);
+  });
+});
+
+/**
+ * Adversarial-review gap fix (found against PR #197, "alert rail, pulse,
+ * chime and announcer (N5b)"): every alert-creating path here wrote its
+ * `ops_alerts` row and stopped — nothing ever called `publishOpsEvent`, so a
+ * fresh alert had NO live-push path at all and could only ever reach an
+ * already-open board on the next ~60s reconciliation poll, against the
+ * brief's own "real 9-min promise → alert ≤ 25s" DoD. These tests subscribe
+ * to the real, in-process `opsBus` (the same mechanism `opsStream.test.ts`
+ * uses for the "order" event) rather than mocking anything, so a passing test
+ * here proves the actual production call path pushes the event — not merely
+ * that a hand-built one would be accepted.
+ */
+describe("opsBus push wiring (N5b gap fix)", () => {
+  it("an assignment publishes { type: 'alert' } after commit, shaped like a poll's own row plus userId", async () => {
+    const orderId = await makeOrder(orgId, { fulfilmentMethod: "collection" });
+    const events: OpsBusEntry[] = [];
+    const unsubscribe = subscribeOpsEvents(orgId, (entry) => events.push(entry));
+    try {
+      await runOrderTransition({
+        orgId,
+        orderId,
+        actor: { userId: "manager-1", role: "MANAGER" },
+        input: { action: "assign", userId: "sam" },
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    const alertEvents = events.filter(
+      (e): e is OpsBusEntry & { event: { type: "alert"; alert: any } } => e.event.type === "alert",
+    );
+    expect(alertEvents).toHaveLength(1);
+    const pushed = alertEvents[0].event.alert;
+    expect(pushed.userId).toBe("sam");
+    expect(pushed.orderId).toBe(orderId);
+    expect(pushed.kind).toBe("assigned");
+    // Same row a poll of GET /api/orders/board would return for "sam"
+    // (server/services/opsAlerts.ts's OpsAlertListItem) — id, orderId, kind,
+    // station, dueAt, createdAt — plus the userId a broadcast needs to route
+    // that a scoped poll response never carries. No `orgId` on the wire: that
+    // is only the opsBus routing key (this event arrived on org's own
+    // subscription), never part of the payload itself.
+    expect(Object.keys(pushed).sort()).toEqual(
+      ["id", "orderId", "userId", "kind", "station", "dueAt", "createdAt"].sort(),
+    );
+    expect(typeof pushed.id).toBe("string");
+    expect(typeof pushed.createdAt).toBe("string");
+
+    // Published strictly AFTER commit, not from inside the transaction: the
+    // row this event describes must already be readable in the database by
+    // the time the event exists.
+    const rows = await alertRows(orderId);
+    expect(rows.some((r) => r.id === pushed.id)).toBe(true);
+  });
+
+  it("a self-claim (no `assigned` alert at all — brief: 'not on self-claim') publishes no alert event", async () => {
+    const orderId = await makeOrder(orgId, { fulfilmentMethod: "collection" });
+    const events: OpsBusEntry[] = [];
+    const unsubscribe = subscribeOpsEvents(orgId, (entry) => events.push(entry));
+    try {
+      await runOrderTransition({
+        orgId,
+        orderId,
+        actor: { userId: "sam", role: "CASHIER" },
+        input: { action: "claim" },
+      });
+    } finally {
+      unsubscribe();
+    }
+    expect(events.some((e) => e.event.type === "alert")).toBe(false);
+  });
+
+  it("resolveOpsAlertsForTransition publishes no alert event of its own — resolution is not in the brief's push list", async () => {
+    const localOrgId = await makeOrg({ opsDueSoonLeadMinutes: 10, opsLateGraceMinutes: 5 });
+    extraOrgIds.push(localOrgId);
+    const now = new Date();
+    await setStaff(localOrgId, "sam", "collection", now);
+    await setStaff(localOrgId, "kim", "collection", now);
+    const orderId = await makeOrder(localOrgId, {
+      fulfilmentMethod: "collection",
+      enteredAt: new Date(now.getTime() - 30 * 60_000),
+      revisedEta: new Date(now.getTime() + 3 * 60_000),
+    });
+    await sweepOpsAlerts(now); // creates sam's and kim's due_soon rows (sweepOpsAlerts's own publish, asserted separately below)
+
+    const events: OpsBusEntry[] = [];
+    const unsubscribe = subscribeOpsEvents(localOrgId, (entry) => events.push(entry));
+    try {
+      // A self-claim: `shouldAlertAssigned` silences the `assigned` alert
+      // entirely (asserted above), so the ONLY alert-shaped thing this
+      // transition does is RESOLVE — kim's own and sam's now-stale
+      // `due_soon` rows via `resolveOpsAlertsForTransition`. Zero alert
+      // events must be published for that resolution.
+      await runOrderTransition({
+        orgId: localOrgId,
+        orderId,
+        actor: { userId: "kim", role: "CASHIER" },
+        input: { action: "claim" },
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events.filter((e) => e.event.type === "alert")).toHaveLength(0);
+    // Confirm the resolution genuinely happened — this is not a vacuous "no
+    // alert events because nothing happened" pass.
+    const rows = await alertRows(orderId);
+    const samRow = rows.find((r) => r.kind === "due_soon" && r.userId === "sam");
+    expect(samRow?.resolvedAt).not.toBeNull();
+  });
+
+  it("an illegal transition that throws and rolls back publishes NO alert event — never a phantom push for a row that was never committed", async () => {
+    const orderId = await makeOrder(orgId, { fulfilmentMethod: "collection" });
+    // First assignment succeeds and legitimately publishes.
+    await runOrderTransition({
+      orgId,
+      orderId,
+      actor: { userId: "manager-1", role: "MANAGER" },
+      input: { action: "assign", userId: "sam" },
+    });
+
+    const events: OpsBusEntry[] = [];
+    const unsubscribe = subscribeOpsEvents(orgId, (entry) => events.push(entry));
+    try {
+      // "ready" with no due-date/state issue is legal; force an illegal one
+      // instead — completing an order that has no `ready_at`/appropriate
+      // state for "out_for_delivery" on a collection order is refused by
+      // `assertTransition` (N0) before any write happens.
+      await expect(
+        runOrderTransition({
+          orgId,
+          orderId,
+          actor: { userId: "sam", role: "CASHIER" },
+          input: { action: "out_for_delivery" },
+        }),
+      ).rejects.toThrow();
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events).toHaveLength(0);
+  });
+
+  it("sweepOpsAlerts publishes one alert event per row it actually inserts (due_soon, time-based)", async () => {
+    const localOrgId = await makeOrg({ opsDueSoonLeadMinutes: 10, opsLateGraceMinutes: 5 });
+    extraOrgIds.push(localOrgId);
+    const now = new Date();
+    await setStaff(localOrgId, "sam", "collection", now);
+    // Assigned to sam already: an unassigned order this old would ALSO earn
+    // its own `new_unassigned` alert (and event), which is real but not what
+    // this test is isolating.
+    await makeOrder(localOrgId, {
+      fulfilmentMethod: "collection",
+      assignedUserId: "sam",
+      enteredAt: new Date(now.getTime() - 30 * 60_000),
+      revisedEta: new Date(now.getTime() + 3 * 60_000),
+    });
+
+    const events: OpsBusEntry[] = [];
+    const unsubscribe = subscribeOpsEvents(localOrgId, (entry) => events.push(entry));
+    try {
+      await sweepOpsAlerts(now);
+    } finally {
+      unsubscribe();
+    }
+
+    const alertEvents = events.filter((e) => e.event.type === "alert");
+    expect(alertEvents.length).toBeGreaterThan(0);
+    expect(alertEvents.every((e) => (e.event as { alert: any }).alert.kind === "due_soon")).toBe(true);
+    expect(alertEvents.every((e) => (e.event as { alert: any }).alert.userId === "sam")).toBe(true);
+
+    // A second sweep at the same instant finds its own rows already written
+    // (ON CONFLICT DO NOTHING) and must not re-publish them.
+    const events2: OpsBusEntry[] = [];
+    const unsubscribe2 = subscribeOpsEvents(localOrgId, (entry) => events2.push(entry));
+    try {
+      await sweepOpsAlerts(now);
+    } finally {
+      unsubscribe2();
+    }
+    expect(events2.filter((e) => e.event.type === "alert")).toHaveLength(0);
   });
 });
 

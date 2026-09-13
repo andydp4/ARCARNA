@@ -11,10 +11,18 @@
  * is real throughout (docs/testing/FAKE_TIME.md); nothing here fakes a clock.
  */
 import { and, eq } from "drizzle-orm";
-import { expect, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { db } from "../../server/db";
-import { orders as ordersTable, satisfactionScores } from "@shared/schema";
-import { authHeaders, ensureOpenShift, firstLocationId, okJson, placeOrder, uniqueSuffix } from "./fixtures";
+import { opsAlerts, orders as ordersTable, satisfactionScores } from "@shared/schema";
+import {
+  authHeaders,
+  ensureOpenShift,
+  firstLocationId,
+  okJson,
+  placeOrder,
+  ROLE_USERS,
+  uniqueSuffix,
+} from "./fixtures";
 import { apiForUser, headersFor, opsTest as test, orderInState } from "./opsFixtures";
 
 /** ADMIN, at a specific viewport — `adminPage` (fixtures.ts) does not take one. */
@@ -42,6 +50,77 @@ async function pageForUser(browser: Browser, userId: string, orgId: string): Pro
 async function orderRow(orderId: string) {
   const [row] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   return row;
+}
+
+/** The one (unresolved) `ops_alerts` row for this order, or null if the sweep has not created it yet. */
+async function alertRowFor(orderId: string) {
+  const rows = await db.select().from(opsAlerts).where(eq(opsAlerts.orderId, orderId));
+  return rows.find((row) => !row.resolvedAt) ?? null;
+}
+
+/** A context authenticated as an arbitrary (non-seeded) user, org pre-set — two `newPage()` calls off this share one localStorage, exactly like two tabs of the same browser. */
+async function contextForUser(browser: Browser, userId: string, orgId: string): Promise<BrowserContext> {
+  const context = await browser.newContext({ extraHTTPHeaders: headersFor(userId, orgId) });
+  await context.addInitScript((id) => {
+    window.localStorage.setItem("arcarna.selectedOrgId", id);
+  }, orgId);
+  return context;
+}
+
+/**
+ * Records into `window.__opsChimeToneCount` every tone `posAudio.ts`'s
+ * `playOpsChime` schedules, and reports the shared `AudioContext` as already
+ * `running` so a chime can be observed without a real user gesture in this
+ * one test. `docs/testing/FAKE_TIME.md` has no opinion on WebAudio, but the
+ * same principle applies: fake the one thing under test (whether a chime
+ * plays, and how many tones it schedules), not the alert itself, which is
+ * seeded through the real API and the real sweep exactly as every other case
+ * in this file does.
+ */
+function installFakeChimeAudioContext() {
+  return () => {
+    class FakeAudioParam {
+      value = 0;
+    }
+    class FakeOscillator {
+      type = "sine";
+      frequency = new FakeAudioParam();
+      connect() {
+        return this;
+      }
+      start() {
+        (window as unknown as { __opsChimeToneCount: number }).__opsChimeToneCount =
+          ((window as unknown as { __opsChimeToneCount?: number }).__opsChimeToneCount ?? 0) + 1;
+      }
+      stop() {}
+    }
+    class FakeGain {
+      gain = new FakeAudioParam();
+      connect() {
+        return this;
+      }
+    }
+    class FakeAudioContext {
+      state = "running";
+      currentTime = 0;
+      destination = {};
+      createOscillator() {
+        return new FakeOscillator();
+      }
+      createGain() {
+        return new FakeGain();
+      }
+      resume() {
+        return Promise.resolve();
+      }
+    }
+    (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
+    (window as unknown as { __opsChimeToneCount: number }).__opsChimeToneCount = 0;
+  };
+}
+
+async function toneCount(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __opsChimeToneCount?: number }).__opsChimeToneCount ?? 0);
 }
 
 async function gotoBoard(page: Page): Promise<void> {
@@ -534,5 +613,278 @@ test.describe("Operations Centre board — every action is a real write", () => 
     await expect(card).not.toHaveAttribute("data-new", "true", { timeout: 6_000 });
 
     await page.context().close();
+  });
+});
+
+/**
+ * The alert rail (Phase N, N5b; brief DoD: "real 9-min promise → alert ≤
+ * 25 s; one chime per browser and per delivery; ack persists across reload
+ * and devices; no toast, no dialog; audio unlocks on touch (`touchend`)").
+ *
+ * Server-side time is real throughout (docs/testing/FAKE_TIME.md) — the
+ * worker's own sweep (already running inside the `dev:e2e` server this suite
+ * boots) has to actually create the `ops_alerts` row before the board can
+ * ever show one; nothing here fakes the server's clock.
+ *
+ * `DUE_SOON_ORDER_OPTS` deliberately does NOT reuse `docs/testing/FAKE_TIME.md`
+ * §3's own literal `{ dueIn: 9 }` example: `shared/orders/opsAlerts.ts`'s
+ * `shouldAlertDueSoon` (N5a, its own unit-tested rule — see
+ * `shared/orders/opsAlerts.spec.ts`) skips generating a `due_soon` row
+ * whenever the promise's own window (`dueAt − receivedAt`) is `<= lead + 2`
+ * minutes — under this org's real default ten-minute lead that is exactly
+ * what a bare nine-minute-out promise IS (a 9-minute window), so it produces
+ * the CARD's "due soon" chip (`deriveCardState`'s own, more lenient rule) but
+ * never an alert ROW at all, confirmed against a live server and DB while
+ * writing this suite. `{ dueIn: 1, minutesAgo: 20 }` instead backdates
+ * receipt so the promise's window is a real 21 minutes (`> lead + 2`, so
+ * eligible) while `dueAt` itself is already one minute past its own
+ * due-soon threshold (`dueAt − lead` is 9 minutes in the past) — immediately
+ * due, the very next active tick.
+ *
+ * The order of operations below is load-bearing, not incidental: the board
+ * navigates and settles to idle BEFORE the alert-triggering order is ever
+ * created. An earlier version of this test created the order first and
+ * navigated second — the ~10-30s Vite dev-server SPA compile the very first
+ * `page.goto` pays for was enough, on its own, to burn most of the 25s
+ * budget, so the sweep had usually already written the `ops_alerts` row (and
+ * the board's very first `GET /api/orders/board` had usually already picked
+ * it up) before the 25s assertion ever started polling. That proved the
+ * timing budget, not the delivery MECHANISM: a server that never pushed a
+ * single live `{ type: 'alert' }` event, and relied solely on the ~60s
+ * reconciliation poll, could pass the exact same assertion the exact same
+ * way, purely because the order (and usually the alert row with it) already
+ * existed by the time the timeout clock started. Navigating first and
+ * creating the order second — with the 25s clock starting at
+ * `orderInState`'s own return, after the board is already open, mounted and
+ * idle — closes that hole: `settings.reconcilePollSeconds` defaults to 60s
+ * (`shared/schema.ts`), so any success within this test's 25s window can only
+ * be the live `opsBus` push landing on an `EventSource` this tab already has
+ * open, never the poll.
+ */
+const DUE_SOON_ORDER_OPTS = { dueIn: 1, minutesAgo: 20, fulfilment: "collection" as const };
+test.describe("Operations Centre alert rail (N5b)", () => {
+  test("a real due-soon promise raises a pulsing alert within 25s; Ack persists across reload and a second read", async ({
+    adminPage,
+    api,
+  }) => {
+    try {
+      // Station recipients require the viewer to actually be ON the station
+      // (shared/orders/opsAlerts.ts's `stationRecipients`) — ADMIN needs one
+      // set for this order's own alert to be addressed to them at all.
+      await api.patch("/api/operations/station", { data: { station: "collection" } });
+
+      // Board first, order second (see the module doc above): the board must
+      // be open, mounted and idle, with its `EventSource` already connected,
+      // before the alert-triggering order exists at all — otherwise a slow
+      // first navigation can let the sweep (and even the board's own first
+      // GET) win the race before this test's clock ever starts.
+      await gotoBoard(adminPage);
+      await expect(adminPage.getByTestId("ops-lane-collection")).toBeVisible();
+
+      const order = await orderInState(api, db, "due-soon", DUE_SOON_ORDER_OPTS);
+      const card = adminPage.getByTestId(`ops-card-${order.id}`);
+
+      // The card itself does not exist on this already-loaded board yet — its
+      // own `{ type: 'order' }` opsBus push has to arrive first, exactly like
+      // a real second order landing on a tablet mid-shift. `toHaveAttribute`
+      // polls until both the element appears AND the attribute matches, so
+      // this one assertion covers "the new card arrives" and "it arrives
+      // already alerted" without a separate wait for the card's existence.
+      await expect(card).toHaveAttribute("data-alert", "true", { timeout: 25_000 });
+      await card.scrollIntoViewIfNeeded();
+
+      let alert: { id: string } | null = null;
+      await expect
+        .poll(async () => {
+          alert = await alertRowFor(order.id);
+          return alert !== null;
+        }, { timeout: 5_000 })
+        .toBe(true);
+      if (!alert) throw new Error("no ops_alerts row was found for the due-soon order");
+      const alertId = (alert as { id: string }).id;
+
+      const tray = adminPage.getByTestId("ops-alerts");
+      await expect(tray).toBeVisible({ timeout: 10_000 });
+      await expect(adminPage.getByTestId(`ops-alert-${alertId}`)).toBeVisible();
+
+      // Never a toast, never a dialog, for any of this.
+      await expect(adminPage.locator('[role="dialog"]')).toHaveCount(0);
+      await expect(adminPage.locator(".group.pointer-events-auto")).toHaveCount(0);
+
+      await adminPage.getByTestId(`ops-alert-ack-${alertId}`).click();
+      await expect(adminPage.getByTestId(`ops-alert-${alertId}`)).toHaveCount(0, { timeout: 10_000 });
+
+      // Persists server-side, not just in this tab's cache.
+      await expect
+        .poll(async () => (await alertRowFor(order.id))?.ackedAt ?? null, { timeout: 10_000 })
+        .not.toBeNull();
+
+      // Reload: the same device, a fresh page load.
+      await adminPage.reload();
+      await expect(adminPage.getByTestId("ops-lane-collection")).toBeVisible({ timeout: 60_000 });
+      await expect(adminPage.getByTestId(`ops-alert-${alertId}`)).toHaveCount(0);
+
+      // A second "device": an independent API read of the same account's board.
+      const board = await okJson<{ alerts: Array<{ id: string }> }>(await api.get("/api/orders/board"));
+      expect(board.alerts.some((a) => a.id === alertId)).toBe(false);
+    } finally {
+      // Same cleanup discipline as the station-picker test above: a station
+      // left set to "collection" would auto-claim every later collection
+      // order at creation for the rest of this suite.
+      await api.patch("/api/operations/station", { data: { station: null } });
+    }
+  });
+
+  /**
+   * Two tabs of the SAME browser (one `BrowserContext`, two `Page`s — sharing
+   * localStorage, exactly as two real tabs would), both already open before
+   * the alert exists, both eventually see the same new "assigned" alert.
+   * `chimeFor`'s severity and age rules already have their own unit suite
+   * (`shared/orders/opsAlerts.spec.ts`, N5a); this proves this package's OWN
+   * plumbing — `useOpsAlerts.ts` + `opsAlertsClient.ts`'s cross-tab dedupe —
+   * actually stops a tab from re-playing tones a sibling tab already did.
+   *
+   * Each tab used to have its delivery driven by its own `ops-refresh`
+   * click, ONE AT A TIME, rather than by waiting on the natural
+   * reconciliation poll for both — because the OLD dedupe was a plain
+   * check-then-write against localStorage with "no leader election" (the
+   * brief's own words): a best-effort guard against two ordinary tabs, not
+   * an atomic lock against two independent deliveries landing in the SAME
+   * millisecond. N5b's live `opsBus` push (this suite's own gap fix) delivers
+   * the SAME `{ type: 'alert' }` event to every open tab within the same
+   * instant, turning that "same millisecond" collision from a rare,
+   * manually-avoided coincidence into the ordinary case for two idle tablets
+   * — so `opsAlertsClient.ts`'s dedupe was upgraded alongside this fix to a
+   * real cross-tab lock (`claimChime`, the Web Locks API — every tablet
+   * browser this app ships to supports it) rather than papering over the
+   * race in this test. With that lock in place, delivery order genuinely
+   * does not matter: both tabs below receive the live push with no manual
+   * trigger at all, and exactly one of them wins the chime regardless of
+   * which one's `EventSource` frame happens to be processed first.
+   */
+  test("one chime per browser: two tabs share the dedupe, so only one chime's tones are ever heard", async ({
+    browser,
+    api,
+    orgId,
+    cashierB,
+  }) => {
+    const context = await contextForUser(browser, cashierB.userId, orgId);
+    await context.addInitScript(installFakeChimeAudioContext());
+    const pageA = await context.newPage();
+    const pageB = await context.newPage();
+
+    try {
+      await gotoBoard(pageA);
+      await gotoBoard(pageB);
+
+      const order = await orderInState(api, db, "on-time", { fulfilment: "collection" });
+      const assign = await api.post(`/api/orders/${order.id}/transition`, {
+        data: { action: "assign", userId: cashierB.userId },
+      });
+      expect(assign.ok(), await assign.text()).toBe(true);
+
+      // Both tabs receive the SAME live push with no manual trigger — proves
+      // this suite's own alert-push fix delivers to more than one connected
+      // client at once, not just the one that happens to poll or click.
+      const cardA = pageA.getByTestId(`ops-card-${order.id}`);
+      const cardB = pageB.getByTestId(`ops-card-${order.id}`);
+      await expect(cardA).toHaveAttribute("data-alert", "true", { timeout: 15_000 });
+      await expect(cardB).toHaveAttribute("data-alert", "true", { timeout: 15_000 });
+
+      // Exactly one chime total, wherever it lands — `claimChime`'s cross-tab
+      // lock makes which tab wins irrelevant, only that only one of them does.
+      await expect.poll(async () => (await toneCount(pageA)) + (await toneCount(pageB)), { timeout: 10_000 }).toBe(2);
+      // Give the loser every chance to (wrongly) chime before declaring victory.
+      await pageA.waitForTimeout(500);
+      const tonesA = await toneCount(pageA);
+      const tonesB = await toneCount(pageB);
+      // "assigned" schedules exactly two tones per chime (posAudio.ts) — one
+      // tab gets both, the other gets none, never a split or a double-chime.
+      expect([tonesA, tonesB].sort(), "exactly one tab chimes, the other stays silent").toEqual([0, 2]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("reduced motion: the alerted card does not animate, and the tray row shows a static bell", async ({
+    adminPage,
+    api,
+  }) => {
+    await adminPage.emulateMedia({ reducedMotion: "reduce" });
+    try {
+      await api.patch("/api/operations/station", { data: { station: "collection" } });
+      const order = await orderInState(api, db, "due-soon", DUE_SOON_ORDER_OPTS);
+      await gotoBoard(adminPage);
+      const card = adminPage.getByTestId(`ops-card-${order.id}`);
+      await card.scrollIntoViewIfNeeded();
+      await expect(card).toHaveAttribute("data-alert", "true", { timeout: 25_000 });
+
+      const cardAnimationCount = await card.evaluate((el) => el.getAnimations().length);
+      expect(cardAnimationCount, "the pulse ring must not animate under prefers-reduced-motion").toBe(0);
+
+      let alert: { id: string } | null = null;
+      await expect
+        .poll(async () => {
+          alert = await alertRowFor(order.id);
+          return alert !== null;
+        }, { timeout: 5_000 })
+        .toBe(true);
+      const alertId = (alert as unknown as { id: string }).id;
+
+      const row = adminPage.getByTestId(`ops-alert-row-${alertId}`);
+      await expect(row).toHaveAttribute("data-static", "true");
+      const dotAnimationCount = await row.evaluate((el) => el.getAnimations().length);
+      expect(dotAnimationCount, "the tray row's own pulse dot must not animate either").toBe(0);
+    } finally {
+      await api.patch("/api/operations/station", { data: { station: null } });
+    }
+  });
+
+  /**
+   * Finding G16 (brief): a plain `pointerdown` listener never fires for an
+   * iPad's own touch sequence — only `pointerup`/`touchend` reliably do.
+   * Two things are proven here, not one: (1) `unlockAudio()`'s listener set
+   * (`posAudio.ts`) genuinely includes `touchend` — a structural check on the
+   * exact bug class G16 was — and (2) firing ONLY that event (no click, no
+   * pointerup) actually drives the shared context to `running` and updates
+   * the header chip. The real `AudioContext`'s own gesture-trust policy is a
+   * browser guarantee, not this package's to re-prove; a context that always
+   * reports `running` isolates whether OUR code reacts to `touchend`
+   * correctly from whether Chromium's autoplay policy trusts a
+   * Playwright-synthesised event, which is a different question entirely.
+   */
+  test("unlockAudio() listens for touchend specifically, and reacts to it alone", async ({ browser, api, orgId }) => {
+    const order = await orderInState(api, db, "on-time", { fulfilment: "collection" });
+    const context = await contextForUser(browser, ROLE_USERS.ADMIN, orgId);
+    await context.addInitScript(installFakeChimeAudioContext());
+    await context.addInitScript(() => {
+      (window as unknown as { __registeredEventTypes: string[] }).__registeredEventTypes = [];
+      const original = window.addEventListener.bind(window);
+      window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: unknown) => {
+        (window as unknown as { __registeredEventTypes: string[] }).__registeredEventTypes.push(type);
+        return original(type, listener, options as AddEventListenerOptions);
+      }) as typeof window.addEventListener;
+    });
+    const page = await context.newPage();
+    try {
+      await gotoBoard(page);
+      await page.getByTestId(`ops-card-${order.id}`).scrollIntoViewIfNeeded();
+
+      const registered = await page.evaluate(
+        () => (window as unknown as { __registeredEventTypes: string[] }).__registeredEventTypes,
+      );
+      expect(registered).toContain("touchend");
+      expect(registered).toContain("pointerup");
+      expect(registered).toContain("click");
+      expect(registered).toContain("keydown");
+
+      await expect(page.getByTestId("ops-audio-toggle")).toContainText("Tap to enable sound");
+      await page.evaluate(() => window.dispatchEvent(new Event("touchend")));
+      await expect(page.getByTestId("ops-audio-toggle")).not.toContainText("Tap to enable sound", {
+        timeout: 10_000,
+      });
+    } finally {
+      await context.close();
+    }
   });
 });

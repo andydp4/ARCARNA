@@ -52,6 +52,17 @@ export interface OpsBoardProps {
   pendingIds: Set<string>;
   /** N4a's alert stub always answers false; N5b makes it real. */
   isAlertForOrder?: (orderId: string) => boolean;
+  /**
+   * N5b's audio toggle and alert count — plain pass-through to `OpsHeader`.
+   * `OpsHeader` itself is this package's own touch item; these four props
+   * only thread through this file because `OpsHeader` is mounted here, not
+   * in `operations.tsx` directly — the same reason `isAlertForOrder` above
+   * already threads through unchanged since N4a.
+   */
+  alertCount?: number;
+  audioUnlocked?: boolean;
+  soundMuted?: boolean;
+  onToggleSound?: () => void;
   cardHandlers: Omit<StripCardHandlers, "shouldIgnoreEnter">;
 }
 
@@ -103,6 +114,10 @@ export function OpsBoard({
   headerStationRow,
   pendingIds,
   isAlertForOrder,
+  alertCount,
+  audioUnlocked,
+  soundMuted,
+  onToggleSound,
   cardHandlers,
 }: OpsBoardProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -234,6 +249,10 @@ export function OpsBoard({
         onRefresh={onRefresh}
         extras={headerExtras}
         stationRow={headerStationRow}
+        alertCount={alertCount}
+        audioUnlocked={audioUnlocked}
+        soundMuted={soundMuted}
+        onToggleSound={onToggleSound}
       />
 
       <OpsStaleBanner staleness={staleness} />
