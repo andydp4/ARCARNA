@@ -27,6 +27,13 @@ const createCustomerBody = z.object({
 }).passthrough();
 
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+// Creating a brand-new customer is also allowed for CASHIER: the POS's own
+// embedded order form (NewCustomerPanel in pos-cart-panel.tsx) lets any till
+// user add a walk-in customer inline, and posts straight to this route with
+// no client-side role gate. That's a distinct, narrower risk than editing or
+// deleting an existing customer record (ARC-005's PUT/DELETE restriction,
+// which stays MANAGER+ only via mutateRoles above).
+const createRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER");
 
 export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
@@ -86,7 +93,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.post("/api/customers", ...scoped, mutateRoles, async (req: any, res) => {
+  app.post("/api/customers", ...scoped, createRoles, async (req: any, res) => {
     try {
       // No schema here previously: req.body went straight to the engine, so an
       // empty body or an oversized field failed at the database as a 500.
