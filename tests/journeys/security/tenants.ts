@@ -88,10 +88,12 @@ export const ROLE_GATE_OFF_REASON =
 // ------------------------------------------------------------- org A resolution
 
 /**
- * Org A is the org `seed-admin` belongs to — read from the API, not from
- * `orgs[0]`. `resolveOrgId()` in the shared fixtures takes the first row of a
- * name-ordered list, which would silently switch orgs the moment this suite
- * adds a second one.
+ * Org A is the org `seed-admin` belongs to — read from `/api/auth/user`
+ * directly, the same approach `resolveOrgId()` in the shared fixtures now
+ * uses too (N9a fixed its old `orgs[0]`-from-a-name-ordered-list logic,
+ * which would silently switch orgs the moment this suite added a second
+ * one). Kept as its own function here for this file's own clarity and
+ * independence from the shared fixtures module.
  */
 export async function resolveOrgAId(): Promise<string> {
   const api = await apiAs("ADMIN");
