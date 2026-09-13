@@ -10,6 +10,17 @@ All notable changes to the ARCARNA EPOS project will be documented in this file.
   - Journeys: `orderForm.spec.ts` drives a whole sale at a phone viewport and asserts no dialog is ever on screen.
 
 ### Added
+- **The Operations Centre** (2026-09-13)
+  - Open Orders is gone. Orders now live as coloured, ticking cards in Collection and Delivery lanes on a new `/operations` board — one glance shows what's waiting, who's dealing with it, and whether it's on time, due soon, late, delayed, held or done. `/open-orders`, `/orders`, `/create-order` and `/pos` all redirect here (the order form is embedded beside the board at `/operations?pane=order`).
+  - Cards carry a running clock and colour state (on time / due soon / late / delayed / held / customer waiting / ready / completed), each colour pair proven ≥ 4.5:1 by a unit test rather than eyeballed.
+  - **Assignment.** Take it / Pass to… / Assign, with an atomic claim (two cashiers can no longer both win the same order) and a default-owner rule on creation (whoever keyed it in, if they're on that station; otherwise the least-loaded present member; otherwise Unassigned with a station alert).
+  - **Live updates, not polling.** `GET /api/orders/board` loads once; an in-process event bus (`server/services/opsBus.ts`) pushes deltas over SSE (`GET /api/orders/board/stream`) after every commit, so idle tablets make zero database reads. A 60-second reconciliation poll guards against a missed event.
+  - **Personal alerts.** Assigned-to-you, due-soon, late and customer-waiting alerts land as a pulsing rail with a chime and a screen-reader announcement, acknowledged server-side (migration 066, `ops_alerts`) rather than as a shared, org-wide notification. Alerts are pushed live over the same SSE stream, not just picked up by the periodic sweep.
+  - **Checkout.** Due-time, channel (Walk-in / Phone / WhatsApp) and "looked after by" chips on the payment step; order expenses keyed at checkout are now actually sent to the server and recorded (previously silently dropped).
+  - **Reporting.** New Order Timing & Service Levels and Order Issues reports, both fed from a new `order_events` audit trail; the old Order Status Dashboard is retired.
+  - Migrations `065_operations_centre.sql` (stage columns, `order_events`, `ops_staff`, org ops settings) and `066_ops_alerts.sql`.
+  - Full spec: [`docs/briefs/PHASE_N_OPERATIONS_CENTRE.md`](./docs/briefs/PHASE_N_OPERATIONS_CENTRE.md).
+
 - **Backdated orders and pre-orders** (2026-09-03)
   - The POS checkout has an "Order date" field, defaulting to today. It accepts up to 7 days back (a missed day's sales keyed in afterwards) and up to 14 days ahead (pre-orders); anything outside that is refused, not clamped.
   - A dated order is stamped with the day it is for in `orders.created_at`, so it lands on that day in every report and the daily close. `orders.entered_at` keeps when it was actually keyed in and `orders.date_kind` (`live` / `backdated` / `preorder`) marks it, and the orders list badges it.

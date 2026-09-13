@@ -9,7 +9,8 @@
 | U3 | Done |
 | U4 | Done† |
 | U5 | Partial (axe); **8b** eslint in [`WAVE9_NEXT.md`](./WAVE9_NEXT.md) |
-| U6–U7 | Planned (Wave 9) |
+| U6 | Done (Wave 9) |
+| U7 | Done† (Wave 9) — **superseded 2026-09-13** by Phase N (see the U7 section) |
 
 Seven briefs: **U1** skeleton + empty-state pass, **U2** Cmd-K command palette, **U3** saved filter views, **U4** bulk actions, **U5** accessibility audit (WCAG AA), **U6** onboarding wizard for new orgs, **U7** tablet POS layout.
 
@@ -282,6 +283,20 @@ U1–U5 shipped on `main` (Waves 2–8). U6 and U7 are Wave 9. Remaining DoD gap
 ---
 
 ## Brief U7 — Tablet POS layout optimisation
+
+**Superseded by Phase N (2026-09-13).** U7 shipped this as a standalone POS
+page with its own five `isMobile` viewport branches and a Playwright snapshot
+at 1194×834. Phase N's N6 package embedded that same order form beside the
+Operations Centre board at `/operations?pane=order` — `/pos` now redirects
+there — and replaced the `isMobile` branches with `usePosNarrow()`
+(`@container` queries on the pane's own root, not the viewport), because the
+form's real width is now whatever the 42% pane or phone tab gives it, not the
+screen. `tests/visual/pos-tablet.spec.ts` (the U7 snapshot) was rewritten as
+`tests/journeys/posTablet.spec.ts` against the `@container` root. The layout
+goals below (large touch targets, grid + cart visible together, no
+hover-only affordances) are still true today, just delivered inside the
+board's pane rather than on a standalone page — read this section for
+intent, not for where the code now lives.
 
 **Goal:** POS page works first-class on iPad Pro 11" landscape: large touch targets, grid + cart side-by-side, bottom drawer for cashier actions.
 

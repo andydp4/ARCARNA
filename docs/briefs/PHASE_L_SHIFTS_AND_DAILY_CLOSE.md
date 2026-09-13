@@ -1,6 +1,6 @@
 # Phase L — Shifts as trading days, and the daily close
 
-**Status (2026-08-26):** **L1–L5 built** · **Depends on:** Phase K (K1–K7)
+**Status (2026-08-26):** **L1–L5 built** (L5†: the Open Orders list view it shipped was superseded by Phase N's Operations Centre board on 2026-09-13 — see the L5 section) · **Depends on:** Phase K (K1–K7)
 
 Five briefs: **L1** commission moves from cashier codes to user accounts, **L2** a
 shift becomes a trading day opened at login, **L3** the 06:00 daily close, **L4**
@@ -257,6 +257,20 @@ drawer figures; no counted-cash figure is invented.
 ---
 
 ## Brief L5 — Open Orders, redesigned
+
+**Superseded by Phase N (2026-09-13).** The specification below was proposed,
+not agreed — see the note under DoD-question 5 above — and what actually got
+built against it was a plain list view. The owner was then asked the sixteen
+questions that became [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md)
+(an agreed spec, not a proposed one), and Phase N's own N4b package **deleted
+Open Orders and its list view outright**: every goal below is now met, not by
+a redesigned list, but by the Collection | Delivery card board at
+`/operations` — completing an order is one tap on its card (not a drill-in),
+who loaded it is shown on the card, delay/ETA/held state is the board's
+primary signal (colour, chip, running clock) rather than a surfaced field, and
+the board uses the same material and Truth Blue accent. `/open-orders`
+redirects to `/operations`. This section is kept for history; do not build to
+it.
 
 **Goal:** Make Open Orders good enough to work a counter from. It is where orders
 are completed, so it is where commission is earned.
