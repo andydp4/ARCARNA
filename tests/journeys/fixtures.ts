@@ -47,17 +47,30 @@ export async function apiAs(role: Role, orgId?: string): Promise<APIRequestConte
   });
 }
 
-/** Resolves the seeded organisation id. Fails loudly — every journey needs it. */
-export async function resolveOrgId(api: APIRequestContext): Promise<string> {
-  const res = await api.get("/api/orgs");
-  if (!res.ok()) {
-    throw new Error(`Could not list organisations (${res.status()}). Is the database seeded?`);
+/**
+ * Resolves the seeded organisation id — the org `seed-admin` belongs to, read
+ * from `/api/auth/user` rather than `orgs[0]` of `GET /api/orgs`. The latter
+ * is name-ordered and lists every org a SUPER_ADMIN can see, so it silently
+ * points at a different org the moment a second one exists (this is why
+ * `security/tenants.ts` has its own `resolveOrgAId()` using this same
+ * approach, and why its `createOrgB()` has to name its org so it sorts last).
+ * Fails loudly — every journey needs it.
+ */
+export async function resolveOrgId(): Promise<string> {
+  const api = await apiAs("ADMIN");
+  try {
+    const res = await api.get("/api/auth/user");
+    if (!res.ok()) {
+      throw new Error(`/api/auth/user as ADMIN returned ${res.status()}. Is the database seeded?`);
+    }
+    const user = (await res.json()) as { orgId?: string | null };
+    if (!user.orgId) {
+      throw new Error("seed-admin has no orgId — run `npm run seed` against this database.");
+    }
+    return user.orgId;
+  } finally {
+    await api.dispose();
   }
-  const orgs = (await res.json()) as { id: string; name: string }[];
-  if (!Array.isArray(orgs) || orgs.length === 0) {
-    throw new Error("No organisations found — run the SessionStart hook to seed the database.");
-  }
-  return orgs[0].id;
 }
 
 /**
@@ -86,9 +99,7 @@ type JourneyFixtures = {
 
 export const test = base.extend<JourneyFixtures>({
   orgId: async ({}, use) => {
-    const bootstrap = await apiAs("SUPER_ADMIN");
-    const id = await resolveOrgId(bootstrap);
-    await bootstrap.dispose();
+    const id = await resolveOrgId();
     await use(id);
   },
 

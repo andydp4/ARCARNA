@@ -1413,7 +1413,7 @@ export const orders = pgTable("orders", {
     "orders_fulfilment_method_check",
     sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
   ),
-  /** Open orders by fulfilment — the Open Orders list's index (migration 047). */
+  /** Open orders by fulfilment — originally the Open Orders list's index (migration 047), since replaced by the Operations Centre board. */
   index("idx_orders_fulfilment_open")
     .on(table.orgId, table.fulfilmentMethod)
     .where(sql`${table.status} <> 'completed'`),

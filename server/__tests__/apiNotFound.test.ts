@@ -29,7 +29,7 @@ describe("isUnmatchedApiPath", () => {
   it.each([
     ["/", "root"],
     ["/products", "top-level page route"],
-    ["/open-orders/123", "nested page route"],
+    ["/operations/123", "nested page route"],
     ["/arcarna/products", "base-prefixed page route"],
     // Guards the segment comparison against a substring match: a page whose name
     // merely starts with "api" must still render, not 404 as JSON.
