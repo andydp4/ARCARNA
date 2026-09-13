@@ -82,10 +82,22 @@ export const orders = pgTable('orders', {
   input_user_id: varchar('input_user_id', { length: 255 }),
   completed_user_id: varchar('completed_user_id', { length: 255 }),
   // Operational fields for the counter view — see shared/schema.ts.
+  //
+  // The four after `revised_eta` were missing here for three releases
+  // (GAP-OPS-07): they existed in shared/schema.ts and in the database, this
+  // file did not declare them, and the drift audit said nothing because it
+  // only compared columns declared in BOTH files. Any query built on these
+  // exports simply could not select them. `orders` is now a paired table in
+  // scripts/audit-schema-drift.mjs, so a column in one file and not the other
+  // is a CI failure rather than a silent hole. (migration 065)
   delay_flag: boolean('delay_flag').default(false).notNull(),
   delay_reason: varchar('delay_reason', { length: 255 }),
+  delay_cause: varchar('delay_cause', { length: 32 }),
   eta_given: timestamp('eta_given'),
+  original_eta: timestamp('original_eta'),
   revised_eta: timestamp('revised_eta'),
+  delay_notification_sent_at: timestamp('delay_notification_sent_at'),
+  delay_resolution: varchar('delay_resolution', { length: 32 }),
   // Written once, at the first transition to 'completed', like settled_total.
   completed_cashier_id: uuid('completed_cashier_id'),
   completed_cashier_shift_id: uuid('completed_cashier_shift_id'),
@@ -104,6 +116,18 @@ export const orders = pgTable('orders', {
   settled_at: timestamp('settled_at'),
   // Why stock left without a sale — see shared/schema.ts and migration 054.
   personal_use_reason: text('personal_use_reason'),
+  // Who is dealing with the order, and the Operations Centre stage stamps —
+  // see shared/schema.ts and migration 065. Stages are timestamps, not
+  // statuses: `completed` remains the only settling status because money keys
+  // on it alone. `assigned_user_id` is never a commission column.
+  // `queue_position` is NOT declared here and no longer exists — 065 drops it.
+  assigned_user_id: varchar('assigned_user_id', { length: 255 }),
+  assigned_at: timestamp('assigned_at'),
+  assigned_by_user_id: varchar('assigned_by_user_id', { length: 255 }),
+  held_at: timestamp('held_at'),
+  ready_at: timestamp('ready_at'),
+  customer_arrived_at: timestamp('customer_arrived_at'),
+  out_for_delivery_at: timestamp('out_for_delivery_at'),
   channel: varchar('channel', { length: 32 }).default('pos').notNull(),
   // When it was keyed in, and whether created_at is that moment or the day the
   // sale is for — see shared/schema.ts and migration 062.

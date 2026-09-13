@@ -1,3 +1,11 @@
+/**
+ * How this order reached the till (brief, "Form embedding": Walk-in / Phone /
+ * WhatsApp chips on the payment step). `web` and `api` are website/API
+ * origins the till itself never sends — they exist only so the till's
+ * channel type lines up with `packages/domain/src/schemas.ts`'s enum.
+ */
+export type PosChannel = "pos" | "phone" | "whatsapp" | "web" | "api";
+
 /** The shape the till works with: what /api/products returns, stock at the active location. */
 export interface PosProduct {
   id: string;

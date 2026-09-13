@@ -99,16 +99,26 @@ export class CustomerWorker implements IWorker {
             .where(eq(customers.id, customerId));
         }
 
-        // Update or insert customer metrics
-        await db.execute(sql`
-          INSERT INTO customer_metrics (customer_id, last_order_date, total_spent, order_count)
-          VALUES (${customerId}, ${now.toISOString().split('T')[0]}, ${total}, 1)
-          ON CONFLICT (customer_id) 
-          DO UPDATE SET 
-            last_order_date = ${now.toISOString().split('T')[0]},
-            total_spent = customer_metrics.total_spent + ${total},
-            order_count = customer_metrics.order_count + 1
-        `);
+        // customer_metrics (total_spent, order_count, last_order_date, rfm_score,
+        // clv) is deliberately NOT touched here. `engine.placeOrder`
+        // (packages/domain/src/engine.ts) already calls
+        // `CustomersRepo.updateMetrics` synchronously, in the same transaction
+        // as every order, for every order-creation channel (ARCHITECTURAL_
+        // PRINCIPLES.md #14: web/WhatsApp/phone/API orders all go through
+        // engine.placeOrder — none bypass it). That call does a full recompute
+        // from `orders` (COUNT/SUM grouped by customer_id), so it is idempotent
+        // and already authoritative for these columns by the time this async
+        // OrderCreated event is ever processed.
+        //
+        // This block used to ALSO write customer_metrics additively
+        // (`total_spent = total_spent + total`, `order_count = order_count + 1`
+        // via ON CONFLICT), which double-counted every single order: the
+        // synchronous recompute set the correct total, and this handler then
+        // added the same order's total on top of it a second time. Confirmed
+        // live: one £72 order for a fresh customer produced
+        // customer_metrics.order_count = 2 and total_spent = 144.00. Removed
+        // rather than made idempotent, since there is nothing left for this
+        // path to correctly do — the recompute already owns these columns.
       } else if (event.eventType === 'RefundIssued' || event.eventType === 'OrderCancelled') {
         // Reduce totals on refund/cancel
         const customerResult = await db

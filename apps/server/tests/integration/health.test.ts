@@ -1,1 +1,0 @@
-import request from 'supertest'; import app from '../../src/index'; test('health', async()=>{ const r=await request(app).get('/healthz'); expect(r.status).toBe(200) })

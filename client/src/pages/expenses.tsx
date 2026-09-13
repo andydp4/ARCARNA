@@ -19,6 +19,7 @@ import { insertOverheadExpenseSchema, type InsertOverheadExpense, type OverheadE
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ExpenseRow } from "@/components/expense-row";
 import { ExpensesPageSkeleton } from "@/components/reporting-skeletons";
+import { useAuth } from "@/hooks/useAuth";
 
 type ExpenseFormData = {
   name: string;
@@ -46,6 +47,8 @@ export function ExpensesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<OverheadExpense | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canMutate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const {
     data: expensesData,
@@ -264,10 +267,12 @@ export function ExpensesPage() {
               <span className="hidden sm:inline">View reports</span>
             </Button>
           </a>
+          {canMutate && (
           <Button onClick={openCreateDialog} className="min-h-[44px] flex-1 sm:flex-initial" data-testid="button-add-expense">
             <Plus className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Add expense</span>
           </Button>
+          )}
         </div>
       </div>
 
@@ -352,6 +357,7 @@ export function ExpensesPage() {
                     expense={expense}
                     onEdit={openEditDialog}
                     onDelete={handleDeleteExpense}
+                    canMutate={canMutate}
                   />
                 ))}
               </TableBody>

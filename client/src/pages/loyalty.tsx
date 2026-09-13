@@ -18,6 +18,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLoyaltyTierSchema } from "@shared/schema";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { useAuth } from "@/hooks/useAuth";
 
 // Extend the shared schema with form-specific validation
 const tierFormSchema = insertLoyaltyTierSchema.extend({
@@ -38,6 +39,8 @@ type TierFormValues = {
 
 export default function LoyaltyPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canMutate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
   const [editingTier, setEditingTier] = useState<any>(null);
   const [showTierDialog, setShowTierDialog] = useState(false);
 
@@ -157,10 +160,12 @@ export default function LoyaltyPage() {
           question="Are your best customers rewarded?"
           explanation="Tiers, points, and members."
         />
-        <Button onClick={() => openTierDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-tier">
-          <Plus className="mr-2 h-4 w-4" />
-          Add tier
-        </Button>
+        {canMutate && (
+          <Button onClick={() => openTierDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-tier">
+            <Plus className="mr-2 h-4 w-4" />
+            Add tier
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="tiers" className="w-full">
@@ -232,10 +237,10 @@ export default function LoyaltyPage() {
               icon={Crown}
               title="No loyalty tiers yet"
               body="Define tiers with point thresholds and rewards so customers can level up."
-              cta={{
+              cta={canMutate ? {
                 label: "Add tier",
                 onClick: () => openTierDialog(),
-              }}
+              } : undefined}
             />
           ) : (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -252,6 +257,7 @@ export default function LoyaltyPage() {
                           />
                           <CardTitle>{tier.name}</CardTitle>
                         </div>
+                        {canMutate && (
                         <div className="flex gap-2">
                           <Button
                             variant="ghost"
@@ -272,6 +278,7 @@ export default function LoyaltyPage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
+                        )}
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">

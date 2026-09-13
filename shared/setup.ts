@@ -66,6 +66,21 @@ export const orgProfilePatchSchema = z.object({
   requireCashierForSale: z.boolean().optional(),
   shiftInactivityCloseAfter: z.enum(SHIFT_INACTIVITY_OPTIONS).optional(),
   globalExpenseAllocationMode: z.string().max(32).optional(),
+  // Operations Centre timing policy (migration 065). Bounded rather than
+  // free: these minutes colour every card and decide when a tablet chimes, so
+  // a fat-fingered 500 would turn the whole board green and a 0 would turn it
+  // red. A key added here must also be added to `updateOrgProfile`'s allow-list
+  // in server/storage.ts — a key present in one and not the other validates
+  // happily and then saves nothing at all.
+  opsPrepSlaMinutes: z.number().int().min(1).max(480).optional(),
+  opsDueSoonLeadMinutes: z.number().int().min(0).max(120).optional(),
+  opsLateGraceMinutes: z.number().int().min(0).max(120).optional(),
+  opsDeliveryLeadMinutes: z.number().int().min(1).max(480).optional(),
+  opsAutoClaimOnCreate: z.boolean().optional(),
+  /** Floor of 15s: the poll is a safety net behind server push, not the feed. */
+  opsReconcilePollSeconds: z.number().int().min(15).max(600).optional(),
+  opsAlertOnSlaDue: z.boolean().optional(),
+  opsKeepScreenAwake: z.boolean().optional(),
   setupWizardState: setupWizardStateSchema.optional(),
 });
 

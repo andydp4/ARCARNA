@@ -780,6 +780,13 @@ export class DatabaseStorage implements IStorage {
       "invoiceBankName", "invoiceBankSortCode", "invoiceBankAccountNumber", "invoicePaymentLink",
       "cashierCommissionEnabled", "defaultCashierCommissionRate", "requireCashierForSale",
       "shiftInactivityCloseAfter", "globalExpenseAllocationMode",
+      // Operations Centre timing policy (migration 065). This list is an
+      // allow-list, not a filter of known-bad keys: anything absent from it is
+      // dropped in silence, so a setting wired into the schema and the card but
+      // missed here would save, toast "updated", and change nothing.
+      "opsPrepSlaMinutes", "opsDueSoonLeadMinutes", "opsLateGraceMinutes",
+      "opsDeliveryLeadMinutes", "opsAutoClaimOnCreate", "opsReconcilePollSeconds",
+      "opsAlertOnSlaDue", "opsKeepScreenAwake",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
@@ -1807,6 +1814,11 @@ export class DatabaseStorage implements IStorage {
         dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
 
         // Determine invoice status
+        // `order.status` is an untyped varchar column, not the ORDER_STATUSES
+        // enum — the domain type no longer allows 'cancelled', but the public
+        // `/v1` API (server/routes/v1.ts) writes `req.body.status` to this
+        // column with no validation, so this branch stays reachable in
+        // practice even though nothing in the domain engine can produce it.
         let status: 'paid' | 'pending' | 'overdue' | 'cancelled' = 'pending';
         if (order.status === 'cancelled') {
           status = 'cancelled';

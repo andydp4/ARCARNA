@@ -208,20 +208,33 @@ test.describe("UI seams", () => {
     expect(orderId, "the order fixture must produce an id to drive the row").toBeTruthy();
 
     const page = await pageAs(browser, "ADMIN", orgId);
+    // /orders redirects to the Operations Centre, which replaced the list in
+    // N1 — the old path is asserted here on purpose: a link somebody printed,
+    // bookmarked or wrote into a runbook must still land somewhere useful.
     await page.goto("/orders");
     await expect(page.locator("#root")).toBeVisible({ timeout: 60_000 });
+    expect(new URL(page.url()).pathname).toBe("/operations");
 
-    // Narrow to the order under test — the list groups by status and grows with
-    // the seeded data, so the row is otherwise not reliably on screen.
+    // Narrow to the order under test — the board grows with the seeded data,
+    // so the card is otherwise not reliably on screen.
     await page.locator('[data-testid="input-order-search"]').fill(orderId);
+
+    // Status lives on the card's details, one tap from the card: the board's
+    // own buttons are the fast path (Handed over / Delivered) and the select is
+    // the deliberate one.
+    const view = page.locator(`[data-testid="button-view-order-${orderId}"]`).locator("visible=true");
+    await expect(view, "every card must offer its own order's details").toBeVisible({
+      timeout: 30_000,
+    });
+    await view.click();
 
     const selector = page
       .locator(`[data-testid="select-order-status-${orderId}"]`)
       .locator("visible=true");
     await expect(
       selector,
-      "each order row must carry its own status control — status used to be " +
-        "reachable only through a kebab menu and a modal, which is the bug this covers",
+      "an order's status must be changeable from the order itself — status used " +
+        "to be reachable only through a kebab menu and a modal, which is the bug this covers",
     ).toBeVisible({ timeout: 30_000 });
 
     await selector.click();
@@ -229,8 +242,8 @@ test.describe("UI seams", () => {
 
     // Completion is the moment Arcarna counts an order as taken, so this is the
     // one status change that must not silently fail. The server is the witness:
-    // the row leaves the default "active" filter the instant the optimistic
-    // update lands, whether or not the write ever reached the database.
+    // the card moves to the lane's Done tray the instant the optimistic update
+    // lands, whether or not the write ever reached the database.
     await expect
       .poll(
         async () => {

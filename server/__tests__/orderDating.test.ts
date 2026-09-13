@@ -273,7 +273,14 @@ describe("dating an order", () => {
   it("records a pre-order against its day but keeps today's shift and drawer", async () => {
     const dueOn = daysFromToday(10);
 
-    const { status, req } = await placeOrder({ lines, paymentMethod: "cash", orderDate: dueOn });
+    // N3a: a pre-order needs a due time on its own day (brief, "Pre-orders")
+    // — every path, including this one, 400s without one.
+    const { status, req } = await placeOrder({
+      lines,
+      paymentMethod: "cash",
+      orderDate: dueOn,
+      dueTime: "12:00",
+    });
 
     expect(status).toBe(201);
     const dated = patches.find((p) => "date_kind" in p)!;

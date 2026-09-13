@@ -1,19 +1,5 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
-import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
-import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
-import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
-import type { Role } from "@shared/schema";
-import { recordAdminAudit } from "../adminAudit";
-import {
-  insertLoyaltyTierSchema,
-  insertPromotionSchema,
-  insertOrderSchema,
-  insertCustomerSchema,
-  insertProductSchema,
-  insertOverheadExpenseSchema,
-  insertOrderExpenseSchema,
-} from "@shared/schema";
 
 export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/settings", ...scoped, async (req: any, res) => {
@@ -56,6 +42,19 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
         requireCashierForSale: org.requireCashierForSale ?? false,
         shiftInactivityCloseAfter: org.shiftInactivityCloseAfter || "never",
         globalExpenseAllocationMode: org.globalExpenseAllocationMode || "daily_percentage",
+        // Operations Centre timing policy (migration 065). Projected HERE, not
+        // only on /api/org/setup, because that route is MANAGER+ and the board
+        // is a cashier's screen: the people whose cards these minutes colour
+        // must be able to read them. Written from the Settings card, which is
+        // MANAGER+ like every other org setting.
+        opsPrepSlaMinutes: org.opsPrepSlaMinutes ?? 20,
+        opsDueSoonLeadMinutes: org.opsDueSoonLeadMinutes ?? 10,
+        opsLateGraceMinutes: org.opsLateGraceMinutes ?? 5,
+        opsDeliveryLeadMinutes: org.opsDeliveryLeadMinutes ?? 45,
+        opsAutoClaimOnCreate: org.opsAutoClaimOnCreate ?? true,
+        opsReconcilePollSeconds: org.opsReconcilePollSeconds ?? 60,
+        opsAlertOnSlaDue: org.opsAlertOnSlaDue ?? false,
+        opsKeepScreenAwake: org.opsKeepScreenAwake ?? true,
       });
     } catch (error) {
       console.error("Error fetching settings:", error);

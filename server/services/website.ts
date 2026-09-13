@@ -120,6 +120,25 @@ export interface WebsiteOrderRuntime {
    * every website order is taxed at a rate the org may not charge.
    */
   getOrgTaxRatePercent(orgId: string): Promise<number | undefined>;
+  /**
+   * The Operations Centre's due-time fallback for a channel with nobody at a
+   * till to press a due chip (brief: "a due time on every web order" / N3a's
+   * fix for finding G19). Collection uses the prep SLA, delivery the delivery
+   * lead — the same two settings the board's own SLA fallback uses, so a
+   * website order's card starts life exactly where a walk-in order with no
+   * promise would.
+   */
+  getOpsDueMinutes(orgId: string, fulfilmentMethod: "collection" | "delivery"): Promise<number>;
+  /**
+   * Writes `eta_given`/`original_eta` for a just-created order, inside the
+   * same transaction. A separate write rather than a `PlaceOrderInput` field
+   * because the domain engine's `placeOrder` never reads `dueInMinutes` at
+   * all — only `server/routes/orders.ts`'s POST handler resolves that field,
+   * and the website order never goes through it (it calls `engine.placeOrder`
+   * directly). Passing `dueInMinutes` through unread would look like a fix
+   * while changing nothing.
+   */
+  setOrderDuePromise(tx: unknown, orderId: string, etaGiven: Date): Promise<void>;
   publishOrderCreated(
     tx: unknown,
     eventType: "OrderCreated",
@@ -575,6 +594,14 @@ export function createWebsiteService(repository: WebsiteRepository) {
           source: "website",
         });
         const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
+        // Finding G19: the order form's own "pickup" is the board's
+        // "collection" (`shared/orders/opsState.ts`'s `FulfilmentMethod`) —
+        // every website order used to arrive with NO fulfilment method at
+        // all, landing in Collection by the column's own default regardless
+        // of what the customer actually chose, and with no due time for the
+        // board to colour it against.
+        const fulfilmentMethod: "collection" | "delivery" =
+          order.fulfilment.method === "delivery" ? "delivery" : "collection";
         const result = await runtime.engine.placeOrder({
           orgId,
           customerId: customer.id,
@@ -583,8 +610,15 @@ export function createWebsiteService(repository: WebsiteRepository) {
           paymentMethod: "transfer",
           channel: "web",
           status: settings.defaultOrderStatus,
+          fulfilmentMethod,
           ...(taxRatePercent === undefined ? {} : { taxRatePercent }),
         });
+        // Never `ready_at` (brief): a website order starts life the same
+        // "received, not yet dealt with" way a till order does, promised only
+        // the org's own SLA fallback — nobody has told this customer a
+        // different time, so nothing should claim otherwise.
+        const dueMinutes = await runtime.getOpsDueMinutes(orgId, fulfilmentMethod);
+        await runtime.setOrderDuePromise(tx, result.orderId, new Date(Date.now() + dueMinutes * 60_000));
         const createdOrder = await runtime.loadCreatedOrder(tx, result.orderId);
         const orderTotal = asNumber(createdOrder?.total, resolved.subtotal);
         const eventId = await runtime.publishOrderCreated(

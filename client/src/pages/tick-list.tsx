@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { apiRequest, queryClient } from '@/lib/queryClient'
 import {
   CreditCard,
@@ -46,7 +47,6 @@ import {
   CheckCircle,
   AlertCircle,
   Download,
-  Send,
   Trash2,
   X,
 } from 'lucide-react'
@@ -71,6 +71,9 @@ interface TickCustomer {
 
 export default function TickList() {
   const { toast } = useToast()
+  const { user } = useAuth()
+  // Write-off (removing a customer from the credit list) requires MANAGER+ server-side.
+  const canWriteOff = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'partial' | 'paid'>('all')
   const [selectedCustomer, setSelectedCustomer] = useState<TickCustomer | null>(null)
@@ -122,11 +125,11 @@ export default function TickList() {
       })
       queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
     },
-    onError: () => {
-      // If API doesn't exist yet, show a success message anyway for UX
+    onError: (error: any) => {
       toast({
-        title: 'Payment Recorded',
-        description: 'Payment recorded successfully',
+        title: 'Payment not recorded',
+        description: error?.message || 'Failed to mark customer as paid',
+        variant: 'destructive',
       })
     },
   })
@@ -177,13 +180,6 @@ export default function TickList() {
     setPayingCustomer(customer)
     setPaymentAmount((customer.totalDebt || 0).toFixed(2))
     setPaymentMethod('cash')
-  }
-
-  const handleSendReminder = (customerId: string) => {
-    toast({
-      title: 'Reminder Sent',
-      description: 'Payment reminder email sent to customer',
-    })
   }
 
   const handleDeleteClick = (customer: TickCustomer) => {
@@ -393,15 +389,7 @@ export default function TickList() {
                                 <CheckCircle className="h-4 w-4 mr-1" />
                                 Payment
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleSendReminder(customer.id)}
-                                data-testid={`button-reminder-${customer.id}`}
-                              >
-                                <Send className="h-4 w-4 mr-1" />
-                                Remind
-                              </Button>
+                              {canWriteOff && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -411,6 +399,7 @@ export default function TickList() {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -450,14 +439,7 @@ export default function TickList() {
                             <CheckCircle className="h-4 w-4 mr-1" />
                             Payment
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="min-h-[44px]"
-                            onClick={() => handleSendReminder(customer.id)}
-                          >
-                            <Send className="h-4 w-4" />
-                          </Button>
+                          {canWriteOff && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -466,6 +448,7 @@ export default function TickList() {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

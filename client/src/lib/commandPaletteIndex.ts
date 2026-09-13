@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Home,
   ShoppingCart,
-  PackageCheck,
+  LayoutGrid,
   Package,
   Users,
   Settings,
@@ -15,7 +15,7 @@ import {
   type CommandPaletteAction,
 } from "@shared/commandPaletteActions";
 import { isRole, roleRank } from "@shared/rbac";
-import type { OrdersListOrder } from "@/components/orders-row";
+import type { ApiOrderRow } from "@/lib/orderTypes";
 import { VOCAB } from "@/lib/vocabulary";
 import {
   STORAGE_COMMAND_PALETTE_RECENT,
@@ -39,7 +39,7 @@ export type CommandPaletteItem = {
 const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: LucideIcon; minRole: string }> = [
   { id: "page-home", label: VOCAB.controlCentre, href: "/", icon: Home, minRole: "CASHIER" },
   { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart, minRole: "CASHIER" },
-  { id: "page-orders", label: VOCAB.openOrders, href: "/open-orders", icon: PackageCheck, minRole: "CASHIER" },
+  { id: "page-orders", label: VOCAB.operations, href: "/operations", icon: LayoutGrid, minRole: "CASHIER" },
   { id: "page-products", label: "Products", href: "/products", icon: Package, minRole: "CASHIER" },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users, minRole: "CASHIER" },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings, minRole: "MANAGER" },
@@ -131,7 +131,7 @@ export async function ensurePaletteData(queryClient: QueryClient, userRole?: str
   if (readArrayFromCache<Product>(queryClient, ["/api/products"]).length === 0) {
     tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/products"] }));
   }
-  if (readArrayFromCache<OrdersListOrder>(queryClient, ["/api/orders"]).length === 0) {
+  if (readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]).length === 0) {
     tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/orders"] }));
   }
   await Promise.allSettled(tasks);
@@ -203,7 +203,7 @@ function buildProductItems(
     });
 }
 
-function buildOrderItems(orders: OrdersListOrder[], recentIds: string[]): CommandPaletteItem[] {
+function buildOrderItems(orders: ApiOrderRow[], recentIds: string[]): CommandPaletteItem[] {
   return [...orders]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10)
@@ -216,7 +216,9 @@ function buildOrderItems(orders: OrdersListOrder[], recentIds: string[]): Comman
         section: "orders" as const,
         label: order.customerName ? `Order — ${order.customerName}` : `Order ${order.id.slice(0, 8)}`,
         subtext: `${totalLabel} · ${order.status}`,
-        href: "/open-orders",
+        // Opens the order's own card on the board rather than dropping the
+        // operator at the top of a list to find it again (brief, "Route & nav").
+        href: `/operations?order=${order.id}`,
         recentBoost: recentBoostFor(id, recentIds),
       };
     });
@@ -244,7 +246,7 @@ export function buildCommandPaletteIndex(
 
   const customers = readArrayFromCache<Customer>(queryClient, ["/api/customers"]);
   const products = readArrayFromCache<Product>(queryClient, ["/api/products"]);
-  const orders = readArrayFromCache<OrdersListOrder>(queryClient, ["/api/orders"]);
+  const orders = readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]);
   const salesRank = productSalesRank(queryClient);
   const actions = getVisibleCommandPaletteActions(userRole);
 

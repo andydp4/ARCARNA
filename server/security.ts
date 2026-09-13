@@ -44,13 +44,31 @@ export function isImportApiPath(path: string): boolean {
   return /^\/api\/[^/]+\/import(\/|$)/.test(path);
 }
 
+/**
+ * The Operations Centre board and its push stream, exempt from the shared-IP
+ * limiter (brief finding G9 / "Live data"): every tablet on the counter
+ * shares one shop IP, the board is read once per connect plus one
+ * reconciliation poll a minute, and the stream is one long-lived GET per
+ * tablet — none of that should ever compete with genuine API traffic for the
+ * same 800-per-15-minutes budget. Kept to exactly these two paths, named
+ * literally rather than by prefix, so nothing else can join the skip list by
+ * accident (brief, "Security" row: "the limiter skip list contains only the
+ * board").
+ */
+export function isOpsBoardOrStreamPath(path: string): boolean {
+  return path === "/api/orders/board" || path === "/api/orders/board/stream";
+}
+
 export function createApiRateLimiters(isProduction: boolean) {
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: isProduction ? 800 : 50_000,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === "/api/health" || req.path === "/api/auth/runtime",
+    skip: (req) =>
+      req.path === "/api/health" ||
+      req.path === "/api/auth/runtime" ||
+      isOpsBoardOrStreamPath(req.path),
     message: rateLimitMessage,
   });
 

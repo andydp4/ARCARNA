@@ -29,8 +29,8 @@ no spec row yet (my placement, needs your nod) · ⚠️ = decision needed
 
 | Route | Today | Proposed |
 |---|---|---|
-| `/create-order` | Create Order | Create Order |
-| `/open-orders` | Open Orders | Open Orders |
+| ~~`/create-order`~~ | Create Order | **Superseded (Phase N).** Redirects to `/operations?pane=order`; the order form is now embedded beside the board, not a standalone page. |
+| ~~`/open-orders`~~ | Open Orders | **Superseded (Phase N).** Open Orders was deleted and redirects to `/operations`; its functionality is now the Collection \| Delivery card board. The single nav entry for both rows is **Operations** (`nav-orders`, `/operations`). |
 | `/shifts` | Shifts | Shifts |
 | `/invoices` | Invoices | Invoices |
 | `/tick-list` | Tick List | Tick List |
@@ -105,7 +105,9 @@ on a real screen before we commit.
 `/reports/*` (15 report pages — reached from the hub) · `/settings/receipts`,
 `/settings/loyalty` (sub-pages of Settings) · `/sign-in`, `/sign-out`,
 `/onboarding*`, `/setup-wizard`, `/setup-blocked`, `/no-access`,
-`/pending-approval` (flow routes) · `/pos`, `/orders`, `/analytics` (redirects).
+`/pending-approval` (flow routes) · `/pos`, `/orders`, `/analytics`,
+`/open-orders`, `/create-order` (redirects — the last two into
+`/operations?pane=order`, Phase N).
 
 ## What this changes for your staff
 

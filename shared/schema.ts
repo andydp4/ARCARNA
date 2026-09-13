@@ -93,6 +93,35 @@ export const organizations = pgTable("organizations", {
   requireCashierForSale: boolean("require_cashier_for_sale").default(false).notNull(),
   shiftInactivityCloseAfter: varchar("shift_inactivity_close_after", { length: 16 }).default("never"),
   globalExpenseAllocationMode: varchar("global_expense_allocation_mode", { length: 32 }).default("daily_percentage"),
+  // Operations Centre timing policy (migration 065). Minutes, because that is
+  // the unit the shop speaks in; the defaults are the owner's answers of
+  // 2026-09-12 (Q5). They colour cards and decide when an alert fires, so a
+  // change here is felt on the floor within one poll.
+  /** How long a collection order is expected to take when nobody promised a time. */
+  opsPrepSlaMinutes: integer("ops_prep_sla_minutes").default(20).notNull(),
+  /** Lead time before the promise at which a card turns DUE SOON and alerts. */
+  opsDueSoonLeadMinutes: integer("ops_due_soon_lead_minutes").default(10).notNull(),
+  /** Grace after the promise before a card is called late. */
+  opsLateGraceMinutes: integer("ops_late_grace_minutes").default(5).notNull(),
+  /** The same fallback as the prep SLA, for deliveries. */
+  opsDeliveryLeadMinutes: integer("ops_delivery_lead_minutes").default(45).notNull(),
+  /**
+   * Give a new order an owner automatically (owner, Q4/Q16): whoever keyed it
+   * in if they are on that station, else the least-loaded present member of it,
+   * else nobody and a station alert. On by default — a till order with nobody's
+   * name on it is the case the rule exists to remove.
+   */
+  opsAutoClaimOnCreate: boolean("ops_auto_claim_on_create").default(true).notNull(),
+  /** Reconciliation poll interval; the board is otherwise fed by server push. */
+  opsReconcilePollSeconds: integer("ops_reconcile_poll_seconds").default(60).notNull(),
+  /**
+   * Off by default: an order nobody promised a time for is coloured against the
+   * SLA but never alerts. An alert for a promise the shop never made is noise,
+   * and a noisy board stops being read.
+   */
+  opsAlertOnSlaDue: boolean("ops_alert_on_sla_due").default(false).notNull(),
+  /** Hold a screen wake lock while the board is open, so the tablet stays lit. */
+  opsKeepScreenAwake: boolean("ops_keep_screen_awake").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1321,9 +1350,10 @@ export const orders = pgTable("orders", {
   // so post-payment line edits can never raise the refundable ceiling.
   settledTotal: numeric("settled_total", { precision: 10, scale: 2 }),
   settledAt: timestamp("settled_at"),
-  // Operational fields for the Order Status Dashboard (ARC-T1-003) and Delay
-  // Log (ARC-T1-005). All optional so existing orders are unaffected.
-  queuePosition: integer("queue_position"),
+  // Operational fields for the Delay Log (ARC-T1-005) and the Operations
+  // Centre board. All optional so existing orders are unaffected.
+  // (`queue_position` was here; dropped by migration 065 — the board sorts by
+  // due time and state, and ARC-T1-003, its only reader, retires with it.)
   etaGiven: timestamp("eta_given"),
   delayFlag: boolean("delay_flag").default(false).notNull(),
   delayReason: varchar("delay_reason", { length: 255 }),
@@ -1336,6 +1366,25 @@ export const orders = pgTable("orders", {
   // "personal_use" — a Signal without a reason is a Signal nobody reads.
   // (migration 054)
   personalUseReason: text("personal_use_reason"),
+  // Who is DEALING with the order, which is not who loaded it and not who
+  // earns the commission for completing it. The auth subject, like
+  // `inputUserId` / `completedUserId`, varchar with no FK for migration 057's
+  // reason. Never written into a commission column. (migration 065)
+  assignedUserId: varchar("assigned_user_id", { length: 255 }),
+  assignedAt: timestamp("assigned_at"),
+  assignedByUserId: varchar("assigned_by_user_id", { length: 255 }),
+  // The stage stamps. Stages are timestamps, NOT statuses: `completed` stays
+  // the only settling status because money — settledTotal, settledAt,
+  // completedUserId, the commission split, the credit leg — keys on it alone,
+  // and a `ready` status would have put a second gate in front of all of that.
+  // Each is written once (first write wins) inside the transaction that also
+  // writes the matching `order_events` row. `heldAt` is the exception: it is
+  // cleared on resume, and the history stays in the events.
+  // (migration 065, shared/orders/opsState.ts)
+  heldAt: timestamp("held_at"),
+  readyAt: timestamp("ready_at"),
+  customerArrivedAt: timestamp("customer_arrived_at"),
+  outForDeliveryAt: timestamp("out_for_delivery_at"),
   // `createdAt` is the day the sale is FOR — what every report reads as the
   // moment of sale. Normally that is when it was keyed in; for a day's sales
   // entered afterwards, or a pre-order, it is not, and these two say so.
@@ -1364,10 +1413,33 @@ export const orders = pgTable("orders", {
     "orders_fulfilment_method_check",
     sql`${table.fulfilmentMethod} IN ('collection', 'delivery')`,
   ),
-  /** Open orders by fulfilment — the Open Orders list's index (migration 047). */
+  /** Open orders by fulfilment — originally the Open Orders list's index (migration 047), since replaced by the Operations Centre board. */
   index("idx_orders_fulfilment_open")
     .on(table.orgId, table.fulfilmentMethod)
     .where(sql`${table.status} <> 'completed'`),
+  /**
+   * The Operations Centre board's own reads (migration 065). Partial on
+   * `status <> 'completed'` because the board is a list of what is still open;
+   * partial rather than expression indexes so `drizzle-kit push` round-trips
+   * them and `audit-schema-push-drift` stays clean.
+   */
+  index("orders_assigned_open_idx")
+    .on(table.orgId, table.assignedUserId)
+    .where(sql`${table.status} <> 'completed'`),
+  index("orders_eta_open_idx")
+    .on(table.orgId, table.etaGiven)
+    .where(sql`${table.status} <> 'completed'`),
+  index("orders_revised_open_idx")
+    .on(table.orgId, table.revisedEta)
+    .where(sql`${table.status} <> 'completed'`),
+  /** The no-promise tail, sorted by arrival because there is no due time. */
+  index("orders_nodue_open_idx")
+    .on(table.orgId, table.enteredAt)
+    .where(
+      sql`${table.status} <> 'completed' AND ${table.etaGiven} IS NULL AND ${table.revisedEta} IS NULL`,
+    ),
+  /** The board's "Done today" tray reads the last 120 minutes of settlements. */
+  index("orders_settled_recent_idx").on(table.orgId, table.settledAt),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -1393,6 +1465,184 @@ export const updateOrderStatusSchema = z.object({
   status: z.enum(ORDER_STATUSES)
 });
 export type UpdateOrderStatus = z.infer<typeof updateOrderStatusSchema>;
+
+// ==================== OPERATIONS CENTRE ====================
+// (migration 065; docs/briefs/PHASE_N_OPERATIONS_CENTRE.md)
+//
+// These three — order_events, ops_staff and the organizations.ops_* settings —
+// are declared in THIS file only. `apps/server/src/db/schema.ts` declares the
+// same physical `orders` table (and the paired-table rule in
+// scripts/audit-schema-drift.mjs holds those two declarations identical), but
+// its `organizations` is a deliberate four-column stub and it has no business
+// knowing about stations or the event log.
+
+/**
+ * Every kind of thing that can happen to an order, in the order the lifecycle
+ * table lists them. MUST stay identical to `order_events_kind_check` below and
+ * to the same list in migration 065 — the constraint is what actually stops a
+ * typo'd kind reaching the reports, and this constant is what the writers use.
+ */
+export const ORDER_EVENT_KINDS = [
+  "received",
+  "assigned",
+  "unassigned",
+  "ready",
+  "unready",
+  "arrived",
+  "out_for_delivery",
+  "held",
+  "unheld",
+  "delayed",
+  "delay_cleared",
+  "due_set",
+  "completed",
+  "reopened",
+  "status_changed",
+  "deleted",
+] as const;
+export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
+
+/**
+ * The order timeline: one row per thing that happened, written in the same
+ * transaction as the stamp it mirrors, never updated afterwards.
+ *
+ * The stage columns on `orders` answer "when"; this answers "who did it, and
+ * what did they say about it" — the reason a delay was flagged, whether the
+ * customer was told, which status a hold was resumed to. It is the feed for
+ * the Delay Log (ARC-T1-005), Order Timing (ARC-T2-005) and Order Issues
+ * (ARC-T1-006), and for the timeline in the card's details sheet.
+ *
+ * `orderId` carries NO foreign key on purpose: a `deleted` event has to outlive
+ * the order it describes, carrying the customer, total and status in `meta`, or
+ * a deletion is simply absence and nobody can report on it. `orgId` does carry
+ * one — tenancy is not the thing being relaxed here.
+ */
+export const orderEvents = pgTable("order_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  orderId: uuid("order_id").notNull(),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  /** Naive UTC, like every other timestamp in this file. Rendered in the org timezone. */
+  at: timestamp("at").defaultNow().notNull(),
+  /** The actor's auth subject. NULL means the system or the website did it. */
+  userId: varchar("user_id", { length: 255 }),
+  /** Per-kind shape — see the brief's `meta` shapes line. */
+  meta: jsonb("meta"),
+}, (table) => [
+  check(
+    "order_events_kind_check",
+    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted')`,
+  ),
+  /** One card's own timeline. */
+  index("order_events_order_idx").on(table.orgId, table.orderId, table.at),
+  /** The reports: everything of one kind across a trading day. */
+  index("order_events_kind_idx").on(table.orgId, table.kind, table.at),
+  /** What one person did — the Issues report groups by actor. */
+  index("order_events_actor_idx").on(table.orgId, table.userId, table.at),
+]);
+
+export type OrderEvent = typeof orderEvents.$inferSelect;
+export type InsertOrderEvent = typeof orderEvents.$inferInsert;
+export const insertOrderEventSchema = createInsertSchema(orderEvents).omit({
+  id: true,
+});
+export type InsertOrderEventData = z.infer<typeof insertOrderEventSchema>;
+
+/** Collection, delivery, both — or no station at all, which means "All". */
+export const OPS_STATIONS = ["collection", "delivery", "both"] as const;
+export type OpsStation = (typeof OPS_STATIONS)[number];
+
+/**
+ * Which area a person works, and whether they are about.
+ *
+ * Sticky per person rather than per device and per day (owner, Q9): alerts are
+ * addressed to people, and one tablet shared by three cashiers cannot be asked
+ * to decide who a "delivery is late" alert belongs to.
+ *
+ * `lastSeenAt` is written by the board's stream connection and heartbeats
+ * through an in-memory throttle (one write per org:user per 60s) — presence is
+ * a display and routing hint, not an audit record, and it must not cost a write
+ * per poll. "Present" means seen within 15 minutes; when nobody on a station
+ * is present the station's alerts go to all of its members rather than nowhere.
+ */
+export const opsStaff = pgTable("ops_staff", {
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  station: varchar("station", { length: 16 }),
+  stationSetAt: timestamp("station_set_at"),
+  lastSeenAt: timestamp("last_seen_at"),
+  /** Keeps the station but removes the person from alert recipients and suggestions. */
+  onBreak: boolean("on_break").default(false).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.orgId, table.userId] }),
+  check(
+    "ops_staff_station_check",
+    sql`${table.station} IS NULL OR ${table.station} IN ('collection', 'delivery', 'both')`,
+  ),
+]);
+
+export type OpsStaff = typeof opsStaff.$inferSelect;
+export type InsertOpsStaff = typeof opsStaff.$inferInsert;
+export const insertOpsStaffSchema = createInsertSchema(opsStaff);
+export type InsertOpsStaffData = z.infer<typeof insertOpsStaffSchema>;
+
+/**
+ * Personal Operations Centre alerts (migration 066, N5a;
+ * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Alerts & notifications").
+ *
+ * One row per RECIPIENT, per incident — not one org-wide row with a read
+ * flag (the brief's finding G7 on the pre-existing `orgNotifications`): an
+ * `assigned` alert exists only for the new assignee, a station-wide
+ * `due_soon`/`late` chime is one row per present station member. Unique per
+ * `(org, order, kind, user, due_key)` — `ops_alerts_once_idx` — so every
+ * writer inserts with `ON CONFLICT DO NOTHING` rather than checking existence
+ * first, and a server restart mid-sweep can never double-fire the same
+ * alert. See `server/services/opsAlerts.ts` for the generation and
+ * resolution rules, and `shared/orders/opsAlerts.ts` for the pure recipient,
+ * presence, chime and due_key logic both that service and, from N5b, the
+ * client share.
+ *
+ * `orderId` carries NO foreign key, matching `orderEvents` (065): a deleted
+ * order's alerts must outlive it long enough to be resolved
+ * (`resolvedReason: 'deleted'`) rather than vanish with the row.
+ */
+export const opsAlerts = pgTable("ops_alerts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  orderId: uuid("order_id").notNull(),
+  /** Always a person — a station alert is one row per member, never a group row. */
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  /** Provenance: '' = addressed personally to the assignee (pulse only); a station name = the station-wide broadcast (chimes). */
+  station: varchar("station", { length: 16 }).notNull().default(""),
+  /** assigned | new_unassigned | customer_waiting | due_soon | late | delayed — see shared/orders/opsAlerts.ts's OPS_ALERT_KINDS. */
+  kind: varchar("kind", { length: 24 }).notNull(),
+  /** ISO of the promise (or other anchor instant) the alert was computed from; a revision is a new cycle. '' for non-time-based kinds that don't need one. */
+  dueKey: varchar("due_key", { length: 32 }).notNull().default(""),
+  dueAt: timestamp("due_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  ackedAt: timestamp("acked_at"),
+  ackedByUserId: varchar("acked_by_user_id", { length: 255 }),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedByUserId: varchar("resolved_by_user_id", { length: 255 }),
+  /** claimed | ready | completed | deleted | held | rolled_over | reassigned */
+  resolvedReason: varchar("resolved_reason", { length: 24 }),
+}, (table) => [
+  uniqueIndex("ops_alerts_once_idx").on(table.orgId, table.orderId, table.kind, table.userId, table.dueKey),
+  index("ops_alerts_open_idx")
+    .on(table.orgId, table.userId)
+    .where(sql`${table.ackedAt} IS NULL AND ${table.resolvedAt} IS NULL`),
+]);
+
+export type OpsAlert = typeof opsAlerts.$inferSelect;
+export type InsertOpsAlert = typeof opsAlerts.$inferInsert;
+export const insertOpsAlertSchema = createInsertSchema(opsAlerts).omit({ id: true, createdAt: true });
+export type InsertOpsAlertData = z.infer<typeof insertOpsAlertSchema>;
 
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {
@@ -1983,7 +2233,16 @@ export const EVENT_TYPES = [
   'ExpenseDeleted',
   // Staff took stock for themselves. Not a sale — it exists so a manager is
   // told, which is the entire control against it becoming theft.
-  'PersonalUseRecorded'
+  'PersonalUseRecorded',
+  // The Operations Centre's per-stage event (Phase N, N3b). Published by every
+  // transition that stamps a stage timestamp WITHOUT changing `status`
+  // (claim, ready, arrived, ...) — `OrderStatusChanged` is reserved for the
+  // transitions that do (complete, hold, unhold, reopen). No worker reads it
+  // today: REQUIRED_WORKERS declares zero, so publishing one creates no
+  // `job_queue` rows at all (see the brief's "claim creates zero job_queue
+  // rows" DoD) — it exists purely for the outbox history and any future
+  // consumer, never to drive today's dispatch pipeline.
+  'OrderStageChanged',
 ] as const;
 export type EventType = typeof EVENT_TYPES[number];
 
@@ -2588,4 +2847,7 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   ExpenseUpdated: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   ExpenseDeleted: ['ExpensesWorker', 'FinanceWorker', 'BusinessInsightsWorker'],
   PersonalUseRecorded: ['PersonalUseSignalWorker'],
+  // Deliberately empty — see the EVENT_TYPES entry above. A stage tap must
+  // never enqueue a worker job just to record that it happened.
+  OrderStageChanged: [],
 };

@@ -9,12 +9,6 @@ export const KNOWN_FEATURE_FLAGS = [
     description: "Experimental core-orbit UI preset on Insights (?spatial=1).",
     defaultEnabled: false,
   },
-  {
-    key: "newCheckout",
-    label: "New checkout flow",
-    description: "Gated checkout UX experiments (not yet wired).",
-    defaultEnabled: false,
-  },
 ] as const;
 
 export type KnownFeatureFlagKey = (typeof KNOWN_FEATURE_FLAGS)[number]["key"];

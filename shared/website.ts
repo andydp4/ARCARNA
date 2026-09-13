@@ -162,6 +162,12 @@ export const publicWebsiteOrderSchema = z
       .strict(),
     fulfilment: z
       .object({
+        // The customer's own words for it — "pickup", not "collection".
+        // `server/services/website.ts::submitPublicOrder` maps this onto the
+        // Operations Centre's `FulfilmentMethod` ("collection" | "delivery",
+        // `shared/orders/opsState.ts`) before it ever reaches the order
+        // engine; this schema is not the place to rename it, since the public
+        // form and any existing integration already speak "pickup".
         method: z.enum(["pickup", "delivery"]).default("pickup"),
         address: z.string().trim().max(1024).optional(),
         notes: z.string().trim().max(2000).optional(),

@@ -1,3 +1,6 @@
+import { eq, or } from "drizzle-orm";
+import { db } from "../db";
+import { users } from "../../shared/schema";
 import { storage } from "../storage";
 import { getAuthProvider } from "../authRuntime";
 
@@ -16,7 +19,24 @@ export type AllowListStatus = {
   isPending: boolean;
   role?: string;
   orgId?: string | null;
+  defaultLocationId?: string | null;
 };
+
+/**
+ * This person's default POS location, set by an admin in User Access
+ * (`users.default_location_id`). Matched on `users.id` OR `users.replit_user_id`
+ * for the same reason `setUserCommissionRate` does: those two columns are the
+ * same value for accounts created since the auth migration and differ for
+ * older ones.
+ */
+async function getUserDefaultLocationId(authUserId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ defaultLocationId: users.defaultLocationId })
+    .from(users)
+    .where(or(eq(users.id, authUserId), eq(users.replitUserId, authUserId)))
+    .limit(1);
+  return row?.defaultLocationId ?? null;
+}
 
 /**
  * Enforces allowed_users / user_approval_requests for a signed-in subject.
@@ -33,12 +53,14 @@ export async function checkAndHandleAllowList(claims: AllowListClaims): Promise<
   const existing = await storage.getUserRoleAndOrg(authUserId);
   if (existing) {
     const owner = await storage.getOwner();
+    const defaultLocationId = await getUserDefaultLocationId(authUserId);
     return {
       allowed: true,
       isOwner: owner?.authUserId === authUserId || owner?.replitUserId === authUserId,
       isPending: false,
       role: existing.role,
       orgId: existing.orgId,
+      defaultLocationId,
     };
   }
 
@@ -52,12 +74,14 @@ export async function checkAndHandleAllowList(claims: AllowListClaims): Promise<
       const roleAndOrg = await storage.getUserRoleAndOrg(authUserId);
       if (roleAndOrg) {
         const owner = await storage.getOwner();
+        const defaultLocationId = await getUserDefaultLocationId(authUserId);
         return {
           allowed: true,
           isOwner: owner?.authUserId === authUserId || owner?.replitUserId === authUserId,
           isPending: false,
           role: roleAndOrg.role,
           orgId: roleAndOrg.orgId,
+          defaultLocationId,
         };
       }
     }
@@ -128,6 +152,11 @@ export function buildSessionUser(
     isPending: status.isPending,
     role: status.role ?? (status.isOwner ? "SUPER_ADMIN" : "CASHIER"),
     orgId: status.orgId ?? null,
+    // requireOrgContext falls back to this for POS location resolution when
+    // there is no X-Location-Id header and no open till shift. It was never
+    // carried onto the session user before, so that fallback was always
+    // undefined even when an admin had set users.default_location_id.
+    defaultLocationId: status.defaultLocationId ?? null,
     expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
   };
 }

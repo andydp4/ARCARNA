@@ -13,18 +13,16 @@
 import { db } from "./db";
 import { withRetries } from "./lib/dbUtils";
 import { wakeWorkers } from "./workers/wakeSignal";
-import { 
-  eventOutbox, 
-  jobQueue, 
+import {
+  eventOutbox,
+  jobQueue,
   processedEvents,
   workerRunLogs,
   deadLetters,
-  EventType, 
-  EventEnvelope, 
-  REQUIRED_WORKERS, 
-  WorkerName 
+  EventType,
+  REQUIRED_WORKERS,
 } from "../shared/schema";
-import { eq, and, lte, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Generate a unique event ID using UUID v4
@@ -108,21 +106,6 @@ export async function publishEventTx<TPayload>(
   },
 ): Promise<string> {
   return publishEvent(eventType, correlationId, payload, options, tx);
-}
-
-/**
- * Helper to create a transactional event publisher bound to a transaction
- */
-export function createTransactionalPublisher(tx: typeof db) {
-  return async <TPayload>(
-    eventType: EventType,
-    correlationId: string,
-    payload: TPayload,
-    options?: {
-      actor?: { type: 'user' | 'system'; id: string };
-      source?: string;
-    }
-  ) => publishEvent(eventType, correlationId, payload, options, tx);
 }
 
 /**
@@ -729,37 +712,4 @@ export async function runReconciliation(): Promise<{
   }
 
   return { stuckEvents, requeuedJobs };
-}
-
-// Reconciliation interval handle
-let reconciliationInterval: NodeJS.Timeout | null = null;
-
-/**
- * Start the reconciliation job on a schedule
- */
-export function startReconciliationJob(intervalMs: number = 5 * 60 * 1000): void {
-  if (reconciliationInterval) {
-    return;
-  }
-
-  console.log(`[Reconciliation] Starting reconciliation job (every ${intervalMs / 1000}s)`);
-  
-  // Run immediately on start
-  runReconciliation();
-
-  // Then run on interval
-  reconciliationInterval = setInterval(() => {
-    runReconciliation();
-  }, intervalMs);
-}
-
-/**
- * Stop the reconciliation job
- */
-export function stopReconciliationJob(): void {
-  if (reconciliationInterval) {
-    clearInterval(reconciliationInterval);
-    reconciliationInterval = null;
-    console.log('[Reconciliation] Stopped');
-  }
 }

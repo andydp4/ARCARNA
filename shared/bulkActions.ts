@@ -1,7 +1,7 @@
 import type { Role } from "./schema";
 import { roleRank } from "./rbac";
 
-export type BulkEntity = "customers" | "products" | "orders";
+export type BulkEntity = "customers" | "products";
 
 export type BulkActionId = "delete" | "export" | "tag" | "changeCategory";
 
@@ -24,15 +24,9 @@ const PRODUCT_ACTIONS: BulkActionDef[] = [
   { id: "delete", label: "Delete", minRole: "MANAGER", destructive: true, confirmText: "DELETE" },
 ];
 
-const ORDER_ACTIONS: BulkActionDef[] = [
-  { id: "export", label: "Export CSV", minRole: "CASHIER" },
-  { id: "tag", label: "Set status", minRole: "MANAGER" },
-];
-
 export const BULK_ACTIONS: Record<BulkEntity, BulkActionDef[]> = {
   customers: CUSTOMER_ACTIONS,
   products: PRODUCT_ACTIONS,
-  orders: ORDER_ACTIONS,
 };
 
 export function getBulkActionsForRole(entity: BulkEntity, role: Role): BulkActionDef[] {

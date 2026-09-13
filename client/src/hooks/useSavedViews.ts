@@ -116,10 +116,9 @@ export function useSavedViews(page: SavedViewPage) {
 export function useApplyDefaultView(
   defaultView: SavedViewRow | null,
   onApply: (state: ViewState) => void,
-  skip?: boolean,
 ) {
   useEffect(() => {
-    if (skip || !defaultView) return;
+    if (!defaultView) return;
     const params = new URLSearchParams(window.location.search);
     if (params.has("view") || params.has("q")) return;
     onApply({

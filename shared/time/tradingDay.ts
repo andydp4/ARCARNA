@@ -81,18 +81,39 @@ export function localCalendarDate(instant: Date, timeZone: string): string {
 }
 
 /**
- * The instant a given local hour falls on for a given date.
+ * The instant a given local hour and minute falls on for a given date.
  *
  * Resolved by correcting a naive UTC guess with the zone's offset, then
  * re-checking: on the two days a year the clocks move, the offset at the guess
  * is not the offset at the answer, and taking the first result would be an hour
  * out on exactly the day it matters most.
  */
-export function localInstant(date: string, hour: number, timeZone: string): Date {
-  const naive = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00.000Z`);
+function localInstantAtMinute(date: string, hour: number, minute: number, timeZone: string): Date {
+  const naive = new Date(
+    `${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`,
+  );
   const firstGuess = new Date(naive.getTime() - zoneOffsetMs(naive, timeZone));
   const corrected = zoneOffsetMs(firstGuess, timeZone);
   return new Date(naive.getTime() - corrected);
+}
+
+/** The instant a given local hour falls on for a given date. */
+export function localInstant(date: string, hour: number, timeZone: string): Date {
+  return localInstantAtMinute(date, hour, 0, timeZone);
+}
+
+/**
+ * The instant a given local "HH:MM" falls on for a given date — the
+ * minute-granular sibling of `localInstant`, for a promise like "collect at
+ * 14:30" rather than a whole-hour cut. Throws on anything that is not a
+ * well-formed 24-hour time, rather than silently clamping it.
+ */
+export function localInstantAt(date: string, hhmm: string, timeZone: string): Date {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+  if (!match) {
+    throw new RangeError(`localInstantAt: expected a 24-hour "HH:MM" time, got "${hhmm}"`);
+  }
+  return localInstantAtMinute(date, Number(match[1]), Number(match[2]), timeZone);
 }
 
 /** The instant 06:00 local falls on for a given date. */

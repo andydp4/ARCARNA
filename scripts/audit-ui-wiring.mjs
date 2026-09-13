@@ -250,7 +250,7 @@ function isReached(routePath) {
 // Two forms exist, and matching only the first is why /orders/:id/refund was
 // reported as an orphan indefinitely:
 //
-//   <Route path="/orders"><Redirect to="/open-orders" /></Route>
+//   <Route path="/orders"><Redirect to="/operations" /></Route>
 //   <Route path="/orders/:id/refund">
 //     {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
 //

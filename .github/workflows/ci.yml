@@ -234,6 +234,104 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
           SESSION_SECRET: ci-journeys-session-secret-32chars-min
 
+  unit-db:
+    # Vitest suites that need a real database rather than a mock. The `check`
+    # job runs vitest with no DATABASE_URL, and vitest.config.ts excludes every
+    # DB-backed suite in that mode, so until this job existed nothing in CI ran
+    # a transaction against Postgres outside Playwright.
+    #
+    # Why an explicit file list and not `npm test` with DATABASE_URL set: that
+    # exclude array is conditional on DATABASE_URL being unset, so setting it
+    # would silently switch on TWELVE other legacy suites (orderOutboxAtomicity,
+    # devAuthBypass, whatsappStore, purchasingPipeline, creditCommission,
+    # tradingDayShift, dailyClose and the five integrity* files) that have never
+    # run here, against a database seeded for something else. Turning those on
+    # is a separate decision with its own triage; this job runs the Operations
+    # Centre suites and nothing else (brief finding G25).
+    #
+    # The files are written by later packages (N3b, N5a, N7). Absent ones are
+    # skipped with a log line rather than failing, so this job is green from the
+    # day it lands and each package simply starts contributing to it — nobody
+    # has to come back and edit this file when a suite appears.
+    name: DB integration tests (Operations Centre)
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midnight_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Push schema
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Apply SQL migrations (raw)
+        run: |
+          shopt -s nullglob
+          for f in migrations/*.sql; do
+            echo "→ $f"
+            PGPASSWORD=postgres psql -h localhost -U postgres -d midnight_test \
+              -v ON_ERROR_STOP=0 -f "$f"
+          done
+
+      - name: Seed the database
+        # These suites read and write real orders for a real org. Against a
+        # schema-only database they would fail at setup, the same way the a11y
+        # and journeys jobs did before they were seeded.
+        run: npm run seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+
+      - name: Vitest (explicit DB-suite file list)
+        run: |
+          set -euo pipefail
+          present=()
+          for f in \
+            server/__tests__/orderClaimRace.test.ts \
+            server/__tests__/orderTransitionAtomicity.test.ts \
+            server/__tests__/opsBoardQuery.test.ts \
+            server/__tests__/opsAlertSweep.test.ts \
+            server/__tests__/orderTimingReport.test.ts
+          do
+            if [ -f "$f" ]; then
+              present+=("$f")
+            else
+              echo "· $f not present yet (its package has not landed) — skipping"
+            fi
+          done
+          if [ ${#present[@]} -eq 0 ]; then
+            echo "No Operations Centre DB suites present yet; nothing to run."
+            exit 0
+          fi
+          echo "Running ${#present[@]} DB suite(s):"
+          printf '  %s\n' "${present[@]}"
+          npx vitest run "${present[@]}"
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/midnight_test
+          SESSION_SECRET: ci-unit-db-session-secret-32chars-min
+
   migration-sanity:
     name: Migration sanity (fresh DB)
     runs-on: ubuntu-latest
