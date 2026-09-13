@@ -55,8 +55,15 @@ function whenOf(iso: string | null): string {
 }
 
 export function RecentOrders() {
+  // Same interval as the orders list (pages/orders.tsx). Without it, this
+  // widget's copy of /api/orders never refreshes on its own — React Query is
+  // configured with staleTime: Infinity and no refetch-on-focus app-wide — so
+  // an edit made anywhere else (a different tab, a different till) stayed
+  // invisible here until the page was reloaded, even though the edit itself
+  // had already saved correctly.
   const { data: orders = [], isLoading } = useQuery<OrderRow[]>({
     queryKey: ["/api/orders"],
+    refetchInterval: 10000,
   });
 
   // /api/orders returns oldest-first, so the newest are at the end.
@@ -67,7 +74,7 @@ export function RecentOrders() {
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-base font-semibold text-metal-warm-white sm:text-lg">Recent orders</h3>
         <Link
-          href="/open-orders"
+          href="/operations"
           className="text-sm text-truth hover:underline"
           data-testid="link-viewallorders"
         >

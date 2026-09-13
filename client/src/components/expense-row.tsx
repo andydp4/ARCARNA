@@ -39,9 +39,11 @@ export type ExpenseRowProps = {
   expense: OverheadExpense;
   onEdit: (expense: OverheadExpense) => void;
   onDelete: (id: string) => void;
+  /** Whether the current user may edit/delete expenses (SUPER_ADMIN/ADMIN/MANAGER). Defaults to true for callers that don't pass it. */
+  canMutate?: boolean;
 };
 
-function ExpenseRowInner({ expense, onEdit, onDelete }: ExpenseRowProps) {
+function ExpenseRowInner({ expense, onEdit, onDelete, canMutate = true }: ExpenseRowProps) {
   return (
     <TableRow>
       <TableCell>
@@ -72,6 +74,7 @@ function ExpenseRowInner({ expense, onEdit, onDelete }: ExpenseRowProps) {
         </span>
       </TableCell>
       <TableCell>
+        {canMutate && (
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -90,6 +93,7 @@ function ExpenseRowInner({ expense, onEdit, onDelete }: ExpenseRowProps) {
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -100,5 +104,6 @@ export const ExpenseRow = memo(
   (prev, next) =>
     prev.expense === next.expense &&
     prev.onEdit === next.onEdit &&
-    prev.onDelete === next.onDelete
+    prev.onDelete === next.onDelete &&
+    prev.canMutate === next.canMutate
 );

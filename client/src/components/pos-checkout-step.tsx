@@ -13,7 +13,24 @@
  * rarer controls (split tender, expenses, gift card) keep their selects; they
  * sit in normal page flow where a select behaves.
  */
-import { ArrowLeft, CreditCard, DollarSign, Mail, Plus, Receipt, ShoppingBag, Smartphone, Ticket, Trash2, Truck, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock3,
+  CreditCard,
+  DollarSign,
+  Mail,
+  MessageCircle,
+  Phone,
+  Plus,
+  Receipt,
+  ShoppingBag,
+  Smartphone,
+  Store,
+  Ticket,
+  Trash2,
+  Truck,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -30,9 +47,25 @@ import {
   orderDateWindow,
 } from "@shared/orders/orderDate";
 import { cn } from "@/lib/utils";
+import type { PosChannel } from "@/components/pos-types";
+import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 
 export type TenderLeg = { method: string; amount: string };
 export type OrderExpense = { category: string; description: string; amount: number };
+
+/** The till only ever offers these three — `web`/`api` are website/API origins. */
+const CHANNEL_OPTIONS: { value: Extract<PosChannel, "pos" | "phone" | "whatsapp">; label: string; testId: string; Icon: typeof Store }[] = [
+  { value: "pos", label: "Walk-in", testId: "chip-channel-walkin", Icon: Store },
+  { value: "phone", label: "Phone", testId: "chip-channel-phone", Icon: Phone },
+  { value: "whatsapp", label: "WhatsApp", testId: "chip-channel-whatsapp", Icon: MessageCircle },
+];
+
+/** Quick-pick promise lengths, minutes from now (brief, "Form embedding"). */
+const DUE_CHIP_MINUTES = [5, 10, 15, 30, 45, 60] as const;
+
+/** Radix `Select` cannot hold an item with an empty string value — this is
+ *  the "let the default-owner rule decide" option, mapped to/from `""`. */
+const AUTO_ASSIGNEE_VALUE = "__auto__";
 
 export const PAYMENT_OPTIONS = [
   { value: "cash", label: "Cash", Icon: DollarSign },
@@ -67,6 +100,26 @@ export type PosCheckoutStepProps = {
 
   giftCardPayment: GiftCardPaymentState | null;
   setGiftCardPayment: (v: GiftCardPaymentState | null) => void;
+
+  /** How this order reached the till (brief, "Form embedding"). */
+  channel: PosChannel;
+  setChannel: (v: PosChannel) => void;
+
+  /** The promise made at the till — at most one of these is set at a time;
+   *  neither means "no time given" (brief, "Due time"). */
+  dueMinutes: number | null;
+  dueTime: string;
+  onSelectDueMinutes: (minutes: number) => void;
+  onSelectDueTime: (time: string) => void;
+  onClearDue: () => void;
+  /** A pre-order dated ahead needs a due time before payment (brief, "Pre-orders"). */
+  duePreorderRequired: boolean;
+
+  /** Who is to deal with the order — "" defers to the default-owner rule. */
+  assigneeUserId: string;
+  setAssigneeUserId: (v: string) => void;
+  staff: OpsBoardStaffRow[];
+  currentUserId: string | null;
 
   expenses: OrderExpense[];
   expenseCategory: string;
@@ -308,6 +361,109 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       : `Today. Up to ${BACKDATE_LIMIT_DAYS} days back for a missed day, or ${PREORDER_LIMIT_DAYS} days ahead for a pre-order.`}
               </p>
             </div>
+          </section>
+
+          <section>
+            <span className="mb-2 block text-sm font-medium text-metal-warm-white" id="channel-label">
+              How did this order come in?
+            </span>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="channel-label">
+              {CHANNEL_OPTIONS.map(({ value, label, testId, Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={p.channel === value}
+                  onClick={() => p.setChannel(value)}
+                  className="pos-pay-option flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-metal-titanium"
+                  data-testid={testId}
+                >
+                  <Icon className="h-4 w-4" aria-hidden />
+                  <span className="leading-tight">{label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-metal-warm-white" id="due-label">
+                <Clock3 className="h-4 w-4" aria-hidden />
+                When is this due?
+              </span>
+              {(p.dueMinutes != null || p.dueTime) && (
+                <button
+                  type="button"
+                  className="text-xs text-metal-muted underline underline-offset-2"
+                  onClick={p.onClearDue}
+                  data-testid="button-clear-due"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="due-label">
+              {DUE_CHIP_MINUTES.map((minutes) => (
+                <button
+                  key={minutes}
+                  type="button"
+                  role="radio"
+                  aria-checked={p.dueMinutes === minutes && !p.dueTime}
+                  onClick={() => p.onSelectDueMinutes(minutes)}
+                  className={cn(
+                    "min-h-[44px] rounded-full border px-3 text-sm font-medium transition-colors",
+                    p.dueMinutes === minutes && !p.dueTime
+                      ? "border-truth bg-truth text-truth-foreground"
+                      : "border-metal-edge text-metal-warm-white hover:border-metal-titanium",
+                  )}
+                  data-testid={`chip-due-${minutes}`}
+                >
+                  +{minutes}m
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <label htmlFor="due-time" className="shrink-0 text-xs text-metal-muted">
+                or a time
+              </label>
+              <Input
+                id="due-time"
+                type="time"
+                value={p.dueTime}
+                onChange={(e) => p.onSelectDueTime(e.target.value)}
+                className="min-h-[44px] w-32"
+                data-testid="input-due-time"
+              />
+            </div>
+            {p.duePreorderRequired && p.dueMinutes == null && !p.dueTime && (
+              <p className="mt-2 text-xs font-medium text-warning" data-testid="text-due-required-hint">
+                Pre-orders need a due time before payment.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <label htmlFor="select-assignee" className="mb-2 block text-sm font-medium text-metal-warm-white">
+              Looked after by
+            </label>
+            <Select
+              value={p.assigneeUserId || AUTO_ASSIGNEE_VALUE}
+              onValueChange={(v) => p.setAssigneeUserId(v === AUTO_ASSIGNEE_VALUE ? "" : v)}
+            >
+              <SelectTrigger id="select-assignee" className="min-h-[44px]" data-testid="select-assignee">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO_ASSIGNEE_VALUE}>Auto-assign (recommended)</SelectItem>
+                {p.staff.map((member) => (
+                  <SelectItem key={member.userId} value={member.userId} data-testid={`assignee-option-${member.userId}`}>
+                    {member.name}
+                    {member.userId === p.currentUserId ? " (you)" : ""}
+                    {!member.present ? " · away" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </section>
 
           <details className="lm-card-muted rounded-lg border border-metal-edge" open={p.expenses.length > 0}>

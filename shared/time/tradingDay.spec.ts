@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   currentTradingDay,
   lastClosedTradingDay,
+  localInstant,
+  localInstantAt,
   shiftIsoDate,
   tradingDayBounds,
   tradingDayFor,
@@ -122,5 +124,37 @@ describe("what the daily close totals", () => {
 
   it("reports the day in progress right now", () => {
     expect(currentTradingDay(LONDON, new Date("2026-01-12T23:00:00Z"))).toBe("2026-01-12");
+  });
+});
+
+describe("localInstant — the whole-hour cut", () => {
+  it("resolves 06:00 London in winter (GMT, UTC+0) to 06:00 UTC", () => {
+    expect(localInstant("2026-01-12", 6, LONDON).toISOString()).toBe("2026-01-12T06:00:00.000Z");
+  });
+
+  it("resolves 06:00 London in summer (BST, UTC+1) to 05:00 UTC", () => {
+    expect(localInstant("2026-07-12", 6, LONDON).toISOString()).toBe("2026-07-12T05:00:00.000Z");
+  });
+});
+
+describe("localInstantAt — a minute-granular promise like a due time", () => {
+  it("resolves a winter time to the expected UTC instant", () => {
+    expect(localInstantAt("2026-01-12", "14:30", LONDON).toISOString()).toBe("2026-01-12T14:30:00.000Z");
+  });
+
+  it("resolves a summer time with the BST offset applied", () => {
+    expect(localInstantAt("2026-07-12", "14:30", LONDON).toISOString()).toBe("2026-07-12T13:30:00.000Z");
+  });
+
+  it("agrees with localInstant at the top of the hour", () => {
+    expect(localInstantAt("2026-03-01", "09:00", LONDON).getTime()).toBe(
+      localInstant("2026-03-01", 9, LONDON).getTime(),
+    );
+  });
+
+  it("rejects anything that is not a 24-hour HH:MM string", () => {
+    expect(() => localInstantAt("2026-01-12", "2:30 PM", LONDON)).toThrow(RangeError);
+    expect(() => localInstantAt("2026-01-12", "24:00", LONDON)).toThrow(RangeError);
+    expect(() => localInstantAt("2026-01-12", "09:60", LONDON)).toThrow(RangeError);
   });
 });

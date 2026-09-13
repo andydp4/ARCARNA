@@ -46,7 +46,7 @@ import { SpatialInsightsShell } from "@/components/spatial/SpatialInsightsShell"
 import { useFlag } from "@/hooks/useFlag";
 import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { formatPaymentLabel } from "@/components/orders-row";
+import { formatPaymentLabel } from "@/lib/paymentLabel";
 
 interface ReportData {
   revenue: {

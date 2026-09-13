@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   computeRequiredQty,
   groupPurchaseLinesBySupplier,
+  roundBuyQtyToPack,
   type PurchaseLineRequest,
 } from "../services/replenishmentMath";
+import { isStorableQuantity } from "@shared/quantity";
 
 const SUPPLIER_A = "11111111-1111-1111-1111-111111111111";
 const SUPPLIER_B = "22222222-2222-2222-2222-222222222222";
@@ -104,6 +106,61 @@ describe("computeRequiredQty", () => {
     });
 
     expect(result.requiredQty).toBe(60);
+  });
+
+  it("rounds off float64 subtraction noise instead of returning 1.3499999999999996", () => {
+    // Reproduces the exact ARC-002 bug: stock 0.65, target coverage netting to
+    // 5, 3 units already on order. Plain float subtraction (5 - 0.65 - 3)
+    // yields 1.3499999999999996 in JS, which shared/quantity.ts's
+    // positiveQuantity schema rejects ("Quantity supports up to 3 decimal
+    // places") the moment a purchase draft is raised from the recommendation.
+    expect(5 - 0.65 - 3).not.toBe(1.35); // sanity check the raw float bug still reproduces
+    const result = computeRequiredQty({
+      stock: 0.65,
+      velocityPerDay: 1,
+      targetCoverageDays: 5,
+      onOrderQty: 3,
+    });
+
+    expect(result.targetStock).toBe(5);
+    expect(result.requiredQty).toBe(1.35);
+    expect(isStorableQuantity(result.requiredQty)).toBe(true);
+    expect(isStorableQuantity(result.grossRequiredQty)).toBe(true);
+  });
+});
+
+describe("roundBuyQtyToPack", () => {
+  it("rounds a raw buy quantity up to a whole unit before pack rounding", () => {
+    // The ARC-002 scenario end-to-end: computeRequiredQty's noisy output feeds
+    // straight into the pack-rounding step that used to hand the API a
+    // 3-decimal-place-violating quantity like 1.3499999999999996.
+    const { requiredQty } = computeRequiredQty({
+      stock: 0.65,
+      velocityPerDay: 1,
+      targetCoverageDays: 5,
+      onOrderQty: 3,
+    });
+
+    const roundedBuyQty = roundBuyQtyToPack(requiredQty, 1);
+    expect(roundedBuyQty).toBe(2);
+    expect(isStorableQuantity(roundedBuyQty)).toBe(true);
+  });
+
+  it("returns zero for a non-positive quantity", () => {
+    expect(roundBuyQtyToPack(0, 1)).toBe(0);
+    expect(roundBuyQtyToPack(-5, 1)).toBe(0);
+  });
+
+  it("rounds a whole-unit quantity up to the next full pack", () => {
+    expect(roundBuyQtyToPack(7, 6)).toBe(12);
+    expect(roundBuyQtyToPack(6, 6)).toBe(6);
+  });
+
+  it("previously returned the raw float unchanged when packSize <= 1 — now it is whole and storable", () => {
+    const noisy = 1.3499999999999996;
+    const rounded = roundBuyQtyToPack(noisy, 1);
+    expect(rounded).toBe(2);
+    expect(isStorableQuantity(rounded)).toBe(true);
   });
 });
 

@@ -31,6 +31,8 @@ const redeemPreviewSchema = z.object({
   points: z.coerce.number().int().positive(),
 });
 
+const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
 export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/loyalty/settings", ...scoped, async (req: any, res) => {
     try {
@@ -87,7 +89,7 @@ export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.post("/api/loyalty-tiers", ...scoped, async (req: any, res) => {
+  app.post("/api/loyalty-tiers", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const validatedData = insertLoyaltyTierSchema.parse({ ...req.body, orgId: ctx.orgId });
@@ -103,7 +105,7 @@ export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.patch("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
+  app.patch("/api/loyalty-tiers/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;
@@ -120,7 +122,7 @@ export function registerLoyaltyRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.delete("/api/loyalty-tiers/:id", ...scoped, async (req: any, res) => {
+  app.delete("/api/loyalty-tiers/:id", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { id } = req.params;

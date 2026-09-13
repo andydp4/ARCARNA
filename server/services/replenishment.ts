@@ -21,6 +21,7 @@ import {
 import {
   computeRequiredQty,
   groupPurchaseLinesBySupplier,
+  roundBuyQtyToPack,
   type PurchaseLineRequest,
 } from "./replenishmentMath";
 
@@ -78,11 +79,6 @@ export {
   groupPurchaseLinesBySupplier,
   type PurchaseLineRequest,
 } from "./replenishmentMath";
-
-function roundUpToPack(qty: number, packSize: number) {
-  if (packSize <= 1) return qty;
-  return Math.ceil(qty / packSize) * packSize;
-}
 
 function selectSupplier(
   mappings: {
@@ -253,7 +249,7 @@ export async function getReplenishmentRecommendations(
     const supplierMappings = suppliersByProduct.get(row.productId) ?? [];
     const selectedSupplier = selectSupplier(supplierMappings);
     const packSize = selectedSupplier?.packSize ?? 1;
-    let roundedBuyQty = buyQty > 0 ? roundUpToPack(buyQty, packSize) : 0;
+    let roundedBuyQty = roundBuyQtyToPack(buyQty, packSize);
 
     const packNotes: string[] = [];
     const warnings: string[] = [];

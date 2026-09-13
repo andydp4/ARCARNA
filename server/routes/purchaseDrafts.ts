@@ -41,6 +41,20 @@ const itemSchema = z.object({
   supplierSku: z.string().optional(),
 });
 
+/**
+ * The PATCH route previously passed req.body straight into the update with no
+ * validation — 0, negative numbers and strings like "5" were written as-is,
+ * and a genuinely invalid value like "abc" hit Postgres directly as a raw
+ * 500. Reuses the same positiveQuantity scale as the POST-items route above.
+ */
+const itemPatchSchema = z
+  .object({
+    quantity: positiveQuantity.optional(),
+    estimatedCost: z.number().min(0).nullable().optional(),
+    supplierSku: z.string().nullable().optional(),
+  })
+  .strict();
+
 const draftPatchSchema = z
   .object({
     supplierId: z.string().uuid().optional(),
@@ -125,8 +139,15 @@ export function registerPurchaseDraftRoutes(app: Express) {
 
   app.patch("/api/purchase-drafts/:id/items/:itemId", ...scoped, mutateRoles, async (req: any, res) => {
     try {
+      const parsed = itemPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          code: "VALIDATION_ERROR",
+          message: parsed.error.errors[0]?.message ?? "Invalid body",
+        });
+      }
       const ctx = req.orgContext as { orgId: string };
-      const item = await updatePurchaseDraftItem(ctx.orgId, req.params.id, req.params.itemId, req.body);
+      const item = await updatePurchaseDraftItem(ctx.orgId, req.params.id, req.params.itemId, parsed.data);
       res.json(item);
     } catch (e) {
       sendError(res, e);

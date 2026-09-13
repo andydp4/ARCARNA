@@ -3,7 +3,7 @@ import { getBulkActionsForRole, isBulkActionAllowed } from "./bulkActions";
 
 describe("bulkActions role gating", () => {
   it("does not expose staff bulk actions to website customers", () => {
-    expect(getBulkActionsForRole("orders", "CUSTOMER")).toEqual([]);
+    expect(getBulkActionsForRole("customers", "CUSTOMER")).toEqual([]);
     expect(isBulkActionAllowed("products", "export", "CUSTOMER")).toBe(false);
   });
 
@@ -17,10 +17,5 @@ describe("bulkActions role gating", () => {
   it("allows managers destructive actions", () => {
     expect(isBulkActionAllowed("customers", "delete", "MANAGER")).toBe(true);
     expect(isBulkActionAllowed("products", "delete", "MANAGER")).toBe(true);
-  });
-
-  it("orders have no delete action", () => {
-    expect(isBulkActionAllowed("orders", "delete", "ADMIN")).toBe(false);
-    expect(isBulkActionAllowed("orders", "export", "CASHIER")).toBe(true);
   });
 });

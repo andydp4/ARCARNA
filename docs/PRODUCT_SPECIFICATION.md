@@ -82,11 +82,13 @@ tax      = total − subtotal               e.g. £12.00 − £10.00 = £2.00
 
 This is applied consistently by the invoice worker and the invoice PDF generator. If an order's event payload already carries a tax breakdown it is used directly; otherwise the split above is computed from the org's tax rate.
 
-### 3.3 Monitoring & updating orders (Open Orders)
+### 3.3 Monitoring & updating orders (the Operations Centre board)
 
-Orders already created are listed with status counts, a status filter and search. Statuses include pending, on hold, awaiting customer, urgent and completed. Opening an order shows its detail: customer, status, total and line items.
+There is no separate Open Orders list; monitoring and updating a live order happens on the **Operations Centre** board at `/operations`, the same screen the till (§3.2) is embedded beside. Orders already created appear as cards in a Collection lane and a Delivery lane, coloured by state (on time, due soon, late, delayed, held, customer waiting or completed) with a running clock, rather than as rows in a filtered list. Completing an order — Handed over or Delivered — is one tap on its card. Stage changes (claimed, ready, customer arrived, out for delivery, held, completed) are recorded as timestamped events, so "how long has this waited, and on what" is answered from history rather than only from the current status. Opening a card's details shows the same information a list row used to: customer, status, total, line items, plus that event timeline and who loaded, is dealing with, and completed the order.
 
-**Authorisation:** viewing is available to any org member. Changing an order's **status** is available to cashiers and managers (`PATCH`), because a cashier legitimately advances an order through its lifecycle. **Editing** an order (`PUT`) and **deleting** an order (`DELETE`) require a manager role or above — deletion cascades through refunds, invoices, loyalty ledger and gift-card movements, so it is deliberately restricted.
+Each cashier sees the whole board but is only alerted personally about orders assigned to them or to their station: an order can be claimed, passed to a named colleague, or picked up automatically by whoever is present and least loaded on the right station, and a pulsing, chiming alert rail tells the right person (not the whole shop) when an order needs attention.
+
+**Authorisation:** viewing the board is available to any org member. Advancing an order's stage (claim, ready, hand over, hold, etc.) is available to cashiers and managers, because a cashier legitimately advances an order through its lifecycle — the same role split the old status `PATCH` used. **Editing** an order (`PUT`) and **deleting** an order (`DELETE`) still require a manager role or above — deletion cascades through refunds, invoices, loyalty ledger and gift-card movements, so it is deliberately restricted.
 
 ### 3.4 Refunds
 

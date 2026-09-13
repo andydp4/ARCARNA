@@ -23,7 +23,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatPaymentLabel } from "@/components/orders-row";
+import { formatPaymentLabel } from "@/lib/paymentLabel";
 
 export interface InvoiceListItem {
   id: string;

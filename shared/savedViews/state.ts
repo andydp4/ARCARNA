@@ -1,4 +1,4 @@
-export type SavedViewPage = "customers" | "products" | "orders";
+export type SavedViewPage = "customers" | "products";
 
 export type ViewSortState = {
   column?: string;
@@ -18,22 +18,6 @@ export type SavedViewRow = {
   sort: ViewSortState;
   isDefault: boolean;
 };
-
-/** Merge saved view filters into current page state shape. */
-export function applyViewState<T extends Record<string, unknown>>(
-  view: ViewState,
-  defaults: T,
-  keyMap?: Record<string, keyof T>,
-): T {
-  const next = { ...defaults };
-  for (const [key, value] of Object.entries(view.filters)) {
-    const target = keyMap?.[key] ?? (key as keyof T);
-    if (target in next) {
-      (next as Record<string, unknown>)[target as string] = value;
-    }
-  }
-  return next;
-}
 
 export function captureViewState(
   filters: Record<string, unknown>,

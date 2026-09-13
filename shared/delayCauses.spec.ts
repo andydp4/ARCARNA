@@ -26,7 +26,7 @@ describe("DELAY_CAUSES", () => {
 
   it.each([
     ["server/routes/reportCapture.ts", "the Zod enum that validates delayCause"],
-    ["client/src/components/reports/OrderOpsDialog.tsx", "the operator's dropdown"],
+    ["client/src/components/operations/OpsDelayInline.tsx", "the operator's dropdown"],
   ])("%s imports the shared list rather than declaring its own (%s)", (file) => {
     const src = readFileSync(file, "utf8");
     expect(

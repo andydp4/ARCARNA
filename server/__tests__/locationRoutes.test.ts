@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
  * `GET /api/locations` is the list the POS "Open shift" modal reads before a
- * shift can be opened (client/src/pages/pos/shift-open.tsx). It used to be
+ * shift can be opened (client/src/pages/pos.tsx). It used to be
  * gated to SUPER_ADMIN/ADMIN, which left every MANAGER/CASHIER staring at an
  * empty location picker and locked out of the till. It is now readable by all
  * org roles — but only admins may see the per-location revenue stats.

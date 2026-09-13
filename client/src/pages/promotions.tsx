@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { insertPromotionSchema, type Promotion } from "@shared/schema";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { useAuth } from "@/hooks/useAuth";
 
 // Extend the shared schema with form-specific validation
 const promoFormSchema = insertPromotionSchema.extend({
@@ -40,6 +41,8 @@ type PromoFormValues = z.infer<typeof promoFormSchema>;
 
 export default function PromotionsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canMutate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
   const [editingPromo, setEditingPromo] = useState<any>(null);
   const [showPromoDialog, setShowPromoDialog] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "expired">("all");
@@ -212,10 +215,12 @@ export default function PromotionsPage() {
           question="What's on offer, and is it working?"
           explanation="Create campaigns and measure their lift."
         />
-        <Button onClick={() => openPromoDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-promotion">
-          <Plus className="mr-2 h-4 w-4" />
-          New campaign
-        </Button>
+        {canMutate && (
+          <Button onClick={() => openPromoDialog()} className="min-h-[44px] w-full sm:w-auto" data-testid="button-add-promotion">
+            <Plus className="mr-2 h-4 w-4" />
+            New campaign
+          </Button>
+        )}
       </div>
 
       {/* Stats Overview */}
@@ -313,6 +318,8 @@ export default function PromotionsPage() {
                           <TrendingUp className="h-4 w-4" />
                         </Button>
                       </Link>
+                      {canMutate && (
+                      <>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -331,6 +338,8 @@ export default function PromotionsPage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                      </>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -380,20 +389,20 @@ export default function PromotionsPage() {
                 icon={Gift}
                 title="No campaigns yet"
                 body="Create a promotional campaign to offer discounts, BOGO deals, or bonus loyalty points."
-                cta={{
+                cta={canMutate ? {
                   label: "New campaign",
                   onClick: () => openPromoDialog(),
-                }}
+                } : undefined}
               />
             ) : (
               <EmptyState
                 icon={Tag}
                 title="No campaigns in this view"
                 body="Try another filter tab or create a new campaign."
-                cta={{
+                cta={canMutate ? {
                   label: "New campaign",
                   onClick: () => openPromoDialog(),
-                }}
+                } : undefined}
               />
             )
           )}

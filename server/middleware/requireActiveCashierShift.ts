@@ -7,7 +7,8 @@ import {
   touchCashierShiftActivity,
 } from "../services/cashierShiftEngine";
 import { validateCashierShiftReplay } from "../services/cashierShiftReplayToken";
-import { resolveShiftForToday } from "../services/tradingDayShift";
+import { orgTimeZone, resolveShiftForToday } from "../services/tradingDayShift";
+import { tradingDayBounds, currentTradingDay } from "../../shared/time/tradingDay";
 
 export type ActiveCashierShiftContext = {
   /**
@@ -33,7 +34,44 @@ export type ActiveCashierShiftContext = {
 declare module "express-serve-static-core" {
   interface Request {
     cashierShift?: ActiveCashierShiftContext;
+    /**
+     * The instant an offline order was actually queued, honoured WITHOUT a
+     * cashier-shift replay token (finding G21) — bounded to today's trading
+     * day so a tablet that was offline for days cannot silently backdate a
+     * sale into a day whose commission and reports have already closed; that
+     * is what the explicit backdating flow (`orderDate`) is for. See
+     * `resolveOfflineQueuedAt` below.
+     */
+    offlineQueuedAt?: Date;
   }
+}
+
+/**
+ * Bounds `_offlineQueuedAt` to something safe to trust as `entered_at`.
+ *
+ * Exported for `offlineQueuedAt.test.ts`. Three ways this can refuse a value,
+ * each guarding a different lie a tablet's clock or a stale queue could tell:
+ *
+ *   - not a parseable instant at all — a malformed or missing field;
+ *   - in the future — a tablet with a fast clock replaying "later" than now;
+ *   - before today's trading day started — a device offline long enough that
+ *     honouring it would move the sale onto a day whose shift, commission and
+ *     reports may already be closed. That case is what backdating
+ *     (`orderDate`) exists for, and it goes through its own window and its
+ *     own checks (`shared/orders/orderDate.ts`) rather than this silent path.
+ */
+export function resolveOfflineQueuedAt(
+  rawValue: unknown,
+  timeZone: string,
+  now: Date = new Date(),
+): Date | undefined {
+  if (typeof rawValue !== "string" || !rawValue) return undefined;
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  if (parsed.getTime() > now.getTime()) return undefined;
+  const bounds = tradingDayBounds(currentTradingDay(timeZone, now), timeZone);
+  if (parsed.getTime() < bounds.start.getTime()) return undefined;
+  return parsed;
 }
 
 /**
@@ -54,6 +92,14 @@ function cashierShiftMiddleware(enforce: boolean): RequestHandler {
     try {
       const ctx = (req as { orgContext?: { orgId: string | null } }).orgContext;
       if (!ctx?.orgId) return next();
+
+      // Resolved before the cashier-commission early return below: a
+      // replayed offline order's received time matters to the Operations
+      // Centre board whether or not the org tracks cashier commission at all.
+      if (req.body?._offlineQueuedAt !== undefined) {
+        const timeZone = await orgTimeZone(ctx.orgId);
+        req.offlineQueuedAt = resolveOfflineQueuedAt(req.body._offlineQueuedAt, timeZone);
+      }
 
       const [org] = await db
         .select({

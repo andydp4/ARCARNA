@@ -148,7 +148,7 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 | L2 | **Built** | Shift = trading day, 06:00–06:00, opened on first sale; migration 058. Open-shift modal removed |
 | L3 | **Built** | The 06:00 daily close, on the existing worker loop; migration 059. Exactly-once per org per day |
 | L4 | **Built** | Z-report-so-far button; running shifts show pending, never a zero variance |
-| L5 | **Built†** | Open Orders counter view — built to a *proposed* spec, not an agreed one; see the brief |
+| L5 | **Built†** | Open Orders counter view — built to a *proposed* spec, not an agreed one; **superseded 2026-09-13** by the Operations Centre board (Phase N; Open Orders itself removed in N4b) — see the L5 section of the brief |
 
 ---
 
@@ -178,6 +178,29 @@ Brief: [`PHASE_L_SHIFTS_AND_DAILY_CLOSE.md`](./PHASE_L_SHIFTS_AND_DAILY_CLOSE.md
 | 11 | Yes | Setup wizard LM (#32) + auth (#31) — [`WAVE11_LAUNCH.md`](./WAVE11_LAUNCH.md) |
 | 12 | Yes | List-page E2 (#35), Neon retries (#33–#34), auth/deploy (#36–#39, #37) — [`WAVE12_LAUNCH.md`](./WAVE12_LAUNCH.md) |
 | 13 | **Queued** | Import empty states, lint:strict, O2/O3 — [`WAVE13_NEXT.md`](./WAVE13_NEXT.md) |
+
+---
+
+## Phase N — The Operations Centre
+
+Spec: [`PHASE_N_OPERATIONS_CENTRE.md`](./PHASE_N_OPERATIONS_CENTRE.md) (revision 3, owner's answers applied 2026-09-12). Order: N0 → { N1 ‖ N2 ‖ N8 } → N3a → N3b → { N4a ‖ N7 } → N4b → N6 → { N5a ‖ N7 } → N5b → N9a → N9b. All fourteen packages **Built** on `main` (PRs #185–#198, 2026-09-12 → 2026-09-13).
+
+| ID | Status | Wave / notes |
+|----|--------|----------------|
+| N0 | **Built** | Contracts & tokens: `deriveCardState`, `assertTransition`, contrast spec, `--ops-*` tokens, `size="touch"` (PR #185) |
+| N1 | **Built** | Board v0 over existing fields at `/operations` — floor-usable the day it merged; old links redirect (PR #188) |
+| N2 | **Built** | Migration 065: stage columns, `order_events`, `ops_staff`, ops settings; `queue_position` dropped (PR #186) |
+| N3a | **Built** | `GET /api/orders/board` + SSE stream from an in-process bus (owner: no database polling), website fulfilment fix, offline received time (PR #189) |
+| N3b | **Built** | `POST /api/orders/:id/transition`, `completeOrderTx` extraction (fixed the completion race), stations, presence (PR #190) |
+| N4a | **Built** | Board v1: stages, assignment, done tray, undo, rating chips, focus rules (PR #193) |
+| N4b | **Built** | Open Orders and its dialogs removed; `/open-orders` and `/orders` redirect to `/operations` (PR #194) |
+| N5a | **Built** | Migration 066: `ops_alerts`, sweep, precise worker wake (PR #196) |
+| N5b | **Built** | Alert rail, pulse, chime, announcer — live `opsBus` push for every alert-creating path wired in-PR (commits `59b1cc9`, `05bbf92`) after adversarial review found the ≤25s DoD wasn't met by the reconciliation poll alone (PR #197) |
+| N6 | **Built** | Order form embedded beside the board at `/operations?pane=order`; due / channel / assignee chips; checkout expenses sent as `order_expenses` rows; `/create-order` and `/pos` redirect (PR #195, plus two DoD follow-up fixes: `8dda00e`, `6ba88ca`) |
+| N7 | **Built** | ARC-T2-005 timing, ARC-T1-006 issues, Delay Log on events; ARC-T1-003 retired (PR #191) |
+| N8 | **Built** | Fixtures, fake-time convention, `unit-db` CI job (PR #187) |
+| N9a | **Built** | Dead code found on the way removed, plus two extra correctness fixes to shared test infra: `scripts/seed.ts` made idempotent, `resolveOrgId()` in `tests/journeys/fixtures.ts` stopped resolving via `orgs[0]` (PR #198) |
+| N9b | **Built** | This package — status, backlog, changelog and guides brought up to date with what N0–N9a actually shipped |
 
 ---
 

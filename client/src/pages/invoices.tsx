@@ -348,7 +348,7 @@ export default function Invoices() {
                   icon={FileText}
                   title="No invoices yet"
                   body="Created invoices will appear here after you bill customers from orders or create them manually."
-                  cta={{ label: "View orders", href: "/open-orders" }}
+                  cta={{ label: "View orders", href: "/operations" }}
                   secondary={{ label: "Manage customers", href: "/customers" }}
                 />
               ) : periodInvoices.length === 0 ? (

@@ -26,6 +26,7 @@ import {
   findOpenDraftsForPairs,
   createPurchaseDraftsBatch,
   setPurchaseDraftStatus,
+  updatePurchaseDraftItem,
   onOrderKey,
 } from "../services/purchaseDrafts";
 import { createPurchaseDraftsFromRecommendations } from "../services/replenishment";
@@ -361,6 +362,62 @@ describe.skipIf(!hasDb)("createPurchaseDraftsBatch", () => {
 
   it("rejects an empty batch", async () => {
     await expect(createPurchaseDraftsBatch(orgId, [])).rejects.toThrow(/at least one/i);
+  });
+});
+
+describe.skipIf(!hasDb)("reviewed drafts stay editable (ARC-016)", () => {
+  it("allows reviewed -> draft, unlike every other forward transition", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+
+    await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+    const backToDraft = await setPurchaseDraftStatus(orgId, draftId, "draft");
+    expect(backToDraft!.status).toBe("draft");
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("still allows editing a line's quantity once a draft has been marked reviewed", async () => {
+    // Previously the client blocked this (gated on status === "draft" only)
+    // even though the server-side STATUS_FLOW always permitted it — a
+    // reviewed draft's quantities were stuck read-only with no way back.
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+    await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draftId));
+
+    const updated = await updatePurchaseDraftItem(orgId, draftId, line.id, { quantity: 12 });
+    expect(updated!.quantity).toBe(12);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("still blocks editing a line's quantity once a draft is approved", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+    await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+    await setPurchaseDraftStatus(orgId, draftId, "approved");
+
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draftId));
+
+    await expect(
+      updatePurchaseDraftItem(orgId, draftId, line.id, { quantity: 12 }),
+    ).rejects.toThrow(/cannot modify items/i);
+
+    await cleanupDrafts([draftId]);
   });
 });
 

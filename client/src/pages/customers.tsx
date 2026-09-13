@@ -349,6 +349,7 @@ export default function Customers() {
   )
 
   const { user } = useAuth()
+  const canMutate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
   const bulk = useBulkSelection(filteredCustomers)
   const bulkActions = getBulkActionsForRole('customers', (user?.role ?? 'CASHIER') as Role)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
@@ -421,6 +422,7 @@ export default function Customers() {
                 <FileUp className="h-4 w-4" />
                 Import from Contacts
               </Button>
+              {canMutate && (
               <Dialog open={showAddDialog} onOpenChange={(open) => (open ? setShowAddDialog(true) : closeAddDialog())}>
               <DialogTrigger asChild>
                 <Button className="gap-2 min-h-[44px] w-full sm:w-auto" data-testid="button-add-customer">
@@ -547,6 +549,7 @@ export default function Customers() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+              )}
             </div>
           }
         />
@@ -770,6 +773,7 @@ export default function Customers() {
                             </div>
                           </div>
 
+                          {canMutate && (
                           <div className="flex gap-2 pt-2">
                             <Dialog>
                               <DialogTrigger asChild>
@@ -863,6 +867,7 @@ export default function Customers() {
                               Delete
                             </Button>
                           </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -971,6 +976,7 @@ export default function Customers() {
                           <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>
                           <TableCell><CustomerStoreCredit customerId={customer.id} /></TableCell>
                           <TableCell>
+                            {canMutate && (
                             <div className="flex items-center gap-2">
                               <Dialog>
                                 <DialogTrigger asChild>
@@ -1062,6 +1068,7 @@ export default function Customers() {
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
