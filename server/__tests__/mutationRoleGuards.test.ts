@@ -9,6 +9,16 @@ import { describe, expect, it, vi } from "vitest";
  * "MANAGER"), the same guard already used by purchase-drafts and
  * tick-customers.
  *
+ * Follow-up: POST /api/customers (creating a brand-new customer) also admits
+ * CASHIER now. The Operations Centre's embedded order form lets any till
+ * user add a walk-in customer inline and posts straight to this route with
+ * no client-side role gate, so the original blanket MANAGER+ restriction
+ * left cashiers unable to use a button the POS itself hands them. Editing or
+ * deleting an *existing* customer record is a different, higher-risk
+ * operation and stays MANAGER+ only — PUT/DELETE /api/customers/:id are
+ * still exercised as CASHIER-rejected below, alongside every other
+ * ARC-005-guarded route.
+ *
  * This test registers the real routes (with an empty `scoped` array, since
  * org-scoping isn't what's under test) and exercises the real `requireRole`
  * middleware — the one actually wired into the request chain — directly, so
@@ -24,6 +34,9 @@ import { describe, expect, it, vi } from "vitest";
  */
 vi.mock("../db", () => ({ db: {} }));
 vi.mock("../storage", () => ({ storage: {} }));
+
+const createCustomer = vi.fn().mockResolvedValue({ id: "new-customer-id" });
+vi.mock("../../apps/server/src/engine.wiring", () => ({ engine: { createCustomer } }));
 
 import { registerCustomerRoutes } from "../routes/customers";
 import { registerLoyaltyRoutes } from "../routes/loyalty";
@@ -91,6 +104,16 @@ const GUARDED_MUTATIONS: Array<[RouteMap, string]> = [
   [expenseRoutes, "DELETE /api/overhead-expenses/:id"],
 ];
 
+/**
+ * Same set, minus POST /api/customers: every one of these must still reject
+ * CASHIER outright. POST /api/customers is the sole intentional exception
+ * (see the file banner above) and gets its own admits-CASHIER assertion
+ * below instead of appearing in this list.
+ */
+const CASHIER_REJECTED_MUTATIONS = GUARDED_MUTATIONS.filter(
+  ([, key]) => key !== "POST /api/customers",
+);
+
 describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutations require MANAGER+", () => {
   it.each(GUARDED_MUTATIONS)("%s is registered with a role guard ahead of its handler", (routes, key) => {
     const chain = routes[key];
@@ -98,7 +121,7 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
     expect(chain.length).toBeGreaterThanOrEqual(2);
   });
 
-  it.each(GUARDED_MUTATIONS)("%s rejects a CASHIER with 403 before reaching the handler", async (routes, key) => {
+  it.each(CASHIER_REJECTED_MUTATIONS)("%s rejects a CASHIER with 403 before reaching the handler", async (routes, key) => {
     const [guard] = routes[key];
     const { status, json, next } = await runGuard(guard, "CASHIER");
     expect(status).toHaveBeenCalledWith(403);
@@ -106,6 +129,42 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringMatching(/access denied/i) }),
     );
+  });
+
+  it("POST /api/customers admits a CASHIER through to the handler (creating a new customer is allowed from the till)", async () => {
+    const [guard] = customerRoutes["POST /api/customers"];
+    const { status, next } = await runGuard(guard, "CASHIER");
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/customers strips category from a CASHIER's body — the till can create a customer, not self-assign a loyalty tier", async () => {
+    createCustomer.mockClear();
+    const [, handler] = customerRoutes["POST /api/customers"];
+    const req = {
+      orgContext: { orgId: "org-1", locationId: null, role: "CASHIER" },
+      body: { name: "Self-Escalated VIP", category: "Platinum", loyaltyPoints: 99999 },
+    } as any;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as any;
+    await handler(req, res, vi.fn());
+    expect(createCustomer).toHaveBeenCalledTimes(1);
+    const sentToEngine = createCustomer.mock.calls[0][0];
+    expect(sentToEngine).not.toHaveProperty("category");
+  });
+
+  it("POST /api/customers keeps a MANAGER's category (setting a tier at creation is a manager-level choice)", async () => {
+    createCustomer.mockClear();
+    const [, handler] = customerRoutes["POST /api/customers"];
+    const req = {
+      orgContext: { orgId: "org-1", locationId: null, role: "MANAGER" },
+      body: { name: "VIP Customer", category: "Platinum" },
+    } as any;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as any;
+    await handler(req, res, vi.fn());
+    expect(createCustomer).toHaveBeenCalledTimes(1);
+    expect(createCustomer.mock.calls[0][0]).toMatchObject({ category: "Platinum" });
   });
 
   it.each(GUARDED_MUTATIONS)("%s admits a MANAGER through to the handler", async (routes, key) => {
