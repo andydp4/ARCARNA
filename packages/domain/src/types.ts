@@ -40,7 +40,7 @@ export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];
   subtotal: MoneyGBP; vat: MoneyGBP; total: MoneyGBP;
   paymentMethod: 'cash'|'card'|'transfer'|'tick'|'gift_card'|'split';
-  status: 'pending'|'processing'|'completed'|'cancelled'|'on-hold'|'awaiting-customer'|'urgent';
+  status: 'pending'|'completed'|'on-hold'|'awaiting-customer'|'urgent';
   channel?: OrderChannel;
   createdAt: Date;
 }

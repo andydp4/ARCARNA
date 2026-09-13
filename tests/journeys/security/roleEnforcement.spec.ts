@@ -414,7 +414,7 @@ test.describe("5.1 role enforcement on mutating routes", () => {
   test("GET /api/locations is readable by a CASHIER but carries no revenue stats", async () => {
     test.skip(bypassOn, ROLE_GATE_OFF_REASON);
     // A cashier cannot open a POS shift without picking a location
-    // (client/src/pages/pos/shift-open.tsx), so the list itself is not gated —
+    // (client/src/pages/pos.tsx), so the list itself is not gated —
     // only the admin payload's per-location revenue/order stats are
     // (server/routes/locations.ts:19).
     const cashier = await apiAs("CASHIER", orgAId);

@@ -236,13 +236,6 @@ process.on("unhandledRejection", (reason) => {
     } catch (error) {
       // Ignore shutdown errors
     }
-    // Stop reconciliation job
-    try {
-      const { stopReconciliationJob } = await import('./eventBus');
-      stopReconciliationJob();
-    } catch (error) {
-      // Ignore shutdown errors
-    }
     process.exit(0);
   });
 })();

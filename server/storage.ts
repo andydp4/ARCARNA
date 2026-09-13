@@ -1814,6 +1814,10 @@ export class DatabaseStorage implements IStorage {
         dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
 
         // Determine invoice status
+        // `order.status` is an untyped varchar column, not the ORDER_STATUSES
+        // enum, and no current code path writes 'cancelled' to it — this branch
+        // is input tolerance for a value the schema doesn't rule out, not a
+        // reachable state today.
         let status: 'paid' | 'pending' | 'overdue' | 'cancelled' = 'pending';
         if (order.status === 'cancelled') {
           status = 'cancelled';

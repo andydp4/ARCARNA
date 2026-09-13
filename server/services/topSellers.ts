@@ -7,6 +7,10 @@ import { and, eq, gte, notInArray, sql } from "drizzle-orm";
  * "completed" when it is collected, so counting completed alone would leave
  * today's takings out of the ranking. What is excluded is an order held for
  * review (oversold, may never go out) or one that was undone.
+ *
+ * "cancelled" is input tolerance, not a reachable state today: `orders.status`
+ * is an untyped varchar, not the ORDER_STATUSES enum, and no current code path
+ * writes 'cancelled' to it.
  */
 const NOT_A_SALE = ["on-hold", "cancelled", "refunded", "voided"];
 

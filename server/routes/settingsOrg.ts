@@ -1,19 +1,5 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
-import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
-import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
-import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
-import type { Role } from "@shared/schema";
-import { recordAdminAudit } from "../adminAudit";
-import {
-  insertLoyaltyTierSchema,
-  insertPromotionSchema,
-  insertOrderSchema,
-  insertCustomerSchema,
-  insertProductSchema,
-  insertOverheadExpenseSchema,
-  insertOrderExpenseSchema,
-} from "@shared/schema";
 
 export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/settings", ...scoped, async (req: any, res) => {

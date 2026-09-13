@@ -15,7 +15,6 @@ import {
   users,
   type CashierShift,
   type CashierShiftSummary,
-  type CashierProfile,
 } from "@shared/schema";
 import { and, eq, gte, lt, lte, or, isNull, inArray, sql } from "drizzle-orm";
 import { accrueShiftCommission, type ShiftCommissionOrder } from "./commissionLedger";
@@ -54,16 +53,6 @@ export function resolveCommissionRate(input: {
   if (input.userRate != null) return parseFloat(String(input.userRate));
   if (input.cashierRate != null) return parseFloat(String(input.cashierRate));
   return input.orgRate != null ? parseFloat(String(input.orgRate)) : 0;
-}
-
-export function effectiveCommissionRate(
-  cashier: Pick<CashierProfile, "defaultCommissionRate">,
-  org: { defaultCashierCommissionRate: string | number | null },
-): number {
-  return resolveCommissionRate({
-    cashierRate: cashier.defaultCommissionRate,
-    orgRate: org.defaultCashierCommissionRate,
-  });
 }
 
 export async function getOpenCashierShift(
