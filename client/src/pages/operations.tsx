@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useSearch } from "wouter";
+import { useSearch } from "wouter";
 import { useMutation } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToastAction } from "@/components/ui/toast";
@@ -27,7 +27,9 @@ import { OpsDetailsSheet } from "@/components/operations/OpsDetailsSheet";
 import { OpsEditDialog } from "@/components/operations/OpsEditDialog";
 import { OpsStaffStrip } from "@/components/operations/OpsStaffStrip";
 import { OpsStationPicker } from "@/components/operations/OpsStationPicker";
+import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
+import POS from "@/pages/pos";
 
 /**
  * The Operations Centre.
@@ -132,10 +134,26 @@ export interface OpsShellProps {
   tab: OpsTab;
   onTabChange: (tab: OpsTab) => void;
   board: ReactNode;
-  /** The order form. A link to it in v0; the POS itself from N6. */
+  /** The order form — the POS itself, embedded (N6). */
   formSlot: ReactNode;
   /** N5b hangs the alert rail here. */
   alertsSlot?: ReactNode;
+  /**
+   * Shift housekeeping (`OpsShiftControls`, N6) — a persistent strip above
+   * both the two-pane layout and the phone's tabs, so it stays reachable
+   * while the Order tab (which has no page header of its own once the form
+   * is embedded) is the one in front.
+   */
+  headerExtras?: ReactNode;
+  /**
+   * How many orders have landed on the board since the phone's Order tab
+   * was opened — shown on the Board tab so a cashier keying a second sale
+   * knows something arrived without leaving the form to check (brief,
+   * "Form embedding": "a badge counts arrivals while the Order tab is
+   * active"). Meaningless (and not rendered) in the two-pane layout, where
+   * the board is already on screen.
+   */
+  boardArrivalCount?: number;
 }
 
 /**
@@ -151,6 +169,8 @@ export function OpsShell({
   board,
   formSlot,
   alertsSlot,
+  headerExtras,
+  boardArrivalCount = 0,
 }: OpsShellProps) {
   const [formCollapsed, setFormCollapsed] = useState(false);
 
@@ -161,6 +181,14 @@ export function OpsShell({
       // pane scrolls on its own.
       className="flex h-[calc(100dvh-4rem)] min-w-0 flex-col overflow-hidden"
     >
+      {headerExtras && (
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-border px-3 py-2"
+          data-testid="ops-header-extras"
+        >
+          {headerExtras}
+        </div>
+      )}
       {isTwoPane ? (
         <div className="flex min-h-0 flex-1 gap-4 p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto @container">
@@ -187,7 +215,7 @@ export function OpsShell({
                 <ChevronRight className="h-4 w-4" aria-hidden />
               )}
             </Button>
-            {!formCollapsed && formSlot}
+            {!formCollapsed && <div className="min-h-0 flex-1">{formSlot}</div>}
           </div>
         </div>
       ) : (
@@ -197,8 +225,17 @@ export function OpsShell({
           className="flex min-h-0 flex-1 flex-col gap-3 p-3"
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="board" className="min-h-11" data-testid="ops-tab-board">
+            <TabsTrigger value="board" className="min-h-11 gap-1.5" data-testid="ops-tab-board">
               Board
+              {tab === "order" && boardArrivalCount > 0 && (
+                <span
+                  className="inline-flex min-w-5 items-center justify-center rounded-full bg-ops-alert px-1.5 text-xs font-semibold text-truth-foreground"
+                  data-testid="ops-tab-board-badge"
+                  aria-label={`${boardArrivalCount} new since you started this order`}
+                >
+                  {boardArrivalCount}
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="order" className="min-h-11" data-testid="ops-tab-order">
               New order
@@ -220,39 +257,12 @@ export function OpsShell({
           <TabsContent
             value="order"
             forceMount
-            className="mt-0 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden"
+            className="mt-0 flex min-h-0 flex-1 flex-col overflow-y-auto data-[state=inactive]:hidden"
           >
             {formSlot}
           </TabsContent>
         </Tabs>
       )}
-    </div>
-  );
-}
-
-/**
- * v0's form slot.
- *
- * The brief's end state is the POS itself rendered in this pane (N6 makes it
- * embeddable). Until then this is a deliberate stand-in: a prominent way to
- * get to the order form, on the screen where orders are worked, rather than
- * half an embedded till that would have to be unpicked. `/create-order` keeps
- * working exactly as it does today, which is why its own journey and a11y
- * coverage are untouched by this package.
- */
-function NewOrderSlot() {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <h2 className="text-base font-semibold text-foreground">New order</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Key a sale on the till. It lands on this board the moment it is placed.
-      </p>
-      <Button asChild size="touch" className="mt-3 w-full" data-testid="ops-new-order">
-        <Link href="/create-order">
-          <Plus className="h-4 w-4" aria-hidden />
-          Start a new order
-        </Link>
-      </Button>
     </div>
   );
 }
@@ -400,6 +410,68 @@ export default function OperationsCentre() {
     setFilter(next);
     writeStored(STORAGE_OPS_FILTER, next);
   }, []);
+
+  // The Board tab's badge (brief, "Form embedding"): a snapshot of every
+  // order id on the board is taken the moment the Order tab becomes active,
+  // and the count is simply how many of the board's CURRENT orders are not
+  // in that snapshot — orders that arrived (from anywhere: this till,
+  // another one, the website, WhatsApp) while this cashier has been heads
+  // down in the form. Leaving the Order tab clears it; only the two-pane
+  // layout never needs it, since the board is already on screen there.
+  //
+  // Waits for the board's first real load (`!isInitialLoading`) before ever
+  // taking that snapshot: `?pane=order` starts `tab` at "order" before the
+  // board query has resolved, and a snapshot of the still-empty `[]` would
+  // count the ENTIRE board as "new" the moment real data arrived a moment
+  // later — a five-figure badge on a busy board, not the small number this
+  // is meant to be.
+  const orderTabBaselineRef = useRef<Set<string> | null>(null);
+  const [boardArrivalCount, setBoardArrivalCount] = useState(0);
+  useEffect(() => {
+    if (tab !== "order") {
+      orderTabBaselineRef.current = null;
+      setBoardArrivalCount(0);
+      return;
+    }
+    if (board.isInitialLoading) return;
+    if (!orderTabBaselineRef.current) {
+      orderTabBaselineRef.current = new Set(board.orders.map((order) => order.id));
+    }
+    const baseline = orderTabBaselineRef.current;
+    setBoardArrivalCount(board.orders.filter((order) => !baseline.has(order.id)).length);
+  }, [tab, board.orders, board.isInitialLoading]);
+
+  /**
+   * The embedded form's `onPlaced` (N6): find the just-created order's card
+   * — the SSE stream or the form's own board-query invalidation usually beat
+   * this here, but not always, hence the short poll — scroll it into view
+   * and flash it (`data-new`, cleared after 4 s; styled in liquid-metal.css).
+   * A plain DOM attribute rather than board/card state: `OpsCard.tsx` is out
+   * of this package's scope, so nothing here can hand it a "just placed"
+   * prop — this reaches the rendered card from the outside instead, the way
+   * a highlight-and-fade toolkit would.
+   */
+  const handleOrderPlaced = useCallback(
+    (orderId: string) => {
+      const tryFlash = (attempt: number) => {
+        const card = document.querySelector<HTMLElement>(`[data-testid="ops-card-${orderId}"]`);
+        if (!card) {
+          if (attempt < 10) setTimeout(() => tryFlash(attempt + 1), 300);
+          return;
+        }
+        card.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "center" });
+        card.setAttribute("data-new", "true");
+        setTimeout(() => card.removeAttribute("data-new"), 4000);
+      };
+      tryFlash(0);
+    },
+    [prefersReducedMotion],
+  );
+
+  // Stable across the ticker's once-a-second re-render, so POS (which is not
+  // memoized) never sees a "new" embedded prop object when nothing about it
+  // actually changed.
+  const embeddedPosProps = useMemo(() => ({ onPlaced: handleOrderPlaced }), [handleOrderPlaced]);
 
   const blockedReason = board.staleness.isStale ? board.staleness.reason : null;
 
@@ -714,7 +786,9 @@ export default function OperationsCentre() {
         isTwoPane={isTwoPane}
         tab={tab}
         onTabChange={onTabChange}
-        formSlot={<NewOrderSlot />}
+        formSlot={<POS embedded={embeddedPosProps} />}
+        headerExtras={<OpsShiftControls />}
+        boardArrivalCount={boardArrivalCount}
         board={
           <>
             <OpsBoard

@@ -23,7 +23,6 @@ import {
 // first navigation, instead of one ~1.5MB bundle loaded up front.
 const Landing = lazy(() => import("@/pages/landing"));
 const Home = lazy(() => import("@/pages/home"));
-const POS = lazy(() => import("@/pages/pos"));
 const Inventory = lazy(() => import("@/pages/inventory"));
 const Insights = lazy(() => import("@/pages/insights"));
 const Locations = lazy(() => import("@/pages/locations"));
@@ -144,16 +143,18 @@ function Router() {
         <AccessGate>
         <Layout>
           <Route path="/" component={Home} />
-          <Route path="/create-order" component={POS} />
-          <Route path="/pos"><Redirect to="/create-order" /></Route>
           {/* The Operations Centre replaces Open Orders outright — no feature
               flag, and the old paths redirect from the day the board lands
               (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Route & nav"). The
+              order form is embedded in it (N6): `/create-order` and `/pos`
+              land on the Order tab / pane rather than a standalone page. The
               refund route below keeps its own URL: it is linked from receipts
               and emails that are already in the world. */}
           <Route path="/operations" component={OperationsCentre} />
           <Route path="/open-orders"><Redirect to="/operations" /></Route>
           <Route path="/orders"><Redirect to="/operations" /></Route>
+          <Route path="/create-order"><Redirect to="/operations?pane=order" /></Route>
+          <Route path="/pos"><Redirect to="/operations?pane=order" /></Route>
           <Route path="/open-orders/:id/refund" component={OrderRefundPage} />
           <Route path="/orders/:id/refund">
             {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}

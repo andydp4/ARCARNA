@@ -1,19 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { UseMutationResult } from "@tanstack/react-query";
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { formatQuantity, parseQuantityInput } from "@shared/quantity";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 import {
   ShoppingCart,
-  Trash2,
-  Plus,
-  Minus,
   Receipt,
   Award,
   Star,
@@ -24,7 +20,6 @@ import {
 } from "lucide-react";
 import type { PosProduct } from "@/components/pos-types";
 import { ActionLoader } from "@/components/action-loader";
-import { NewCustomerDialog } from "@/components/customers/NewCustomerDialog";
 import type { TierProgress } from "@shared/loyalty/progress";
 
 export interface PosCartItem {
@@ -41,6 +36,8 @@ export interface PosCustomer {
   name: string;
   phone?: string | null;
   email?: string | null;
+  /** Undefined/true = the customer accepts a receipt email; false opts out. */
+  receiptEmailOptIn?: boolean | null;
   category: string;
   loyaltyPoints: number;
 }
@@ -141,9 +138,10 @@ function CustomerPicker({
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => {
                 setOpen(false);
-                // Not a selection — an action, and a different overlay
-                // (NewCustomerDialog) is about to open. Let this one finish
-                // closing first so the two never fight over focus.
+                // Not a selection — an action, and the inline "add a
+                // customer" panel (NewCustomerPanel, below) is about to take
+                // focus. Let this listbox finish closing first so the two
+                // never fight over it.
                 requestAnimationFrame(onAddNew);
               }}
             >
@@ -179,9 +177,177 @@ function CustomerPicker({
   );
 }
 
+/**
+ * Add a customer without leaving what you were doing — inline, not a Dialog
+ * (N6 follow-up review: `NewCustomerDialog`, formerly opened from here, was
+ * the third `role="dialog"` an adversarial review found reachable from the
+ * Operations Centre's phone Order tab, after the two `8dda00e` already fixed
+ * — loyalty redemption and Z-report/close-shift, this same file and
+ * `OpsShiftControls`. `NewCustomerDialog` had exactly one caller — this
+ * panel — so its form moved here rather than growing an `inline` prop on a
+ * component nothing else uses; the dialog wrapper itself is gone. Same
+ * expand-in-place shape, and the same fields, validation and mutation, as
+ * before).
+ *
+ * Only the name is required: everything else can be filled in later from the
+ * Customers page, and asking for more at the till is how a form stops
+ * getting used.
+ */
+function NewCustomerPanel({
+  initialName,
+  onCreated,
+  onCancel,
+}: {
+  initialName: string;
+  onCreated: (customer: PosCustomer) => void;
+  onCancel: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState(initialName.trim());
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Take focus on open, same as the Dialog this replaced did via
+  // `onOpenAutoFocus` — the one field that has to be filled in should not be
+  // a tab away.
+  useEffect(() => {
+    nameRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/customers", {
+        name: name.trim(),
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        source: "pos",
+      });
+      return (await response.json()) as PosCustomer;
+    },
+    onSuccess: async (customer) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      onCreated(customer);
+      toast({
+        title: "Customer added",
+        description: `${customer.name} is on the system and selected for this order.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Could not add the customer",
+        description:
+          error?.message ||
+          "The customer was not saved. Check the connection and try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Queueing this one offline is not offered: the queue returns no id, and an
+  // order cannot be attached to a customer that does not exist yet. Saying so
+  // beats a success toast followed by a walk-in sale.
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const canSave = name.trim().length > 0 && !createMutation.isPending && !offline;
+
+  return (
+    <div
+      className="mt-2 space-y-3 rounded-lg border border-border bg-card p-3"
+      data-testid="new-customer-panel"
+      // A real user's "never mind" for a panel that looks and behaves like a
+      // small form, even though it is no longer a modal.
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onCancel();
+      }}
+    >
+      <div>
+        <h3 className="text-sm font-medium text-foreground">Add a new customer</h3>
+        <p className="text-xs text-muted-foreground">
+          {offline
+            ? "You are offline. A new customer needs a connection — ring this through as a walk-in and add them when you are back online."
+            : "Name is all that is needed now. The rest can be filled in later."}
+        </p>
+      </div>
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave) createMutation.mutate();
+        }}
+      >
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-name">Name</Label>
+          <Input
+            id="new-customer-name"
+            ref={nameRef}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="min-h-11"
+            required
+            data-testid="input-new-customer-name"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-phone">Phone (optional)</Label>
+          <Input
+            id="new-customer-phone"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            className="min-h-11"
+            inputMode="tel"
+            data-testid="input-new-customer-phone"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="new-customer-email">Email (optional)</Label>
+          <Input
+            id="new-customer-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="min-h-11"
+            inputMode="email"
+            data-testid="input-new-customer-email"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="submit"
+            disabled={!canSave}
+            size="sm"
+            className="gap-2"
+            data-testid="button-save-new-customer"
+          >
+            {createMutation.isPending ? (
+              <>
+                <ActionLoader className="text-primary-foreground" />
+                Adding…
+              </>
+            ) : (
+              "Add customer"
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={createMutation.isPending}
+            onClick={onCancel}
+            data-testid="button-cancel-new-customer"
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export type PosCartPanelProps = {
+  /** Only its length is read here (the checkout button's disabled state) — the
+   *  line editor is `PosOrderLines` (pos.tsx), not this panel (N6). */
   cart: PosCartItem[];
-  setCart: React.Dispatch<React.SetStateAction<PosCartItem[]>>;
   cartItemCount: number;
   customers: PosCustomer[];
   filteredCustomers: PosCustomer[];
@@ -212,17 +378,15 @@ export type PosCartPanelProps = {
   minRedeemPoints: number;
   redeemPoints: number;
   pointsRedemptionAmount: number;
-  onRedeemPointsClick: () => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, delta: number) => void;
-  formatPrice: (p: PosProduct) => string;
+  /** Whether the inline "points to redeem" panel is expanded (N6 — see the panel itself for why this is a `<div>`, not a `<Dialog>`). */
+  redeemPanelOpen: boolean;
+  redeemInput: string;
+  setRedeemInput: (v: string) => void;
+  onOpenRedeemPanel: () => void;
+  onApplyRedeem: () => void;
+  onCancelRedeem: () => void;
   handleCheckout: () => void;
   orderSubmitting?: boolean;
-  /**
-   * "summary" leaves out the item list: the order lines editor is the cart
-   * now, so the rail only carries customer, discounts and totals.
-   */
-  variant?: "full" | "summary";
   /** Off when a sticky bar elsewhere on the page owns the checkout action. */
   showCheckoutButton?: boolean;
 };
@@ -230,10 +394,16 @@ export type PosCartPanelProps = {
 /**
  * Module-level cart UI so React does not remount the whole panel on every POS render
  * (inline `const CartPanel = () => …` inside the page created a new component type each render).
+ *
+ * Customer, discounts and totals only — the per-line cart editor this used to
+ * carry (`variant="full"`, price/quantity inputs, a remove button per row) was
+ * dead code once `pos.tsx` gained its own line editor (`PosOrderLines`) and
+ * started passing `variant="summary"` on every call: nothing has passed
+ * `"full"` since, so this panel now does only the one job it was actually
+ * asked to do (Phase N, N6).
  */
 export function PosCartPanel({
   cart,
-  setCart,
   cartItemCount,
   customers,
   filteredCustomers,
@@ -259,22 +429,21 @@ export function PosCartPanel({
   minRedeemPoints,
   redeemPoints,
   pointsRedemptionAmount,
-  onRedeemPointsClick,
-  removeFromCart,
-  updateQuantity,
-  formatPrice,
+  redeemPanelOpen,
+  redeemInput,
+  setRedeemInput,
+  onOpenRedeemPanel,
+  onApplyRedeem,
+  onCancelRedeem,
   handleCheckout,
   orderSubmitting = false,
-  variant = "full",
   showCheckoutButton = true,
 }: PosCartPanelProps) {
-  const summaryOnly = variant === "summary";
-  const { toast } = useToast();
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
 
   return (
     <>
-      {summaryOnly ? null : cart.length > 0 ? (
+      {cart.length > 0 ? (
         <p className="mb-3 text-xs font-medium uppercase tracking-wider text-metal-muted">Step 2 of 4 · Review cart</p>
       ) : (
         <p className="mb-3 text-sm leading-relaxed text-metal-muted">Add products from the grid to start a sale.</p>
@@ -282,7 +451,7 @@ export function PosCartPanel({
       <div className="mb-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-metal-warm-white sm:text-xl">
           <ShoppingCart className="h-5 w-5 shrink-0" />
-          {summaryOnly ? "Order" : "Cart"}
+          Order
           {cartItemCount > 0 && (
             <Badge variant="secondary" className="font-normal">
               {cartItemCount} {cartItemCount === 1 ? "item" : "items"}
@@ -308,15 +477,17 @@ export function PosCartPanel({
           onAddNew={() => setNewCustomerOpen(true)}
         />
 
-        <NewCustomerDialog
-          open={newCustomerOpen}
-          onOpenChange={setNewCustomerOpen}
-          initialName={customerSearch}
-          onCreated={(customer) => {
-            setSelectedCustomer(customer);
-            setCustomerSearch("");
-          }}
-        />
+        {newCustomerOpen && (
+          <NewCustomerPanel
+            initialName={customerSearch}
+            onCreated={(customer) => {
+              setSelectedCustomer(customer);
+              setCustomerSearch("");
+              setNewCustomerOpen(false);
+            }}
+            onCancel={() => setNewCustomerOpen(false)}
+          />
+        )}
 
         {selectedCustomer && customerTier && (
           <Card className="lm-card-muted mt-2">
@@ -362,11 +533,48 @@ export function PosCartPanel({
                     ? `Need at least ${minRedeemPoints} points`
                     : undefined
                 }
-                onClick={onRedeemPointsClick}
+                onClick={onOpenRedeemPanel}
+                data-testid="button-redeem-points"
               >
                 Redeem points
                 {redeemPoints > 0 ? ` (${redeemPoints} applied)` : ""}
               </Button>
+
+              {/* Inline, not a Dialog: on the Operations Centre's phone Order
+                  tab this button is reachable with no board underneath it to
+                  provide a modal a sensible place to land, and N6's DoD is
+                  zero `role="dialog"` mounts on that screen regardless. Same
+                  expand-in-place shape as `OpsDelayInline` and
+                  `OpsCardActions`'s own panels. */}
+              {redeemPanelOpen && (
+                <div
+                  className="mt-2 space-y-2 rounded-lg border border-border bg-card p-3"
+                  data-testid="redeem-points-panel"
+                >
+                  <Label htmlFor="redeem-points-input" className="text-xs text-muted-foreground">
+                    {selectedCustomer?.name ?? "This customer"} has {selectedCustomer?.loyaltyPoints ?? 0} points.
+                    Minimum redemption: {minRedeemPoints} points.
+                  </Label>
+                  <Input
+                    id="redeem-points-input"
+                    type="number"
+                    min={minRedeemPoints}
+                    max={selectedCustomer?.loyaltyPoints ?? 0}
+                    value={redeemInput}
+                    onChange={(e) => setRedeemInput(e.target.value)}
+                    className="min-h-11"
+                    data-testid="input-redeem-points"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={onApplyRedeem} data-testid="button-apply-redeem">
+                      Apply discount
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={onCancelRedeem} data-testid="button-cancel-redeem">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -419,203 +627,6 @@ export function PosCartPanel({
       )}
 
       <Separator className="mb-4" />
-
-      {summaryOnly ? null : (
-      <ScrollArea className="mb-4 flex-1">
-        {cart.length === 0 ? (
-          <div className="py-10 text-center text-metal-muted">
-            <ShoppingCart className="mx-auto mb-2 h-12 w-12 opacity-40" />
-            <p className="font-medium text-metal-warm-white">Your cart is empty</p>
-            <p className="mt-1 text-sm">Tap a product to add it</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {cart.map((item) => (
-              <Card
-                key={item.product.id}
-                data-testid={`cart-item-${item.product.id}`}
-                className="lm-card-muted overflow-hidden"
-              >
-                <CardContent className="p-3">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="line-clamp-2 font-medium">{item.product.name}</div>
-                      <div className="text-xs text-metal-muted">
-                        Default: {formatPrice(item.product)}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 min-h-[44px] min-w-[44px] shrink-0"
-                      onClick={() => removeFromCart(item.product.id)}
-                      data-testid={`remove-item-${item.product.id}`}
-                      aria-label={`Remove ${item.product.name}`}
-                      disabled={orderSubmitting}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="mb-3 flex items-center gap-2">
-                    <Label className="shrink-0 text-xs">Price</Label>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm">£</span>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.priceInput ?? item.customPrice.toFixed(2)}
-                        onChange={(e) =>
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? { ...cartItem, priceInput: e.target.value }
-                                : cartItem
-                            )
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                        onBlur={(e) => {
-                          const newPrice = parseFloat(e.target.value);
-                          if (!isNaN(newPrice) && newPrice >= 0) {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? {
-                                      ...cartItem,
-                                      customPrice: newPrice,
-                                      subtotal: cartItem.quantity * newPrice,
-                                      priceInput: undefined,
-                                    }
-                                  : cartItem
-                              )
-                            );
-                          } else {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, priceInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            toast({
-                              title: "Invalid Price",
-                              description: "Please enter a valid price",
-                              variant: "destructive",
-                            });
-                          }
-                        }}
-                        className="h-10 min-h-[44px] w-24"
-                        data-testid={`price-input-${item.product.id}`}
-                        disabled={orderSubmitting}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1 rounded-md border border-metal-edge p-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
-                        onClick={() => updateQuantity(item.product.id, -1)}
-                        data-testid={`decrease-qty-${item.product.id}`}
-                        aria-label="Decrease quantity"
-                        disabled={orderSubmitting}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <Input
-                        type="text"
-                        // "numeric" shows a keypad with no decimal point, so a
-                        // fractional quantity could not even be typed on a phone.
-                        inputMode="decimal"
-                        value={item.quantityInput ?? formatQuantity(item.quantity)}
-                        onChange={(e) =>
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? { ...cartItem, quantityInput: e.target.value }
-                                : cartItem
-                            )
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        }}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === "") {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, quantityInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            return;
-                          }
-                          // parseInt("0.4") is 0, so a fractional quantity
-                          // silently removed the line — the reported bug.
-                          const parsedQty = parseQuantityInput(raw);
-                          const newQty = parsedQty ?? Number.NaN;
-                          if (parsedQty === null) {
-                            setCart((prev) =>
-                              prev.map((cartItem) =>
-                                cartItem.product.id === item.product.id
-                                  ? { ...cartItem, quantityInput: undefined }
-                                  : cartItem
-                              )
-                            );
-                            if (Number(raw) === 0) removeFromCart(item.product.id);
-                            else
-                              toast({
-                                title: "Invalid quantity",
-                                description: "Enter a number greater than zero, e.g. 1 or 0.4",
-                                variant: "destructive",
-                              });
-                            return;
-                          }
-                          setCart((prev) =>
-                            prev.map((cartItem) =>
-                              cartItem.product.id === item.product.id
-                                ? {
-                                    ...cartItem,
-                                    quantity: newQty,
-                                    subtotal: newQty * cartItem.customPrice,
-                                    quantityInput: undefined,
-                                  }
-                                : cartItem
-                            )
-                          );
-                        }}
-                        className="h-11 min-h-[44px] w-14 border-0 bg-transparent text-center font-medium focus-visible:ring-0"
-                        data-testid={`qty-input-${item.product.id}`}
-                        disabled={orderSubmitting}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11 min-h-[44px] min-w-[44px]"
-                        onClick={() => updateQuantity(item.product.id, 1)}
-                        data-testid={`increase-qty-${item.product.id}`}
-                        aria-label="Increase quantity"
-                        disabled={orderSubmitting}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <span className="shrink-0 text-lg font-bold">£{item.subtotal.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-      )}
 
       <Card className="pos-summary-card mb-4">
         <CardHeader className="px-4 pb-2 pt-4">
