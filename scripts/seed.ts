@@ -17,6 +17,7 @@ import {
   allowedUsers,
 } from "../shared/schema";
 import { ONBOARDING_STEPS } from "../shared/onboarding";
+import { and, eq } from "drizzle-orm";
 
 const SEED_ORG_NAME = "Arcarna Demo Org";
 const SEED_LOCATION_NAME = "Main Store";
@@ -31,46 +32,83 @@ const SEED_PRODUCTS = [
 async function seed() {
   console.log("[Seed] Starting...");
 
-  const [org] = await db
-    .insert(organizations)
-    // This seed produces a complete org — location, products, role users, and
-    // the first sale below — so leaving it "not set up" sent the SPA to a
-    // wizard on every navigation: setup_complete = 0 to /setup-wizard, and an
-    // empty onboarding_state to /onboarding/wizard. Locally that was masked
-    // (the SessionStart hook patches setup_complete, and this dev database had
-    // onboarding clicked through by hand long ago), so the browser journeys
-    // passed here while testing a wizard on a fresh CI database. The seed owns
-    // the state it creates.
-    .values({
-      name: SEED_ORG_NAME,
-      setupComplete: 1,
-      onboardingState: { completedSteps: [...ONBOARDING_STEPS] },
-    })
-    .returning();
+  // Idempotent: re-running this script must reuse the seed org rather than
+  // insert a second row of the same name. `organizations.name` carries no
+  // unique constraint, so a bare insert-every-time silently forked the seed
+  // identities (seed-admin/seed-cashier/seed-manager) from whichever org
+  // `resolveOrgId()` happened to pick via `GET /api/orgs` — a real,
+  // reproducible cause of org-id-mismatch test flakiness. Ordered by
+  // createdAt so a repeat run is stable even against a database that already
+  // has more than one (this script does not merge or delete those; that is a
+  // separate, deliberately manual cleanup — see scripts/README or ask the
+  // build lead).
+  const [existingOrg] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.name, SEED_ORG_NAME))
+    .orderBy(organizations.createdAt)
+    .limit(1);
 
-  if (!org) {
-    throw new Error("Failed to create organization");
+  let org: typeof organizations.$inferSelect;
+  if (existingOrg) {
+    org = existingOrg;
+    console.log("[Seed] Reusing existing org:", org.id, org.name);
+  } else {
+    const [created] = await db
+      .insert(organizations)
+      // This seed produces a complete org — location, products, role users, and
+      // the first sale below — so leaving it "not set up" sent the SPA to a
+      // wizard on every navigation: setup_complete = 0 to /setup-wizard, and an
+      // empty onboarding_state to /onboarding/wizard. Locally that was masked
+      // (the SessionStart hook patches setup_complete, and this dev database had
+      // onboarding clicked through by hand long ago), so the browser journeys
+      // passed here while testing a wizard on a fresh CI database. The seed owns
+      // the state it creates.
+      .values({
+        name: SEED_ORG_NAME,
+        setupComplete: 1,
+        onboardingState: { completedSteps: [...ONBOARDING_STEPS] },
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error("Failed to create organization");
+    }
+    org = created;
+    console.log("[Seed] Created org:", org.id, org.name);
   }
-  console.log("[Seed] Created org:", org.id, org.name);
 
-  const [location] = await db
-    .insert(locations)
-    .values({
-      orgId: org.id,
-      name: SEED_LOCATION_NAME,
-      address: "123 High Street",
-      city: "London",
-      state: "LD",
-      zipCode: "SW1A 1AA",
-      phone: "+44 20 7946 0958",
-      email: "store@arcarna-demo.local",
-    })
-    .returning();
+  const [existingLocation] = await db
+    .select()
+    .from(locations)
+    .where(and(eq(locations.orgId, org.id), eq(locations.name, SEED_LOCATION_NAME)))
+    .limit(1);
 
-  if (!location) {
-    throw new Error("Failed to create location");
+  let location: typeof locations.$inferSelect;
+  if (existingLocation) {
+    location = existingLocation;
+    console.log("[Seed] Reusing existing location:", location.id, location.name);
+  } else {
+    const [created] = await db
+      .insert(locations)
+      .values({
+        orgId: org.id,
+        name: SEED_LOCATION_NAME,
+        address: "123 High Street",
+        city: "London",
+        state: "LD",
+        zipCode: "SW1A 1AA",
+        phone: "+44 20 7946 0958",
+        email: "store@arcarna-demo.local",
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error("Failed to create location");
+    }
+    location = created;
+    console.log("[Seed] Created location:", location.id, location.name);
   }
-  console.log("[Seed] Created location:", location.id, location.name);
 
   const roleUsers = [
     { replitUserId: "seed-super-admin", name: "Super Admin", email: "superadmin@seed.local", role: "SUPER_ADMIN" as const, orgId: null },
@@ -97,7 +135,18 @@ async function seed() {
   }
   console.log("[Seed] Created/updated 4 role users (SUPER_ADMIN, ADMIN, MANAGER, CASHIER)");
 
+  // No unique constraint backs (orgId, productId), so re-run safety is a
+  // manual existence check per product rather than onConflictDoNothing.
+  let productsCreated = 0;
   for (const p of SEED_PRODUCTS) {
+    const [existingProduct] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(eq(products.orgId, org.id), eq(products.productId, p.productId)))
+      .limit(1);
+
+    if (existingProduct) continue;
+
     await db.insert(products).values({
       orgId: org.id,
       productId: p.productId,
@@ -107,8 +156,11 @@ async function seed() {
       stock: p.stock,
       stockLimit: 20,
     });
+    productsCreated++;
   }
-  console.log("[Seed] Created sample products:", SEED_PRODUCTS.length);
+  console.log(
+    `[Seed] Products ensured: ${SEED_PRODUCTS.length} (${productsCreated} created, ${SEED_PRODUCTS.length - productsCreated} already present)`,
+  );
 
   console.log("[Seed] Done. Org ID:", org.id, "| Location ID:", location.id);
 }
