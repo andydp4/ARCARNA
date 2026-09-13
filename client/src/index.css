@@ -7,37 +7,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * This block used to define the app's light-mode `--background`, `--popover`,
+ * etc. — a full second theme that never actually rendered, because
+ * liquid-metal.css's `:root` block (imported above, at the top of this file)
+ * defined the same properties on the same `:root` element, and Radix's
+ * portalled Dialog/Sheet/Popover/DropdownMenu/Select/Tooltip content sat
+ * outside `.liquid-metal`'s old class scope, so it fell through to whichever
+ * of the two `:root` rules the cascade favoured. Liquid Metal is the app's
+ * only theme (see settings.tsx's Appearance card) and now owns those
+ * properties directly on `:root`, so they're removed here rather than left
+ * to shadow it. What's left is the handful of tokens Liquid Metal doesn't
+ * define — sidebar colours, fonts, radius.
+ */
 :root {
-  --background: hsl(210, 40%, 98%);
-  --foreground: hsl(222, 47%, 11%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(222, 47%, 11%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(222, 47%, 11%);
-  --primary: hsl(217, 33%, 17%);
-  --primary-foreground: hsl(210, 40%, 98%);
-  --secondary: hsl(217, 91%, 60%);
-  --secondary-foreground: hsl(0, 0%, 100%);
-  --muted: hsl(214, 32%, 91%);
-  /* 47% measured 4.49:1 on the light card surface — two hundredths under
-     AA for body text. 45% gives 4.83:1. */
-  --muted-foreground: hsl(215, 16%, 45%);
-  --accent: hsl(160, 84%, 39%);
-  --accent-foreground: hsl(0, 0%, 100%);
-  /* Darkened from 60% lightness: white on the old red measured 3.78:1, below
-     the 4.5:1 the design system specification itself requires for text
-     (docs/specs/ARCARNA_DESIGN_SYSTEM_SPECIFICATION.md:205). Same hue and
-     saturation; this is the lightest value that passes, now 4.53:1. */
-  --destructive: hsl(0, 84%, 50%);
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(214, 32%, 91%);
-  --input: hsl(214, 32%, 91%);
-  --ring: hsl(217, 91%, 60%);
-  --chart-1: hsl(217, 91%, 60%);
-  --chart-2: hsl(160, 84%, 39%);
-  --chart-3: hsl(43, 96%, 56%);
-  --chart-4: hsl(280, 65%, 60%);
-  --chart-5: hsl(340, 82%, 52%);
   --sidebar: hsl(180, 6.6667%, 97.0588%);
   --sidebar-foreground: hsl(210, 25%, 7.8431%);
   --sidebar-primary: hsl(203.8863, 88.2845%, 53.1373%);

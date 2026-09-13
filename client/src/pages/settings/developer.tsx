@@ -173,7 +173,7 @@ function NewKeyDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="liquid-metal lm-card max-w-2xl max-h-[88vh] flex flex-col gap-0 p-0">
+      <DialogContent className="lm-card max-w-2xl max-h-[88vh] flex flex-col gap-0 p-0">
         {createdKey ? (
           <>
             <DialogHeader className="p-6 pb-4">
@@ -322,7 +322,7 @@ function RevokeButton({ id }: { id: string }) {
           <Trash2 className="h-4 w-4" />
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent className="liquid-metal lm-card">
+      <AlertDialogContent className="lm-card">
         <AlertDialogHeader>
           <AlertDialogTitle>Revoke this API key?</AlertDialogTitle>
           <AlertDialogDescription>
