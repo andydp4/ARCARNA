@@ -35,6 +35,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../db", () => ({ db: {} }));
 vi.mock("../storage", () => ({ storage: {} }));
 
+const createCustomer = vi.fn().mockResolvedValue({ id: "new-customer-id" });
+vi.mock("../../apps/server/src/engine.wiring", () => ({ engine: { createCustomer } }));
+
 import { registerCustomerRoutes } from "../routes/customers";
 import { registerLoyaltyRoutes } from "../routes/loyalty";
 import { registerPromotionRoutes } from "../routes/promotions";
@@ -133,6 +136,35 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
     const { status, next } = await runGuard(guard, "CASHIER");
     expect(next).toHaveBeenCalledTimes(1);
     expect(status).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/customers strips category from a CASHIER's body — the till can create a customer, not self-assign a loyalty tier", async () => {
+    createCustomer.mockClear();
+    const [, handler] = customerRoutes["POST /api/customers"];
+    const req = {
+      orgContext: { orgId: "org-1", locationId: null, role: "CASHIER" },
+      body: { name: "Self-Escalated VIP", category: "Platinum", loyaltyPoints: 99999 },
+    } as any;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as any;
+    await handler(req, res, vi.fn());
+    expect(createCustomer).toHaveBeenCalledTimes(1);
+    const sentToEngine = createCustomer.mock.calls[0][0];
+    expect(sentToEngine).not.toHaveProperty("category");
+  });
+
+  it("POST /api/customers keeps a MANAGER's category (setting a tier at creation is a manager-level choice)", async () => {
+    createCustomer.mockClear();
+    const [, handler] = customerRoutes["POST /api/customers"];
+    const req = {
+      orgContext: { orgId: "org-1", locationId: null, role: "MANAGER" },
+      body: { name: "VIP Customer", category: "Platinum" },
+    } as any;
+    const json = vi.fn();
+    const res = { json, status: vi.fn(() => ({ json })) } as any;
+    await handler(req, res, vi.fn());
+    expect(createCustomer).toHaveBeenCalledTimes(1);
+    expect(createCustomer.mock.calls[0][0]).toMatchObject({ category: "Platinum" });
   });
 
   it.each(GUARDED_MUTATIONS)("%s admits a MANAGER through to the handler", async (routes, key) => {

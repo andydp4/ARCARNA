@@ -105,8 +105,17 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
         });
       }
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      // A CASHIER may create a brand-new customer (see createRoles above) but
+      // must not be able to self-assign a loyalty tier through the same body
+      // a MANAGER+-only PUT would need to change later — `category` is
+      // dropped for that role and falls through to engine.createCustomer's
+      // own 'Bronze' default, the same as an omitted field.
+      const body = { ...parsed.data, orgId: ctx.orgId };
+      if (ctx.role === "CASHIER") {
+        delete (body as { category?: unknown }).category;
+      }
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const customer = await engine.createCustomer({ ...parsed.data, orgId: ctx.orgId });
+      const customer = await engine.createCustomer(body);
       res.json(customer);
     } catch (error) {
       console.error("Error creating customer:", error);
