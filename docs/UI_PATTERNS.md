@@ -46,9 +46,11 @@ default for this exact constraint, not a one-off:
 - **`OpsPassMenu.tsx`** — the staff strip for handing an order to someone
   else.
 - **`OpsRateChips.tsx`** — the 1–5 satisfaction rating on a completed card.
-- **`OpsCardActions.tsx`** — the overflow menu's expanders on the phone Order
-  tab, where a `DropdownMenu` on desktop becomes an inline expander below
-  640px.
+- **`OpsCardActions.tsx`** — on a board card (Collection/Delivery lanes, any
+  layout, not the Order tab): a `DropdownMenu` is still the overflow
+  trigger itself ("More actions"), but picking Pass / Assign / Hold / Delay
+  from it opens one of these inline panels (`togglePanel`) rather than a
+  Dialog.
 - **`NewCustomerPanel`** (`pos-cart-panel.tsx`) — "Add a new customer",
   replacing `NewCustomerDialog` once the customer picker became reachable
   from the embedded order form.
@@ -57,16 +59,18 @@ default for this exact constraint, not a one-off:
   of Dialogs for the same reason once N6 embedded the order form in the
   phone's New order tab.
 
-**Shape:** a plain expanding `<div>` (or a `DropdownMenu` on wide layouts,
-falling back to the same inline panel below a container-query breakpoint),
-toggled by local state in the parent — not a portal, not a focus trap of its
-own, not `aria-modal`. It renders inline in the surrounding layout (pushing
+**Shape:** a plain expanding `<div>`, toggled by local state in the parent —
+not a portal, not a focus trap of its own, not `aria-modal`. A `DropdownMenu`
+may still trigger it (as `OpsCardActions` does, for its overflow menu), but
+the trigger itself doesn't switch shape by viewport width — only what it
+opens does. It renders inline in the surrounding layout (pushing
 content below it down) rather than overlaying anything, so there is nothing
 to click outside of and nothing fighting the page for scroll or focus.
-Closing is an explicit Cancel/Save action or the same toggle, never an
-overlay-click or `Escape`-on-outside-focus pattern a real dialog gets for
-free — wire `Escape` yourself if the control needs it (`OpsCardActions`'s
-menu closes on `Escape`, not a re-click).
+Closing is an explicit Cancel/Save action or the same toggle that opened it
+(`OpsCardActions`'s `togglePanel` re-closes on a second click of the same
+menu item) — never an overlay-click or `Escape`-on-outside-focus pattern a
+real dialog gets for free; wire `Escape` yourself if a given control needs
+it.
 
 **When a real Dialog/Sheet is still right:** anything that must interrupt the
 whole page (destructive confirmation with no safe inline placement, a
