@@ -554,6 +554,21 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               userId: inputUserId,
               meta: { from: null, to: pickedAssignee, by: inputUserId, auto: !explicitAssigneeId },
             });
+            // brief, alerts table: "assigned | ... | in the assign / create
+            // transaction". `shouldAlertAssigned` (inside `alertAssignedInTx`)
+            // silences this on self-claim (the inputter assigned it to
+            // themselves, explicitly or because the default-owner rule
+            // picked them) — the two carve-outs this same row documents.
+            const { alertAssignedInTx } = await import("../services/opsAlerts");
+            await alertAssignedInTx(tx, {
+              orgId: ctx.orgId!,
+              orderId: result.orderId,
+              assigneeId: pickedAssignee,
+              actorId: inputUserId,
+              isDefaultOwnerPick: !explicitAssigneeId,
+              inputUserId,
+              assignedAt,
+            });
           }
         }
 

@@ -1590,6 +1590,60 @@ export type InsertOpsStaff = typeof opsStaff.$inferInsert;
 export const insertOpsStaffSchema = createInsertSchema(opsStaff);
 export type InsertOpsStaffData = z.infer<typeof insertOpsStaffSchema>;
 
+/**
+ * Personal Operations Centre alerts (migration 066, N5a;
+ * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Alerts & notifications").
+ *
+ * One row per RECIPIENT, per incident — not one org-wide row with a read
+ * flag (the brief's finding G7 on the pre-existing `orgNotifications`): an
+ * `assigned` alert exists only for the new assignee, a station-wide
+ * `due_soon`/`late` chime is one row per present station member. Unique per
+ * `(org, order, kind, user, due_key)` — `ops_alerts_once_idx` — so every
+ * writer inserts with `ON CONFLICT DO NOTHING` rather than checking existence
+ * first, and a server restart mid-sweep can never double-fire the same
+ * alert. See `server/services/opsAlerts.ts` for the generation and
+ * resolution rules, and `shared/orders/opsAlerts.ts` for the pure recipient,
+ * presence, chime and due_key logic both that service and, from N5b, the
+ * client share.
+ *
+ * `orderId` carries NO foreign key, matching `orderEvents` (065): a deleted
+ * order's alerts must outlive it long enough to be resolved
+ * (`resolvedReason: 'deleted'`) rather than vanish with the row.
+ */
+export const opsAlerts = pgTable("ops_alerts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  orderId: uuid("order_id").notNull(),
+  /** Always a person — a station alert is one row per member, never a group row. */
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  /** Provenance: '' = addressed personally to the assignee (pulse only); a station name = the station-wide broadcast (chimes). */
+  station: varchar("station", { length: 16 }).notNull().default(""),
+  /** assigned | new_unassigned | customer_waiting | due_soon | late | delayed — see shared/orders/opsAlerts.ts's OPS_ALERT_KINDS. */
+  kind: varchar("kind", { length: 24 }).notNull(),
+  /** ISO of the promise (or other anchor instant) the alert was computed from; a revision is a new cycle. '' for non-time-based kinds that don't need one. */
+  dueKey: varchar("due_key", { length: 32 }).notNull().default(""),
+  dueAt: timestamp("due_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  ackedAt: timestamp("acked_at"),
+  ackedByUserId: varchar("acked_by_user_id", { length: 255 }),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedByUserId: varchar("resolved_by_user_id", { length: 255 }),
+  /** claimed | ready | completed | deleted | held | rolled_over | reassigned */
+  resolvedReason: varchar("resolved_reason", { length: 24 }),
+}, (table) => [
+  uniqueIndex("ops_alerts_once_idx").on(table.orgId, table.orderId, table.kind, table.userId, table.dueKey),
+  index("ops_alerts_open_idx")
+    .on(table.orgId, table.userId)
+    .where(sql`${table.ackedAt} IS NULL AND ${table.resolvedAt} IS NULL`),
+]);
+
+export type OpsAlert = typeof opsAlerts.$inferSelect;
+export type InsertOpsAlert = typeof opsAlerts.$inferInsert;
+export const insertOpsAlertSchema = createInsertSchema(opsAlerts).omit({ id: true, createdAt: true });
+export type InsertOpsAlertData = z.infer<typeof insertOpsAlertSchema>;
+
 // Overhead expenses table (general business costs)
 export const overheadExpenses = pgTable("overhead_expenses", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -24,7 +24,7 @@ import {
   products as appsProducts,
   customers as appsCustomers,
 } from "../../apps/server/src/db/schema";
-import { organizations, opsStaff, allowedUsers, orderEvents, users } from "@shared/schema";
+import { organizations, opsStaff, allowedUsers, orderEvents, opsAlerts, users } from "@shared/schema";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const OTHER_ORG_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -74,6 +74,7 @@ const state = vi.hoisted(() => ({
   opsStaffRows: [] as any[],
   allowedUserRows: [] as any[],
   orderEventRows: [] as any[],
+  opsAlertRows: [] as any[],
   userRows: [] as any[],
   appsSelectCalls: [] as string[],
   usersSelectCallCount: 0,
@@ -108,6 +109,10 @@ vi.mock("../db", () => ({
         if (table === opsStaff) return chain(state.opsStaffRows);
         if (table === allowedUsers) return chain(state.allowedUserRows);
         if (table === orderEvents) return chain(state.orderEventRows);
+        // N5a: the board's `alerts` field (`server/services/opsAlerts.ts`'s
+        // `listFor`) — empty by default, so the "exact contract shape" test's
+        // `alerts: []` holds without every other test having to know it exists.
+        if (table === opsAlerts) return chain(state.opsAlertRows);
         if (table === users) {
           state.usersSelectCallCount += 1;
           return chain(state.userRows);
@@ -195,6 +200,7 @@ beforeEach(() => {
   state.opsStaffRows = [];
   state.allowedUserRows = [];
   state.orderEventRows = [];
+  state.opsAlertRows = [];
   state.userRows = [];
   state.appsSelectCalls = [];
   state.usersSelectCallCount = 0;

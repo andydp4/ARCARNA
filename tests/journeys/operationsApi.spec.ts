@@ -10,6 +10,9 @@
  * empty-lines order no other journey in this suite ever sends.
  */
 import { expect } from "@playwright/test";
+import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
+import { opsAlerts } from "@shared/schema";
 import { db } from "../../server/db";
 import { ensureOpenShift, firstLocationId, okJson, placeOrder, uniqueSuffix } from "./fixtures";
 import { apiForUser, opsTest as test, orderInState } from "./opsFixtures";
@@ -226,5 +229,53 @@ test.describe("Order transitions — API journeys", () => {
     expect(reopenRes.status()).toBe(409);
     const body = await reopenRes.json();
     expect(body.code).toBe("ORDER_REOPEN_CLOSED_DAY");
+  });
+
+  // brief, "Alerts & notifications": "assigned | the new assignee (not on
+  // self-claim...) | in the assign / create transaction". N5a wired this
+  // into `orderTransitions.ts`'s "assign" action but missed the OTHER place
+  // an order gets an assignee in the same transaction it's created —
+  // `POST /api/orders`'s explicit `assignedUserId` and default-owner-rule
+  // paths — leaving both silently alert-less. A fake, non-staff id is used
+  // as the assignee deliberately: the route never validates that id against
+  // real staff (see its own comment above `explicitAssigneeId`), and a
+  // single-identity order keeps this test clear of the pre-existing
+  // seed-org duplication issue that a second real identity (`cashierB`,
+  // `orgB`) would run into on this shared database (see PR #196).
+  test("an explicit assignedUserId at order creation writes one assigned alert, for that assignee", async ({ api }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+    const fakeAssigneeId = `ops-alert-test-assignee-${randomUUID()}`;
+
+    const created = await okJson<{ orderId?: string; id?: string }>(
+      await placeOrder(api, locationId, [{ productId: product.id, quantity: 1, unitPrice: 10 }], "cash", {
+        assignedUserId: fakeAssigneeId,
+      }),
+    );
+    const orderId = (created.orderId ?? created.id)!;
+
+    const rows = await db.select().from(opsAlerts).where(eq(opsAlerts.orderId, orderId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "assigned", userId: fakeAssigneeId });
+  });
+
+  test("assigning an order to yourself at creation (self-claim) writes no alert", async ({ api }) => {
+    const locationId = await firstLocationId(api);
+    await ensureOpenShift(api, locationId);
+    const product = await sellableProduct(api, locationId);
+
+    // `api` impersonates seed-admin (fixtures.ts, ROLE_USERS.ADMIN) — the
+    // inputter here IS the explicit assignee, the self-claim carve-out
+    // `shouldAlertAssigned` documents.
+    const created = await okJson<{ orderId?: string; id?: string }>(
+      await placeOrder(api, locationId, [{ productId: product.id, quantity: 1, unitPrice: 10 }], "cash", {
+        assignedUserId: "seed-admin",
+      }),
+    );
+    const orderId = (created.orderId ?? created.id)!;
+
+    const rows = await db.select().from(opsAlerts).where(eq(opsAlerts.orderId, orderId));
+    expect(rows.filter((r) => r.kind === "assigned")).toHaveLength(0);
   });
 });

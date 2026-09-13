@@ -333,6 +333,23 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
                   }
                 : { resolution: body.delayResolution ?? null },
             });
+            // brief, "Alerts & notifications": "`delayed` | assignee, when
+            // someone else declared it | in the `/operations` transaction |
+            // no". Silent when the assignee declared their own delay, or
+            // there is no assignee to tell (server/services/opsAlerts.ts's
+            // `alertDelayedInTx`, backed by `shared/orders/opsAlerts.ts`'s
+            // `delayedRecipients`).
+            if (nowDelayed) {
+              const { alertDelayedInTx } = await import("../services/opsAlerts");
+              await alertDelayedInTx(tx, {
+                orgId: ctx.orgId,
+                orderId: req.params.id,
+                assigneeId: (order.assigned_user_id as string | null) ?? null,
+                actorId: req.user?.id ?? null,
+                revisedEta: updated.revised_eta ? new Date(updated.revised_eta as string | Date) : null,
+                declaredAt: now,
+              });
+            }
           }
 
           return { notFound: false as const, updated };

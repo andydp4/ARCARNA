@@ -9,8 +9,8 @@
  * table's row/time-dependent half that cannot live in a `requireRole`
  * middleware because it depends on who the row's CURRENT assignee or
  * completer is) → the stamp → auto-claim on `ready` / `out_for_delivery` when
- * unassigned → one `order_events` insert → alert resolution (N5a is not built
- * yet, so this is a marked no-op) → `publishEventTx`. After commit: settle a
+ * unassigned → one `order_events` insert → alert generation and resolution
+ * (N5a, `server/services/opsAlerts.ts`) → `publishEventTx`. After commit: settle a
  * backdated shift if `complete` touched one, re-read the row as a `BoardOrder`
  * (`server/services/opsBoard.ts`) and push it to `opsBus` — the identical
  * post-commit pattern `POST /api/orders` already uses.
@@ -40,6 +40,7 @@ import { completeOrderTx, reopenOrderTx, type CompleteOrderActor } from "./order
 import { getOpsBoardOrder, type BoardOrderPayload } from "./opsBoard";
 import { publishOpsEvent } from "./opsBus";
 import { resolveDuePromise } from "../routes/orders";
+import { alertAssignedInTx, alertCustomerWaitingInTx, loadStaffPresenceInTx, resolveOpsAlertsForTransition } from "./opsAlerts";
 
 const TEN_MINUTES_MS = 10 * 60_000;
 
@@ -222,10 +223,13 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
       .limit(1);
     if (!row) throw new OrderNotFoundError();
 
+    const fulfilmentMethod: "collection" | "delivery" =
+      (row.fulfilment_method as string) === "delivery" ? "delivery" : "collection";
+
     assertTransition(
       {
         status: String(row.status ?? "pending"),
-        fulfilmentMethod: (row.fulfilment_method as string) === "delivery" ? "delivery" : "collection",
+        fulfilmentMethod,
         etaGiven: row.eta_given,
       },
       action,
@@ -288,6 +292,17 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           throw new OrderAlreadyAssignedError(assignedUserId, names.get(assignedUserId) ?? null);
         }
         const event = await insertEvent("assigned", { from: null, to: actor.userId, by: actor.userId });
+        // No `assigned` alert on a self-claim — the brief's own carve-out
+        // ("not on self-claim") — but claiming still resolves any station
+        // alert (`new_unassigned`/`due_soon`/`late`) OTHER members were
+        // carrying for this order, since it now has an owner.
+        await resolveOpsAlertsForTransition(tx, {
+          orgId,
+          orderId,
+          action: "claim",
+          newAssigneeId: actor.userId,
+          resolvedByUserId: actor.userId,
+        });
         outcome = { changed: true, statusChanged: false, event };
         break;
       }
@@ -327,6 +342,23 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           to: targetUserId,
           by: actor.userId,
         });
+        // brief: "the new assignee (not on self-claim...)" — `shouldAlertAssigned`
+        // inside `alertAssignedInTx` still silences this when `targetUserId
+        // === actor.userId` (someone assigning the order to themselves).
+        await alertAssignedInTx(tx, {
+          orgId,
+          orderId,
+          assigneeId: targetUserId,
+          actorId: actor.userId,
+          assignedAt: now,
+        });
+        await resolveOpsAlertsForTransition(tx, {
+          orgId,
+          orderId,
+          action: "assign",
+          newAssigneeId: targetUserId,
+          resolvedByUserId: actor.userId,
+        });
         outcome = { changed: true, statusChanged: false, event };
         break;
       }
@@ -345,6 +377,17 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         }
         await tx.update(orders).set(patch).where(eq(orders.id, orderId));
         const event = await insertEvent("ready", autoAssignedTo ? { autoAssignedTo } : {});
+        // brief: "`ready` resolves `customer_waiting` and, on collection,
+        // `due_soon` / `late`". Auto-claim above never raises an `assigned`
+        // alert — the actor auto-claiming IS the new assignee, the same
+        // self-claim carve-out `claim` itself applies.
+        await resolveOpsAlertsForTransition(tx, {
+          orgId,
+          orderId,
+          action: "ready",
+          fulfilmentMethod,
+          resolvedByUserId: actor.userId,
+        });
         outcome = { changed: true, statusChanged: false, event };
         break;
       }
@@ -365,6 +408,19 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         }
         await tx.update(orders).set({ customer_arrived_at: now, updated_at: now }).where(eq(orders.id, orderId));
         const event = await insertEvent("arrived", {});
+        // brief: "`customer_waiting` | assignee, else present Collection
+        // members | on `arrived` WHEN NOT READY". `assertTransition` already
+        // confines `arrived` to collection orders.
+        if (!row.ready_at) {
+          const staff = await loadStaffPresenceInTx(tx, orgId, now);
+          await alertCustomerWaitingInTx(tx, {
+            orgId,
+            orderId,
+            assigneeId: (row.assigned_user_id as string | null) ?? null,
+            staff,
+            arrivedAt: now,
+          });
+        }
         outcome = { changed: true, statusChanged: false, event };
         break;
       }
@@ -400,6 +456,9 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           .set({ status: "on-hold", held_at: row.held_at ?? now, updated_at: now })
           .where(eq(orders.id, orderId));
         const event = await insertEvent("held", { reason: input.reason ?? null, fromStatus: row.status });
+        // brief: "`hold` resolves `due_soon`" (only — `late` is left standing;
+        // a held order can still be genuinely overdue).
+        await resolveOpsAlertsForTransition(tx, { orgId, orderId, action: "hold", resolvedByUserId: actor.userId });
         outcome = { changed: true, statusChanged: true, event };
         break;
       }
@@ -467,6 +526,11 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           )
           .orderBy(desc(orderEvents.at))
           .limit(1);
+        // brief: "`complete` / `delete` resolve all". `delete` lives in
+        // server/routes/orders.ts, outside this package's touch list — its
+        // alerts are caught by `sweepOpsAlerts`'s orphan cleanup instead (see
+        // server/services/opsAlerts.ts's module doc).
+        await resolveOpsAlertsForTransition(tx, { orgId, orderId, action: "complete", resolvedByUserId: actor.userId });
         outcome = {
           changed: true,
           statusChanged: true,
@@ -496,13 +560,6 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         throw new TransitionBadRequestError(`Unknown transition action: ${String(exhaustive)}`);
       }
     }
-
-    // Alert resolution (N5a, migration 066): claim/assign resolve
-    // `new_unassigned`/`due_soon`/`late`, `ready` resolves `customer_waiting`,
-    // `hold` resolves `due_soon`, `complete`/`delete` resolve everything. The
-    // table does not exist yet — this is a marked no-op hook so N5a's PR adds
-    // one call here instead of re-deriving where it belongs.
-    // TODO(N5a): await resolveOpsAlertsForTransition(tx, { orgId, orderId, action, actorId: actor.userId });
 
     if (outcome.changed && outcome.event) {
       await publishEventTx(
