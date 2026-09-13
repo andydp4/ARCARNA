@@ -15,10 +15,11 @@
  * Both pools point at the same physical Postgres, so mixing them within one
  * request is the same pattern `GET /api/orders/:id` already uses for refunds.
  *
- * `alerts` is always `[]` here: `ops_alerts` does not exist until migration
- * 066 (N5a). Returning the empty array now, rather than omitting the field,
- * means the client's `OpsBoardPayload` type never has to treat it as
- * optional — N5a fills it in without changing the shape anyone already reads.
+ * `alerts` (N5a, migration 066): the signed-in user's own unacked, unresolved
+ * rows whose order is in `orders` below — see `server/services/opsAlerts.ts`'s
+ * `listFor`. `[]` for an anonymous read (no `userId`) or an org with no
+ * `ops_alerts` rows yet, never omitted, so the client's `OpsBoardPayload`
+ * type never has to treat the field as optional.
  */
 import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { organizations, opsStaff, allowedUsers } from "@shared/schema";
@@ -26,6 +27,7 @@ import { resolveUserNames } from "./userDisplayName";
 import { currentTradingDay } from "@shared/time/tradingDay";
 import type { CardState } from "@shared/orders/opsState";
 import { deriveCardState } from "@shared/orders/opsState";
+import { listFor, type OpsAlertListItem } from "./opsAlerts";
 
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
 const PRESENT_WITHIN_MINUTES = 15;
@@ -118,7 +120,7 @@ export interface OpsBoardPayload {
   me: { userId: string | null; station: string | null; onBreak: boolean };
   staff: OpsBoardStaffRow[];
   orders: BoardOrderPayload[];
-  alerts: unknown[];
+  alerts: OpsAlertListItem[];
   summary: OpsBoardSummary;
 }
 
@@ -516,6 +518,12 @@ export async function getOpsBoard(
     completedToday: orders.filter((o) => o.status === "completed").length,
   };
 
+  // "my rows, unacked, unresolved, whose order is in `orders`" (brief) — the
+  // last clause is `orders.map(o => o.id)`, not a second, looser query: an
+  // alert for a row that has already aged out of the board (past the
+  // "Done today" window, say) must not surface here either.
+  const alerts = await listFor(orgId, userId, orders.map((o) => o.id));
+
   return {
     serverNow: now.toISOString(),
     tradingDay: currentTradingDay(timezone, now),
@@ -524,8 +532,7 @@ export async function getOpsBoard(
     me: { userId, station: me?.station ?? null, onBreak: me?.onBreak ?? false },
     staff,
     orders,
-    // ops_alerts does not exist until migration 066 (N5a) — see module doc.
-    alerts: [],
+    alerts,
     summary,
   };
 }

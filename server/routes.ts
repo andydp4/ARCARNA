@@ -23,6 +23,7 @@ import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
 import { registerOrderTransitionRoutes } from "./routes/orderTransitions";
 import { registerOperationsRoutes } from "./routes/operations";
+import { registerOpsAlertRoutes } from "./routes/opsAlerts";
 import { registerOpsStreamRoutes } from "./routes/opsStream";
 import { registerInventoryRoutes } from "./routes/inventory";
 import { registerReportRoutes } from "./routes/reports";
@@ -82,6 +83,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerOrderRoutes(app, scoped);
   registerOrderTransitionRoutes(app, scoped);
   registerOperationsRoutes(app, scoped);
+  registerOpsAlertRoutes(app, scoped);
   registerOpsStreamRoutes(app, scoped);
   registerShiftRoutes(app, scoped);
   registerCashierRoutes(app, scoped);

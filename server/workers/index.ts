@@ -20,6 +20,7 @@ import {
   runReconciliation,
 } from "../eventBus";
 import { setWorkerWaker } from "./wakeSignal";
+import { nextOpsAlertAt, sweepOpsAlerts } from "../services/opsAlerts";
 import { EventEnvelope, EventType, WorkerName, WorkerResult, REQUIRED_WORKERS } from "../../shared/schema";
 import { InventoryWorker } from "./inventoryWorker";
 import { CustomerWorker } from "./customerWorker";
@@ -247,6 +248,38 @@ let concurrency = 3;
 
 const MAX_DRAIN_ITERATIONS = 100; // cap work per tick so the loop stays responsive
 
+/**
+ * The runner's precise-wake decision, extracted as a pure function so it can
+ * be unit-tested by injecting `now` and the two candidate instants rather
+ * than by faking a real timer (`docs/testing/FAKE_TIME.md` §2-3: this code
+ * owns a real `setTimeout`, and mixing a fake clock with the async DB calls
+ * `nextQueuedRunAt`/`nextOpsAlertAt` make would be "a fake clock and a real
+ * I/O timeout... a deadlock waiting to be scheduled").
+ *
+ * Brief, "Generation": "`runTick` schedules
+ * `min(nextQueuedRunAt(), nextOpsAlertAt())`". `idleDelayMs` is the caller's
+ * own exponential-backoff figure (already computed for this tick) and acts
+ * as the ceiling neither candidate may exceed; each candidate that names an
+ * earlier instant pulls the delay in, floored at `activeBaseMs` so a
+ * candidate a few milliseconds away does not spin the loop.
+ */
+export function computeNextWakeDelayMs(params: {
+  now: number;
+  idleDelayMs: number;
+  activeBaseMs: number;
+  nextQueuedRunAt: Date | null;
+  nextOpsAlertAt: Date | null;
+}): number {
+  let delay = params.idleDelayMs;
+  for (const next of [params.nextQueuedRunAt, params.nextOpsAlertAt]) {
+    if (!next) continue;
+    const untilNext = next.getTime() - params.now;
+    const bounded = untilNext <= 0 ? 0 : Math.min(delay, Math.max(params.activeBaseMs, untilNext));
+    delay = Math.min(delay, bounded);
+  }
+  return delay;
+}
+
 function scheduleTick(delayMs: number): void {
   if (!isRunning) return;
   const when = Date.now() + Math.max(0, delayMs);
@@ -317,6 +350,18 @@ async function runTick(): Promise<void> {
     const dispatched = await dispatchPendingEvents();
     if (dispatched > 0) didWork = true;
 
+    // Personal alerts (Phase N, N5a): due_soon/late/new_unassigned generation
+    // plus the sweep's own resolution of rolled-over, deleted and completed
+    // orders' rows. Run on every active tick — nobody taps a button to make a
+    // promise fall due, so this is the one piece of "work" this loop invents
+    // for itself rather than reacting to the outbox.
+    try {
+      const swept = await sweepOpsAlerts(new Date());
+      if (swept.created > 0 || swept.resolved > 0) didWork = true;
+    } catch (error) {
+      console.error("[WorkerRunner] Ops-alert sweep failed:", error);
+    }
+
     // Drain ready jobs until none remain (bounded per tick).
     for (let i = 0; i < MAX_DRAIN_ITERATIONS; i++) {
       const results = await Promise.all(
@@ -344,13 +389,19 @@ async function runTick(): Promise<void> {
   idleDelayMs = idleDelayMs > 0 ? Math.min(idleDelayMs * 2, idleCeilingMs) : activeBaseMs * 4;
   let delay = idleDelayMs;
 
-  // If a retry is queued for the future, wake exactly then (bounded by the ceiling).
+  // Precise wake (brief, "Generation"): min(nextQueuedRunAt(), nextOpsAlertAt()).
+  // A retry queued for the future, or a promise about to go due-soon/late,
+  // each pull the next tick in to exactly that instant (bounded by the
+  // ceiling) instead of waiting out the full exponential backoff.
   try {
-    const next = await nextQueuedRunAt();
-    if (next) {
-      const untilNext = next.getTime() - Date.now();
-      delay = untilNext <= 0 ? 0 : Math.min(delay, Math.max(activeBaseMs, untilNext));
-    }
+    const [nextJob, nextAlert] = await Promise.all([nextQueuedRunAt(), nextOpsAlertAt()]);
+    delay = computeNextWakeDelayMs({
+      now: Date.now(),
+      idleDelayMs: delay,
+      activeBaseMs,
+      nextQueuedRunAt: nextJob,
+      nextOpsAlertAt: nextAlert,
+    });
   } catch {
     // Ignore lookahead failures; the ceiling still bounds the next poll.
   }
