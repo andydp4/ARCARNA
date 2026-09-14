@@ -31,7 +31,7 @@ export function OfflineIndicator() {
     return (
       <div className="fixed bottom-4 right-4 z-50" data-testid="offline-indicator-icon">
         {!isOnline && (
-          <div className="bg-slate-800 text-white px-3 py-2 rounded-full shadow-lg flex items-center gap-2">
+          <div className="bg-popover text-popover-foreground px-3 py-2 rounded-full shadow-lg flex items-center gap-2">
             <WifiOff className="h-4 w-4" />
             <span className="text-sm font-medium">Offline</span>
           </div>

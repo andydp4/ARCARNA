@@ -67,7 +67,7 @@ function ExpenseRowInner({ expense, onEdit, onDelete, canMutate = true }: Expens
       <TableCell>
         <span
           className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-            expense.isActive === 1 ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+            expense.isActive === 1 ? "badge-success" : "badge-neutral"
           }`}
         >
           {expense.isActive === 1 ? "Active" : "Inactive"}

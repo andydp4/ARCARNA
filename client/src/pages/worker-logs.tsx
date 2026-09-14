@@ -72,7 +72,7 @@ const statusColors: Record<string, string> = {
   retrying: 'bg-yellow-700',
   dead_letter: 'bg-red-700',
   already_processed: 'bg-blue-600',
-  queued: 'bg-gray-500',
+  queued: 'bg-metal-titanium',
   running: 'bg-blue-600',
   matched_action_success: 'bg-emerald-700',
   matched_action_failed: 'bg-orange-600',
@@ -538,7 +538,7 @@ export default function WorkerLogsPage() {
                           </TableCell>
                           <TableCell className="font-mono text-sm">{job.workerName}</TableCell>
                           <TableCell>
-                            <Badge className={`${statusColors[job.status] || 'bg-gray-500'} text-white`}>
+                            <Badge className={`${statusColors[job.status] || 'bg-metal-titanium'} text-white`}>
                               {statusIcons[job.status]}
                               <span className="ml-1">{job.status}</span>
                             </Badge>
