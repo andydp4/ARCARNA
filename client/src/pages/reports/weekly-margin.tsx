@@ -50,6 +50,7 @@ export default function WeeklyMarginReport() {
       config={{
         reportRef: "ARC-T2-001",
         params: bounds,
+        showRevenueDefinitionNote: true,
         periodLabel: () => `Week ${screenDate(bounds.from)} – ${screenDate(bounds.to)}`,
         tableHeading: "Margin by Product (highest contribution first)",
         emptyText: "No sales this week — no margin to report.",
