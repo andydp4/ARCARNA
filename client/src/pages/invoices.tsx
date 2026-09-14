@@ -15,13 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableHead, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -33,7 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Search, DollarSign, Clock, AlertCircle } from "lucide-react";
-import { InvoiceRow, type InvoiceListItem } from "@/components/invoice-row";
+import { InvoiceRow, InvoiceCard, type InvoiceListItem } from "@/components/invoice-row";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTableShell } from "@/components/data-table-shell";
@@ -372,8 +367,12 @@ export default function Invoices() {
               )
             ) : (
               <DataTableShell className="overflow-x-auto">
-                <Table scrollContainerClassName="overflow-visible">
-                  <TableHeader>
+                <ResponsiveTable
+                  rows={filteredInvoices}
+                  getRowKey={(invoice) => invoice.id}
+                  tableClassName="overflow-visible"
+                  cardListClassName="p-3"
+                  head={
                     <TableRow className="border-b bg-muted/40 hover:bg-muted/40">
                       <TableHead className="whitespace-nowrap">Invoice #</TableHead>
                       <TableHead>Customer</TableHead>
@@ -384,21 +383,30 @@ export default function Invoices() {
                       <TableHead className="whitespace-nowrap">Payment</TableHead>
                       <TableHead className="whitespace-nowrap text-right">PDF</TableHead>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInvoices.map((invoice) => (
-                      <InvoiceRow
-                        key={invoice.id}
-                        invoice={invoice}
-                        onCopyInvoiceNumber={copyInvoiceNumber}
-                        onViewPdf={viewInvoicePdf}
-                        onPrint={printInvoice}
-                        onDownload={downloadInvoicePdf}
-                        onEmail={emailInvoice}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
+                  }
+                  renderCard={(invoice) => (
+                    <InvoiceCard
+                      invoice={invoice}
+                      onCopyInvoiceNumber={copyInvoiceNumber}
+                      onViewPdf={viewInvoicePdf}
+                      onPrint={printInvoice}
+                      onDownload={downloadInvoicePdf}
+                      onEmail={emailInvoice}
+                    />
+                  )}
+                >
+                  {filteredInvoices.map((invoice) => (
+                    <InvoiceRow
+                      key={invoice.id}
+                      invoice={invoice}
+                      onCopyInvoiceNumber={copyInvoiceNumber}
+                      onViewPdf={viewInvoicePdf}
+                      onPrint={printInvoice}
+                      onDownload={downloadInvoicePdf}
+                      onEmail={emailInvoice}
+                    />
+                  ))}
+                </ResponsiveTable>
               </DataTableShell>
             )}
           </CardContent>

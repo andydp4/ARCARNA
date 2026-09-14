@@ -66,7 +66,14 @@ export interface ReportColumn<T> {
   align?: "left" | "right" | "center";
 }
 
-/** Branded table: Truth Blue Dark header row, steel-grey body, zebra rows. */
+/**
+ * Branded table: Truth Blue Dark header row, steel-grey body, zebra rows.
+ *
+ * ARC-054 / ARC-034: these report tables can run 6-9 columns, which is
+ * unreadable on a ~390px phone even with the horizontal scroll below. Below
+ * `md:` we swap to one card per row — same column config, no bespoke layout
+ * per report — matching the convention in `client/src/components/ui/responsive-table.tsx`.
+ */
 export function ReportTable<T>({
   columns,
   rows,
@@ -91,53 +98,104 @@ export function ReportTable<T>({
       </div>
     );
   }
+
+  const cellValue = (c: ReportColumn<T>, row: T) => {
+    const v = c.cell(row);
+    return v === null || v === undefined || v === "" ? orDash(null) : v;
+  };
+
   return (
-    <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr style={{ backgroundColor: REPORT_COLORS.truthBlueDark }}>
-            {columns.map((c, i) => (
-              <th
-                key={i}
-                className="whitespace-nowrap px-3 py-2 text-[12px] font-semibold uppercase tracking-wide"
-                style={{ color: "#fff", textAlign: c.align ?? (i === 0 ? "left" : "right") }}
-              >
-                {c.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => {
-            const flag = rowFlag?.(row);
-            return (
-              <tr
-                key={getRowKey ? getRowKey(row, ri) : ri}
-                style={{
-                  backgroundColor: flag ? FLAG_STYLE[flag].bg : ri % 2 ? "#F9FAFB" : "#fff",
-                }}
-              >
-                {columns.map((c, ci) => (
-                  <td
-                    key={ci}
-                    className="whitespace-nowrap px-3 py-2"
-                    style={{
-                      color: c.keyInfo ? REPORT_COLORS.truthBlue : REPORT_COLORS.steelGrey,
-                      fontWeight: c.keyInfo ? 600 : 400,
-                      textAlign: c.align ?? (ci === 0 ? "left" : "right"),
-                    }}
-                  >
-                    {(() => {
-                      const v = c.cell(row);
-                      return v === null || v === undefined || v === "" ? orDash(null) : v;
-                    })()}
-                  </td>
+    <>
+      {/* Desktop / tablet: the full table, still horizontally scrollable as a fallback. */}
+      <div className="hidden overflow-x-auto rounded-lg border md:block" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr style={{ backgroundColor: REPORT_COLORS.truthBlueDark }}>
+              {columns.map((c, i) => (
+                <th
+                  key={i}
+                  className="whitespace-nowrap px-3 py-2 text-[12px] font-semibold uppercase tracking-wide"
+                  style={{ color: "#fff", textAlign: c.align ?? (i === 0 ? "left" : "right") }}
+                >
+                  {c.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => {
+              const flag = rowFlag?.(row);
+              return (
+                <tr
+                  key={getRowKey ? getRowKey(row, ri) : ri}
+                  style={{
+                    backgroundColor: flag ? FLAG_STYLE[flag].bg : ri % 2 ? "#F9FAFB" : "#fff",
+                  }}
+                >
+                  {columns.map((c, ci) => (
+                    <td
+                      key={ci}
+                      className="whitespace-nowrap px-3 py-2"
+                      style={{
+                        color: c.keyInfo ? REPORT_COLORS.truthBlue : REPORT_COLORS.steelGrey,
+                        fontWeight: c.keyInfo ? 600 : 400,
+                        textAlign: c.align ?? (ci === 0 ? "left" : "right"),
+                      }}
+                    >
+                      {cellValue(c, row)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Phone: one card per row — first column as the title, the rest as label:value lines. */}
+      <div className="space-y-2 md:hidden">
+        {rows.map((row, ri) => {
+          const flag = rowFlag?.(row);
+          const [titleCol, ...restCols] = columns;
+          return (
+            <div
+              key={getRowKey ? getRowKey(row, ri) : ri}
+              className="rounded-lg border p-3 text-sm"
+              style={{
+                borderColor: flag ? FLAG_STYLE[flag].border : "rgba(0,0,0,0.08)",
+                backgroundColor: flag ? FLAG_STYLE[flag].bg : "#fff",
+              }}
+            >
+              {titleCol && (
+                <div
+                  className="mb-1.5 font-semibold"
+                  style={{ color: titleCol.keyInfo ? REPORT_COLORS.truthBlue : REPORT_COLORS.steelGrey }}
+                >
+                  {cellValue(titleCol, row)}
+                </div>
+              )}
+              <div className="space-y-1">
+                {restCols.map((c, ci) => (
+                  <div key={ci} className="flex items-baseline justify-between gap-3">
+                    <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: REPORT_COLORS.smoke }}>
+                      {c.header}
+                    </span>
+                    <span
+                      className="min-w-0 text-right"
+                      style={{
+                        color: c.keyInfo ? REPORT_COLORS.truthBlue : REPORT_COLORS.steelGrey,
+                        fontWeight: c.keyInfo ? 600 : 400,
+                      }}
+                    >
+                      {cellValue(c, row)}
+                    </span>
+                  </div>
                 ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }

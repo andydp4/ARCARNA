@@ -14,14 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, getJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -197,8 +191,10 @@ export default function CashierPayrollPage() {
           ) : metrics.length === 0 ? (
             <p className="text-sm text-muted-foreground">No cashier shifts in this period.</p>
           ) : (
-            <Table>
-              <TableHeader>
+            <ResponsiveTable
+              rows={metrics}
+              getRowKey={(m) => m.cashierId}
+              head={
                 <TableRow>
                   <TableHead>Cashier</TableHead>
                   <TableHead>Sales</TableHead>
@@ -209,28 +205,47 @@ export default function CashierPayrollPage() {
                   <TableHead>Sales/hr</TableHead>
                   <TableHead>Orders</TableHead>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {metrics.map((m) => (
-                  <TableRow key={m.cashierId} data-testid={`row-cashier-metric-${m.cashierCode}`}>
-                    <TableCell className="font-medium">{m.cashierCode} · {m.cashierName}</TableCell>
-                    <TableCell>{money(m.totalSales)}</TableCell>
-                    <TableCell>{money(m.netSalesProfit)}</TableCell>
-                    <TableCell>{money(m.commissionEarned)}</TableCell>
-                    <TableCell>{money(m.commissionPaid)}</TableCell>
-                    <TableCell>
-                      {m.commissionUnpaid > 0 ? (
-                        <Badge variant="destructive">{money(m.commissionUnpaid)}</Badge>
-                      ) : (
-                        money(0)
+              }
+              renderCard={(m) => (
+                <Card className="lm-card border-0 shadow-none" data-testid={`card-cashier-metric-${m.cashierCode}`}>
+                  <CardContent className="pt-4">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p className="font-medium">{m.cashierCode} · {m.cashierName}</p>
+                      {m.commissionUnpaid > 0 && (
+                        <Badge variant="destructive">{money(m.commissionUnpaid)} unpaid</Badge>
                       )}
-                    </TableCell>
-                    <TableCell>{money(m.salesPerHour)}</TableCell>
-                    <TableCell>{m.orderCount}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                    <div className="space-y-1 border-t pt-2">
+                      <ResponsiveCardRow label="Sales">{money(m.totalSales)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Net profit">{money(m.netSalesProfit)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Commission earned">{money(m.commissionEarned)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Paid">{money(m.commissionPaid)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Sales/hr">{money(m.salesPerHour)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Orders">{m.orderCount}</ResponsiveCardRow>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            >
+              {metrics.map((m) => (
+                <TableRow key={m.cashierId} data-testid={`row-cashier-metric-${m.cashierCode}`}>
+                  <TableCell className="font-medium">{m.cashierCode} · {m.cashierName}</TableCell>
+                  <TableCell>{money(m.totalSales)}</TableCell>
+                  <TableCell>{money(m.netSalesProfit)}</TableCell>
+                  <TableCell>{money(m.commissionEarned)}</TableCell>
+                  <TableCell>{money(m.commissionPaid)}</TableCell>
+                  <TableCell>
+                    {m.commissionUnpaid > 0 ? (
+                      <Badge variant="destructive">{money(m.commissionUnpaid)}</Badge>
+                    ) : (
+                      money(0)
+                    )}
+                  </TableCell>
+                  <TableCell>{money(m.salesPerHour)}</TableCell>
+                  <TableCell>{m.orderCount}</TableCell>
+                </TableRow>
+              ))}
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>
@@ -246,8 +261,10 @@ export default function CashierPayrollPage() {
           ) : commissionRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No closed shifts with commission in this period.</p>
           ) : (
-            <Table>
-              <TableHeader>
+            <ResponsiveTable
+              rows={commissionRows}
+              getRowKey={(row) => row.shiftId}
+              head={
                 <TableRow>
                   <TableHead>Cashier</TableHead>
                   <TableHead>Shift closed</TableHead>
@@ -256,36 +273,67 @@ export default function CashierPayrollPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {commissionRows.map((row) => (
-                  <TableRow key={row.shiftId} data-testid={`row-commission-${row.shiftId}`}>
-                    <TableCell>{row.cashierCode} · {row.cashierName}</TableCell>
-                    <TableCell>{new Date(row.closedAt).toLocaleString()}</TableCell>
-                    <TableCell>{money(row.netSalesProfit)}</TableCell>
-                    <TableCell>{money(row.commissionAmount)}</TableCell>
-                    <TableCell>
+              }
+              renderCard={(row) => (
+                <Card className="lm-card border-0 shadow-none" data-testid={`card-commission-${row.shiftId}`}>
+                  <CardContent className="pt-4">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{row.cashierCode} · {row.cashierName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(row.closedAt).toLocaleString()}
+                        </p>
+                      </div>
                       <Badge variant={row.paidStatus === "paid" ? "secondary" : row.paidStatus === "partial" ? "outline" : "destructive"}>
                         {row.paidStatus}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.amountUnpaid > 0 && (
-                        <Button
-                          size="sm"
-                          className="min-h-[44px]"
-                          disabled={confirmPayment.isPending}
-                          onClick={() => confirmPayment.mutate(row)}
-                          data-testid={`button-confirm-payment-${row.shiftId}`}
-                        >
-                          Confirm paid — {money(row.amountUnpaid)}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                    <div className="space-y-1 border-t pt-2">
+                      <ResponsiveCardRow label="Net profit">{money(row.netSalesProfit)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Commission">{money(row.commissionAmount)}</ResponsiveCardRow>
+                    </div>
+                    {row.amountUnpaid > 0 && (
+                      <Button
+                        size="sm"
+                        className="mt-3 min-h-[44px] w-full"
+                        disabled={confirmPayment.isPending}
+                        onClick={() => confirmPayment.mutate(row)}
+                        data-testid={`button-confirm-payment-${row.shiftId}`}
+                      >
+                        Confirm paid — {money(row.amountUnpaid)}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            >
+              {commissionRows.map((row) => (
+                <TableRow key={row.shiftId} data-testid={`row-commission-${row.shiftId}`}>
+                  <TableCell>{row.cashierCode} · {row.cashierName}</TableCell>
+                  <TableCell>{new Date(row.closedAt).toLocaleString()}</TableCell>
+                  <TableCell>{money(row.netSalesProfit)}</TableCell>
+                  <TableCell>{money(row.commissionAmount)}</TableCell>
+                  <TableCell>
+                    <Badge variant={row.paidStatus === "paid" ? "secondary" : row.paidStatus === "partial" ? "outline" : "destructive"}>
+                      {row.paidStatus}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.amountUnpaid > 0 && (
+                      <Button
+                        size="sm"
+                        className="min-h-[44px]"
+                        disabled={confirmPayment.isPending}
+                        onClick={() => confirmPayment.mutate(row)}
+                        data-testid={`button-confirm-payment-${row.shiftId}`}
+                      >
+                        Confirm paid — {money(row.amountUnpaid)}
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>

@@ -2,14 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/PageHeader";
 import { apiFetch } from "@/lib/appPaths";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import { Skeleton } from "@/components/Skeleton";
 import { Radio } from "lucide-react";
 import type { ChannelAttributionRow } from "@shared/analytics/channelAttribution";
@@ -62,17 +56,29 @@ export default function ChannelAttributionPage() {
           ) : (data?.channels.length ?? 0) === 0 ? (
             <p className="text-sm text-muted-foreground">No completed orders in this window.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Channel</TableHead>
-                  <TableHead className="text-right">Orders</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">AOV</TableHead>
-                  <TableHead className="text-right">Share</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <ResponsiveTable
+                rows={data?.channels ?? []}
+                getRowKey={(row) => row.channel}
+                head={
+                  <TableRow>
+                    <TableHead>Channel</TableHead>
+                    <TableHead className="text-right">Orders</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">AOV</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </TableRow>
+                }
+                renderCard={(row) => (
+                  <div className="rounded-lg border p-3 text-sm" data-testid={`card-channel-${row.channel}`}>
+                    <div className="mb-1.5 font-semibold">{labelFor(row.channel)}</div>
+                    <ResponsiveCardRow label="Orders">{row.orderCount}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Revenue">£{row.revenue.toFixed(2)}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="AOV">£{row.aov.toFixed(2)}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Share">{row.sharePct}%</ResponsiveCardRow>
+                  </div>
+                )}
+              >
                 {data?.channels.map((row) => (
                   <TableRow key={row.channel}>
                     <TableCell className="font-medium">{labelFor(row.channel)}</TableCell>
@@ -90,8 +96,12 @@ export default function ChannelAttributionPage() {
                   <TableCell className="text-right">£{totalRevenue.toFixed(2)}</TableCell>
                   <TableCell colSpan={2} />
                 </TableRow>
-              </TableBody>
-            </Table>
+              </ResponsiveTable>
+              <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 p-3 text-sm font-semibold md:hidden">
+                <span>Total ({(data?.channels ?? []).reduce((s, r) => s + r.orderCount, 0)} orders)</span>
+                <span>£{totalRevenue.toFixed(2)}</span>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
