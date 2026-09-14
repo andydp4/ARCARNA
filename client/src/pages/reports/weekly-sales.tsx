@@ -80,6 +80,7 @@ export default function WeeklySalesReport() {
         purpose={META.purpose}
         periodLabel={`Week ${screenDate(bounds.from)} – ${screenDate(bounds.to)}`}
         toolbar={<ReportExportToolbar targetRef={frameRef} reportRef={META.ref} csv={csv} />}
+        showRevenueDefinitionNote
         flagLegend={[
           { level: "red", meaning: "Revenue < 70% of 4-week avg" },
           { level: "green", meaning: "≥ 120% of average" },
@@ -102,11 +103,13 @@ export default function WeeklySalesReport() {
               />
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <ReportKpi label="Cash" value={money(Number(s.cashRevenue) || 0)} />
               <ReportKpi label="Card" value={money(Number(s.cardRevenue) || 0)} />
+              <ReportKpi label="Credit (Tick)" value={money(Number(s.tickRevenue) || 0)} />
+              <ReportKpi label="Gift Card" value={money(Number(s.giftCardRevenue) || 0)} />
               <ReportKpi label="Website" value={money(Number(s.websiteRevenue) || 0)} />
-              <ReportKpi label="Reseller" value={money(Number(s.resellerRevenue) || 0)} />
+              <ReportKpi label="Other" value={money(Number(s.otherRevenue) || 0)} />
             </div>
 
             <div className="mt-5">

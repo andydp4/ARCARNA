@@ -1008,56 +1008,82 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  /**
+   * ARC-020: this used to count every order in the date range regardless of
+   * status — pending, on-hold and cancelled orders all added to "revenue" —
+   * and never netted refunds, so the Truths hub disagreed with Control Centre
+   * about the same range (one live example: 77 of 85 seed orders were
+   * `pending` and were still being counted as takings). Rebuilt on
+   * {@link settledRevenueByDay} — settled orders only, valued at the
+   * settlement snapshot, net of refunds issued — the same definition Control
+   * Centre and Daily/Weekly Sales use.
+   */
   private async getRevenueReports(fromDate: Date, toDate: Date, orgId: string) {
-    const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
-    const whereCond = and(dateCond, eq(orders.orgId, orgId));
-    const totalRevenue = await db
-      .select({
-        total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
-      })
-      .from(orders)
-      .where(whereCond);
+    const { settledRevenueByDay } = await import("./services/revenue");
+    const { offsetDate } = await import("@shared/analytics/kpi");
 
-    const dailyRevenue = await db
-      .select({
-        date: sql<string>`DATE(${orders.createdAt})`.as('date'),
-        revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue'),
-        orders: sql<number>`COUNT(*)`.as('orders')
-      })
-      .from(orders)
-      .where(whereCond)
-      .groupBy(sql`DATE(${orders.createdAt})`)
-      .orderBy(sql`DATE(${orders.createdAt})`);
+    const fromIso = fromDate.toISOString().slice(0, 10);
+    const toIso = toDate.toISOString().slice(0, 10);
+    const byDay = await settledRevenueByDay(orgId, fromIso, toIso);
 
+    let total = 0;
+    const dailyRevenue: Array<{ date: string; revenue: number; orders: number }> = [];
+    for (let d = fromIso; d <= toIso; d = offsetDate(d, 1)) {
+      const kpi = byDay.get(d);
+      const revenue = kpi?.revenue ?? 0;
+      total += revenue;
+      dailyRevenue.push({ date: d, revenue, orders: kpi?.txns ?? 0 });
+    }
+
+    // Payment-method split — scoped to the same settled window as `total`, so
+    // it no longer disagrees with it by including open or cancelled orders.
+    // Refunds are netted into `total` above, not per method here.
+    const settledCond = and(
+      eq(orders.orgId, orgId),
+      eq(orders.status, "completed"),
+      gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
+      lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
+    );
     const byPaymentMethod = await db
       .select({
         method: orders.paymentMethod,
         count: sql<number>`COUNT(*)`.as('count'),
-        revenue: sql<number>`SUM(CAST(${orders.total} AS DECIMAL))`.as('revenue')
+        revenue: sql<number>`COALESCE(SUM(CAST(COALESCE(${orders.settledTotal}, ${orders.total}) AS DECIMAL)), 0)`.as('revenue')
       })
       .from(orders)
-      .where(whereCond)
+      .where(settledCond)
       .groupBy(orders.paymentMethod);
 
     return {
-      total: totalRevenue[0]?.total || 0,
+      total,
       byDay: dailyRevenue,
       byCategory: [], // Would need to join with products and categories
       byPaymentMethod
     };
   }
 
+  /** ARC-020: order count, AOV and top products now scope to settled orders — see {@link getRevenueReports}. */
   private async getOrderReports(fromDate: Date, toDate: Date, orgId: string) {
-    const dateCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate}`;
-    const whereCond = and(dateCond, eq(orders.orgId, orgId));
-    const totalOrders = await db
-      .select({ total: sql<number>`COUNT(*)` })
-      .from(orders)
-      .where(whereCond);
-    const avgOrder = await db
-      .select({ average: sql<number>`AVG(CAST(${orders.total} AS DECIMAL))` })
-      .from(orders)
-      .where(whereCond);
+    const { settledRevenueByDay } = await import("./services/revenue");
+
+    const fromIso = fromDate.toISOString().slice(0, 10);
+    const toIso = toDate.toISOString().slice(0, 10);
+    const byDay = await settledRevenueByDay(orgId, fromIso, toIso);
+
+    let totalOrders = 0;
+    let totalRevenue = 0;
+    for (const kpi of byDay.values()) {
+      totalOrders += kpi.txns;
+      totalRevenue += kpi.revenue;
+    }
+    const average = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    const settledCond = and(
+      eq(orders.orgId, orgId),
+      eq(orders.status, "completed"),
+      gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
+      lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
+    );
     const topProducts = await db
       .select({
         name: products.name,
@@ -1067,24 +1093,28 @@ export class DatabaseStorage implements IStorage {
       .from(orderItems)
       .innerJoin(products, eq(orderItems.productId, products.id))
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .where(whereCond)
+      .where(settledCond)
       .groupBy(products.name)
       .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
       .limit(10);
 
+    // Bucketed by SETTLED time, not created_at: a backdated or pre-order sale
+    // carries a noon-local placeholder stamp on created_at (ARC-028's "11:00"
+    // bug in the dedicated Busiest Hours report), while settled_at is always
+    // the real wall-clock moment the order was completed.
     const hourlyDistribution = await db
       .select({
-        hour: sql<number>`EXTRACT(HOUR FROM ${orders.createdAt})`.as('hour'),
+        hour: sql<number>`EXTRACT(HOUR FROM ${orders.settledAt})`.as('hour'),
         count: sql<number>`COUNT(*)`.as('count')
       })
       .from(orders)
-      .where(whereCond)
-      .groupBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`)
-      .orderBy(sql`EXTRACT(HOUR FROM ${orders.createdAt})`);
+      .where(settledCond)
+      .groupBy(sql`EXTRACT(HOUR FROM ${orders.settledAt})`)
+      .orderBy(sql`EXTRACT(HOUR FROM ${orders.settledAt})`);
 
     return {
-      total: totalOrders[0]?.total || 0,
-      average: avgOrder[0]?.average || 0,
+      total: totalOrders,
+      average,
       topProducts,
       hourlyDistribution
     };
@@ -1513,13 +1543,16 @@ export class DatabaseStorage implements IStorage {
 
     return {
       summary: analytics,
+      // ARC-025: an empty category (or no overhead/order expenses at all in
+      // range) divided by zero here and rendered "NaN%" on the pie chart —
+      // guarded to a real 0% instead.
       overheadByCategory: overheadByCategory.map(cat => ({
         ...cat,
-        percentage: (cat.total / analytics.overheadTotal) * 100,
+        percentage: analytics.overheadTotal > 0 ? (cat.total / analytics.overheadTotal) * 100 : 0,
       })),
       orderExpensesByCategory: orderExpensesByCategory.map(cat => ({
         ...cat,
-        percentage: (cat.total / analytics.orderExpenseTotal) * 100,
+        percentage: analytics.orderExpenseTotal > 0 ? (cat.total / analytics.orderExpenseTotal) * 100 : 0,
       })),
       dailyTrends: enhancedTrends,
       period: {
@@ -1530,38 +1563,65 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  /**
+   * ARC-025 (Profit Truths): revenue was every order in the date range by
+   * `created_at` with no status filter and no refund netting — the same class
+   * of bug as ARC-020 — and COGS joined `order_items` to `orders` on the same
+   * unfiltered `created_at` window. Revenue is now {@link settledRevenueByDay}
+   * (settled orders, net of refunds); COGS is scoped to the matching settled
+   * window (`settled_at`, `status = 'completed'`), so a line only counts once
+   * the sale it belongs to has actually completed.
+   *
+   * COGS itself is still costed at product cost price AS OF NOW, not a
+   * snapshot of what the cost was at the moment of sale: `order_items` carries
+   * no cost-at-sale column to read instead (checked — see the schema; the
+   * closest thing, `cashier_shift_summaries.stock_cost`, is computed the same
+   * live-cost way in `cashierShiftEngine.ts`). Adding a real snapshot is a
+   * schema change of its own, tracked separately; until then this is stated
+   * on the Profit Truths card rather than presented as an exact historical
+   * figure, and `productsMissingCost` below flags when the number is
+   * incomplete because a sold product currently has no cost price at all.
+   */
   async getProfitAnalysis(startDate: Date, endDate: Date, orgId: string): Promise<any> {
-    const revCond = orgId
-      ? and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'), eq(orders.orgId, orgId))
-      : and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'));
-    const revenueData = await db
-      .select({
-        totalRevenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
-        orderCount: sql<number>`COUNT(*)`,
-      })
-      .from(orders)
-      .where(revCond);
+    const { settledRevenueByDay } = await import("./services/revenue");
+    const { offsetDate } = await import("@shared/analytics/kpi");
 
-    const totalRevenue = revenueData[0]?.totalRevenue || 0;
-    const orderCount = revenueData[0]?.orderCount || 0;
+    const fromIso = startDate.toISOString().slice(0, 10);
+    const toIso = endDate.toISOString().slice(0, 10);
+    const byDay = await settledRevenueByDay(orgId, fromIso, toIso);
 
-    const cogsCond = orgId
-      ? and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'), eq(orders.orgId, orgId))
-      : and(between(orders.createdAt, startDate, endDate), eq(orders.status, 'completed'));
+    let totalRevenue = 0;
+    let orderCount = 0;
+    for (const kpi of byDay.values()) {
+      totalRevenue += kpi.revenue;
+      orderCount += kpi.txns;
+    }
+
+    const cogsCond = and(
+      eq(orders.orgId, orgId),
+      eq(orders.status, 'completed'),
+      gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
+      lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
+    );
     const cogsData = await db
       .select({
-        totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS INTEGER) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+        totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+        productsMissingCost: sql<number>`COUNT(DISTINCT ${products.id}) FILTER (WHERE ${products.costPrice} IS NULL)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond);
 
-    const totalCOGS = cogsData[0]?.totalCOGS || 0;
+    // Postgres numeric/decimal columns come back as strings over the wire —
+    // coerced to real numbers so callers get a number, not "5.00000".
+    const totalCOGS = Number(cogsData[0]?.totalCOGS) || 0;
+    const productsMissingCost = Number(cogsData[0]?.productsMissingCost) || 0;
 
     const expenses = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
-    // Calculate profit margins
+    // Calculate profit margins — guarded against a zero-revenue period so an
+    // empty range renders 0%, never NaN%.
     const grossProfit = totalRevenue - totalCOGS;
     const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
@@ -1571,46 +1631,46 @@ export class DatabaseStorage implements IStorage {
     const netProfit = operatingProfit; // Could subtract taxes here if tracked
     const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-    const dailyProfits = await db
-      .select({
-        date: sql<string>`DATE(${orders.createdAt})`,
-        revenue: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
-        orderCount: sql<number>`COUNT(*)`,
-      })
-      .from(orders)
-      .where(revCond)
-      .groupBy(sql`DATE(${orders.createdAt})`);
-
     const dailyCOGS = await db
       .select({
-        date: sql<string>`DATE(${orders.createdAt})`,
-        cogs: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS INTEGER) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+        date: sql<string>`DATE(${orders.settledAt})`,
+        cogs: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond)
-      .groupBy(sql`DATE(${orders.createdAt})`);
+      .groupBy(sql`DATE(${orders.settledAt})`);
+    const cogsByDate = new Map(dailyCOGS.map((c) => [String(c.date), Number(c.cogs) || 0]));
 
-    // Combine daily data
-    const profitTrends = dailyProfits.map(day => {
-      const dailyCog = dailyCOGS.find(c => c.date === day.date)?.cogs || 0;
-      const revenue = Number(day.revenue) || 0;
-      const cogs = Number(dailyCog) || 0;
+    // Combine daily data — one row per calendar day in range, built from the
+    // same settled-revenue map as `totalRevenue`, so the trend sums to it.
+    const profitTrends: Array<{
+      date: string;
+      revenue: number;
+      cogs: number;
+      grossProfit: number;
+      expenses: number;
+      netProfit: number;
+      grossMargin: number;
+      netMargin: number;
+    }> = [];
+    for (let d = fromIso; d <= toIso; d = offsetDate(d, 1)) {
+      const revenue = byDay.get(d)?.revenue ?? 0;
+      const cogs = cogsByDate.get(d) ?? 0;
       const dailyGrossProfit = revenue - cogs;
       const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
-
-      return {
-        date: day.date,
-        revenue: revenue,
-        cogs: cogs,
+      profitTrends.push({
+        date: d,
+        revenue,
+        cogs,
         grossProfit: dailyGrossProfit,
         expenses: expenses.dailyOverhead,
         netProfit: dailyNetProfit,
         grossMargin: revenue > 0 ? (dailyGrossProfit / revenue) * 100 : 0,
         netMargin: revenue > 0 ? (dailyNetProfit / revenue) * 100 : 0,
-      };
-    });
+      });
+    }
 
     // Calculate average order value
     const averageOrderValue = orderCount > 0 ? totalRevenue / orderCount : 0;
@@ -1628,6 +1688,12 @@ export class DatabaseStorage implements IStorage {
         netMargin,
         orderCount,
         averageOrderValue,
+        productsMissingCost,
+        // Every figure here is settled orders, net of refunds, VAT-inclusive
+        // (orders.total already has VAT added on top of the net subtotal —
+        // see server/services/orgTaxRate.ts) — stated so the card doesn't
+        // leave the reader guessing.
+        vatTreatment: "incl. VAT",
       },
       expenses: {
         overhead: expenses.overheadTotal,

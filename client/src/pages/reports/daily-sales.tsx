@@ -66,6 +66,7 @@ export default function DailySalesReport() {
         purpose={META.purpose}
         periodLabel={`Trading day: ${screenDate(day)}`}
         toolbar={<ReportExportToolbar targetRef={frameRef} reportRef={META.ref} csv={csv} />}
+        showRevenueDefinitionNote
         flagLegend={[
           { level: "red", meaning: "Revenue < 50% of 4-week daily avg" },
           { level: "amber", meaning: "50–80% of average" },

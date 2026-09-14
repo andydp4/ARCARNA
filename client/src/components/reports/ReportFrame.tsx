@@ -30,6 +30,13 @@ export interface ReportFrameProps {
   periodLabel?: string;
   /** Flag levels this report can raise — renders the legend. */
   flagLegend?: { level: FlagLevel; meaning: string }[];
+  /**
+   * Shows the revenue definition beneath the purpose callout. Pass true for
+   * any report whose figures are revenue-based, so the definition is stated
+   * on the report itself rather than left implicit (ARC-023) — every "Understand"
+   * report is meant to share one definition, the same one Control Centre uses.
+   */
+  showRevenueDefinitionNote?: boolean;
   /** Export toolbar (marked data-export-exclude, so it's stripped from captures). */
   toolbar?: ReactNode;
   /** The report body (KPIs, tables, charts). */
@@ -41,7 +48,7 @@ export interface ReportFrameProps {
  * the export toolbar can rasterise exactly this element.
  */
 export const ReportFrame = forwardRef<HTMLDivElement, ReportFrameProps>(function ReportFrame(
-  { reportRef, title, frequency, purpose, tier, periodLabel, flagLegend, toolbar, children },
+  { reportRef, title, frequency, purpose, tier, periodLabel, flagLegend, toolbar, children, showRevenueDefinitionNote },
   ref,
 ) {
   return (
@@ -109,6 +116,16 @@ export const ReportFrame = forwardRef<HTMLDivElement, ReportFrameProps>(function
         <Info className="mt-0.5 h-4 w-4 shrink-0" style={{ color: REPORT_COLORS.truthBlue }} />
         <p className="leading-snug">{purpose}</p>
       </div>
+
+      {/* Revenue definition — stated, not implicit (ARC-023). */}
+      {showRevenueDefinitionNote && (
+        <div
+          className="border-t px-6 py-2 text-[11px]"
+          style={{ borderColor: "rgba(0,0,0,0.1)", color: REPORT_COLORS.smoke }}
+        >
+          Revenue definition: settled orders only, net of refunds, incl. VAT.
+        </div>
+      )}
 
       {/* Body. */}
       <div className="px-6 py-5">{children}</div>

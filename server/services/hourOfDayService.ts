@@ -3,6 +3,17 @@ import { orders, organizations } from "@shared/schema";
 import { aggregateHourOfDay, type HourOfDayBucket } from "@shared/analytics/hourOfDay";
 import { and, eq, gte, sql } from "drizzle-orm";
 
+/**
+ * ARC-028: a backdated or pre-order sale carries `created_at` stamped at
+ * noon local on the day it is FOR (`DATED_ORDER_HOUR` in
+ * `shared/orders/orderDate.ts`) — noon in Europe/London is 11:00Z, which is
+ * where the audit saw an inflated hour — not the real time of day the sale
+ * happened. Only `date_kind = 'live'` orders carry a real created_at hour to
+ * bucket; backdated and pre-order rows are excluded here rather than
+ * silently piled onto that placeholder hour.
+ */
+const LIVE_DATE_KIND = "live";
+
 export async function getHourOfDayAnalytics(orgId: string, weeks: number): Promise<{
   buckets: HourOfDayBucket[];
   weeks: number;
@@ -31,6 +42,7 @@ export async function getHourOfDayAnalytics(orgId: string, weeks: number): Promi
       and(
         eq(orders.orgId, orgId),
         eq(orders.status, "completed"),
+        eq(orders.dateKind, LIVE_DATE_KIND),
         gte(orders.createdAt, windowStart),
         sql`${orders.total}::numeric > 0`,
       ),

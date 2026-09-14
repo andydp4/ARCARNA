@@ -16,6 +16,7 @@ import { storage } from "../storage";
 import {
   orders,
   orderItems,
+  orderPayments,
   products,
   customers,
   customerMetrics,
@@ -31,9 +32,10 @@ import {
   orderEvents,
   opsStaff,
 } from "@shared/schema";
-import { and, eq, sql, gte, lte, inArray, or } from "drizzle-orm";
+import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
-import { currentTradingDay, tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
+import { currentTradingDay, tradingDayBounds, tradingDayFor, shiftIsoDate } from "@shared/time/tradingDay";
+import { settledRevenueByTradingDay } from "./revenue";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import {
   deriveOrderTiming,
@@ -65,74 +67,165 @@ function num(v: unknown): number {
   return typeof n === "number" && isFinite(n) ? n : 0;
 }
 
-/** Bucket a payment method / channel into the spec's four revenue channels. */
-function channelOf(paymentMethod: string | null, channel: string | null): "Cash" | "Card" | "Website" | "Reseller" {
-  const pm = (paymentMethod || "").toLowerCase();
-  const ch = (channel || "").toLowerCase();
-  if (ch.includes("reseller") || pm.includes("reseller")) return "Reseller";
-  if (ch.includes("web") || ch.includes("online") || ch.includes("site")) return "Website";
-  if (pm.includes("cash")) return "Cash";
-  return "Card";
-}
-
 const completedCond = sql`${orders.status} IN (${sql.join(COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
 
-/** ARC-T1-001 Daily Sales Summary — revenue by channel for a single trading day. */
-export async function dailySalesSummary(orgId: string, day: Date): Promise<ReportPayload> {
-  const start = new Date(day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(day);
-  end.setHours(23, 59, 59, 999);
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
-  const dayCond = and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end));
+/**
+ * The plain ISO calendar date (YYYY-MM-DD) a Date's UTC components spell out.
+ *
+ * Used to recover the trading day a caller meant when it arrives as a bare
+ * date string (e.g. `?from=2026-09-14`) that the route layer has already
+ * parsed into a UTC-midnight `Date` — reading the UTC components back out
+ * gets the exact string the caller sent, regardless of the server process's
+ * own local timezone.
+ */
+function isoDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
-  const rows = await db
-    .select({
-      total: orders.total,
-      paymentMethod: orders.paymentMethod,
-      channel: orders.channel,
-    })
+/** A calendar date's weekday name, read without any local-timezone shift. */
+function weekdayNameFor(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" });
+}
+
+/**
+ * Real payment-tender buckets for the Daily/Weekly Sales channel split
+ * (ARC-033). Previously anything that was not cash, a "web"-ish channel, or a
+ * (never-populated) "reseller" label fell into "Card" by default, so tick,
+ * gift card and split-tender sales all misreported as card takings.
+ */
+type ChannelBucket = "Cash" | "Card" | "Tick" | "GiftCard" | "Website" | "Other";
+const CHANNEL_BUCKETS: ChannelBucket[] = ["Cash", "Card", "Tick", "GiftCard", "Website", "Other"];
+const CHANNEL_LABELS: Record<ChannelBucket, string> = {
+  Cash: "Cash",
+  Card: "Card",
+  Tick: "Credit (Tick)",
+  GiftCard: "Gift Card",
+  Website: "Website",
+  Other: "Other",
+};
+
+function isWebsiteChannel(channel: string | null): boolean {
+  const ch = (channel || "").toLowerCase();
+  return ch === "web" || ch.includes("web") || ch.includes("online") || ch.includes("site");
+}
+
+/** Maps a real `orders.payment_method` / `order_payments.method` value to a genuine bucket — unmapped methods land in "Other", never silently in "Card". */
+function bucketForMethod(method: string | null): ChannelBucket {
+  const m = (method || "").toLowerCase();
+  if (m === "cash" || m.includes("cash")) return "Cash";
+  if (m === "tick") return "Tick";
+  // Checked before the generic "card" match below: "gift_card" contains
+  // "card" as a substring and would otherwise misreport as plain Card.
+  if (m === "gift_card" || m.includes("gift")) return "GiftCard";
+  if (m === "card" || m.includes("card")) return "Card";
+  return "Other";
+}
+
+/**
+ * Revenue by channel/tender for every settled order in `[start, end)`.
+ *
+ * A website order is bucketed by channel regardless of tender (the customer
+ * never chooses a till tender online); everything else is bucketed from its
+ * actual tender leg(s) in `order_payments` — a split sale lands in every
+ * bucket it actually touched — falling back to the order's single
+ * `payment_method` for orders recorded before split tender (migration 056).
+ *
+ * Each order's settled value is netted against refunds issued against IT
+ * (not necessarily on the same calendar day, unlike {@link settledRevenueByDay}'s
+ * netting-by-day-issued) and apportioned across its tender legs
+ * proportionally, so a fully-refunded order does not still show as revenue in
+ * its channel even though the window-level total nets refunds by day.
+ */
+async function channelBreakdown(orgId: string, start: Date, end: Date): Promise<Record<ChannelBucket, number>> {
+  const totals: Record<ChannelBucket, number> = { Cash: 0, Card: 0, Tick: 0, GiftCard: 0, Website: 0, Other: 0 };
+
+  const orderRows = await db
+    .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
     .from(orders)
-    .where(dayCond);
+    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end)));
+  if (orderRows.length === 0) return totals;
 
-  const byChannel: Record<string, number> = { Cash: 0, Card: 0, Website: 0, Reseller: 0 };
-  let totalRevenue = 0;
-  for (const r of rows) {
-    const v = num(r.total);
-    totalRevenue += v;
-    byChannel[channelOf(r.paymentMethod, r.channel)] += v;
+  const orderIds = orderRows.map((r) => r.id);
+  const [legRows, refundRows] = await Promise.all([
+    db
+      .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
+      .from(orderPayments)
+      .where(and(eq(orderPayments.orgId, orgId), inArray(orderPayments.orderId, orderIds))),
+    db
+      .select({ orderId: refunds.orderId, refunded: sql<string>`COALESCE(SUM(${refunds.total}::numeric), 0)` })
+      .from(refunds)
+      .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)))
+      .groupBy(refunds.orderId),
+  ]);
+
+  const legsByOrder = new Map<string, { method: string; amount: number }[]>();
+  for (const l of legRows) {
+    const list = legsByOrder.get(l.orderId) ?? [];
+    list.push({ method: l.method, amount: num(l.amount) });
+    legsByOrder.set(l.orderId, list);
   }
-  const ordersProcessed = rows.length;
-  const avgOrderValue = ordersProcessed ? totalRevenue / ordersProcessed : 0;
+  const refundByOrder = new Map(refundRows.map((r) => [r.orderId, num(r.refunded)]));
 
-  // vs yesterday & vs same day last week
-  const priorTotal = async (offsetDays: number) => {
-    const s = new Date(start);
-    s.setDate(s.getDate() - offsetDays);
-    const e = new Date(end);
-    e.setDate(e.getDate() - offsetDays);
-    const res = await db
-      .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)` })
-      .from(orders)
-      .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, s), lte(orders.createdAt, e)));
-    return num(res[0]?.total);
+  for (const o of orderRows) {
+    const gross = num(o.settledTotal ?? o.total);
+    const net = gross - (refundByOrder.get(o.id) ?? 0);
+    if (isWebsiteChannel(o.channel)) {
+      totals.Website += net;
+      continue;
+    }
+    const legs = legsByOrder.get(o.id);
+    if (legs && legs.length > 0) {
+      for (const leg of legs) {
+        const share = gross > 0 ? leg.amount / gross : 0;
+        totals[bucketForMethod(leg.method)] += net * share;
+      }
+    } else {
+      totals[bucketForMethod(o.paymentMethod)] += net;
+    }
+  }
+  for (const b of CHANNEL_BUCKETS) totals[b] = round(totals[b]);
+  return totals;
+}
+
+/**
+ * ARC-T1-001 Daily Sales Summary — revenue by tender for a single trading day.
+ *
+ * Revenue, order count and AOV come from {@link settledRevenueByTradingDay} —
+ * the same 06:00-to-06:00-local, settled-orders-only, refund-netted figure
+ * Control Centre shows as "today" — rather than a server-local-midnight
+ * `createdAt` window over every order regardless of status (ARC-020/023/027).
+ */
+export async function dailySalesSummary(orgId: string, day?: Date): Promise<ReportPayload> {
+  const timezone = await orgTimeZone(orgId);
+  const dayIso = day ? isoDateOnly(day) : currentTradingDay(timezone);
+  const { start, end } = tradingDayBounds(dayIso, timezone);
+
+  const todayMap = await settledRevenueByTradingDay(orgId, timezone, dayIso, dayIso);
+  const today = todayMap.get(dayIso) ?? { revenue: 0, txns: 0, aov: 0, refundsTotal: 0 };
+  const totalRevenue = today.revenue;
+  const ordersProcessed = today.txns;
+  const avgOrderValue = today.aov;
+
+  const byChannel = await channelBreakdown(orgId, start, end);
+
+  const priorDayRevenue = async (offsetDays: number): Promise<number> => {
+    const d = shiftIsoDate(dayIso, -offsetDays);
+    const map = await settledRevenueByTradingDay(orgId, timezone, d, d);
+    return map.get(d)?.revenue ?? 0;
   };
-  const vsYesterday = totalRevenue - (await priorTotal(1));
-  const vsLastWeek = totalRevenue - (await priorTotal(7));
+  const vsYesterday = totalRevenue - (await priorDayRevenue(1));
+  const vsLastWeek = totalRevenue - (await priorDayRevenue(7));
 
-  // 4-week daily average for flag logic
-  const avgRes = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)` })
-    .from(orders)
-    .where(
-      and(
-        eq(orders.orgId, orgId),
-        completedCond,
-        gte(orders.createdAt, new Date(start.getTime() - 28 * 86400000)),
-        lte(orders.createdAt, end),
-      ),
-    );
-  const fourWeekDailyAvg = num(avgRes[0]?.total) / 28;
+  // 4-week trading-day average for flag logic (includes today's own day).
+  const fourWeekStart = shiftIsoDate(dayIso, -27);
+  const fourWeekMap = await settledRevenueByTradingDay(orgId, timezone, fourWeekStart, dayIso);
+  let fourWeekTotal = 0;
+  for (const kpi of fourWeekMap.values()) fourWeekTotal += kpi.revenue;
+  const fourWeekDailyAvg = fourWeekTotal / 28;
 
   const redFlags: string[] = [];
   if (fourWeekDailyAvg > 0 && totalRevenue < fourWeekDailyAvg * 0.5) {
@@ -149,15 +242,17 @@ export async function dailySalesSummary(orgId: string, day: Date): Promise<Repor
       ordersProcessed,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      tickRevenue: byChannel.Tick,
+      giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
-      resellerRevenue: byChannel.Reseller,
+      otherRevenue: byChannel.Other,
       avgOrderValue,
       vsYesterday,
       vsLastWeek,
       fourWeekDailyAvg,
     },
-    rows: (["Cash", "Card", "Website", "Reseller"] as const).map((c) => ({
-      channel: c,
+    rows: CHANNEL_BUCKETS.map((c) => ({
+      channel: CHANNEL_LABELS[c],
       revenue: byChannel[c],
       share: totalRevenue ? (byChannel[c] / totalRevenue) * 100 : 0,
     })),
@@ -165,32 +260,37 @@ export async function dailySalesSummary(orgId: string, day: Date): Promise<Repor
   };
 }
 
-/** ARC-T1-004 Weekly Sales Summary — week revenue, orders, top 5 products, channel mix. */
+/**
+ * ARC-T1-004 Weekly Sales Summary — week revenue, orders, top 5 products, tender mix.
+ *
+ * Bucketed by trading day (06:00–06:00 local), the same day the Control
+ * Centre and Daily Sales use, and summed across the week — not a
+ * server-local-midnight `createdAt` window, which drifts an hour out against
+ * Control Centre for seven months of the year under BST (ARC-027).
+ */
 export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const start = new Date(weekStart);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(weekEnd);
-  end.setHours(23, 59, 59, 999);
-  const weekCond = and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end));
+  const timezone = await orgTimeZone(orgId);
+  const fromIso = isoDateOnly(weekStart);
+  const toIso = isoDateOnly(weekEnd);
+  const { start } = tradingDayBounds(fromIso, timezone);
+  const { end } = tradingDayBounds(toIso, timezone);
 
-  const ordRows = await db
-    .select({ total: orders.total, paymentMethod: orders.paymentMethod, channel: orders.channel, customerId: orders.customerId, createdAt: orders.createdAt })
-    .from(orders)
-    .where(weekCond);
-
-  const byChannel: Record<string, number> = { Cash: 0, Card: 0, Website: 0, Reseller: 0 };
+  const byDay = await settledRevenueByTradingDay(orgId, timezone, fromIso, toIso);
   let totalRevenue = 0;
+  let totalOrders = 0;
   const dayRevenue: Record<string, number> = {};
-  for (const r of ordRows) {
-    const v = num(r.total);
-    totalRevenue += v;
-    byChannel[channelOf(r.paymentMethod, r.channel)] += v;
-    const d = r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-GB", { weekday: "long" }) : "—";
-    dayRevenue[d] = (dayRevenue[d] || 0) + v;
+  for (let d = fromIso; d <= toIso; d = shiftIsoDate(d, 1)) {
+    const kpi = byDay.get(d);
+    const revenue = kpi?.revenue ?? 0;
+    totalRevenue += revenue;
+    totalOrders += kpi?.txns ?? 0;
+    const weekday = weekdayNameFor(d);
+    dayRevenue[weekday] = (dayRevenue[weekday] ?? 0) + revenue;
   }
-  const totalOrders = ordRows.length;
   const avgOrderValue = totalOrders ? totalRevenue / totalOrders : 0;
   const peakDay = Object.entries(dayRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
+
+  const byChannel = await channelBreakdown(orgId, start, end);
 
   const top = await db
     .select({
@@ -201,26 +301,26 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
     .from(orderItems)
     .innerJoin(products, eq(orderItems.productId, products.id))
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(weekCond)
+    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end)))
     .groupBy(products.name)
     .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
     .limit(5);
 
-  // Prior week for WoW delta
-  const pwStart = new Date(start.getTime() - 7 * 86400000);
-  const pwEnd = new Date(end.getTime() - 7 * 86400000);
-  const pwRes = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)` })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, pwStart), lte(orders.createdAt, pwEnd)));
-  const vsPrevWeek = totalRevenue - num(pwRes[0]?.total);
+  // Prior week (same trading-day span, 7 days earlier) for WoW delta.
+  const pwFrom = shiftIsoDate(fromIso, -7);
+  const pwTo = shiftIsoDate(toIso, -7);
+  const pwMap = await settledRevenueByTradingDay(orgId, timezone, pwFrom, pwTo);
+  let pwTotal = 0;
+  for (const kpi of pwMap.values()) pwTotal += kpi.revenue;
+  const vsPrevWeek = totalRevenue - pwTotal;
 
-  // 4-week rolling avg for flags
-  const rollRes = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)),0)` })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, new Date(start.getTime() - 28 * 86400000)), lte(orders.createdAt, end)));
-  const fourWeekAvg = num(rollRes[0]?.total) / 4;
+  // 4-week rolling average (the trading days from 4 weeks before `fromIso`
+  // through `toIso`, i.e. including this week itself) for flag logic.
+  const rollFrom = shiftIsoDate(fromIso, -28);
+  const rollMap = await settledRevenueByTradingDay(orgId, timezone, rollFrom, toIso);
+  let rollTotal = 0;
+  for (const kpi of rollMap.values()) rollTotal += kpi.revenue;
+  const fourWeekAvg = rollTotal / 4;
 
   const redFlags: string[] = [];
   if (fourWeekAvg > 0 && totalRevenue < fourWeekAvg * 0.7) {
@@ -239,8 +339,10 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
       avgOrderValue,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      tickRevenue: byChannel.Tick,
+      giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
-      resellerRevenue: byChannel.Reseller,
+      otherRevenue: byChannel.Other,
       vsPrevWeek,
       peakTradingDay: peakDay,
     },
@@ -327,13 +429,20 @@ export async function currentStockLevels(orgId: string): Promise<ReportPayload> 
   };
 }
 
-/** ARC-T2-001 Weekly Margin Summary — realised margin per product for a week. */
+/**
+ * ARC-T2-001 Weekly Margin Summary — realised margin per product for a week.
+ *
+ * Scoped to settled orders in the trading week (06:00–06:00 local), not a
+ * server-local-midnight `createdAt` window (ARC-023/027). Margin is still
+ * costed at today's `products.cost_price`, not a snapshot of what the cost
+ * was at the moment of sale — `order_items` carries no cost-at-sale column to
+ * read instead (see the same caveat on `storage.getProfitAnalysis`, ARC-025).
+ */
 export async function weeklyMarginSummary(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const start = new Date(weekStart);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(weekEnd);
-  end.setHours(23, 59, 59, 999);
-  const cond = and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end));
+  const timezone = await orgTimeZone(orgId);
+  const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
+  const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
+  const cond = and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end));
 
   const grp = await db
     .select({
@@ -866,7 +975,7 @@ export async function orderStatusDashboard(orgId: string): Promise<ReportPayload
         etaGiven: r.etaGiven ? new Date(r.etaGiven).toISOString() : null,
         timeInQueue,
         stalled,
-        channel: channelOf(r.paymentMethod, r.channel),
+        channel: isWebsiteChannel(r.channel) ? CHANNEL_LABELS.Website : CHANNEL_LABELS[bucketForMethod(r.paymentMethod)],
       };
     })
     .sort((a, b) => {
@@ -1321,12 +1430,17 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
   };
 }
 
-/** ARC-T2-003 Customer Satisfaction Report — weekly scores + low-score follow-ups. */
+/**
+ * ARC-T2-003 Customer Satisfaction Report — weekly scores + low-score follow-ups.
+ *
+ * The response-rate denominator ("collections this week") is settled orders
+ * in the trading week, matching every other report's definition, not
+ * `created_at` with no status filter (ARC-023/027).
+ */
 export async function customerSatisfaction(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const start = new Date(weekStart);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(weekEnd);
-  end.setHours(23, 59, 59, 999);
+  const timezone = await orgTimeZone(orgId);
+  const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
+  const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
 
   const scores = await db
     .select({
@@ -1337,13 +1451,13 @@ export async function customerSatisfaction(orgId: string, weekStart: Date, weekE
     })
     .from(satisfactionScores)
     .leftJoin(customers, eq(satisfactionScores.customerId, customers.id))
-    .where(and(eq(satisfactionScores.orgId, orgId), gte(satisfactionScores.scoreDate, start), lte(satisfactionScores.scoreDate, end)));
+    .where(and(eq(satisfactionScores.orgId, orgId), gte(satisfactionScores.scoreDate, start), lt(satisfactionScores.scoreDate, end)));
 
-  // Collections this week (completed orders) → response rate denominator.
+  // Collections this week (settled orders) → response rate denominator.
   const coll = await db
     .select({ n: sql<number>`COUNT(*)` })
     .from(orders)
-    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, start), lte(orders.createdAt, end)));
+    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end)));
   const collections = num(coll[0]?.n);
 
   const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -1471,12 +1585,27 @@ export async function resellerCredit(orgId: string): Promise<ReportPayload> {
   };
 }
 
+/**
+ * The bonus scheme (ARC-RPT-SPEC-001) has {@link TOTAL_KPI_COMPONENTS} KPI
+ * components. Today only two have real, measurable data — order accuracy (no
+ * refund) and average satisfaction score — and a tier plus a payable £ figure
+ * is a claim about someone's pay, not a display nicety. Extrapolating "no
+ * refunds on my one order this week" into a 7-component PLATINUM score (a
+ * live bug: one refund-free order scored 30 points from a "≤2 orders"
+ * shortcut, plus a 20-point base, projected to a full PLATINUM tier and a
+ * payable £150) states a specific, false number. Until every component is
+ * actually measured for that person, this reports "INSUFFICIENT DATA" and no
+ * £ figure — never a tier extrapolated from a subset (ARC-024).
+ */
+const TOTAL_KPI_COMPONENTS = 7;
+
+export type StaffBonusTier = "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD" | "INSUFFICIENT DATA";
+
 /** ARC-T2-002 Staff KPI Performance Report — weekly KPIs from available signals. */
 export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const start = new Date(weekStart);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(weekEnd);
-  end.setHours(23, 59, 59, 999);
+  const timezone = await orgTimeZone(orgId);
+  const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
+  const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
 
   const staff = await db
     .select({ id: cashierProfiles.id, name: cashierProfiles.displayName })
@@ -1486,11 +1615,22 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
   const redFlags: string[] = [];
   const rows: Record<string, unknown>[] = [];
   for (const st of staff) {
-    // Orders handled this week by this cashier.
+    // Orders SETTLED this week and attributed to this cashier as the one who
+    // completed them — `completedCashierId`, not the legacy `cashierId`
+    // column, which is overwritten to whoever last touched the order and is
+    // not necessarily who did the commission-earning work (migration 051).
     const ord = await db
       .select({ id: orders.id })
       .from(orders)
-      .where(and(eq(orders.orgId, orgId), eq(orders.cashierId, st.id), gte(orders.createdAt, start), lte(orders.createdAt, end)));
+      .where(
+        and(
+          eq(orders.orgId, orgId),
+          eq(orders.status, "completed"),
+          eq(orders.completedCashierId, st.id),
+          gte(orders.settledAt, start),
+          lt(orders.settledAt, end),
+        ),
+      );
     const orderIds = ord.map((o) => o.id);
     const ordersHandled = orderIds.length;
 
@@ -1509,10 +1649,10 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
     const sat = await db
       .select({ avg: sql<number>`AVG(${satisfactionScores.score})`, n: sql<number>`COUNT(*)` })
       .from(satisfactionScores)
-      .where(and(eq(satisfactionScores.orgId, orgId), eq(satisfactionScores.staffId, st.id), gte(satisfactionScores.scoreDate, start), lte(satisfactionScores.scoreDate, end)));
+      .where(and(eq(satisfactionScores.orgId, orgId), eq(satisfactionScores.staffId, st.id), gte(satisfactionScores.scoreDate, start), lt(satisfactionScores.scoreDate, end)));
     const satisfaction = num(sat[0]?.n) ? num(sat[0]?.avg) : null;
 
-    // KPIs at target from what we can measure (accuracy ≥98, satisfaction ≥4.8).
+    // KPIs at target from what we can actually measure (accuracy ≥98, satisfaction ≥4.8).
     let atTarget = 0;
     let measured = 0;
     if (accuracy !== null) {
@@ -1523,14 +1663,26 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
       measured++;
       if (satisfaction >= 4.8) atTarget++;
     }
-    // Scale to the 7-KPI bonus bands proportionally to what's measured.
-    const projected = measured ? Math.round((atTarget / measured) * 7) : 0;
-    let bonusTier: "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD";
-    if (projected === 7) bonusTier = "PLATINUM";
-    else if (projected >= 5) bonusTier = "GOLD";
-    else if (projected >= 3) bonusTier = "SILVER";
-    else bonusTier = "BELOW STANDARD";
-    const bonusPayable = bonusTier === "PLATINUM" ? 150 : bonusTier === "GOLD" ? 100 : bonusTier === "SILVER" ? 50 : 0;
+
+    let bonusTier: StaffBonusTier;
+    let bonusPayable: number | null;
+    if (measured < TOTAL_KPI_COMPONENTS) {
+      // Never extrapolate a full-scheme tier from a subset of KPIs.
+      bonusTier = "INSUFFICIENT DATA";
+      bonusPayable = null;
+    } else if (atTarget === TOTAL_KPI_COMPONENTS) {
+      bonusTier = "PLATINUM";
+      bonusPayable = 150;
+    } else if (atTarget >= 5) {
+      bonusTier = "GOLD";
+      bonusPayable = 100;
+    } else if (atTarget >= 3) {
+      bonusTier = "SILVER";
+      bonusPayable = 50;
+    } else {
+      bonusTier = "BELOW STANDARD";
+      bonusPayable = 0;
+    }
     if (bonusTier === "BELOW STANDARD" && ordersHandled > 0) redFlags.push(`${st.name} is BELOW STANDARD this week — review.`);
 
     rows.push({
@@ -1540,6 +1692,7 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
       satisfactionScore: satisfaction,
       kpisAtTarget: atTarget,
       kpisMeasured: measured,
+      kpisTotal: TOTAL_KPI_COMPONENTS,
       bonusTier,
       bonusPayable,
     });
@@ -1555,6 +1708,7 @@ export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEn
       staff: rows.length,
       platinum: rows.filter((r) => r.bonusTier === "PLATINUM").length,
       belowStandard: rows.filter((r) => r.bonusTier === "BELOW STANDARD").length,
+      insufficientData: rows.filter((r) => r.bonusTier === "INSUFFICIENT DATA").length,
       totalBonus: rows.reduce((s, r) => s + num(r.bonusPayable), 0),
     },
     rows,
@@ -1572,7 +1726,7 @@ export async function runReport(
 ): Promise<ReportPayload> {
   switch (ref) {
     case "ARC-T1-001":
-      return dailySalesSummary(orgId, opts.from ?? new Date());
+      return dailySalesSummary(orgId, opts.from);
     case "ARC-T1-002":
       return currentStockLevels(orgId);
     case "ARC-T1-004": {
