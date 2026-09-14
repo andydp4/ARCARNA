@@ -9,6 +9,8 @@ import {
   addPurchaseDraftItem,
   updatePurchaseDraftItem,
   deletePurchaseDraftItem,
+  getPurchaseDraftForExport,
+  PURCHASE_ORDER_EXPORTABLE_STATUSES,
   PurchaseDraftError,
   purchaseDraftErrorPayload,
 } from "../services/purchaseDrafts";
@@ -80,6 +82,74 @@ export function registerPurchaseDraftRoutes(app: Express) {
       const draft = await getPurchaseDraft(ctx.orgId, req.params.id);
       if (!draft) return res.status(404).json({ code: "NOT_FOUND", message: "Purchase draft not found" });
       res.json(draft);
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
+  // ARC-019: the only thing an approved draft could previously produce for a
+  // supplier was a bare CSV of SKU/qty/cost with no supplier identity at
+  // all. This renders a real, printable purchase-order document instead —
+  // supplier name and contact details, a PO reference, line items, dates.
+  // No role gate beyond `scoped`, matching the existing CSV export button
+  // (any user who can view the draft can export it; only status-changing
+  // actions are restricted to `mutateRoles`).
+  app.get("/api/purchase-drafts/:id/export", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const data = await getPurchaseDraftForExport(ctx.orgId, req.params.id);
+      if (!data) return res.status(404).json({ code: "NOT_FOUND", message: "Purchase draft not found" });
+      if (!PURCHASE_ORDER_EXPORTABLE_STATUSES.includes(data.status as any)) {
+        return res.status(400).json({
+          code: "NOT_APPROVED",
+          message: "Export the purchase order once the draft has been approved",
+        });
+      }
+
+      const { generatePurchaseOrderPdf } = await import("../services/purchaseOrderExport");
+      const { loadCompanyInfo } = await import("../services/companyBranding");
+
+      const buyer = await loadCompanyInfo(ctx.orgId);
+      const poNumber = `PO-${data.id.slice(0, 8).toUpperCase()}`;
+      const createdAt = (data.createdAt ?? new Date()).toISOString();
+      // A delivery estimate, not a promise from the supplier — only computed
+      // when the supplier has a configured lead time to derive it from.
+      const estimatedDeliveryDate = data.supplierLeadTimeDays
+        ? new Date(
+            (data.createdAt ?? new Date()).getTime() + data.supplierLeadTimeDays * 24 * 60 * 60 * 1000,
+          ).toISOString()
+        : null;
+
+      const pdf = await generatePurchaseOrderPdf({
+        poNumber,
+        status: data.status,
+        createdAt,
+        estimatedDeliveryDate,
+        buyer,
+        supplier: {
+          name: data.supplierName,
+          contactName: data.supplierContactName,
+          email: data.supplierEmail,
+          phone: data.supplierPhone,
+        },
+        deliverTo: {
+          name: data.locationName,
+          address: [data.locationAddress, data.locationCity, data.locationState, data.locationZip]
+            .filter(Boolean)
+            .join(", "),
+        },
+        items: data.items.map((item) => ({
+          sku: item.sku,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitCost: item.estimatedCost != null ? Number(item.estimatedCost) : null,
+          supplierSku: item.supplierSku,
+        })),
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${poNumber}.pdf"`);
+      res.send(pdf);
     } catch (e) {
       sendError(res, e);
     }

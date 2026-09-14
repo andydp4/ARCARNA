@@ -25,7 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Trash2, PackageCheck } from "lucide-react";
+import { Download, Trash2, PackageCheck, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
@@ -113,10 +113,16 @@ const STATUS_ACTION_LABEL: Record<string, string> = {
   draft: "Back to draft",
 };
 
+/**
+ * Mirrors PURCHASE_ORDER_EXPORTABLE_STATUSES in server/services/purchaseDrafts.ts:
+ * a PO document is only meaningful once a draft has actually been approved.
+ */
+const PO_EXPORTABLE_STATUSES = new Set(["approved", "partially_received", "fully_received"]);
+
 const STATUS_HELP: Record<string, string> = {
-  draft: "Internal only — not sent to supplier.",
+  draft: "Internal only — nothing is sent to the supplier automatically.",
   reviewed: "Ready for manager approval.",
-  approved: "Approved internally — stock increases only via goods receiving.",
+  approved: "Approved — export a purchase order to send to the supplier. Stock increases only via goods receiving.",
   partially_received: "Some lines received — complete remaining receipts.",
   fully_received: "All ordered quantity received — read-only.",
   cancelled: "Cancelled — cannot receive against this draft.",
@@ -132,6 +138,10 @@ export default function PurchaseDraftsPage() {
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
+  // The supplier's own invoice/delivery-note number — captured when goods are
+  // actually received (ARC-019), never invented on the buyer's side.
+  const [receiveSupplierReference, setReceiveSupplierReference] = useState("");
+  const [exportingPoId, setExportingPoId] = useState<string | null>(null);
 
   // A deep-linked draft opens once; drop the param so closing the dialog (or
   // refreshing) does not immediately re-open it.
@@ -188,6 +198,7 @@ export default function PurchaseDraftsPage() {
         .filter(Boolean);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: detailId,
+        supplierReference: receiveSupplierReference.trim() || undefined,
         items,
       });
     },
@@ -196,6 +207,7 @@ export default function PurchaseDraftsPage() {
       invalidatePurchasingPipeline(queryClient);
       setReceiveOpen(false);
       setReceiveQty({});
+      setReceiveSupplierReference("");
       toast({
         title: "Pending receipt created",
         description: body ? (
@@ -263,12 +275,40 @@ export default function PurchaseDraftsPage() {
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * ARC-019: the printable/shareable purchase-order document — supplier
+   * identity, a PO reference, line items and dates — generated server-side
+   * and downloaded as a PDF. Distinct from `exportCsv` above, which is a bare
+   * internal working list with no supplier identity on it at all.
+   */
+  const exportPurchaseOrder = async (d: DraftDetail) => {
+    setExportingPoId(d.id);
+    try {
+      const res = await apiRequest("GET", `/api/purchase-drafts/${d.id}/export`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `PO-${d.id.slice(0, 8).toUpperCase()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast({
+        title: "Could not generate purchase order",
+        description: e instanceof Error ? e.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingPoId(null);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <PageHeader
           title="Purchase Drafts"
           question="What do you need to reorder?"
-          explanation="Internal workflow only — not sent to suppliers or paid. Stock increases only when a goods receipt is completed."
+          explanation="No order is placed automatically and no payment is made. Once approved, export a purchase order to hand or send to the supplier yourself — stock increases only when a goods receipt is completed."
         />
 
         <Card>
@@ -398,9 +438,27 @@ export default function PurchaseDraftsPage() {
                     <Download className="h-4 w-4 mr-1" />
                     CSV
                   </Button>
+                  {PO_EXPORTABLE_STATUSES.has(detail.status) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => exportPurchaseOrder(detail)}
+                      disabled={exportingPoId === detail.id}
+                      data-testid="button-export-po"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      {exportingPoId === detail.id ? "Generating…" : "Export PO"}
+                    </Button>
+                  )}
                   {canMutate &&
                     (detail.status === "approved" || detail.status === "partially_received") && (
-                      <Button size="sm" onClick={() => setReceiveOpen(true)}>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setReceiveSupplierReference("");
+                          setReceiveOpen(true);
+                        }}
+                      >
                         <PackageCheck className="h-4 w-4 mr-1" />
                         Receive goods
                       </Button>
@@ -552,7 +610,8 @@ export default function PurchaseDraftsPage() {
                   </TableBody>
                 </Table>
                 <p className="text-xs text-muted-foreground">
-                  Approving does not send to supplier. Complete a goods receipt to increase stock.
+                  Approving does not place an order automatically — export a purchase order above to
+                  send to the supplier yourself. Complete a goods receipt to increase stock.
                 </p>
               </div>
             )}
@@ -573,6 +632,20 @@ export default function PurchaseDraftsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
+              <div>
+                <Label htmlFor="supplier-reference">Supplier reference (optional)</Label>
+                <Input
+                  id="supplier-reference"
+                  value={receiveSupplierReference}
+                  onChange={(e) => setReceiveSupplierReference(e.target.value)}
+                  placeholder="Supplier's delivery note or invoice number"
+                  data-testid="input-supplier-reference"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The supplier's own reference for this delivery, if they gave you one — not a number
+                  we generate.
+                </p>
+              </div>
               {receiving?.items.map((item) => (
                 <div key={item.id} className="border rounded p-3 space-y-2">
                   <p className="font-medium text-sm">

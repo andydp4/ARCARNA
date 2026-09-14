@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'wouter'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest, getJson } from '@/lib/queryClient'
 import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
@@ -86,6 +87,17 @@ import type { WebsiteUploadItem } from '@/features/wm-supplies/adminWebsite'
 
 const NO_WEBSITE_IMAGE = '__none__'
 
+/** Trimmed shape of GET /api/product-suppliers (server/services/suppliers.ts) — only the
+ *  fields this form's read-only supplier summary needs. */
+type ProductSupplierMapping = {
+  id: string
+  supplierName: string
+  supplierSku?: string | null
+  costPrice?: string | null
+  packSize: number
+  isPreferred: number
+}
+
 type ProductWebsiteFormData = {
   availableForWebsite: boolean
   websiteTitle: string
@@ -155,6 +167,16 @@ export default function ProductManagement() {
   const { data: websiteUploads = [] } = useQuery<WebsiteUploadItem[]>({
     queryKey: ['/api/website/uploads'],
     queryFn: () => getJson<WebsiteUploadItem[]>('/api/website/uploads'),
+  })
+
+  // ARC-041: supplier + pack size were only visible buried in Settings →
+  // Suppliers, one product-supplier mapping table for the whole catalogue.
+  // Surfacing the current product's own mapping here (scoped server-side to
+  // just this product) covers the common "which supplier, what pack size"
+  // question without leaving this form.
+  const { data: productSupplierMappings = [] } = useQuery<ProductSupplierMapping[]>({
+    queryKey: [`/api/product-suppliers?productId=${editingProduct?.id}`],
+    enabled: !!editingProduct?.id,
   })
 
   const refreshAfterProductMutation = async () => {
@@ -1359,6 +1381,40 @@ export default function ProductManagement() {
                                     <p className="text-xs text-muted-foreground">
                                       Comma-separated shorthand names customers might use.
                                     </p>
+                                  </div>
+                                  <div className="grid gap-2 rounded-md border p-3">
+                                    <div className="flex items-center justify-between">
+                                      <Label className="text-sm">Supplier</Label>
+                                      <Link
+                                        href="/settings?tab=suppliers"
+                                        className="text-xs text-primary underline"
+                                        data-testid="link-manage-suppliers"
+                                      >
+                                        Manage suppliers
+                                      </Link>
+                                    </div>
+                                    {productSupplierMappings.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">
+                                        No supplier mapped yet — replenishment can't raise a purchase
+                                        draft for this product until one is added.
+                                      </p>
+                                    ) : (
+                                      <ul className="space-y-1">
+                                        {productSupplierMappings.map((m) => (
+                                          <li key={m.id} className="text-sm flex flex-wrap items-center gap-x-2">
+                                            <span className="font-medium">{m.supplierName}</span>
+                                            {m.isPreferred === 1 && (
+                                              <Badge variant="secondary" className="text-[10px]">Preferred</Badge>
+                                            )}
+                                            <span className="text-muted-foreground">
+                                              Pack of {m.packSize}
+                                              {m.costPrice != null ? ` · £${Number(m.costPrice).toFixed(2)}` : ''}
+                                              {m.supplierSku ? ` · SKU ${m.supplierSku}` : ''}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
