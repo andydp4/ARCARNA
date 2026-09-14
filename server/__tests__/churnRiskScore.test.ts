@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { orders, organizations, customers } from "@shared/schema";
-import { hasEnoughDataForChurnScore } from "../services/reportsEngine";
+import { hasEnoughDataForChurnScore } from "@shared/analytics/churnThreshold";
 
 describe("hasEnoughDataForChurnScore", () => {
   it("rejects a brand-new customer with one recent order (the audit's exact repro)", () => {

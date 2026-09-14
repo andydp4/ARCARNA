@@ -46,8 +46,9 @@ import {
   type OrderTimingSummary,
 } from "@shared/reports/orderTiming";
 import { wasProactiveDelayComms } from "@shared/reports/delayLog";
+import { hasEnoughDataForChurnScore } from "@shared/analytics/churnThreshold";
 
-export { wasProactiveDelayComms };
+export { wasProactiveDelayComms, hasEnoughDataForChurnScore };
 
 /** Statuses that count as realised revenue. Model uses "completed"; spec says COLLECTED. */
 const COMPLETED_STATUSES = ["completed", "COLLECTED", "collected"] as const;
@@ -873,35 +874,12 @@ export async function rfmSegmentation(orgId: string): Promise<ReportPayload> {
 }
 
 /**
- * ARC-029: minimum signal required before a churn score means anything.
- *
- * The heuristic below gives every customer a 20-point base plus 30 points for
- * "≤2 orders" — so a brand-new customer with exactly one order placed
- * yesterday started at 50/100 ("AT RISK") before they had any realistic
- * chance to lapse. A churn score answers "has this customer gone quiet
- * compared to their own normal pattern", which is not a question you can ask
- * with one data point.
- *
- * A customer clears the bar once EITHER:
- *  - their first order was at least {@link MIN_TENURE_DAYS_FOR_CHURN_SCORE}
- *    days ago — long enough that a customer who intended to come back
- *    normally would very likely have done so at least once by now, even off
- *    a single order; or
- *  - they have placed at least {@link MIN_ORDERS_FOR_CHURN_SCORE} orders —
- *    enough to establish a real ordering cadence to compare against,
- *    regardless of how recently they signed up.
- *
- * Below both bars the customer is not scored at all — see
- * `summary.insufficientData` on the returned payload — rather than shown
- * with a number that cannot mean what a churn score is supposed to mean.
+ * ARC-029: minimum signal required before a churn score means anything —
+ * see {@link hasEnoughDataForChurnScore} in `shared/analytics/churnThreshold`
+ * (imported and re-exported near the top of this file) for the threshold and
+ * its reasoning. Moved out of this file — which imports `db` at module scope
+ * — so it can be unit-tested without a live database.
  */
-const MIN_TENURE_DAYS_FOR_CHURN_SCORE = 30;
-const MIN_ORDERS_FOR_CHURN_SCORE = 3;
-
-/** Exported for a direct unit test of the threshold, independent of the DB query above it. */
-export function hasEnoughDataForChurnScore(tenureDays: number, orderCount: number): boolean {
-  return tenureDays >= MIN_TENURE_DAYS_FOR_CHURN_SCORE || orderCount >= MIN_ORDERS_FOR_CHURN_SCORE;
-}
 
 /** ARC-T4-002 Churn Risk Score — heuristic early-warning from recency + activity. */
 export async function churnRiskScore(orgId: string): Promise<ReportPayload> {
