@@ -36,6 +36,15 @@ export async function getStockTurnAnalytics(orgId: string, windowDays: number) {
     .where(eq(products.orgId, orgId))
     .groupBy(products.id, products.productId);
 
+  // ARC-045: category grouping — the real category (products.website_category,
+  // same field ARC-030's Truths-hub revenue-by-category uses), not the SKU
+  // prefix aggregateStockTurnByCategory used to derive on its own.
+  const categoryRows = await db
+    .select({ productId: products.productId, category: products.websiteCategory })
+    .from(products)
+    .where(eq(products.orgId, orgId));
+  const categoryBySku = new Map(categoryRows.map((r) => [r.productId, r.category]));
+
   const soldBySku = new Map(soldRows.map((r) => [r.productId, Number(r.unitsSold) || 0]));
   const stockBySku = new Map(stockRows.map((r) => [r.productId, Number(r.avgStock) || 0]));
 
@@ -44,6 +53,7 @@ export async function getStockTurnAnalytics(orgId: string, windowDays: number) {
     productId,
     unitsSold: soldBySku.get(productId) ?? 0,
     avgStock: stockBySku.get(productId) ?? 0,
+    category: categoryBySku.get(productId) ?? null,
   }));
 
   const categories = aggregateStockTurnByCategory(productInputs, safeDays);

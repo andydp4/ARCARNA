@@ -36,6 +36,11 @@ export default function ChurnRiskReport() {
           { label: "At Risk", value: int(s.atRisk), keyInfo: true },
           { label: "High Risk (80+)", value: int(s.highRisk), flag: s.highRisk ? "red" : undefined },
           { label: "Revenue at Risk / mo", value: money(s.revenueAtRisk), keyInfo: true },
+          {
+            label: "Not Enough Data Yet",
+            value: int(s.insufficientData),
+            sub: "Too new to score — under 30 days and fewer than 3 orders",
+          },
         ],
         columns: [
           { header: "Customer", cell: (r) => r.customer, keyInfo: true },

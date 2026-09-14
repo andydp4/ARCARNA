@@ -44,6 +44,7 @@ import { getSmartStock } from "./operationalIntelligence";
 import { getJobQueueStats } from "../eventBus";
 import { orgTimeZone } from "./tradingDayShift";
 import { getOpsBoard } from "./opsBoard";
+import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
 export type NextMoveSeverity = "info" | "warning" | "error";
 
@@ -222,13 +223,13 @@ export async function getControlCentreSnapshot(
   ]);
 
   // Same shape as /api/inventory/alerts: at or under the stock limit, and
-  // within 30% of it. Kept separate from getSmartStock's velocity-based risk
-  // model above — the two have always answered different questions and been
-  // shown as two different tiles.
+  // within LOW_STOCK_THRESHOLD_PERCENT of it. Kept separate from
+  // getSmartStock's velocity-based risk model above — the two have always
+  // answered different questions and been shown as two different tiles.
   const lowStockCount = productsWithStock.filter((p) => {
     if (p.stock == null || p.stockLimit == null || p.stockLimit === 0) return false;
     const pct = (p.stock / p.stockLimit) * 100;
-    return p.stock <= p.stockLimit && pct <= 30;
+    return p.stock <= p.stockLimit && pct <= LOW_STOCK_THRESHOLD_PERCENT;
   }).length;
 
   const workerHealth = {

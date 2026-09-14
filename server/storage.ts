@@ -39,6 +39,7 @@ import {
   featureFlags,
   organizations,
   importHistory,
+  customerRfm,
   type Organization,
   type ImportHistory,
   type InsertImportHistory,
@@ -81,6 +82,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
+import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
 // --- Utility Functions ---
 import { parseImportInteger, parseImportNumber } from "@shared/importValues";
@@ -1054,10 +1056,32 @@ export class DatabaseStorage implements IStorage {
       .where(settledCond)
       .groupBy(orders.paymentMethod);
 
+    // ARC-030: this used to always return [], so the Truths hub's "Revenue by
+    // category" pie chart was permanently empty. `products.website_category`
+    // is the only real category field on the product (see shared/schema.ts) —
+    // not every product has one set, so an uncategorised product's revenue is
+    // grouped under a real, visible "Uncategorised" bucket rather than
+    // silently vanishing from the total the pie chart's slices should sum to.
+    const categoryRows = await db
+      .select({
+        category: sql<string>`COALESCE(${products.websiteCategory}, 'Uncategorised')`.as('category'),
+        revenue: sql<number>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)), 0)`.as('revenue'),
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(products, eq(orderItems.productId, products.id))
+      .where(settledCond)
+      .groupBy(sql`COALESCE(${products.websiteCategory}, 'Uncategorised')`)
+      .orderBy(sql`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)), 0) DESC`);
+    const byCategory = categoryRows.map((r) => {
+      const revenue = parseFloat(String(r.revenue)) || 0;
+      return { category: r.category, revenue, percentage: total ? (revenue / total) * 100 : 0 };
+    });
+
     return {
       total,
       byDay: dailyRevenue,
-      byCategory: [], // Would need to join with products and categories
+      byCategory,
       byPaymentMethod
     };
   }
@@ -1150,12 +1174,35 @@ export class DatabaseStorage implements IStorage {
     const total = totalCustomers[0]?.total || 0;
     const newCount = newCustomers[0]?.count || 0;
 
+    // ARC-030: this used to always return [], so the Truths hub's "RFM
+    // segments" table was permanently empty even though every org's real
+    // segmentation already lives in `customer_rfm` (populated by
+    // recomputeOrgRfm — see server/lib/rfmService.ts, the same table
+    // analytics/rfm.tsx reads). Not scoped to fromDate/toDate: a segment is a
+    // customer's current standing, not an event that happened within a
+    // window — the same way analytics/rfm.tsx shows one org-wide snapshot.
+    const rfmRows = await db
+      .select({
+        segment: customerRfm.segment,
+        count: sql<number>`COUNT(*)`.as('count'),
+        avgRevenue: sql<number>`COALESCE(AVG(CAST(${customers.totalSpent} AS DECIMAL)), 0)`.as('avgRevenue'),
+      })
+      .from(customerRfm)
+      .innerJoin(customers, eq(customers.id, customerRfm.customerId))
+      .where(eq(customerRfm.orgId, orgId))
+      .groupBy(customerRfm.segment);
+    const rfmSegments = rfmRows.map((r) => ({
+      segment: r.segment,
+      count: Number(r.count) || 0,
+      avgRevenue: parseFloat(String(r.avgRevenue)) || 0,
+    }));
+
     return {
       total,
       new: newCount,
       returning: total - newCount,
       topCustomers,
-      rfmSegments: [] // Would need more complex RFM calculation
+      rfmSegments,
     };
   }
 
@@ -1170,10 +1217,14 @@ export class DatabaseStorage implements IStorage {
       (sum, p) => sum + (p.stock ?? 0) * (parseFloat(String(p.costPrice ?? 0)) || 0),
       0,
     );
+    // ARC-030: this used its own 20% cutoff, so the same org's stock could
+    // read "3 low stock" here and "5 low stock" on Control Centre in the same
+    // moment. Both now read LOW_STOCK_THRESHOLD_PERCENT (30%) — the definition
+    // Control Centre and /api/inventory/alerts already used — from one place.
     const lowStock = withStock.filter((p) => {
       const limit = p.stockLimit ?? 0;
       const s = p.stock ?? 0;
-      return limit > 0 && s > 0 && s <= limit * 0.2;
+      return limit > 0 && s > 0 && s <= limit * (LOW_STOCK_THRESHOLD_PERCENT / 100);
     }).length;
     const outOfStock = withStock.filter((p) => (p.stock ?? 0) === 0).length;
 
@@ -1198,11 +1249,33 @@ export class DatabaseStorage implements IStorage {
       remaining: stockByProduct.get(r.productId) ?? 0,
     }));
 
+    // ARC-030: this always returned 0, so the Truths hub's "Turnover" tile
+    // permanently showed "0.0×" regardless of real sales. Org-wide turnover =
+    // units sold across the period (settled orders only, matching the rest
+    // of this report — ARC-020) divided by total units currently on hand.
+    // Same shape as the per-category calc in shared/analytics/stockTurn.ts,
+    // rolled up to one org-wide number instead of split by category.
+    const totalStockOnHand = withStock.reduce((sum, p) => sum + (p.stock ?? 0), 0);
+    const settledUnitsSoldRows = await db
+      .select({ total: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)` })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.orgId, orgId),
+          eq(orders.status, "completed"),
+          gte(orders.settledAt, fromDate),
+          lte(orders.settledAt, toDate),
+        ),
+      );
+    const unitsSoldInPeriod = Number(settledUnitsSoldRows[0]?.total) || 0;
+    const turnoverRate = totalStockOnHand > 0 ? Math.round((unitsSoldInPeriod / totalStockOnHand) * 10) / 10 : 0;
+
     return {
       totalValue,
       lowStock,
       outOfStock,
-      turnoverRate: 0, // Would need more calculation
+      turnoverRate,
       topMoving
     };
   }

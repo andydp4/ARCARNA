@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { mondayWeekBounds } from "@/lib/weekBounds";
 import {
   LineChart, Line, BarChart, Bar, PieChart as RechartsPI, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -43,15 +44,17 @@ export function ExpenseReportsPage() {
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
         break;
-      case "thisWeek":
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - now.getDay());
-        weekStart.setHours(0, 0, 0, 0);
-        endDate = new Date(weekStart);
-        endDate.setDate(weekStart.getDate() + 6);
-        endDate.setHours(23, 59, 59);
-        startDate = weekStart;
+      case "thisWeek": {
+        // ARC-045: this used `now.getDate() - now.getDay()`, a Sunday-start
+        // week — every other week-scoped page/report in the app (Daily/
+        // Weekly Sales, Weekly Margin, Staff KPI, Satisfaction) starts weeks
+        // on Monday. Same shared helper as those, so "this week" means the
+        // same seven days everywhere.
+        const bounds = mondayWeekBounds(now);
+        startDate = new Date(`${bounds.from}T00:00:00`);
+        endDate = new Date(`${bounds.to}T23:59:59`);
         break;
+      }
       case "thisMonth":
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);

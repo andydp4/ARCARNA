@@ -15,14 +15,26 @@ export interface ReportPayload {
   redFlags: string[];
 }
 
-export function useReport(ref: string, params?: { from?: string; to?: string }) {
+export function useReport(
+  ref: string,
+  params?: { from?: string; to?: string; locationId?: string; cashierId?: string },
+) {
   const search = new URLSearchParams();
   if (params?.from) search.set("from", params.from);
   if (params?.to) search.set("to", params.to);
+  if (params?.locationId) search.set("locationId", params.locationId);
+  if (params?.cashierId) search.set("cashierId", params.cashierId);
   const qs = search.toString();
 
   return useQuery<ReportPayload>({
-    queryKey: ["/api/reports", ref, params?.from ?? null, params?.to ?? null],
+    queryKey: [
+      "/api/reports",
+      ref,
+      params?.from ?? null,
+      params?.to ?? null,
+      params?.locationId ?? null,
+      params?.cashierId ?? null,
+    ],
     queryFn: async () => {
       const response = await apiFetch(`/api/reports/${ref}${qs ? `?${qs}` : ""}`, {
         credentials: "include",

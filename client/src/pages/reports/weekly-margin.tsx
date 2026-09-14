@@ -3,7 +3,9 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
+import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { money, int, pct, screenDate, isoDate } from "@/lib/reportBrand";
+import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { FlagLevel } from "@/lib/reportBrand";
 
 interface Row {
@@ -32,24 +34,16 @@ const marginAction: Record<FlagLevel, string> = {
   gold: "Review",
 };
 
-function weekBounds(d: Date): { from: string; to: string } {
-  const start = new Date(d);
-  const day = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { from: isoDate(start), to: isoDate(end) };
-}
-
 export default function WeeklyMarginReport() {
   const [anchor, setAnchor] = useState(() => isoDate(new Date()));
-  const bounds = weekBounds(new Date(anchor));
+  const bounds = mondayWeekBounds(new Date(anchor));
+  const [scope, setScope] = useState<ReportScopeValue>({});
 
   return (
     <ReportView<Row>
       config={{
         reportRef: "ARC-T2-001",
-        params: bounds,
+        params: { ...bounds, ...scope },
         showRevenueDefinitionNote: true,
         periodLabel: () => `Week ${screenDate(bounds.from)} – ${screenDate(bounds.to)}`,
         tableHeading: "Margin by Product (highest contribution first)",
@@ -62,7 +56,7 @@ export default function WeeklyMarginReport() {
         ],
         rowFlag: (r) => (r.marginPct < 20 ? "red" : undefined),
         controls: (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-muted-foreground">Week of</label>
             <Input
               type="date"
@@ -71,6 +65,7 @@ export default function WeeklyMarginReport() {
               onChange={(e) => setAnchor(e.target.value)}
               className="h-9 w-[160px]"
             />
+            <ReportScopeFilter value={scope} onChange={setScope} />
           </div>
         ),
         kpis: (s) => [

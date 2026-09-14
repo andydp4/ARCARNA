@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
 import { StockError, stockErrorPayload } from "../services/productLocationStock";
+import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
 export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
@@ -85,7 +86,7 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;
           const stockPercentage = (product.stock / product.stockLimit) * 100;
-          return product.stock <= product.stockLimit && stockPercentage <= 30;
+          return product.stock <= product.stockLimit && stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT;
         })
         .map(product => ({
           ...product,

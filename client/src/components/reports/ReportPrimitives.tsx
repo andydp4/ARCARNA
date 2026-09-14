@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from "react";
 import { REPORT_COLORS, type FlagLevel, FLAG_STYLE, orDash } from "@/lib/reportBrand";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /** A headline KPI. `keyInfo` renders the value in Truth Blue (spec: "any number the user acts on"). */
 export function ReportKpi({
@@ -39,6 +40,29 @@ export function ReportKpi({
           {sub}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * ARC-032: while a report's first fetch is still in flight, the KPI tiles
+ * used to render real-looking "£0.00 / 0" values — indistinguishable from a
+ * genuinely quiet trading day, and exactly the kind of number a business
+ * owner glancing at "£0.00 revenue today" would reasonably panic over.
+ * Render this instead whenever `isLoading && !data`; swap back to the real
+ * `ReportKpi` grid the instant real data (or a real error) arrives. Reuses
+ * the same `Skeleton` primitive already used elsewhere in the app (e.g.
+ * ControlCentreToday) rather than inventing a new loading treatment.
+ */
+export function ReportKpiSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="status" aria-label="Loading report figures">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-lg border p-4" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="mt-2 h-7 w-20" />
+        </div>
+      ))}
     </div>
   );
 }
