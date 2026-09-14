@@ -44,10 +44,10 @@ After `requireOrgContext`, `req.orgContext` contains:
 - `locationId` – Optional store scope from `X-Location-Id` or user default
 - `role` – User’s role
 
-Headers (SUPER_ADMIN only):
+Headers:
 
-- `X-Org-Id` – Scope to a specific org
-- `X-Location-Id` – Scope to a specific store
+- `X-Org-Id` (SUPER_ADMIN only) – Scope to a specific org. Ignored for every other role, which is always scoped to its own `orgId`.
+- `X-Location-Id` (any authenticated, org-scoped caller) – Scope to a specific store within the caller's org. `requireOrgContext` reads this header unconditionally (falling back to the user's `defaultLocationId`, then the open-shift location, then the org's default) — it is not gated to SUPER_ADMIN.
 
 ## Promote/Demote Users
 

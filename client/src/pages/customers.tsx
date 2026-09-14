@@ -397,7 +397,7 @@ export default function Customers() {
   const getCategoryColor = (category: string) => {
     switch (category) {
       case 'Gold': return 'bg-yellow-700'
-      case 'Silver': return 'bg-gray-500'
+      case 'Silver': return 'bg-metal-titanium'
       case 'Bronze': return 'bg-amber-700'
       default: return 'bg-blue-600'
     }
@@ -631,7 +631,7 @@ export default function Customers() {
           <Card>
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
-                <Award className="h-4 w-4 text-gray-400" />
+                <Award className="h-4 w-4 text-metal-titanium" />
                 <div className="text-xs sm:text-sm font-medium text-muted-foreground">Silver</div>
               </div>
               <div className="text-2xl font-bold mt-2">

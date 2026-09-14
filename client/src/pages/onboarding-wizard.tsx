@@ -186,7 +186,7 @@ export default function OnboardingWizard() {
     <div className="min-h-screen lm-auth-shell liquid-metal py-8 px-4">
       <div className="max-w-lg mx-auto space-y-6">
         <div>
-          <p className="text-sm text-slate-400 mb-2">
+          <p className="text-sm text-muted-foreground mb-2">
             Step {data.completedCount + 1} of {data.totalSteps}
           </p>
           <Progress value={progressPct} className="h-2" />
