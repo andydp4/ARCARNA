@@ -310,6 +310,65 @@ export async function getPurchaseDraft(orgId: string, id: string) {
 }
 
 /**
+ * Statuses a purchase order document can be generated for. A PO is the
+ * artefact a supplier is actually shown, so exporting one only makes sense
+ * once a manager has approved the draft — not while it is still being
+ * assembled (draft/reviewed) or after it was cancelled.
+ */
+export const PURCHASE_ORDER_EXPORTABLE_STATUSES: PurchaseDraftStatus[] = [
+  "approved",
+  "partially_received",
+  "fully_received",
+];
+
+/**
+ * Everything the PO PDF (server/services/purchaseOrderExport.ts) needs that
+ * isn't already on `loadDraftWithItems` — the supplier's own contact details
+ * and the delivery location's address, neither of which the on-screen draft
+ * view has ever needed before now.
+ */
+export async function getPurchaseDraftForExport(orgId: string, id: string) {
+  const [row] = await db
+    .select({
+      id: purchaseDrafts.id,
+      status: purchaseDrafts.status,
+      createdAt: purchaseDrafts.createdAt,
+      supplierName: suppliers.name,
+      supplierContactName: suppliers.contactName,
+      supplierEmail: suppliers.email,
+      supplierPhone: suppliers.phone,
+      supplierLeadTimeDays: suppliers.leadTimeDays,
+      locationName: locations.name,
+      locationAddress: locations.address,
+      locationCity: locations.city,
+      locationState: locations.state,
+      locationZip: locations.zipCode,
+    })
+    .from(purchaseDrafts)
+    .innerJoin(suppliers, and(eq(purchaseDrafts.supplierId, suppliers.id), eq(suppliers.orgId, orgId)))
+    .innerJoin(locations, and(eq(purchaseDrafts.locationId, locations.id), eq(locations.orgId, orgId)))
+    .where(and(eq(purchaseDrafts.id, id), eq(purchaseDrafts.orgId, orgId)))
+    .limit(1);
+
+  if (!row) return null;
+
+  const items = await db
+    .select({
+      id: purchaseDraftItems.id,
+      productName: products.name,
+      sku: products.productId,
+      quantity: purchaseDraftItems.quantity,
+      estimatedCost: purchaseDraftItems.estimatedCost,
+      supplierSku: purchaseDraftItems.supplierSku,
+    })
+    .from(purchaseDraftItems)
+    .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
+    .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
+
+  return { ...row, items };
+}
+
+/**
  * Every id on the draft must belong to the calling org.
  *
  * The insert below stamps `orgId` from the caller's context onto the draft and

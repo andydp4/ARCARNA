@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,15 +24,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ZReportView } from "@/components/ZReport";
 import type { ZReportData } from "@shared/reports/zReport";
 import { cn } from "@/lib/utils";
-import { UserRound } from "lucide-react";
+import { MoreVertical, UserRound } from "lucide-react";
 
 interface ShiftRow {
   id: string;
@@ -61,6 +75,16 @@ const WINDOWS = [
 
 const DEFAULT_WINDOW = "48";
 const ACTIVE_SHIFT_STATUSES = new Set(["open", "reopened"]);
+
+/**
+ * ARC-011: the Control Centre's "drawer not counted" signal points here, but
+ * until this page had these actions there was nothing to click — closing or
+ * reopening someone else's till lived only on the server
+ * (`POST /api/shifts/:id/close` and `/reopen`, both already `requireRole`d to
+ * MANAGER+). Mirrored client-side rather than trusting a 403 to hide the
+ * button, same as the rest of this app's role-gated row actions.
+ */
+const MANAGER_PLUS_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
 
 function money(value: string | null | undefined): string {
   if (value == null) return "—";
@@ -103,8 +127,18 @@ function VarianceCell({ value }: { value: string | null }) {
 }
 
 export default function ShiftsPage() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const canManageShifts = MANAGER_PLUS_ROLES.has(user?.role ?? "");
+
   const [reportShiftId, setReportShiftId] = useState<string | null>(null);
   const [windowHours, setWindowHours] = useState<string>(DEFAULT_WINDOW);
+  const [closeTarget, setCloseTarget] = useState<ShiftRow | null>(null);
+  const [closingCount, setClosingCount] = useState("");
+  const [closeNotes, setCloseNotes] = useState("");
+  const [reopenTarget, setReopenTarget] = useState<ShiftRow | null>(null);
+  const [reopenReason, setReopenReason] = useState("");
 
   const { data: shifts = [], isLoading } = useQuery<ShiftRow[]>({
     queryKey: ["/api/shifts", { hours: windowHours }],
@@ -117,6 +151,44 @@ export default function ShiftsPage() {
     },
     // Someone is on the till right now; a stale "on now" panel is worse than none.
     refetchInterval: 60_000,
+  });
+
+  const invalidateShifts = () => queryClient.invalidateQueries({ queryKey: ["/api/shifts"] });
+
+  const closeMutation = useMutation({
+    mutationFn: async ({ id, closingCount, notes }: { id: string; closingCount: number; notes: string }) => {
+      const res = await apiRequest("POST", `/api/shifts/${id}/close`, {
+        closingCount,
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Shift closed" });
+      setCloseTarget(null);
+      setClosingCount("");
+      setCloseNotes("");
+      invalidateShifts();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not close shift", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await apiRequest("POST", `/api/shifts/${id}/reopen`, { reason });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Shift reopened" });
+      setReopenTarget(null);
+      setReopenReason("");
+      invalidateShifts();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not reopen shift", description: error.message, variant: "destructive" });
+    },
   });
 
   const openShifts = useMemo(
@@ -262,15 +334,63 @@ export default function ShiftsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="min-h-[44px]"
-                        onClick={() => setReportShiftId(shift.id)}
-                        aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
-                      >
-                        Z-report
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="min-h-[44px]"
+                          onClick={() => setReportShiftId(shift.id)}
+                          aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
+                        >
+                          Z-report
+                        </Button>
+                        {/* ARC-011: the only way to act on "drawer not counted"
+                            used to be this page's Z-report button — there was
+                            no Close or Reopen at all. MANAGER+ only, and only
+                            when the shift's own status makes the action valid
+                            (mirrors the server: close needs open/reopened,
+                            reopen needs closed). */}
+                        {canManageShifts && (ACTIVE_SHIFT_STATUSES.has(shift.status) || shift.status === "closed") && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="min-h-[44px] px-2"
+                                aria-label={`More actions for ${shift.userName}'s shift`}
+                                data-testid={`shift-actions-${shift.id}`}
+                              >
+                                <MoreVertical className="h-4 w-4" aria-hidden />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {ACTIVE_SHIFT_STATUSES.has(shift.status) && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setClosingCount("");
+                                    setCloseNotes("");
+                                    setCloseTarget(shift);
+                                  }}
+                                  data-testid={`shift-close-${shift.id}`}
+                                >
+                                  Close shift…
+                                </DropdownMenuItem>
+                              )}
+                              {shift.status === "closed" && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setReopenReason("");
+                                    setReopenTarget(shift);
+                                  }}
+                                  data-testid={`shift-reopen-${shift.id}`}
+                                >
+                                  Reopen shift…
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -290,6 +410,117 @@ export default function ShiftsPage() {
           ) : (
             <p className="text-sm text-muted-foreground">Loading report…</p>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ARC-011: close another person's shift. Asks for the same counted-cash
+          figure the cashier would give at the till (`POST /api/shifts/:id/close`
+          computes variance from it server-side, same as a self-close). */}
+      <Dialog open={!!closeTarget} onOpenChange={(v) => !v && setCloseTarget(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Close shift</DialogTitle>
+            <DialogDescription>
+              {closeTarget && (
+                <>
+                  {closeTarget.userName}'s shift at {closeTarget.locationName ?? "this location"}, on since{" "}
+                  {when(closeTarget.openedAt)}.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="close-counted">Counted cash</Label>
+              <Input
+                id="close-counted"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={closingCount}
+                onChange={(e) => setClosingCount(e.target.value)}
+                placeholder="0.00"
+                data-testid="input-close-counted-cash"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="close-notes">Notes (optional)</Label>
+              <Textarea
+                id="close-notes"
+                value={closeNotes}
+                onChange={(e) => setCloseNotes(e.target.value)}
+                placeholder="Why you're closing this on their behalf"
+                data-testid="input-close-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloseTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                closeMutation.isPending ||
+                closingCount.trim() === "" ||
+                !Number.isFinite(parseFloat(closingCount)) ||
+                parseFloat(closingCount) < 0
+              }
+              onClick={() =>
+                closeTarget &&
+                closeMutation.mutate({
+                  id: closeTarget.id,
+                  closingCount: parseFloat(closingCount),
+                  notes: closeNotes,
+                })
+              }
+              data-testid="button-confirm-close-shift"
+            >
+              Close shift
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ARC-011: reopen a closed shift. The server requires a reason
+          (`reopenBodySchema`, min 3 chars) so there is always an audit trail
+          for why a shift some Z-report may already reference got reopened. */}
+      <Dialog open={!!reopenTarget} onOpenChange={(v) => !v && setReopenTarget(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Reopen shift</DialogTitle>
+            <DialogDescription>
+              {reopenTarget && (
+                <>
+                  {reopenTarget.userName}'s shift, closed {when(reopenTarget.closedAt)}.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="reopen-reason">Reason</Label>
+            <Textarea
+              id="reopen-reason"
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+              placeholder="Why this shift needs to be reopened"
+              data-testid="input-reopen-reason"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReopenTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={reopenMutation.isPending || reopenReason.trim().length < 3}
+              onClick={() =>
+                reopenTarget && reopenMutation.mutate({ id: reopenTarget.id, reason: reopenReason.trim() })
+              }
+              data-testid="button-confirm-reopen-shift"
+            >
+              Reopen shift
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

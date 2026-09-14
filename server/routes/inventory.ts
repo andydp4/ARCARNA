@@ -15,18 +15,58 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
-import { StockError, stockErrorPayload } from "../services/productLocationStock";
+import { StockError, stockErrorPayload, resolveStockLocationId } from "../services/productLocationStock";
 import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
+/**
+ * Roles allowed to look at a location other than their own resolved one —
+ * same bar as the page itself (client/src/components/nav-items.ts's
+ * MANAGER_ROLES gates the /inventory route this serves).
+ */
+const CAN_VIEW_ANY_LOCATION = new Set(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+
 export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]): void {
+  // ARC-042: a goods receipt into a location other than the caller's own
+  // resolved one was always correct in product_location_stock, but nothing
+  // in the UI could ever show it — this endpoint only ever answered with
+  // whichever single location resolved from the caller's own context.
+  // `?locationId=` lets a MANAGER+ explicitly look at any of the org's
+  // locations (or `all` for the org-wide total); every other caller keeps
+  // the existing resolved-own-location behaviour unchanged.
   app.get("/api/inventory", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const stockLocationId = await resolveEditableStockLocationId({
-        orgId: ctx.orgId,
-        locationId: ctx.locationId,
-        userId: req.user?.claims?.sub ?? req.user?.id ?? null,
-      });
+      const requestedLocationId =
+        typeof req.query.locationId === "string" && req.query.locationId.length > 0
+          ? req.query.locationId
+          : undefined;
+
+      let stockLocationId: string | null;
+      if (requestedLocationId && CAN_VIEW_ANY_LOCATION.has(ctx.role)) {
+        if (requestedLocationId === "all") {
+          // Explicit org-wide total across every location.
+          stockLocationId = null;
+        } else {
+          try {
+            stockLocationId = await resolveStockLocationId({
+              orgId: ctx.orgId,
+              locationId: requestedLocationId,
+            });
+          } catch (error) {
+            if (error instanceof StockError && error.code === "LOCATION_NOT_FOUND") {
+              return res.status(404).json(stockErrorPayload(error));
+            }
+            throw error;
+          }
+        }
+      } else {
+        stockLocationId = await resolveEditableStockLocationId({
+          orgId: ctx.orgId,
+          locationId: ctx.locationId,
+          userId: req.user?.claims?.sub ?? req.user?.id ?? null,
+        });
+      }
+
       const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
       res.json(list);
     } catch (error) {

@@ -14,7 +14,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
-import { requireOpenShift } from "../middleware/requireOpenShift";
+import { findOpenShiftForUser } from "../middleware/requireOpenShift";
 import { touchCashierShiftActivity } from "../services/cashierShiftEngine";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
@@ -115,7 +115,14 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
     "/api/orders/:id/refunds",
     ...scoped,
     requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"),
-    requireOpenShift,
+    // ARC-015: deliberately NOT requireOpenShift. That middleware auto-opens
+    // (and floats) a till drawer when the caller has none, which is right for
+    // taking a sale but wrong here — a manager refunding an order from the
+    // back office has no till at all, and the refund must not manufacture a
+    // phantom one that then shows them "on now" on Shifts and trips the
+    // uncounted-drawer Control Centre signal for a drawer nobody opened.
+    // Attach softly instead, directly below: this user's already-open shift
+    // when one exists, `shiftId: null` when it doesn't.
     async (req: any, res) => {
       try {
         const ctx = req.orgContext as { orgId: string };
@@ -221,7 +228,10 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           body.refundMethod,
           order.paymentMethod,
         );
-        const shiftId = req.shift?.id ?? null;
+        // Soft attach (ARC-015): this user's own already-open till shift, if
+        // any — never one opened just now for this request.
+        const openShift = await findOpenShiftForUser(ctx.orgId, userId);
+        const shiftId = openShift?.id ?? null;
         const earnedPoints = await pointsEarnedOnOrder(order.id);
         // Reverse points proportionally against what was actually collected —
         // an inflated `orders.total` would otherwise under-reverse them.
