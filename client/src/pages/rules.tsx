@@ -40,6 +40,25 @@ type AutomationRule = {
   lastTriggeredAt: string | null;
 };
 
+/**
+ * Matches the `safe` shape returned by GET /api/rules/:id/executions
+ * (server/routes/automation.ts), itself a row of `worker_run_logs`
+ * (shared/schema.ts) — `logId` is that table's primary key, generated
+ * server-side (`gen_random_uuid()`) on every insert, so it's always present
+ * on a real row and safe to use as a React list key on its own.
+ */
+type RuleExecution = {
+  logId: string;
+  createdAt: string;
+  status: string;
+  summary?: string | null;
+  data?: { ruleRun?: { semanticStatus?: string; conditionResult?: unknown } } | null;
+  error?: string | null;
+  eventId?: string;
+  correlationId?: string;
+  eventType?: string;
+};
+
 const defaultCondition = `{
   "logic": "and",
   "checks": [
@@ -72,7 +91,7 @@ export default function RulesPage() {
     queryKey: ["/api/rules"],
   });
 
-  const { data: executions } = useQuery<{ items: unknown[] }>({
+  const { data: executions } = useQuery<{ items: RuleExecution[] }>({
     queryKey: ["/api/rules", historyRule?.id, "executions"],
     enabled: !!historyRule,
     queryFn: async () => {
@@ -224,14 +243,14 @@ export default function RulesPage() {
           </DialogHeader>
           <ScrollArea className="max-h-[360px] pr-3">
             <ul className="space-y-2 text-sm">
-              {(executions?.items ?? []).map((row: any, i: number) => {
+              {(executions?.items ?? []).map((row) => {
                 const rr = row?.data?.ruleRun;
                 const why = rr?.semanticStatus ?? row?.status ?? "unknown";
                 return (
-                  <li key={row.logId || i} className="border rounded p-2">
+                  <li key={row.logId} className="border rounded p-2">
                     <p className="font-medium">{why}</p>
                     <p className="text-xs text-muted-foreground">{row.summary}</p>
-                    {rr?.conditionResult && (
+                    {!!rr?.conditionResult && (
                       <pre className="text-[10px] mt-1 overflow-x-auto bg-muted/50 p-1 rounded">
                         {JSON.stringify(rr.conditionResult, null, 2)}
                       </pre>
