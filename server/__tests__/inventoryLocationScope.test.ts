@@ -23,6 +23,8 @@ class FakeStockError extends Error {
   }
 }
 
+vi.mock("../db", () => ({ db: {} }));
+
 vi.mock("../storage", () => ({
   storage: { getProductsWithStock: getProductsWithStockMock },
   AmbiguousStockLocationError: class extends Error {},
