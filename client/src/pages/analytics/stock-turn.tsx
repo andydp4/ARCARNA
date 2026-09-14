@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import { Skeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { Layers } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import type { StockTurnCategoryRow, StockTurnStatus } from "@shared/analytics/stockTurn";
@@ -31,7 +32,7 @@ export default function StockTurnAnalyticsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("daysOfStock");
   const [sortAsc, setSortAsc] = useState(false);
 
-  const { data, isLoading } = useQuery<StockTurnResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<StockTurnResponse>({
     queryKey: ["/api/analytics/stock-turn"],
     queryFn: async () => {
       const res = await apiFetch("/api/analytics/stock-turn?windowDays=90", {
@@ -75,7 +76,14 @@ export default function StockTurnAnalyticsPage() {
           <CardTitle>By category</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <ErrorState
+              title="Couldn't load stock turn"
+              body="Category stock-turn data failed to load. Try again."
+              onRetry={() => refetch()}
+              data-testid="stock-turn-error"
+            />
+          ) : isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : sorted.length === 0 ? (
             <p className="text-sm text-muted-foreground">No products with stock or sales data.</p>

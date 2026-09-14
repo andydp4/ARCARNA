@@ -99,8 +99,27 @@
   box-shadow: 0 1px 0 hsl(210, 15%, 78% / 0.03);
 }
 
+/**
+ * A flat midpoint of --lm-surface-gradient's own two stops
+ * (hsl(215,12%,14%) → hsl(220,10%,11%)), same value as `.pos-chip`/
+ * `.pos-action-bar` below, applied here as a plausible mitigation for
+ * GAP-U5-05 (docs/briefs/GAPS_BACKLOG.md): a non-deterministic
+ * `color-contrast` failure on tests/a11y/operations-centre.spec.ts's
+ * order-actions dropdown, whose axe report names this sidebar `aside` as a
+ * `relatedNode` ("background color could not be determined due to a
+ * background gradient") even though the menu itself uses a solid
+ * `bg-popover`. axe-core cannot evaluate a gradient background at all, so
+ * removing the one gradient axe flagged as contributing to that
+ * determination is a reasonable candidate fix — but the failure did not
+ * reproduce locally either with or without this change (across several
+ * runs, both passed), so this is NOT a confirmed causal fix, only the most
+ * plausible lead found so far. If GAP-U5-05 keeps recurring after this
+ * lands, the root cause is still open and lies elsewhere. This flat
+ * equivalent is imperceptibly different from the gradient regardless — the
+ * sidebar's own nav-link text was never the flagged element.
+ */
 .lm-shell-sidebar {
-  background: var(--lm-surface-gradient);
+  background: hsl(217, 11%, 13%);
   border-right: 1px solid var(--lm-edge-highlight);
 }
 

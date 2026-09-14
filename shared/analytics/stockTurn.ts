@@ -57,14 +57,24 @@ export function computeCategoryStockTurn(input: {
   };
 }
 
+/**
+ * ARC-045: category grouping used to be `productCategoryFromSku` for every
+ * product — the SKU prefix before the first `-`/`_`, which is not a real
+ * product category (a "BEV-001" and a "BEV-002" from unrelated ranges group
+ * together purely because someone typed the same prefix). Callers now pass
+ * each product's actual category — `products.website_category`, the same
+ * field ARC-030's Truths-hub category breakdown uses — and only a product
+ * with no category set falls back to the SKU-derived label, so it still
+ * lands somewhere rather than being silently dropped.
+ */
 export function aggregateStockTurnByCategory(
-  products: Array<{ productId: string; unitsSold: number; avgStock: number }>,
+  products: Array<{ productId: string; unitsSold: number; avgStock: number; category?: string | null }>,
   windowDays: number,
 ): StockTurnCategoryRow[] {
   const byCat = new Map<string, { unitsSold: number; avgStock: number }>();
 
   for (const p of products) {
-    const cat = productCategoryFromSku(p.productId);
+    const cat = p.category?.trim() || productCategoryFromSku(p.productId);
     const cur = byCat.get(cat) ?? { unitsSold: 0, avgStock: 0 };
     cur.unitsSold += p.unitsSold;
     cur.avgStock += p.avgStock;

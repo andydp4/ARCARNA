@@ -7,10 +7,12 @@ import { ChevronLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ReportFrame } from "@/components/reports/ReportFrame";
 import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
-import { ReportKpi, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, int, screenDate, isoDate, orDash } from "@/lib/reportBrand";
+import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { CsvColumn } from "@/lib/reportExport";
 
 const META = reportByRef("ARC-T1-004")!;
@@ -22,21 +24,12 @@ interface ProductRow {
   revenue: number;
 }
 
-/** Monday→Sunday week containing `d` (returns ISO start/end). */
-function weekBounds(d: Date): { from: string; to: string } {
-  const start = new Date(d);
-  const day = (start.getDay() + 6) % 7; // 0 = Monday
-  start.setDate(start.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { from: isoDate(start), to: isoDate(end) };
-}
-
 export default function WeeklySalesReport() {
   const frameRef = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState(() => isoDate(new Date()));
-  const bounds = weekBounds(new Date(anchor));
-  const { data, isLoading, error } = useReport(META.ref, bounds);
+  const bounds = mondayWeekBounds(new Date(anchor));
+  const [scope, setScope] = useState<ReportScopeValue>({});
+  const { data, isLoading, error } = useReport(META.ref, { ...bounds, ...scope });
 
   const s = data?.summary ?? {};
   const rows = (data?.rows ?? []) as ProductRow[];
@@ -65,9 +58,10 @@ export default function WeeklySalesReport() {
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-4 w-4" /> All reports
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-muted-foreground">Week of</label>
           <Input type="date" value={anchor} max={isoDate(new Date())} onChange={(e) => setAnchor(e.target.value)} className="h-9 w-[160px]" />
+          <ReportScopeFilter value={scope} onChange={setScope} />
         </div>
       </div>
 
@@ -92,25 +86,36 @@ export default function WeeklySalesReport() {
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ReportKpi label="Total Revenue" value={money(Number(s.totalRevenue) || 0)} keyInfo />
-              <ReportKpi label="Total Orders" value={int(Number(s.totalOrders) || 0)} keyInfo />
-              <ReportKpi label="Avg Order Value" value={money(Number(s.avgOrderValue) || 0)} keyInfo />
-              <ReportKpi
-                label="vs Previous Week"
-                value={moneyDelta(Number(s.vsPrevWeek) || 0)}
-                sub={`Peak day: ${orDash(s.peakTradingDay as string)}`}
-              />
-            </div>
+            {isLoading && !data ? (
+              <>
+                <ReportKpiSkeleton count={4} />
+                <div className="mt-5">
+                  <ReportKpiSkeleton count={6} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <ReportKpi label="Total Revenue" value={money(Number(s.totalRevenue) || 0)} keyInfo />
+                  <ReportKpi label="Total Orders" value={int(Number(s.totalOrders) || 0)} keyInfo />
+                  <ReportKpi label="Avg Order Value" value={money(Number(s.avgOrderValue) || 0)} keyInfo />
+                  <ReportKpi
+                    label="vs Previous Week"
+                    value={moneyDelta(Number(s.vsPrevWeek) || 0)}
+                    sub={`Peak day: ${orDash(s.peakTradingDay as string)}`}
+                  />
+                </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <ReportKpi label="Cash" value={money(Number(s.cashRevenue) || 0)} />
-              <ReportKpi label="Card" value={money(Number(s.cardRevenue) || 0)} />
-              <ReportKpi label="Credit (Tick)" value={money(Number(s.tickRevenue) || 0)} />
-              <ReportKpi label="Gift Card" value={money(Number(s.giftCardRevenue) || 0)} />
-              <ReportKpi label="Website" value={money(Number(s.websiteRevenue) || 0)} />
-              <ReportKpi label="Other" value={money(Number(s.otherRevenue) || 0)} />
-            </div>
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <ReportKpi label="Cash" value={money(Number(s.cashRevenue) || 0)} />
+                  <ReportKpi label="Card" value={money(Number(s.cardRevenue) || 0)} />
+                  <ReportKpi label="Credit (Tick)" value={money(Number(s.tickRevenue) || 0)} />
+                  <ReportKpi label="Gift Card" value={money(Number(s.giftCardRevenue) || 0)} />
+                  <ReportKpi label="Website" value={money(Number(s.websiteRevenue) || 0)} />
+                  <ReportKpi label="Other" value={money(Number(s.otherRevenue) || 0)} />
+                </div>
+              </>
+            )}
 
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-semibold" style={{ color: "#1E3A8A" }}>

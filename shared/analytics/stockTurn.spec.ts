@@ -51,7 +51,7 @@ describe("computeCategoryStockTurn", () => {
 });
 
 describe("aggregateStockTurnByCategory", () => {
-  it("merges products in same category", () => {
+  it("merges products in same category (SKU-prefix fallback when no real category given)", () => {
     const rows = aggregateStockTurnByCategory(
       [
         { productId: "BEV-1", unitsSold: 10, avgStock: 5 },
@@ -62,5 +62,38 @@ describe("aggregateStockTurnByCategory", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].unitsSold).toBe(30);
     expect(rows[0].avgStock).toBe(10);
+  });
+
+  // ARC-045: category grouping must use the real product category, not the
+  // SKU prefix — two products from unrelated SKU ranges but the same real
+  // category (e.g. "Beverages") should merge; two products sharing a SKU
+  // prefix but different real categories should NOT merge.
+  it("groups by the real category, not the SKU prefix, when a category is given", () => {
+    const rows = aggregateStockTurnByCategory(
+      [
+        { productId: "ZZZ-1", unitsSold: 10, avgStock: 5, category: "Beverages" },
+        { productId: "AAA-9", unitsSold: 20, avgStock: 5, category: "Beverages" },
+        { productId: "BEV-2", unitsSold: 5, avgStock: 2, category: "Snacks" },
+      ],
+      90,
+    );
+    const beverages = rows.find((r) => r.category === "Beverages");
+    const snacks = rows.find((r) => r.category === "Snacks");
+    expect(beverages?.unitsSold).toBe(30);
+    expect(beverages?.avgStock).toBe(10);
+    expect(snacks?.unitsSold).toBe(5);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("falls back to the SKU-derived label only for a product with no category set", () => {
+    const rows = aggregateStockTurnByCategory(
+      [
+        { productId: "BEV-1", unitsSold: 10, avgStock: 5, category: null },
+        { productId: "BEV-2", unitsSold: 5, avgStock: 5, category: "" },
+      ],
+      90,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].category).toBe("Bev");
   });
 });

@@ -31,11 +31,12 @@ import {
   organizations,
   orderEvents,
   opsStaff,
+  locations,
 } from "@shared/schema";
 import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
 import { currentTradingDay, tradingDayBounds, tradingDayFor, shiftIsoDate } from "@shared/time/tradingDay";
-import { settledRevenueByTradingDay } from "./revenue";
+import { settledRevenueByTradingDay, type RevenueScopeFilter } from "./revenue";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import {
   deriveOrderTiming,
@@ -45,8 +46,9 @@ import {
   type OrderTimingSummary,
 } from "@shared/reports/orderTiming";
 import { wasProactiveDelayComms } from "@shared/reports/delayLog";
+import { hasEnoughDataForChurnScore } from "@shared/analytics/churnThreshold";
 
-export { wasProactiveDelayComms };
+export { wasProactiveDelayComms, hasEnoughDataForChurnScore };
 
 /** Statuses that count as realised revenue. Model uses "completed"; spec says COLLECTED. */
 const COMPLETED_STATUSES = ["completed", "COLLECTED", "collected"] as const;
@@ -65,6 +67,58 @@ export interface ReportPayload {
 function num(v: unknown): number {
   const n = typeof v === "string" ? parseFloat(v) : (v as number);
   return typeof n === "number" && isFinite(n) ? n : 0;
+}
+
+/**
+ * ARC-026: a `locationId`/`cashierId` from another org (a stale link, a typo,
+ * or a forged query param) must 404 the report, never silently fall back to
+ * scoping the whole org's data instead — the caller asked to see ONE
+ * location/cashier's numbers, and org-wide numbers under that label would be
+ * a wrong answer presented as a right one, not a graceful degradation.
+ */
+export class ReportScopeError extends Error {
+  statusCode = 404;
+}
+
+export interface ReportScopeFilter {
+  locationId?: string;
+  cashierId?: string;
+}
+
+/**
+ * A syntactically malformed id (not even a UUID) must also 404, not 500 —
+ * `locations.id`/`cashier_profiles.id` are Postgres `uuid` columns, and
+ * comparing one against a non-UUID string throws `22P02 invalid_text_
+ * representation` at the driver level before the query can return zero rows.
+ * Checked before touching the DB at all.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Confirms a caller-supplied location/cashier filter actually belongs to this
+ * org before any report query is scoped to it. Same shape as the
+ * `orders`/`locations` ownership check `POST /api/shifts/open` already uses
+ * (server/routes/shifts.ts) — id + org id, nothing implicitly inherited.
+ */
+export async function validateReportScope(orgId: string, filter: ReportScopeFilter): Promise<void> {
+  if (filter.locationId) {
+    if (!UUID_RE.test(filter.locationId)) throw new ReportScopeError(`Location ${filter.locationId} not found`);
+    const [loc] = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(and(eq(locations.id, filter.locationId), eq(locations.orgId, orgId)))
+      .limit(1);
+    if (!loc) throw new ReportScopeError(`Location ${filter.locationId} not found`);
+  }
+  if (filter.cashierId) {
+    if (!UUID_RE.test(filter.cashierId)) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
+    const [c] = await db
+      .select({ id: cashierProfiles.id })
+      .from(cashierProfiles)
+      .where(and(eq(cashierProfiles.id, filter.cashierId), eq(cashierProfiles.orgId, orgId)))
+      .limit(1);
+    if (!c) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
+  }
 }
 
 const completedCond = sql`${orders.status} IN (${sql.join(COMPLETED_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
@@ -140,13 +194,22 @@ function bucketForMethod(method: string | null): ChannelBucket {
  * proportionally, so a fully-refunded order does not still show as revenue in
  * its channel even though the window-level total nets refunds by day.
  */
-async function channelBreakdown(orgId: string, start: Date, end: Date): Promise<Record<ChannelBucket, number>> {
+async function channelBreakdown(
+  orgId: string,
+  start: Date,
+  end: Date,
+  filter?: ReportScopeFilter,
+): Promise<Record<ChannelBucket, number>> {
   const totals: Record<ChannelBucket, number> = { Cash: 0, Card: 0, Tick: 0, GiftCard: 0, Website: 0, Other: 0 };
+
+  const scopeConds = [];
+  if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
+  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
 
   const orderRows = await db
     .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
     .from(orders)
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end)));
+    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds));
   if (orderRows.length === 0) return totals;
 
   const orderIds = orderRows.map((r) => r.id);
@@ -198,23 +261,28 @@ async function channelBreakdown(orgId: string, start: Date, end: Date): Promise<
  * the same 06:00-to-06:00-local, settled-orders-only, refund-netted figure
  * Control Centre shows as "today" — rather than a server-local-midnight
  * `createdAt` window over every order regardless of status (ARC-020/023/027).
+ *
+ * `filter` (ARC-026) scopes every figure — revenue, channel split, deltas and
+ * the 4-week average alike — to one location and/or cashier. Callers MUST
+ * validate a caller-supplied filter with {@link validateReportScope} first;
+ * this function trusts it and simply narrows every query.
  */
-export async function dailySalesSummary(orgId: string, day?: Date): Promise<ReportPayload> {
+export async function dailySalesSummary(orgId: string, day?: Date, filter?: ReportScopeFilter): Promise<ReportPayload> {
   const timezone = await orgTimeZone(orgId);
   const dayIso = day ? isoDateOnly(day) : currentTradingDay(timezone);
   const { start, end } = tradingDayBounds(dayIso, timezone);
 
-  const todayMap = await settledRevenueByTradingDay(orgId, timezone, dayIso, dayIso);
+  const todayMap = await settledRevenueByTradingDay(orgId, timezone, dayIso, dayIso, filter);
   const today = todayMap.get(dayIso) ?? { revenue: 0, txns: 0, aov: 0, refundsTotal: 0 };
   const totalRevenue = today.revenue;
   const ordersProcessed = today.txns;
   const avgOrderValue = today.aov;
 
-  const byChannel = await channelBreakdown(orgId, start, end);
+  const byChannel = await channelBreakdown(orgId, start, end, filter);
 
   const priorDayRevenue = async (offsetDays: number): Promise<number> => {
     const d = shiftIsoDate(dayIso, -offsetDays);
-    const map = await settledRevenueByTradingDay(orgId, timezone, d, d);
+    const map = await settledRevenueByTradingDay(orgId, timezone, d, d, filter);
     return map.get(d)?.revenue ?? 0;
   };
   const vsYesterday = totalRevenue - (await priorDayRevenue(1));
@@ -222,7 +290,7 @@ export async function dailySalesSummary(orgId: string, day?: Date): Promise<Repo
 
   // 4-week trading-day average for flag logic (includes today's own day).
   const fourWeekStart = shiftIsoDate(dayIso, -27);
-  const fourWeekMap = await settledRevenueByTradingDay(orgId, timezone, fourWeekStart, dayIso);
+  const fourWeekMap = await settledRevenueByTradingDay(orgId, timezone, fourWeekStart, dayIso, filter);
   let fourWeekTotal = 0;
   for (const kpi of fourWeekMap.values()) fourWeekTotal += kpi.revenue;
   const fourWeekDailyAvg = fourWeekTotal / 28;
@@ -267,15 +335,24 @@ export async function dailySalesSummary(orgId: string, day?: Date): Promise<Repo
  * Centre and Daily Sales use, and summed across the week — not a
  * server-local-midnight `createdAt` window, which drifts an hour out against
  * Control Centre for seven months of the year under BST (ARC-027).
+ *
+ * `filter` (ARC-026) scopes revenue, channel split, top products and both
+ * comparison periods to one location and/or cashier — validate a
+ * caller-supplied filter with {@link validateReportScope} before calling.
  */
-export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
+export async function weeklySalesSummary(
+  orgId: string,
+  weekStart: Date,
+  weekEnd: Date,
+  filter?: ReportScopeFilter,
+): Promise<ReportPayload> {
   const timezone = await orgTimeZone(orgId);
   const fromIso = isoDateOnly(weekStart);
   const toIso = isoDateOnly(weekEnd);
   const { start } = tradingDayBounds(fromIso, timezone);
   const { end } = tradingDayBounds(toIso, timezone);
 
-  const byDay = await settledRevenueByTradingDay(orgId, timezone, fromIso, toIso);
+  const byDay = await settledRevenueByTradingDay(orgId, timezone, fromIso, toIso, filter);
   let totalRevenue = 0;
   let totalOrders = 0;
   const dayRevenue: Record<string, number> = {};
@@ -290,8 +367,11 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
   const avgOrderValue = totalOrders ? totalRevenue / totalOrders : 0;
   const peakDay = Object.entries(dayRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
 
-  const byChannel = await channelBreakdown(orgId, start, end);
+  const byChannel = await channelBreakdown(orgId, start, end, filter);
 
+  const topScopeConds = [];
+  if (filter?.locationId) topScopeConds.push(eq(orders.locationId, filter.locationId));
+  if (filter?.cashierId) topScopeConds.push(eq(orders.completedCashierId, filter.cashierId));
   const top = await db
     .select({
       name: products.name,
@@ -301,7 +381,7 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
     .from(orderItems)
     .innerJoin(products, eq(orderItems.productId, products.id))
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end)))
+    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...topScopeConds))
     .groupBy(products.name)
     .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
     .limit(5);
@@ -309,7 +389,7 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
   // Prior week (same trading-day span, 7 days earlier) for WoW delta.
   const pwFrom = shiftIsoDate(fromIso, -7);
   const pwTo = shiftIsoDate(toIso, -7);
-  const pwMap = await settledRevenueByTradingDay(orgId, timezone, pwFrom, pwTo);
+  const pwMap = await settledRevenueByTradingDay(orgId, timezone, pwFrom, pwTo, filter);
   let pwTotal = 0;
   for (const kpi of pwMap.values()) pwTotal += kpi.revenue;
   const vsPrevWeek = totalRevenue - pwTotal;
@@ -317,7 +397,7 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
   // 4-week rolling average (the trading days from 4 weeks before `fromIso`
   // through `toIso`, i.e. including this week itself) for flag logic.
   const rollFrom = shiftIsoDate(fromIso, -28);
-  const rollMap = await settledRevenueByTradingDay(orgId, timezone, rollFrom, toIso);
+  const rollMap = await settledRevenueByTradingDay(orgId, timezone, rollFrom, toIso, filter);
   let rollTotal = 0;
   for (const kpi of rollMap.values()) rollTotal += kpi.revenue;
   const fourWeekAvg = rollTotal / 4;
@@ -356,14 +436,24 @@ export async function weeklySalesSummary(orgId: string, weekStart: Date, weekEnd
   };
 }
 
-/** ARC-T1-002 Current Stock Levels — per-product stock, par level, status, weeks remaining. */
-export async function currentStockLevels(orgId: string): Promise<ReportPayload> {
+/**
+ * ARC-T1-002 Current Stock Levels — per-product stock, par level, status, weeks remaining.
+ *
+ * `locationId` (ARC-026) scopes both the stock figures (via
+ * `getProductsWithStock`, which already sums a single location instead of
+ * every location when one is given) and the velocity used for weeks-remaining
+ * — a product's runway at ONE site should be computed from what sells at
+ * that site, not the org's combined sales rate against that site's stock
+ * alone. Validate a caller-supplied `locationId` with
+ * {@link validateReportScope} before calling.
+ */
+export async function currentStockLevels(orgId: string, locationId?: string): Promise<ReportPayload> {
   // Products with current stock + reorder point. Stock comes from
   // getProductsWithStock (summed per-location stock) rather than the legacy
   // products.stock column, which is always written as 0 — reading it directly
   // made every product show as CRITICAL/out of stock and fired a red flag for
   // each one.
-  const withStock = await storage.getProductsWithStock(orgId);
+  const withStock = await storage.getProductsWithStock(orgId, locationId);
   const prodRows = withStock.map((p) => ({
     id: p.id,
     name: p.name,
@@ -374,6 +464,9 @@ export async function currentStockLevels(orgId: string): Promise<ReportPayload> 
 
   // 4-week unit velocity per product (from order_items on completed orders).
   const since = new Date(Date.now() - 28 * 86400000);
+  const velCond = locationId
+    ? and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since), eq(orders.locationId, locationId))
+    : and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since));
   const velRows = await db
     .select({
       productId: orderItems.productId,
@@ -381,7 +474,7 @@ export async function currentStockLevels(orgId: string): Promise<ReportPayload> 
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since)))
+    .where(velCond)
     .groupBy(orderItems.productId);
   const vel = new Map<string, number>();
   for (const v of velRows) vel.set(v.productId as string, num(v.units) / 4);
@@ -437,12 +530,29 @@ export async function currentStockLevels(orgId: string): Promise<ReportPayload> 
  * costed at today's `products.cost_price`, not a snapshot of what the cost
  * was at the moment of sale — `order_items` carries no cost-at-sale column to
  * read instead (see the same caveat on `storage.getProfitAnalysis`, ARC-025).
+ *
+ * `filter` (ARC-026) scopes the margin calc to one location and/or cashier —
+ * validate a caller-supplied filter with {@link validateReportScope} first.
  */
-export async function weeklyMarginSummary(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
+export async function weeklyMarginSummary(
+  orgId: string,
+  weekStart: Date,
+  weekEnd: Date,
+  filter?: ReportScopeFilter,
+): Promise<ReportPayload> {
   const timezone = await orgTimeZone(orgId);
   const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
   const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
-  const cond = and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end));
+  const scopeConds = [];
+  if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
+  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  const cond = and(
+    eq(orders.orgId, orgId),
+    eq(orders.status, "completed"),
+    gte(orders.settledAt, start),
+    lt(orders.settledAt, end),
+    ...scopeConds,
+  );
 
   const grp = await db
     .select({
@@ -621,20 +731,23 @@ export async function customerLifetimeValue(orgId: string): Promise<ReportPayloa
   };
 }
 
-/** ARC-T3-003 Stock Runway & Demand Forecast. */
-export async function stockRunwayForecast(orgId: string): Promise<ReportPayload> {
+/** ARC-T3-003 Stock Runway & Demand Forecast. `locationId` (ARC-026) scopes stock and velocity to one site, same as {@link currentStockLevels}. */
+export async function stockRunwayForecast(orgId: string, locationId?: string): Promise<ReportPayload> {
   // See currentStockLevels: stock must come from getProductsWithStock, not the
   // legacy products.stock column (always 0), or every product reads as out of
   // stock with zero runway.
-  const withStock = await storage.getProductsWithStock(orgId);
+  const withStock = await storage.getProductsWithStock(orgId, locationId);
   const prod = withStock.map((p) => ({ id: p.id, name: p.name, stock: p.stock }));
 
   const since = new Date(Date.now() - 28 * 86400000);
+  const velCond = locationId
+    ? and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since), eq(orders.locationId, locationId))
+    : and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since));
   const velRows = await db
     .select({ productId: orderItems.productId, units: sql<number>`SUM(${orderItems.quantity})` })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(and(eq(orders.orgId, orgId), completedCond, gte(orders.createdAt, since)))
+    .where(velCond)
     .groupBy(orderItems.productId);
   const vel = new Map<string, number>();
   for (const v of velRows) vel.set(v.productId as string, num(v.units) / 4);
@@ -760,6 +873,14 @@ export async function rfmSegmentation(orgId: string): Promise<ReportPayload> {
   };
 }
 
+/**
+ * ARC-029: minimum signal required before a churn score means anything —
+ * see {@link hasEnoughDataForChurnScore} in `shared/analytics/churnThreshold`
+ * (imported and re-exported near the top of this file) for the threshold and
+ * its reasoning. Moved out of this file — which imports `db` at module scope
+ * — so it can be unit-tested without a live database.
+ */
+
 /** ARC-T4-002 Churn Risk Score — heuristic early-warning from recency + activity. */
 export async function churnRiskScore(orgId: string): Promise<ReportPayload> {
   const rows = await db
@@ -778,7 +899,15 @@ export async function churnRiskScore(orgId: string): Promise<ReportPayload> {
 
   const now = Date.now();
   const redFlags: string[] = [];
+  let insufficientData = 0;
   const mapped = rows
+    .filter((r) => {
+      const first = r.firstOrder ? new Date(r.firstOrder) : null;
+      const tenureDays = first ? Math.floor((now - first.getTime()) / 86400000) : 0;
+      const eligible = hasEnoughDataForChurnScore(tenureDays, num(r.orderCount));
+      if (!eligible) insufficientData += 1;
+      return eligible;
+    })
     .map((r) => {
       const last = r.lastOrder ? new Date(r.lastOrder) : null;
       const days = last ? Math.floor((now - last.getTime()) / 86400000) : 9999;
@@ -820,6 +949,9 @@ export async function churnRiskScore(orgId: string): Promise<ReportPayload> {
       atRisk: mapped.length,
       highRisk: mapped.filter((r) => r.churnScore >= 80).length,
       revenueAtRisk: mapped.reduce((s, r) => s + r.revenueAtRisk, 0),
+      // ARC-029: customers excluded from scoring entirely — too new to judge
+      // yet — surfaced as a count rather than silently vanishing them.
+      insufficientData,
     },
     rows: mapped,
     redFlags,
@@ -1494,6 +1626,16 @@ export async function customerSatisfaction(orgId: string, weekStart: Date, weekE
       averageScore: avg,
       scoresOf3OrBelow: lowScoreRows.length,
       distribution: `1:${dist[1]} 2:${dist[2]} 3:${dist[3]} 4:${dist[4]} 5:${dist[5]}`,
+      // ARC-045: the 1-5 histogram was computed (the `dist` map above) but
+      // only ever squashed into the `distribution` string, never rendered as
+      // an actual histogram anywhere on the client. Exposed here as discrete
+      // numeric fields — a ReportPayload summary can't hold an array — so
+      // satisfaction.tsx can draw real bars instead of parsing a string.
+      dist1: dist[1],
+      dist2: dist[2],
+      dist3: dist[3],
+      dist4: dist[4],
+      dist5: dist[5],
     },
     rows: lowScoreRows,
     redFlags,
@@ -1722,17 +1864,21 @@ export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004" | "ARC-T2-005
 export async function runReport(
   ref: string,
   orgId: string,
-  opts: { from?: Date; to?: Date } = {},
+  opts: { from?: Date; to?: Date; locationId?: string; cashierId?: string } = {},
 ): Promise<ReportPayload> {
+  // ARC-026: callers MUST validate opts.locationId/cashierId belong to this
+  // org before calling runReport — the route layer does this once here
+  // rather than in every branch below.
+  const filter: ReportScopeFilter = { locationId: opts.locationId, cashierId: opts.cashierId };
   switch (ref) {
     case "ARC-T1-001":
-      return dailySalesSummary(orgId, opts.from);
+      return dailySalesSummary(orgId, opts.from, filter);
     case "ARC-T1-002":
-      return currentStockLevels(orgId);
+      return currentStockLevels(orgId, opts.locationId);
     case "ARC-T1-004": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
-      return weeklySalesSummary(orgId, from, to);
+      return weeklySalesSummary(orgId, from, to, filter);
     }
     case "ARC-T1-003":
       return orderStatusDashboard(orgId);
@@ -1746,7 +1892,7 @@ export async function runReport(
     case "ARC-T2-001": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
-      return weeklyMarginSummary(orgId, from, to);
+      return weeklyMarginSummary(orgId, from, to, filter);
     }
     case "ARC-T2-002": {
       const to = opts.to ?? new Date();
@@ -1765,7 +1911,7 @@ export async function runReport(
     case "ARC-T3-002":
       return customerLifetimeValue(orgId);
     case "ARC-T3-003":
-      return stockRunwayForecast(orgId);
+      return stockRunwayForecast(orgId, opts.locationId);
     case "ARC-T4-001":
       return rfmSegmentation(orgId);
     case "ARC-T4-002":

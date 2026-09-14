@@ -1,11 +1,30 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/appPaths";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { ChartCard } from "@/components/chart-card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+/** ARC-045: "12M"/"6M" used to be static, `aria-hidden` spans — decorative, not a control. Now a real toggle over the server's own `?months=` param (server/routes/analytics.ts already accepted it). */
+const WINDOWS = { "12M": 12, "6M": 6 } as const;
+type WindowLabel = keyof typeof WINDOWS;
+
 export default function MonthlyOrdersChart() {
-  const { data: monthlySummary = [], isLoading } = useQuery({
-    queryKey: ["/api/analytics/monthly-summary"],
+  const [windowLabel, setWindowLabel] = useState<WindowLabel>("12M");
+  const months = WINDOWS[windowLabel];
+  const {
+    data: monthlySummary = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ["/api/analytics/monthly-summary", months],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/analytics/monthly-summary?months=${months}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load monthly summary");
+      return res.json();
+    },
   });
 
   const monthNames = [
@@ -23,19 +42,36 @@ export default function MonthlyOrdersChart() {
       title="Monthly Orders"
       question="How is order volume trending month to month?"
       aside={
-        <div className="flex shrink-0 gap-2" aria-hidden="true">
-          <span className="rounded-lg bg-truth-subtle px-3 py-1 text-xs font-medium text-truth-bright" data-testid="button-orders-12m">
-            12M
-          </span>
-          <span className="rounded-lg px-3 py-1 text-xs font-medium text-metal-muted" data-testid="button-orders-6m">
-            6M
-          </span>
+        <div className="flex shrink-0 gap-2">
+          {(Object.keys(WINDOWS) as WindowLabel[]).map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setWindowLabel(label)}
+              aria-pressed={windowLabel === label}
+              className={
+                windowLabel === label
+                  ? "rounded-lg bg-truth-subtle px-3 py-1 text-xs font-medium text-truth-bright"
+                  : "rounded-lg px-3 py-1 text-xs font-medium text-metal-muted hover:text-metal-warm-white"
+              }
+              data-testid={`button-orders-${label.toLowerCase()}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       }
       interpretation="Order count per month from the monthly summary. Compare months to spot seasonality and growth."
       action={{ label: "Open Truths for a custom range", href: "/insights" }}
     >
-      {isLoading ? (
+      {isError ? (
+        <ErrorState
+          title="Couldn't load monthly orders"
+          body="This chart's data failed to load. Try again."
+          onRetry={() => refetch()}
+          data-testid="monthly-orders-error"
+        />
+      ) : isLoading ? (
         <Skeleton className="h-64 w-full" />
       ) : (
         <div className="h-56 w-full min-h-[220px] sm:h-64 sm:min-h-[256px]">

@@ -1,6 +1,8 @@
 /** ARC-T3-003 Stock Runway & Demand Forecast. */
+import { useState } from "react";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
+import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { int, screenDate } from "@/lib/reportBrand";
 import type { FlagLevel } from "@/lib/reportBrand";
 
@@ -25,13 +27,16 @@ const URGENCY_FLAG: Record<Row["urgency"], FlagLevel | undefined> = {
 const weeks = (n: number) => (n >= 999 ? "—" : `${n.toFixed(1)} wks`);
 
 export default function StockRunwayReport() {
+  const [scope, setScope] = useState<ReportScopeValue>({});
   return (
     <ReportView<Row>
       config={{
         reportRef: "ARC-T3-003",
+        params: { locationId: scope.locationId },
         periodLabel: () => "Forecast at current 4-week sales velocity",
         tableHeading: "Reorder Forecast (most urgent first)",
         emptyText: "No products to forecast.",
+        controls: <ReportScopeFilter value={scope} onChange={setScope} showCashier={false} />,
         flagLegend: [
           { level: "red", meaning: "Order now" },
           { level: "amber", meaning: "Order this week" },

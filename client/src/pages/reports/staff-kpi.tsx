@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
 import { money, int, pct, screenDate, isoDate } from "@/lib/reportBrand";
+import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { FlagLevel } from "@/lib/reportBrand";
 
 interface Row {
@@ -26,18 +27,9 @@ const TIER_FLAG: Record<Row["bonusTier"], FlagLevel> = {
   "INSUFFICIENT DATA": "amber",
 };
 
-function weekBounds(d: Date): { from: string; to: string } {
-  const start = new Date(d);
-  const day = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { from: isoDate(start), to: isoDate(end) };
-}
-
 export default function StaffKpiReport() {
   const [anchor, setAnchor] = useState(() => isoDate(new Date()));
-  const bounds = weekBounds(new Date(anchor));
+  const bounds = mondayWeekBounds(new Date(anchor));
 
   return (
     <ReportView<Row>

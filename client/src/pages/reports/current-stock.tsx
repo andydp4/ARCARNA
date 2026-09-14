@@ -1,12 +1,13 @@
 /**
  * ARC-T1-002 Current Stock Levels — per-product stock, par level, status, runway.
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { ReportFrame } from "@/components/reports/ReportFrame";
 import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
-import { ReportKpi, ReportTable, FlagBadge, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportKpi, ReportKpiSkeleton, ReportTable, FlagBadge, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
 import { reportByRef } from "@/lib/reportCatalog";
 import { int, orDash } from "@/lib/reportBrand";
@@ -44,7 +45,8 @@ function weeks(n: number): string {
 
 export default function CurrentStockReport() {
   const frameRef = useRef<HTMLDivElement>(null);
-  const { data, isLoading, error } = useReport(META.ref);
+  const [scope, setScope] = useState<ReportScopeValue>({});
+  const { data, isLoading, error } = useReport(META.ref, { locationId: scope.locationId });
 
   const s = data?.summary ?? {};
   const rows = (data?.rows ?? []) as StockRow[];
@@ -76,10 +78,11 @@ export default function CurrentStockReport() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-4 w-4" /> All reports
         </Link>
+        <ReportScopeFilter value={scope} onChange={setScope} showCashier={false} />
       </div>
 
       <ReportFrame
@@ -103,13 +106,17 @@ export default function CurrentStockReport() {
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              <ReportKpi label="Products" value={int(Number(s.products) || 0)} keyInfo />
-              <ReportKpi label="Critical" value={int(Number(s.critical) || 0)} flag={Number(s.critical) ? "red" : undefined} />
-              <ReportKpi label="Reorder Now" value={int(Number(s.red) || 0)} flag={Number(s.red) ? "red" : undefined} />
-              <ReportKpi label="Watch" value={int(Number(s.amber) || 0)} flag={Number(s.amber) ? "amber" : undefined} />
-              <ReportKpi label="Healthy" value={int(Number(s.green) || 0)} flag="green" />
-            </div>
+            {isLoading && !data ? (
+              <ReportKpiSkeleton count={5} />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <ReportKpi label="Products" value={int(Number(s.products) || 0)} keyInfo />
+                <ReportKpi label="Critical" value={int(Number(s.critical) || 0)} flag={Number(s.critical) ? "red" : undefined} />
+                <ReportKpi label="Reorder Now" value={int(Number(s.red) || 0)} flag={Number(s.red) ? "red" : undefined} />
+                <ReportKpi label="Watch" value={int(Number(s.amber) || 0)} flag={Number(s.amber) ? "amber" : undefined} />
+                <ReportKpi label="Healthy" value={int(Number(s.green) || 0)} flag="green" />
+              </div>
+            )}
 
             <div className="mt-5">
               <ReportTable

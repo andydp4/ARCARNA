@@ -107,8 +107,8 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
     const { ref } = req.params;
     if (!/^ARC-/i.test(ref)) return next();
     try {
-      const { from, to } = req.query;
-      const opts: { from?: Date; to?: Date } = {};
+      const { from, to, locationId, cashierId } = req.query;
+      const opts: { from?: Date; to?: Date; locationId?: string; cashierId?: string } = {};
       if (from) {
         const d = new Date(from);
         if (!isNaN(d.getTime())) opts.from = d;
@@ -117,8 +117,27 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
         const d = new Date(to);
         if (!isNaN(d.getTime())) opts.to = d;
       }
+      // ARC-026: an explicit ?locationId=/?cashierId= scopes the report to
+      // one location/cashier instead of the whole org. Neither falls back to
+      // req.orgContext's own locationId (the caller's current shift/session
+      // location) — that value already drives every other org-wide screen by
+      // default, and silently reusing it here would scope a report the
+      // caller never asked to scope.
+      if (typeof locationId === "string" && locationId) opts.locationId = locationId;
+      if (typeof cashierId === "string" && cashierId) opts.cashierId = cashierId;
+
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const { runReport } = await import("../services/reportsEngine");
+      const { runReport, validateReportScope, ReportScopeError } = await import("../services/reportsEngine");
+      if (opts.locationId || opts.cashierId) {
+        try {
+          await validateReportScope(ctx.orgId, { locationId: opts.locationId, cashierId: opts.cashierId });
+        } catch (scopeError) {
+          if (scopeError instanceof ReportScopeError) {
+            return res.status(404).json({ message: scopeError.message });
+          }
+          throw scopeError;
+        }
+      }
       const payload = await runReport(ref, ctx.orgId, opts);
 
       // DEVELOPER NOTE (spec): every red-flag condition writes a notification.

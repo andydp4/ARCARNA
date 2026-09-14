@@ -49,6 +49,24 @@ const SETTLED_STATUS = "completed";
 export type RevenueDay = DayKpi;
 
 /**
+ * Optional scope for a revenue query — ARC-026. Omit either field for the
+ * previous, org-wide behaviour (every existing caller does this; both are
+ * purely additive).
+ */
+export interface RevenueScopeFilter {
+  locationId?: string;
+  cashierId?: string;
+}
+
+/** `orders`-table conditions for an optional location/cashier scope. Cashier is read off `completedCashierId` — who actually did the commission-earning work, the same column {@link import("./reportsEngine").staffKpiPerformance} attributes to, not the legacy last-writer-wins `cashierId`. */
+function scopeConditions(filter?: RevenueScopeFilter) {
+  const extra = [];
+  if (filter?.locationId) extra.push(eq(orders.locationId, filter.locationId));
+  if (filter?.cashierId) extra.push(eq(orders.completedCashierId, filter.cashierId));
+  return extra;
+}
+
+/**
  * Takings per day between `fromDate` and `toDate` inclusive (ISO yyyy-mm-dd).
  *
  * Days inside the range with no activity are present with zeroes — a quiet day
@@ -59,6 +77,7 @@ export async function settledRevenueByDay(
   orgId: string,
   fromDate: string,
   toDate: string,
+  filter?: RevenueScopeFilter,
 ): Promise<Map<string, RevenueDay>> {
   const [settledRows, refundRows] = await Promise.all([
     db
@@ -74,21 +93,28 @@ export async function settledRevenueByDay(
           eq(orders.status, SETTLED_STATUS),
           gte(sql`date(${orders.settledAt})`, sql`${fromDate}::date`),
           lte(sql`date(${orders.settledAt})`, sql`${toDate}::date`),
+          ...scopeConditions(filter),
         ),
       )
       .groupBy(sql`1`),
 
+    // Joined to `orders` so a location/cashier scope also nets off only the
+    // refunds issued against THIS scope's own sales — refunds carry no
+    // location of their own (see shared/schema.ts), but every refund has an
+    // order, and that order's location/cashier is the right one to filter on.
     db
       .select({
         day: sql<string>`to_char(${refunds.createdAt}, 'YYYY-MM-DD')`.as("day"),
         refunded: sql<string>`coalesce(sum(${refunds.total}::numeric), 0)`.as("refunded"),
       })
       .from(refunds)
+      .innerJoin(orders, eq(refunds.orderId, orders.id))
       .where(
         and(
           eq(refunds.orgId, orgId),
           gte(sql`date(${refunds.createdAt})`, sql`${fromDate}::date`),
           lte(sql`date(${refunds.createdAt})`, sql`${toDate}::date`),
+          ...scopeConditions(filter),
         ),
       )
       .groupBy(sql`1`),
@@ -153,6 +179,7 @@ export async function settledRevenueByTradingDay(
   timeZone: string,
   fromTradingDay: string,
   toTradingDay: string,
+  filter?: RevenueScopeFilter,
 ): Promise<Map<string, RevenueDay>> {
   const spanStart = tradingDayBounds(fromTradingDay, timeZone).start;
   const spanEnd = tradingDayBounds(toTradingDay, timeZone).end;
@@ -170,20 +197,26 @@ export async function settledRevenueByTradingDay(
           eq(orders.status, SETTLED_STATUS),
           gte(orders.settledAt, spanStart),
           lt(orders.settledAt, spanEnd),
+          ...scopeConditions(filter),
         ),
       ),
 
+    // See settledRevenueByDay's identical join for why: refunds carry no
+    // location/cashier of their own, so a scoped query nets off only the
+    // refunds issued against that scope's own orders via the join.
     db
       .select({
         createdAt: refunds.createdAt,
         refunded: sql<string>`${refunds.total}::numeric`.as("refunded"),
       })
       .from(refunds)
+      .innerJoin(orders, eq(refunds.orderId, orders.id))
       .where(
         and(
           eq(refunds.orgId, orgId),
           gte(refunds.createdAt, spanStart),
           lt(refunds.createdAt, spanEnd),
+          ...scopeConditions(filter),
         ),
       ),
   ]);
