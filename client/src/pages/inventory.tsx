@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +52,17 @@ interface Product {
   updatedAt?: string;
 }
 
+interface LocationOption {
+  id: string;
+  name: string;
+}
+
+/** Sentinel for "whatever location resolves from my own context" — the
+ *  behaviour this page always had before ARC-042. Not a real location id. */
+const MY_LOCATION = "__mine__";
+/** Sentinel for the org-wide total across every location. */
+const ALL_LOCATIONS = "__all__";
+
 export default function Inventory() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -51,6 +70,9 @@ export default function Inventory() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [adjustmentValue, setAdjustmentValue] = useState("");
   const [adjustmentType, setAdjustmentType] = useState<"add" | "set">("add");
+  // ARC-042: which location's stock Stock levels is showing. Defaults to the
+  // same resolved-own-location behaviour the page always had.
+  const [locationFilter, setLocationFilter] = useState<string>(MY_LOCATION);
 
   // `?tab=` lets other pages (purchase drafts, replenishment) link straight to
   // the Receiving tab instead of dropping the user on Stock levels.
@@ -75,9 +97,23 @@ export default function Inventory() {
     setRouteLocation(withQuery("/inventory", { tab: value, receipt }), { replace: true });
   };
 
+  const { data: locationOptions = [] } = useQuery<LocationOption[]>({
+    queryKey: ["/api/locations"],
+  });
+
+  // ARC-042: the query key carries the selected location so switching it is a
+  // normal cache miss, not a manual refetch — same pattern the Replenishment
+  // tab already uses for its own location filter.
+  const inventoryEndpoint =
+    locationFilter === MY_LOCATION
+      ? "/api/inventory"
+      : locationFilter === ALL_LOCATIONS
+        ? "/api/inventory?locationId=all"
+        : `/api/inventory?locationId=${locationFilter}`;
+
   // Fetch products with real-time updates
   const { data: products = [], isLoading, refetch } = useQuery<Product[]>({
-    queryKey: ["/api/inventory"],
+    queryKey: [inventoryEndpoint],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
@@ -97,6 +133,13 @@ export default function Inventory() {
 
   const outOfStockProducts = products.filter((product) => product.stock === 0);
 
+  // A specific location is being viewed (not "my location" or the org-wide
+  // total) — stock writes must target that same location explicitly, or an
+  // "Add stock" click while looking at Store B would silently write to the
+  // viewer's own resolved location instead (e.g. HQ) with no visible error.
+  const explicitLocationId =
+    locationFilter === MY_LOCATION || locationFilter === ALL_LOCATIONS ? undefined : locationFilter;
+
   // Stock adjustment mutation
   const adjustStockMutation = useMutation({
     mutationFn: async (data: { productId: string; adjustment: number; type: "add" | "set" }) => {
@@ -105,26 +148,27 @@ export default function Inventory() {
           type: 'PRODUCT_UPDATE',
           method: 'PATCH',
           endpoint: `/api/inventory/${data.productId}`,
-          data: { adjustment: data.adjustment, type: data.type }
+          data: { adjustment: data.adjustment, type: data.type, locationId: explicitLocationId }
         });
         return { offline: true };
       }
-      
+
       const response = await apiRequest("PATCH", `/api/inventory/${data.productId}`, {
         adjustment: data.adjustment,
-        type: data.type
+        type: data.type,
+        locationId: explicitLocationId,
       });
       return response.json();
     },
     onMutate: async (data) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/inventory"] });
+      await queryClient.cancelQueries({ queryKey: [inventoryEndpoint] });
 
       // Snapshot previous value
-      const previousProducts = queryClient.getQueryData(["/api/inventory"]);
+      const previousProducts = queryClient.getQueryData([inventoryEndpoint]);
 
       // Optimistically update
-      queryClient.setQueryData(["/api/inventory"], (old: Product[] = []) =>
+      queryClient.setQueryData([inventoryEndpoint], (old: Product[] = []) =>
         old.map((p) =>
           p.id === data.productId
             ? {
@@ -140,7 +184,7 @@ export default function Inventory() {
     onError: (error: any, _variables, context) => {
       // Rollback on error
       if (context?.previousProducts) {
-        queryClient.setQueryData(["/api/inventory"], context.previousProducts);
+        queryClient.setQueryData([inventoryEndpoint], context.previousProducts);
       }
       toast({
         title: "Update failed",
@@ -340,6 +384,37 @@ export default function Inventory() {
           </AlertDescription>
         </Alert>
 
+        {/* ARC-042: a goods receipt into a location other than the viewer's
+            own is real in the database but was invisible here — this lets a
+            manager look at any of the org's locations, or the org-wide
+            total, instead of only whatever resolves from their own context. */}
+        {locationOptions.length > 1 && (
+          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center gap-2">
+            <Label htmlFor="inventory-location-filter" className="text-sm text-muted-foreground shrink-0">
+              Viewing
+            </Label>
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <SelectTrigger id="inventory-location-filter" className="w-full sm:w-[220px] min-h-[44px]" data-testid="select-inventory-location">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={MY_LOCATION}>My location</SelectItem>
+                <SelectItem value={ALL_LOCATIONS}>All locations (total)</SelectItem>
+                {locationOptions.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {locationFilter === ALL_LOCATIONS && (
+              <p className="text-xs text-muted-foreground">
+                Combined stock across every location — select one location to adjust stock.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Search and Actions */}
         <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
@@ -438,6 +513,7 @@ export default function Inventory() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openAdjustmentDialog(product, "add")}
+                                disabled={locationFilter === ALL_LOCATIONS}
                                 className="flex-1 min-h-[44px]"
                                 data-testid={`button-add-stock-${product.id}`}
                               >
@@ -448,6 +524,7 @@ export default function Inventory() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openAdjustmentDialog(product, "set")}
+                                disabled={locationFilter === ALL_LOCATIONS}
                                 className="flex-1 min-h-[44px]"
                                 data-testid={`button-set-stock-${product.id}`}
                               >
@@ -520,6 +597,7 @@ export default function Inventory() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => openAdjustmentDialog(product, "add")}
+                                  disabled={locationFilter === ALL_LOCATIONS}
                                   data-testid={`button-add-stock-${product.id}`}
                                 >
                                   <Plus className="h-3 w-3" />
@@ -528,6 +606,7 @@ export default function Inventory() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => openAdjustmentDialog(product, "set")}
+                                  disabled={locationFilter === ALL_LOCATIONS}
                                   data-testid={`button-set-stock-${product.id}`}
                                 >
                                   Set
@@ -560,6 +639,11 @@ export default function Inventory() {
                 <div className="mt-2">
                   <p className="font-medium">{selectedProduct.name}</p>
                   <p className="text-sm">Current stock: {selectedProduct.stock}</p>
+                  {explicitLocationId && (
+                    <p className="text-xs text-muted-foreground">
+                      Applies to {locationOptions.find((l) => l.id === explicitLocationId)?.name ?? "the selected location"}.
+                    </p>
+                  )}
                 </div>
               )}
             </DialogDescription>
