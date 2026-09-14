@@ -29,6 +29,7 @@ import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
+import { APP_VERSION } from '@shared/version'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
 import { Link } from "wouter";
@@ -347,6 +348,8 @@ export default function Settings() {
                       </p>
                     </div>
                   </div>
+                  <Separator className="my-4" />
+                  <p className="text-xs text-muted-foreground">Arcarna v{APP_VERSION}</p>
                 </CardContent>
               </Card>
           </TabsContent>

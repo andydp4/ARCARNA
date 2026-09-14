@@ -14,6 +14,7 @@ import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 import {
   WmSuppliesHomePage,
   WmSuppliesOrderPage,
@@ -115,6 +116,7 @@ function Router() {
   return (
     <WouterRouter base={APP_BASE}>
     <CommandPalette />
+    <WhatsNewModal />
     <Suspense fallback={<RouteLoadingFallback />}>
     <Switch>
       <Route path="/sign-in" component={SignInPage} />
