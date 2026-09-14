@@ -281,6 +281,19 @@
 
 ---
 
+<a id="gap-u5-05"></a>
+
+### GAP-U5-05 — Operations Centre order-actions menu fails axe color-contrast (base-branch-red, blocking Phase 2/3 PRs)
+
+| | |
+|---|---|
+| **Brief** | Found 2026-09-14 while driving Phase 2/3's four parallel PRs to green — every one of them inherits a failing "Playwright a11y (U5)" job from `main` itself. Confirmed on GitHub: `main` at `6b48173` (the tip all four branches were cut from) already fails this same job — not caused by any Phase 2/3 diff. |
+| **Snag** | `tests/a11y/operations-centre.spec.ts`'s "N4a's card overflow, delay editor, pass strip, done tray and station row are clean" test (`[role="menu"]` scope) reports a `color-contrast` finding (as an axe `incomplete` result, which this test's own convention treats the same as a hard violation) on the order-actions dropdown menu items (`ops-unready-*`, `ops-delay-open-*`, `ops-urgent-*`). axe's message is "Element's background color could not be determined due to a background gradient" — the related node is `aside.lm-shell-sidebar`, which paints via `--lm-surface-gradient` (a real CSS gradient). The menu container itself does carry `bg-popover` (`--popover: var(--lm-charcoal)`, a solid opaque `hsl()` value, confirmed by reading `tailwind.config.ts` and `liquid-metal.css` — not a double-wrapped/invalid CSS var), so this may be an axe limitation about anything gradient-based sharing screen space with the analysis region rather than a genuine visual defect — not yet confirmed either way; a live Playwright repro attempt (seeding a board, opening the menu, reading computed styles) was inconclusive in the time available and not pursued further since it blocks none of Phase 2/3's actual findings. |
+| **Fix** | Needs a live-browser session against a fully seeded Operations Centre board (`seedBoard()` in the spec file shows the exact seed shape) to read the menu's and sidebar's actual computed `background-color`/`background-image` and z-order at the moment the menu is open, and confirm whether this is a real see-through or an axe false-positive. If real: most likely fix is giving the collapsed sidebar rail a solid `background-color` fallback instead of (or behind) `--lm-surface-gradient` — that gradient is subtle enough that a solid fallback color should be visually indistinguishable, or ensure the Radix portal's stacking context can't be read as "behind" the sidebar by axe. If false-positive: the test's own "treat `incomplete` as a failure" convention is the right call in general (it's what protects a real accessibility bug from silently passing) and shouldn't be loosened — this specific case would need a narrowly-scoped, well-justified exception. |
+| **Closed** | [ ] |
+
+---
+
 ## P10b — Product analytics
 
 <a id="gap-p10b-01"></a>
