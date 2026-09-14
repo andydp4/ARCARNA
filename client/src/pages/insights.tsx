@@ -463,11 +463,14 @@ export default function Insights() {
             </CardContent>
           </Card>
         </div>
-        <p className="mb-8 mt-4 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+        <p className="mb-1 mt-4 text-xs leading-relaxed text-muted-foreground sm:text-sm">
           Figures below use{" "}
           <span className="font-medium text-foreground">{format(dateRange.from, "PP")}</span>
           {" "}–{" "}
           <span className="font-medium text-foreground">{format(dateRange.to, "PP")}</span>.
+        </p>
+        <p className="mb-8 text-xs leading-relaxed text-muted-foreground">
+          Revenue definition: settled orders only, net of refunds, incl. VAT — the same figure Control Centre shows.
         </p>
 
         {/* Detailed Reports Tabs */}

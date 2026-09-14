@@ -245,9 +245,23 @@ export function ExpenseReportsPage() {
 
           {/* Key Metrics */}
           <div>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Revenue through operating profit
             </h2>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Revenue is settled orders only, net of refunds,{" "}
+              {profitAnalysis?.summary?.vatTreatment || "incl. VAT"}. Cost of goods is priced at each product's
+              current cost, not a snapshot from the moment it sold — Arcarna does not yet record that.
+              {Number(profitAnalysis?.summary?.productsMissingCost) > 0 && (
+                <>
+                  {" "}
+                  {profitAnalysis.summary.productsMissingCost} product
+                  {profitAnalysis.summary.productsMissingCost === 1 ? "" : "s"} sold in this period{" "}
+                  {profitAnalysis.summary.productsMissingCost === 1 ? "has" : "have"} no cost price set, so COGS
+                  below is understated.
+                </>
+              )}
+            </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

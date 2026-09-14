@@ -79,6 +79,9 @@ export function ReceivingTab() {
   const [createDraftId, setCreateDraftId] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [lineQty, setLineQty] = useState<Record<string, { received: string; damaged: string }>>({});
+  // The supplier's own invoice/delivery-note number — captured when goods are
+  // actually received (ARC-019), never invented on the buyer's side.
+  const [supplierReference, setSupplierReference] = useState("");
 
   const queryKey =
     statusFilter === "all"
@@ -169,6 +172,7 @@ export function ReceivingTab() {
         .filter(Boolean);
       return apiRequest("POST", "/api/goods-receipts", {
         purchaseDraftId: createDraftId,
+        supplierReference: supplierReference.trim() || undefined,
         items,
       });
     },
@@ -177,6 +181,7 @@ export function ReceivingTab() {
       invalidatePurchasingPipeline(queryClient);
       setCreateOpen(false);
       setCreateDraftId("");
+      setSupplierReference("");
       // Land on the new receipt — completing it is the next step in the flow.
       setDetailId(body.id);
       toast({
@@ -209,6 +214,7 @@ export function ReceivingTab() {
             onClick={() => {
               setCreateOpen(true);
               setLineQty({});
+              setSupplierReference("");
             }}
           >
             <PackageCheck className="h-4 w-4 mr-1" />
@@ -276,6 +282,9 @@ export function ReceivingTab() {
                   {detail.purchaseDraftId.slice(0, 8)}…
                 </Link>
               </p>
+              {detail.supplierReference && (
+                <p>Supplier reference: <span className="font-medium">{detail.supplierReference}</span></p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Stock increases only when this receipt is completed. Approval does not send orders or
                 payment.
@@ -371,6 +380,15 @@ export function ReceivingTab() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+            <div>
+              <Label>Supplier reference (optional)</Label>
+              <Input
+                value={supplierReference}
+                onChange={(e) => setSupplierReference(e.target.value)}
+                placeholder="Supplier's delivery note or invoice number"
+                data-testid="input-receiving-supplier-reference"
+              />
             </div>
             {receivingInfo?.items.map((item) => (
               <div key={item.id} className="border rounded p-3 space-y-2">

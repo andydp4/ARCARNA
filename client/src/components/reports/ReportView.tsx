@@ -37,6 +37,8 @@ export interface ReportViewConfig<T> {
   maxWidth?: string;
   /** Optional controls (e.g. a date picker) rendered above the frame. */
   controls?: ReactNode;
+  /** Shows the shared revenue definition note — pass true for a revenue-based report (ARC-023). */
+  showRevenueDefinitionNote?: boolean;
 }
 
 export function ReportView<T>({ config }: { config: ReportViewConfig<T> }) {
@@ -68,6 +70,7 @@ export function ReportView<T>({ config }: { config: ReportViewConfig<T> }) {
         periodLabel={config.periodLabel?.(data)}
         toolbar={<ReportExportToolbar targetRef={frameRef} reportRef={meta.ref} csv={csv} />}
         flagLegend={config.flagLegend}
+        showRevenueDefinitionNote={config.showRevenueDefinitionNote}
       >
         {error ? (
           <p className="text-sm" style={{ color: "#DC2626" }}>

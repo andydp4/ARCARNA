@@ -70,6 +70,71 @@ export interface PosEmbeddedProps {
   onPlaced: (orderId: string) => void;
 }
 
+/** "4h 20m" for a live shift, matching the Shifts page's own duration format. */
+function shiftDuration(openedAtIso: string): string {
+  const openedAt = new Date(openedAtIso).getTime();
+  if (!Number.isFinite(openedAt)) return "—";
+  const minutes = Math.max(0, Math.floor((Date.now() - openedAt) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
+/**
+ * ARC-012: cashiers had no way to see their own shift while it was running —
+ * "Cashier Payroll" is (rightly) MANAGER+ only, and there was nothing in its
+ * place. This is a small live readout of the CURRENT USER's own open cashier
+ * shift: how long they've been on, what they've sold, and commission accrued
+ * so far — resolved by user id (`/api/cashier-shifts/mine`), not a cashier
+ * code, so it works for a shift opened lazily on first sale (058) exactly as
+ * it would for a legacy coded one. Renders nothing when there is no open
+ * shift to show (including when the org has cashier commission tracking
+ * turned off, since none is ever opened then) — this is a bonus readout, not
+ * something worth a loading skeleton or an empty state of its own.
+ */
+function MyShiftSummary() {
+  const { data: mine } = useQuery<{ shift: { id: string } | null }>({
+    queryKey: ["/api/cashier-shifts/mine"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/cashier-shifts/mine", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load current shift");
+      return res.json();
+    },
+    // A live figure a cashier might glance at mid-shift; a minute stale is fine.
+    refetchInterval: 60_000,
+  });
+
+  const shiftId = mine?.shift?.id ?? null;
+
+  const { data: summaryData } = useQuery<{
+    shift: { openedAt: string };
+    summary: { grossSales: string | number; commissionAmount: string | number } | null;
+  }>({
+    queryKey: ["/api/cashier-shifts", shiftId, "summary"],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/cashier-shifts/${shiftId}/summary`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load shift summary");
+      return res.json();
+    },
+    enabled: !!shiftId,
+    refetchInterval: 60_000,
+  });
+
+  if (!shiftId || !summaryData?.summary) return null;
+
+  const grossSales = Number(summaryData.summary.grossSales ?? 0);
+  const commission = Number(summaryData.summary.commissionAmount ?? 0);
+
+  return (
+    <p className="mt-1 text-xs text-metal-muted" data-testid="pos-my-shift-summary">
+      My shift so far: <span className="font-medium text-foreground">{shiftDuration(summaryData.shift.openedAt)}</span>
+      {" · sold "}
+      <span className="font-medium text-foreground">£{grossSales.toFixed(2)}</span>
+      {" · commission "}
+      <span className="font-medium text-foreground">£{commission.toFixed(2)}</span>
+    </p>
+  );
+}
+
 export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) {
   const { toast } = useToast();
   const [narrowRef, narrow] = usePosNarrow();
@@ -339,10 +404,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           const text = await response.text() || response.statusText;
           if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
             // A readable toast rather than the raw response body (which is
-            // what fell through to the generic `throw` below before N6) —
-            // it used to also fire a CustomEvent for `CashierShiftBadge` to
-            // catch, but that component was never mounted anywhere, so
-            // nothing ever showed the cashier what had gone wrong.
+            // what fell through to the generic `throw` below before N6).
             let message = "An active cashier shift is required before taking sales.";
             try {
               const parsed = JSON.parse(text);
@@ -974,6 +1036,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                       location, or a default location for this user, before taking payment.
                     </p>
                   )}
+                  <MyShiftSummary />
                 </div>
               )
             ) : (
@@ -998,6 +1061,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                     location, or a default location for this user, before taking payment.
                   </p>
                 ) : null}
+                <MyShiftSummary />
               </div>
             )}
 

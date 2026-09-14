@@ -516,10 +516,17 @@ export function ReplenishmentTab() {
                       Purchase draft
                     </Button>
                   )}
+                {/* ARC-041: a disabled button with only a hover title told a
+                    phone user nothing — tooltips don't fire on touch, so this
+                    looked like a dead button with no explanation. A visible,
+                    always-readable link to where the mapping is actually
+                    fixed replaces it. */}
                 {canMutate && rec.actionType.includes("BUY") && !rec.selectedSupplier && (
-                  <Button variant="ghost" size="sm" disabled title="Configure supplier mapping">
-                    <PackagePlus className="h-4 w-4 mr-1" />
-                    Purchase draft
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/settings?tab=suppliers">
+                      <PackagePlus className="h-4 w-4 mr-1" />
+                      No supplier mapped — add one
+                    </Link>
                   </Button>
                 )}
               </div>

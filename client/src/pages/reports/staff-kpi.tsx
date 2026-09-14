@@ -13,8 +13,9 @@ interface Row {
   satisfactionScore: number | null;
   kpisAtTarget: number;
   kpisMeasured: number;
-  bonusTier: "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD";
-  bonusPayable: number;
+  kpisTotal: number;
+  bonusTier: "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD" | "INSUFFICIENT DATA";
+  bonusPayable: number | null;
 }
 
 const TIER_FLAG: Record<Row["bonusTier"], FlagLevel> = {
@@ -22,6 +23,7 @@ const TIER_FLAG: Record<Row["bonusTier"], FlagLevel> = {
   GOLD: "green",
   SILVER: "blue",
   "BELOW STANDARD": "red",
+  "INSUFFICIENT DATA": "amber",
 };
 
 function weekBounds(d: Date): { from: string; to: string } {
@@ -48,8 +50,9 @@ export default function StaffKpiReport() {
         flagLegend: [
           { level: "gold", meaning: "Platinum bonus" },
           { level: "red", meaning: "Below standard — review" },
+          { level: "amber", meaning: "Insufficient data — not all KPIs measured yet" },
         ],
-        rowFlag: (r) => (r.bonusTier === "BELOW STANDARD" ? "red" : undefined),
+        rowFlag: (r) => (r.bonusTier === "BELOW STANDARD" ? "red" : r.bonusTier === "INSUFFICIENT DATA" ? "amber" : undefined),
         controls: (
           <div className="flex items-center gap-2">
             <label className="text-xs text-muted-foreground">Week of</label>
@@ -60,6 +63,7 @@ export default function StaffKpiReport() {
           { label: "Staff", value: int(s.staff), keyInfo: true },
           { label: "Platinum", value: int(s.platinum), flag: s.platinum ? "green" : undefined },
           { label: "Below Standard", value: int(s.belowStandard), flag: s.belowStandard ? "red" : undefined },
+          { label: "Insufficient Data", value: int(s.insufficientData), flag: s.insufficientData ? "amber" : undefined },
           { label: "Total Bonus", value: money(s.totalBonus), keyInfo: true },
         ],
         columns: [
@@ -67,13 +71,13 @@ export default function StaffKpiReport() {
           { header: "Orders", cell: (r) => int(r.ordersHandled), align: "right" },
           { header: "Accuracy", cell: (r) => (r.orderAccuracyRate == null ? "—" : pct(r.orderAccuracyRate)), keyInfo: true, align: "right" },
           { header: "Satisfaction", cell: (r) => (r.satisfactionScore == null ? "—" : r.satisfactionScore.toFixed(2)), keyInfo: true, align: "right" },
-          { header: "KPIs Hit", cell: (r) => `${r.kpisAtTarget}/${r.kpisMeasured}`, align: "center" },
+          { header: "KPIs Measured", cell: (r) => `${r.kpisAtTarget}/${r.kpisTotal} (${r.kpisMeasured} measured)`, align: "center" },
           {
             header: "Bonus Tier",
             cell: (r) => <FlagBadge level={TIER_FLAG[r.bonusTier]}>{r.bonusTier}</FlagBadge>,
             align: "center",
           },
-          { header: "Bonus", cell: (r) => money(r.bonusPayable), keyInfo: true, align: "right" },
+          { header: "Bonus", cell: (r) => (r.bonusPayable == null ? "—" : money(r.bonusPayable)), keyInfo: true, align: "right" },
         ],
         csvColumns: [
           { header: "Staff Member", value: (r) => r.staff },
@@ -82,8 +86,9 @@ export default function StaffKpiReport() {
           { header: "Satisfaction Score Avg", value: (r) => (r.satisfactionScore == null ? "" : r.satisfactionScore.toFixed(2)) },
           { header: "KPIs At Target", value: (r) => r.kpisAtTarget },
           { header: "KPIs Measured", value: (r) => r.kpisMeasured },
+          { header: "KPIs Required For A Tier", value: (r) => r.kpisTotal },
           { header: "Bonus Tier", value: (r) => r.bonusTier },
-          { header: "Bonus Payable GBP", value: (r) => r.bonusPayable.toFixed(2) },
+          { header: "Bonus Payable GBP", value: (r) => (r.bonusPayable == null ? "" : r.bonusPayable.toFixed(2)) },
         ],
       }}
     />

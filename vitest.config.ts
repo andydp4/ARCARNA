@@ -25,6 +25,16 @@ export default defineConfig({
           "server/__tests__/creditCommission.test.ts",
           "server/__tests__/tradingDayShift.test.ts",
           "server/__tests__/dailyClose.test.ts",
+          // ARC-020/025 revenue-definition suites: describe.skipIf(!hasDb)
+          // gates the test bodies correctly, but the top-level `import {
+          // storage } from "../storage"` (storage is used directly inside
+          // the tests, so it can't be deferred into beforeEach the way `db`
+          // and `settledRevenueByDay` already are here) still reaches
+          // server/db.ts at import time regardless of the skip. Same rule as
+          // the suites above: needs a live, seeded Postgres, so it's excluded
+          // from CI's default (no-DATABASE_URL) run rather than run there.
+          "server/__tests__/truthsHubSettledRevenue.test.ts",
+          "server/__tests__/profitTruthsSettledRevenue.test.ts",
           // Phase 6 integrity suites — all import ../db at module level.
           "server/__tests__/integrityIdempotency.test.ts",
           "server/__tests__/integrityConcurrency.test.ts",

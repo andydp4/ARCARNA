@@ -73,6 +73,47 @@ async function openShiftForUser(orgId: string, locationId: string, userId: strin
   return existing ?? null;
 }
 
+/**
+ * Read-only counterpart to `requireOpenShift`, for actions that must attach to
+ * a till drawer WHEN one happens to be open, but must never open a phantom one
+ * as a side effect of running.
+ *
+ * A manager refunding an order from the back office has no till and very
+ * possibly no open shift at all — until ARC-015 this route ran through
+ * `requireOpenShift` anyway, so a desk refund silently opened (and floated) a
+ * drawer nobody physically opened, which then showed the manager as "on now"
+ * on Shifts and tripped the uncounted-drawer Control Centre signal for a
+ * drawer that was never real. This finds the user's already-open shift at
+ * this org, if there is one, and returns null rather than creating anything
+ * when there isn't — the caller decides what a missing shift means for it
+ * (for a refund: record `shiftId: null` and move on).
+ */
+export async function findOpenShiftForUser(
+  orgId: string,
+  userId: string,
+): Promise<OpenShiftContext | null> {
+  const [open] = await db
+    .select()
+    .from(shifts)
+    .where(
+      and(
+        eq(shifts.orgId, orgId),
+        eq(shifts.userId, userId),
+        inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
+      ),
+    )
+    .orderBy(desc(shifts.openedAt))
+    .limit(1);
+  if (!open) return null;
+  return {
+    id: open.id,
+    orgId: open.orgId,
+    locationId: open.locationId,
+    userId: open.userId,
+    openingFloat: String(open.openingFloat ?? "0"),
+  };
+}
+
 export const requireOpenShift: RequestHandler = async (req, res, next) => {
   try {
     const request = req as RequestWithOpenShift;

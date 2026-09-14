@@ -30,6 +30,7 @@ export default function SatisfactionReport() {
       config={{
         reportRef: "ARC-T2-003",
         params: bounds,
+        showRevenueDefinitionNote: true,
         periodLabel: () => `Week ${screenDate(bounds.from)} – ${screenDate(bounds.to)}`,
         tableHeading: "Low Scores (3 or below) — follow up",
         emptyText: "No low scores this week. 👍",
