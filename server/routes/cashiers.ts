@@ -21,6 +21,7 @@ import {
   CashierShiftError,
 } from "../services/cashierShiftEngine";
 import { createCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
+import { resolveUserName } from "../services/userDisplayName";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -44,12 +45,28 @@ const startShiftSchema = z.object({
   cashierId: z.string().uuid("Valid cashierId is required"),
 });
 
-const commissionPaymentSchema = z.object({
-  cashierId: z.string().uuid("Valid cashierId is required"),
-  shiftId: z.string().uuid().optional().nullable(),
-  amountPaid: z.coerce.number().positive("Amount paid must be positive"),
-  notes: z.string().max(2000).optional().nullable(),
-});
+/**
+ * ARC-004: a shift opened lazily on first sale (migration 058) has no
+ * cashier code, so `cashierId` can no longer be required here — the client
+ * has nothing to send for it and every "Confirm paid" on such a shift 400'd
+ * before this fix. `cashierId` is now the LEGACY identifier (kept exactly as
+ * it worked before, for shifts that do have a code); `userId` is the
+ * migration-057 identifier for shifts that don't. `shiftId` alone is also
+ * enough — the handler resolves whichever identity that shift actually
+ * carries — since every "Confirm paid" click already has a shift in hand.
+ * The refine just keeps a payment from being recorded for literally nobody.
+ */
+const commissionPaymentSchema = z
+  .object({
+    cashierId: z.string().uuid("cashierId must be a uuid").optional().nullable(),
+    userId: z.string().trim().min(1).max(255).optional().nullable(),
+    shiftId: z.string().uuid().optional().nullable(),
+    amountPaid: z.coerce.number().positive("Amount paid must be positive"),
+    notes: z.string().max(2000).optional().nullable(),
+  })
+  .refine((v) => !!v.cashierId || !!v.userId || !!v.shiftId, {
+    message: "One of cashierId, userId or shiftId is required to identify who is being paid",
+  });
 
 function formatMoney(amount: number, currency = "GBP"): string {
   try {
@@ -311,6 +328,29 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
+  // ARC-012: "current/:cashierId" (above) is keyed on a cashier CODE, which a
+  // shift opened lazily on first sale (058) does not have — there is no code
+  // for a codeless cashier to pass it. This is the user-keyed equivalent: the
+  // logged-in person's own open shift, found without opening one (a GET must
+  // not have that side effect) and with no code required at all.
+  app.get("/api/cashier-shifts/mine", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const [open] = await db
+        .select()
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.orgId, ctx.orgId), eq(cashierShifts.userId, userId), eq(cashierShifts.status, "open")))
+        .orderBy(desc(cashierShifts.openedAt))
+        .limit(1);
+      res.json({ shift: open ?? null });
+    } catch (error) {
+      console.error("[CashierShifts] mine:", error);
+      res.status(500).json({ message: "Failed to fetch current shift" });
+    }
+  });
+
   app.get("/api/cashier-shifts/current/:cashierId", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
@@ -399,6 +439,10 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       const ctx = req.orgContext as { orgId: string };
       const conditions = [eq(cashierCommissionPayments.orgId, ctx.orgId)];
       if (req.query.cashierId) conditions.push(eq(cashierCommissionPayments.cashierId, req.query.cashierId as string));
+      // A codeless payment (ARC-004) has no cashierId to filter on — userId is
+      // its identity, so it needs its own filter rather than being invisible
+      // to every query that only ever thought to ask for a cashierId.
+      if (req.query.userId) conditions.push(eq(cashierCommissionPayments.userId, req.query.userId as string));
 
       const rows = await db
         .select()
@@ -419,18 +463,52 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       const userId = req.user?.id ?? "unknown";
       const body = commissionPaymentSchema.parse(req.body ?? {});
 
-      const [cashier] = await db
-        .select()
-        .from(cashierProfiles)
-        .where(and(eq(cashierProfiles.id, body.cashierId), eq(cashierProfiles.orgId, ctx.orgId)))
-        .limit(1);
-      if (!cashier) return res.status(404).json({ message: "Cashier profile not found" });
+      // Legacy path, UNCHANGED: a cashier code was named, so it must resolve
+      // to a real profile in this org exactly as it always has.
+      let cashier: typeof cashierProfiles.$inferSelect | null = null;
+      let payeeCashierId: string | null = body.cashierId ?? null;
+      let payeeUserId: string | null = body.userId ?? null;
+
+      if (payeeCashierId) {
+        const [found] = await db
+          .select()
+          .from(cashierProfiles)
+          .where(and(eq(cashierProfiles.id, payeeCashierId), eq(cashierProfiles.orgId, ctx.orgId)))
+          .limit(1);
+        if (!found) return res.status(404).json({ message: "Cashier profile not found" });
+        cashier = found;
+      } else if (!payeeUserId && body.shiftId) {
+        // ARC-004: no code and no userId were sent, but a shift was — the
+        // shift itself is the source of truth for who it belongs to, whether
+        // that is a legacy code or (since migration 057/058) a user.
+        const [shift] = await db
+          .select({ cashierId: cashierShifts.cashierId, userId: cashierShifts.userId })
+          .from(cashierShifts)
+          .where(and(eq(cashierShifts.id, body.shiftId), eq(cashierShifts.orgId, ctx.orgId)))
+          .limit(1);
+        if (!shift) return res.status(404).json({ message: "Cashier shift not found" });
+        payeeCashierId = shift.cashierId;
+        payeeUserId = shift.userId;
+        if (payeeCashierId) {
+          const [found] = await db
+            .select()
+            .from(cashierProfiles)
+            .where(and(eq(cashierProfiles.id, payeeCashierId), eq(cashierProfiles.orgId, ctx.orgId)))
+            .limit(1);
+          cashier = found ?? null;
+        }
+      }
+
+      if (!payeeCashierId && !payeeUserId) {
+        return res.status(400).json({ message: "Could not identify who this payment is for" });
+      }
 
       const [payment] = await db
         .insert(cashierCommissionPayments)
         .values({
           orgId: ctx.orgId,
-          cashierId: body.cashierId,
+          cashierId: payeeCashierId,
+          userId: payeeUserId,
           shiftId: body.shiftId ?? null,
           amountPaid: String(body.amountPaid),
           confirmedByUserId: userId,
@@ -440,7 +518,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
 
       const [org] = await db.select({ currency: organizations.currency }).from(organizations).where(eq(organizations.id, ctx.orgId)).limit(1);
       const amountLabel = formatMoney(body.amountPaid, org?.currency ?? "GBP");
-      const message = `Commission paid — Cashier ${cashier.cashierCode} received ${amountLabel}`;
+      // Named by whichever identity the payment actually carries — the
+      // cashier code when there is one, else the user's own name, so a
+      // codeless shift's payment notification reads as well as a coded one's.
+      const payeeLabel = cashier
+        ? `Cashier ${cashier.cashierCode}`
+        : await resolveUserName(payeeUserId ?? "unknown");
+      const message = `Commission paid — ${payeeLabel} received ${amountLabel}`;
 
       await db.insert(orgNotifications).values({
         orgId: ctx.orgId,
@@ -448,7 +532,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         message,
         severity: "info",
         source: "cashier_commission",
-        metadata: { cashierId: cashier.id, cashierCode: cashier.cashierCode, amountPaid: body.amountPaid, shiftId: body.shiftId ?? null },
+        metadata: {
+          cashierId: payeeCashierId,
+          cashierCode: cashier?.cashierCode ?? null,
+          userId: payeeUserId,
+          amountPaid: body.amountPaid,
+          shiftId: body.shiftId ?? null,
+        },
       });
 
       await recordAdminAudit(req, {
@@ -458,7 +548,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         targetType: "cashier_commission_payment",
         targetId: payment.id,
         orgId: ctx.orgId,
-        metadata: { cashierId: body.cashierId, amountPaid: body.amountPaid, shiftId: body.shiftId ?? null },
+        metadata: { cashierId: payeeCashierId, userId: payeeUserId, amountPaid: body.amountPaid, shiftId: body.shiftId ?? null },
       });
 
       res.status(201).json(payment);
