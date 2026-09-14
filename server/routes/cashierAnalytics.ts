@@ -102,6 +102,10 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
       }
       const paidByCashier = new Map<string, number>();
       for (const p of payments) {
+        // A payment against a codeless shift (ARC-004) has no cashier code
+        // either — same reasoning as the two loops above: it is reported by
+        // user, not forced into a code bucket that does not exist.
+        if (!p.cashierId) continue;
         paidByCashier.set(p.cashierId, (paidByCashier.get(p.cashierId) ?? 0) + parseFloat(String(p.amountPaid)));
       }
       const orderAggByCashier = new Map(orderAgg.map((o) => [o.cashierId as string, o]));

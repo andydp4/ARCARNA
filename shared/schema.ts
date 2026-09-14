@@ -1110,9 +1110,14 @@ export const cashierCommissionPayments = pgTable(
     orgId: uuid("org_id")
       .references(() => organizations.id, { onDelete: "cascade" })
       .notNull(),
-    cashierId: uuid("cashier_id")
-      .references(() => cashierProfiles.id)
-      .notNull(),
+    // Nullable since migration 067, mirroring cashier_commission_entries
+    // (061): a shift opened lazily on first sale (058) has no cashier code,
+    // so a payment confirming ITS commission as paid must be able to name the
+    // user instead. `cashier_commission_payments_party_check` keeps at least
+    // one of the two present — see ARC-004.
+    cashierId: uuid("cashier_id").references(() => cashierProfiles.id),
+    /** Who this payment is for, by user account. Preferred over `cashierId`. */
+    userId: varchar("user_id", { length: 255 }),
     shiftId: uuid("shift_id").references(() => cashierShifts.id),
     amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }).notNull(),
     paidAt: timestamp("paid_at").defaultNow().notNull(),
@@ -1123,6 +1128,12 @@ export const cashierCommissionPayments = pgTable(
   (table) => [
     index("cashier_commission_payments_org_id_idx").on(table.orgId),
     index("cashier_commission_payments_cashier_id_idx").on(table.cashierId),
+    index("cashier_commission_payments_user_id_idx").on(table.userId),
+    // Somebody has to be named as the payee. See migration 067 / ARC-004.
+    check(
+      "cashier_commission_payments_party_check",
+      sql`${table.cashierId} IS NOT NULL OR ${table.userId} IS NOT NULL`,
+    ),
   ],
 );
 

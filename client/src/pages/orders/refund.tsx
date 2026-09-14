@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useRoute, Link } from "wouter";
+import { useRoute, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -50,6 +50,7 @@ const REASON_LABELS: Record<string, string> = {
 export default function OrderRefundPage() {
   const [, params] = useRoute("/open-orders/:id/refund");
   const orderId = params?.id;
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<Record<string, number>>({});
@@ -113,7 +114,13 @@ export default function OrderRefundPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
       toast({ title: "Refund issued" });
-      window.history.back();
+      // ARC-048: `history.back()` left the SPA entirely when this page was
+      // opened directly (a bookmark or shared link) rather than clicked
+      // through from Open Orders, since there was no app history to go back
+      // to. Navigate explicitly instead — same destination the "Back to
+      // orders" link above already goes, so it works identically whether the
+      // page had history or not.
+      setLocation("/operations");
     },
     onError: (err: Error) => {
       toast({
