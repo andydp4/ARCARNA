@@ -1,16 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/PageHeader";
 import { apiFetch } from "@/lib/appPaths";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import { Skeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Radio } from "lucide-react";
 import type { ChannelAttributionRow } from "@shared/analytics/channelAttribution";
 
@@ -31,11 +28,17 @@ function labelFor(channel: string): string {
   return CHANNEL_LABELS[channel] ?? channel.charAt(0).toUpperCase() + channel.slice(1);
 }
 
+const WINDOW_OPTIONS = [30, 90, 180] as const;
+
 export default function ChannelAttributionPage() {
-  const { data, isLoading } = useQuery<ChannelResponse>({
-    queryKey: ["/api/analytics/channels"],
+  // ARC-045: the window used to be hardcoded to 90 days with no control at
+  // all — now a real, working selector, backed by the same `?days=` param
+  // the server route already accepted (server/routes/analytics.ts).
+  const [days, setDays] = useState<(typeof WINDOW_OPTIONS)[number]>(90);
+  const { data, isLoading, isError, refetch } = useQuery<ChannelResponse>({
+    queryKey: ["/api/analytics/channels", days],
     queryFn: async () => {
-      const res = await apiFetch("/api/analytics/channels?days=90", { credentials: "include" });
+      const res = await apiFetch(`/api/analytics/channels?days=${days}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load channel attribution");
       return res.json();
     },
@@ -49,30 +52,61 @@ export default function ChannelAttributionPage() {
         icon={Radio}
         title="Order Channels"
         question="Where do your orders come from?"
-        explanation={`Completed order revenue by sales channel (last ${data?.days ?? 90} days).`}
+        explanation={`Completed order revenue by sales channel (last ${data?.days ?? days} days).`}
       />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle>Revenue by channel</CardTitle>
+          <Select value={String(days)} onValueChange={(v) => setDays(Number(v) as (typeof WINDOW_OPTIONS)[number])}>
+            <SelectTrigger className="h-9 w-[140px]" data-testid="select-channels-window">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WINDOW_OPTIONS.map((w) => (
+                <SelectItem key={w} value={String(w)}>
+                  Last {w} days
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <ErrorState
+              title="Couldn't load channel data"
+              body="Order channel revenue failed to load. Try again."
+              onRetry={() => refetch()}
+              data-testid="channels-error"
+            />
+          ) : isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : (data?.channels.length ?? 0) === 0 ? (
             <p className="text-sm text-muted-foreground">No completed orders in this window.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Channel</TableHead>
-                  <TableHead className="text-right">Orders</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">AOV</TableHead>
-                  <TableHead className="text-right">Share</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <ResponsiveTable
+                rows={data?.channels ?? []}
+                getRowKey={(row) => row.channel}
+                head={
+                  <TableRow>
+                    <TableHead>Channel</TableHead>
+                    <TableHead className="text-right">Orders</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="text-right">AOV</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </TableRow>
+                }
+                renderCard={(row) => (
+                  <div className="rounded-lg border p-3 text-sm" data-testid={`card-channel-${row.channel}`}>
+                    <div className="mb-1.5 font-semibold">{labelFor(row.channel)}</div>
+                    <ResponsiveCardRow label="Orders">{row.orderCount}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Revenue">£{row.revenue.toFixed(2)}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="AOV">£{row.aov.toFixed(2)}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Share">{row.sharePct}%</ResponsiveCardRow>
+                  </div>
+                )}
+              >
                 {data?.channels.map((row) => (
                   <TableRow key={row.channel}>
                     <TableCell className="font-medium">{labelFor(row.channel)}</TableCell>
@@ -90,8 +124,12 @@ export default function ChannelAttributionPage() {
                   <TableCell className="text-right">£{totalRevenue.toFixed(2)}</TableCell>
                   <TableCell colSpan={2} />
                 </TableRow>
-              </TableBody>
-            </Table>
+              </ResponsiveTable>
+              <div className="mt-3 flex items-center justify-between rounded-lg border bg-muted/30 p-3 text-sm font-semibold md:hidden">
+                <span>Total ({(data?.channels ?? []).reduce((s, r) => s + r.orderCount, 0)} orders)</span>
+                <span>£{totalRevenue.toFixed(2)}</span>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

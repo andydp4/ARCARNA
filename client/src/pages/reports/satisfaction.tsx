@@ -3,7 +3,9 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
+import { REPORT_COLORS } from "@/lib/reportBrand";
 import { int, pct, screenDate, isoDate, orDash } from "@/lib/reportBrand";
+import { mondayWeekBounds } from "@/lib/weekBounds";
 
 interface Row {
   customer: string | null;
@@ -12,18 +14,51 @@ interface Row {
   scoreDate: string | null;
 }
 
-function weekBounds(d: Date): { from: string; to: string } {
-  const start = new Date(d);
-  const day = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - day);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { from: isoDate(start), to: isoDate(end) };
+/**
+ * ARC-045: the 1-5 score histogram was computed server-side
+ * (reportsEngine.ts's `dist`) but never actually rendered anywhere on the
+ * client — only squashed into a one-line "Distribution 1:0 2:1 …" string
+ * under the Average Score tile. Real bars, brand colours, no charting
+ * library needed for five bars.
+ */
+function SatisfactionHistogram({ summary }: { summary: Record<string, any> }) {
+  const counts = [1, 2, 3, 4, 5].map((n) => Number(summary[`dist${n}`]) || 0);
+  const max = Math.max(1, ...counts);
+  const barColor = (score: number) => (score <= 2 ? REPORT_COLORS.red : score === 3 ? REPORT_COLORS.amber : REPORT_COLORS.green);
+  return (
+    <div className="mt-5">
+      <h3 className="mb-2 text-sm font-semibold" style={{ color: REPORT_COLORS.truthBlueDark }}>
+        Score Distribution
+      </h3>
+      <div className="flex items-end gap-3 rounded-lg border p-4" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+        {counts.map((count, i) => {
+          const score = i + 1;
+          const heightPct = (count / max) * 100;
+          return (
+            <div key={score} className="flex flex-1 flex-col items-center gap-1">
+              <div className="text-xs font-medium" style={{ color: REPORT_COLORS.steelGrey }}>
+                {count}
+              </div>
+              <div className="flex h-24 w-full items-end">
+                <div
+                  className="w-full rounded-t"
+                  style={{ height: `${Math.max(heightPct, count > 0 ? 4 : 0)}%`, backgroundColor: barColor(score) }}
+                />
+              </div>
+              <div className="text-[11px]" style={{ color: REPORT_COLORS.smoke }}>
+                {score}★
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function SatisfactionReport() {
   const [anchor, setAnchor] = useState(() => isoDate(new Date()));
-  const bounds = weekBounds(new Date(anchor));
+  const bounds = mondayWeekBounds(new Date(anchor));
 
   return (
     <ReportView<Row>
@@ -57,6 +92,7 @@ export default function SatisfactionReport() {
           },
           { label: "Scores ≤ 3", value: int(s.scoresOf3OrBelow), flag: Number(s.scoresOf3OrBelow) ? "amber" : undefined },
         ],
+        belowKpis: (s) => <SatisfactionHistogram summary={s} />,
         columns: [
           { header: "Customer", cell: (r) => orDash(r.customer), keyInfo: true },
           { header: "Order", cell: (r) => orDash(r.orderId) },

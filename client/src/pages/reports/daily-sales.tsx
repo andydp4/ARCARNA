@@ -7,7 +7,8 @@ import { ChevronLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ReportFrame } from "@/components/reports/ReportFrame";
 import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
-import { ReportKpi, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
+import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, pct, int, screenDate, isoDate } from "@/lib/reportBrand";
@@ -24,7 +25,8 @@ interface ChannelRow {
 export default function DailySalesReport() {
   const frameRef = useRef<HTMLDivElement>(null);
   const [day, setDay] = useState(() => isoDate(new Date()));
-  const { data, isLoading, error } = useReport(META.ref, { from: day, to: day });
+  const [scope, setScope] = useState<ReportScopeValue>({});
+  const { data, isLoading, error } = useReport(META.ref, { from: day, to: day, ...scope });
 
   const s = data?.summary ?? {};
   const rows = (data?.rows ?? []) as ChannelRow[];
@@ -51,9 +53,10 @@ export default function DailySalesReport() {
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-4 w-4" /> All reports
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-muted-foreground">Trading day</label>
           <Input type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
+          <ReportScopeFilter value={scope} onChange={setScope} />
         </div>
       </div>
 
@@ -79,16 +82,20 @@ export default function DailySalesReport() {
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ReportKpi label="Total Revenue" value={money(Number(s.totalRevenue) || 0)} keyInfo />
-              <ReportKpi label="Orders Processed" value={int(Number(s.ordersProcessed) || 0)} keyInfo />
-              <ReportKpi label="Avg Order Value" value={money(Number(s.avgOrderValue) || 0)} />
-              <ReportKpi
-                label="vs Yesterday"
-                value={moneyDelta(Number(s.vsYesterday) || 0)}
-                sub={`vs same day last week ${moneyDelta(Number(s.vsLastWeek) || 0)}`}
-              />
-            </div>
+            {isLoading && !data ? (
+              <ReportKpiSkeleton count={4} />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <ReportKpi label="Total Revenue" value={money(Number(s.totalRevenue) || 0)} keyInfo />
+                <ReportKpi label="Orders Processed" value={int(Number(s.ordersProcessed) || 0)} keyInfo />
+                <ReportKpi label="Avg Order Value" value={money(Number(s.avgOrderValue) || 0)} />
+                <ReportKpi
+                  label="vs Yesterday"
+                  value={moneyDelta(Number(s.vsYesterday) || 0)}
+                  sub={`vs same day last week ${moneyDelta(Number(s.vsLastWeek) || 0)}`}
+                />
+              </div>
+            )}
 
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-semibold" style={{ color: "#1E3A8A" }}>

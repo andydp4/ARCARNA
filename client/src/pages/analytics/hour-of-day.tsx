@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { HourHeatmap } from "@/components/charts/HourHeatmap";
 import type { HourOfDayBucket } from "@shared/analytics/hourOfDay";
 import { Skeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { Clock } from "lucide-react";
 
 type HourOfDayResponse = {
@@ -14,7 +15,7 @@ type HourOfDayResponse = {
 };
 
 export default function HourOfDayAnalyticsPage() {
-  const { data, isLoading } = useQuery<HourOfDayResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<HourOfDayResponse>({
     queryKey: ["/api/analytics/hour-of-day"],
     queryFn: async () => {
       const res = await apiFetch("/api/analytics/hour-of-day?weeks=12", { credentials: "include" });
@@ -38,7 +39,14 @@ export default function HourOfDayAnalyticsPage() {
         interpretation="Rows = weekday, columns = hour (org timezone); brighter = higher average revenue. Staff and stock the bright cells."
         action={{ label: "Plan staffing in Shifts", href: "/shifts" }}
       >
-        {isLoading ? (
+        {isError ? (
+          <ErrorState
+            title="Couldn't load Busiest Hours"
+            body="The sales heatmap failed to load. Try again."
+            onRetry={() => refetch()}
+            data-testid="hour-of-day-error"
+          />
+        ) : isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
           <HourHeatmap buckets={data?.buckets ?? []} />

@@ -6,16 +6,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import {
   Select,
   SelectContent,
@@ -292,8 +286,10 @@ export default function ShiftsPage() {
               No shifts in the {windowLabel}. Try a longer window.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
+            <ResponsiveTable
+              rows={shifts}
+              getRowKey={(shift) => shift.id}
+              head={
                 <TableRow>
                   <TableHead>Who</TableHead>
                   <TableHead>Location</TableHead>
@@ -306,96 +302,179 @@ export default function ShiftsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead />
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {shifts.map((shift) => (
-                  <TableRow key={shift.id} data-testid={`shift-row-${shift.id}`}>
-                    <TableCell className="font-medium">{shift.userName}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {shift.locationName ?? "—"}
-                    </TableCell>
-                    <TableCell>{when(shift.openedAt)}</TableCell>
-                    <TableCell>{when(shift.closedAt)}</TableCell>
-                    <TableCell className="tabular-nums">
-                      {duration(shift.openedAt, shift.closedAt)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(shift.openingFloat)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(shift.closingCount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <VarianceCell value={shift.variance} />
-                    </TableCell>
-                    <TableCell>
+              }
+              renderCard={(shift) => (
+                <Card data-testid={`shift-card-${shift.id}`}>
+                  <CardContent className="pt-4">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{shift.userName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {shift.locationName ?? "—"}
+                        </p>
+                      </div>
                       <Badge variant={shift.status === "open" ? "default" : "secondary"}>
                         {shift.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="min-h-[44px]"
-                          onClick={() => setReportShiftId(shift.id)}
-                          aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
-                        >
-                          Z-report
-                        </Button>
-                        {/* ARC-011: the only way to act on "drawer not counted"
-                            used to be this page's Z-report button — there was
-                            no Close or Reopen at all. MANAGER+ only, and only
-                            when the shift's own status makes the action valid
-                            (mirrors the server: close needs open/reopened,
-                            reopen needs closed). */}
-                        {canManageShifts && (ACTIVE_SHIFT_STATUSES.has(shift.status) || shift.status === "closed") && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="min-h-[44px] px-2"
-                                aria-label={`More actions for ${shift.userName}'s shift`}
-                                data-testid={`shift-actions-${shift.id}`}
+                    </div>
+                    <div className="space-y-1 border-t pt-2">
+                      <ResponsiveCardRow label="Opened">{when(shift.openedAt)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Closed">{when(shift.closedAt)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="On for">
+                        <span className="tabular-nums">{duration(shift.openedAt, shift.closedAt)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Float">
+                        <span className="tabular-nums">{money(shift.openingFloat)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Counted">
+                        <span className="tabular-nums">{money(shift.closingCount)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Variance">
+                        <VarianceCell value={shift.variance} />
+                      </ResponsiveCardRow>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="min-h-[44px] flex-1"
+                        onClick={() => setReportShiftId(shift.id)}
+                        aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
+                      >
+                        Z-report
+                      </Button>
+                      {/* ARC-011: the only way to act on "drawer not counted"
+                          used to be this page's Z-report button — there was
+                          no Close or Reopen at all. MANAGER+ only, and only
+                          when the shift's own status makes the action valid
+                          (mirrors the server: close needs open/reopened,
+                          reopen needs closed). */}
+                      {canManageShifts && (ACTIVE_SHIFT_STATUSES.has(shift.status) || shift.status === "closed") && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="min-h-[44px] px-2"
+                              aria-label={`More actions for ${shift.userName}'s shift`}
+                              data-testid={`shift-actions-${shift.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {ACTIVE_SHIFT_STATUSES.has(shift.status) && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setClosingCount("");
+                                  setCloseNotes("");
+                                  setCloseTarget(shift);
+                                }}
+                                data-testid={`shift-close-${shift.id}`}
                               >
-                                <MoreVertical className="h-4 w-4" aria-hidden />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {ACTIVE_SHIFT_STATUSES.has(shift.status) && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setClosingCount("");
-                                    setCloseNotes("");
-                                    setCloseTarget(shift);
-                                  }}
-                                  data-testid={`shift-close-${shift.id}`}
-                                >
-                                  Close shift…
-                                </DropdownMenuItem>
-                              )}
-                              {shift.status === "closed" && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setReopenReason("");
-                                    setReopenTarget(shift);
-                                  }}
-                                  data-testid={`shift-reopen-${shift.id}`}
-                                >
-                                  Reopen shift…
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                                Close shift…
+                              </DropdownMenuItem>
+                            )}
+                            {shift.status === "closed" && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setReopenReason("");
+                                  setReopenTarget(shift);
+                                }}
+                                data-testid={`shift-reopen-${shift.id}`}
+                              >
+                                Reopen shift…
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            >
+              {shifts.map((shift) => (
+                <TableRow key={shift.id} data-testid={`shift-row-${shift.id}`}>
+                  <TableCell className="font-medium">{shift.userName}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {shift.locationName ?? "—"}
+                  </TableCell>
+                  <TableCell>{when(shift.openedAt)}</TableCell>
+                  <TableCell>{when(shift.closedAt)}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {duration(shift.openedAt, shift.closedAt)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(shift.openingFloat)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(shift.closingCount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <VarianceCell value={shift.variance} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={shift.status === "open" ? "default" : "secondary"}>
+                      {shift.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="min-h-[44px]"
+                        onClick={() => setReportShiftId(shift.id)}
+                        aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
+                      >
+                        Z-report
+                      </Button>
+                      {canManageShifts && (ACTIVE_SHIFT_STATUSES.has(shift.status) || shift.status === "closed") && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="min-h-[44px] px-2"
+                              aria-label={`More actions for ${shift.userName}'s shift`}
+                              data-testid={`shift-actions-${shift.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {ACTIVE_SHIFT_STATUSES.has(shift.status) && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setClosingCount("");
+                                  setCloseNotes("");
+                                  setCloseTarget(shift);
+                                }}
+                                data-testid={`shift-close-${shift.id}`}
+                              >
+                                Close shift…
+                              </DropdownMenuItem>
+                            )}
+                            {shift.status === "closed" && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setReopenReason("");
+                                  setReopenTarget(shift);
+                                }}
+                                data-testid={`shift-reopen-${shift.id}`}
+                              >
+                                Reopen shift…
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>

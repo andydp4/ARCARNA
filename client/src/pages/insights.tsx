@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subDays } from "date-fns";
 import {
   Download,
@@ -106,6 +107,9 @@ export default function Insights() {
   const [presetRange, setPresetRange] = useState("month");
   const [exportFormat, setExportFormat] = useState<"csv" | "pdf">("csv");
   const [isExporting, setIsExporting] = useState(false);
+  // ARC-034: below `sm:` there isn't room for a second Y-axis, every daily
+  // tick, or outside pie labels without them overlapping or clipping.
+  const isNarrowChart = useMediaQuery("(max-width: 639px)");
 
   const fromIso = dateRange.from.toISOString();
   const toIso = dateRange.to.toISOString();
@@ -522,11 +526,21 @@ export default function Insights() {
               <CardContent>
                 <div className="h-[280px] w-full min-h-[240px] sm:h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={revenueByDay}>
+                  <LineChart data={revenueByDay} margin={{ left: 0, right: isNarrowChart ? 0 : 8 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: isNarrowChart ? 10 : 12 }}
+                      tickFormatter={(date) => {
+                        const d = new Date(date);
+                        return Number.isNaN(d.getTime()) ? date : format(d, "d MMM");
+                      }}
+                      interval={isNarrowChart ? "preserveStartEnd" : "preserveStart"}
+                      minTickGap={isNarrowChart ? 24 : 12}
+                    />
+                    <YAxis yAxisId="left" tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 32 : 40} />
+                    {/* Two Y-axes don't fit next to each other below sm: — orders still show in the tooltip/legend. */}
+                    <YAxis yAxisId="right" orientation="right" hide={isNarrowChart} />
                     <Tooltip />
                     <Legend />
                     <Line yAxisId="left" type="monotone" dataKey="revenue" stroke={CHART_PRIMARY} name="Revenue (£)" />
@@ -551,14 +565,17 @@ export default function Insights() {
                         data={revenueByCategory}
                         cx="50%"
                         cy="50%"
-                        outerRadius={80}
+                        outerRadius={isNarrowChart ? 65 : 80}
                         fill={CHART_PRIMARY}
                         dataKey="revenue"
-                        label
+                        /* Outside slice labels clip against the card edge below sm: — the
+                           legend plus tooltip carry the category name at that width instead. */
+                        label={isNarrowChart ? false : true}
                       >
                         {categoryPieCells}
                       </Pie>
                       <Tooltip />
+                      {isNarrowChart && <Legend wrapperStyle={{ fontSize: 11 }} />}
                     </RePieChart>
                   </ResponsiveContainer>
                   </div>
@@ -647,8 +664,13 @@ export default function Insights() {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={hourlyDistribution}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="hour" />
-                        <YAxis />
+                        <XAxis
+                          dataKey="hour"
+                          tick={{ fontSize: isNarrowChart ? 10 : 12 }}
+                          interval={isNarrowChart ? 2 : 0}
+                          tickFormatter={(hour) => `${hour}`}
+                        />
+                        <YAxis tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 28 : 40} />
                         <Tooltip />
                         <Bar dataKey="count" fill={CHART_PRIMARY} />
                       </BarChart>

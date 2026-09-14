@@ -3,15 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import { Skeleton } from "@/components/Skeleton";
+import { ErrorState } from "@/components/ErrorState";
 import { Layers } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import type { StockTurnCategoryRow, StockTurnStatus } from "@shared/analytics/stockTurn";
@@ -37,7 +32,7 @@ export default function StockTurnAnalyticsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("daysOfStock");
   const [sortAsc, setSortAsc] = useState(false);
 
-  const { data, isLoading } = useQuery<StockTurnResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<StockTurnResponse>({
     queryKey: ["/api/analytics/stock-turn"],
     queryFn: async () => {
       const res = await apiFetch("/api/analytics/stock-turn?windowDays=90", {
@@ -81,33 +76,80 @@ export default function StockTurnAnalyticsPage() {
           <CardTitle>By category</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            <ErrorState
+              title="Couldn't load stock turn"
+              body="Category stock-turn data failed to load. Try again."
+              onRetry={() => refetch()}
+              data-testid="stock-turn-error"
+            />
+          ) : isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : sorted.length === 0 ? (
             <p className="text-sm text-muted-foreground">No products with stock or sales data.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="cursor-pointer" onClick={() => toggleSort("category")}>
-                    Category
-                  </TableHead>
-                  <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("unitsSold")}>
-                    Units sold
-                  </TableHead>
-                  <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("avgStock")}>
-                    Avg stock
-                  </TableHead>
-                  <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("daysOfStock")}>
-                    Days of stock
-                  </TableHead>
-                  <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("turnRate")}>
-                    Turn rate
-                  </TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Sort controls repeated above md: — the mobile cards have no clickable headers to sort by. */}
+              <div className="mb-3 flex flex-wrap gap-2 md:hidden">
+                {(
+                  [
+                    ["category", "Category"],
+                    ["unitsSold", "Units sold"],
+                    ["avgStock", "Avg stock"],
+                    ["daysOfStock", "Days of stock"],
+                    ["turnRate", "Turn rate"],
+                  ] as [SortKey, string][]
+                ).map(([key, label]) => (
+                  <Badge
+                    key={key}
+                    variant={sortKey === key ? "default" : "outline"}
+                    className="cursor-pointer select-none"
+                    onClick={() => toggleSort(key)}
+                  >
+                    {label} {sortKey === key ? (sortAsc ? "↑" : "↓") : ""}
+                  </Badge>
+                ))}
+              </div>
+              <ResponsiveTable
+                rows={sorted}
+                getRowKey={(row) => row.category}
+                head={
+                  <TableRow>
+                    <TableHead className="cursor-pointer" onClick={() => toggleSort("category")}>
+                      Category
+                    </TableHead>
+                    <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("unitsSold")}>
+                      Units sold
+                    </TableHead>
+                    <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("avgStock")}>
+                      Avg stock
+                    </TableHead>
+                    <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("daysOfStock")}>
+                      Days of stock
+                    </TableHead>
+                    <TableHead className="cursor-pointer text-right" onClick={() => toggleSort("turnRate")}>
+                      Turn rate
+                    </TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                }
+                renderCard={(row) => (
+                  <div className="rounded-lg border p-3 text-sm" data-testid={`card-stock-turn-${row.category}`}>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="font-semibold">{row.category}</span>
+                      <Badge className={STATUS_STYLES[row.status]} variant="secondary">
+                        {row.status === "slow" ? "Slow mover" : row.status}
+                      </Badge>
+                    </div>
+                    <ResponsiveCardRow label="Units sold">{row.unitsSold}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Avg stock">{row.avgStock}</ResponsiveCardRow>
+                    <ResponsiveCardRow label="Days of stock">
+                      {row.daysOfStock >= 999 ? "—" : row.daysOfStock}
+                    </ResponsiveCardRow>
+                    <ResponsiveCardRow label="Turn rate">{row.turnRate}</ResponsiveCardRow>
+                  </div>
+                )}
+              >
                 {sorted.map((row) => (
                   <TableRow key={row.category}>
                     <TableCell className="font-medium">{row.category}</TableCell>
@@ -124,8 +166,8 @@ export default function StockTurnAnalyticsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+              </ResponsiveTable>
+            </>
           )}
         </CardContent>
       </Card>

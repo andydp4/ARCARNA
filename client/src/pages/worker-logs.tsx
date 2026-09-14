@@ -50,7 +50,10 @@ type WorkerStats = {
 };
 
 type Job = {
-  id: string;
+  // ARC-052: the API serializes Drizzle's `jobQueue.jobId` column as `jobId`,
+  // not `id` — this type (and every `job.id` read below) was reading a field
+  // that never existed on the response, so every row keyed to `undefined`.
+  jobId: string;
   eventId: string;
   workerName: string;
   status: string;
@@ -69,7 +72,7 @@ const statusColors: Record<string, string> = {
   retrying: 'bg-yellow-700',
   dead_letter: 'bg-red-700',
   already_processed: 'bg-blue-600',
-  queued: 'bg-gray-500',
+  queued: 'bg-metal-titanium',
   running: 'bg-blue-600',
   matched_action_success: 'bg-emerald-700',
   matched_action_failed: 'bg-orange-600',
@@ -166,8 +169,8 @@ export default function WorkerLogsPage() {
   ];
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto p-4 md:p-6 max-w-7xl">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
         <PageHeader
           className="!mb-0"
           title="System Activity"
@@ -240,21 +243,25 @@ export default function WorkerLogsPage() {
       </div>
 
       <Tabs defaultValue="logs" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="logs" data-testid="tab-logs">Worker Logs</TabsTrigger>
-          <TabsTrigger value="job-queue" data-testid="tab-job-queue">
-            Job Queue
-            {(stats?.queued || 0) > 0 && (
-              <Badge variant="secondary" className="ml-2">{stats?.queued}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="dead-letters" data-testid="tab-dead-letters">
-            Dead Letters
-            {(stats?.deadLetter || 0) > 0 && (
-              <Badge variant="destructive" className="ml-2">{stats?.deadLetter}</Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        {/* ARC-053: three triggers plus badges don't fit 390px in one non-wrapping
+            row — contain the overflow to this strip instead of the whole page. */}
+        <div className="overflow-x-auto">
+          <TabsList className="w-max min-w-full sm:w-auto">
+            <TabsTrigger value="logs" data-testid="tab-logs">Worker Logs</TabsTrigger>
+            <TabsTrigger value="job-queue" data-testid="tab-job-queue">
+              Job Queue
+              {(stats?.queued || 0) > 0 && (
+                <Badge variant="secondary" className="ml-2">{stats?.queued}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="dead-letters" data-testid="tab-dead-letters">
+              Dead Letters
+              {(stats?.deadLetter || 0) > 0 && (
+                <Badge variant="destructive" className="ml-2">{stats?.deadLetter}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="logs" className="space-y-4">
           {/* Filters */}
@@ -525,13 +532,13 @@ export default function WorkerLogsPage() {
                     </TableHeader>
                     <TableBody>
                       {jobs.map((job) => (
-                        <TableRow key={job.id} data-testid={`row-job-${job.id}`}>
+                        <TableRow key={job.jobId} data-testid={`row-job-${job.jobId}`}>
                           <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                             {job.createdAt ? format(new Date(job.createdAt), 'MMM d, HH:mm:ss') : '-'}
                           </TableCell>
                           <TableCell className="font-mono text-sm">{job.workerName}</TableCell>
                           <TableCell>
-                            <Badge className={`${statusColors[job.status] || 'bg-gray-500'} text-white`}>
+                            <Badge className={`${statusColors[job.status] || 'bg-metal-titanium'} text-white`}>
                               {statusIcons[job.status]}
                               <span className="ml-1">{job.status}</span>
                             </Badge>

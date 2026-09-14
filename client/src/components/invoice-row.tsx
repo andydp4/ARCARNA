@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { ResponsiveCardRow } from "@/components/ui/responsive-table";
 import {
   Calendar,
   Copy,
@@ -72,6 +74,69 @@ export type InvoiceRowProps = {
   onEmail: (invoiceId: string, customerEmail: string, invoiceNumber: string) => void;
 };
 
+/** The PDF actions menu, shared between the desktop row and the mobile card. */
+function InvoicePdfMenu({
+  invoice,
+  onViewPdf,
+  onPrint,
+  onDownload,
+  onEmail,
+  className,
+}: Pick<InvoiceRowProps, "invoice" | "onViewPdf" | "onPrint" | "onDownload" | "onEmail"> & {
+  className?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("min-h-10 min-w-[4.5rem] gap-1", className)}
+          data-testid={`button-pdf-menu-${invoice.id}`}
+        >
+          PDF
+          <ChevronDown className="h-4 w-4 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          {invoice.invoiceNumber}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => onViewPdf(invoice.id, invoice.invoiceNumber)}
+          data-testid={`button-view-${invoice.id}`}
+        >
+          <Eye className="mr-2 h-4 w-4" />
+          Open PDF (new tab)
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onPrint(invoice.id, invoice.invoiceNumber)}
+          data-testid={`button-print-${invoice.id}`}
+        >
+          <Printer className="mr-2 h-4 w-4" />
+          Print via browser
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onDownload(invoice.id, invoice.invoiceNumber)}
+          data-testid={`button-download-${invoice.id}`}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          Download PDF
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => onEmail(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
+          data-testid={`button-email-${invoice.id}`}
+        >
+          <Mail className="mr-2 h-4 w-4" />
+          Download & email invoice
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function InvoiceRowInner({
   invoice,
   onCopyInvoiceNumber,
@@ -133,54 +198,13 @@ function InvoiceRowInner({
         </Badge>
       </TableCell>
       <TableCell className="w-[1%] whitespace-nowrap text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-10 min-w-[4.5rem] gap-1"
-              data-testid={`button-pdf-menu-${invoice.id}`}
-            >
-              PDF
-              <ChevronDown className="h-4 w-4 opacity-70" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              {invoice.invoiceNumber}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onViewPdf(invoice.id, invoice.invoiceNumber)}
-              data-testid={`button-view-${invoice.id}`}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              Open PDF (new tab)
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onPrint(invoice.id, invoice.invoiceNumber)}
-              data-testid={`button-print-${invoice.id}`}
-            >
-              <Printer className="mr-2 h-4 w-4" />
-              Print via browser
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onDownload(invoice.id, invoice.invoiceNumber)}
-              data-testid={`button-download-${invoice.id}`}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download PDF
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onEmail(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
-              data-testid={`button-email-${invoice.id}`}
-            >
-              <Mail className="mr-2 h-4 w-4" />
-              Download & email invoice
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <InvoicePdfMenu
+          invoice={invoice}
+          onViewPdf={onViewPdf}
+          onPrint={onPrint}
+          onDownload={onDownload}
+          onEmail={onEmail}
+        />
       </TableCell>
     </TableRow>
   );
@@ -188,6 +212,98 @@ function InvoiceRowInner({
 
 export const InvoiceRow = memo(
   InvoiceRowInner,
+  (prev, next) =>
+    prev.invoice === next.invoice &&
+    prev.onCopyInvoiceNumber === next.onCopyInvoiceNumber &&
+    prev.onViewPdf === next.onViewPdf &&
+    prev.onPrint === next.onPrint &&
+    prev.onDownload === next.onDownload &&
+    prev.onEmail === next.onEmail
+);
+
+/**
+ * Phone card for the same row (ARC-054 / ARC-034) — the PDF actions menu is
+ * the only interactive part of this row, so it gets a full-width button
+ * instead of being the thing a phone user has to discover by scrolling a
+ * wide table sideways.
+ */
+function InvoiceCardInner({
+  invoice,
+  onCopyInvoiceNumber,
+  onViewPdf,
+  onPrint,
+  onDownload,
+  onEmail,
+}: InvoiceRowProps) {
+  return (
+    <Card className="border-border/60 shadow-sm" data-testid={`card-invoice-${invoice.id}`}>
+      <CardContent className="pt-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <span className="truncate tabular-nums text-sm font-semibold tracking-tight">
+              {invoice.invoiceNumber}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground"
+              onClick={() => onCopyInvoiceNumber(invoice.invoiceNumber)}
+              aria-label={`Copy invoice number ${invoice.invoiceNumber}`}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <InvoiceStatusBadge status={invoice.status} />
+        </div>
+
+        <div className="text-sm leading-snug">
+          <div className="truncate font-medium text-foreground">{invoice.customerName}</div>
+          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail}</div>
+        </div>
+
+        <div className="mt-2 space-y-1 border-t pt-2">
+          <ResponsiveCardRow label="Issued">
+            <span className="inline-flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              {new Date(invoice.date).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+          </ResponsiveCardRow>
+          <ResponsiveCardRow label="Due">
+            {new Date(invoice.dueDate).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </ResponsiveCardRow>
+          <ResponsiveCardRow label="Payment">
+            <Badge variant="outline" className="font-normal text-muted-foreground">
+              {formatPaymentLabel(invoice.paymentMethod)}
+            </Badge>
+          </ResponsiveCardRow>
+          <ResponsiveCardRow label="Total">
+            <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+          </ResponsiveCardRow>
+        </div>
+
+        <InvoicePdfMenu
+          invoice={invoice}
+          onViewPdf={onViewPdf}
+          onPrint={onPrint}
+          onDownload={onDownload}
+          onEmail={onEmail}
+          className="mt-3 min-h-[44px] w-full justify-center"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+export const InvoiceCard = memo(
+  InvoiceCardInner,
   (prev, next) =>
     prev.invoice === next.invoice &&
     prev.onCopyInvoiceNumber === next.onCopyInvoiceNumber &&

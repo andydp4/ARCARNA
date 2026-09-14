@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { absoluteDelta, pctDelta, type DayKpi } from "@shared/analytics/kpi";
 import { CONTROL_CENTRE_QUERY_KEY, money, type ControlCentreSnapshot } from "@/lib/controlCentre";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ErrorState";
 
 function formatPct(value: number | null): string {
   if (value === null) return "—";
@@ -112,13 +113,26 @@ function TrendSparkline({ points }: { points: { date: string; revenue: number }[
 }
 
 export function ControlCentreToday() {
-  const { data, isLoading, isFetching } = useQuery<ControlCentreSnapshot>({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery<ControlCentreSnapshot>({
     queryKey: CONTROL_CENTRE_QUERY_KEY,
     refetchInterval: 60_000,
   });
 
   if (isLoading) {
     return <Skeleton className="h-64 rounded-xl" data-testid="control-centre-today-loading" />;
+  }
+  // ARC-031: a failed fetch used to fall through to `!data` → null, rendering
+  // identically to "nothing to show" — indistinguishable from a quiet
+  // trading day instead of "this number is not to be trusted right now".
+  if (isError) {
+    return (
+      <ErrorState
+        title="Couldn't load Control Centre"
+        body="Today's figures failed to load. Your actual sales are unaffected — this card just isn't showing them."
+        onRetry={() => refetch()}
+        data-testid="control-centre-today-error"
+      />
+    );
   }
   if (!data) return null;
 
