@@ -281,6 +281,19 @@
 
 ---
 
+<a id="gap-u5-05"></a>
+
+### GAP-U5-05 — Operations Centre order-actions menu fails axe color-contrast (base-branch-red, blocking Phase 2/3 PRs)
+
+| | |
+|---|---|
+| **Brief** | Found 2026-09-14 while driving Phase 2/3's four parallel PRs to green — every one of them inherits a failing "Playwright a11y (U5)" job from `main` itself. Confirmed on GitHub: `main` at `6b48173` (the tip all four branches were cut from) already fails this same job — not caused by any Phase 2/3 diff. Confirmed non-deterministic: `#204`'s own CI run on that same commit passed cleanly, and a re-run turned both `#202` and `#203` green with no code change — but PR #207 then hit the identical failure twice in a row (once initially, once on the one allowed re-run), so it clusters rather than being purely random. |
+| **Snag** | `tests/a11y/operations-centre.spec.ts`'s "N4a's card overflow, delay editor, pass strip, done tray and station row are clean" test (`[role="menu"]` scope) reports a `color-contrast` finding (as an axe `incomplete` result, which this test's own convention treats the same as a hard violation) on the order-actions dropdown menu items (`ops-unready-*`, `ops-delay-open-*`, `ops-urgent-*`). axe's message is "Element's background color could not be determined due to a background gradient" — the related node is `aside.lm-shell-sidebar`, which paints via `--lm-surface-gradient` (a real CSS gradient). The menu container itself does carry `bg-popover` (`--popover: var(--lm-charcoal)`, a solid opaque `hsl()` value), so this may be an axe limitation about anything gradient-based sharing screen space with the analysis region rather than a genuine visual defect. |
+| **Fix** | Applied on `#207` (`client/src/styles/tokens/liquid-metal.css`): swapped `.lm-shell-sidebar`'s `background: var(--lm-surface-gradient)` for the same flat-midpoint solid color (`hsl(217, 11%, 13%)`) already used 3× elsewhere in the same file (`.pos-chip`, `.pos-action-bar`, `.pos-mobile-summary`) for this identical axe limitation — removing the one gradient axe named as a contributing `relatedNode`. **Not confirmed causal**: the failure did not reproduce locally, with or without this change, across several runs — so this is the most plausible lead found so far, not a proven fix. If the a11y job keeps failing on PRs carrying this change, the root cause is still open and needs a live-browser session at the moment the menu is open (read computed `background-color`/`background-image`/z-order for both elements) to settle whether this is a real see-through or an axe false-positive scoping issue. |
+| **Closed** | [ ] |
+
+---
+
 ## P10b — Product analytics
 
 <a id="gap-p10b-01"></a>
