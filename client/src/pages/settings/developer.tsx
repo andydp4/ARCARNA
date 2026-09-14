@@ -401,7 +401,7 @@ export default function DeveloperSettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 font-mono text-sm bg-muted rounded-lg px-3 py-2">
-            <span className="flex-1 select-all">{baseUrl}</span>
+            <span className="min-w-0 flex-1 break-all select-all">{baseUrl}</span>
             <CopyButton text={baseUrl} />
           </div>
 
@@ -417,24 +417,29 @@ export default function DeveloperSettingsPage() {
               ["GET", "/orgs/{orgId}/expenses",     "expenses:read"],
               ["GET", "/orgs/{orgId}/locations",    "locations:read"],
               ["GET", "/orgs/{orgId}/reports/sales","reports:read"],
+              /* ARC-052: GET and POST both hit /orgs/{orgId}/orders, so `path` alone
+                 collided as a React key — key by method+path instead. */
             ].map(([method, path, scope]) => (
-              <div key={path} className="flex items-center gap-2 font-mono text-xs py-0.5">
-                <Badge variant={method === "GET" ? "secondary" : "default"} className="w-12 justify-center text-[10px]">
+              <div key={`${method}-${path}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs py-0.5">
+                <Badge variant={method === "GET" ? "secondary" : "default"} className="w-12 shrink-0 justify-center text-[10px]">
                   {method}
                 </Badge>
-                <span className="text-foreground/80">{path}</span>
-                <Badge variant="outline" className="text-[10px] ml-auto">{scope}</Badge>
+                <span className="min-w-0 break-all text-foreground/80">{path}</span>
+                <Badge variant="outline" className="ml-auto shrink-0 text-[10px]">{scope}</Badge>
               </div>
             ))}
           </div>
 
-          <div className="mt-4 rounded-lg bg-muted/60 p-3 text-xs font-mono space-y-1">
+          <div className="mt-4 rounded-lg bg-muted/60 p-3 text-xs font-mono space-y-1 overflow-x-auto">
             <p className="text-muted-foreground font-sans font-medium text-[11px] uppercase tracking-wide mb-1">
               Example — Claude / ChatGPT tool config
             </p>
-            <p><span className="text-blue-500">URL:</span> {baseUrl}/orgs/7f8c5189.../products</p>
-            <p><span className="text-blue-500">Method:</span> GET</p>
-            <p><span className="text-blue-500">Header:</span> Authorization: Bearer mk_live_…</p>
+            {/* ARC-053: these are long unbroken strings (no spaces) — without
+                break-all they overflow the card and the whole page scrolls
+                sideways instead of just this block. */}
+            <p className="break-all"><span className="text-blue-500">URL:</span> {baseUrl}/orgs/7f8c5189.../products</p>
+            <p className="break-all"><span className="text-blue-500">Method:</span> GET</p>
+            <p className="break-all"><span className="text-blue-500">Header:</span> Authorization: Bearer mk_live_…</p>
           </div>
         </CardContent>
       </Card>

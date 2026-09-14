@@ -21,6 +21,7 @@ import {
   Activity,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { format } from "date-fns";
 import {
   LineChart, Line, BarChart, Bar, PieChart as RechartsPI, Pie, Cell,
@@ -32,7 +33,9 @@ import {
 export function ExpenseReportsPage() {
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState("thisMonth");
-  
+  // ARC-034: below `sm:` daily date ticks collide and outside pie labels clip.
+  const isNarrowChart = useMediaQuery("(max-width: 639px)");
+
   // Calculate date ranges
   const getDateRange = () => {
     const now = new Date();
@@ -306,16 +309,19 @@ export function ExpenseReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={profitAnalysis?.dailyTrends || []}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: isNarrowChart ? 10 : 12 }}
                     tickFormatter={(date) => format(new Date(date), 'MMM d')}
+                    interval={isNarrowChart ? "preserveStartEnd" : "preserveStart"}
+                    minTickGap={isNarrowChart ? 24 : 12}
                   />
-                  <YAxis tickFormatter={(value) => `£${value}`} />
-                  <Tooltip 
+                  <YAxis tickFormatter={(value) => `£${value}`} tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 40 : 50} />
+                  <Tooltip
                     formatter={(value: any) => formatCurrency(value)}
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={isNarrowChart ? { fontSize: 11 } : undefined} />
                   <Line type="monotone" dataKey="revenue" stroke={CHART_PRIMARY} name="Revenue" strokeWidth={2} />
                   <Line type="monotone" dataKey="grossProfit" stroke={CHART_POSITIVE} name="Gross Profit" strokeWidth={2} />
                   <Line type="monotone" dataKey="netProfit" stroke={CHART_SERIES[5]} name="Net Profit" strokeWidth={2} />
@@ -397,8 +403,10 @@ export function ExpenseReportsPage() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={(entry) => `${entry.category}: ${formatPercent(entry.percentage)}`}
-                      outerRadius={80}
+                      /* "Category: 23%" outside the slice clips against the card edge
+                         below sm: — the legend below carries the category name instead. */
+                      label={isNarrowChart ? false : (entry) => `${entry.category}: ${formatPercent(entry.percentage)}`}
+                      outerRadius={isNarrowChart ? 65 : 80}
                       fill={CHART_PRIMARY}
                       dataKey="total"
                     >
@@ -407,6 +415,7 @@ export function ExpenseReportsPage() {
                       ))}
                     </Pie>
                     <Tooltip formatter={(value: any) => formatCurrency(value)} />
+                    {isNarrowChart && <Legend wrapperStyle={{ fontSize: 11 }} />}
                   </RechartsPI>
                 </ResponsiveContainer>
               </CardContent>
@@ -419,10 +428,17 @@ export function ExpenseReportsPage() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={expenseReport?.orderExpensesByCategory || []}>
+                  <BarChart data={expenseReport?.orderExpensesByCategory || []} margin={{ bottom: isNarrowChart ? 24 : 8 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="category" />
-                    <YAxis tickFormatter={(value) => `£${value}`} />
+                    <XAxis
+                      dataKey="category"
+                      tick={{ fontSize: isNarrowChart ? 10 : 12 }}
+                      interval={0}
+                      angle={isNarrowChart ? -35 : 0}
+                      textAnchor={isNarrowChart ? "end" : "middle"}
+                      height={isNarrowChart ? 50 : 30}
+                    />
+                    <YAxis tickFormatter={(value) => `£${value}`} tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 40 : 50} />
                     <Tooltip formatter={(value: any) => formatCurrency(value)} />
                     <Bar dataKey="total" fill={CHART_PRIMARY} />
                   </BarChart>
@@ -443,16 +459,19 @@ export function ExpenseReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={expenseReport?.dailyTrends || []}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: isNarrowChart ? 10 : 12 }}
                     tickFormatter={(date) => format(new Date(date), 'MMM d')}
+                    interval={isNarrowChart ? "preserveStartEnd" : "preserveStart"}
+                    minTickGap={isNarrowChart ? 24 : 12}
                   />
-                  <YAxis tickFormatter={(value) => `£${value}`} />
-                  <Tooltip 
+                  <YAxis tickFormatter={(value) => `£${value}`} tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 40 : 50} />
+                  <Tooltip
                     formatter={(value: any) => formatCurrency(value)}
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={isNarrowChart ? { fontSize: 11 } : undefined} />
                   <Line type="monotone" dataKey="orderExpenses" stroke={CHART_WARNING} name="Order Expenses" strokeWidth={2} />
                   <Line type="monotone" dataKey="overhead" stroke={CHART_NEGATIVE} name="Daily Overhead" strokeWidth={2} />
                   <Line type="monotone" dataKey="total" stroke={CHART_SERIES[5]} name="Total" strokeWidth={2} />
@@ -588,16 +607,19 @@ export function ExpenseReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={profitAnalysis?.dailyTrends || []}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="date" 
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: isNarrowChart ? 10 : 12 }}
                     tickFormatter={(date) => format(new Date(date), 'MMM d')}
+                    interval={isNarrowChart ? "preserveStartEnd" : "preserveStart"}
+                    minTickGap={isNarrowChart ? 24 : 12}
                   />
-                  <YAxis tickFormatter={(value) => `${value}%`} />
-                  <Tooltip 
+                  <YAxis tickFormatter={(value) => `${value}%`} tick={{ fontSize: isNarrowChart ? 10 : 12 }} width={isNarrowChart ? 36 : 44} />
+                  <Tooltip
                     formatter={(value: any) => formatPercent(value)}
                     labelFormatter={(date) => format(new Date(date), 'MMMM d, yyyy')}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={isNarrowChart ? { fontSize: 11 } : undefined} />
                   <Line type="monotone" dataKey="grossMargin" stroke={CHART_POSITIVE} name="Gross Margin %" strokeWidth={2} />
                   <Line type="monotone" dataKey="netMargin" stroke={CHART_SERIES[5]} name="Net Margin %" strokeWidth={2} />
                 </LineChart>

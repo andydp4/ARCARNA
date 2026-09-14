@@ -3,16 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-table";
 import {
   Select,
   SelectContent,
@@ -220,8 +214,10 @@ export default function ShiftsPage() {
               No shifts in the {windowLabel}. Try a longer window.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
+            <ResponsiveTable
+              rows={shifts}
+              getRowKey={(shift) => shift.id}
+              head={
                 <TableRow>
                   <TableHead>Who</TableHead>
                   <TableHead>Location</TableHead>
@@ -234,48 +230,89 @@ export default function ShiftsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead />
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {shifts.map((shift) => (
-                  <TableRow key={shift.id} data-testid={`shift-row-${shift.id}`}>
-                    <TableCell className="font-medium">{shift.userName}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {shift.locationName ?? "—"}
-                    </TableCell>
-                    <TableCell>{when(shift.openedAt)}</TableCell>
-                    <TableCell>{when(shift.closedAt)}</TableCell>
-                    <TableCell className="tabular-nums">
-                      {duration(shift.openedAt, shift.closedAt)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(shift.openingFloat)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(shift.closingCount)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <VarianceCell value={shift.variance} />
-                    </TableCell>
-                    <TableCell>
+              }
+              renderCard={(shift) => (
+                <Card data-testid={`shift-card-${shift.id}`}>
+                  <CardContent className="pt-4">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{shift.userName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {shift.locationName ?? "—"}
+                        </p>
+                      </div>
                       <Badge variant={shift.status === "open" ? "default" : "secondary"}>
                         {shift.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="min-h-[44px]"
-                        onClick={() => setReportShiftId(shift.id)}
-                        aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
-                      >
-                        Z-report
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                    <div className="space-y-1 border-t pt-2">
+                      <ResponsiveCardRow label="Opened">{when(shift.openedAt)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Closed">{when(shift.closedAt)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="On for">
+                        <span className="tabular-nums">{duration(shift.openedAt, shift.closedAt)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Float">
+                        <span className="tabular-nums">{money(shift.openingFloat)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Counted">
+                        <span className="tabular-nums">{money(shift.closingCount)}</span>
+                      </ResponsiveCardRow>
+                      <ResponsiveCardRow label="Variance">
+                        <VarianceCell value={shift.variance} />
+                      </ResponsiveCardRow>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 min-h-[44px] w-full"
+                      onClick={() => setReportShiftId(shift.id)}
+                      aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
+                    >
+                      Z-report
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            >
+              {shifts.map((shift) => (
+                <TableRow key={shift.id} data-testid={`shift-row-${shift.id}`}>
+                  <TableCell className="font-medium">{shift.userName}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {shift.locationName ?? "—"}
+                  </TableCell>
+                  <TableCell>{when(shift.openedAt)}</TableCell>
+                  <TableCell>{when(shift.closedAt)}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {duration(shift.openedAt, shift.closedAt)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(shift.openingFloat)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(shift.closingCount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <VarianceCell value={shift.variance} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={shift.status === "open" ? "default" : "secondary"}>
+                      {shift.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="min-h-[44px]"
+                      onClick={() => setReportShiftId(shift.id)}
+                      aria-label={`Z-report for ${shift.userName}'s shift opened ${when(shift.openedAt)}`}
+                    >
+                      Z-report
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>

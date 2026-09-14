@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { HelpCircle, PackagePlus, ArrowRightLeft, ShoppingCart } from "lucide-react";
+import { HelpCircle, PackagePlus, ArrowRightLeft, ShoppingCart, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatQuantity } from "@shared/quantity";
 
@@ -117,6 +117,13 @@ export function ReplenishmentTab() {
   const [confirmKind, setConfirmKind] = useState<"transfer" | "purchase" | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [batchOpen, setBatchOpen] = useState(false);
+  /**
+   * ARC-040: the toast that used to be the only way to a newly created draft
+   * auto-dismisses in ~5s and the default toast limit is 1, so miss it and
+   * you're back to hunting the drafts list. This banner stays above the
+   * filters until dismissed or the page is left (component unmount clears it).
+   */
+  const [draftsBanner, setDraftsBanner] = useState<BatchDraftResponse | null>(null);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -236,29 +243,15 @@ export function ReplenishmentTab() {
       setBatchOpen(false);
       setSelected({});
 
-      const single = body.created === 1 ? body.drafts[0] : null;
+      // The banner (rendered above the filters) is the durable path to the new
+      // draft(s); the toast is just an immediate blip, so it doesn't need the link.
+      setDraftsBanner(body);
       toast({
         title:
           body.created === 1
             ? "Purchase draft created"
             : `${body.created} purchase drafts created`,
-        description: (
-          <span>
-            {body.lineCount} line(s) grouped by supplier.{" "}
-            <Link
-              href={single ? purchaseDraftLink(single.id) : "/purchase-drafts"}
-              className="underline"
-            >
-              {single ? `Open draft ${single.id.slice(0, 8)}…` : "View drafts"}
-            </Link>
-            {body.existingOpenDrafts.length > 0 && (
-              <span className="block mt-1">
-                Note: {body.existingOpenDrafts.length} other open draft(s) already exist for the
-                same supplier and location.
-              </span>
-            )}
-          </span>
-        ),
+        description: `${body.lineCount} line(s) grouped by supplier.`,
       });
     },
     onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
@@ -304,6 +297,48 @@ export function ReplenishmentTab() {
           </CardHeader>
         </Card>
       </div>
+
+      {draftsBanner && (
+        <Alert className="border-primary/40 bg-primary/5" data-testid="banner-drafts-created">
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {draftsBanner.created === 1 ? "1 purchase draft" : `${draftsBanner.created} purchase drafts`}{" "}
+              created ({draftsBanner.lineCount} line(s) grouped by supplier).
+              {draftsBanner.existingOpenDrafts.length > 0 && (
+                <>
+                  {" "}
+                  {draftsBanner.existingOpenDrafts.length} other open draft(s) already exist for the
+                  same supplier and location.
+                </>
+              )}
+            </span>
+            <span className="flex shrink-0 items-center gap-3">
+              {draftsBanner.created === 1 ? (
+                <Link
+                  href={purchaseDraftLink(draftsBanner.drafts[0].id)}
+                  className="font-medium underline underline-offset-2"
+                >
+                  Open draft {draftsBanner.drafts[0].id.slice(0, 8)}…
+                </Link>
+              ) : (
+                <Link href="/purchase-drafts" className="font-medium underline underline-offset-2">
+                  View {draftsBanner.created} drafts
+                </Link>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                aria-label="Dismiss"
+                onClick={() => setDraftsBanner(null)}
+                data-testid="button-dismiss-drafts-banner"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </span>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
