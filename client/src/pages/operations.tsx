@@ -197,7 +197,7 @@ export function OpsShell({
             {board}
           </div>
           <div
-            className="flex shrink-0 flex-col gap-2 overflow-y-auto"
+            className="flex shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-2"
             style={formCollapsed ? { width: "3.5rem" } : { width: `${FORM_PANE_PERCENT}%`, minWidth: "400px" }}
             data-testid="ops-form-pane"
           >
