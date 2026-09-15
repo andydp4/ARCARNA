@@ -165,7 +165,12 @@ export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function O
           fill/text pairs from `OpsCard`'s `STATE_STYLES` — every one of those
           is already proven >= 4.5:1 in shared/ui/contrast.spec.ts, so no new
           colour pairing is introduced here. */}
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Board counts">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Board counts"
+        data-testid="ops-kpi-strip"
+      >
         <div
           className="min-w-[7.5rem] flex-1 rounded-lg border border-border bg-card px-3 py-2"
           data-testid="ops-summary-open"
@@ -203,6 +208,7 @@ export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function O
       <div
         className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
         aria-label="Card colour key"
+        data-testid="ops-legend"
       >
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-ready" />
