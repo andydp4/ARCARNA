@@ -172,7 +172,7 @@ export function OpsLane({
       data-lane={lane}
       className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-background p-3"
     >
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-baseline justify-between gap-2" data-testid={`ops-lane-header-${lane}`}>
         <h2
           id={headingId}
           // Focusable programmatically (never in the tab order): after a card

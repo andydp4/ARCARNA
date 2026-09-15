@@ -29,6 +29,7 @@ import { OpsEditDialog } from "@/components/operations/OpsEditDialog";
 import { OpsStaffStrip } from "@/components/operations/OpsStaffStrip";
 import { OpsStationPicker } from "@/components/operations/OpsStationPicker";
 import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
+import { OpsTour, OpsTourButton } from "@/components/operations/OpsTour";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 import POS from "@/pages/pos";
 
@@ -197,7 +198,7 @@ export function OpsShell({
             {board}
           </div>
           <div
-            className="flex shrink-0 flex-col gap-2 overflow-y-auto"
+            className="flex shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-card p-2"
             style={formCollapsed ? { width: "3.5rem" } : { width: `${FORM_PANE_PERCENT}%`, minWidth: "400px" }}
             data-testid="ops-form-pane"
           >
@@ -788,7 +789,12 @@ export default function OperationsCentre() {
         tab={tab}
         onTabChange={onTabChange}
         formSlot={<POS embedded={embeddedPosProps} />}
-        headerExtras={<OpsShiftControls />}
+        headerExtras={
+          <>
+            <OpsTourButton />
+            <OpsShiftControls />
+          </>
+        }
         boardArrivalCount={boardArrivalCount}
         alertsSlot={
           <OpsAlertTray
@@ -859,6 +865,7 @@ export default function OperationsCentre() {
         onOpenChange={(open) => !open && setDeleteOrder(null)}
       />
       <OpsAnnouncer message={announcement} />
+      <OpsTour boardReady={!board.isInitialLoading} />
     </>
   );
 }

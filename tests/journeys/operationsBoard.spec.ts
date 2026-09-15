@@ -14,6 +14,8 @@ import { and, eq } from "drizzle-orm";
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { db } from "../../server/db";
 import { opsAlerts, orders as ordersTable, satisfactionScores } from "@shared/schema";
+import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
+import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
 import {
   authHeaders,
   ensureOpenShift,
@@ -25,6 +27,18 @@ import {
 } from "./fixtures";
 import { apiForUser, headersFor, opsTest as test, orderInState } from "./opsFixtures";
 
+/** A fresh context has never dismissed `WhatsNewModal` or `OpsTour`; without
+ *  this either's auto-opening overlay can intercept the first click of any
+ *  journey. */
+async function markWhatsNewSeen(context: BrowserContext): Promise<void> {
+  await context.addInitScript((version) => {
+    window.localStorage.setItem(`whatsNew:seen:${version}`, "1");
+  }, LATEST_WHATS_NEW_VERSION);
+  await context.addInitScript((key) => {
+    window.localStorage.setItem(key, "1");
+  }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
+}
+
 /** ADMIN, at a specific viewport — `adminPage` (fixtures.ts) does not take one. */
 async function pageAtViewport(
   browser: Browser,
@@ -35,6 +49,7 @@ async function pageAtViewport(
   await context.addInitScript((id) => {
     window.localStorage.setItem("arcarna.selectedOrgId", id);
   }, orgId);
+  await markWhatsNewSeen(context);
   return context.newPage();
 }
 
@@ -44,6 +59,7 @@ async function pageForUser(browser: Browser, userId: string, orgId: string): Pro
   await context.addInitScript((id) => {
     window.localStorage.setItem("arcarna.selectedOrgId", id);
   }, orgId);
+  await markWhatsNewSeen(context);
   return context.newPage();
 }
 
@@ -64,6 +80,7 @@ async function contextForUser(browser: Browser, userId: string, orgId: string): 
   await context.addInitScript((id) => {
     window.localStorage.setItem("arcarna.selectedOrgId", id);
   }, orgId);
+  await markWhatsNewSeen(context);
   return context;
 }
 

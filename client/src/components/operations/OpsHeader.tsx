@@ -159,25 +159,86 @@ export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function O
         )}
       </div>
 
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-        <span data-testid="ops-summary-open">
-          <span className="font-semibold tabular-nums text-foreground">{summary.open}</span> open
+      {/* KPI strip: the exact same four counts the plain-text summary always
+          carried, restyled as tiles. Each tile's colour is either neutral
+          (`bg-card`, "open" is not itself a card state) or one of the chip
+          fill/text pairs from `OpsCard`'s `STATE_STYLES` — every one of those
+          is already proven >= 4.5:1 in shared/ui/contrast.spec.ts, so no new
+          colour pairing is introduced here. */}
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Board counts"
+        data-testid="ops-kpi-strip"
+      >
+        <div
+          className="min-w-[7.5rem] flex-1 rounded-lg border border-border bg-card px-3 py-2"
+          data-testid="ops-summary-open"
+        >
+          <p className="text-xs text-muted-foreground">Open</p>
+          <p className="text-xl font-semibold tabular-nums text-foreground">{summary.open}</p>
+        </div>
+        <div
+          className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-late px-3 py-2 text-ops-late-foreground"
+          data-testid="ops-summary-late"
+        >
+          <p className="text-xs">Late now</p>
+          <p className="text-xl font-semibold tabular-nums">{summary.lateNow}</p>
+        </div>
+        <div
+          className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-ontime px-3 py-2 text-truth-foreground"
+          data-testid="ops-summary-due-soon"
+        >
+          <p className="text-xs">Due soon</p>
+          <p className="text-xl font-semibold tabular-nums">{summary.dueSoonNow}</p>
+        </div>
+        <div
+          className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-completed px-3 py-2 text-ops-completed-foreground"
+          data-testid="ops-summary-completed"
+        >
+          <p className="text-xs">Done today</p>
+          <p className="text-xl font-semibold tabular-nums">{summary.completedToday}</p>
+        </div>
+      </div>
+
+      {/* Colour key: what each card's own band/chip means. Swatches are
+          `aria-hidden` and always paired with a text label — colour is never
+          the only way a state is conveyed, on this row or on the cards
+          themselves (see `OpsCard`'s own module comment). */}
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
+        aria-label="Card colour key"
+        data-testid="ops-legend"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-ready" />
+          Ready
         </span>
-        <span data-testid="ops-summary-late">
-          <span className="font-semibold tabular-nums text-foreground">{summary.lateNow}</span> late
-          now
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-ontime" />
+          Due soon / on time
         </span>
-        <span data-testid="ops-summary-due-soon">
-          <span className="font-semibold tabular-nums text-foreground">{summary.dueSoonNow}</span>{" "}
-          due soon
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-late" />
+          Late / customer waiting
         </span>
-        <span data-testid="ops-summary-completed">
-          <span className="font-semibold tabular-nums text-foreground">
-            {summary.completedToday}
-          </span>{" "}
-          done today
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-delayed" />
+          Delayed
         </span>
-      </p>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full border border-dashed border-truth-bright" />
+          Held
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ops-completed" />
+          Completed
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-muted" />
+          Carried over / scheduled
+        </span>
+      </div>
     </div>
   );
 });
