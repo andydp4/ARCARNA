@@ -177,21 +177,21 @@ export const OpsHeader = forwardRef<HTMLInputElement, OpsHeaderProps>(function O
           className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-late px-3 py-2 text-ops-late-foreground"
           data-testid="ops-summary-late"
         >
-          <p className="text-xs opacity-90">Late now</p>
+          <p className="text-xs">Late now</p>
           <p className="text-xl font-semibold tabular-nums">{summary.lateNow}</p>
         </div>
         <div
           className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-ontime px-3 py-2 text-truth-foreground"
           data-testid="ops-summary-due-soon"
         >
-          <p className="text-xs opacity-90">Due soon</p>
+          <p className="text-xs">Due soon</p>
           <p className="text-xl font-semibold tabular-nums">{summary.dueSoonNow}</p>
         </div>
         <div
           className="min-w-[7.5rem] flex-1 rounded-lg bg-ops-completed px-3 py-2 text-ops-completed-foreground"
           data-testid="ops-summary-completed"
         >
-          <p className="text-xs opacity-90">Done today</p>
+          <p className="text-xs">Done today</p>
           <p className="text-xl font-semibold tabular-nums">{summary.completedToday}</p>
         </div>
       </div>

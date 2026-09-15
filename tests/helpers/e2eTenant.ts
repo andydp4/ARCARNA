@@ -1,6 +1,7 @@
 import type { APIRequestContext, Page } from "@playwright/test";
 import { ONBOARDING_STEPS } from "../../shared/onboarding";
 import { STORAGE_ORG_ID } from "../../shared/storageKeys";
+import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 
 /** Dev bypass SUPER_ADMIN needs org scope + completed onboarding before tenant routes render. */
 export async function prepareTenantContext(
@@ -33,6 +34,16 @@ export async function prepareTenantContext(
   await page.addInitScript((storageKey, id) => {
     localStorage.setItem(storageKey, id);
   }, STORAGE_ORG_ID, orgId);
+
+  // A fresh Playwright context has never dismissed `WhatsNewModal`, so
+  // without this every a11y run would hit its auto-opening dialog — the
+  // exact "unrelated dialog on the page" failure mode this suite otherwise
+  // has no way to anticipate. Marking the current release seen mirrors any
+  // real returning user, not a first-ever-login one, which is the state
+  // this suite actually means to test.
+  await page.addInitScript((version) => {
+    localStorage.setItem(`whatsNew:seen:${version}`, "1");
+  }, LATEST_WHATS_NEW_VERSION);
 
   return orgId;
 }

@@ -19,6 +19,7 @@ import {
   type Browser,
   type Page,
 } from "@playwright/test";
+import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 
 export const ROLE_USERS = {
   SUPER_ADMIN: "seed-super-admin",
@@ -86,6 +87,11 @@ export async function pageAs(browser: Browser, role: Role, orgId: string): Promi
   await context.addInitScript((id) => {
     window.localStorage.setItem("arcarna.selectedOrgId", id);
   }, orgId);
+  // A fresh context has never dismissed `WhatsNewModal`; without this its
+  // auto-opening dialog can intercept the first click of any journey.
+  await context.addInitScript((version) => {
+    window.localStorage.setItem(`whatsNew:seen:${version}`, "1");
+  }, LATEST_WHATS_NEW_VERSION);
   return context.newPage();
 }
 
