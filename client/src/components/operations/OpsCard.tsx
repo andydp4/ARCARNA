@@ -46,12 +46,13 @@ import { OpsCardActions, type OpsActionHandlers } from "./OpsCardActions";
  *     glance down a lane compares like with like.
  *
  * `data-state`, `data-lane` and `data-alert` are the contract the journey and
- * a11y suites assert against. `data-alert` (N4a: `alertActive` prop, wired to
- * `useOpsAlerts` — still always "false" today, since that hook is N4a's own
- * stub; N5b makes it real) is a pulse-and-chime trigger, never a colour: the
- * band and chip above already say what STATE the card is in, and an alert is
- * an orthogonal fact — "this needs someone's attention now" — that can be
- * true or false in almost any state.
+ * a11y suites assert against. `data-alert` (N4a introduced `alertActive` as a
+ * stub that was always "false"; N5b wired it to `useOpsAlerts`, which reads
+ * real `ops_alerts` rows pushed over `opsBus` — it is live) is a
+ * pulse-and-chime trigger, never a colour: the band and chip above already
+ * say what STATE the card is in, and an alert is an orthogonal fact — "this
+ * needs someone's attention now" — that can be true or false in almost any
+ * state.
  *
  * Every action beyond View/Details moved to `OpsCardActions.tsx` (N4a): claim,
  * pass, ready, arrived, out for delivery, undo, hold, delay, set due and rate,
@@ -117,7 +118,7 @@ export interface OpsCardProps extends OpsActionHandlers {
   busy?: boolean;
   /** Set while the board is stale or offline — every write is refused, with a reason. */
   blockedReason?: string | null;
-  /** True while an open alert addressed to the viewer exists on this card (N5b; always false today — see the module doc comment). */
+  /** True while an open alert addressed to the viewer exists on this card (N5b — live, via `useOpsAlerts`). */
   alertActive?: boolean;
   /** Enter on a focused card, unless a barcode scanner sent it (client/src/lib/opsKeys.ts). */
   shouldIgnoreEnter?: (at: number) => boolean;

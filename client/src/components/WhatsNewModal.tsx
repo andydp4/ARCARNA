@@ -81,7 +81,7 @@ export function WhatsNewModal() {
                   <Badge variant="secondary" className="text-xs">
                     {item.area}
                   </Badge>
-                  <p className="font-medium">{item.title}</p>
+                  <p className="font-medium text-foreground">{item.title}</p>
                 </div>
                 <p className="text-sm text-muted-foreground">{item.detail}</p>
               </div>

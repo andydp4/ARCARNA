@@ -19,6 +19,8 @@ import {
   type Browser,
   type Page,
 } from "@playwright/test";
+import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
+import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
 
 export const ROLE_USERS = {
   SUPER_ADMIN: "seed-super-admin",
@@ -86,6 +88,15 @@ export async function pageAs(browser: Browser, role: Role, orgId: string): Promi
   await context.addInitScript((id) => {
     window.localStorage.setItem("arcarna.selectedOrgId", id);
   }, orgId);
+  // A fresh context has never dismissed `WhatsNewModal` or `OpsTour`; without
+  // this either's auto-opening overlay can intercept the first click of any
+  // journey.
+  await context.addInitScript((version) => {
+    window.localStorage.setItem(`whatsNew:seen:${version}`, "1");
+  }, LATEST_WHATS_NEW_VERSION);
+  await context.addInitScript((key) => {
+    window.localStorage.setItem(key, "1");
+  }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
   return context.newPage();
 }
 
