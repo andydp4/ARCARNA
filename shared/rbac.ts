@@ -33,3 +33,14 @@ export function canManageUser(actorRole: Role, actorOrgId: string | null, target
 export function roleRank(role: Role): number {
   return ROLE_RANK[role];
 }
+
+/**
+ * ADMIN/SUPER_ADMIN completing a sale themselves must not inflate their own
+ * commission/KPI figures. Used at order completion (server/services/
+ * orderCompletion.ts) to set `orders.exclude_from_commission` automatically —
+ * never a manual per-order toggle. Takes a bare string, not `Role`: the
+ * completing actor's role comes off the request/session, not a validated enum.
+ */
+export function isCommissionExemptRole(role: string | null | undefined): boolean {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}

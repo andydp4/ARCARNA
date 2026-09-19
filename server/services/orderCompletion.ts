@@ -29,6 +29,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { CashierShift } from "@shared/schema";
 import { currentTradingDay } from "@shared/time/tradingDay";
+import { isCommissionExemptRole } from "@shared/rbac";
 import { cashierShiftForBackdatedOrder } from "./orderDating";
 import { creditLegTotal, openCreditForOrder, voidCredit } from "./creditLedger";
 
@@ -45,6 +46,13 @@ export interface CompleteOrderActor {
   userId: string | null;
   /** The cashier code in use right now, if any (migration 057's soft resolution). */
   cashierShift?: CompletionCashierShift | null;
+  /**
+   * The completing actor's role — becomes `exclude_from_commission` via
+   * `isCommissionExemptRole` (migration 068). Optional so existing tests that
+   * construct a bare actor keep compiling; a missing role is treated as NOT
+   * exempt, same as any ordinary staff completion.
+   */
+  role?: string | null;
 }
 
 export interface CompleteOrderOptions {
@@ -154,6 +162,7 @@ export async function completeOrderTx(
     settled_total: lockedRow.total,
     settled_at: now,
     updated_at: now,
+    exclude_from_commission: isCommissionExemptRole(actor.role),
     ...(actor.userId ? { completed_user_id: actor.userId } : {}),
     ...(completingCashier
       ? {

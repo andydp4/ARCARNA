@@ -70,11 +70,15 @@ function makeFakeTx(rowsByTable: Map<unknown, unknown[]>) {
   };
 }
 
-async function completeOrder(row: OrderRow, cashierShift?: { cashierId: string | null; cashierShiftId: string }) {
+async function completeOrder(
+  row: OrderRow,
+  cashierShift?: { cashierId: string | null; cashierShiftId: string },
+  role?: string,
+) {
   const { orderEvents } = await import("@shared/schema");
   const { orders } = await import("../../apps/server/src/db/schema");
   const tx = makeFakeTx(new Map([[orderEvents, []], [orders, [row]]]));
-  return completeOrderTx(tx, row, { userId: "user_1", cashierShift: cashierShift ?? null }, {});
+  return completeOrderTx(tx, row, { userId: "user_1", cashierShift: cashierShift ?? null, role }, {});
 }
 
 function baseRow(overrides: Partial<OrderRow> = {}): OrderRow {
@@ -189,5 +193,55 @@ describe("a completing shift with no cashier code", () => {
     const row = baseRow({ cashier_id: CASHIER_A });
     const result = await completeOrder(row, { cashierId: null, cashierShiftId: SHIFT_B });
     expect(result.row.cashier_id).toBe(CASHIER_A);
+  });
+});
+
+/**
+ * An owner stepping in to finish a sale must not inflate their own
+ * commission/KPI figures (migration 068). `exclude_from_commission` is set
+ * automatically from the completing actor's role — never a manual toggle —
+ * and read back by cashierShiftEngine.ts to zero the order's whole commission
+ * pool, including any colleague's inputter share (shared/reports/
+ * orderCommission.ts's `excluded` flag already does exactly that; nothing
+ * there changed). Only ADMIN/SUPER_ADMIN are exempt: a MANAGER completing an
+ * order from the back office, same as a CASHIER, still earns commission
+ * normally.
+ */
+describe("commission exclusion for an admin/owner completion", () => {
+  it.each(["ADMIN", "SUPER_ADMIN"])("excludes the whole order when the completer is %s", async (role) => {
+    const row = baseRow({ cashier_id: null });
+    const result = await completeOrder(row, { cashierId: null, cashierShiftId: SHIFT_B }, role);
+    expect(result.row.exclude_from_commission).toBe(true);
+  });
+
+  it.each(["CASHIER", "MANAGER"])("still earns commission normally when the completer is %s", async (role) => {
+    const row = baseRow({ cashier_id: null });
+    const result = await completeOrder(row, { cashierId: null, cashierShiftId: SHIFT_B }, role);
+    expect(result.row.exclude_from_commission).toBe(false);
+  });
+
+  it("defaults to not-excluded when no role is supplied", async () => {
+    // Mirrors the other tests in this file, none of which pass a role — a
+    // missing role must never accidentally suppress somebody's commission.
+    const row = baseRow({ cashier_id: CASHIER_A });
+    const result = await completeOrder(row, { cashierId: CASHIER_B, cashierShiftId: SHIFT_B });
+    expect(result.row.exclude_from_commission).toBe(false);
+  });
+
+  it("re-evaluates on a genuine re-settle by a different-role actor", async () => {
+    // A cashier's order, reopened and re-completed by the owner: this
+    // settlement's exclusion reflects THIS completer, same as
+    // completed_cashier_id already does for a re-complete under a different
+    // cashier (see "does not move the completing cashier..." above).
+    const row = baseRow({
+      status: "pending",
+      settled_total: "120.00",
+      cashier_id: CASHIER_A,
+      completed_cashier_id: CASHIER_A,
+      completed_user_id: "user_0",
+      exclude_from_commission: false,
+    });
+    const result = await completeOrder(row, { cashierId: CASHIER_B, cashierShiftId: SHIFT_B }, "SUPER_ADMIN");
+    expect(result.row.exclude_from_commission).toBe(true);
   });
 });
