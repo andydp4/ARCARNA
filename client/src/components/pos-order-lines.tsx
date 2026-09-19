@@ -318,7 +318,7 @@ export function PosOrderLines({
                       // point, so a fractional quantity could not even be typed.
                       inputMode="decimal"
                       aria-label={`Quantity for ${line.product.name}`}
-                      className="h-10 w-14 border-0 bg-transparent px-0 text-center font-medium focus-visible:ring-0"
+                      className="h-10 w-12 border-0 bg-transparent px-0 text-center font-medium focus-visible:ring-0"
                       value={line.quantityInput ?? formatQuantity(line.quantity)}
                       data-testid={`line-qty-${index}`}
                       disabled={disabled}
@@ -349,7 +349,7 @@ export function PosOrderLines({
                       type="text"
                       inputMode="decimal"
                       aria-label={`Price for ${line.product.name}`}
-                      className="h-10 w-24 @[640px]:w-full"
+                      className="h-10 w-20 @[640px]:w-full"
                       value={line.priceInput ?? line.customPrice.toFixed(2)}
                       data-testid={`line-price-${index}`}
                       disabled={disabled}
