@@ -27,6 +27,8 @@ export type ControlCentreSnapshot = {
   today: DayKpi;
   vsLastWeek: DayKpi | null;
   vsSameWeekdayAvg: DayKpi | null;
+  /** Fallback for vsSameWeekdayAvg while it's still null (under 4 weeks of history) — see server/services/controlCentre.ts. */
+  vsYesterday: DayKpi | null;
   revenueTrend: { date: string; revenue: number }[];
 
   ordersCreatedToday: number;
