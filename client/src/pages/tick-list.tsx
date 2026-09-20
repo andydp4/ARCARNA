@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { CreditCustomerDetailDialog } from '@/components/CreditCustomerDetailDialog'
 import { apiRequest, queryClient } from '@/lib/queryClient'
 import {
   CreditCard,
@@ -51,15 +52,17 @@ import {
   X,
 } from 'lucide-react'
 
-interface TickOrder {
+export interface TickOrder {
   id: string
+  /** First 8 characters of the order id — what staff say out loud and search for. */
+  shortCode: string
   date: string
-  amount: number
-  status: 'pending' | 'partial' | 'paid'
-  items: string[]
+  amountGiven: number
+  amountOutstanding: number
+  status: 'pending' | 'partial'
 }
 
-interface TickCustomer {
+export interface TickCustomer {
   id: string
   name: string
   email: string
@@ -354,7 +357,16 @@ export default function TickList() {
                     <TableBody>
                       {filteredCustomers.map((customer) => (
                         <TableRow key={customer.id} data-testid={`row-customer-${customer.id}`}>
-                          <TableCell className="font-medium">{customer.name}</TableCell>
+                          <TableCell className="p-0 font-medium">
+                            <button
+                              type="button"
+                              className="block w-full px-4 py-4 text-left hover:underline hover:underline-offset-4"
+                              onClick={() => setSelectedCustomer(customer)}
+                              data-testid={`button-view-customer-${customer.id}`}
+                            >
+                              {customer.name}
+                            </button>
+                          </TableCell>
                           <TableCell>
                             <div className="text-sm">
                               <div>{customer.email}</div>
@@ -414,11 +426,15 @@ export default function TickList() {
                     <Card key={customer.id} data-testid={`card-customer-${customer.id}`}>
                       <CardContent className="pt-4">
                         <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="font-medium">{customer.name}</p>
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left"
+                            onClick={() => setSelectedCustomer(customer)}
+                          >
+                            <p className="font-medium hover:underline hover:underline-offset-4">{customer.name}</p>
                             <p className="text-sm text-muted-foreground">{customer.email}</p>
                             <p className="text-sm text-muted-foreground">{customer.phone}</p>
-                          </div>
+                          </button>
                           <div className="text-right">
                             <p className="text-xl font-bold">£{(customer.totalDebt || 0).toFixed(2)}</p>
                             {customer.totalDebt > 0 ? (
@@ -555,6 +571,12 @@ export default function TickList() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <CreditCustomerDetailDialog
+          customer={selectedCustomer}
+          open={!!selectedCustomer}
+          onOpenChange={(open) => !open && setSelectedCustomer(null)}
+        />
       </div>
     </div>
   )
