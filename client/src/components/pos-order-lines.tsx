@@ -76,7 +76,7 @@ export function searchProducts(products: PosProduct[], query: string, max = MAX_
  * Inline type-ahead. An input and, directly beneath it, a listbox of matches.
  * No portal, no popover: the results are ordinary content.
  */
-function ProductSearch({
+export function ProductSearch({
   products,
   onPick,
   disabled,
