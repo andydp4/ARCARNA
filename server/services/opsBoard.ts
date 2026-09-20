@@ -21,7 +21,7 @@
  * `ops_alerts` rows yet, never omitted, so the client's `OpsBoardPayload`
  * type never has to treat the field as optional.
  */
-import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { organizations, opsStaff, allowedUsers } from "@shared/schema";
 import { resolveUserNames } from "./userDisplayName";
 import { currentTradingDay } from "@shared/time/tradingDay";
@@ -383,9 +383,40 @@ async function loadOrgSettings(orgId: string): Promise<{ timezone: string; setti
  * `allowed_users` of the org, minus CUSTOMER, joined to `ops_staff` —
  * exactly the brief's definition. `openCount` comes from the board rows
  * already fetched rather than a second query against `orders`.
+ *
+ * `viewerUserId` widens the match to also include the signed-in viewer's
+ * own row regardless of its stored `org_id`. A SUPER_ADMIN's `org_id` is
+ * `null` by design (server/auth/commonAuth.ts resolves their org per
+ * request — header/query/single-org fallback — never from their own row),
+ * so `eq(allowedUsers.orgId, orgId)` alone can never match it: that
+ * account silently vanishes from every list this function feeds — "Pass
+ * to…"'s candidates, the "who's on" strip, and `board.me` (itself `staff
+ * .find(s => s.userId === userId)`, so their own station/break state reads
+ * as permanently unset too). Scoped to one specific user's own row, not a
+ * role or a second org — it can only ever add the person who legitimately
+ * resolved into viewing this board just now.
  */
-async function loadStaff(orgId: string, openByAssignee: Map<string, number>, now: Date): Promise<OpsBoardStaffRow[]> {
+async function loadStaff(
+  orgId: string,
+  openByAssignee: Map<string, number>,
+  now: Date,
+  viewerUserId: string | null,
+): Promise<OpsBoardStaffRow[]> {
   const { db: mainDb } = await import("../db");
+  const orgOrViewer = viewerUserId
+    ? or(
+        eq(allowedUsers.orgId, orgId),
+        // Only a NULL org_id is widened — a viewer whose row genuinely
+        // belongs to a DIFFERENT org must still be excluded here, same as
+        // before this fix; this clause exists solely for the org-less
+        // SUPER_ADMIN case above, not as a blanket "always include the
+        // viewer" rule.
+        and(
+          isNull(allowedUsers.orgId),
+          or(eq(allowedUsers.authUserId, viewerUserId), eq(allowedUsers.replitUserId, viewerUserId)),
+        ),
+      )
+    : eq(allowedUsers.orgId, orgId);
   const [people, stationRows] = await Promise.all([
     mainDb
       .select({
@@ -396,7 +427,7 @@ async function loadStaff(orgId: string, openByAssignee: Map<string, number>, now
         role: allowedUsers.role,
       })
       .from(allowedUsers)
-      .where(and(eq(allowedUsers.orgId, orgId), ne(allowedUsers.role, "CUSTOMER"))),
+      .where(and(orgOrViewer, ne(allowedUsers.role, "CUSTOMER"))),
     mainDb.select().from(opsStaff).where(eq(opsStaff.orgId, orgId)),
   ]);
 
@@ -466,7 +497,7 @@ export async function getOpsBoard(
     if (row.status === "completed" || !row.assignedUserId) continue;
     openByAssignee.set(row.assignedUserId, (openByAssignee.get(row.assignedUserId) ?? 0) + 1);
   }
-  const staff = await loadStaff(orgId, openByAssignee, now);
+  const staff = await loadStaff(orgId, openByAssignee, now, userId);
 
   const me = userId ? staff.find((s) => s.userId === userId) ?? null : null;
 
