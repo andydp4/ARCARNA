@@ -809,6 +809,7 @@ export default function OperationsCentre() {
           <>
             <OpsBoard
               orders={board.orders}
+              completedToday={board.summary?.completedToday ?? 0}
               now={now}
               settings={board.settings}
               filter={filter}

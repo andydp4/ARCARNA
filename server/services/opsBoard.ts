@@ -21,10 +21,10 @@
  * `ops_alerts` rows yet, never omitted, so the client's `OpsBoardPayload`
  * type never has to treat the field as optional.
  */
-import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { organizations, opsStaff, allowedUsers } from "@shared/schema";
 import { resolveUserNames } from "./userDisplayName";
-import { currentTradingDay } from "@shared/time/tradingDay";
+import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
 import type { CardState } from "@shared/orders/opsState";
 import { deriveCardState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
@@ -211,6 +211,33 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
     )
     .orderBy(orders.created_at);
   return rows as unknown as RawOrderRow[];
+}
+
+/**
+ * The real "done today" count — settled within today's trading day, not
+ * `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep `selectBoardRows`
+ * (and the 150ms-at-2,000-orders card render it feeds) cheap; it is not a
+ * day boundary, and reusing it for the tile means "Done today" silently
+ * drops anything settled more than two hours ago — the exact bug
+ * `controlCentre.ts`'s `ordersCompletedToday` was written to avoid. This is
+ * the same trading-day-bounded `count(*)` that field uses, against the
+ * snake_case table this file's row query already reads.
+ */
+async function countCompletedToday(orgId: string, bounds: { start: Date; end: Date }): Promise<number> {
+  const { db } = await import("../../apps/server/src/db");
+  const { orders } = await import("../../apps/server/src/db/schema");
+  const [row] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.org_id, orgId),
+        eq(orders.status, "completed"),
+        gte(orders.settled_at, bounds.start),
+        lt(orders.settled_at, bounds.end),
+      ),
+    );
+  return row?.c ?? 0;
 }
 
 interface ItemAggregate {
@@ -439,11 +466,14 @@ export async function getOpsBoard(
   const now = options.now ?? new Date();
   const { timezone, settings } = await loadOrgSettings(orgId);
   const cutoff = new Date(now.getTime() - RECENT_COMPLETED_MINUTES * 60_000);
+  const tradingDay = currentTradingDay(timezone, now);
+  const bounds = tradingDayBounds(tradingDay, timezone);
 
   const rows = await selectBoardRows(orgId, cutoff);
   const orderIds = rows.map((r) => r.id);
   const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
 
+  const completedTodayCount = await countCompletedToday(orgId, bounds);
   const [items, handoverOverrides] = await Promise.all([
     selectItemAggregates(orderIds),
     selectActualHandoverTimes(orgId, completedIds),
@@ -515,7 +545,7 @@ export async function getOpsBoard(
     dueSoonNow: open.filter((o) => derivedStates.get(o.id) === "due-soon").length,
     readyWaiting: open.filter((o) => derivedStates.get(o.id) === "ready").length,
     carriedOver: open.filter((o) => derivedStates.get(o.id) === "carried-over").length,
-    completedToday: orders.filter((o) => o.status === "completed").length,
+    completedToday: completedTodayCount,
   };
 
   // "my rows, unacked, unresolved, whose order is in `orders`" (brief) — the
@@ -526,7 +556,7 @@ export async function getOpsBoard(
 
   return {
     serverNow: now.toISOString(),
-    tradingDay: currentTradingDay(timezone, now),
+    tradingDay,
     timezone,
     settings,
     me: { userId, station: me?.station ?? null, onBreak: me?.onBreak ?? false },
