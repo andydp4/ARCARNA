@@ -63,6 +63,14 @@ export type ControlCentreSnapshot = {
   today: DayKpi;
   vsLastWeek: DayKpi | null;
   vsSameWeekdayAvg: DayKpi | null;
+  /**
+   * `vsSameWeekdayAvg` needs at least 4 matching weekdays of settled-revenue
+   * history (`averageSameWeekdayKpi`) — null for weeks after opening, which
+   * read on the dashboard as a comparison that's permanently "—" rather than
+   * one that's simply not ready yet. `vsYesterday` is what the UI falls back
+   * to for that stretch: always available from day two.
+   */
+  vsYesterday: DayKpi | null;
   revenueTrend: { date: string; revenue: number }[];
 
   ordersCreatedToday: number;
@@ -121,6 +129,7 @@ export async function getControlCentreSnapshot(
   const today = byDay.get(tradingDay) ?? emptyDay();
   const vsLastWeek = byDay.get(lastWeekDay) ?? null;
   const vsSameWeekdayAvg = averageSameWeekdayKpi(ltmDates.map((d) => byDay.get(d) ?? null));
+  const vsYesterday = byDay.get(offsetDate(tradingDay, -1)) ?? null;
 
   const revenueTrend: { date: string; revenue: number }[] = [];
   for (let d = trendStart; d <= tradingDay; d = shiftIsoDate(d, 1)) {
@@ -319,6 +328,7 @@ export async function getControlCentreSnapshot(
     today,
     vsLastWeek,
     vsSameWeekdayAvg,
+    vsYesterday,
     revenueTrend,
 
     ordersCreatedToday: createdTodayRow[0]?.c ?? 0,

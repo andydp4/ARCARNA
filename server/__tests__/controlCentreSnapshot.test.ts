@@ -83,6 +83,30 @@ describe.skipIf(!hasDb)("the Control Centre snapshot", () => {
     expect(snap.today.revenue).toBe(0);
   });
 
+  it("reads vsYesterday from the previous trading day's settled revenue", async () => {
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "30.00",
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: new Date("2026-01-14T09:00:00.000Z"),
+      settledTotal: "30.00",
+      settledAt: new Date("2026-01-14T09:00:00.000Z"), // 14th's trading day = "yesterday" relative to NOW
+    } as never);
+
+    const snap = await getControlCentreSnapshot(orgId, NOW);
+
+    expect(snap.vsYesterday).not.toBeNull();
+    expect(snap.vsYesterday?.revenue).toBe(30);
+    expect(snap.vsYesterday?.txns).toBe(1);
+  });
+
+  it("leaves vsYesterday null when nothing settled the previous trading day", async () => {
+    const snap = await getControlCentreSnapshot(orgId, NOW);
+    expect(snap.vsYesterday).toBeNull();
+  });
+
   it("flags yesterday's close as missing when no close run is recorded", async () => {
     const snap = await getControlCentreSnapshot(orgId, NOW);
 
