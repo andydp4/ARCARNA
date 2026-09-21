@@ -76,6 +76,24 @@ export const PAYMENT_OPTIONS = [
   { value: "personal_use", label: "Personal use", Icon: UserRound },
 ] as const;
 
+/**
+ * What this step's final action actually does, by payment method — cash,
+ * card, transfer, gift_card and split all record payment as received right
+ * now (an order_payments leg for the full total, in the same request); tick
+ * only places the order and opens a debt, no money taken until it's repaid
+ * later through the Tick List, entirely separately; personal_use isn't a
+ * sale at all — stock leaves, cost books as an expense, nothing is "paid".
+ * "Take payment" was previously shown for every method, which is exactly
+ * backwards for the two cases that aren't a payment. Same distinction the
+ * credit model and commission code already draw (isTickPayment,
+ * shared/reports/orderCommission.ts's inputter/completer split).
+ */
+function confirmActionLabel(paymentMethod: string): string {
+  if (paymentMethod === "personal_use") return "Log personal use";
+  if (paymentMethod === "tick") return "Place order";
+  return "Take payment";
+}
+
 export type PosCheckoutStepProps = {
   total: number;
   itemCount: number;
@@ -162,7 +180,9 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 2 of 2 · Take payment</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">
+            Step 2 of 2 · {confirmActionLabel(p.paymentMethod)}
+          </p>
           <h2 className="truncate text-lg font-semibold tracking-tight text-metal-warm-white">
             £{p.total.toFixed(2)} · {p.itemCount} {p.itemCount === 1 ? "item" : "items"}
             {p.customerName ? ` · ${p.customerName}` : ""}
@@ -587,7 +607,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             type="button"
             onClick={p.onConfirm}
             disabled={p.itemCount === 0 || p.submitting}
-            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : "Confirm payment"}
+            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : confirmActionLabel(p.paymentMethod)}
             data-testid="button-confirm-payment"
             className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
             size="lg"
@@ -598,7 +618,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 Processing…
               </>
             ) : (
-              "Confirm payment"
+              confirmActionLabel(p.paymentMethod)
             )}
           </Button>
         </div>
