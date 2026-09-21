@@ -102,4 +102,70 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
     expect(payments).toHaveLength(1);
     expect(payments[0].recordedByUserId).toBe("test-admin");
   });
+
+  it("groups two credit sales for the same customer into one entry and lists both orders", async () => {
+    const orderId2 = randomUUID();
+    await db.insert(orders).values({
+      id: orderId2,
+      orgId,
+      customerId,
+      total: "60.00",
+      paymentMethod: "tick",
+      status: "pending",
+    } as never);
+    await db.insert(orderCredit).values([
+      {
+        orderId,
+        orgId,
+        customerId,
+        amountGiven: "125.50",
+        amountOutstanding: "125.50",
+        status: "outstanding",
+        givenOn: "2026-08-01",
+      },
+      {
+        orderId: orderId2,
+        orgId,
+        customerId,
+        amountGiven: "60.00",
+        amountOutstanding: "20.00",
+        status: "partial",
+        givenOn: "2026-08-05",
+      },
+    ]);
+
+    const res = await request(app).get("/api/tick-customers").expect(200);
+    const entries = res.body.filter((c: any) => c.id === customerId);
+    expect(entries).toHaveLength(1);
+    const [entry] = entries;
+    expect(entry.totalDebt).toBe(145.5);
+    expect(entry.orders).toHaveLength(2);
+
+    const byId = new Map(entry.orders.map((o: any) => [o.id, o]));
+    const first = byId.get(orderId);
+    expect(first.shortCode).toBe(orderId.slice(0, 8));
+    expect(first.status).toBe("pending");
+    expect(first.amountOutstanding).toBe(125.5);
+
+    const second = byId.get(orderId2);
+    expect(second.status).toBe("partial");
+    expect(second.amountOutstanding).toBe(20);
+    expect(second.amountGiven).toBe(60);
+  });
+
+  it("leaves a fully settled customer off the credit list", async () => {
+    await db.insert(orderCredit).values({
+      orderId,
+      orgId,
+      customerId,
+      amountGiven: "125.50",
+      amountOutstanding: "0",
+      status: "settled",
+      givenOn: "2026-08-01",
+      settledOn: "2026-08-10",
+    });
+
+    const res = await request(app).get("/api/tick-customers").expect(200);
+    expect(res.body.find((c: any) => c.id === customerId)).toBeUndefined();
+  });
 });

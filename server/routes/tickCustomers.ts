@@ -15,15 +15,16 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/tick-customers", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
-      const { db } = await import('../../apps/server/src/db');
-      const { orders } = await import('../../apps/server/src/db/schema');
-      const { eq, and, sql } = await import('drizzle-orm');
-      
+
       const allCustomers = await storage.getCustomers(ctx.orgId);
       // What is owed comes from the credit records, not from order status. An
       // order's status says whether the goods have gone; only the credit record
@@ -31,37 +32,56 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       // remainder rather than the whole invoice.
       const { db: appDb } = await import('../db');
       const { orderCredit } = await import('@shared/schema');
-      const { inArray } = await import('drizzle-orm');
-      const tickOrders = await appDb
+      const { eq, and, inArray, desc } = await import('drizzle-orm');
+      const creditRows = await appDb
         .select({
           customerId: orderCredit.customerId,
-          totalDebt: sql<number>`COALESCE(SUM(CAST(${orderCredit.amountOutstanding} AS DECIMAL)), 0)`,
-          lastOrderDate: sql<string>`MAX(${orderCredit.givenOn})`,
-          orderCount: sql<number>`COUNT(*)`,
+          orderId: orderCredit.orderId,
+          amountGiven: orderCredit.amountGiven,
+          amountOutstanding: orderCredit.amountOutstanding,
+          status: orderCredit.status,
+          givenOn: orderCredit.givenOn,
         })
         .from(orderCredit)
         .where(and(
           eq(orderCredit.orgId, ctx.orgId),
           inArray(orderCredit.status, ['outstanding', 'partial']),
         ))
-        .groupBy(orderCredit.customerId);
-      
-      // Merge customer data with tick orders
-      const tickCustomers = tickOrders
-        .filter(t => t.customerId)
-        .map(tickData => {
-          const customer = allCustomers.find(c => c.id === tickData.customerId);
-          return {
-            id: tickData.customerId,
-            name: customer?.name || 'Unknown Customer',
-            email: customer?.email || '',
-            phone: customer?.phone || '',
-            totalDebt: Number(tickData.totalDebt) || 0,
-            lastOrderDate: tickData.lastOrderDate,
-            orders: []
-          };
-        });
-      
+        .orderBy(desc(orderCredit.givenOn));
+
+      // Two or more credit sales against the same customer are one account, not
+      // separate rows — grouped here so the list totals what they actually owe
+      // instead of listing every tick sparsely, and so the click-through detail
+      // has the order numbers that make up the total.
+      const rowsByCustomer = new Map<string, typeof creditRows>();
+      for (const row of creditRows) {
+        if (!row.customerId) continue;
+        const list = rowsByCustomer.get(row.customerId) ?? [];
+        list.push(row);
+        rowsByCustomer.set(row.customerId, list);
+      }
+
+      const tickCustomers = Array.from(rowsByCustomer.entries()).map(([customerId, rows]) => {
+        const customer = allCustomers.find(c => c.id === customerId);
+        return {
+          id: customerId,
+          name: customer?.name || 'Unknown Customer',
+          email: customer?.email || '',
+          phone: customer?.phone || '',
+          totalDebt: roundMoney(rows.reduce((sum, r) => sum + Number(r.amountOutstanding), 0)),
+          // `rows` is already newest-first (query is ordered desc(givenOn)).
+          lastOrderDate: rows[0].givenOn,
+          orders: rows.map(r => ({
+            id: r.orderId,
+            shortCode: r.orderId.slice(0, 8),
+            date: r.givenOn,
+            amountGiven: Number(r.amountGiven),
+            amountOutstanding: Number(r.amountOutstanding),
+            status: r.status === 'partial' ? ('partial' as const) : ('pending' as const),
+          })),
+        };
+      });
+
       res.json(tickCustomers);
     } catch (error) {
       console.error("Error fetching credit customers:", error);

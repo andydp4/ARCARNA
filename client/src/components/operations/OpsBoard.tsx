@@ -33,6 +33,16 @@ import { OpsStaleBanner } from "./OpsStaleBanner";
 
 export interface OpsBoardProps {
   orders: BoardOrder[];
+  /**
+   * The trading-day-bounded count from the server's own `summary` field
+   * (server/services/opsBoard.ts's `countCompletedToday`) — NOT derived from
+   * `orders` here, which only ever holds open orders plus whatever completed
+   * within the last `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep
+   * card rendering cheap; a count meant to cover the whole trading day can't
+   * be built from a list that already dropped everything older than two
+   * hours.
+   */
+  completedToday: number;
   now: Date;
   settings: OpsTimingSettings;
   filter: OpsFilter;
@@ -99,6 +109,7 @@ function isMine(order: BoardOrder, userId?: string): boolean {
 
 export function OpsBoard({
   orders,
+  completedToday,
   now,
   settings,
   filter,
@@ -150,9 +161,9 @@ export function OpsBoard({
       lateNow: open.filter(({ derived }) => derived.state === "late" || derived.state === "customer-waiting")
         .length,
       dueSoonNow: open.filter(({ derived }) => derived.state === "due-soon").length,
-      completedToday: cards.filter(({ derived }) => derived.state === "completed").length,
+      completedToday,
     };
-  }, [cards]);
+  }, [cards, completedToday]);
 
   const cardsInLane = useCallback(
     (lane: BoardLane): HTMLElement[] =>

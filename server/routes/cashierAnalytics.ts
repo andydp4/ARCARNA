@@ -8,7 +8,7 @@ import {
   orders,
   users,
 } from "../../shared/schema";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 
 const VIEW_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"] as const;
@@ -62,6 +62,13 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
       ];
       const payments = await db.select().from(cashierCommissionPayments).where(and(...paymentConditions));
 
+      // Order count / average order value / sales-per-hour: a completed-work
+      // measure, so only orders this cashier actually finished count — an
+      // order still open (pending/on-hold/awaiting-customer/urgent) is not
+      // yet a completed sale and may never become one. personal_use is
+      // excluded too, same as `buildCashierShiftBalanceSheet`'s salesOrders
+      // filter: stock leaving as a write-off is not a sale either, wherever
+      // its status ends up.
       const orderAgg = await db
         .select({
           cashierId: orders.cashierId,
@@ -72,6 +79,8 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
         .where(
           and(
             eq(orders.orgId, ctx.orgId),
+            eq(orders.status, "completed"),
+            ne(orders.paymentMethod, "personal_use"),
             gte(orders.createdAt, from),
             lte(orders.createdAt, to),
             sql`${orders.cashierId} IS NOT NULL`,

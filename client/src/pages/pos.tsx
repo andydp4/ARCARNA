@@ -687,7 +687,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (cart.length === 0) {
       toast({
         title: "Nothing on the order",
-        description: "Add at least one line before taking payment",
+        description: "Add at least one line before continuing",
         variant: "destructive",
       });
       return;
@@ -742,7 +742,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (cart.length === 0) {
       toast({
         title: "Nothing on the order",
-        description: "Add at least one line before taking payment",
+        description: "Add at least one line before continuing",
         variant: "destructive",
       });
       return;
@@ -1125,7 +1125,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                         Wait…
                       </>
                     ) : (
-                      "Take payment"
+                      "Continue to payment"
                     )}
                   </Button>
                 </div>
