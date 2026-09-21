@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Minus } from "lucide-react";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -20,6 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import { ActionLoader } from "@/components/action-loader";
 import { parseQuantityInput } from "@shared/quantity";
 import type { BoardOrder } from "@/lib/orderTypes";
+import { ProductSearch } from "@/components/pos-order-lines";
+import { posPrice, type PosProduct } from "@/components/pos-types";
 
 /**
  * Correcting what is on an order, from the board.
@@ -51,6 +53,24 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
   const { toast } = useToast();
   const [lines, setLines] = useState<EditLine[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Only fetched while the dialog is actually open — this dialog is a rare,
+  // deliberate correction, not counter work, so there is no reason to hold a
+  // product-catalogue subscription open for the rest of the board's life.
+  const { data: products = [] } = useQuery<PosProduct[]>({
+    queryKey: ["/api/products"],
+    enabled: open,
+  });
+
+  const addProduct = (product: PosProduct) => {
+    setLines((current) => {
+      const existing = current.findIndex((line) => line.productId === product.id);
+      if (existing >= 0) {
+        return current.map((line, i) => (i === existing ? { ...line, quantity: line.quantity + 1 } : line));
+      }
+      return [...current, { productId: product.id, productName: product.name, quantity: 1, unitPrice: posPrice(product) }];
+    });
+  };
 
   useEffect(() => {
     if (!open || !order) return;
@@ -129,7 +149,7 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
         <DialogHeader>
           <DialogTitle>Edit order #{order?.shortCode}</DialogTitle>
           <DialogDescription>
-            Change quantities and prices. Remove a line only if you mean to drop that item.
+            Add items, change quantities and prices, or remove a line if you mean to drop that item.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,8 +160,10 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
               Loading the order's lines…
             </div>
           ) : (
-            lines.map((line, index) => (
-              <div key={`${line.productId}-${index}`} className="rounded-lg border border-border p-3">
+            <>
+              <ProductSearch products={products} onPick={addProduct} testId="ops-edit-add-product" />
+              {lines.map((line, index) => (
+                <div key={`${line.productId}-${index}`} className="rounded-lg border border-border p-3">
                 <p className="font-medium text-foreground">{line.productName}</p>
                 <div className="mt-2 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
@@ -210,8 +232,9 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
                     Remove line
                   </Button>
                 </div>
-              </div>
-            ))
+                </div>
+              ))}
+            </>
           )}
 
           {!loading && lines.length === 0 && (
