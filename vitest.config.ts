@@ -55,6 +55,7 @@ export default defineConfig({
           "server/__tests__/opsBoardQuery.test.ts",
           "server/__tests__/opsAlertSweep.test.ts",
           "server/__tests__/orderTimingReport.test.ts",
+          "server/__tests__/opsBoardSuperAdminStaff.test.ts",
         ],
     testTimeout: 30_000,
   },
