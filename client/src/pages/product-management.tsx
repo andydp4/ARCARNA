@@ -54,10 +54,10 @@ import {
   AlertCircle,
   CheckCircle,
   Globe,
-  ImagePlus,
   X
 } from 'lucide-react'
 import { PRODUCT_IMPORT_CSV_SAMPLE } from '@shared/setup'
+import { LOW_STOCK_THRESHOLD_PERCENT } from '@shared/constants/stock'
 import {
   parseProductCsvText,
   previewProductImportFromMappedRows,
@@ -595,7 +595,7 @@ export default function ProductManagement() {
     const stockPercentage = (product.stock / (product.stockLimit || 100)) * 100
     if (product.stock === 0) {
       return { status: 'Out of Stock', variant: 'destructive' as const }
-    } else if (stockPercentage <= 20) {
+    } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
       return { status: 'Low Stock', variant: 'destructive' as const }
     } else if (stockPercentage <= 50) {
       return { status: 'Medium Stock', variant: 'secondary' as const }
@@ -1064,7 +1064,7 @@ export default function ProductManagement() {
               <div className="text-xl sm:text-2xl font-bold">
                 {products.filter((p: any) => {
                   const stockPercentage = (p.stock / (p.stockLimit || 100)) * 100
-                  return stockPercentage <= 20 && p.stock > 0
+                  return stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT && p.stock > 0
                 }).length}
               </div>
             </CardContent>
@@ -1331,7 +1331,7 @@ export default function ProductManagement() {
                               data-testid={`button-website-${product.id}`}
                               aria-label="Edit website listing"
                             >
-                              <ImagePlus className="h-4 w-4" />
+                              <Globe className="h-4 w-4" />
                             </Button>
                             <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
                               <DialogTrigger asChild>
