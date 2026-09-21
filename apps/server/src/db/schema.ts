@@ -81,6 +81,10 @@ export const orders = pgTable('orders', {
   // migration 057. varchar because users.id is the auth subject, not a uuid.
   input_user_id: varchar('input_user_id', { length: 255 }),
   completed_user_id: varchar('completed_user_id', { length: 255 }),
+  // See shared/schema.ts and migration 068: true when the completer was
+  // ADMIN/SUPER_ADMIN, set automatically by completeOrderTx — never a manual
+  // toggle. Zeroes the order's whole commission pool in cashierShiftEngine.ts.
+  exclude_from_commission: boolean('exclude_from_commission').default(false).notNull(),
   // Operational fields for the counter view — see shared/schema.ts.
   //
   // The four after `revised_eta` were missing here for three releases

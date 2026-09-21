@@ -114,6 +114,7 @@ type ShiftOrderRow = {
   inputCashierId: string | null;
   completedUserId: string | null;
   inputUserId: string | null;
+  excludeFromCommission: boolean;
 };
 
 /**
@@ -138,6 +139,7 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       inputCashierId: orders.inputCashierId,
       completedUserId: orders.completedUserId,
       inputUserId: orders.inputUserId,
+      excludeFromCommission: orders.excludeFromCommission,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -434,6 +436,7 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
       inputterCashierId: row.inputCashierId,
       completerUserId: row.completedUserId,
       inputterUserId: row.inputUserId,
+      excluded: row.excludeFromCommission,
       soldOn: tradingDayFor(row.createdAt ?? new Date(), timeZone),
     };
   });
