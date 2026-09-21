@@ -2126,10 +2126,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllowedUsers(orgId: string): Promise<AllowedUser[]> {
+    // `org_id` is NULL by design for a SUPER_ADMIN row — their org is resolved
+    // per request (server/auth/commonAuth.ts), never stored on their own row —
+    // so a strict org match alone hides them from every org's own access list.
+    // They belong on all of them: that NULL row genuinely has access to this
+    // org, same reasoning as loadStaff's fix for the Ops board roster.
     const rows = await db
       .select()
       .from(allowedUsers)
-      .where(eq(allowedUsers.orgId, orgId))
+      .where(or(eq(allowedUsers.orgId, orgId), isNull(allowedUsers.orgId)))
       .orderBy(desc(allowedUsers.createdAt));
     return this.attachCommissionRates(rows) as unknown as Promise<AllowedUser[]>;
   }
