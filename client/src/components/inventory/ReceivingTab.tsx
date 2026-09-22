@@ -28,6 +28,7 @@ import { Link } from "wouter";
 import { clearQueryParams, purchaseDraftLink, readQueryParam } from "@/lib/deepLink";
 import { PackageCheck, Eye } from "lucide-react";
 import { parseNonNegativeQuantityInput, parseQuantityInput } from "@shared/quantity";
+import { OverDeliveryConfirm, hasOverDelivery } from "@/components/inventory/OverDeliveryConfirm";
 
 type ReceiptListItem = {
   id: string;
@@ -82,6 +83,7 @@ export function ReceivingTab() {
   // The supplier's own invoice/delivery-note number — captured when goods are
   // actually received (ARC-019), never invented on the buyer's side.
   const [supplierReference, setSupplierReference] = useState("");
+  const [overDeliveryConfirmed, setOverDeliveryConfirmed] = useState(false);
 
   const queryKey =
     statusFilter === "all"
@@ -174,6 +176,7 @@ export function ReceivingTab() {
         purchaseDraftId: createDraftId,
         supplierReference: supplierReference.trim() || undefined,
         items,
+        acceptOverDelivery: overDeliveryConfirmed || undefined,
       });
     },
     onSuccess: async (res: Response) => {
@@ -182,6 +185,7 @@ export function ReceivingTab() {
       setCreateOpen(false);
       setCreateDraftId("");
       setSupplierReference("");
+      setOverDeliveryConfirmed(false);
       // Land on the new receipt — completing it is the next step in the flow.
       setDetailId(body.id);
       toast({
@@ -366,6 +370,7 @@ export function ReceivingTab() {
                   onValueChange={(v) => {
                     setCreateDraftId(v);
                     setLineQty({});
+                    setOverDeliveryConfirmed(false);
                   }}
                 >
                   <SelectTrigger>
@@ -407,7 +412,6 @@ export function ReceivingTab() {
                       inputMode="decimal"
                       step="any"
                       min={0}
-                      max={item.remaining}
                       value={lineQty[item.id]?.received ?? ""}
                       onChange={(e) =>
                         setLineQty({
@@ -443,10 +447,30 @@ export function ReceivingTab() {
               </div>
             ))}
           </div>
+          <OverDeliveryConfirm
+            lines={(receivingInfo?.items ?? []).map((line) => ({
+              id: line.id,
+              productName: line.productName,
+              remaining: line.remaining,
+              received: lineQty[line.id]?.received,
+            }))}
+            confirmed={overDeliveryConfirmed}
+            onConfirmedChange={setOverDeliveryConfirmed}
+          />
           <DialogFooter>
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!createDraftId || createMutation.isPending}
+              disabled={
+                !createDraftId ||
+                createMutation.isPending ||
+                (hasOverDelivery(
+                  (receivingInfo?.items ?? []).map((line) => ({
+                    remaining: line.remaining,
+                    received: lineQty[line.id]?.received,
+                  })),
+                ) &&
+                  !overDeliveryConfirmed)
+              }
             >
               Create pending receipt
             </Button>

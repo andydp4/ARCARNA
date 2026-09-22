@@ -12,6 +12,7 @@ import {
 } from "../services/goodsReceipts";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 import { nonNegativeQuantity, positiveQuantity } from "@shared/quantity";
+import { recordAdminAudit } from "../adminAudit";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
@@ -34,6 +35,12 @@ const createSchema = z.object({
     // A real receipt has one line per draft line. The 25 MB global body limit
     // was the only ceiling, so a payload could carry an unbounded array.
     .max(1000),
+  /**
+   * The manager's confirmation that the supplier delivered more than was
+   * ordered. Without it an over-receipt is refused (409 OVER_RECEIVE) so the
+   * screen can ask first.
+   */
+  acceptOverDelivery: z.boolean().optional(),
 });
 
 function sendError(res: any, err: unknown) {
@@ -79,8 +86,20 @@ export function registerGoodsReceiptRoutes(app: Express) {
           details: parsed.error.errors,
         });
       }
-      const ctx = req.orgContext as { orgId: string };
-      const receipt = await createGoodsReceipt(ctx.orgId, parsed.data);
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const { acceptOverDelivery, ...body } = parsed.data;
+      const receipt = await createGoodsReceipt(ctx.orgId, body, { acceptOverDelivery });
+      if (receipt?.overDelivery?.length) {
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.claims?.sub ?? "unknown",
+          actorRole: ctx.role,
+          action: "goods_receipt.over_delivery_accepted",
+          targetType: "purchase_draft",
+          targetId: body.purchaseDraftId,
+          orgId: ctx.orgId,
+          metadata: { receiptId: receipt.id, lines: receipt.overDelivery },
+        });
+      }
       res.status(201).json(receipt);
     } catch (e) {
       sendError(res, e);

@@ -30,6 +30,8 @@ import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
 import { parseNonNegativeQuantityInput, parseQuantityInput } from "@shared/quantity";
+import { resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
+import { OverDeliveryConfirm, hasOverDelivery } from "@/components/inventory/OverDeliveryConfirm";
 
 type DraftListItem = {
   id: string;
@@ -52,8 +54,24 @@ type DraftDetail = DraftListItem & {
     quantityReceived?: number;
     estimatedCost?: string | null;
     supplierSku?: string | null;
+    productCostPrice?: string | null;
   }[];
+  /** Pending or completed receipts — any one of them locks an approved order's lines. */
+  activeReceiptCount?: number;
+  /** Server's answer to "can quantities and costs still change?" (canEditPurchaseLines). */
+  linesEditable?: boolean;
 };
+
+type DraftLine = DraftDetail["items"][number];
+
+function money(n: number): string {
+  return `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Unit cost a line will be priced at on the PO, and where it comes from. */
+function lineUnitCost(line: DraftLine) {
+  return resolvePurchaseUnitCost({ lineCost: line.estimatedCost, productCost: line.productCostPrice });
+}
 
 /** Provenance recorded when a draft is raised from a replenishment recommendation. */
 type SourceRecommendation = {
@@ -136,6 +154,9 @@ export default function PurchaseDraftsPage() {
 
   const [detailId, setDetailId] = useState<string | null>(() => readQueryParam("draft"));
   const [editQty, setEditQty] = useState<Record<string, string>>({});
+  const [editCost, setEditCost] = useState<Record<string, string>>({});
+  const [lineSaveState, setLineSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
+  const [overDeliveryConfirmed, setOverDeliveryConfirmed] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
   // The supplier's own invoice/delivery-note number — captured when goods are
@@ -200,6 +221,7 @@ export default function PurchaseDraftsPage() {
         purchaseDraftId: detailId,
         supplierReference: receiveSupplierReference.trim() || undefined,
         items,
+        acceptOverDelivery: overDeliveryConfirmed || undefined,
       });
     },
     onSuccess: async (res) => {
@@ -208,6 +230,7 @@ export default function PurchaseDraftsPage() {
       setReceiveOpen(false);
       setReceiveQty({});
       setReceiveSupplierReference("");
+      setOverDeliveryConfirmed(false);
       toast({
         title: "Pending receipt created",
         description: body ? (
@@ -226,8 +249,14 @@ export default function PurchaseDraftsPage() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      apiRequest("PATCH", `/api/purchase-drafts/${id}/status`, { status }),
+    // Anything typed into a line but not yet saved goes first. Previously a
+    // quantity only persisted via its own Save button, so typing 10000 and
+    // pressing Approve discarded it silently and locked the order at the
+    // recommended quantity.
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      if (detail && detail.id === id) await flushDirtyLines(detail);
+      return apiRequest("PATCH", `/api/purchase-drafts/${id}/status`, { status });
+    },
     onSuccess: () => {
       invalidatePurchasingPipeline(queryClient);
       toast({ title: "Status updated" });
@@ -247,16 +276,91 @@ export default function PurchaseDraftsPage() {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
-  const updateLine = useMutation({
-    mutationFn: ({ draftId, itemId, quantity }: { draftId: string; itemId: string; quantity: number }) =>
-      apiRequest("PATCH", `/api/purchase-drafts/${draftId}/items/${itemId}`, { quantity }),
-    onSuccess: () => {
+  /**
+   * The typed-but-unsaved changes on a line, parsed. `null` fields are
+   * unchanged; `invalid` means the user typed something that is not a number.
+   */
+  const pendingLineChange = (line: DraftLine) => {
+    const qtyRaw = editQty[line.id];
+    const costRaw = editCost[line.id];
+    let quantity: number | undefined;
+    let estimatedCost: number | null | undefined;
+    let invalid: "quantity" | "cost" | null = null;
+
+    if (qtyRaw !== undefined) {
+      const parsed = parseQuantityInput(qtyRaw);
+      if (parsed === null) invalid = "quantity";
+      else if (parsed !== line.quantity) quantity = parsed;
+    }
+    if (costRaw !== undefined) {
+      const trimmed = costRaw.trim().replace(/^£/, "");
+      const current = line.estimatedCost != null ? Number(line.estimatedCost) : null;
+      if (trimmed === "") {
+        if (current != null) estimatedCost = null;
+      } else {
+        const parsed = Number(trimmed);
+        if (!Number.isFinite(parsed) || parsed < 0) invalid = invalid ?? "cost";
+        else if (parsed !== current) estimatedCost = parsed;
+      }
+    }
+    return { quantity, estimatedCost, invalid };
+  };
+
+  const saveLine = async (draftId: string, line: DraftLine) => {
+    const { quantity, estimatedCost, invalid } = pendingLineChange(line);
+    if (invalid) {
+      setLineSaveState((s) => ({ ...s, [line.id]: "error" }));
+      throw new Error(
+        invalid === "quantity"
+          ? `${line.productName}: enter a positive quantity with up to 3 decimal places.`
+          : `${line.productName}: enter a unit cost of 0 or more, or leave it blank.`,
+      );
+    }
+    const clearEdits = () => {
+      setEditQty(({ [line.id]: _q, ...rest }) => rest);
+      setEditCost(({ [line.id]: _c, ...rest }) => rest);
+    };
+    if (quantity === undefined && estimatedCost === undefined) {
+      clearEdits();
+      return;
+    }
+    setLineSaveState((s) => ({ ...s, [line.id]: "saving" }));
+    try {
+      const res = await apiRequest("PATCH", `/api/purchase-drafts/${draftId}/items/${line.id}`, {
+        ...(quantity !== undefined ? { quantity } : {}),
+        ...(estimatedCost !== undefined ? { estimatedCost } : {}),
+      });
+      const body = (await res.json()) as { amendedAfterApproval?: boolean };
+      clearEdits();
+      setLineSaveState((s) => ({ ...s, [line.id]: "saved" }));
       invalidatePurchasingPipeline(queryClient);
-      toast({ title: "Line updated" });
-    },
-    onError: (e: Error) =>
-      toast({ title: "Line update failed", description: e.message, variant: "destructive" }),
-  });
+      if (body.amendedAfterApproval) {
+        toast({
+          title: "Approved order changed",
+          description: "Export the purchase order again and send the new copy to the supplier.",
+        });
+      }
+    } catch (e) {
+      setLineSaveState((s) => ({ ...s, [line.id]: "error" }));
+      throw e;
+    }
+  };
+
+  /** Saves a line when the user leaves its field or presses Enter. */
+  const commitLine = (draftId: string, line: DraftLine) => {
+    saveLine(draftId, line).catch((e: Error) =>
+      toast({ title: "Line not saved", description: e.message, variant: "destructive" }),
+    );
+  };
+
+  /** Saves every line with unsaved edits; rejects (and so blocks the caller) if any fail. */
+  const flushDirtyLines = async (d: DraftDetail) => {
+    for (const line of d.items) {
+      if (editQty[line.id] !== undefined || editCost[line.id] !== undefined) {
+        await saveLine(d.id, line);
+      }
+    }
+  };
 
   const exportCsv = (d: DraftDetail) => {
     const header = "SKU,Product,Qty,Est cost,Supplier SKU\n";
@@ -456,6 +560,7 @@ export default function PurchaseDraftsPage() {
                         size="sm"
                         onClick={() => {
                           setReceiveSupplierReference("");
+                          setOverDeliveryConfirmed(false);
                           setReceiveOpen(true);
                         }}
                       >
@@ -539,12 +644,20 @@ export default function PurchaseDraftsPage() {
                     )}
                   </div>
                 )}
+                {detail.status === "approved" && detail.linesEditable && canMutate && (
+                  <p className="text-xs rounded border border-amber-500/40 bg-amber-500/10 p-2">
+                    Nothing has been booked in yet, so you can still change quantities and costs.
+                    If you do, export the purchase order again and re-send it to the supplier.
+                  </p>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
                       <TableHead className="hidden sm:table-cell">SKU</TableHead>
                       <TableHead>Ordered</TableHead>
+                      <TableHead>Unit cost</TableHead>
+                      <TableHead className="hidden sm:table-cell">Line total</TableHead>
                       <TableHead>Received</TableHead>
                       <TableHead>Remaining</TableHead>
                     </TableRow>
@@ -552,53 +665,88 @@ export default function PurchaseDraftsPage() {
                   <TableBody>
                     {detail.items.map((line) => {
                       const rec = receiving?.items.find((i) => i.id === line.id);
-                      const canEditQty =
-                        canMutate && (detail.status === "draft" || detail.status === "reviewed");
+                      const canEditLine = canMutate && !!detail.linesEditable;
+                      const { unitCost, source } = lineUnitCost(line);
+                      const lineTotal = unitCost != null ? unitCost * line.quantity : null;
+                      const saveState = lineSaveState[line.id];
+                      const dirty = editQty[line.id] !== undefined || editCost[line.id] !== undefined;
+                      const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      };
                       return (
                         <TableRow key={line.id}>
-                          <TableCell>{line.productName}</TableCell>
+                          <TableCell>
+                            {line.productName}
+                            {canEditLine && (dirty || saveState) && (
+                              <span
+                                className={`block text-xs ${saveState === "error" ? "text-destructive" : "text-muted-foreground"}`}
+                                aria-live="polite"
+                              >
+                                {saveState === "saving"
+                                  ? "Saving…"
+                                  : saveState === "error"
+                                    ? "Not saved — check the value"
+                                    : dirty
+                                      ? "Unsaved"
+                                      : "Saved"}
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="hidden sm:table-cell">{line.sku}</TableCell>
                           <TableCell>
-                            {canEditQty ? (
-                              // Stacked, not side-by-side: inside a horizontally
-                              // scrolling table on a phone, a Save button next to
-                              // the input was often scrolled out of reach.
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                <Input
-                                  className="w-full sm:w-20"
-                                  value={editQty[line.id] ?? String(line.quantity)}
-                                  onChange={(e) =>
-                                    setEditQty({ ...editQty, [line.id]: e.target.value })
-                                  }
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    const raw = editQty[line.id] ?? String(line.quantity);
-                                    const parsed = parseQuantityInput(raw);
-                                    if (parsed === null) {
-                                      toast({
-                                        title: "Invalid quantity",
-                                        description:
-                                          "Enter a positive number with up to 3 decimal places.",
-                                        variant: "destructive",
-                                      });
-                                      return;
-                                    }
-                                    updateLine.mutate({
-                                      draftId: detail.id,
-                                      itemId: line.id,
-                                      quantity: parsed,
-                                    });
-                                  }}
-                                >
-                                  Save
-                                </Button>
-                              </div>
+                            {canEditLine ? (
+                              // Saves on leaving the field or pressing Enter; a
+                              // status change saves it too. There used to be a
+                              // separate Save button, and skipping it lost the edit.
+                              <Input
+                                className="w-full sm:w-24"
+                                inputMode="decimal"
+                                aria-label={`Quantity for ${line.productName}`}
+                                data-testid={`input-draft-qty-${line.id}`}
+                                value={editQty[line.id] ?? String(line.quantity)}
+                                onChange={(e) => {
+                                  setEditQty({ ...editQty, [line.id]: e.target.value });
+                                  setLineSaveState(({ [line.id]: _s, ...rest }) => rest);
+                                }}
+                                onBlur={() => commitLine(detail.id, line)}
+                                onKeyDown={onEnter}
+                              />
                             ) : (
                               line.quantity
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {canEditLine ? (
+                              <Input
+                                className="w-full sm:w-24"
+                                inputMode="decimal"
+                                aria-label={`Unit cost for ${line.productName}`}
+                                data-testid={`input-draft-cost-${line.id}`}
+                                placeholder={source === "product" && unitCost != null ? unitCost.toFixed(2) : "0.00"}
+                                value={editCost[line.id] ?? (line.estimatedCost ?? "")}
+                                onChange={(e) => {
+                                  setEditCost({ ...editCost, [line.id]: e.target.value });
+                                  setLineSaveState(({ [line.id]: _s, ...rest }) => rest);
+                                }}
+                                onBlur={() => commitLine(detail.id, line)}
+                                onKeyDown={onEnter}
+                              />
+                            ) : unitCost != null ? (
+                              money(unitCost)
+                            ) : (
+                              "—"
+                            )}
+                            {source === "product" && (
+                              <span className="block text-xs text-muted-foreground">from product card</span>
+                            )}
+                            {unitCost == null && (
+                              <span className="block text-xs text-amber-600 dark:text-amber-400">
+                                No cost on the product or supplier
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {lineTotal != null ? money(lineTotal) : "—"}
                           </TableCell>
                           <TableCell>{line.quantityReceived ?? rec?.alreadyReceived ?? 0}</TableCell>
                           <TableCell>
@@ -609,6 +757,24 @@ export default function PurchaseDraftsPage() {
                     })}
                   </TableBody>
                 </Table>
+                {(() => {
+                  const total = detail.items.reduce((sum, line) => {
+                    const { unitCost } = lineUnitCost(line);
+                    return unitCost != null ? sum + unitCost * line.quantity : sum;
+                  }, 0);
+                  const uncosted = detail.items.filter((line) => lineUnitCost(line).unitCost == null).length;
+                  return (
+                    <p className="text-sm font-medium" data-testid="text-draft-estimated-total">
+                      Estimated order total: {money(total)}
+                      {uncosted > 0 && (
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          ({uncosted} line{uncosted === 1 ? "" : "s"} without a cost)
+                        </span>
+                      )}
+                    </p>
+                  );
+                })()}
                 <p className="text-xs text-muted-foreground">
                   Approving does not place an order automatically — export a purchase order above to
                   send to the supplier yourself. Complete a goods receipt to increase stock.
@@ -659,7 +825,6 @@ export default function PurchaseDraftsPage() {
                         inputMode="decimal"
                         step="any"
                         min={0}
-                        max={item.remaining}
                         value={receiveQty[item.id]?.received ?? ""}
                         onChange={(e) =>
                           setReceiveQty({
@@ -695,8 +860,30 @@ export default function PurchaseDraftsPage() {
                 </div>
               ))}
             </div>
+            <OverDeliveryConfirm
+              lines={(receiving?.items ?? []).map((line) => ({
+                id: line.id,
+                productName: line.productName,
+                remaining: line.remaining,
+                received: receiveQty[line.id]?.received,
+              }))}
+              confirmed={overDeliveryConfirmed}
+              onConfirmedChange={setOverDeliveryConfirmed}
+            />
             <DialogFooter>
-              <Button onClick={() => createReceipt.mutate()} disabled={createReceipt.isPending}>
+              <Button
+                onClick={() => createReceipt.mutate()}
+                disabled={
+                  createReceipt.isPending ||
+                  (hasOverDelivery(
+                    (receiving?.items ?? []).map((line) => ({
+                      remaining: line.remaining,
+                      received: receiveQty[line.id]?.received,
+                    })),
+                  ) &&
+                    !overDeliveryConfirmed)
+                }
+              >
                 Create pending receipt
               </Button>
             </DialogFooter>

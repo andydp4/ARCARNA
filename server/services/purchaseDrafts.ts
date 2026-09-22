@@ -11,7 +11,8 @@ import {
   goodsReceipts,
   type PurchaseDraftStatus,
 } from "@shared/schema";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, ne, sql } from "drizzle-orm";
+import { canEditPurchaseLines, resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
 
 /**
  * Insert guards. Drizzle's `$inferInsert` makes any column with a database
@@ -253,12 +254,79 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       supplierSku: purchaseDraftItems.supplierSku,
       productName: products.name,
       sku: products.productId,
+      // Shown beside the line so a blank line cost is visibly "from the
+      // product card" rather than silently £0 on the purchase order.
+      productCostPrice: products.costPrice,
     })
     .from(purchaseDraftItems)
     .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
     .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
 
-  return { ...draft, items };
+  const activeReceiptCount = await countActiveReceipts(executor, orgId, id);
+
+  return {
+    ...draft,
+    items,
+    activeReceiptCount,
+    linesEditable: canEditPurchaseLines(draft.status, activeReceiptCount),
+  };
+}
+
+/**
+ * Receipts that still count against the order — pending or completed. A voided
+ * receipt is as if it never happened, so it does not lock the lines.
+ */
+async function countActiveReceipts(
+  executor: DbTx | typeof db,
+  orgId: string,
+  draftId: string,
+): Promise<number> {
+  const [row] = await executor
+    .select({ count: sql<number>`COUNT(*)::int`.as("count") })
+    .from(goodsReceipts)
+    .where(
+      and(
+        eq(goodsReceipts.purchaseDraftId, draftId),
+        eq(goodsReceipts.orgId, orgId),
+        ne(goodsReceipts.status, "voided"),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/**
+ * Fills in a unit cost for any line that arrived without one, from the product
+ * card. Callers (the replenishment screen) send the supplier-link cost when
+ * there is one; this is the fallback for when there is not, which is what used
+ * to produce £0.00 purchase orders.
+ */
+async function fillLineCostsFromProducts<T extends { productId: string; estimatedCost?: string | number | null }>(
+  executor: DbTx | typeof db,
+  orgId: string,
+  lines: T[],
+): Promise<T[]> {
+  const missing = [
+    ...new Set(
+      lines
+        .filter((l) => resolvePurchaseUnitCost({ lineCost: l.estimatedCost }).unitCost == null)
+        .map((l) => l.productId),
+    ),
+  ];
+  if (!missing.length) return lines;
+
+  const rows = await executor
+    .select({ id: products.id, costPrice: products.costPrice })
+    .from(products)
+    .where(and(inArray(products.id, missing), eq(products.orgId, orgId)));
+  const costById = new Map(rows.map((r) => [r.id, r.costPrice]));
+
+  return lines.map((l) => {
+    const { unitCost } = resolvePurchaseUnitCost({
+      lineCost: l.estimatedCost,
+      productCost: costById.get(l.productId),
+    });
+    return unitCost == null ? l : { ...l, estimatedCost: unitCost };
+  });
 }
 
 export async function listPurchaseDrafts(orgId: string, status?: string) {
@@ -360,6 +428,7 @@ export async function getPurchaseDraftForExport(orgId: string, id: string) {
       quantity: purchaseDraftItems.quantity,
       estimatedCost: purchaseDraftItems.estimatedCost,
       supplierSku: purchaseDraftItems.supplierSku,
+      productCostPrice: products.costPrice,
     })
     .from(purchaseDraftItems)
     .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
@@ -412,7 +481,9 @@ async function insertDraftWithItems(tx: DbTx, orgId: string, body: PurchaseDraft
   };
   const [draft] = await tx.insert(purchaseDrafts).values(draftValues).returning();
 
-  for (const line of body.items) {
+  const lines = await fillLineCostsFromProducts(tx, orgId, body.items);
+
+  for (const line of lines) {
     if (line.quantity <= 0) {
       throw new PurchaseDraftError("VALIDATION_ERROR", "Quantity must be positive");
     }
@@ -586,12 +657,14 @@ export async function addPurchaseDraftItem(
 
     await assertProductsBelongToOrg(tx, orgId, [line.productId]);
 
+    const [costed] = await fillLineCostsFromProducts(tx, orgId, [line]);
+
     const addedValues: PurchaseDraftItemInsert = {
       purchaseDraftId: draftId,
       orgId,
       productId: line.productId,
       quantity: line.quantity,
-      estimatedCost: line.estimatedCost != null ? String(line.estimatedCost) : null,
+      estimatedCost: costed.estimatedCost != null ? String(costed.estimatedCost) : null,
       supplierSku: line.supplierSku,
     };
     const [item] = await tx.insert(purchaseDraftItems).values(addedValues).returning();
@@ -615,46 +688,82 @@ export async function updatePurchaseDraftItem(
     supplierSku: string | null;
   }>,
 ) {
-  const draft = await loadDraftWithItems(orgId, draftId);
-  if (!draft) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
-  if (
-    draft.status === "cancelled" ||
-    draft.status === "approved" ||
-    draft.status === "partially_received" ||
-    draft.status === "fully_received"
-  ) {
-    throw new PurchaseDraftError("INVALID_STATUS", "Cannot modify items in this status");
-  }
+  return db.transaction(async (tx) => {
+    // Lock the draft so a status change can't slip in between the check below
+    // and the write.
+    const [locked] = await tx
+      .select({ id: purchaseDrafts.id, status: purchaseDrafts.status })
+      .from(purchaseDrafts)
+      .where(and(eq(purchaseDrafts.id, draftId), eq(purchaseDrafts.orgId, orgId)))
+      .for("update")
+      .limit(1);
+    if (!locked) throw new PurchaseDraftError("NOT_FOUND", "Purchase draft not found");
 
-  const [item] = await db
-    .update(purchaseDraftItems)
-    .set({
-      quantity: patch.quantity,
-      estimatedCost:
-        patch.estimatedCost !== undefined
-          ? patch.estimatedCost == null
-            ? null
-            : String(patch.estimatedCost)
-          : undefined,
-      supplierSku: patch.supplierSku,
-    })
-    .where(
-      and(
-        eq(purchaseDraftItems.id, itemId),
-        eq(purchaseDraftItems.purchaseDraftId, draftId),
-        eq(purchaseDraftItems.orgId, orgId),
-      ),
-    )
-    .returning();
+    const activeReceiptCount = await countActiveReceipts(tx, orgId, draftId);
+    if (!canEditPurchaseLines(locked.status, activeReceiptCount)) {
+      throw new PurchaseDraftError(
+        "INVALID_STATUS",
+        locked.status === "approved"
+          ? "Goods have already been booked in against this order, so its lines are locked. If the supplier sent more, accept the extra when receiving."
+          : "Cannot modify items in this status",
+      );
+    }
 
-  if (!item) throw new PurchaseDraftError("NOT_FOUND", "Line item not found");
+    const [before] = await tx
+      .select({
+        quantity: purchaseDraftItems.quantity,
+        estimatedCost: purchaseDraftItems.estimatedCost,
+      })
+      .from(purchaseDraftItems)
+      .where(
+        and(
+          eq(purchaseDraftItems.id, itemId),
+          eq(purchaseDraftItems.purchaseDraftId, draftId),
+          eq(purchaseDraftItems.orgId, orgId),
+        ),
+      )
+      .limit(1);
+    if (!before) throw new PurchaseDraftError("NOT_FOUND", "Line item not found");
 
-  await db
-    .update(purchaseDrafts)
-    .set({ updatedAt: new Date() })
-    .where(eq(purchaseDrafts.id, draftId));
+    const [item] = await tx
+      .update(purchaseDraftItems)
+      .set({
+        quantity: patch.quantity,
+        estimatedCost:
+          patch.estimatedCost !== undefined
+            ? patch.estimatedCost == null
+              ? null
+              : String(patch.estimatedCost)
+            : undefined,
+        supplierSku: patch.supplierSku,
+      })
+      .where(
+        and(
+          eq(purchaseDraftItems.id, itemId),
+          eq(purchaseDraftItems.purchaseDraftId, draftId),
+          eq(purchaseDraftItems.orgId, orgId),
+        ),
+      )
+      .returning();
 
-  return item;
+    if (!item) throw new PurchaseDraftError("NOT_FOUND", "Line item not found");
+
+    await tx
+      .update(purchaseDrafts)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(purchaseDrafts.id, draftId), eq(purchaseDrafts.orgId, orgId)));
+
+    return {
+      ...item,
+      /**
+       * True when an APPROVED order was changed. The PO may already be with
+       * the supplier, so the route writes an audit entry and the screen tells
+       * the user to re-send it.
+       */
+      amendedAfterApproval: locked.status === "approved",
+      previous: { quantity: before.quantity, estimatedCost: before.estimatedCost },
+    };
+  });
 }
 
 export async function deletePurchaseDraftItem(orgId: string, draftId: string, itemId: string) {

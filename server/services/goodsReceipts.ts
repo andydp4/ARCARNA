@@ -14,6 +14,7 @@ import { eq, and, desc, gte, lte, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { adjustProductLocationStock, StockError, stockErrorPayload } from "./productLocationStock";
 import { roundQuantity } from "@shared/quantity";
+import { overDeliveryExcess } from "@shared/purchasing/purchaseLines";
 
 export { StockError, stockErrorPayload };
 
@@ -231,6 +232,7 @@ async function validateReceiptLines(
   }[],
   excludeReceiptId?: string,
   tx: DbTx | typeof db = db,
+  opts: { allowOverDelivery?: boolean; overages?: OverDelivery[] } = {},
 ) {
   if (!lines.length) {
     throw new GoodsReceiptError("VALIDATION_ERROR", "At least one receipt line required");
@@ -304,6 +306,23 @@ async function validateReceiptLines(
     const pending = await pendingQtyForDraftItem(purchaseDraftItemId, excludeReceiptId, tx);
     const remaining = Math.max(0, roundQuantity(draftItem.quantity - already - pending));
 
+    if (want.quantity > remaining && opts.allowOverDelivery) {
+      opts.overages?.push({
+        purchaseDraftItemId,
+        ordered: draftItem.quantity,
+        alreadyReceived: already,
+        pendingOnOtherReceipts: pending,
+        requested: want.quantity,
+        excess: overDeliveryExcess({
+          ordered: draftItem.quantity,
+          alreadyReceived: already,
+          pendingOnOtherReceipts: pending,
+          requested: want.quantity,
+        }),
+      });
+      continue;
+    }
+
     if (want.quantity > remaining) {
       throw new GoodsReceiptError(
         "OVER_RECEIVE",
@@ -323,6 +342,24 @@ async function validateReceiptLines(
   return draft;
 }
 
+export type OverDelivery = {
+  purchaseDraftItemId: string;
+  ordered: number;
+  alreadyReceived: number;
+  pendingOnOtherReceipts: number;
+  requested: number;
+  excess: number;
+};
+
+/**
+ * `acceptOverDelivery` is the manager's explicit "yes, the supplier sent more
+ * than we ordered" (the route is MANAGER+ only). Without it an over-receipt is
+ * still refused with OVER_RECEIVE, whose details the screen uses to ask. With
+ * it, each over-delivered line's ordered quantity is raised to cover what
+ * arrived, inside the same transaction as the receipt, so completion's own
+ * OVER_RECEIVE re-check passes and the draft ends up recording what was really
+ * bought.
+ */
 export async function createGoodsReceipt(
   orgId: string,
   body: {
@@ -337,10 +374,44 @@ export async function createGoodsReceipt(
       notes?: string;
     }[];
   },
+  opts: { acceptOverDelivery?: boolean } = {},
 ) {
-  const draft = await validateReceiptLines(orgId, body.purchaseDraftId, body.items);
+  const overages: OverDelivery[] = [];
+  const draft = await validateReceiptLines(orgId, body.purchaseDraftId, body.items, undefined, db, {
+    allowOverDelivery: opts.acceptOverDelivery === true,
+    overages,
+  });
 
   const receiptId = await db.transaction(async (tx) => {
+    for (const over of overages) {
+      // Re-read under lock: the figures above were taken outside the
+      // transaction, and a concurrent receipt may have moved them.
+      const [line] = await tx
+        .select()
+        .from(purchaseDraftItems)
+        .where(
+          and(
+            eq(purchaseDraftItems.id, over.purchaseDraftItemId),
+            eq(purchaseDraftItems.orgId, orgId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!line) {
+        throw new GoodsReceiptError("LINE_NOT_FOUND", "Purchase draft line not found", {
+          purchaseDraftItemId: over.purchaseDraftItemId,
+        });
+      }
+      const pending = await pendingQtyForDraftItem(over.purchaseDraftItemId, undefined, tx);
+      const needed = roundQuantity((line.quantityReceived ?? 0) + pending + over.requested);
+      if (needed > line.quantity) {
+        await tx
+          .update(purchaseDraftItems)
+          .set({ quantity: needed })
+          .where(eq(purchaseDraftItems.id, line.id));
+      }
+    }
+
     const [receipt] = await tx
       .insert(goodsReceipts)
       .values({
@@ -374,7 +445,8 @@ export async function createGoodsReceipt(
     return receipt.id;
   });
 
-  return loadReceipt(orgId, receiptId!);
+  const receipt = await loadReceipt(orgId, receiptId!);
+  return receipt ? { ...receipt, overDelivery: overages } : receipt;
 }
 
 export async function completeGoodsReceipt(
