@@ -24,13 +24,15 @@ export interface OpsScheduledStripProps {
   lane: BoardLane;
   cards: LaneCard[];
   searchActive: boolean;
+  /** Start expanded (arriving from a Control Centre tile); still collapsible by hand. */
+  defaultOpen?: boolean;
   pendingIds: Set<string>;
   isAlertForOrder?: (orderId: string) => boolean;
   cardHandlers: StripCardHandlers;
 }
 
-function Strip({ testId, title, count, forceOpen, children }: { testId: string; title: string; count: number; forceOpen: boolean; children: ReactNode }) {
-  const [openedByHand, setOpenedByHand] = useState(false);
+function Strip({ testId, title, count, forceOpen, defaultOpen = false, children }: { testId: string; title: string; count: number; forceOpen: boolean; defaultOpen?: boolean; children: ReactNode }) {
+  const [openedByHand, setOpenedByHand] = useState(defaultOpen);
   const open = forceOpen || openedByHand;
   if (count === 0) return null;
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -50,9 +52,9 @@ function Strip({ testId, title, count, forceOpen, children }: { testId: string; 
   );
 }
 
-export function OpsScheduledStrip({ lane, cards, searchActive, pendingIds, isAlertForOrder, cardHandlers }: OpsScheduledStripProps) {
+export function OpsScheduledStrip({ lane, cards, searchActive, defaultOpen, pendingIds, isAlertForOrder, cardHandlers }: OpsScheduledStripProps) {
   return (
-    <Strip testId={`ops-scheduled-${lane}`} title="Scheduled" count={cards.length} forceOpen={searchActive}>
+    <Strip testId={`ops-scheduled-${lane}`} title="Scheduled" count={cards.length} forceOpen={searchActive} defaultOpen={defaultOpen}>
       {cards.map((card) => (
         <OpsCard
           key={card.order.id}

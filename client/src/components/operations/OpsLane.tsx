@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, PackageCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CardState, DerivedCardState } from "@shared/orders/opsState";
+import { isLiveLaneState, type CardState, type DerivedCardState } from "@shared/orders/opsState";
 import type { BoardLane, BoardOrder } from "@/lib/orderTypes";
 import { laneLabel } from "@/lib/orderTypes";
 import { OpsCard, type OpsCardProps } from "./OpsCard";
@@ -92,6 +92,8 @@ export interface OpsLaneProps extends StripCardHandlers {
    * or in yesterday's strip as in the live lane — so a search opens them.
    */
   searchActive: boolean;
+  /** Open the "Earlier days" and "Scheduled" strips (deep link from a Control Centre tile). */
+  expandStrips?: boolean;
   /** Ids whose own write is in flight. */
   pendingIds: Set<string>;
   /** N4a's alert stub always answers false; N5b makes it real (see `useOpsAlerts.ts`). */
@@ -146,18 +148,12 @@ export function OpsLane({
   cards,
   filtered,
   searchActive,
+  expandStrips = false,
   pendingIds,
   isAlertForOrder,
   ...cardHandlers
 }: OpsLaneProps) {
-  const live = sortLaneCards(
-    cards.filter(
-      (card) =>
-        card.derived.state !== "completed" &&
-        card.derived.state !== "carried-over" &&
-        card.derived.state !== "scheduled",
-    ),
-  );
+  const live = sortLaneCards(cards.filter((card) => isLiveLaneState(card.derived.state)));
   const carriedOver = cards.filter((card) => card.derived.state === "carried-over");
   const scheduled = cards.filter((card) => card.derived.state === "scheduled");
   const done = cards.filter((card) => card.derived.state === "completed");
@@ -231,6 +227,7 @@ export function OpsLane({
         lane={lane}
         cards={carriedOver}
         searchActive={searchActive}
+        defaultOpen={expandStrips}
         pendingIds={pendingIds}
         isAlertForOrder={isAlertForOrder}
         cardHandlers={cardHandlers}
@@ -240,6 +237,7 @@ export function OpsLane({
         lane={lane}
         cards={scheduled}
         searchActive={searchActive}
+        defaultOpen={expandStrips}
         pendingIds={pendingIds}
         isAlertForOrder={isAlertForOrder}
         cardHandlers={cardHandlers}

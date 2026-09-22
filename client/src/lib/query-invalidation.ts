@@ -46,7 +46,12 @@ export async function invalidateOperationalData(
   } = options ?? {};
 
   const tasks: Array<Promise<unknown>> = [];
-  if (includeOrders) tasks.push(invalidateEndpointFamily(queryClient, "/api/orders"));
+  if (includeOrders) {
+    tasks.push(invalidateEndpointFamily(queryClient, "/api/orders"));
+    // The Control Centre's order tiles are built from the same rows; without
+    // this a checkout, edit or delete left them stale until the 60s poll.
+    tasks.push(invalidateEndpointFamily(queryClient, "/api/control-centre"));
+  }
   if (includeProducts) tasks.push(invalidateEndpointFamily(queryClient, "/api/products"));
   if (includeInventory) tasks.push(invalidateEndpointFamily(queryClient, "/api/inventory"));
   if (includeInvoices) tasks.push(invalidateEndpointFamily(queryClient, "/api/invoices"));
@@ -76,6 +81,7 @@ export function invalidateAfterPosCheckout(queryClient: QueryClient) {
 export function invalidateAfterOrderStatusChange(queryClient: QueryClient) {
   return Promise.all([
     invalidateEndpointFamily(queryClient, "/api/orders"),
+    invalidateEndpointFamily(queryClient, "/api/control-centre"),
     invalidateEndpointFamily(queryClient, "/api/invoices"),
     invalidateEndpointFamily(queryClient, "/api/reports"),
   ]);

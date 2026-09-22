@@ -33,6 +33,21 @@ export const CARD_STATES = [
 
 export type CardState = (typeof CARD_STATES)[number];
 
+/**
+ * States a card can be in and still NOT count as live work in its lane: done,
+ * left over from an earlier trading day ("Earlier days" strip), or a
+ * pre-order for a later day ("Scheduled" strip).
+ *
+ * The one definition of "what the lane shows". The board's lane count and the
+ * Control Centre's "To collect" / "To deliver" tiles both read it — they used
+ * to disagree, because the tiles counted every open order from any day while
+ * the lane hid earlier-day and scheduled ones in collapsed strips, so the
+ * Control Centre could say "To collect 5" over a lane reading 0.
+ */
+export function isLiveLaneState(state: CardState): boolean {
+  return state !== "completed" && state !== "carried-over" && state !== "scheduled";
+}
+
 export type FulfilmentMethod = "collection" | "delivery";
 
 /** `dateKind` as stamped by shared/orders/orderDate.ts. */
