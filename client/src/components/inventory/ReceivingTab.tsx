@@ -28,7 +28,7 @@ import { Link } from "wouter";
 import { clearQueryParams, purchaseDraftLink, readQueryParam } from "@/lib/deepLink";
 import { PackageCheck, Eye } from "lucide-react";
 import { parseNonNegativeQuantityInput, parseQuantityInput } from "@shared/quantity";
-import { OverDeliveryConfirm, hasOverDelivery } from "@/components/inventory/OverDeliveryConfirm";
+import { OverDeliveryConfirm, overDeliveryState } from "@/components/inventory/OverDeliveryConfirm";
 
 type ReceiptListItem = {
   id: string;
@@ -83,7 +83,7 @@ export function ReceivingTab() {
   // The supplier's own invoice/delivery-note number — captured when goods are
   // actually received (ARC-019), never invented on the buyer's side.
   const [supplierReference, setSupplierReference] = useState("");
-  const [overDeliveryConfirmed, setOverDeliveryConfirmed] = useState(false);
+  const [overDeliveryKey, setOverDeliveryKey] = useState<string | null>(null);
 
   const queryKey =
     statusFilter === "all"
@@ -156,6 +156,14 @@ export function ReceivingTab() {
       toast({ title: "Void failed", description: e.message, variant: "destructive" }),
   });
 
+  const receiveLines = (receivingInfo?.items ?? []).map((line) => ({
+    id: line.id,
+    productName: line.productName,
+    remaining: line.remaining,
+    received: lineQty[line.id]?.received,
+  }));
+  const overDelivery = overDeliveryState(receiveLines, overDeliveryKey);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const items = (receivingInfo?.items ?? [])
@@ -176,7 +184,7 @@ export function ReceivingTab() {
         purchaseDraftId: createDraftId,
         supplierReference: supplierReference.trim() || undefined,
         items,
-        acceptOverDelivery: overDeliveryConfirmed || undefined,
+        acceptOverDeliveryLineIds: overDelivery.acceptLineIds.length ? overDelivery.acceptLineIds : undefined,
       });
     },
     onSuccess: async (res: Response) => {
@@ -185,7 +193,7 @@ export function ReceivingTab() {
       setCreateOpen(false);
       setCreateDraftId("");
       setSupplierReference("");
-      setOverDeliveryConfirmed(false);
+      setOverDeliveryKey(null);
       // Land on the new receipt — completing it is the next step in the flow.
       setDetailId(body.id);
       toast({
@@ -193,7 +201,16 @@ export function ReceivingTab() {
         description: `Receipt ${body.id.slice(0, 8)}… — complete it to increase stock.`,
       });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      // The outstanding figures this form was built from may be stale (another
+      // receipt, an amended order): refetch them and make the manager look
+      // again rather than just showing the server's refusal.
+      if (createDraftId) {
+        void queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${createDraftId}/receiving`] });
+      }
+      setOverDeliveryKey(null);
+      toast({ title: "Receipt not created", description: e.message, variant: "destructive" });
+    },
   });
 
   return (
@@ -219,6 +236,7 @@ export function ReceivingTab() {
               setCreateOpen(true);
               setLineQty({});
               setSupplierReference("");
+              setOverDeliveryKey(null);
             }}
           >
             <PackageCheck className="h-4 w-4 mr-1" />
@@ -370,7 +388,7 @@ export function ReceivingTab() {
                   onValueChange={(v) => {
                     setCreateDraftId(v);
                     setLineQty({});
-                    setOverDeliveryConfirmed(false);
+                    setOverDeliveryKey(null);
                   }}
                 >
                   <SelectTrigger>
@@ -448,28 +466,15 @@ export function ReceivingTab() {
             ))}
           </div>
           <OverDeliveryConfirm
-            lines={(receivingInfo?.items ?? []).map((line) => ({
-              id: line.id,
-              productName: line.productName,
-              remaining: line.remaining,
-              received: lineQty[line.id]?.received,
-            }))}
-            confirmed={overDeliveryConfirmed}
-            onConfirmedChange={setOverDeliveryConfirmed}
+            lines={receiveLines}
+            confirmedKey={overDeliveryKey}
+            onConfirmedKeyChange={setOverDeliveryKey}
           />
           <DialogFooter>
             <Button
               onClick={() => createMutation.mutate()}
               disabled={
-                !createDraftId ||
-                createMutation.isPending ||
-                (hasOverDelivery(
-                  (receivingInfo?.items ?? []).map((line) => ({
-                    remaining: line.remaining,
-                    received: lineQty[line.id]?.received,
-                  })),
-                ) &&
-                  !overDeliveryConfirmed)
+                !createDraftId || createMutation.isPending || overDelivery.blocked
               }
             >
               Create pending receipt

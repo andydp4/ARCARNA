@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import {
   listGoodsReceipts,
@@ -14,7 +14,7 @@ import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from
 import { nonNegativeQuantity, positiveQuantity } from "@shared/quantity";
 import { recordAdminAudit } from "../adminAudit";
 
-const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 
 const createSchema = z.object({
@@ -36,11 +36,12 @@ const createSchema = z.object({
     // was the only ceiling, so a payload could carry an unbounded array.
     .max(1000),
   /**
-   * The manager's confirmation that the supplier delivered more than was
-   * ordered. Without it an over-receipt is refused (409 OVER_RECEIVE) so the
-   * screen can ask first.
+   * The draft lines a manager confirmed the supplier over-delivered on.
+   * Stored on the receipt line and acted on only at completion (migration
+   * 070); any other line over what is outstanding is refused with 409
+   * OVER_RECEIVE so the screen can ask.
    */
-  acceptOverDelivery: z.boolean().optional(),
+  acceptOverDeliveryLineIds: z.array(z.string().uuid()).max(1000).optional(),
 });
 
 function sendError(res: any, err: unknown) {
@@ -57,7 +58,13 @@ function sendError(res: any, err: unknown) {
   return res.status(500).json(goodsReceiptErrorPayload(err));
 }
 
-export function registerGoodsReceiptRoutes(app: Express) {
+/**
+ * `scopedMiddleware` defaults to the real auth + org-context chain; tests pass
+ * a stand-in that sets req.user / req.orgContext, so role checks
+ * (`mutateRoles`) still run for real.
+ */
+export function registerGoodsReceiptRoutes(app: Express, scopedMiddleware: RequestHandler[] = defaultScoped) {
+  const scoped = scopedMiddleware;
   app.get("/api/goods-receipts", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
@@ -87,13 +94,15 @@ export function registerGoodsReceiptRoutes(app: Express) {
         });
       }
       const ctx = req.orgContext as { orgId: string; role: string };
-      const { acceptOverDelivery, ...body } = parsed.data;
-      const receipt = await createGoodsReceipt(ctx.orgId, body, { acceptOverDelivery });
+      const { acceptOverDeliveryLineIds, ...body } = parsed.data;
+      const receipt = await createGoodsReceipt(ctx.orgId, body, { acceptOverDeliveryLineIds });
       if (receipt?.overDelivery?.length) {
+        // Who confirmed it, and for how much. The order itself only changes
+        // at completion, which writes its own entry with the real figures.
         await recordAdminAudit(req, {
           actorUserId: req.user?.claims?.sub ?? "unknown",
           actorRole: ctx.role,
-          action: "goods_receipt.over_delivery_accepted",
+          action: "goods_receipt.over_delivery_confirmed",
           targetType: "purchase_draft",
           targetId: body.purchaseDraftId,
           orgId: ctx.orgId,
@@ -121,12 +130,24 @@ export function registerGoodsReceiptRoutes(app: Express) {
 
   app.post("/api/goods-receipts/:id/complete", ...scoped, mutateRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role: string };
       const result = await completeGoodsReceipt(
         ctx.orgId,
         req.params.id,
         req.user?.claims?.sub,
       );
+      if (result.overDeliveryRaised.length) {
+        // Figures read and written under the completion's own row locks.
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.claims?.sub ?? "unknown",
+          actorRole: ctx.role,
+          action: "goods_receipt.over_delivery_accepted",
+          targetType: "purchase_draft",
+          targetId: result.receipt?.purchaseDraftId ?? null,
+          orgId: ctx.orgId,
+          metadata: { receiptId: req.params.id, lines: result.overDeliveryRaised },
+        });
+      }
       res.json(result);
     } catch (e) {
       sendError(res, e);

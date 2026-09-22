@@ -794,6 +794,12 @@ export const goodsReceiptItems = pgTable(
       .notNull()
       .default(0),
     notes: varchar("notes", { length: 500 }),
+    /**
+     * A manager confirmed this line may exceed what was still outstanding on
+     * the order (migration 070). The ordered quantity is raised to match only
+     * when the receipt is completed — voiding it changes nothing.
+     */
+    overDeliveryAccepted: boolean("over_delivery_accepted").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [

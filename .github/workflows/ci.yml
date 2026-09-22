@@ -249,6 +249,12 @@ jobs:
     # is a separate decision with its own triage; this job runs the Operations
     # Centre suites and nothing else (brief finding G25).
     #
+    # Since added by name, each run locally against a seeded database first:
+    # controlCentreSnapshot (the To collect / board lane agreement),
+    # purchasingPipeline.integration (triaged and green — it covers the
+    # purchase-draft and over-delivery fixes, so leaving it skipped meant those
+    # fixes had no test in CI), purchasingRoutes, and uiSeen.
+    #
     # The files are written by later packages (N3b, N5a, N7). Absent ones are
     # skipped with a log line rather than failing, so this job is green from the
     # day it lands and each package simply starts contributing to it — nobody
@@ -314,7 +320,11 @@ jobs:
             server/__tests__/opsBoardQuery.test.ts \
             server/__tests__/opsAlertSweep.test.ts \
             server/__tests__/orderTimingReport.test.ts \
-            server/__tests__/opsBoardSuperAdminStaff.test.ts
+            server/__tests__/opsBoardSuperAdminStaff.test.ts \
+            server/__tests__/controlCentreSnapshot.test.ts \
+            server/__tests__/purchasingPipeline.integration.test.ts \
+            server/__tests__/purchasingRoutes.test.ts \
+            server/__tests__/uiSeen.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

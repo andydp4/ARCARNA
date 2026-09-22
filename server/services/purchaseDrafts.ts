@@ -9,6 +9,7 @@ import {
   products,
   PURCHASE_DRAFT_STATUSES,
   goodsReceipts,
+  productSuppliers,
   type PurchaseDraftStatus,
 } from "@shared/schema";
 import { eq, and, desc, inArray, ne, sql } from "drizzle-orm";
@@ -254,12 +255,15 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
       supplierSku: purchaseDraftItems.supplierSku,
       productName: products.name,
       sku: products.productId,
-      // Shown beside the line so a blank line cost is visibly "from the
-      // product card" rather than silently £0 on the purchase order.
+      // Shown beside the line so a blank line cost is visibly priced "from
+      // the supplier" or "from the product card" (in that order —
+      // resolvePurchaseUnitCost) rather than silently £0 on the purchase order.
+      supplierCostPrice: productSuppliers.costPrice,
       productCostPrice: products.costPrice,
     })
     .from(purchaseDraftItems)
     .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
+    .leftJoin(productSuppliers, supplierLinkFor(orgId, draft.supplierId))
     .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
 
   const activeReceiptCount = await countActiveReceipts(executor, orgId, id);
@@ -270,6 +274,15 @@ async function loadDraftWithItems(orgId: string, id: string, executor: DbTx | ty
     activeReceiptCount,
     linesEditable: canEditPurchaseLines(draft.status, activeReceiptCount),
   };
+}
+
+/** The draft supplier's own price link for each line's product (unique per org+product+supplier). */
+function supplierLinkFor(orgId: string, supplierId: string) {
+  return and(
+    eq(productSuppliers.productId, purchaseDraftItems.productId),
+    eq(productSuppliers.supplierId, supplierId),
+    eq(productSuppliers.orgId, orgId),
+  );
 }
 
 /**
@@ -401,6 +414,7 @@ export async function getPurchaseDraftForExport(orgId: string, id: string) {
       id: purchaseDrafts.id,
       status: purchaseDrafts.status,
       createdAt: purchaseDrafts.createdAt,
+      supplierId: purchaseDrafts.supplierId,
       supplierName: suppliers.name,
       supplierContactName: suppliers.contactName,
       supplierEmail: suppliers.email,
@@ -428,10 +442,12 @@ export async function getPurchaseDraftForExport(orgId: string, id: string) {
       quantity: purchaseDraftItems.quantity,
       estimatedCost: purchaseDraftItems.estimatedCost,
       supplierSku: purchaseDraftItems.supplierSku,
+      supplierCostPrice: productSuppliers.costPrice,
       productCostPrice: products.costPrice,
     })
     .from(purchaseDraftItems)
     .innerJoin(products, and(eq(purchaseDraftItems.productId, products.id), eq(products.orgId, orgId)))
+    .leftJoin(productSuppliers, supplierLinkFor(orgId, row.supplierId))
     .where(and(eq(purchaseDraftItems.purchaseDraftId, id), eq(purchaseDraftItems.orgId, orgId)));
 
   return { ...row, items };
@@ -713,6 +729,7 @@ export async function updatePurchaseDraftItem(
       .select({
         quantity: purchaseDraftItems.quantity,
         estimatedCost: purchaseDraftItems.estimatedCost,
+        supplierSku: purchaseDraftItems.supplierSku,
       })
       .from(purchaseDraftItems)
       .where(
@@ -761,7 +778,12 @@ export async function updatePurchaseDraftItem(
        * the user to re-send it.
        */
       amendedAfterApproval: locked.status === "approved",
-      previous: { quantity: before.quantity, estimatedCost: before.estimatedCost },
+      /** Whether anything actually differs — an autosave of an unchanged value is not an amendment. */
+      changed:
+        item.quantity !== before.quantity ||
+        costKey(item.estimatedCost) !== costKey(before.estimatedCost) ||
+        (item.supplierSku ?? null) !== (before.supplierSku ?? null),
+      previous: before,
     };
   });
 }
@@ -797,4 +819,9 @@ export async function deletePurchaseDraftItem(orgId: string, draftId: string, it
     .where(eq(purchaseDrafts.id, draftId));
 
   return item;
+}
+
+/** "0.50" and "0.5" are the same cost; null stays null. */
+function costKey(value: string | null | undefined): string | null {
+  return value == null ? null : Number(value).toFixed(2);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -31,7 +31,8 @@ import { Label } from "@/components/ui/label";
 import { DialogDescription } from "@/components/ui/dialog";
 import { parseNonNegativeQuantityInput, parseQuantityInput } from "@shared/quantity";
 import { resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
-import { OverDeliveryConfirm, hasOverDelivery } from "@/components/inventory/OverDeliveryConfirm";
+import { OverDeliveryConfirm, overDeliveryState } from "@/components/inventory/OverDeliveryConfirm";
+import { pendingLineChange, type SavedLine } from "@/lib/purchaseDraftEdits";
 
 type DraftListItem = {
   id: string;
@@ -54,6 +55,7 @@ type DraftDetail = DraftListItem & {
     quantityReceived?: number;
     estimatedCost?: string | null;
     supplierSku?: string | null;
+    supplierCostPrice?: string | null;
     productCostPrice?: string | null;
   }[];
   /** Pending or completed receipts — any one of them locks an approved order's lines. */
@@ -70,7 +72,11 @@ function money(n: number): string {
 
 /** Unit cost a line will be priced at on the PO, and where it comes from. */
 function lineUnitCost(line: DraftLine) {
-  return resolvePurchaseUnitCost({ lineCost: line.estimatedCost, productCost: line.productCostPrice });
+  return resolvePurchaseUnitCost({
+    lineCost: line.estimatedCost,
+    supplierCost: line.supplierCostPrice,
+    productCost: line.productCostPrice,
+  });
 }
 
 /** Provenance recorded when a draft is raised from a replenishment recommendation. */
@@ -156,7 +162,9 @@ export default function PurchaseDraftsPage() {
   const [editQty, setEditQty] = useState<Record<string, string>>({});
   const [editCost, setEditCost] = useState<Record<string, string>>({});
   const [lineSaveState, setLineSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
-  const [overDeliveryConfirmed, setOverDeliveryConfirmed] = useState(false);
+  /** Set when closing the draft could not save typed values — offers Discard or Keep editing. */
+  const [closeBlocked, setCloseBlocked] = useState<string | null>(null);
+  const [overDeliveryKey, setOverDeliveryKey] = useState<string | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveQty, setReceiveQty] = useState<Record<string, { received: string; damaged: string }>>({});
   // The supplier's own invoice/delivery-note number — captured when goods are
@@ -170,17 +178,13 @@ export default function PurchaseDraftsPage() {
     if (readQueryParam("draft")) clearQueryParams(["draft"]);
   }, []);
 
-  const closeDetail = () => {
-    setDetailId(null);
-    clearQueryParams(["draft"]);
-  };
-
   const { data: drafts = [], isLoading } = useQuery<DraftListItem[]>({
     queryKey: ["/api/purchase-drafts"],
   });
 
+  const detailKey = detailId ? [`/api/purchase-drafts/${detailId}`] : ["skip"];
   const { data: detail } = useQuery<DraftDetail>({
-    queryKey: detailId ? [`/api/purchase-drafts/${detailId}`] : ["skip"],
+    queryKey: detailKey,
     enabled: !!detailId,
   });
 
@@ -199,6 +203,181 @@ export default function PurchaseDraftsPage() {
     queryKey: detailId ? [`/api/purchase-drafts/${detailId}/receiving`] : ["skip"],
     enabled: !!detailId,
   });
+
+  // ---- Line editing -------------------------------------------------------
+  //
+  // Quantity and unit cost save when the field loses focus or Enter is
+  // pressed; a status change, an export, or closing the draft saves anything
+  // still typed first. Saves for one line run strictly one after another, and
+  // always read the LATEST typed value and the last value known to be saved
+  // (refs, not render-time closures), so:
+  //   - a value typed while an earlier save is in flight is kept, not wiped;
+  //   - a blur-save and an Approve click never double-send or race;
+  //   - nothing typed is ever silently dropped — the owner's original bug.
+  const editQtyRef = useRef(editQty);
+  editQtyRef.current = editQty;
+  const editCostRef = useRef(editCost);
+  editCostRef.current = editCost;
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
+  const savedRef = useRef(new Map<string, SavedLine>());
+  const saveChains = useRef(new Map<string, Promise<void>>());
+
+  const hasEdits = (lineId: string) =>
+    editQtyRef.current[lineId] !== undefined || editCostRef.current[lineId] !== undefined;
+  const anyEdits = () => Object.keys(editQtyRef.current).length + Object.keys(editCostRef.current).length > 0;
+
+  const discardEdits = useCallback(() => {
+    setEditQty({});
+    setEditCost({});
+    setLineSaveState({});
+    setCloseBlocked(null);
+  }, []);
+
+  // A different draft, or this one's lines becoming locked (goods booked in
+  // from another screen), makes any leftover typing meaningless: drop it
+  // rather than let it block the next status change with a doomed save.
+  useEffect(() => {
+    savedRef.current.clear();
+    discardEdits();
+  }, [detailId, discardEdits]);
+  useEffect(() => {
+    if (detail && !detail.linesEditable) discardEdits();
+  }, [detail?.linesEditable, discardEdits]);
+
+  const doSave = async (draftId: string, lineId: string) => {
+    const line = detailRef.current?.items.find((l) => l.id === lineId);
+    if (!line) return;
+    const qtyRaw = editQtyRef.current[lineId];
+    const costRaw = editCostRef.current[lineId];
+    const saved = savedRef.current.get(lineId) ?? { quantity: line.quantity, estimatedCost: line.estimatedCost };
+    const { quantity, estimatedCost, invalid } = pendingLineChange(saved, qtyRaw, costRaw);
+
+    // Only clear a field if it still holds what this save was working from.
+    const clearIfUnchanged = () => {
+      setEditQty((prev) => {
+        if (prev[lineId] !== qtyRaw) return prev;
+        const { [lineId]: _q, ...rest } = prev;
+        return rest;
+      });
+      setEditCost((prev) => {
+        if (prev[lineId] !== costRaw) return prev;
+        const { [lineId]: _c, ...rest } = prev;
+        return rest;
+      });
+    };
+
+    if (invalid) {
+      setLineSaveState((st) => ({ ...st, [lineId]: "error" }));
+      throw new Error(
+        invalid === "quantity"
+          ? `${line.productName}: enter a positive quantity with up to 3 decimal places.`
+          : `${line.productName}: enter a unit cost above £0 with up to 2 decimal places, or leave it blank to use the supplier or product-card price.`,
+      );
+    }
+    if (quantity === undefined && estimatedCost === undefined) {
+      clearIfUnchanged();
+      return;
+    }
+
+    setLineSaveState((st) => ({ ...st, [lineId]: "saving" }));
+    try {
+      const res = await apiRequest("PATCH", `/api/purchase-drafts/${draftId}/items/${lineId}`, {
+        ...(quantity !== undefined ? { quantity } : {}),
+        ...(estimatedCost !== undefined ? { estimatedCost } : {}),
+      });
+      const body = (await res.json()) as {
+        quantity: number;
+        estimatedCost: string | null;
+        amendedAfterApproval?: boolean;
+      };
+      savedRef.current.set(lineId, { quantity: body.quantity, estimatedCost: body.estimatedCost });
+      // Show the saved figures straight away rather than flicking back to the
+      // old ones until the refetch lands.
+      queryClient.setQueryData<DraftDetail>([`/api/purchase-drafts/${draftId}`], (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((l) =>
+                l.id === lineId ? { ...l, quantity: body.quantity, estimatedCost: body.estimatedCost } : l,
+              ),
+            }
+          : current,
+      );
+      clearIfUnchanged();
+      setLineSaveState((st) => ({ ...st, [lineId]: "saved" }));
+      invalidatePurchasingPipeline(queryClient);
+      if (body.amendedAfterApproval) {
+        toast({
+          title: "Approved order changed",
+          description: "Export the purchase order again and send the new copy to the supplier.",
+        });
+      }
+    } catch (e) {
+      setLineSaveState((st) => ({ ...st, [lineId]: "error" }));
+      throw e;
+    }
+  };
+
+  /** Queues a save for one line behind any save already running for it. */
+  const saveLine = (draftId: string, lineId: string): Promise<void> => {
+    const previous = saveChains.current.get(lineId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => doSave(draftId, lineId));
+    saveChains.current.set(lineId, next);
+    return next;
+  };
+
+  /** Saves a line when the user leaves its field or presses Enter. */
+  const commitLine = (draftId: string, lineId: string) => {
+    saveLine(draftId, lineId).catch((e: Error) =>
+      toast({ title: "Line not saved", description: e.message, variant: "destructive" }),
+    );
+  };
+
+  /**
+   * Waits for every save in flight and saves every line still holding typed
+   * values. Rejects — and so stops the caller — if any of them fail.
+   */
+  const flushDirtyLines = async (d: DraftDetail) => {
+    await Promise.all([...saveChains.current.values()].map((p) => p.catch(() => undefined)));
+    for (const line of d.items) {
+      if (hasEdits(line.id)) await saveLine(d.id, line.id);
+    }
+  };
+
+  /** Closing (Close, Escape, a tap outside) saves typed values first; if that fails, asks. */
+  const requestCloseDetail = async () => {
+    const d = detailRef.current;
+    if (d && d.linesEditable && anyEdits()) {
+      try {
+        await flushDirtyLines(d);
+      } catch (e) {
+        setCloseBlocked(e instanceof Error ? e.message : "Some changes could not be saved.");
+        return;
+      }
+    }
+    discardEdits();
+    setDetailId(null);
+    clearQueryParams(["draft"]);
+  };
+
+  const closeDetail = () => {
+    discardEdits();
+    setDetailId(null);
+    clearQueryParams(["draft"]);
+  };
+
+  /** The detail as it stands after any pending saves have landed in the cache. */
+  const latestDetail = (id: string) =>
+    queryClient.getQueryData<DraftDetail>([`/api/purchase-drafts/${id}`]) ?? detailRef.current;
+
+  const receiveLines = (receiving?.items ?? []).map((line) => ({
+    id: line.id,
+    productName: line.productName,
+    remaining: line.remaining,
+    received: receiveQty[line.id]?.received,
+  }));
+  const overDelivery = overDeliveryState(receiveLines, overDeliveryKey);
 
   const createReceipt = useMutation({
     mutationFn: async () => {
@@ -221,7 +400,7 @@ export default function PurchaseDraftsPage() {
         purchaseDraftId: detailId,
         supplierReference: receiveSupplierReference.trim() || undefined,
         items,
-        acceptOverDelivery: overDeliveryConfirmed || undefined,
+        acceptOverDeliveryLineIds: overDelivery.acceptLineIds.length ? overDelivery.acceptLineIds : undefined,
       });
     },
     onSuccess: async (res) => {
@@ -230,7 +409,7 @@ export default function PurchaseDraftsPage() {
       setReceiveOpen(false);
       setReceiveQty({});
       setReceiveSupplierReference("");
-      setOverDeliveryConfirmed(false);
+      setOverDeliveryKey(null);
       toast({
         title: "Pending receipt created",
         description: body ? (
@@ -245,16 +424,29 @@ export default function PurchaseDraftsPage() {
         ),
       });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      // The outstanding figures may be stale (another receipt, an amended
+      // order): refetch them and make the manager look again.
+      if (detailId) {
+        void queryClient.invalidateQueries({ queryKey: [`/api/purchase-drafts/${detailId}/receiving`] });
+      }
+      setOverDeliveryKey(null);
+      toast({ title: "Receipt not created", description: e.message, variant: "destructive" });
+    },
   });
 
   const statusMutation = useMutation({
     // Anything typed into a line but not yet saved goes first. Previously a
     // quantity only persisted via its own Save button, so typing 10000 and
     // pressing Approve discarded it silently and locked the order at the
-    // recommended quantity.
+    // recommended quantity. Cancelling (or lines that can no longer change)
+    // discards typing instead — there is nothing left to save it to.
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      if (detail && detail.id === id) await flushDirtyLines(detail);
+      const d = detailRef.current;
+      if (d && d.id === id) {
+        if (status === "cancelled" || !d.linesEditable) discardEdits();
+        else await flushDirtyLines(d);
+      }
       return apiRequest("PATCH", `/api/purchase-drafts/${id}/status`, { status });
     },
     onSuccess: () => {
@@ -276,99 +468,33 @@ export default function PurchaseDraftsPage() {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
-  /**
-   * The typed-but-unsaved changes on a line, parsed. `null` fields are
-   * unchanged; `invalid` means the user typed something that is not a number.
-   */
-  const pendingLineChange = (line: DraftLine) => {
-    const qtyRaw = editQty[line.id];
-    const costRaw = editCost[line.id];
-    let quantity: number | undefined;
-    let estimatedCost: number | null | undefined;
-    let invalid: "quantity" | "cost" | null = null;
-
-    if (qtyRaw !== undefined) {
-      const parsed = parseQuantityInput(qtyRaw);
-      if (parsed === null) invalid = "quantity";
-      else if (parsed !== line.quantity) quantity = parsed;
-    }
-    if (costRaw !== undefined) {
-      const trimmed = costRaw.trim().replace(/^£/, "");
-      const current = line.estimatedCost != null ? Number(line.estimatedCost) : null;
-      if (trimmed === "") {
-        if (current != null) estimatedCost = null;
-      } else {
-        const parsed = Number(trimmed);
-        if (!Number.isFinite(parsed) || parsed < 0) invalid = invalid ?? "cost";
-        else if (parsed !== current) estimatedCost = parsed;
-      }
-    }
-    return { quantity, estimatedCost, invalid };
-  };
-
-  const saveLine = async (draftId: string, line: DraftLine) => {
-    const { quantity, estimatedCost, invalid } = pendingLineChange(line);
-    if (invalid) {
-      setLineSaveState((s) => ({ ...s, [line.id]: "error" }));
-      throw new Error(
-        invalid === "quantity"
-          ? `${line.productName}: enter a positive quantity with up to 3 decimal places.`
-          : `${line.productName}: enter a unit cost of 0 or more, or leave it blank.`,
-      );
-    }
-    const clearEdits = () => {
-      setEditQty(({ [line.id]: _q, ...rest }) => rest);
-      setEditCost(({ [line.id]: _c, ...rest }) => rest);
-    };
-    if (quantity === undefined && estimatedCost === undefined) {
-      clearEdits();
-      return;
-    }
-    setLineSaveState((s) => ({ ...s, [line.id]: "saving" }));
+  /** Exports must carry what is on screen: save typed values first, or stop. */
+  const flushBeforeExport = async (d: DraftDetail): Promise<DraftDetail | null> => {
+    if (!d.linesEditable || !anyEdits()) return latestDetail(d.id) ?? d;
     try {
-      const res = await apiRequest("PATCH", `/api/purchase-drafts/${draftId}/items/${line.id}`, {
-        ...(quantity !== undefined ? { quantity } : {}),
-        ...(estimatedCost !== undefined ? { estimatedCost } : {}),
-      });
-      const body = (await res.json()) as { amendedAfterApproval?: boolean };
-      clearEdits();
-      setLineSaveState((s) => ({ ...s, [line.id]: "saved" }));
-      invalidatePurchasingPipeline(queryClient);
-      if (body.amendedAfterApproval) {
-        toast({
-          title: "Approved order changed",
-          description: "Export the purchase order again and send the new copy to the supplier.",
-        });
-      }
+      await flushDirtyLines(d);
+      return latestDetail(d.id) ?? d;
     } catch (e) {
-      setLineSaveState((s) => ({ ...s, [line.id]: "error" }));
-      throw e;
+      toast({
+        title: "Not exported",
+        description: `Fix the line that could not be saved first. ${e instanceof Error ? e.message : ""}`,
+        variant: "destructive",
+      });
+      return null;
     }
   };
 
-  /** Saves a line when the user leaves its field or presses Enter. */
-  const commitLine = (draftId: string, line: DraftLine) => {
-    saveLine(draftId, line).catch((e: Error) =>
-      toast({ title: "Line not saved", description: e.message, variant: "destructive" }),
-    );
-  };
-
-  /** Saves every line with unsaved edits; rejects (and so blocks the caller) if any fail. */
-  const flushDirtyLines = async (d: DraftDetail) => {
-    for (const line of d.items) {
-      if (editQty[line.id] !== undefined || editCost[line.id] !== undefined) {
-        await saveLine(d.id, line);
-      }
-    }
-  };
-
-  const exportCsv = (d: DraftDetail) => {
-    const header = "SKU,Product,Qty,Est cost,Supplier SKU\n";
+  const exportCsv = async (draft: DraftDetail) => {
+    const d = await flushBeforeExport(draft);
+    if (!d) return;
+    const header = "SKU,Product,Qty,Unit cost,Line total,Supplier SKU\n";
     const rows = d.items
-      .map(
-        (i) =>
-          `${i.sku},"${i.productName}",${i.quantity},${i.estimatedCost ?? ""},${i.supplierSku ?? ""}`,
-      )
+      .map((line) => {
+        const { unitCost } = lineUnitCost(line);
+        const cost = unitCost != null ? unitCost.toFixed(2) : "";
+        const total = unitCost != null ? (unitCost * line.quantity).toFixed(2) : "";
+        return `${line.sku},"${line.productName.replace(/"/g, '""')}",${line.quantity},${cost},${total},${line.supplierSku ?? ""}`;
+      })
       .join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -385,9 +511,11 @@ export default function PurchaseDraftsPage() {
    * and downloaded as a PDF. Distinct from `exportCsv` above, which is a bare
    * internal working list with no supplier identity on it at all.
    */
-  const exportPurchaseOrder = async (d: DraftDetail) => {
-    setExportingPoId(d.id);
+  const exportPurchaseOrder = async (draft: DraftDetail) => {
+    setExportingPoId(draft.id);
     try {
+      const d = await flushBeforeExport(draft);
+      if (!d) return;
       const res = await apiRequest("GET", `/api/purchase-drafts/${d.id}/export`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -513,7 +641,7 @@ export default function PurchaseDraftsPage() {
           </CardContent>
         </Card>
 
-        <Dialog open={!!detailId} onOpenChange={(open) => !open && closeDetail()}>
+        <Dialog open={!!detailId} onOpenChange={(open) => !open && void requestCloseDetail()}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Purchase draft</DialogTitle>
@@ -538,7 +666,7 @@ export default function PurchaseDraftsPage() {
                         {STATUS_ACTION_LABEL[s] ?? `Mark ${s}`}
                       </Button>
                     ))}
-                  <Button size="sm" variant="ghost" onClick={() => exportCsv(detail)}>
+                  <Button size="sm" variant="ghost" onClick={() => void exportCsv(detail)}>
                     <Download className="h-4 w-4 mr-1" />
                     CSV
                   </Button>
@@ -546,7 +674,7 @@ export default function PurchaseDraftsPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => exportPurchaseOrder(detail)}
+                      onClick={() => void exportPurchaseOrder(detail)}
                       disabled={exportingPoId === detail.id}
                       data-testid="button-export-po"
                     >
@@ -560,7 +688,7 @@ export default function PurchaseDraftsPage() {
                         size="sm"
                         onClick={() => {
                           setReceiveSupplierReference("");
-                          setOverDeliveryConfirmed(false);
+                          setOverDeliveryKey(null);
                           setReceiveOpen(true);
                         }}
                       >
@@ -644,6 +772,24 @@ export default function PurchaseDraftsPage() {
                     )}
                   </div>
                 )}
+                {closeBlocked && (
+                  <div
+                    className="rounded border border-destructive/50 bg-destructive/10 p-3 text-sm space-y-2"
+                    role="alert"
+                    data-testid="draft-close-blocked"
+                  >
+                    <p className="font-medium">Some changes have not been saved</p>
+                    <p className="text-muted-foreground">{closeBlocked}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setCloseBlocked(null)}>
+                        Keep editing
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={closeDetail}>
+                        Discard changes and close
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {detail.status === "approved" && detail.linesEditable && canMutate && (
                   <p className="text-xs rounded border border-amber-500/40 bg-amber-500/10 p-2">
                     Nothing has been booked in yet, so you can still change quantities and costs.
@@ -708,7 +854,7 @@ export default function PurchaseDraftsPage() {
                                   setEditQty({ ...editQty, [line.id]: e.target.value });
                                   setLineSaveState(({ [line.id]: _s, ...rest }) => rest);
                                 }}
-                                onBlur={() => commitLine(detail.id, line)}
+                                onBlur={() => commitLine(detail.id, line.id)}
                                 onKeyDown={onEnter}
                               />
                             ) : (
@@ -722,13 +868,13 @@ export default function PurchaseDraftsPage() {
                                 inputMode="decimal"
                                 aria-label={`Unit cost for ${line.productName}`}
                                 data-testid={`input-draft-cost-${line.id}`}
-                                placeholder={source === "product" && unitCost != null ? unitCost.toFixed(2) : "0.00"}
+                                placeholder={source !== "line" && unitCost != null ? unitCost.toFixed(2) : "0.00"}
                                 value={editCost[line.id] ?? (line.estimatedCost ?? "")}
                                 onChange={(e) => {
                                   setEditCost({ ...editCost, [line.id]: e.target.value });
                                   setLineSaveState(({ [line.id]: _s, ...rest }) => rest);
                                 }}
-                                onBlur={() => commitLine(detail.id, line)}
+                                onBlur={() => commitLine(detail.id, line.id)}
                                 onKeyDown={onEnter}
                               />
                             ) : unitCost != null ? (
@@ -736,8 +882,10 @@ export default function PurchaseDraftsPage() {
                             ) : (
                               "—"
                             )}
-                            {source === "product" && (
-                              <span className="block text-xs text-muted-foreground">from product card</span>
+                            {(source === "product" || source === "supplier") && (
+                              <span className="block text-xs text-muted-foreground">
+                                {source === "product" ? "from product card" : "supplier price"}
+                              </span>
                             )}
                             {unitCost == null && (
                               <span className="block text-xs text-amber-600 dark:text-amber-400">
@@ -782,7 +930,7 @@ export default function PurchaseDraftsPage() {
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDetailId(null)}>
+              <Button variant="outline" onClick={() => void requestCloseDetail()}>
                 Close
               </Button>
             </DialogFooter>
@@ -861,28 +1009,14 @@ export default function PurchaseDraftsPage() {
               ))}
             </div>
             <OverDeliveryConfirm
-              lines={(receiving?.items ?? []).map((line) => ({
-                id: line.id,
-                productName: line.productName,
-                remaining: line.remaining,
-                received: receiveQty[line.id]?.received,
-              }))}
-              confirmed={overDeliveryConfirmed}
-              onConfirmedChange={setOverDeliveryConfirmed}
+              lines={receiveLines}
+              confirmedKey={overDeliveryKey}
+              onConfirmedKeyChange={setOverDeliveryKey}
             />
             <DialogFooter>
               <Button
                 onClick={() => createReceipt.mutate()}
-                disabled={
-                  createReceipt.isPending ||
-                  (hasOverDelivery(
-                    (receiving?.items ?? []).map((line) => ({
-                      remaining: line.remaining,
-                      received: receiveQty[line.id]?.received,
-                    })),
-                  ) &&
-                    !overDeliveryConfirmed)
-                }
+                disabled={createReceipt.isPending || overDelivery.blocked}
               >
                 Create pending receipt
               </Button>
