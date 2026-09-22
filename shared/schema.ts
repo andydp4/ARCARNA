@@ -2239,6 +2239,24 @@ export const orgNotifications = pgTable(
 export type OrgNotification = typeof orgNotifications.$inferSelect;
 export type InsertOrgNotification = typeof orgNotifications.$inferInsert;
 
+/**
+ * One-time UI a person has already seen — What's New, tours, tutorials
+ * (migration 069). Per ACCOUNT rather than per browser, so it does not come
+ * back on another device. `key` is namespaced, e.g. "whatsNew:1.1.0" — see
+ * shared/uiSeen.ts. No FK to users: see the migration.
+ */
+export const userUiSeen = pgTable(
+  "user_ui_seen",
+  {
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    key: varchar("key", { length: 128 }).notNull(),
+    seenAt: timestamp("seen_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.key] })],
+);
+
+export type UserUiSeen = typeof userUiSeen.$inferSelect;
+
 // ==================== EVENT-DRIVEN SYNC SYSTEM ====================
 
 // Event types for the system

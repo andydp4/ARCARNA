@@ -5,6 +5,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { listSeenUiKeys } from "../services/uiSeen";
 import { isOnboardingComplete, parseOnboardingState } from "@shared/onboarding";
 import {
   insertLoyaltyTierSchema,
@@ -66,11 +67,22 @@ export function registerAuthRoutes(app: Express): void {
         }
       }
 
+      // Per-account "already seen" markers for What's New / tours. Never
+      // allowed to fail sign-in: if the table is missing (migration 069 not
+      // yet applied) the client falls back to its own per-device flag.
+      let seenUi: string[] = [];
+      try {
+        seenUi = await listSeenUiKeys(replitUserId);
+      } catch (e) {
+        console.warn("[auth] could not load seen UI markers:", e);
+      }
+
       res.json({
         ...user,
         role,
         orgId,
         orgName,
+        seenUi,
         isAllowed: req.user.isAllowed !== false,
         isPending: !!req.user.isPending,
         accessState,

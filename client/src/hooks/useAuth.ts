@@ -24,6 +24,8 @@ export interface AuthUser {
     authProvider?: string;
   };
   clerkTwoFactorEnabled?: boolean | null;
+  /** One-time UI this account has already seen (user_ui_seen); see useSeenOnce. */
+  seenUi?: string[];
 }
 
 /**

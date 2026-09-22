@@ -17,6 +17,7 @@ import { registerGoodsReceiptRoutes } from "./routes/goodsReceipts";
 import { registerFeatureFlagRoutes } from "./routes/featureFlags";
 import { registerHealthRoutes } from "./routes/health";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerUiSeenRoutes } from "./routes/uiSeen";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerProductRoutes } from "./routes/products";
 import { registerCustomerRoutes } from "./routes/customers";
@@ -60,6 +61,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await setupAuth(app);
 
   registerAuthRoutes(app);
+  registerUiSeenRoutes(app);
 
   const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
   const websiteCustomerScoped = [isAuthenticated, requireOrgContext, requireOrgScope];
