@@ -208,16 +208,30 @@ export async function acquireJob(workerId: string): Promise<typeof jobQueue.$inf
   const now = new Date();
   const staleTime = new Date(now.getTime() - 5 * 60 * 1000);
   
-  // Use FOR UPDATE SKIP LOCKED to prevent concurrent processing
+  // One statement, so the row lock taken by FOR UPDATE SKIP LOCKED is held
+  // until the job is marked running. This used to be a bare SELECT ... FOR
+  // UPDATE (autocommit: the lock ends with the statement) followed by a
+  // separate UPDATE, and runTick runs `concurrency` processJob calls at once —
+  // two of them could claim the same job in that gap and run its worker
+  // twice. That is how one sale earned a customer loyalty points twice.
   const jobs = await db.execute(sql`
-    SELECT job_id, event_id, worker_name, status, attempts, max_attempts, run_at, locked_at, locked_by, last_error, created_at, updated_at
-    FROM job_queue 
-    WHERE status = 'queued' 
-      AND run_at <= ${now}
-      AND (locked_at IS NULL OR locked_at < ${staleTime})
-    ORDER BY run_at ASC
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
+    UPDATE job_queue
+    SET status = 'running',
+        locked_at = ${now},
+        locked_by = ${workerId},
+        attempts = COALESCE(attempts, 0) + 1,
+        updated_at = ${now}
+    WHERE job_id = (
+      SELECT job_id
+      FROM job_queue
+      WHERE status = 'queued'
+        AND run_at <= ${now}
+        AND (locked_at IS NULL OR locked_at < ${staleTime})
+      ORDER BY run_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING job_id, event_id, worker_name, status, attempts, max_attempts, run_at, locked_at, locked_by, last_error, created_at, updated_at
   `);
 
   if (!jobs.rows || jobs.rows.length === 0) {
@@ -226,24 +240,12 @@ export async function acquireJob(workerId: string): Promise<typeof jobQueue.$inf
 
   const row = jobs.rows[0] as Record<string, unknown>;
 
-  // Lock the job
-  await db
-    .update(jobQueue)
-    .set({
-      status: 'running',
-      lockedAt: now,
-      lockedBy: workerId,
-      attempts: ((row.attempts as number) || 0) + 1,
-      updatedAt: now,
-    })
-    .where(eq(jobQueue.jobId, row.job_id as string));
-
   return {
     jobId: row.job_id as string,
     eventId: row.event_id as string,
     workerName: row.worker_name as string,
     status: 'running',
-    attempts: ((row.attempts as number) || 0) + 1,
+    attempts: row.attempts as number,
     maxAttempts: row.max_attempts as number,
     runAt: row.run_at as Date,
     lockedAt: now,

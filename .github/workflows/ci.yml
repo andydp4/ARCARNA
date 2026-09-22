@@ -253,7 +253,8 @@ jobs:
     # controlCentreSnapshot (the To collect / board lane agreement),
     # purchasingPipeline.integration (triaged and green — it covers the
     # purchase-draft and over-delivery fixes, so leaving it skipped meant those
-    # fixes had no test in CI), purchasingRoutes, and uiSeen.
+    # fixes had no test in CI), purchasingRoutes, uiSeen, and jobClaimRace (a
+    # job must run once; a loyalty earn must land once).
     #
     # The files are written by later packages (N3b, N5a, N7). Absent ones are
     # skipped with a log line rather than failing, so this job is green from the
@@ -324,7 +325,8 @@ jobs:
             server/__tests__/controlCentreSnapshot.test.ts \
             server/__tests__/purchasingPipeline.integration.test.ts \
             server/__tests__/purchasingRoutes.test.ts \
-            server/__tests__/uiSeen.test.ts
+            server/__tests__/uiSeen.test.ts \
+            server/__tests__/jobClaimRace.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")
