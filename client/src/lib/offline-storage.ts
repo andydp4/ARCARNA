@@ -1,8 +1,10 @@
 import {
   legacyOfflineDbNameForOrg,
   offlineDbNameForOrg,
+  OFFLINE_DB_PREFIX,
   OFFLINE_DB_PREFIX_LEGACY,
 } from "@shared/storageKeys";
+import type { QueuedSaleFields } from "./saleQueue";
 
 export { offlineDbNameForOrg, legacyOfflineDbNameForOrg };
 
@@ -199,7 +201,22 @@ export interface OfflineOrder {
   synced: number;
 }
 
-export interface QueuedMutation {
+/**
+ * Fired whenever the mutation queue changes, so the offline indicator and the
+ * sign-out guard can recount without polling IndexedDB.
+ */
+export const offlineQueueEvents: EventTarget =
+  typeof EventTarget !== "undefined" ? new EventTarget() : ({ addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true } as unknown as EventTarget);
+
+function queueChanged(): void {
+  try {
+    offlineQueueEvents.dispatchEvent(new Event("change"));
+  } catch {
+    /* no Event constructor (tests) */
+  }
+}
+
+export interface QueuedMutation extends QueuedSaleFields {
   id?: number;
   type: 'ORDER_CREATE' | 'ORDER_UPDATE' | 'ORDER_DELETE' | 'PRODUCT_UPDATE' | 'CUSTOMER_CREATE' | 'CUSTOMER_UPDATE' | 'EXPENSE_CREATE';
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -277,9 +294,96 @@ export async function replaceCacheStore(
   });
 }
 
+/** Unsent sales in one offline DB (any org), for the sign-out guard and the keep-on-wipe rule. */
+async function countUnsentSalesInDb(name: string): Promise<number> {
+  const db = await openOfflineDb(name);
+  try {
+    const queued = await getAllFromStore<QueuedMutation>(db, 'mutations-queue');
+    const legacy = await getAllFromStore<OfflineOrder>(db, 'offline-orders');
+    return (
+      queued.filter((m) => m.type === 'ORDER_CREATE' && m.synced === 0).length +
+      legacy.filter((o) => o.synced === 0).length
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/** Every offline DB name on this device, current and legacy. */
+export async function listOfflineDbNames(): Promise<string[]> {
+  const names = new Set<string>();
+  if (typeof indexedDB === "undefined") return [];
+  if (typeof indexedDB.databases === "function") {
+    for (const db of await indexedDB.databases()) {
+      const name = db.name;
+      if (
+        name?.startsWith(`${OFFLINE_DB_PREFIX_LEGACY}--`) ||
+        name?.startsWith(`${OFFLINE_DB_PREFIX}--`) ||
+        name === OFFLINE_DB_PREFIX_LEGACY ||
+        name === OFFLINE_DB_PREFIX
+      ) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
+
+/**
+ * Sales on this device that have not reached arcarna, across every org's
+ * offline DB — sign-out deletes all of them, so it must count all of them.
+ * An unreadable DB counts as holding one: the guard fails safe.
+ */
+export async function countUnsentSalesOnDevice(): Promise<number> {
+  let total = 0;
+  for (const name of await listOfflineDbNames()) {
+    if (!(await dbExists(name))) continue;
+    try {
+      total += await countUnsentSalesInDb(name);
+    } catch {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+/** Whether this DB holds unsent sales (so a wipe must keep its queue). Fails safe. */
+export async function dbHoldsUnsentSales(name: string): Promise<boolean> {
+  if (!(await dbExists(name))) return false;
+  try {
+    return (await countUnsentSalesInDb(name)) > 0;
+  } catch {
+    return true;
+  }
+}
+
+/** Empties a DB's product and customer caches, leaving its queues alone. */
+export async function clearOfflineCaches(name: string): Promise<void> {
+  const db = await openOfflineDb(name);
+  try {
+    const stores = CACHE_STORE_NAMES.filter((store) => db.objectStoreNames.contains(store));
+    if (stores.length === 0) return;
+    const tx = db.transaction(stores, 'readwrite');
+    for (const store of stores) tx.objectStore(store).clear();
+    await transactionDone(tx);
+  } finally {
+    db.close();
+  }
+}
+
 class OfflineStorage {
   private orgId: string | null = null;
+  private userId: string | null = null;
   private dbPromise: Promise<IDBDatabase> | null = null;
+
+  /** Who is signed in, so a queued sale is only ever sent in its own person's name. */
+  setActiveUser(userId: string | null): void {
+    this.userId = userId;
+  }
+
+  getActiveUserId(): string | null {
+    return this.userId;
+  }
 
   setActiveOrg(orgId: string | null): void {
     if (this.orgId === orgId) return;
@@ -425,22 +529,46 @@ class OfflineStorage {
     });
   }
 
-  async queueMutation(mutation: Omit<QueuedMutation, 'id' | 'timestamp' | 'synced'>): Promise<number> {
+  /** `timestamp` defaults to now; pass one to keep when the sale was really rung. */
+  async queueMutation(
+    mutation: Omit<QueuedMutation, 'id' | 'timestamp' | 'synced'> & { timestamp?: number },
+  ): Promise<number> {
     const db = await this.openDB();
     const tx = db.transaction('mutations-queue', 'readwrite');
     const store = tx.objectStore('mutations-queue');
 
     const queuedMutation: QueuedMutation = {
       ...mutation,
-      timestamp: Date.now(),
+      timestamp: mutation.timestamp ?? Date.now(),
       synced: 0
     };
 
-    return new Promise((resolve, reject) => {
+    const id = await new Promise<number>((resolve, reject) => {
       const request = store.add(queuedMutation);
       request.onsuccess = () => resolve(request.result as number);
       request.onerror = () => reject(request.error);
     });
+    queueChanged();
+    return id;
+  }
+
+  /** Merge fields into a queued mutation (retry schedule, refusal, reference). */
+  async updateMutation(id: number, patch: Partial<QueuedMutation>): Promise<void> {
+    const db = await this.openDB();
+    const tx = db.transaction('mutations-queue', 'readwrite');
+    const store = tx.objectStore('mutations-queue');
+    await new Promise<void>((resolve, reject) => {
+      const getRequest = store.get(id);
+      getRequest.onsuccess = () => {
+        const current = getRequest.result;
+        if (!current) return resolve();
+        const put = store.put({ ...current, ...patch, id });
+        put.onsuccess = () => resolve();
+        put.onerror = () => reject(put.error);
+      };
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+    queueChanged();
   }
 
   async getUnsyncedMutations(): Promise<QueuedMutation[]> {
@@ -509,11 +637,12 @@ class OfflineStorage {
     const tx = db.transaction('mutations-queue', 'readwrite');
     const store = tx.objectStore('mutations-queue');
 
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const request = store.delete(id);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
+    queueChanged();
   }
 
   async getPendingMutationsCount(): Promise<number> {

@@ -361,12 +361,15 @@ export type PosCartPanelProps = {
   promoCode: string;
   setPromoCode: (v: string) => void;
   appliedPromo: { name?: string } | null;
-  setAppliedPromo: (p: unknown) => void;
+  setAppliedPromo: (p: null) => void;
+  /** Why the applied promotion is not in the price (priceOrder refused it), or null. */
+  promoProblem?: string | null;
+  /** Why the points are not in the price, or null. */
+  pointsProblem?: string | null;
   validatePromoMutation: Pick<UseMutationResult<unknown, Error, string>, "mutate" | "isPending">;
   customerTier: {
     name?: string;
-    discountPercentage?: string | number;
-    pointsMultiplier?: number;
+    discountPercentage?: string | number | null;
   } | null;
   loyaltyDiscount: number;
   subtotal: number;
@@ -418,6 +421,8 @@ export function PosCartPanel({
   setPromoCode,
   appliedPromo,
   setAppliedPromo,
+  promoProblem = null,
+  pointsProblem = null,
   validatePromoMutation,
   customerTier,
   loyaltyDiscount,
@@ -506,7 +511,9 @@ export function PosCartPanel({
                 </Badge>
               </div>
               <div className="mt-1 text-xs text-metal-muted">
-                {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
+                {/* The tier's points multiplier is not shown: no sale has ever
+                    earned by it, and showing it promised points nobody got. */}
+                {Number(customerTier.discountPercentage ?? 0)}% discount
               </div>
               {tierProgress?.nextTier && (
                 <div className="mt-2">
@@ -610,7 +617,14 @@ export function PosCartPanel({
           </div>
           {appliedPromo && (
             <div className="mt-2 flex items-center justify-between lm-card-muted mt-2 flex items-center justify-between rounded-md p-2">
-              <span className="text-sm text-metal-warm-white">{appliedPromo.name}</span>
+              <span className="text-sm text-metal-warm-white">
+                {appliedPromo.name}
+                {promoProblem && (
+                  <span className="block text-xs pos-status-amber" data-testid="promo-problem">
+                    Not applied: {promoProblem}
+                  </span>
+                )}
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -653,16 +667,25 @@ export function PosCartPanel({
                 <span data-testid="promo-discount">-£{promoDiscountAmount.toFixed(2)}</span>
               </div>
             )}
+            {pointsProblem && (
+              <p className="text-xs pos-status-amber" data-testid="points-problem">
+                Points not applied: {pointsProblem}
+              </p>
+            )}
+            {/* No VAT line while the rate is 0 (owner Q1: not VAT registered). */}
+            {(taxRatePercent ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-metal-muted">VAT ({taxRatePercent}%)</span>
+                <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
+              </div>
+            )}
+            {/* After VAT (owner Q2): points are money off what the customer pays. */}
             {pointsRedemptionAmount > 0 && (
               <div className="pos-status-emerald flex justify-between">
                 <span>Points redeemed ({redeemPoints})</span>
                 <span data-testid="points-redemption">-£{pointsRedemptionAmount.toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-metal-muted">Tax{taxRatePercent != null ? ` (${taxRatePercent}%)` : ""}</span>
-              <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
-            </div>
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>

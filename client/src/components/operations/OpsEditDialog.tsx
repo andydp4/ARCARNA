@@ -40,7 +40,40 @@ interface EditLine {
   productId: string;
   productName: string;
   quantity: number;
-  unitPrice: number;
+  /**
+   * What is in the price box, as typed. Kept as text so an emptied box stays
+   * empty and blocks saving — it used to become £0 (`parseFloat("") || 0`)
+   * and save the line free.
+   */
+  priceText: string;
+}
+
+/** The price in the box, or null when it is empty or not a price. */
+function linePrice(line: EditLine): number | null {
+  const text = line.priceText.trim();
+  if (text === "") return null;
+  const n = Number(text);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** The server's price for the edit (POST /api/orders/:id/edit-preview). */
+interface EditPreview {
+  editable: boolean;
+  code?: string;
+  message?: string;
+  pricing?: {
+    subtotal: number;
+    tierDiscount: number;
+    promoDiscount: number;
+    pointsDiscount: number;
+    vatRate: number;
+    vatAmount: number;
+    total: number;
+  } | null;
+}
+
+function money(n: number): string {
+  return `£${n.toFixed(2)}`;
 }
 
 export interface OpsEditDialogProps {
@@ -68,7 +101,10 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
       if (existing >= 0) {
         return current.map((line, i) => (i === existing ? { ...line, quantity: line.quantity + 1 } : line));
       }
-      return [...current, { productId: product.id, productName: product.name, quantity: 1, unitPrice: posPrice(product) }];
+      return [
+        ...current,
+        { productId: product.id, productName: product.name, quantity: 1, priceText: String(posPrice(product)) },
+      ];
     });
   };
 
@@ -86,7 +122,7 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
             productId: line.productId,
             productName: line.productName,
             quantity: line.quantity,
-            unitPrice: parseFloat(line.unitPrice),
+            priceText: String(parseFloat(line.unitPrice)),
           })),
         );
       } catch (error) {
@@ -104,16 +140,35 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
     };
   }, [open, order, toast]);
 
+  const missingPrice = lines.find((line) => linePrice(line) === null) ?? null;
+  const payloadLines = missingPrice
+    ? null
+    : lines.map((line) => ({ productId: line.productId, quantity: line.quantity, unitPrice: linePrice(line) as number }));
+
+  // Subtotal, VAT and Total come from the server, priced exactly as the save
+  // will be: the org's VAT rate, the sale's own discounts kept. It also says
+  // up front when the order cannot be edited (paid in several parts, ...).
+  const preview = useQuery<EditPreview>({
+    queryKey: ["/api/orders", order?.id, "edit-preview", payloadLines],
+    enabled: open && !!order && !loading && lines.length > 0 && payloadLines !== null,
+    queryFn: async () => {
+      const response = await apiRequest("POST", `/api/orders/${order!.id}/edit-preview`, { lines: payloadLines });
+      return response.json();
+    },
+    staleTime: 0,
+  });
+  const refusal = preview.data && !preview.data.editable ? preview.data.message : null;
+  // A refused price (points worth more than the new total) or a failed
+  // preview (no VAT rate set) blocks saving, and says why.
+  const pricingProblem =
+    (preview.data?.editable && !preview.data.pricing ? preview.data.message : null) ??
+    (preview.error instanceof Error ? preview.error.message : null);
+
   const save = useMutation({
     mutationFn: async () => {
       if (!order) throw new Error("No order selected");
-      const response = await apiRequest("PUT", `/api/orders/${order.id}`, {
-        lines: lines.map((line) => ({
-          productId: line.productId,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-        })),
-      });
+      if (!payloadLines) throw new Error("Enter a price for every line.");
+      const response = await apiRequest("PUT", `/api/orders/${order.id}`, { lines: payloadLines });
       return response.json();
     },
     onSuccess: async (data: any) => {
@@ -126,7 +181,10 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
           duration: 8000,
         });
       } else {
-        toast({ title: "Order updated", description: "The lines have been saved." });
+        toast({
+          title: "Order updated",
+          description: data?.pricing ? `New total ${money(data.pricing.total)}.` : "The lines have been saved.",
+        });
       }
       onOpenChange(false);
     },
@@ -139,7 +197,8 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
     },
   });
 
-  const total = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const pricing = preview.data?.pricing ?? null;
+  const discounts = pricing ? pricing.tierDiscount + pricing.promoDiscount + pricing.pointsDiscount : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -202,23 +261,27 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
                       min="0"
                       step="0.01"
                       className="min-h-11"
-                      value={line.unitPrice}
+                      value={line.priceText}
+                      aria-invalid={linePrice(line) === null}
                       onChange={(event) =>
                         setLines((current) =>
                           current.map((existing, i) =>
-                            i === index
-                              ? { ...existing, unitPrice: parseFloat(event.target.value) || 0 }
-                              : existing,
+                            i === index ? { ...existing, priceText: event.target.value } : existing,
                           ),
                         )
                       }
                       data-testid={`input-edit-price-${index}`}
                     />
+                    {linePrice(line) === null && (
+                      <p className="text-xs text-destructive" data-testid={`text-edit-price-missing-${index}`}>
+                        Enter a price (0 if it is free).
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <p className="text-xs tabular-nums text-muted-foreground">
-                    Line total £{(line.quantity * line.unitPrice).toFixed(2)}
+                    Line total {linePrice(line) === null ? "—" : money(line.quantity * (linePrice(line) as number))}
                   </p>
                   <Button
                     size="touch"
@@ -243,11 +306,46 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
             </p>
           )}
 
+          {refusal && (
+            <p className="rounded-md border border-destructive/50 p-3 text-sm text-destructive" data-testid="text-edit-refused">
+              {refusal}
+            </p>
+          )}
+          {pricingProblem && (
+            <p className="rounded-md border border-destructive/50 p-3 text-sm text-destructive" data-testid="text-edit-pricing-problem">
+              {pricingProblem}
+            </p>
+          )}
+
           <Separator />
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-foreground">New total</span>
-            <span className="text-xl font-bold tabular-nums text-foreground">£{total.toFixed(2)}</span>
-          </div>
+          <dl className="space-y-1 text-sm" data-testid="edit-totals">
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Subtotal</dt>
+              <dd className="tabular-nums text-foreground" data-testid="text-edit-subtotal">
+                {pricing ? money(pricing.subtotal) : "—"}
+              </dd>
+            </div>
+            {pricing && discounts > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Discounts kept</dt>
+                <dd className="tabular-nums text-foreground" data-testid="text-edit-discounts">
+                  −{money(discounts)}
+                </dd>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">VAT{pricing ? ` (${pricing.vatRate}%)` : ""}</dt>
+              <dd className="tabular-nums text-foreground" data-testid="text-edit-vat">
+                {pricing ? money(pricing.vatAmount) : "—"}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <dt className="font-semibold text-foreground">Total</dt>
+              <dd className="text-xl font-bold tabular-nums text-foreground" data-testid="text-edit-total">
+                {pricing ? money(pricing.total) : "—"}
+              </dd>
+            </div>
+          </dl>
         </div>
 
         <DialogFooter>
@@ -257,7 +355,9 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
           <Button
             size="touch"
             onClick={() => save.mutate()}
-            disabled={save.isPending || lines.length === 0}
+            disabled={
+              save.isPending || lines.length === 0 || !payloadLines || !!refusal || !!pricingProblem || !pricing
+            }
             data-testid="button-save-edit"
           >
             {save.isPending ? (

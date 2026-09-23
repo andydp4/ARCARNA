@@ -31,7 +31,7 @@
  * omitted) is unchanged, because a standalone form's container is the
  * viewport.
  */
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -51,7 +51,18 @@ import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-typ
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
+import { PricingError, priceOrder, tierForPoints, type PricingPromotion, type PricingTier } from "@shared/pricing/priceOrder";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
+import { consumeSaleIssueDraft, readSaleIssuePayload, type SaleIssueDraft } from "@/lib/saleIssueDraft";
+import {
+  checkSaleLanded,
+  newClientOrderId,
+  referenceForAttempt,
+  saleFingerprint,
+  sendLeftSaleUncertain,
+  sendSale,
+  type SentSale,
+} from "@/lib/saleQueue";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
@@ -175,9 +186,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<any>(null);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-  const [customerTier, setCustomerTier] = useState<any>(null);
+  const [appliedPromo, setAppliedPromo] = useState<PricingPromotion | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
   const [redeemPanelOpen, setRedeemPanelOpen] = useState(false);
@@ -201,6 +210,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // least-loaded present station member → Unassigned); a specific id is the
   // inputter's explicit override, sent as `assignedUserId`.
   const [assigneeUserId, setAssigneeUserId] = useState("");
+  // The sale's reference (v1.2 Phase 1A), made when the sale starts and sent
+  // on every attempt at it — a retry after a timeout, a double tap, an offline
+  // replay — so the server records it once. A new one only once this sale has
+  // landed or been kept on the till; a refused attempt keeps it, because that
+  // attempt recorded nothing.
+  const [saleRef, setSaleRef] = useState<string>(() => newClientOrderId());
+  // What was last sent under saleRef, so a changed cart is never sent under a
+  // reference an earlier (possibly recorded) attempt already used.
+  const lastSentRef = useRef<SentSale | null>(null);
+  // A refused sale a manager opened from Needs attention to fix. It keeps the
+  // sale's own reference and is sent as a resend of that sale.
+  const [editingIssue, setEditingIssue] = useState<SaleIssueDraft | null>(null);
 
   const { data: currentShiftData } = useQuery<{
     shift: { id: string; status: string; locationId?: string } | null;
@@ -283,21 +304,75 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       matched.push({ product, quantity, customPrice: price, subtotal: price * quantity });
     }
     if (matched.length > 0) setCart(matched);
+    let customerPicked = false;
     if (draft.customerId) {
       const customer = customers.find((c) => c.id === draft.customerId);
-      if (customer) setSelectedCustomer(customer);
+      if (customer) {
+        setSelectedCustomer(customer);
+        customerPicked = true;
+      }
     }
+    const fromVoice = draft.source === "voice";
     // The order came in over WhatsApp regardless of whether every line matched.
-    setChannel("whatsapp");
+    // A voice draft is a till sale like any other.
+    if (!fromVoice) setChannel("whatsapp");
     setDraftConsumed(true);
+    const itemsPart =
+      matched.length > 0
+        ? `${matched.length} item(s) added at the till's prices${unmatched.length ? `; ${unmatched.length} not matched` : ""}.`
+        : "No catalogue products matched. Add items manually.";
+    const customerPart =
+      fromVoice && !customerPicked && draft.customerName ? ` Pick the customer for "${draft.customerName}".` : "";
+    const notePart = fromVoice && draft.note ? ` ${draft.note}.` : "";
     toast({
-      title: "WhatsApp draft loaded",
-      description:
-        matched.length > 0
-          ? `${matched.length} item(s) added${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
-          : "No catalogue products matched the message. Add items manually.",
+      title: fromVoice ? "Voice draft opened" : "WhatsApp draft loaded",
+      description: `${itemsPart}${customerPart}${notePart} Review before checkout.`,
     });
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
+
+  // Edit from Needs attention: put the refused sale back on the till.
+  const [issueDraftConsumed, setIssueDraftConsumed] = useState(false);
+  useEffect(() => {
+    if (issueDraftConsumed || productsLoading || customersLoading) return;
+    setIssueDraftConsumed(true);
+    const draft = consumeSaleIssueDraft();
+    if (!draft) return;
+    const sale = readSaleIssuePayload(draft.payload);
+    const matched: CartItem[] = [];
+    let unmatched = 0;
+    for (const line of sale.lines) {
+      const product = products.find((p) => p.id === line.productId) as PosProduct | undefined;
+      if (!product) {
+        unmatched += 1;
+        continue;
+      }
+      matched.push({ product, quantity: line.quantity, customPrice: line.unitPrice, subtotal: line.quantity * line.unitPrice });
+    }
+    setCart(matched);
+    const customer = sale.customerId ? customers.find((c) => c.id === sale.customerId) : undefined;
+    setSelectedCustomer(customer ?? null);
+    if (sale.paymentMethod && sale.paymentMethod !== "split") setPaymentMethod(sale.paymentMethod);
+    if (sale.payments && sale.payments.length > 1) {
+      setSplitPayment(true);
+      setTenderLegs(sale.payments.map((leg) => ({ method: leg.method, amount: leg.amount.toFixed(2) })));
+    }
+    setFulfilmentMethod(sale.fulfilmentMethod);
+    if (sale.channel === "pos" || sale.channel === "phone" || sale.channel === "whatsapp") setChannel(sale.channel);
+    if (sale.personalUseReason) setPersonalUseReason(sale.personalUseReason);
+    if (sale.orderDate) setOrderDate(sale.orderDate);
+    if (sale.expenses.length > 0) setOrderExpenses(sale.expenses);
+    setSaleRef(draft.clientOrderId);
+    setEditingIssue(draft);
+    const notes = [
+      unmatched ? `${unmatched} line(s) are no longer in the catalogue` : "",
+      sale.customerId && !customer ? "the customer was not found" : "",
+      sale.dropped.length ? `apply the ${sale.dropped.join(" and ")} again if still wanted` : "",
+    ].filter(Boolean);
+    toast({
+      title: "Editing a sale from Needs attention",
+      description: notes.length ? `Check it before taking payment: ${notes.join("; ")}.` : "Check it, then take payment.",
+    });
+  }, [issueDraftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
@@ -306,7 +381,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     queryKey: ["/api/settings"],
   });
 
-  const { data: loyaltyTiers = [] } = useQuery<any[]>({
+  const { data: loyaltyTiers = [] } = useQuery<Array<PricingTier & { color?: string | null }>>({
     queryKey: ["/api/loyalty-tiers"],
   });
 
@@ -381,76 +456,94 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
-      const queueOffline = async () => {
-        console.log('[POS] Queueing order mutation offline');
-        try {
-          await offlineStorage.queueMutation({
-            type: 'ORDER_CREATE',
-            method: 'POST',
-            endpoint: '/api/orders',
-            data: orderData,
-          });
-          console.log('[POS] Order mutation queued successfully');
-        } catch (queueError) {
-          console.error('[POS] Failed to queue mutation:', queueError);
-          throw queueError;
+      const fingerprint = saleFingerprint(orderData);
+      let ref = saleRef;
+      // A sale from Needs attention is always a resend of its own reference.
+      if (!editingIssue) {
+        const decided = await referenceForAttempt(saleRef, lastSentRef.current, fingerprint);
+        if (decided.kind === "landed") return { ...decided.body, earlierAttemptRecorded: true };
+        if (decided.kind === "unknown") {
+          throw new Error(
+            "arcarna could not confirm whether the first try of this sale was recorded, so the changed sale was not sent. Check the connection and try again.",
+          );
         }
-
-        return { offline: true, orderId: null };
+        if (decided.ref !== saleRef) {
+          ref = decided.ref;
+          setSaleRef(ref);
+        }
+      }
+      lastSentRef.current = { ref, fingerprint };
+      const payload = {
+        ...orderData,
+        clientOrderId: ref,
+        ...(editingIssue ? { saleIssueId: editingIssue.issueId, saleIssueMode: "edit" } : {}),
+      };
+      const keepOnTill = async (why: "offline" | "timeout") => {
+        // A manager's edit is a resend of a sale arcarna already holds on
+        // Needs attention; keeping a second copy here would only confuse.
+        if (editingIssue) {
+          throw new Error("No connection, so the edit was not sent. The sale is still on Needs attention — try again when you are back online.");
+        }
+        await offlineStorage.queueMutation({
+          type: 'ORDER_CREATE',
+          method: 'POST',
+          endpoint: '/api/orders',
+          data: payload,
+          clientOrderId: ref,
+          queuedByUserId: (authUser as { id?: string } | null)?.id,
+        });
+        return { offline: true, why, orderId: null };
       };
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+      if (!navigator.onLine) return keepOnTill("offline");
 
-        const response = await apiFetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData),
-          credentials: 'include',
-          signal: controller.signal
-        });
+      const outcome = await sendSale(payload);
+      if (outcome.ok) return outcome.body;
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const text = await response.text() || response.statusText;
-          if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
-            // A readable toast rather than the raw response body (which is
-            // what fell through to the generic `throw` below before N6).
-            let message = "An active cashier shift is required before taking sales.";
-            try {
-              const parsed = JSON.parse(text);
-              if (typeof parsed?.message === "string") message = parsed.message;
-            } catch {
-              /* the default message above already covers this */
-            }
-            throw new Error(message);
-          }
-          throw new Error(`${response.status}: ${text}`);
+      if (sendLeftSaleUncertain(outcome)) {
+        // No answer, or a 5xx that may have come after the commit. On a slow
+        // line the sale may well have been recorded, so ask before saying
+        // anything — the cashier should hear the truth. Keeping it would
+        // still be safe: the reference makes the replay a repeat.
+        if (navigator.onLine) {
+          const landed = await checkSaleLanded(ref);
+          if (landed.result === "landed") return { ...landed.body, landedAfterTimeout: true };
         }
-
-        return response.json();
-      } catch (error) {
-        const isNetworkError = !navigator.onLine ||
-          (error as Error).name === 'AbortError' ||
-          (error as Error).message.includes('Failed to fetch') ||
-          (error as Error).message.includes('NetworkError');
-
-        if (isNetworkError) {
-          return queueOffline();
+        if (outcome.status === null) {
+          return keepOnTill(navigator.onLine && outcome.timedOut ? "timeout" : "offline");
         }
-        throw error;
       }
+      throw new Error(outcome.message);
     },
     onSuccess: async (data: any) => {
       const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
       const hadNoDueTime = dueMinutes == null && !dueTime;
 
       if (data?.offline) {
+        // It used to say "You're offline" for every failure, including a
+        // server that was merely slow while the till was online.
         toast({
-          title: "Order Saved Offline",
-          description: "You're offline. Order will sync automatically when connection returns.",
+          title: "Sale saved on this till",
+          description:
+            data.why === "timeout"
+              ? "arcarna did not answer in time, so this sale is saved on this till and will be sent automatically. It will only be recorded once."
+              : "No connection. This sale is saved on this till and will be sent when the connection is back. It will only be recorded once.",
+        });
+      } else if (data?.earlierAttemptRecorded) {
+        // The first try landed after all; the changes made since were not sent.
+        const recordedTotal = Number(data?.order?.total);
+        toast({
+          title: "The first try of this sale was recorded",
+          description: `It was recorded${Number.isFinite(recordedTotal) ? ` at £${recordedTotal.toFixed(2)}` : ""}. The changes made after it were not sent — edit that order if the sale changed.`,
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else if (data?.duplicate || data?.landedAfterTimeout) {
+        toast({
+          title: "Order placed",
+          description: data?.landedAfterTimeout
+            ? "The connection was slow, but the sale reached arcarna."
+            : "This sale was already recorded, so nothing was added twice.",
         });
       } else if (data?.warnings && data.warnings.length > 0) {
         // Order was created but with stock warnings
@@ -488,8 +581,17 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         embedded?.onPlaced(createdOrderId);
       }
 
+      if (editingIssue) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues/summary"] });
+      }
+      setEditingIssue(null);
+      setSaleRef(newClientOrderId());
       setCart([]);
       setSelectedCustomer(null);
+      // One customer's promotion must not follow the next sale.
+      setAppliedPromo(null);
+      setPromoCode("");
       setView("build");
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
@@ -603,24 +705,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     void addProductByBarcode(code);
   });
 
-  // Update customer tier when customer is selected
-  useEffect(() => {
-    if (selectedCustomer && loyaltyTiers.length > 0) {
-      const sortedTiers = [...loyaltyTiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
-      const tier = sortedTiers.find((t: any) => selectedCustomer.loyaltyPoints >= t.pointsRequired);
-      setCustomerTier(tier);
-
-      // Calculate loyalty discount based on tier
-      if (tier) {
-        setLoyaltyDiscount(parseFloat(tier.discountPercentage || 0));
-      } else {
-        setLoyaltyDiscount(0);
-      }
-    } else {
-      setCustomerTier(null);
-      setLoyaltyDiscount(0);
-    }
-  }, [selectedCustomer, loyaltyTiers]);
+  // The customer's tier, by the same rule priceOrder() prices with.
+  const customerTier = useMemo(
+    () => (selectedCustomer ? tierForPoints(selectedCustomer.loyaltyPoints ?? 0, loyaltyTiers) : null),
+    [selectedCustomer, loyaltyTiers],
+  );
 
   useEffect(() => {
     setRedeemPoints(0);
@@ -661,22 +750,62 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setDueTime("");
   }, []);
 
-  // Calculate totals with discounts
-  const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
-  const promoDiscountAmount = appliedPromo ?
-    (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
-    : 0;
-  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
-  const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
   // Mirrors the server: organizations.default_tax_rate, surfaced as vatRate.
   const taxRatePercent =
     orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
-  const tax = +(discountedSubtotal * (taxRatePercent / 100)).toFixed(2);
-  const total = +(discountedSubtotal + tax).toFixed(2);
 
-  // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
-  const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
+  // One price (v1.2 Phase 1B): the same priceOrder() the server records the
+  // sale with, so the total shown here — offline too — is the total charged
+  // and every tender is checked against it. A promotion or points the rules
+  // refuse are left off and said why, rather than shown and then refused.
+  const { pricing, promoProblem, pointsProblemMessage } = useMemo(() => {
+    const lines = cart.map((item) => ({ quantity: item.quantity, unitPrice: item.customPrice }));
+    const base = {
+      lines,
+      taxRatePercent,
+      customer: selectedCustomer ? { loyaltyPoints: selectedCustomer.loyaltyPoints ?? 0 } : null,
+      tiers: loyaltyTiers,
+    };
+    const points =
+      redeemPoints > 0 && selectedCustomer
+        ? {
+            points: redeemPoints,
+            // The preview's own amount when settings have not loaded (offline, first run).
+            redemptionRate: loyaltySettings?.redemptionRate ?? pointsRedemptionAmount / redeemPoints,
+            minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 0,
+            balance: selectedCustomer.loyaltyPoints ?? 0,
+          }
+        : null;
+    let promoProblem: string | null = null;
+    let pointsProblemMessage: string | null = null;
+    const attempt = (promotion: typeof appliedPromo, pts: typeof points) =>
+      priceOrder({ ...base, promotion, points: pts });
+    try {
+      return { pricing: attempt(appliedPromo, points), promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+    }
+    // Drop the refused part and try again; a second refusal drops both.
+    try {
+      const pricing = promoProblem ? attempt(null, points) : attempt(appliedPromo, null);
+      return { pricing, promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+      return { pricing: attempt(null, null), promoProblem, pointsProblemMessage };
+    }
+  }, [cart, taxRatePercent, selectedCustomer, loyaltyTiers, appliedPromo, redeemPoints, loyaltySettings, pointsRedemptionAmount]);
+  const subtotal = pricing.subtotal;
+  const loyaltyDiscountAmount = pricing.tierDiscount;
+  const loyaltyDiscount = pricing.tier?.percent ?? 0;
+  const promoDiscountAmount = pricing.promoDiscount;
+  const tax = pricing.vatAmount;
+  const total = pricing.total;
+  // Earned on what is paid — the server's rule, not a tier multiplier it never applied.
+  const pointsEarned = pricing.pointsEarned;
 
   // What is still to be taken on a split payment. Negative means over-tendered.
   const splitRemaining =
@@ -916,8 +1045,16 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
     }
-    if (redeemPoints > 0) {
-      orderData.redeemPoints = redeemPoints;
+    // Only what the price above actually used, so the server prices the same
+    // sale; it re-checks everything inside the sale and refuses a mismatch.
+    if (pricing.pointsRedeemed > 0) {
+      orderData.redeemPoints = pricing.pointsRedeemed;
+    }
+    if (pricing.promotion && appliedPromo?.code) {
+      orderData.promoCode = appliedPromo.code;
+    }
+    if (paymentMethod !== "personal_use") {
+      orderData.expectedTotal = total;
     }
     orderData.sendEmailReceipt = emailReceipt && customerHasEmail(selectedCustomer);
 
@@ -958,6 +1095,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setPromoCode,
     appliedPromo: appliedPromo as { name?: string } | null,
     setAppliedPromo,
+    promoProblem,
+    pointsProblem: pointsProblemMessage,
     validatePromoMutation,
     customerTier: customerTier as PosCartPanelProps["customerTier"],
     loyaltyDiscount,
@@ -971,7 +1110,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     tierProgress,
     minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 100,
     redeemPoints,
-    pointsRedemptionAmount,
+    // What the price actually took off — 0 when the points were refused.
+    pointsRedemptionAmount: pricing.pointsDiscount,
     redeemPanelOpen,
     redeemInput,
     setRedeemInput,
@@ -1088,6 +1228,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   </p>
                 ) : null}
                 <MyShiftSummary />
+              </div>
+            )}
+            {editingIssue && (
+              <div
+                className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
+                style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+                data-testid="pos-editing-sale-issue"
+              >
+                <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
+                {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
+                their sale, when you take payment.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => {
+                    setEditingIssue(null);
+                    setSaleRef(newClientOrderId());
+                    setCart([]);
+                  }}
+                  data-testid="pos-editing-sale-issue-cancel"
+                >
+                  Stop editing
+                </button>
               </div>
             )}
 

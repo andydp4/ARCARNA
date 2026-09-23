@@ -34,7 +34,7 @@ function repo(overrides: Partial<WebsiteRepository> = {}): WebsiteRepository {
 function runtime(): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
-    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
     // N3a: the board's SLA fallback for a website order (finding G19).
     getOpsDueMinutes: vi.fn().mockResolvedValue(20),
     setOrderDuePromise: vi.fn().mockResolvedValue(undefined),
@@ -309,14 +309,13 @@ describe("public website order submission", () => {
       expect.objectContaining({ taxRatePercent: 5 }),
     );
 
-    // An org with no configured rate must send no key at all, so the engine
-    // applies its own default rather than being handed an undefined rate.
+    // v1.2 Phase 1B: an org with no configured rate is refused before
+    // anything is written, never priced at a fallback rate.
     const unset = runtime();
     unset.getOrgTaxRatePercent = vi.fn().mockResolvedValue(undefined);
-    await service.submitPublicOrder("org-1", order, unset);
-    expect(unset.engine.placeOrder).toHaveBeenCalledWith(
-      expect.not.objectContaining({ taxRatePercent: expect.anything() }),
-    );
+    await expect(service.submitPublicOrder("org-1", order, unset)).rejects.toMatchObject({ statusCode: 503 });
+    expect(unset.engine.placeOrder).not.toHaveBeenCalled();
+    expect(unset.engine.createCustomer).not.toHaveBeenCalled();
   });
 
   it("rejects unavailable products, stock shortages, and minimum order misses", () => {

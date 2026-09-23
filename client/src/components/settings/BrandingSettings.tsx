@@ -135,6 +135,9 @@ export function BrandingSettings() {
                   onChange={(e) => setForm({ ...form, invoiceStartNumber: Number(e.target.value) })}
                   className="min-h-[44px]"
                 />
+                <p className="text-xs text-muted-foreground">
+                  New invoices count up from here. A number already issued is never used again.
+                </p>
               </div>
             </div>
             <div className="space-y-2">
@@ -144,6 +147,10 @@ export function BrandingSettings() {
                 onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
                 className="min-h-[44px]"
               />
+              <p className="text-xs text-muted-foreground">
+                For example &quot;Net 30&quot;, &quot;14 days&quot; or &quot;Due on receipt&quot;. Each new invoice keeps
+                the terms and due date it was issued with.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Default tax rate (%)</Label>

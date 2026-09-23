@@ -2,6 +2,7 @@ import { eq, and, sql } from 'drizzle-orm'
 import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
+import type { PricedOrder } from '../../../../shared/pricing/priceOrder'
 
 /**
  * Columns an order insert must name explicitly.
@@ -64,7 +65,25 @@ export type OrderPersistenceCarrier = {
   locationId?: string | null;
   fulfilmentMethod?: "collection" | "delivery";
   channel?: "pos" | "web" | "api" | "whatsapp" | "phone";
+  pricing?: PricedOrder;
 };
+
+/** priceOrder()'s breakdown as order columns (migration 082). */
+function pricingColumns(p: PricedOrder | undefined) {
+  if (!p) return {};
+  return {
+    subtotal: String(p.subtotal),
+    tier_discount: String(p.tierDiscount),
+    tier_discount_percent: p.tier ? String(p.tier.percent) : null,
+    promotion_id: p.promotion?.id ?? null,
+    promo_code: p.promotion?.code ?? null,
+    promo_discount: String(p.promoDiscount),
+    points_redeemed: p.pointsRedeemed,
+    points_discount: String(p.pointsDiscount),
+    vat_rate: String(p.vatRate),
+    vat_amount: String(p.vatAmount),
+  };
+}
 
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
@@ -80,6 +99,8 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           payment_method: o.paymentMethod,
           status: o.status,
           channel: o.channel ?? 'pos',
+          // A manager edit re-prices the order: its breakdown moves with it.
+          ...pricingColumns((o as Order & OrderPersistenceCarrier).pricing),
         })
         .where(eq(s.orders.id, o.id as any))
       
@@ -113,6 +134,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         // value cannot hit the CHECK constraint and fail an otherwise good sale.
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
         channel: orderWithOrg.channel ?? "pos",
+        ...pricingColumns(orderWithOrg.pricing),
       };
       await getDb().insert(s.orders).values(values)
       // `?? null` to match the order row above. PlaceOrderInput marks orgId

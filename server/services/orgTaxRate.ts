@@ -28,3 +28,28 @@ export async function getOrgTaxRatePercent(
   const rate = Number(org.defaultTaxRate);
   return Number.isFinite(rate) ? rate : undefined;
 }
+
+/** What a person sees when the org has no VAT rate set (v1.2 Phase 1B). */
+export const ORG_VAT_RATE_MISSING_MESSAGE =
+  "Set your VAT rate in Settings before taking orders (0% if you are not VAT registered).";
+
+/**
+ * The org has no VAT rate set. Orders are refused rather than priced at a
+ * fallback: a guessed rate is exactly how the engine once charged 20% at a
+ * shop that was not VAT registered.
+ */
+export class OrgVatRateMissingError extends Error {
+  readonly statusCode = 422;
+  readonly code = "ORG_VAT_RATE_MISSING";
+  constructor() {
+    super(ORG_VAT_RATE_MISSING_MESSAGE);
+    this.name = "OrgVatRateMissingError";
+  }
+}
+
+/** The org's rate, or OrgVatRateMissingError. Every order path uses this. */
+export async function requireOrgTaxRatePercent(orgId: string | null | undefined): Promise<number> {
+  const rate = await getOrgTaxRatePercent(orgId);
+  if (rate === undefined || rate < 0 || rate > 100) throw new OrgVatRateMissingError();
+  return rate;
+}

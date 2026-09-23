@@ -1,23 +1,21 @@
 import type { Express, RequestHandler } from "express";
-import { storage } from "../storage";
 import { requireRole } from "../auth";
 import { rolesAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
-import {
-  buildCompanyInfo,
-  loadCompanyInfo,
-  loadOrgLogo,
-  type CompanyInfo as InvoiceCompany,
-} from "../services/companyBranding";
+import { loadCompanyInfo, type CompanyInfo as InvoiceCompany } from "../services/companyBranding";
 
 type InvoicePdfData = {
   invoiceNumber: string;
   createdAt: Date;
   dueDate: string;
   subtotal: number;
+  discount: number;
   tax: number;
+  vatRate: number;
+  pointsDiscount: number;
   total: number;
   status: string;
+  paymentTerms: string | null;
   paymentMethod: string | null;
   company: InvoiceCompany;
   customerName?: string;
@@ -28,111 +26,70 @@ type InvoicePdfData = {
 };
 
 /**
- * Loads everything needed to render an invoice PDF, scoped to the caller's org.
- * Accepts either a real `invoices.id` or (for orders whose invoice record
- * hasn't been created by the async InvoiceWorker yet) an `orders.id` — in
- * that case the data is synthesized from the order directly using the org's
- * configured tax rate, matching storage.getInvoicesWithDetails.
+ * Everything an invoice PDF needs, scoped to the caller's org. Accepts an
+ * invoice id or an order id (the order screen's "Invoice" button). Which
+ * invoice an order has, and its status, come from server/services/invoices.ts
+ * (v1.2 Phase 1C). A plain till sale with no invoice is `receiptOnly`.
  */
-async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise<InvoicePdfData | null> {
-  const { invoices, orders, orderItems, customers, products, organizations } = await import("@shared/schema");
+async function loadInvoiceForPdf(
+  orgId: string,
+  id: string,
+): Promise<InvoicePdfData | { receiptOnly: true } | null> {
+  const { orderItems, customers, products } = await import("@shared/schema");
   const { eq } = await import("drizzle-orm");
   const { db } = await import("../db");
+  const { loadInvoiceDocument } = await import("../services/invoices");
+  const { INVOICE_STATUS_LABELS } = await import("@shared/invoices/invoiceRules");
 
-  const loadItems = async (orderId: string) =>
-    db
-      .select({
-        quantity: orderItems.quantity,
-        unitPrice: orderItems.unitPrice,
-        totalPrice: orderItems.totalPrice,
-        productName: products.name,
-      })
-      .from(orderItems)
-      .leftJoin(products, eq(orderItems.productId, products.id))
-      .where(eq(orderItems.orderId, orderId));
+  const loaded = await loadInvoiceDocument(orgId, id);
+  if (!loaded || "receiptOnly" in loaded) return loaded;
+  const doc = loaded.document;
 
-  const toItems = (rows: Awaited<ReturnType<typeof loadItems>>, fallbackTotal: number) =>
-    rows.length > 0
-      ? rows.map((item) => ({
+  const itemRows = await db
+    .select({
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      totalPrice: orderItems.totalPrice,
+      productName: products.name,
+    })
+    .from(orderItems)
+    .leftJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(orderItems.orderId, doc.orderId));
+  const items =
+    itemRows.length > 0
+      ? itemRows.map((item) => ({
           name: item.productName || "Item",
           quantity: item.quantity,
           unitPrice: parseFloat(String(item.unitPrice ?? "0")),
           total: parseFloat(String(item.totalPrice ?? "0")),
         }))
-      : [{ name: "Order total", quantity: 1, unitPrice: fallbackTotal, total: fallbackTotal }];
+      : [{ name: "Order total", quantity: 1, unitPrice: doc.total, total: doc.total }];
 
-  const loadCompany = (companyOrgId: string | null): Promise<InvoiceCompany> =>
-    loadCompanyInfo(companyOrgId);
-
-  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
-  if (invoice?.orderId) {
-    const [order] = await db.select().from(orders).where(eq(orders.id, invoice.orderId)).limit(1);
-    if (!order || (orgId && order.orgId !== orgId)) return null;
-
-    const [customer] = invoice.customerId
-      ? await db.select().from(customers).where(eq(customers.id, invoice.customerId)).limit(1)
-      : [null];
-    const total = parseFloat(invoice.total || "0");
-
-    return {
-      invoiceNumber: invoice.invoiceNumber,
-      createdAt: invoice.createdAt ?? new Date(),
-      dueDate: invoice.dueDate || "",
-      subtotal: parseFloat(invoice.subtotal || "0"),
-      tax: parseFloat(String(invoice.tax ?? "0")),
-      total,
-      status: invoice.status || "sent",
-      paymentMethod: order.paymentMethod,
-      company: await loadCompany(order.orgId),
-      customerName: customer?.name || undefined,
-      customerEmail: customer?.email || undefined,
-      customerPhone: customer?.phone || undefined,
-      customerAddress: customer?.address || undefined,
-      items: toItems(await loadItems(invoice.orderId), total),
-    };
-  }
-
-  // No invoice record yet (e.g. InvoiceWorker hasn't processed this order's
-  // event) — synthesize directly from the order so "View PDF" still works.
-  const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
-  if (!order || (orgId && order.orgId !== orgId)) return null;
-
-  const [customer] = order.customerId
-    ? await db.select().from(customers).where(eq(customers.id, order.customerId)).limit(1)
+  const [customer] = doc.customerId
+    ? await db.select().from(customers).where(eq(customers.id, doc.customerId)).limit(1)
     : [null];
 
-  const company = await loadCompany(order.orgId);
-  let taxRate = 0.2;
-  if (order.orgId) {
-    const [org] = await db
-      .select({ defaultTaxRate: organizations.defaultTaxRate })
-      .from(organizations)
-      .where(eq(organizations.id, order.orgId))
-      .limit(1);
-    if (org?.defaultTaxRate != null) taxRate = parseFloat(String(org.defaultTaxRate)) / 100;
-  }
-
-  const total = parseFloat(order.total);
-  const subtotal = total / (1 + taxRate);
-  const createdAt = order.createdAt ?? new Date();
-  const dueDate = new Date(createdAt);
-  dueDate.setDate(dueDate.getDate() + 30);
-
   return {
-    invoiceNumber: `INV-${createdAt.getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`,
-    createdAt,
-    dueDate: dueDate.toISOString().slice(0, 10),
-    subtotal,
-    tax: total - subtotal,
-    total,
-    status: order.status === "completed" ? "paid" : "pending",
-    paymentMethod: order.paymentMethod,
-    company,
-    customerName: customer?.name || undefined,
+    invoiceNumber: doc.invoiceNumber,
+    createdAt: doc.createdAt,
+    dueDate: doc.dueDate,
+    subtotal: doc.subtotal,
+    discount: doc.discount,
+    tax: doc.tax,
+    pointsDiscount: doc.pointsDiscount,
+    vatRate: doc.vatRate,
+    total: doc.total,
+    status: INVOICE_STATUS_LABELS[doc.status],
+    paymentTerms: doc.paymentTerms,
+    paymentMethod: doc.paymentMethod,
+    company: await loadCompanyInfo(orgId),
+    // Made out to the name the invoice was issued to, not whatever the
+    // customer record says today.
+    customerName: doc.billingName || customer?.name || undefined,
     customerEmail: customer?.email || undefined,
     customerPhone: customer?.phone || undefined,
     customerAddress: customer?.address || undefined,
-    items: toItems(await loadItems(order.id), total),
+    items,
   };
 }
 
@@ -144,11 +101,29 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
   app.get("/api/invoices", ...scoped, invoiceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const invoices = await storage.getInvoicesWithDetails(ctx.orgId);
-      res.json(invoices);
+      const { listInvoices } = await import("../services/invoices");
+      res.json(await listInvoices(ctx.orgId));
     } catch (error) {
       console.error("Error fetching invoices:", error);
       res.status(500).json({ message: "Failed to fetch invoices" });
+    }
+  });
+
+  // A customer asked for an invoice for a sale (v1.2 Phase 1C): a till sale
+  // gets a receipt unless they do. Issues the next number once; asking again
+  // returns the same invoice.
+  app.post("/api/invoices/for-order/:orderId", ...scoped, invoiceRoles, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
+      const { issueInvoiceOnRequest } = await import("../services/invoices");
+      const invoice = await issueInvoiceOnRequest(ctx.orgId, req.params.orderId);
+      res.status(201).json({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, dueDate: invoice.dueDate });
+    } catch (error) {
+      const err = error as { status?: number; code?: string; message?: string };
+      if (err?.status && err.code) return res.status(err.status).json({ message: err.message, code: err.code });
+      console.error("Error issuing invoice:", error);
+      res.status(500).json({ message: "Failed to issue the invoice" });
     }
   });
 
@@ -157,9 +132,16 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
   app.get("/api/invoices/:id/pdf", ...scoped, invoiceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const data = await loadInvoiceForPdf(ctx?.orgId, req.params.id);
+      if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
+      const data = await loadInvoiceForPdf(ctx.orgId, req.params.id);
       if (!data) {
         return res.status(404).json({ message: "Invoice not found" });
+      }
+      if ("receiptOnly" in data) {
+        return res.status(404).json({
+          message: "This sale has a receipt, not an invoice. Issue an invoice if the customer asks for one.",
+          code: "INVOICE_NOT_ISSUED",
+        });
       }
 
       const { generateInvoicePdf } = await import("../services/pdfGenerator");
@@ -174,9 +156,13 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         customerAddress: data.customerAddress,
         items: data.items,
         subtotal: data.subtotal,
+        discount: data.discount,
         tax: data.tax,
+        pointsDiscount: data.pointsDiscount,
+        vatRate: data.vatRate,
         total: data.total,
         status: data.status,
+        paymentTerms: data.paymentTerms || undefined,
         paymentMethod: data.paymentMethod || undefined,
       });
 

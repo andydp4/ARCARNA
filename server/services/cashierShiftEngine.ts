@@ -23,8 +23,10 @@ import {
   buildCashierShiftBalanceSheet,
   allocateGlobalExpenseShare,
   dailyOverheadTotal,
+  isPersonalUse,
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
+import { storedDiscountTotal } from "@shared/pricing/priceOrder";
 
 export class CashierShiftError extends Error {
   status: number;
@@ -92,6 +94,9 @@ type ShiftOrderRow = {
   completedUserId: string | null;
   inputUserId: string | null;
   excludeFromCommission: boolean;
+  tierDiscount: string | null;
+  promoDiscount: string | null;
+  pointsDiscount: string | null;
 };
 
 /**
@@ -117,6 +122,9 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       completedUserId: orders.completedUserId,
       inputUserId: orders.inputUserId,
       excludeFromCommission: orders.excludeFromCommission,
+      tierDiscount: orders.tierDiscount,
+      promoDiscount: orders.promoDiscount,
+      pointsDiscount: orders.pointsDiscount,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -381,7 +389,11 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     orderExpensesTotal,
     globalExpenseAllocation,
     refundRows.map((r) => ({ total: parseFloat(String(r.total)) })),
-    0,
+    // Discounts given on this shift's sales (v1.2 Phase 1B) — reported, not
+    // subtracted again; personal use is not a sale and gives none.
+    orderRows
+      .filter((o) => !isPersonalUse(o.paymentMethod))
+      .reduce((sum, o) => sum + storedDiscountTotal(o), 0),
     commissionRate,
   );
 

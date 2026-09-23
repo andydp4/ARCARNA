@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPaymentLabel } from "@/lib/paymentLabel";
+import { INVOICE_STATUS_LABELS, type InvoiceStatus } from "@shared/invoices/invoiceRules";
 
 export interface InvoiceListItem {
   id: string;
@@ -35,19 +36,22 @@ export interface InvoiceListItem {
   date: string;
   dueDate: string;
   total: number;
-  status: "paid" | "pending" | "overdue" | "cancelled";
+  /** Still to pay, under the same rule as the status. */
+  amountDue: number;
+  status: InvoiceStatus;
   paymentMethod: string;
 }
 
-function InvoiceStatusBadge({ status }: { status: string }) {
-  const variants = {
-    paid: { color: "default" as const, icon: CheckCircle },
-    pending: { color: "secondary" as const, icon: Clock },
-    overdue: { color: "destructive" as const, icon: AlertCircle },
-    cancelled: { color: "outline" as const, icon: AlertCircle },
+function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
+  const variants: Record<InvoiceStatus, { color: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle }> = {
+    paid: { color: "default", icon: CheckCircle },
+    "part-paid": { color: "secondary", icon: Clock },
+    owed: { color: "secondary", icon: Clock },
+    overdue: { color: "destructive", icon: AlertCircle },
+    void: { color: "outline", icon: AlertCircle },
   };
 
-  const variant = variants[status as keyof typeof variants];
+  const variant = variants[status] ?? variants.owed;
   const Icon = variant.icon;
 
   return (
@@ -55,13 +59,27 @@ function InvoiceStatusBadge({ status }: { status: string }) {
       variant={variant.color}
       className={cn(
         "shrink-0 gap-1 font-medium",
-        status === "pending" && "ring-2 ring-amber-400/40",
+        (status === "owed" || status === "part-paid") && "ring-2 ring-amber-400/40",
         status === "overdue" && "ring-2 ring-destructive/30"
       )}
+      data-testid={`invoice-status-${status}`}
     >
       <Icon className="h-3 w-3 shrink-0" />
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {INVOICE_STATUS_LABELS[status] ?? status}
     </Badge>
+  );
+}
+
+/** Total, and what is still to pay when that is less. */
+function InvoiceAmount({ invoice }: { invoice: InvoiceListItem }) {
+  const showsDue = invoice.amountDue > 0 && invoice.amountDue !== invoice.total;
+  return (
+    <span className="inline-flex flex-col items-end">
+      <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+      {showsDue && (
+        <span className="text-xs text-muted-foreground">£{invoice.amountDue.toFixed(2)} to pay</span>
+      )}
+    </span>
   );
 }
 
@@ -187,7 +205,7 @@ function InvoiceRowInner({
         })}
       </TableCell>
       <TableCell className="whitespace-nowrap text-right tabular-nums">
-        <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+        <InvoiceAmount invoice={invoice} />
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <InvoiceStatusBadge status={invoice.status} />
@@ -285,7 +303,7 @@ function InvoiceCardInner({
             </Badge>
           </ResponsiveCardRow>
           <ResponsiveCardRow label="Total">
-            <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+            <InvoiceAmount invoice={invoice} />
           </ResponsiveCardRow>
         </div>
 

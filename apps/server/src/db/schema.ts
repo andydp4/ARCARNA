@@ -137,6 +137,20 @@ export const orders = pgTable('orders', {
   // sale is for — see shared/schema.ts and migration 062.
   entered_at: timestamp('entered_at').defaultNow(),
   date_kind: varchar('date_kind', { length: 16 }).notNull().default('live'),
+  // The till's sale reference, unique per org — see shared/schema.ts and
+  // migration 080. The unique index is declared there.
+  client_order_id: varchar('client_order_id', { length: 64 }),
+  // How the total was reached — see shared/schema.ts and migration 082.
+  subtotal: numeric('subtotal',{precision:10,scale:2}),
+  tier_discount: numeric('tier_discount',{precision:10,scale:2}),
+  tier_discount_percent: numeric('tier_discount_percent',{precision:5,scale:2}),
+  promotion_id: uuid('promotion_id'),
+  promo_code: varchar('promo_code', { length: 50 }),
+  promo_discount: numeric('promo_discount',{precision:10,scale:2}),
+  points_redeemed: integer('points_redeemed'),
+  points_discount: numeric('points_discount',{precision:10,scale:2}),
+  vat_rate: numeric('vat_rate',{precision:5,scale:2}),
+  vat_amount: numeric('vat_amount',{precision:10,scale:2}),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

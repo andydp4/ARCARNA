@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { Mic, MicOff, Send, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +8,21 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getSpeechProvider } from "@/lib/speech";
 import { STORAGE_VOICE_ENABLED } from "@shared/storageKeys";
+import { stashWhatsappDraft } from "@/lib/whatsappDraft";
 
 interface QuickEntryTurnResponse {
-  action: "ask" | "save" | "cancel";
+  action: "ask" | "draft" | "cancel";
   draft: unknown | null;
   message: string;
   voiceResponse: string;
   missingFields: string[];
-  savedOrderId?: string;
+  /** Set on "draft": what the till opens with (v1.2 Phase 1B). */
+  tillDraft?: {
+    customerId: string | null;
+    customerName: string | null;
+    items: Array<{ sku: string; name: string; quantity: number }>;
+    note?: string;
+  };
 }
 
 interface LogEntry {
@@ -22,9 +30,14 @@ interface LogEntry {
   text: string;
 }
 
-/** Arcarna Voice — floating typed/mic command bar driving the QuickEntryEngine. */
+/**
+ * Arcarna Voice — floating typed/mic command bar driving the QuickEntryEngine.
+ * It drafts orders; it never saves one. A confirmed draft opens in the till,
+ * which prices it and takes payment (v1.2 Phase 1B, owner Q19).
+ */
 export function ArcarnaAssistantBar() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -71,8 +84,17 @@ export function ArcarnaAssistantBar() {
       if (voiceOn && speech.isSupported()) {
         speech.speak(result.voiceResponse).catch(() => {});
       }
-      if (result.action === "save") {
-        toast({ title: "Order saved", description: result.message });
+      if (result.action === "draft" && result.tillDraft) {
+        stashWhatsappDraft({
+          conversationId: "",
+          source: "voice",
+          customerId: result.tillDraft.customerId,
+          customerName: result.tillDraft.customerName,
+          note: result.tillDraft.note,
+          items: result.tillDraft.items.map((i) => ({ sku: i.sku, name: i.name, quantity: i.quantity })),
+        });
+        setOpen(false);
+        navigate("/create-order");
       }
     } catch (e: any) {
       const message = e?.message || "Something went wrong.";

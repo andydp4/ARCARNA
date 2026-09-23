@@ -57,6 +57,7 @@ const LoyaltySettingsPage = lazy(() => import("@/pages/settings/loyalty"));
 const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-supplies-website"));
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
+const NeedsAttention = lazy(() => import("@/pages/needs-attention"));
 const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
@@ -310,6 +311,9 @@ function Router() {
           </Route>
           <Route path="/tick-list">
             <RequireRole href="/tick-list"><TickList /></RequireRole>
+          </Route>
+          <Route path="/needs-attention">
+            <RequireRole href="/needs-attention"><NeedsAttention /></RequireRole>
           </Route>
           <Route path="/user-access">
             <RequireRole href="/user-access"><UserAccess /></RequireRole>

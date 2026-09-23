@@ -74,6 +74,8 @@ export const organizations = pgTable("organizations", {
   invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
   invoiceStartNumber: integer("invoice_start_number").default(1000),
   paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
+  /** The last invoice number issued; NULL until the first (migration 085). */
+  invoiceLastNumber: integer("invoice_last_number"),
   defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("0.00"),
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
@@ -422,7 +424,9 @@ export const websiteOrderSettings = pgTable("website_order_settings", {
   ),
   check(
     "website_order_settings_status_ck",
-    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed')`,
+    // No 'completed' (migration 083): a website order must be settled by the
+    // completion path, not born settled.
+    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent')`,
   ),
   check(
     "website_order_settings_min_order_value_ck",
@@ -829,6 +833,13 @@ export type ReplenishmentActionType = (typeof REPLENISHMENT_ACTION_TYPES)[number
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
+/**
+ * The statuses an order may be CREATED with (v1.2 Phase 1B). Never
+ * "completed": completing settles the order (settled total, credit leg,
+ * commission) and only the completion path does that.
+ */
+export const ORDER_CREATE_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent'] as const;
+
 export const ORDER_CHANNELS = ['pos', 'web', 'api', 'whatsapp', 'phone'] as const;
 export type OrderChannel = (typeof ORDER_CHANNELS)[number];
 
@@ -858,6 +869,12 @@ export const shifts = pgTable(
     notes: text("notes"),
     reopenReason: text("reopen_reason"),
     status: varchar("status", { length: 16 }).notNull().default("open"),
+    /**
+     * True once this shift's stored expected cash includes cash tab
+     * repayments (migration 084). Shifts closed before that rule stay false,
+     * and their Z-reports say so.
+     */
+    tabCashInExpected: boolean("tab_cash_in_expected").notNull().default(false),
   },
   (table) => [
     index("shifts_org_location_idx").on(table.orgId, table.locationId),
@@ -1199,6 +1216,57 @@ export type OrderPayment = typeof orderPayments.$inferSelect;
 export type InsertOrderPayment = typeof orderPayments.$inferInsert;
 
 /**
+ * Till sales the server refused (v1.2 Phase 1A, "Needs attention").
+ *
+ * A sale queued on a till while the connection was down can be refused when it
+ * is finally sent — the customer it names was removed, a gift card ran out, a
+ * split no longer adds up. It used to sit in the till's browser storage,
+ * retried every 30 seconds for ever, and was deleted with everything else on
+ * sign-out. The till now hands it here, so a manager on any device can see it,
+ * and nothing is dropped without a person deciding to (a discard is logged).
+ *
+ * `payload` is the sale exactly as the till sent it. `clientOrderId` is its
+ * reference, so a retry can never land twice. Unique per org: the till may
+ * report the same refusal more than once. (migration 081)
+ */
+export const saleIssues = pgTable(
+  "sale_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    clientOrderId: varchar("client_order_id", { length: 64 }).notNull(),
+    // Where the till was selling. A retry sells from here, so stock comes off
+    // the shelf the goods actually left.
+    locationId: uuid("location_id"),
+    // The signed-in person on the till that rang the sale — the auth subject,
+    // like orders.input_user_id, and credited as the inputter on a retry.
+    rungByUserId: varchar("rung_by_user_id", { length: 255 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    reason: text("reason").notNull(),
+    httpStatus: integer("http_status"),
+    // When the sale was made on the till, not when it was reported.
+    queuedAt: timestamp("queued_at"),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    resolvedOrderId: uuid("resolved_order_id"),
+    resolvedByUserId: varchar("resolved_by_user_id", { length: 255 }),
+    resolvedAt: timestamp("resolved_at"),
+    discardReason: text("discard_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sale_issues_org_ref_uq").on(table.orgId, table.clientOrderId),
+    index("sale_issues_org_status_idx").on(table.orgId, table.status),
+    check("sale_issues_status_check", sql`${table.status} IN ('open', 'resolved', 'discarded')`),
+  ],
+);
+
+export type SaleIssue = typeof saleIssues.$inferSelect;
+export type InsertSaleIssue = typeof saleIssues.$inferInsert;
+
+/**
  * A tender leg as the till submits it. The legs must sum to the order total —
  * a split that does not add up is a sale where some money is unaccounted for,
  * which is exactly the state this table exists to make impossible.
@@ -1280,10 +1348,18 @@ export const creditPayments = pgTable(
     // `seed-cashier`), not UUIDs.
     recordedByUserId: varchar("recorded_by_user_id", { length: 255 }),
     note: text("note"),
+    /**
+     * The till shift open for the recorder when the payment was taken today
+     * (migration 084). A cash one is part of that drawer's expected cash.
+     * NULL for backdated payments, for anyone with no till open, and for
+     * everything recorded before the rule.
+     */
+    shiftId: uuid("shift_id").references(() => shifts.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_shift_idx").on(table.shiftId),
     index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
     // A payment of zero or less is not a payment.
     check("credit_payments_amount_check", sql`${table.amount} > 0`),
@@ -1426,10 +1502,38 @@ export const orders = pgTable("orders", {
   // (migration 062, shared/orders/orderDate.ts)
   enteredAt: timestamp("entered_at").defaultNow(),
   dateKind: varchar("date_kind", { length: 16 }).notNull().default("live"),
+  // The till's own reference for the sale, made when the sale starts and sent
+  // on every attempt (v1.2 Phase 1A). Unique per org, so a retry after a
+  // timeout, a double tap or an offline replay returns the order that already
+  // landed instead of recording the sale twice. NULL for orders that did not
+  // come from the till (web, API). (migration 080)
+  clientOrderId: varchar("client_order_id", { length: 64 }),
+  // How the total was reached, from the one priceOrder() the till and server
+  // share (v1.2 Phase 1B, shared/pricing/priceOrder.ts):
+  //   subtotal − tierDiscount − promoDiscount + vatAmount − pointsDiscount = total
+  // NULL on orders placed before it — never recorded, so not claimed as 0.
+  // `promotionId` has no FK on purpose: deleting a spent promotion must not be
+  // blocked by, or rewrite, the sales it was used on. (migration 082)
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
+  tierDiscount: numeric("tier_discount", { precision: 10, scale: 2 }),
+  tierDiscountPercent: numeric("tier_discount_percent", { precision: 5, scale: 2 }),
+  promotionId: uuid("promotion_id"),
+  promoCode: varchar("promo_code", { length: 50 }),
+  promoDiscount: numeric("promo_discount", { precision: 10, scale: 2 }),
+  pointsRedeemed: integer("points_redeemed"),
+  pointsDiscount: numeric("points_discount", { precision: 10, scale: 2 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
+  vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  index("orders_promotion_idx")
+    .on(table.orgId, table.promotionId)
+    .where(sql`${table.promotionId} IS NOT NULL`),
+  uniqueIndex("orders_org_client_order_id_uq")
+    .on(table.orgId, table.clientOrderId)
+    .where(sql`${table.clientOrderId} IS NOT NULL`),
   index("orders_dated_idx")
     .on(table.orgId, table.dateKind, table.createdAt)
     .where(sql`${table.dateKind} <> 'live'`),
@@ -1534,6 +1638,8 @@ export const ORDER_EVENT_KINDS = [
   "reopened",
   "status_changed",
   "deleted",
+  // A manager's edit of lines/prices, with the money before and after (083).
+  "edited",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 
@@ -1568,7 +1674,7 @@ export const orderEvents = pgTable("order_events", {
 }, (table) => [
   check(
     "order_events_kind_check",
-    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted')`,
+    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted', 'edited')`,
   ),
   /** One card's own timeline. */
   index("order_events_order_idx").on(table.orgId, table.orderId, table.at),
@@ -1978,11 +2084,24 @@ export const invoices = pgTable("invoices", {
   dueDate: varchar("due_date", { length: 10 }),
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveLink: varchar("google_drive_link", { length: 1024 }),
+  // Migration 085. NULL on invoices written before numbering: those are not
+  // renumbered. A numbered invoice keeps the terms, name and VAT rate it was
+  // issued with.
+  sequenceNumber: integer("sequence_number"),
+  paymentTerms: varchar("payment_terms", { length: 255 }),
+  billingName: varchar("billing_name", { length: 255 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("invoices_org_id_idx").on(table.orgId),
   index("invoices_order_id_idx").on(table.orderId),
+  uniqueIndex("invoices_org_sequence_uq")
+    .on(table.orgId, table.sequenceNumber)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
+  uniqueIndex("invoices_order_numbered_uq")
+    .on(table.orderId)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
 ]);
 
 export type Invoice = typeof invoices.$inferSelect;

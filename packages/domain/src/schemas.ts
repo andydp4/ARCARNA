@@ -35,7 +35,12 @@ export const PlaceOrderInput = z.object({
   // existing callers keep the previous fixed 20% behaviour.
   taxRatePercent: z.number().min(0).max(100).optional(),
   channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
-  status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
+  // Never 'completed' (v1.2 Phase 1B): completing is a settlement — the
+  // settled total, the credit leg, commission — and only the completion path
+  // (server/services/orderCompletion.ts) does it. An order born "completed"
+  // skipped all of that. A caller that sends it is refused, not quietly
+  // downgraded, so an integration finds out.
+  status: z.enum(['pending','on-hold','awaiting-customer','urgent']).optional(),
   // The calendar date the order is FOR, when that is not today: a missed day
   // being keyed in afterwards, or a pre-order. Declared so it survives parsing
   // (this object strips unknown keys); the route, not the engine, acts on it —

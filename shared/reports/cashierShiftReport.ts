@@ -3,7 +3,13 @@
  *
  * Commission is calculated from net sales profit, not gross sales:
  *   netSalesProfit = paidSalesReceived - stockCost - orderExpenses
- *                    - allocatedGlobalExpenses - refunds - discounts
+ *                    - allocatedGlobalExpenses - refunds
+ *
+ * `discounts` (tier, promotion, points) is reported, not subtracted: since
+ * v1.2 Phase 1B an order's total IS what the customer was charged, so the
+ * discount is already out of paidSalesReceived. Taking it off again would
+ * cut commission for every discount given. (It was always passed as 0 before
+ * this release, so no historic figure changes.)
  *   commissionAmount = Math.max(0, netSalesProfit) * commissionRate
  *
  * Unpaid credit/tick sales are tracked separately and excluded from
@@ -131,8 +137,8 @@ function isCardPayment(method: string): boolean {
  *   expenses (see `allocateGlobalExpenseShare`), summed across the days the
  *   shift spans.
  * @param refunds Refunds issued against orders in this shift.
- * @param discounts Discount total, if tracked (defaults to 0 — ARCANA does not
- *   yet capture per-order discount amounts separately from totals).
+ * @param discounts Discounts given on these sales (tier + promotion + points),
+ *   for the report only — already out of the order totals, never subtracted.
  * @param commissionRate Effective commission rate for the shift, as a percentage
  *   (e.g. 20 for 20%).
  */
@@ -194,8 +200,7 @@ export function buildCashierShiftBalanceSheet(
       stockCost -
       roundedOrderExpenses -
       roundedGlobalAllocation -
-      refundsTotal -
-      roundedDiscounts,
+      refundsTotal,
   );
 
   const commissionAmount = roundMoney(Math.max(0, netSalesProfit) * (commissionRate / 100));

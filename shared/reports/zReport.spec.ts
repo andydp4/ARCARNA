@@ -216,3 +216,39 @@ describe("split tender", () => {
     expect(report.cashSummary.cashSales).toBe(0);
   });
 });
+
+describe("cash tab repayments (v1.2 Phase 1C)", () => {
+  const shift = { ...baseShift, closingCount: null, status: "open" };
+
+  it("a cash repayment stamped to this drawer is in expected cash, on its own line, and not in sales", () => {
+    const report = buildZReport(shift, [], [], [], [
+      { amount: 50, givenOn: "2026-05-20", method: "cash", onThisShift: true },
+    ]);
+    expect(report.cashSummary.cashTabRepayments).toBe(50);
+    expect(report.cashSummary.expectedCash).toBe(100);
+    expect(report.netSales).toBe(0);
+    expect(report.creditResolved).toEqual([{ givenOn: "2026-05-20", amount: 50 }]);
+  });
+
+  it("card repayments, and ones not stamped to this drawer, stay out of expected cash", () => {
+    const report = buildZReport(shift, [], [], [], [
+      { amount: 20, givenOn: "2026-05-20", method: "card", onThisShift: true },
+      { amount: 30, givenOn: "2026-05-21", method: "cash", onThisShift: false },
+      { amount: 40, givenOn: "2026-05-21", method: "cash" },
+    ]);
+    expect(report.cashSummary.cashTabRepayments).toBe(0);
+    expect(report.cashSummary.expectedCash).toBe(50);
+  });
+
+  it("an old report whose stored expected cash left them out says so; a new one does not", () => {
+    const stored = { ...baseShift, expectedCash: 150, variance: 50 };
+    expect(buildZReport({ ...stored, tabCashInExpected: false }, [], []).cashSummary.expectedCashExcludesTabRepayments).toBe(true);
+    expect(buildZReport({ ...stored, tabCashInExpected: true }, [], []).cashSummary.expectedCashExcludesTabRepayments).toBe(false);
+    // A shift still running is worked out live, with the rule.
+    expect(buildZReport({ ...shift, tabCashInExpected: false }, [], []).cashSummary.expectedCashExcludesTabRepayments).toBe(false);
+  });
+
+  it("computeExpectedCash takes the repayments too", () => {
+    expect(computeExpectedCash(50, [], [], 25)).toBe(75);
+  });
+});

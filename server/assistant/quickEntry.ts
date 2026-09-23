@@ -3,12 +3,17 @@
  *
  * Pure logic (no DB access): given the in-progress draft and the latest
  * utterance, decides what's still missing, what to ask next, and when the
- * order is ready to save. Designed to be driven turn-by-turn from any input
- * channel (typed command bar, voice/mic, Siri Shortcuts, future WhatsApp
- * voice notes) — the caller persists `draft` between turns and hands it back.
+ * draft is ready. Driven turn-by-turn by the typed command bar and the mic —
+ * the caller persists `draft` between turns and hands it back.
  *
- * Rule-based, no AI (mirrors server/whatsapp/intent.ts). A human always
- * confirms ("Save it?" -> "Yes.") before a real order is created.
+ * v1.2 Phase 1B (owner Q19): the assistant no longer SAVES orders. It
+ * produces a draft that opens in the till, where the till prices it (no single
+ * spoken price for every item), the cashier takes payment (no default to
+ * tick) and adds any expenses. A name that matches several customers is asked
+ * about rather than guessed. It will be rebuilt later on the "Ask arcarna"
+ * engine; nothing new is built here.
+ *
+ * Rule-based, no AI (mirrors server/whatsapp/intent.ts).
  */
 import { parseOrderIntent, type IntentProduct } from "../whatsapp/intent";
 
@@ -16,28 +21,37 @@ export interface QuickEntryItemDraft {
   productId: string; // business SKU, matches IntentProduct.productId
   name: string;
   quantity: number;
-  unitPrice?: number;
 }
 
-export interface QuickEntryExpenseDraft {
-  label: string;
-  amount: number;
+export interface QuickEntryCustomerCandidate {
+  id: string;
+  name: string;
 }
 
-export type QuickEntryStatus = "collecting" | "confirming";
+export type QuickEntryStatus = "collecting" | "choosing-customer" | "confirming";
 
 export interface QuickEntryDraft {
   status: QuickEntryStatus;
   customerName?: string;
+  /** Set once the name has been looked up; null = nobody matched (picked in the till). */
+  customerId?: string | null;
+  customerResolved?: boolean;
+  /** The customers a name could mean, while asking which. */
+  customerCandidates?: QuickEntryCustomerCandidate[];
   items: QuickEntryItemDraft[];
   fulfillment?: { label: string; isoDate: string };
-  expensesAsked: boolean;
-  expenses: QuickEntryExpenseDraft[];
-  paymentMethod: "cash" | "card" | "transfer" | "tick";
   rawText: string;
 }
 
-export type QuickEntryAction = "ask" | "save" | "cancel";
+export type QuickEntryAction = "ask" | "draft" | "cancel";
+
+/** What the till opens with. Prices, payment and expenses are set there. */
+export interface TillDraft {
+  customerId: string | null;
+  customerName: string | null;
+  items: Array<{ sku: string; name: string; quantity: number }>;
+  note?: string;
+}
 
 export interface QuickEntryTurnResult {
   action: QuickEntryAction;
@@ -45,31 +59,15 @@ export interface QuickEntryTurnResult {
   message: string;
   voiceResponse: string;
   missingFields: string[];
+  /** Set when action === "draft". */
+  tillDraft?: TillDraft;
 }
 
-const YES_RE = /^\s*(yes|yeah|yep|yup|correct|confirm|confirmed|save it|do it|go ahead|please)\b/i;
+const YES_RE = /^\s*(yes|yeah|yep|yup|correct|confirm|confirmed|open it|do it|go ahead|please)\b/i;
 const NO_RE = /^\s*(no|nope|nah|cancel|stop|don'?t|discard|scrap that)\b/i;
-const NONE_RE = /^\s*(none|no expenses|nothing|n\/a|nope|no)\s*\.?\s*$/i;
+const NOBODY_RE = /^\s*(none|nobody|none of them|neither|new customer|someone else)\b/i;
 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-
-const PAYMENT_KEYWORDS: Record<string, QuickEntryDraft["paymentMethod"]> = {
-  cash: "cash",
-  card: "card",
-  transfer: "transfer",
-  "bank transfer": "transfer",
-  tick: "tick",
-  "on tick": "tick",
-  credit: "tick",
-};
-
-function detectPaymentMethod(text: string): QuickEntryDraft["paymentMethod"] | undefined {
-  const lower = text.toLowerCase();
-  for (const [kw, method] of Object.entries(PAYMENT_KEYWORDS)) {
-    if (lower.includes(kw)) return method;
-  }
-  return undefined;
-}
 
 /** Pulls a relative date phrase ("today", "tomorrow", a weekday name) out of free text. */
 function parseFulfillment(text: string, now: Date): { label: string; isoDate: string } | undefined {
@@ -102,45 +100,23 @@ function parseCustomerName(text: string): string | undefined {
   return m?.[1]?.trim();
 }
 
-/** First £-prefixed or bare number in the text, e.g. "£20 each" / "20 each" -> 20. */
-function parseMoney(text: string): number | undefined {
-  const m = text.match(/£?\s*(\d+(?:\.\d{1,2})?)/);
-  if (!m) return undefined;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/** "£30 train" / "30 for train" -> { amount: 30, label: "train" }. */
-function parseExpense(text: string): QuickEntryExpenseDraft | undefined {
-  const amount = parseMoney(text);
-  if (amount === undefined) return undefined;
-  const label = text
-    .replace(/£\s*\d+(?:\.\d{1,2})?/, "")
-    .replace(/\d+(?:\.\d{1,2})?/, "")
-    .replace(/\b(for|expense|expenses|cost|each|spent|on)\b/gi, "")
-    .replace(/[.,]/g, "")
-    .trim();
-  return { amount, label: label || "expense" };
-}
-
-function formatGBP(n: number): string {
-  return `£${n.toFixed(2).replace(/\.00$/, "")}`;
-}
-
 function itemsSummary(items: QuickEntryItemDraft[]): string {
   return items.map((i) => `${i.quantity} ${i.name}`).join(", ");
 }
 
 function buildConfirmationMessage(draft: QuickEntryDraft): string {
-  let itemsPart = itemsSummary(draft.items);
-  if (draft.items[0]?.unitPrice !== undefined) {
-    itemsPart += ` at ${formatGBP(draft.items[0].unitPrice)} each`;
-  }
-  const parts = [draft.customerName ?? "this customer", itemsPart];
-  if (draft.expenses.length > 0) {
-    parts.push(draft.expenses.map((e) => `${e.label} expense ${formatGBP(e.amount)}`).join(", "));
-  }
-  return `Ready to save: ${parts.join(", ")}. Save it?`;
+  const who = draft.customerId ? draft.customerName : `${draft.customerName ?? "this customer"} (pick the customer in the till)`;
+  const when = draft.fulfillment ? `, for ${draft.fulfillment.label}` : "";
+  return `Ready to open in the till: ${who}, ${itemsSummary(draft.items)}${when}. Open it?`;
+}
+
+export function tillDraftFrom(draft: QuickEntryDraft): TillDraft {
+  return {
+    customerId: draft.customerId ?? null,
+    customerName: draft.customerName ?? null,
+    items: draft.items.map((i) => ({ sku: i.productId, name: i.name, quantity: i.quantity })),
+    ...(draft.fulfillment ? { note: `For ${draft.fulfillment.label} (${draft.fulfillment.isoDate})` } : {}),
+  };
 }
 
 function ask(draft: QuickEntryDraft, message: string, missingFields: string[]): QuickEntryTurnResult {
@@ -156,9 +132,6 @@ function startDraft(text: string, products: IntentProduct[], now: Date): QuickEn
     customerName: parseCustomerName(text),
     items: intent.items.map((i) => ({ productId: i.productId ?? i.name, name: i.name, quantity: i.quantity })),
     fulfillment: parseFulfillment(text, now),
-    expensesAsked: false,
-    expenses: [],
-    paymentMethod: detectPaymentMethod(text) ?? "tick",
     rawText: text,
   };
 }
@@ -190,50 +163,110 @@ export function processQuickEntryTurn(
 
   if (draft.status === "confirming") {
     if (YES_RE.test(trimmed)) {
-      return { action: "save", draft, message: "Saving order.", voiceResponse: "Done. Order saved.", missingFields: [] };
+      const message = "Opening it in the till. Check the prices and take payment there.";
+      return {
+        action: "draft",
+        draft: null,
+        message,
+        voiceResponse: "Opening it in the till.",
+        missingFields: [],
+        tillDraft: tillDraftFrom(draft),
+      };
     }
     if (NO_RE.test(trimmed)) {
       const message = "No problem, discarded. What would you like to do instead?";
       return { action: "cancel", draft: null, message, voiceResponse: message, missingFields: [] };
     }
-    return ask(draft, "Please say yes to save or no to cancel.", []);
+    return ask(draft, "Please say yes to open it in the till, or no to cancel.", []);
   }
 
-  // Collecting: fill in whichever slot is next.
-  if (!draft.customerName) {
-    const name = trimmed.replace(/[.!]+$/, "").trim();
-    if (!name) return ask(draft, "Who is this order for?", ["customerName"]);
-    return continueDraft({ ...draft, customerName: name });
+  if (draft.status === "choosing-customer") {
+    return chooseCustomer(draft, trimmed);
   }
 
-  if (draft.items.some((i) => i.unitPrice === undefined)) {
-    const price = parseMoney(trimmed);
-    if (price === undefined) return ask(draft, "What price per item?", ["unitPrice"]);
+  // Collecting: the only slot left to fill is who it is for.
+  const name = trimmed.replace(/[.!]+$/, "").trim();
+  if (!name) return ask(draft, "Who is this order for?", ["customerName"]);
+  return continueDraft({ ...draft, customerName: name });
+}
+
+function candidateList(candidates: QuickEntryCustomerCandidate[]): string {
+  return candidates.map((c, i) => `${i + 1}. ${c.name}`).join(", ");
+}
+
+/** Which of several customers a name meant: by number, or by a name only one of them has. */
+function chooseCustomer(draft: QuickEntryDraft, text: string): QuickEntryTurnResult {
+  const candidates = draft.customerCandidates ?? [];
+  const again = () =>
+    ask(
+      draft,
+      `Which ${draft.customerName}? ${candidateList(candidates)}. Say the number, or "none" to pick in the till.`,
+      ["customer"],
+    );
+  if (NOBODY_RE.test(text)) {
+    return continueDraft({ ...draft, customerId: null, customerResolved: true, customerCandidates: undefined });
+  }
+  const num = text.match(/^\s*(?:number\s*)?(\d+)\b/i);
+  let picked: QuickEntryCustomerCandidate | undefined;
+  if (num) {
+    picked = candidates[Number(num[1]) - 1];
+  } else {
+    const said = text.replace(/[.!]+$/, "").trim().toLowerCase();
+    const exact = candidates.filter((c) => c.name.toLowerCase() === said);
+    const partial = candidates.filter((c) => said.length > 0 && c.name.toLowerCase().includes(said));
+    picked = exact.length === 1 ? exact[0] : partial.length === 1 ? partial[0] : undefined;
+  }
+  if (!picked) return again();
+  return continueDraft({
+    ...draft,
+    customerName: picked.name,
+    customerId: picked.id,
+    customerResolved: true,
+    customerCandidates: undefined,
+  });
+}
+
+/**
+ * Applies the customers a spoken name matched (looked up by the caller):
+ * one is used, none leaves the customer to be picked in the till, several
+ * are asked about — never guessed, and never created from a name.
+ */
+export function applyCustomerMatches(
+  draft: QuickEntryDraft,
+  candidates: QuickEntryCustomerCandidate[],
+): QuickEntryTurnResult {
+  if (candidates.length === 1) {
     return continueDraft({
       ...draft,
-      items: draft.items.map((i) => ({ ...i, unitPrice: price })),
+      customerName: candidates[0].name,
+      customerId: candidates[0].id,
+      customerResolved: true,
     });
   }
-
-  if (draft.expenses.length === 0 && !NONE_RE.test(trimmed)) {
-    const expense = parseExpense(trimmed);
-    if (!expense) return ask(draft, "Any expenses? Say an amount and what it was for, or 'none'.", ["expenses"]);
-    return continueDraft({ ...draft, expenses: [expense] });
+  if (candidates.length === 0) {
+    return continueDraft({ ...draft, customerId: null, customerResolved: true });
   }
+  const choosing: QuickEntryDraft = { ...draft, status: "choosing-customer", customerCandidates: candidates };
+  return ask(
+    choosing,
+    `More than one customer matches ${draft.customerName}: ${candidateList(candidates)}. Which one?`,
+    ["customer"],
+  );
+}
 
-  return continueDraft({ ...draft, status: "confirming" });
+/** True when the draft names a customer that has not been looked up yet. */
+export function needsCustomerLookup(draft: QuickEntryDraft | null | undefined): draft is QuickEntryDraft {
+  return !!draft && !!draft.customerName && !draft.customerResolved && draft.status !== "choosing-customer";
 }
 
 /** Decides the next prompt for a draft that just changed. */
 function continueDraft(draft: QuickEntryDraft): QuickEntryTurnResult {
   if (!draft.customerName) {
-    return ask(draft, "Who is this order for?", ["customerName"]);
+    return ask({ ...draft, status: "collecting" }, "Who is this order for?", ["customerName"]);
   }
-  if (draft.items.some((i) => i.unitPrice === undefined)) {
-    return ask(draft, "What price per item?", ["unitPrice"]);
-  }
-  if (!draft.expensesAsked) {
-    return ask({ ...draft, expensesAsked: true }, "Any expenses?", ["expenses"]);
+  if (!draft.customerResolved) {
+    // The caller looks the name up and calls applyCustomerMatches().
+    return ask({ ...draft, status: "collecting" }, "Looking up the customer…", ["customer"]);
   }
   const confirming: QuickEntryDraft = { ...draft, status: "confirming" };
   const message = buildConfirmationMessage(confirming);

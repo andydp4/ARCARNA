@@ -199,15 +199,34 @@ function OpsDetailsBody({
 
   /**
    * The receipt has its own order route; the invoice endpoint accepts an order
-   * id and synthesises the document when the async invoice worker has not
-   * written a record yet — so both are always reachable from an order.
+   * id. A tab sale always has an invoice. A plain till sale has a receipt, and
+   * gets an invoice only when the customer asks (v1.2 Phase 1C): the first
+   * press asks to confirm, then issues the next invoice number.
    */
   const download = async (kind: "receipt" | "invoice") => {
     setDownloading(kind);
     try {
       const path =
         kind === "receipt" ? `/api/orders/${order.id}/receipt.pdf` : `/api/invoices/${order.id}/pdf`;
-      const response = await apiFetch(path, { credentials: "include" });
+      let response = await apiFetch(path, { credentials: "include" });
+      if (kind === "invoice" && response.status === 404) {
+        const body = await response.clone().json().catch(() => null);
+        if (body?.code === "INVOICE_NOT_ISSUED") {
+          if (!window.confirm("This sale has a receipt. Issue a numbered invoice because the customer asked for one?")) {
+            return;
+          }
+          const issued = await apiFetch(`/api/invoices/for-order/${order.id}`, {
+            method: "POST",
+            credentials: "include",
+          });
+          if (!issued.ok) {
+            const reason = await issued.json().catch(() => null);
+            throw new Error(reason?.message ?? `${issued.status}`);
+          }
+          const invoice = (await issued.json()) as { id: string };
+          response = await apiFetch(`/api/invoices/${invoice.id}/pdf`, { credentials: "include" });
+        }
+      }
       if (!response.ok) {
         let reason = `${response.status}`;
         try {

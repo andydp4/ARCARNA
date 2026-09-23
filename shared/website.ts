@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  ORDER_STATUSES,
+  ORDER_CREATE_STATUSES,
   WEBSITE_BLOCK_TYPES,
   WEBSITE_FILE_PROVIDERS,
   WEBSITE_ORDER_ACCESS_MODES,
@@ -126,7 +126,7 @@ export const websiteBlockPatchSchema = z
 export const websiteOrderSettingsPatchSchema = z
   .object({
     orderAccessMode: z.enum(WEBSITE_ORDER_ACCESS_MODES).optional(),
-    defaultOrderStatus: z.enum(ORDER_STATUSES).optional(),
+    defaultOrderStatus: z.enum(ORDER_CREATE_STATUSES).optional(),
     defaultLocationId: z.string().uuid().nullable().optional(),
     allowOutOfStockOrders: z.boolean().optional(),
     minOrderValue: z.number().nonnegative().nullable().optional(),

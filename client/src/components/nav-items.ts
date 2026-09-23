@@ -29,6 +29,7 @@ import {
   ScrollText,
   Activity,
   Workflow,
+  AlertTriangle,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -141,6 +142,16 @@ export const navGroups: NavGroup[] = [
         href: '/tick-list',
         icon: CreditCard,
         testId: 'nav-tick-list',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Till sales the server refused (v1.2 Phase 1A). Managers retry,
+        // edit, export or discard them; the server enforces the same line.
+        key: 'needs-attention',
+        label: 'Needs attention',
+        href: '/needs-attention',
+        icon: AlertTriangle,
+        testId: 'nav-needs-attention',
         roles: MANAGER_ROLES
       }
     ]

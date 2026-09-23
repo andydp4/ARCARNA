@@ -19,12 +19,13 @@ export const WEBSITE_BLOCK_TYPE_OPTIONS: WebsiteBlockType[] = [
 
 export const WEBSITE_ORDER_ACCESS_MODE_OPTIONS = ["public", "password", "clerk"] as const;
 
+// No "completed": a website order is settled when it is handed over, by the
+// completion path, never born settled (v1.2 Phase 1B).
 export const WEBSITE_ORDER_STATUS_OPTIONS = [
   "pending",
   "on-hold",
   "awaiting-customer",
   "urgent",
-  "completed",
 ] as const;
 
 export type WebsiteUploadItem = {

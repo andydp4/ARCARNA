@@ -12,10 +12,11 @@ import {
   orderPayments,
   creditPayments,
 } from "../../shared/schema";
-import { and, eq, desc, gte, lte, inArray, or } from "drizzle-orm";
+import { and, eq, desc, gte, lte, inArray, isNull, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
+import { storedDiscountTotal } from "@shared/pricing/priceOrder";
 import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
 import { maySeeShiftSheet } from "@shared/staffPolicy";
@@ -40,15 +41,17 @@ const reopenBodySchema = z.object({
   reason: z.string().min(3).max(2000),
 });
 
-async function loadShiftReportData(shiftId: string, orgId: string) {
-  const [shift] = await db
+type ShiftReportDb = Pick<typeof db, "select">;
+
+async function loadShiftReportData(shiftId: string, orgId: string, client: ShiftReportDb = db) {
+  const [shift] = await client
     .select()
     .from(shifts)
     .where(and(eq(shifts.id, shiftId), eq(shifts.orgId, orgId)))
     .limit(1);
   if (!shift) return null;
 
-  const [location] = await db
+  const [location] = await client
     .select({ name: locations.name })
     .from(locations)
     .where(eq(locations.id, shift.locationId))
@@ -56,14 +59,14 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
 
   const cashierName = await resolveUserName(shift.userId);
 
-  const shiftOrders = await db
+  const shiftOrders = await client
     .select()
     .from(orders)
     .where(eq(orders.shiftId, shiftId));
 
   const shiftOrderIds = shiftOrders.map((o) => o.id);
   const legRows = shiftOrderIds.length
-    ? await db
+    ? await client
         .select({
           orderId: orderPayments.orderId,
           method: orderPayments.method,
@@ -81,7 +84,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
 
   const zOrders: ZReportOrder[] = [];
   for (const order of shiftOrders) {
-    const items = await db
+    const items = await client
       .select({
         productId: orderItems.productId,
         productName: products.name,
@@ -98,6 +101,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       total: parseFloat(String(order.total)),
       paymentMethod: order.paymentMethod,
       payments: legsByOrder.get(order.id),
+      discounts: storedDiscountTotal(order),
       createdAt: order.createdAt?.toISOString() ?? "",
       items: items.map((i) => ({
         productId: i.productId ?? "",
@@ -109,7 +113,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     });
   }
 
-  const shiftRefunds = await db
+  const shiftRefunds = await client
     .select()
     .from(refunds)
     .where(eq(refunds.shiftId, shiftId));
@@ -125,20 +129,24 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
   // the credit records: an order's status cannot say whether money arrived.
   const orderIds = shiftOrders.map((o) => o.id);
   const creditGiven = orderIds.length
-    ? await db
+    ? await client
         .select({ orderId: orderCredit.orderId, amountGiven: orderCredit.amountGiven })
         .from(orderCredit)
         .where(inArray(orderCredit.orderId, orderIds))
     : [];
 
-  // Settlements taken while this shift was open, whatever day the debt was
-  // given — that is the whole point of the line.
+  // Settlements taken on this shift, whatever day the debt was given — that
+  // is the whole point of the line. Payments stamped to this drawer (v1.2
+  // Phase 1C) belong to it; unstamped ones taken while it was open still show
+  // here as information, as they always did, but never count as its cash.
+  // One stamped to ANOTHER drawer is that drawer's.
   const shiftWindowEnd = shift.closedAt ?? new Date();
   const creditPaid = shift.openedAt
-    ? await db
+    ? await client
         .select({
           amount: creditPayments.amount,
           method: creditPayments.method,
+          shiftId: creditPayments.shiftId,
           givenOn: orderCredit.givenOn,
         })
         .from(creditPayments)
@@ -146,8 +154,14 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
         .where(
           and(
             eq(creditPayments.orgId, orgId),
-            gte(creditPayments.createdAt, shift.openedAt),
-            lte(creditPayments.createdAt, shiftWindowEnd),
+            or(
+              eq(creditPayments.shiftId, shift.id),
+              and(
+                isNull(creditPayments.shiftId),
+                gte(creditPayments.createdAt, shift.openedAt),
+                lte(creditPayments.createdAt, shiftWindowEnd),
+              ),
+            ),
           ),
         )
     : [];
@@ -167,6 +181,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       locationName: location?.name ?? "Location",
       status: shift.status,
       notes: shift.notes,
+      tabCashInExpected: shift.tabCashInExpected,
     },
     zOrders,
     zRefunds,
@@ -178,6 +193,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       amount: parseFloat(String(p.amount)),
       givenOn: String(p.givenOn),
       method: p.method,
+      onThisShift: p.shiftId === shift.id,
     })),
   );
 
@@ -397,25 +413,40 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
           });
         }
 
-        const loaded = await loadShiftReportData(shift.id, ctx.orgId);
-        if (!loaded) return res.status(404).json({ message: "Shift not found" });
+        // Locked for the count: a tab repayment being stamped to this drawer
+        // right now (credit ledger, share lock) either lands first and is
+        // counted, or finds the shift closed and is not stamped to it.
+        const closedResult = await db.transaction(async (tx) => {
+          const [locked] = await tx
+            .select({ status: shifts.status })
+            .from(shifts)
+            .where(eq(shifts.id, shift.id))
+            .for("update")
+            .limit(1);
+          if (!locked || (locked.status !== "open" && locked.status !== "reopened")) return null;
+          const loaded = await loadShiftReportData(shift.id, ctx.orgId, tx);
+          if (!loaded) return null;
 
-        const expectedCash = loaded.report.cashSummary.expectedCash;
-        const variance = Math.round((body.closingCount - expectedCash) * 100) / 100;
-        const now = new Date();
-
-        const [closed] = await db
-          .update(shifts)
-          .set({
-            status: "closed",
-            closedAt: now,
-            closingCount: String(body.closingCount),
-            expectedCash: String(expectedCash),
-            variance: String(variance),
-            notes: body.notes ?? shift.notes,
-          })
-          .where(eq(shifts.id, shift.id))
-          .returning();
+          const expectedCash = loaded.report.cashSummary.expectedCash;
+          const variance = Math.round((body.closingCount - expectedCash) * 100) / 100;
+          const [row] = await tx
+            .update(shifts)
+            .set({
+              status: "closed",
+              closedAt: new Date(),
+              closingCount: String(body.closingCount),
+              expectedCash: String(expectedCash),
+              variance: String(variance),
+              // Worked out with cash tab repayments in (migration 084).
+              tabCashInExpected: true,
+              notes: body.notes ?? shift.notes,
+            })
+            .where(eq(shifts.id, shift.id))
+            .returning();
+          return { closed: row, expectedCash, variance };
+        });
+        if (!closedResult) return res.status(400).json({ message: "Shift is not open" });
+        const { closed, expectedCash, variance } = closedResult;
 
         const finalReport = await loadShiftReportData(shift.id, ctx.orgId);
 

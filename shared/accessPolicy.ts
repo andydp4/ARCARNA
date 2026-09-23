@@ -171,6 +171,8 @@ const STAFF_LIST = "The staff list is manager and above; PINs never leave the se
 const SCHEDULED = "Scheduled Evidence is Evidence: manager and above (STF-FN4, Q12).";
 const CREDIT = "The Credit List and Invoices are manager and above, menu and server (Q11).";
 const GIFT_ISSUE = "Issuing a gift card hands out money: managers only, with a reason (FIX-13).";
+const NEEDS_ATTENTION =
+  "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
 export const ACCESS_POLICY: readonly RouteRule[] = [
   // Products: writes are manager and above.
@@ -259,6 +261,11 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
 
   // Gift cards.
   { method: "POST", path: "/api/gift-cards", minRole: "MANAGER", reason: GIFT_ISSUE },
+
+  // Needs attention: refused till sales.
+  { method: "GET", path: "/api/sale-issues", minRole: "MANAGER", reason: NEEDS_ATTENTION },
+  { method: "POST", path: "/api/sale-issues/:id/discard", minRole: "MANAGER", reason: NEEDS_ATTENTION },
+  { method: "POST", path: "/api/sale-issues/sign-out-override", minRole: "MANAGER", reason: NEEDS_ATTENTION },
 ];
 
 // ---------------------------------------------------------------------------

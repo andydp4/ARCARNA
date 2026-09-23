@@ -55,6 +55,14 @@ export function ZReportView({ report }: { report: ZReportData }) {
             <span className="text-right font-medium">{money(report.refundsTotal)}</span>
             <span>Net sales</span>
             <span className="text-right font-semibold">{money(report.netSales)}</span>
+            {/* Already out of the sales above; shown so a till that took less
+                than its list prices explains itself. Older reports have none. */}
+            {(report.discountsGiven ?? 0) > 0 && (
+              <>
+                <span className="text-muted-foreground">Discounts given (included above)</span>
+                <span className="text-right text-muted-foreground">{money(report.discountsGiven)}</span>
+              </>
+            )}
           </div>
 
           <Separator />
@@ -114,6 +122,16 @@ export function ZReportView({ report }: { report: ZReportData }) {
               <span className="text-right">{money(report.cashSummary.cashSales)}</span>
               <span>Cash refunds</span>
               <span className="text-right">{money(report.cashSummary.cashRefunds)}</span>
+              {/* Cash taken against tabs into this drawer: in expected cash,
+                  not in sales (v1.2 Phase 1C). */}
+              {(report.cashSummary.cashTabRepayments ?? 0) > 0 && (
+                <>
+                  <span>Cash tab repayments</span>
+                  <span className="text-right" data-testid="z-cash-tab-repayments">
+                    {money(report.cashSummary.cashTabRepayments)}
+                  </span>
+                </>
+              )}
               <span>Expected cash</span>
               <span className="text-right font-medium">
                 {money(report.cashSummary.expectedCash)}
@@ -146,6 +164,14 @@ export function ZReportView({ report }: { report: ZReportData }) {
               )}
             </div>
           </div>
+
+          {report.cashSummary.expectedCashExcludesTabRepayments && (
+            <p className="text-xs text-muted-foreground border-l-2 border-amber-500 pl-3" data-testid="z-old-rule-note">
+              This shift was closed before cash tab repayments counted towards expected cash. Any cash
+              taken against a tab on it is not in the expected figure, so the variance reads over by
+              that amount.
+            </p>
+          )}
 
           {(report.creditGivenOut > 0 || report.creditResolved.length > 0) && (
             <>

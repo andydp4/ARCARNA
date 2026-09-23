@@ -1,22 +1,12 @@
-import { useClerk } from "@clerk/clerk-react";
-import { useAuthConfig } from "@/components/AuthProviders";
-import { appUrl } from "@/lib/authConfig";
-import { wipeAllOfflineData, navigateToLogout } from "@/lib/orgCacheWipe";
+import { navigateToLogout } from "@/lib/orgCacheWipe";
 
 /**
- * Sign out — clears offline caches, then Clerk session (when ClerkProvider is active).
- * Use in Layout and other screens rendered under ClerkProvider.
+ * Sign out. Always through the /sign-out page, which refuses while the till
+ * still holds sales that have not reached arcarna (v1.2 Phase 1A) and only
+ * then clears offline data and ends the Clerk or legacy session.
  */
 export function useLogout() {
-  const { clerkReady } = useAuthConfig();
-  const { signOut } = useClerk();
-
   return async () => {
-    await wipeAllOfflineData();
-    if (clerkReady) {
-      await signOut({ redirectUrl: appUrl("/") });
-      return;
-    }
     await navigateToLogout();
   };
 }

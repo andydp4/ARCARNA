@@ -10,6 +10,7 @@ import { db } from "../db";
 import { customers, loyaltyLedger } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import type { IWorker } from "./index";
+import { pointsEarnedFor } from "../../shared/pricing/priceOrder";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
 interface OrderPayload {
@@ -96,8 +97,10 @@ export class LoyaltyWorker implements IWorker {
       let reason = 'earn';
 
       if (event.eventType === 'OrderCreated') {
-        // Earn points: round down the total
-        pointsDelta = Math.floor(total * POINTS_PER_UNIT);
+        // Earned on what was paid — the order total is already net of every
+        // discount and of any points spent (v1.2 Phase 1B). Same rule the
+        // till shows the customer, from shared/pricing/priceOrder.ts.
+        pointsDelta = pointsEarnedFor(total);
         reason = 'earn';
       } else if (event.eventType === 'RefundIssued') {
         if (typeof payload.pointsToReverse === "number") {
