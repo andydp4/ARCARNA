@@ -404,12 +404,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     );
   }, [selectedCustomer, loyaltyTiers]);
 
-  // Filter customers for search
+  // Filter customers for search. Below admin there is no number here to
+  // search (not even the last four: no partial matches, PRV-06); a whole
+  // number is looked up on the server by the picker instead.
   const filteredCustomers = customers.filter(
     (customer) =>
       customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      ((customer.phone ?? customer.phoneLast4 ?? "") !== "" &&
-        (customer.phone ?? customer.phoneLast4 ?? "").includes(customerSearch)) ||
+      (!!customer.phone && customer.phone.includes(customerSearch)) ||
       (customer.email && customer.email.toLowerCase().includes(customerSearch.toLowerCase()))
   );
 

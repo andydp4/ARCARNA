@@ -19,8 +19,6 @@ type InvoicePdfData = {
   paymentMethod: string | null;
   company: InvoiceCompany;
   customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
 };
@@ -156,8 +154,6 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         dueDate: data.dueDate,
         company: data.company,
         customerName: data.customerName,
-        customerEmail: data.customerEmail,
-        customerPhone: data.customerPhone,
         customerAddress: data.customerAddress,
         items: data.items,
         subtotal: data.subtotal,

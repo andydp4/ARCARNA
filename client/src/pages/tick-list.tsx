@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { csvRow } from '@shared/csv'
+import { csvDocument } from '@shared/csv'
 import { BACKDATE_LIMIT_DAYS, localIsoDate } from '@shared/orders/orderDate'
 import { shiftIsoDate } from '@shared/time/tradingDay'
 import { PageHeader } from '@/components/PageHeader'
@@ -234,8 +234,8 @@ export default function TickList() {
     }
     
     // No email or phone: the CSV leaves the premises, and contact details are
-    // not part of what is owed (PRV-02). csvRow also stops a customer name
-    // like "=HYPERLINK(...)" running as a formula in a spreadsheet.
+    // not part of what is owed (PRV-02). The shared writer also stops a customer name
+    // like "=HYPERLINK(...)" running as a formula in a spreadsheet (FIX-14).
     const headers = ['Customer', 'Total Debt', 'Last Order', 'Status']
     const rows = filteredCustomers.map(customer => [
       customer.name,
@@ -244,9 +244,9 @@ export default function TickList() {
       customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
 
-    const csv = [headers, ...rows].map(row => csvRow(row)).join('\n')
+    const csv = csvDocument(headers, rows)
 
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

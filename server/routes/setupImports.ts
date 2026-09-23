@@ -326,10 +326,13 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!failed || !Array.isArray(failed)) {
         return res.status(404).json({ message: "No failed rows recorded" });
       }
-      const lines = ["error", ...failed.map((e: string) => `"${e.replace(/"/g, '""')}"`)];
-      res.setHeader("Content-Type", "text/csv");
+      // The shared writer (FIX-14): an error quoting an imported "=..." name
+      // exports as text.
+      const { csvDocument } = await import("@shared/csv");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="failed-${entry.importType}-${entry.id}.csv"`);
-      res.send(lines.join("\n"));
+      res.setHeader("Cache-Control", "no-store, private");
+      res.send(csvDocument(["error"], failed.map((e: unknown) => [String(e)])));
     } catch (error) {
       res.status(500).json({ message: "Failed to export errors" });
     }

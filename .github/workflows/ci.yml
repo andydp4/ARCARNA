@@ -335,6 +335,7 @@ jobs:
             server/__tests__/jobClaimRace.test.ts \
             server/__tests__/roleMatrix.test.ts \
             server/__tests__/customerViews.test.ts \
+            server/__tests__/customerExports.test.ts \
             server/__tests__/productWrites.test.ts \
             server/__tests__/productMinPrice.test.ts \
             server/__tests__/priceExceptions.test.ts \

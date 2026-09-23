@@ -142,7 +142,8 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
       if (format === 'csv') {
         // Generate CSV
         const csv = await storage.generateCSVReport(reportData, type);
-        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, private');
         res.setHeader('Content-Disposition', `attachment; filename="${type}_report.csv"`);
         res.send(csv);
       } else {

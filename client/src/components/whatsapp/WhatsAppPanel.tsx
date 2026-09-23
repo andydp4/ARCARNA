@@ -29,6 +29,7 @@ import {
   STORAGE_WHATSAPP_SOUND_LEGACY,
 } from "@shared/storageKeys";
 import { stashWhatsappDraft } from "@/lib/whatsappDraft";
+import { isMaskedValue } from "@shared/customerView";
 import { checkTemplateConsent } from "@shared/marketingConsent";
 
 interface WhatsappStatus {
@@ -96,7 +97,9 @@ interface Template {
 interface CustomerLite {
   id: string;
   name: string;
-  phone: string | null;
+  /** Admin only (Q13a); below that the mask stands in. */
+  phone?: string | null;
+  phoneMasked?: string | null;
 }
 
 function formatTime(iso: string | null): string {
@@ -589,7 +592,10 @@ function ConversationView({
             <p className="truncate font-medium">
               {conversation.customerName || conversation.profileName || conversation.phone}
             </p>
-            <p className="text-xs text-muted-foreground">+{conversation.waId}</p>
+            {/* Below admin the server sends ••4821 (Q7): no "+" in front of a mask. */}
+            <p className="text-xs text-muted-foreground">
+              {isMaskedValue(conversation.waId) ? conversation.waId : `+${conversation.waId}`}
+            </p>
           </div>
           <Badge variant={conversation.customerId ? "secondary" : "outline"} className="shrink-0 text-[10px]">
             {conversation.customerId ? "Linked" : "Unlinked"}
@@ -862,7 +868,9 @@ function LinkCustomerPicker({ onPick }: { onPick: (customerId: string) => void }
                 onClick={() => onPick(c.id)}
               >
                 {c.name}
-                {c.phone ? <span className="text-xs text-muted-foreground"> · {c.phone}</span> : null}
+                {c.phone || c.phoneMasked ? (
+                  <span className="text-xs text-muted-foreground"> · {c.phone || c.phoneMasked}</span>
+                ) : null}
               </button>
             </li>
           ))

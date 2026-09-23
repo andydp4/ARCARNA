@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/appPaths";
-import type { CustomerMatch } from "@shared/customerView";
+import { PosCustomerPhoneMatches } from "@/components/pos-customer-phone-matches";
+import { formatUkPhone, type CustomerMatch } from "@shared/customerView";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -168,12 +169,18 @@ function CustomerPicker({
                 <div>{customer.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {customer.category} • {customer.loyaltyPoints} pts
+                  {customer.phoneMasked ? ` • ${customer.phoneMasked}` : ""}
                 </div>
               </li>
             ))}
+            <PosCustomerPhoneMatches
+              query={customerSearch}
+              excludeIds={new Set(filteredCustomers.map((c) => c.id))}
+              onPick={pick}
+            />
             {/* A search that matches nobody is where a new customer is most
                 likely to be standing. Say so rather than showing a blank list. */}
-            {customerSearch.trim() && filteredCustomers.length === 0 && (
+            {customerSearch.trim() && filteredCustomers.length === 0 && !formatUkPhone(customerSearch) && (
               <li role="presentation" className="px-2 py-3 text-center text-xs text-muted-foreground">
                 No customer matches "{customerSearch.trim()}". Add them above.
               </li>

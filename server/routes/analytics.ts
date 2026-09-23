@@ -9,7 +9,7 @@ import { getRfmCustomersBySegment, getRfmCustomersForExport, getRfmSummary, reco
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { EVIDENCE_MIN_ROLE, EXPORT_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
-import { csvRow } from "@shared/csv";
+import { csvDocument } from "@shared/csv";
 
 // Truths are manager and above; the customer export is admin only and logged
 // (FIX-03, PRV-02, Q12). The home page hides its Truths panel below manager
@@ -125,24 +125,25 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
         orgId: ctx.orgId,
         metadata: { segment, count: rows.length },
       });
-      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="rfm-${segment.toLowerCase()}.csv"`);
-      res.write("customer_id,name,email,segment,r,f,m,total_spent,loyalty_points\n");
-      for (const row of rows) {
-        const line = csvRow([
-          row.customerId,
-          row.name || "",
-          row.email || "",
-          row.segment,
-          row.recencyScore,
-          row.frequencyScore,
-          row.monetaryScore,
-          row.totalSpent,
-          row.loyaltyPoints,
-        ]);
-        res.write(line + "\n");
-      }
-      res.end();
+      res.setHeader("Cache-Control", "no-store, private");
+      res.send(
+        csvDocument(
+          ["customer_id", "name", "email", "segment", "r", "f", "m", "total_spent", "loyalty_points"],
+          rows.map((row) => [
+            row.customerId,
+            row.name || "",
+            row.email || "",
+            row.segment,
+            row.recencyScore,
+            row.frequencyScore,
+            row.monetaryScore,
+            row.totalSpent,
+            row.loyaltyPoints,
+          ]),
+        ),
+      );
     } catch (error) {
       console.error("Error exporting RFM CSV:", error);
       res.status(500).json({ message: "Failed to export RFM CSV" });

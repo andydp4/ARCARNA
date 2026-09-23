@@ -99,6 +99,19 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   address" is logged (`customer.saved_address_used`), as is a manager's
   "Replace number" (`customer.phone_replaced`). The public API returns contact
   details only to a key with the `customers:read_contact` permission.
+- **Device copies, exports and webhooks (v1.2 Phase 5, PRV-07, FIX-14,
+  CMP-14).** The till's offline store keeps the cashier view only
+  (`deviceCustomerRow`), whoever was signed in, and cuts rows left by older
+  versions on open; queued customer edits and the Customers form's draft hold
+  no contact details (`withoutContactDetails`). Customer, WhatsApp, export
+  and lookup responses are `Cache-Control: no-store`, and the service worker
+  never stores customer, credit, invoice, WhatsApp, export or lookup
+  responses, nor anything marked no-store (`client/public/sw.js`). The
+  WhatsApp inbox list and conversations are staff only. Every CSV goes
+  through `shared/csv.ts` (every cell quoted, formula characters neutralised,
+  UTF-8 marker; `shared/csv.spec.ts` fails on a hand-built one). Outbound
+  webhooks send an explicit payload per event (`shared/webhookPayload.ts`):
+  customers by id only; staff and expense events are not offered.
 - **Expense lists.** `GET /api/overhead-expenses` and
   `GET /api/orders/:orderId/expenses` are MANAGER and above: a personal-use
   sale books its stock at cost as an order expense.

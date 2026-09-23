@@ -11,8 +11,10 @@ const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
  *  its API cache logic, which reads and re-serves it as ordinary JSON.
  *  Bumped 7 -> 8 (Phase 0B): drops asset caches that may hold index.html
  *  stored under a missing chunk's URL (the server used to answer a missing
- *  /assets file with the app shell and a 200). */
-const CACHE_VERSION = "8";
+ *  /assets file with the app shell and a 200).
+ *  Bumped 8 -> 9 (v1.2 Phase 5, PRV-07): activate drops the old API cache,
+ *  which could hold customer, credit, invoice and WhatsApp responses. */
+const CACHE_VERSION = "9";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
@@ -64,6 +66,62 @@ function isOpsBoardOrStreamRequest(request, pathname) {
   if (pathname === boardPath || pathname === `${boardPath}/stream`) return true;
   const accept = request.headers.get("accept") || "";
   return accept.includes("text/event-stream");
+}
+
+/**
+ * API responses this service worker never keeps (v1.2 Phase 5, PRV-07):
+ * customers, credit, invoices, WhatsApp, exports and lookups carry people's
+ * details, and a cached copy outlives the session that fetched it. The till's
+ * offline customer list is the cashier view the app itself writes to
+ * IndexedDB, so nothing here is needed offline. Matched on the path below the
+ * API prefix, by segment, so `/customers` and `/customers/:id` both match
+ * and `/tick-customers` (the Credit List) is named on its own.
+ */
+const PRIVATE_API_SEGMENTS = [
+  "customers",
+  "tick-customers",
+  "credit",
+  "invoices",
+  "whatsapp",
+  "api-keys",
+  "webhooks",
+];
+
+function apiSubpath(pathname) {
+  if (pathname.startsWith(`${API_PREFIX}/`)) return pathname.slice(API_PREFIX.length + 1);
+  if (pathname.startsWith("/api/")) return pathname.slice("/api/".length);
+  return pathname.replace(/^\/+/, "");
+}
+
+function isPrivateApiPath(pathname) {
+  const sub = apiSubpath(pathname).toLowerCase();
+  const segments = sub.split("/").filter(Boolean);
+  if (segments.length === 0) return false;
+  if (PRIVATE_API_SEGMENTS.includes(segments[0])) return true;
+  // Every export and every lookup, wherever it lives (…/export, …/export.csv,
+  // …/lookup-phone, …/phone-search, analytics/rfm/customers, …/pdf).
+  return segments.some(
+    (seg) =>
+      seg === "export" ||
+      seg.startsWith("export.") ||
+      seg === "exports" ||
+      seg.includes("lookup") ||
+      seg.includes("search") ||
+      seg === "customers" ||
+      seg === "top-customers" ||
+      seg === "customer-phone" ||
+      seg === "pdf",
+  );
+}
+
+/** A response the server said not to keep ("no-store"/"private"), or a file download. */
+function mayCacheApiResponse(response) {
+  if (!response || !response.ok) return false;
+  const cacheControl = (response.headers.get("cache-control") || "").toLowerCase();
+  if (cacheControl.includes("no-store") || cacheControl.includes("private")) return false;
+  const disposition = (response.headers.get("content-disposition") || "").toLowerCase();
+  if (disposition.includes("attachment")) return false;
+  return true;
 }
 
 function isNavigationRequest(request) {
@@ -235,6 +293,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Straight to the network, never stored, never answered from an old copy.
+  if (isApiRequest(url.pathname) && isPrivateApiPath(url.pathname)) {
+    return;
+  }
+
   if (isApiRequest(url.pathname)) {
     const cacheKey = cacheRequestForOrg(request);
     event.respondWith(
@@ -242,7 +305,7 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           // A role preview's answers are that role's view, not this device's:
           // never let them replace the real offline copy.
-          if (response.ok && !request.headers.get("X-Preview-Role")) {
+          if (mayCacheApiResponse(response) && !request.headers.get("X-Preview-Role")) {
             const responseClone = response.clone();
             caches.open(API_CACHE_NAME).then((cache) => {
               cache.put(cacheKey, responseClone);

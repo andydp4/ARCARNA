@@ -95,7 +95,10 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       // offline cache read this list, so below admin the query itself never
       // selects them: the hints and masks are made in the database (PRV-03).
       const list = await listCustomersForRole(ctx.orgId, ctx.role);
-      if (ctx.role === "ADMIN" || ctx.role === "SUPER_ADMIN") noStore(res);
+      // Never kept by the browser or the service worker, whoever asked
+      // (PRV-07): the till's offline copy is the cashier view the app writes
+      // to IndexedDB itself.
+      noStore(res);
       res.json(list);
     } catch (error) {
       console.error("Error fetching customers:", error);
@@ -150,7 +153,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       if (!customer) {
         return res.status(404).json({ message: "Customer not found" });
       }
-      if (ctx.role === "ADMIN" || ctx.role === "SUPER_ADMIN") noStore(res);
+      noStore(res);
       res.json(customer);
     } catch (error) {
       console.error("Error fetching customer:", error);
@@ -351,8 +354,9 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
       const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
       if (result.format === "csv" && result.rows) {
-        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="customers-export.csv"');
+        res.setHeader("Cache-Control", "no-store, private");
         return res.send(rowsToCsv(result.rows));
       }
       res.json(outcome.result);

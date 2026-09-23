@@ -64,3 +64,66 @@ export function duplicatePrompt(match: CustomerMatch): string {
   const phoneHint = match.phoneMasked ? ` (${match.phoneMasked})` : "";
   return `Already on the system: ${match.displayName}${phoneHint}, use them?`;
 }
+
+// ---------------------------------------------------------------------------
+// Device copies (PRV-07). What a till keeps on disk outlives the session that
+// fetched it, so it is the cashier view whoever was signed in: a manager or
+// admin's full rows must not be left behind for the next person on the till.
+// ---------------------------------------------------------------------------
+
+/** The only customer fields a device may keep (the cashier view, plus Q7's masks). */
+export const DEVICE_CUSTOMER_FIELDS = [
+  "id",
+  "name",
+  "category",
+  "loyaltyPoints",
+  "receiptEmailOptIn",
+  "hasEmail",
+  "hasPhone",
+  "phoneLast4",
+  "phoneMasked",
+  "emailMasked",
+] as const;
+
+/**
+ * One customer row cut down to what a device may keep. Masks are made here
+ * from a full row (an admin's fetch) so the offline till still says ••4821;
+ * the full values themselves never reach the cache.
+ */
+export function deviceCustomerRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const field of DEVICE_CUSTOMER_FIELDS) {
+    if (field in row) out[field] = row[field];
+  }
+  if ("phone" in row || "email" in row) {
+    const phone = typeof row.phone === "string" ? row.phone : "";
+    const email = typeof row.email === "string" ? row.email : "";
+    const digits = phone.replace(/\D/g, "");
+    out.hasPhone = digits !== "";
+    out.hasEmail = email.trim() !== "";
+    out.phoneLast4 = digits.length >= 4 ? digits.slice(-4) : null;
+    out.phoneMasked = maskPhone(phone);
+    out.emailMasked = maskEmail(email);
+  }
+  return out;
+}
+
+/** Contact fields a queued customer edit or a draft must never hold. */
+const DEVICE_CONTACT_FIELDS = ["phone", "email", "address", "phoneE164", "phone_e164", "replacePhone"] as const;
+
+/**
+ * A customer create/edit as it may wait on a device (PRV-07): no contact
+ * details. They are typed again once the till is back online, where the
+ * server takes them (and logs a replaced number).
+ */
+export function withoutContactDetails<T extends Record<string, unknown>>(data: T): Partial<T> {
+  const out: Record<string, unknown> = { ...data };
+  for (const field of DEVICE_CONTACT_FIELDS) delete out[field];
+  return out as Partial<T>;
+}
+
+/** Whether a create/edit carried contact details a device may not keep. */
+export function hasContactDetails(data: Record<string, unknown> | null | undefined): boolean {
+  if (!data) return false;
+  return DEVICE_CONTACT_FIELDS.some((f) => typeof data[f] === "string" && (data[f] as string).trim() !== "");
+}

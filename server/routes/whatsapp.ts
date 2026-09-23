@@ -12,7 +12,7 @@
  *   POST /api/whatsapp/conversations/:id/read
  *   POST /api/whatsapp/conversations/:id/reply
  */
-import { canSeeContactDetails, customerForRole } from "@shared/accessPolicy";
+import { canSeeContactDetails, customerForRole, rolesAtLeast } from "@shared/accessPolicy";
 import { isMaskedValue, maskPhone } from "@shared/customerView";
 import type { Express, Request, RequestHandler } from "express";
 import { requireRole } from "../auth";
@@ -138,8 +138,17 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.get("/api/whatsapp/conversations", ...scoped, async (req: any, res) => {
+  // The inbox is staff only, and neither the list nor a conversation is kept
+  // by a browser or the service worker (v1.2 Phase 5, PRV-07).
+  const inboxRoles = requireRole(...rolesAtLeast("CASHIER"));
+  const noStore = (res: any) => {
+    res.setHeader("Cache-Control", "no-store, private");
+    res.setHeader("Pragma", "no-cache");
+  };
+
+  app.get("/api/whatsapp/conversations", ...scoped, inboxRoles, async (req: any, res) => {
     try {
+      noStore(res);
       const ctx = req.orgContext as { orgId: string; role?: string };
       const search = typeof req.query.search === "string" ? req.query.search : undefined;
       const conversations = await store.listConversations(ctx.orgId, {
@@ -153,8 +162,9 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.get("/api/whatsapp/conversations/:id", ...scoped, async (req: any, res) => {
+  app.get("/api/whatsapp/conversations/:id", ...scoped, inboxRoles, async (req: any, res) => {
     try {
+      noStore(res);
       const ctx = req.orgContext as { orgId: string; role?: string };
       const conversation = await store.getConversation(req.params.id, ctx.orgId);
       if (!conversation) return res.status(404).json({ message: "Conversation not found" });
