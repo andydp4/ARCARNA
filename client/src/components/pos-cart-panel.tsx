@@ -610,9 +610,10 @@ export function PosCartPanel({
               }}
               disabled={orderSubmitting || !promoCode || validatePromoMutation.isPending}
               data-testid="button-apply-promo"
-              className="lm-btn-outline min-h-[44px] min-w-[44px]"
+              className="lm-btn-outline min-h-[44px] min-w-[44px] gap-1"
             >
-              <Tag className="h-4 w-4" />
+              <Tag className="h-4 w-4" aria-hidden />
+              Apply
             </Button>
           </div>
           {appliedPromo && (
@@ -633,10 +634,11 @@ export function PosCartPanel({
                   setPromoCode("");
                 }}
                 data-testid="button-remove-promo"
-                className="min-h-[44px] min-w-[44px]"
+                className="min-h-[44px] min-w-[44px] gap-1"
                 disabled={orderSubmitting}
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden />
+                Remove
               </Button>
             </div>
           )}

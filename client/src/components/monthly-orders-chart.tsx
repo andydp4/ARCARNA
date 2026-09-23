@@ -62,7 +62,7 @@ export default function MonthlyOrdersChart() {
         </div>
       }
       interpretation="Order count per month from the monthly summary. Compare months to spot seasonality and growth."
-      action={{ label: "Open Truths for a custom range", href: "/insights" }}
+      action={{ label: "Open Truths at a glance", href: "/truths" }}
     >
       {isError ? (
         <ErrorState

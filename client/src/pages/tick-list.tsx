@@ -434,7 +434,8 @@ export default function TickList() {
                                 onClick={() => handleDeleteClick(customer)}
                                 data-testid={`button-delete-${customer.id}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 mr-1" aria-hidden />
+                                Remove
                               </Button>
                               )}
                             </div>
@@ -487,7 +488,8 @@ export default function TickList() {
                             className="min-h-[44px] text-destructive hover:text-destructive"
                             onClick={() => handleDeleteClick(customer)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4 mr-1" aria-hidden />
+                            Remove
                           </Button>
                           )}
                         </div>

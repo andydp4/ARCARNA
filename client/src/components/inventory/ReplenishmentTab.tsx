@@ -523,7 +523,7 @@ export function ReplenishmentTab() {
                     fixed replaces it. */}
                 {canMutate && rec.actionType.includes("BUY") && !rec.selectedSupplier && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/settings?tab=suppliers">
+                    <Link href="/suppliers">
                       <PackagePlus className="h-4 w-4 mr-1" />
                       No supplier mapped — add one
                     </Link>

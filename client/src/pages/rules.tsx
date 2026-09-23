@@ -224,11 +224,13 @@ export default function RulesPage() {
                   onCheckedChange={() => toggleMutation.mutate(r)}
                   aria-label="Toggle rule"
                 />
-                <Button variant="outline" size="icon" onClick={() => openEdit(r)} aria-label="Edit">
-                  <Pencil className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-1" onClick={() => openEdit(r)}>
+                  <Pencil className="h-4 w-4" aria-hidden />
+                  Edit
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => setHistoryRule(r)} aria-label="History">
-                  <History className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-1" onClick={() => setHistoryRule(r)}>
+                  <History className="h-4 w-4" aria-hidden />
+                  History
                 </Button>
               </div>
             </div>

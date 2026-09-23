@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  ShoppingCart,
   Package,
   Users,
   TrendingUp,
@@ -30,6 +29,7 @@ import {
   Activity,
   Workflow,
   AlertTriangle,
+  Truck,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -49,43 +49,94 @@ const MANAGER_ROLES: readonly Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER']
 /** Roles allowed to see SUPER_ADMIN-only nav entries. */
 const SUPER_ADMIN_ONLY: readonly Role[] = ['SUPER_ADMIN']
 
+/** Menu-only: entries that exist for a cashier because they lack the manager's fuller page. */
+const CASHIER_ONLY: readonly Role[] = ['CASHIER']
+
+/**
+ * The Settings page's tabs, listed under it in the Settings Centre menu. Role
+ * lines match `pages/settings.tsx` (Imports, Cashiers and Operations are
+ * manager and above; Flags admin and above). Suppliers moved to the Stock Centre.
+ */
+export const SETTINGS_TABS: readonly NavTab[] = [
+  { key: 'general', label: 'General', tab: 'general', testId: 'nav-settings-tab-general' },
+  { key: 'imports', label: 'Imports', tab: 'imports', testId: 'nav-settings-tab-imports', roles: MANAGER_ROLES },
+  { key: 'payment', label: 'Payment', tab: 'payment', testId: 'nav-settings-tab-payment' },
+  { key: 'invoice', label: 'Invoice', tab: 'invoice', testId: 'nav-settings-tab-invoice' },
+  { key: 'system', label: 'System', tab: 'system', testId: 'nav-settings-tab-system' },
+  { key: 'integrations', label: 'Integrations', tab: 'integrations', testId: 'nav-settings-tab-integrations' },
+  { key: 'cashiers', label: 'Cashiers', tab: 'cashiers', testId: 'nav-settings-tab-cashiers', roles: MANAGER_ROLES },
+  { key: 'operations', label: 'Operations', tab: 'operations', testId: 'nav-settings-tab-operations', roles: MANAGER_ROLES },
+  { key: 'users', label: 'Users', tab: 'users', testId: 'nav-settings-tab-users' },
+  { key: 'flags', label: 'Flags', tab: 'flags', testId: 'nav-settings-tab-flags', roles: ADMIN_ROLES },
+]
+
 export interface NavItem {
   key: string
   label: string
   href: string
   icon: LucideIcon
   testId: string
-  /** When set, only these roles see the item. Undefined = visible to everyone. */
+  /** When set, only these roles may open the route (and see it in the menu). Undefined = everyone. */
+  roles?: readonly Role[]
+  /**
+   * When set, only these roles see the item in the menu — narrower than who may
+   * open it. Stock levels is the case: any member of staff may open it, but a
+   * manager already has Products and Stock Truths, so only a cashier is shown it.
+   */
+  menuRoles?: readonly Role[]
+  /** Sub-menu entries that are tabs of this page (`?tab=`), shown beneath it. */
+  tabs?: readonly NavTab[]
+}
+
+/** A tab of a page, listed in the menu under that page. */
+export interface NavTab {
+  key: string
+  label: string
+  /** The page's `?tab=` value. */
+  tab: string
+  testId: string
   roles?: readonly Role[]
 }
 
 /**
- * A sidebar section. The six groups are fixed by
- * `docs/specs/ARCARNA_LANGUAGE_SPECIFICATION.md` §3 and the Route Experience
- * Spec §1: Control Centre · Sell · Stock · Understand · Operate · Administer.
- * The group label is also the eyebrow used by each route's `PageHeader`.
+ * A Centre (v1.2 Phase 3): the main menu lists the seven Centres; choosing one
+ * opens its first page the viewer may see (its landing page) and switches the
+ * menu to that Centre's pages. The Centre's label is also the eyebrow on every
+ * page inside it (`PageHeader`).
  */
 export interface NavGroup {
-  key: string
+  key: CentreKey
   label: string
   testId: string
+  icon: LucideIcon
+  /** In menu order. The first one the viewer can see is the Centre's landing page. */
   items: NavItem[]
+  /**
+   * Routes inside this Centre that are not menu items (a report page, a
+   * refund, a promotion's lift) — matched by prefix, so a deep link to one
+   * still opens the right Centre.
+   */
+  pathPrefixes?: readonly string[]
 }
+
+export type CentreKey = 'control' | 'operations' | 'stock' | 'truths' | 'customer' | 'finance' | 'settings'
+export type Centre = NavGroup
 
 /**
  * Navigation information architecture — source of truth for sidebar copy.
  *
- * GROUPING follows the Language Specification §3 (six groups). LABELS follow
- * the owner-approved "Truths" lexicon in `vocabulary.ts`, which POSTDATES that
- * spec table — §3 still lists the pre-rebrand names (its "current label" column
- * says `/inventory` is "Inventory", but the app has shipped "Stock Truths").
- * Where the two disagree, the Truths lexicon wins. Routes are unchanged.
+ * v1.2 Phase 3 reorganised the six groups (Control Centre · Sell · Stock ·
+ * Understand · Operate · Administer) into the seven Centres signed off in the
+ * v1.2 brief. Labels still follow the owner-approved "Truths" lexicon in
+ * `vocabulary.ts`. Role lists are unchanged by the move: who may open a page
+ * is the same as before; only where it sits in the menu changed.
  */
-export const navGroups: NavGroup[] = [
+export const centres: Centre[] = [
   {
-    key: 'control-centre',
+    key: 'control',
     label: VOCAB.controlCentre,
-    testId: 'nav-group-control-centre',
+    testId: 'nav-centre-control',
+    icon: Home,
     items: [
       {
         key: 'home',
@@ -97,46 +148,26 @@ export const navGroups: NavGroup[] = [
     ]
   },
   {
-    key: 'sell',
-    label: 'Sell',
-    testId: 'nav-group-sell',
+    key: 'operations',
+    label: 'Operations Centre',
+    testId: 'nav-centre-operations',
+    icon: LayoutGrid,
+    // New order is merged into the board (/create-order and /pos redirect to
+    // its New order pane), so it has no menu entry of its own any more.
+    pathPrefixes: ['/open-orders/', '/orders/'],
     items: [
       {
-        key: 'pos',
-        label: VOCAB.createOrder,
-        href: '/create-order',
-        icon: ShoppingCart,
-        testId: 'nav-pos'
-      },
-      {
-        // The Operations Centre — the board that replaced the Open Orders list
-        // (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md). The testid is kept so the
-        // one nav entry for "where orders are worked" has one name across the
-        // suites that already assert on it.
+        // The testid is kept so the one nav entry for "where orders are
+        // worked" has one name across the suites that already assert on it.
         key: 'orders',
-        label: VOCAB.operations,
+        label: 'Operations board',
         href: '/operations',
         icon: LayoutGrid,
         testId: 'nav-orders'
       },
       {
-        key: 'shifts',
-        label: 'Shifts',
-        href: '/shifts',
-        icon: Timer,
-        testId: 'nav-shifts'
-      },
-      {
-        key: 'invoices',
-        label: 'Invoices',
-        href: '/invoices',
-        icon: FileText,
-        testId: 'nav-invoices',
         // Owner decision Q11: invoices and the Credit List are manager and
         // above, here and on the server. Cashiers lose both.
-        roles: MANAGER_ROLES
-      },
-      {
         key: 'tick-list',
         label: 'Credit List',
         href: '/tick-list',
@@ -158,8 +189,9 @@ export const navGroups: NavGroup[] = [
   },
   {
     key: 'stock',
-    label: 'Stock',
-    testId: 'nav-group-stock',
+    label: 'Stock Centre',
+    testId: 'nav-centre-stock',
+    icon: Package,
     items: [
       {
         key: 'products',
@@ -168,6 +200,16 @@ export const navGroups: NavGroup[] = [
         icon: Package,
         testId: 'nav-products',
         roles: MANAGER_ROLES
+      },
+      {
+        // The cashier's read-only view: counts only, never a cost (the route
+        // answers from an allow-list, server/routes/inventory.ts).
+        key: 'stock-levels',
+        label: 'Stock levels',
+        href: '/stock-levels',
+        icon: Boxes,
+        testId: 'nav-stock-levels',
+        menuRoles: CASHIER_ONLY
       },
       {
         key: 'inventory',
@@ -184,20 +226,33 @@ export const navGroups: NavGroup[] = [
         icon: ClipboardList,
         testId: 'nav-purchase-drafts',
         roles: MANAGER_ROLES
+      },
+      {
+        // Moved out of the Settings tabs. Supplier records carry cost prices,
+        // which the server keeps to managers and above (Q6).
+        key: 'suppliers',
+        label: 'Suppliers',
+        href: '/suppliers',
+        icon: Truck,
+        testId: 'nav-suppliers',
+        roles: MANAGER_ROLES
       }
     ]
   },
   {
-    key: 'understand',
-    label: 'Understand',
-    testId: 'nav-group-understand',
+    key: 'truths',
+    label: 'Truths Centre',
+    testId: 'nav-centre-truths',
+    icon: TrendingUp,
+    pathPrefixes: ['/reports/', '/analytics/'],
     items: [
       {
-        key: 'insights',
-        label: VOCAB.truthsHub,
-        href: '/insights',
+        // The Centre's landing page: the org's widget layout, set by admins.
+        key: 'truths-at-a-glance',
+        label: VOCAB.truthsAtAGlance,
+        href: '/truths',
         icon: TrendingUp,
-        testId: 'nav-insights',
+        testId: 'nav-truths-at-a-glance',
         roles: MANAGER_ROLES
       },
       {
@@ -266,19 +321,16 @@ export const navGroups: NavGroup[] = [
     ]
   },
   {
-    // None of this group is on a cashier's menu (owner direction, ARC-007/009):
-    // ticks and gift cards are sold inline at the till already (pos.tsx), so
-    // the standalone management pages here are for staff who administer the
-    // program, not staff who redeem it during a sale.
-    key: 'operate',
-    label: 'Operate',
-    testId: 'nav-group-operate',
+    // Managers and above. Ticks and gift cards are sold inline at the till
+    // already (pos.tsx), and the till's own customer picker does not go
+    // through these pages. The cashier's customer lookup lands in Phase 5.
+    key: 'customer',
+    label: 'Customer Centre',
+    testId: 'nav-centre-customer',
+    icon: Users,
+    pathPrefixes: ['/promotions/'],
     items: [
       {
-        // The POS's own inline customer picker (used for tick sales at the
-        // till) does not go through this page, so hiding it from cashiers
-        // does not take anything away from a till transaction — see PR
-        // description for this call.
         key: 'customers',
         label: 'Customers',
         href: '/customers',
@@ -309,17 +361,23 @@ export const navGroups: NavGroup[] = [
         icon: Ticket,
         testId: 'nav-gift-cards',
         roles: MANAGER_ROLES
-      },
+      }
+    ]
+  },
+  {
+    key: 'finance',
+    label: 'Finance Centre',
+    testId: 'nav-centre-finance',
+    icon: Wallet,
+    items: [
       {
-        // Every location CRUD route is SUPER_ADMIN/ADMIN only
-        // (server/routes/locations.ts), so the page is admin-only even though
-        // the plain location list is readable by POS staff for shift opening.
-        key: 'locations',
-        label: 'Locations',
-        href: '/locations',
-        icon: MapPin,
-        testId: 'nav-locations',
-        roles: ADMIN_ROLES
+        // Everyone; a cashier's list holds only their own shifts — the server
+        // filters the rows (server/routes/shifts.ts, maySeeShiftSheet).
+        key: 'shifts',
+        label: 'Shifts',
+        href: '/shifts',
+        icon: Timer,
+        testId: 'nav-shifts'
       },
       {
         key: 'expenses',
@@ -347,20 +405,32 @@ export const navGroups: NavGroup[] = [
         icon: Wallet,
         testId: 'nav-cashier-payroll',
         roles: MANAGER_ROLES
+      },
+      {
+        key: 'invoices',
+        label: 'Invoices',
+        href: '/invoices',
+        icon: FileText,
+        testId: 'nav-invoices',
+        roles: MANAGER_ROLES
       }
     ]
   },
   {
-    key: 'administer',
-    label: 'Administer',
-    testId: 'nav-group-administer',
+    key: 'settings',
+    label: 'Settings Centre',
+    testId: 'nav-centre-settings',
+    icon: Settings,
+    pathPrefixes: ['/settings/', '/admin/'],
     items: [
       {
         key: 'settings',
         label: 'Settings',
         href: '/settings',
         icon: Settings,
-        testId: 'nav-settings'
+        testId: 'nav-settings',
+        // Mirrors the tab list in pages/settings.tsx — same role lines.
+        tabs: SETTINGS_TABS
       },
       {
         key: 'user-access',
@@ -371,9 +441,27 @@ export const navGroups: NavGroup[] = [
         roles: ADMIN_ROLES
       },
       {
-        // pages/settings/developer.tsx itself only renders for ADMIN/SUPER_ADMIN
-        // (`canAccess`); this item had no role restriction at all before, so
-        // every role saw a link to a page that then refused everyone else.
+        // Moved from Operate. Every location CRUD route is SUPER_ADMIN/ADMIN
+        // only (server/routes/locations.ts), so the page is admin-only even
+        // though the plain location list is readable by POS staff.
+        key: 'locations',
+        label: 'Locations',
+        href: '/locations',
+        icon: MapPin,
+        testId: 'nav-locations',
+        roles: ADMIN_ROLES
+      },
+      {
+        // server/routes/automation.ts permits MANAGER on every rules route.
+        key: 'rules',
+        label: 'Rules',
+        href: '/rules',
+        icon: Workflow,
+        testId: 'nav-rules',
+        roles: MANAGER_ROLES
+      },
+      {
+        // pages/settings/developer.tsx itself only renders for ADMIN/SUPER_ADMIN.
         key: 'developer',
         label: 'Developer',
         href: '/settings/developer',
@@ -382,9 +470,7 @@ export const navGroups: NavGroup[] = [
         roles: ADMIN_ROLES
       },
       {
-        // pages/audit-logs.tsx self-gates to SUPER_ADMIN only; this was
-        // previously shown to ADMIN too, who would open it and immediately
-        // hit its "Restricted" state.
+        // pages/audit-logs.tsx self-gates to SUPER_ADMIN only.
         key: 'audit-logs',
         label: 'Audit Log',
         href: '/audit-logs',
@@ -393,39 +479,81 @@ export const navGroups: NavGroup[] = [
         roles: SUPER_ADMIN_ONLY
       },
       {
-        // server/routes/workers.ts requires SUPER_ADMIN (plus MFA) on every
-        // one of these routes; same over-exposure as audit-logs above.
+        // server/routes/workers.ts requires SUPER_ADMIN (plus MFA).
         key: 'worker-logs',
         label: 'System Activity',
         href: '/worker-logs',
         icon: Activity,
         testId: 'nav-worker-logs',
         roles: SUPER_ADMIN_ONLY
-      },
-      {
-        // server/routes/automation.ts permits MANAGER on every rules route;
-        // the nav previously hid this item from MANAGER even though they
-        // could already use it.
-        key: 'rules',
-        label: 'Rules',
-        href: '/rules',
-        icon: Workflow,
-        testId: 'nav-rules',
-        roles: MANAGER_ROLES
       }
     ]
   }
 ]
 
-/** Flat list of every nav item, in sidebar order. */
-export const navItems: NavItem[] = navGroups.flatMap((group) => group.items)
+/** Back-compat name: the Centres are the menu's groups. */
+export const navGroups: NavGroup[] = centres
+
+/** Flat list of every nav item, in menu order. */
+export const navItems: NavItem[] = centres.flatMap((centre) => centre.items)
+
+function roleAllowed(roles: readonly Role[] | undefined, role: string | null | undefined): boolean {
+  if (!roles) return true
+  return roles.some((allowed) => allowed === role)
+}
+
+/** Whether this viewer sees the item in the menu. */
+export function isNavItemVisible(item: NavItem, role: string | null | undefined): boolean {
+  return roleAllowed(item.roles, role) && roleAllowed(item.menuRoles, role)
+}
+
+/** The tabs of a menu item this viewer may see. */
+export function visibleTabs(item: NavItem, role: string | null | undefined): NavTab[] {
+  return (item.tabs ?? []).filter((tab) => roleAllowed(tab.roles, role))
+}
+
+/** Centres with at least one page this viewer sees, each holding only those pages. */
+export function visibleCentres(role: string | null | undefined): Centre[] {
+  return centres
+    .map((centre) => ({ ...centre, items: centre.items.filter((item) => isNavItemVisible(item, role)) }))
+    .filter((centre) => centre.items.length > 0)
+}
+
+/** Where choosing a Centre takes this viewer: its first page they can see. */
+export function centreLandingHref(centreKey: CentreKey, role: string | null | undefined): string | undefined {
+  return visibleCentres(role).find((centre) => centre.key === centreKey)?.items[0]?.href
+}
 
 /**
- * The nav group a route belongs to — the eyebrow for that route's `PageHeader`
- * (Route Experience Spec §1). Returns undefined for routes that are not in nav.
+ * The Centre a path belongs to — what a deep link opens and what the page
+ * eyebrow says. An exact menu match wins; otherwise the longest matching
+ * sub-path (a report under /reports/, a refund under /open-orders/).
+ */
+export function centreForPath(path: string): Centre | undefined {
+  const clean = (path.split(/[?#]/)[0] || '/').replace(/\/+$/, '') || '/'
+  const exact = centres.find((centre) => centre.items.some((item) => item.href === clean))
+  if (exact) return exact
+  let best: { centre: Centre; length: number } | undefined
+  for (const centre of centres) {
+    const prefixes = [
+      ...(centre.pathPrefixes ?? []),
+      ...centre.items.filter((item) => item.href !== '/').map((item) => `${item.href}/`),
+    ]
+    for (const prefix of prefixes) {
+      if (clean.startsWith(prefix) && (!best || prefix.length > best.length)) {
+        best = { centre, length: prefix.length }
+      }
+    }
+  }
+  return best?.centre
+}
+
+/**
+ * The nav group a route belongs to — the eyebrow for that route's `PageHeader`.
+ * Returns undefined for routes that are in no Centre.
  */
 export function navGroupLabelForHref(href: string): string | undefined {
-  return navGroups.find((group) => group.items.some((navItem) => navItem.href === href))?.label
+  return centreForPath(href)?.label
 }
 
 /**
@@ -459,4 +587,19 @@ export function rolesForHref(href: string): readonly Role[] | undefined {
   const navItem = navItems.find((item) => item.href === href)
   if (navItem) return navItem.roles
   return EXTRA_ROUTE_ROLES[href]
+}
+
+/**
+ * The Centre whose tour this viewer should get on this path, if any: only a
+ * Centre they can see, and only on a page they may open. A cashier on an old
+ * Truths bookmark lands on "no access" — touring a Centre they cannot open
+ * there (and marking it seen for their account) would be wrong twice over.
+ */
+export function centreTourKeyForPath(path: string, role: string | null | undefined): CentreKey | undefined {
+  const centre = centreForPath(path)
+  if (!centre) return undefined
+  if (!visibleCentres(role).some((visible) => visible.key === centre.key)) return undefined
+  const clean = (path.split(/[?#]/)[0] || '/').replace(/\/+$/, '') || '/'
+  if (!roleAllowed(rolesForHref(clean), role)) return undefined
+  return centre.key
 }

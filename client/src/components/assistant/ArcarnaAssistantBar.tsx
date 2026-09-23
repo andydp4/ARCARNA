@@ -130,11 +130,12 @@ export function ArcarnaAssistantBar() {
       <Button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-24 right-5 z-40 h-12 w-12 rounded-full p-0 shadow-lg"
+        className="fixed bottom-24 right-5 z-40 h-12 gap-2 rounded-full px-4 shadow-lg"
         data-testid="arcarna-voice-launcher"
         aria-label="Arcarna Voice"
       >
-        <Mic className="h-5 w-5" />
+        <Mic className="h-5 w-5" aria-hidden />
+        Voice
       </Button>
 
       {open && (
@@ -204,13 +205,14 @@ export function ArcarnaAssistantBar() {
             <Button
               type="button"
               variant={listening ? "destructive" : "outline"}
-              size="icon"
-              className="h-9 w-9 shrink-0"
+              size="sm"
+              className="h-9 shrink-0 gap-1"
               onClick={handleMic}
               aria-label={listening ? "Stop listening" : "Speak a command"}
               data-testid="arcarna-voice-mic"
             >
-              {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              {listening ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}
+              {listening ? "Stop" : "Speak"}
             </Button>
             <Input
               value={input}
@@ -221,12 +223,13 @@ export function ArcarnaAssistantBar() {
             />
             <Button
               type="submit"
-              size="icon"
+              size="sm"
               aria-label="Send message to the assistant"
-              className="h-9 w-9 shrink-0"
+              className="h-9 shrink-0 gap-1"
               disabled={busy || !input.trim()}
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4" aria-hidden />
+              Send
             </Button>
           </form>
         </div>

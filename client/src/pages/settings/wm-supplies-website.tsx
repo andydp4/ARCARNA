@@ -239,22 +239,26 @@ function BlockListRow({
           <Button
             type="button"
             variant="outline"
-            size="icon"
+            size="sm"
+            className="gap-1"
             disabled={!canMoveUp || busy}
             onClick={() => onMove("up")}
             aria-label="Move block up"
           >
-            <ArrowUp className="h-4 w-4" />
+            <ArrowUp className="h-4 w-4" aria-hidden />
+            Up
           </Button>
           <Button
             type="button"
             variant="outline"
-            size="icon"
+            size="sm"
+            className="gap-1"
             disabled={!canMoveDown || busy}
             onClick={() => onMove("down")}
             aria-label="Move block down"
           >
-            <ArrowDown className="h-4 w-4" />
+            <ArrowDown className="h-4 w-4" aria-hidden />
+            Down
           </Button>
           <Switch
             checked={block.isVisible}
@@ -265,22 +269,26 @@ function BlockListRow({
           <Button
             type="button"
             variant="outline"
-            size="icon"
+            size="sm"
+            className="gap-1"
             disabled={busy}
             onClick={onDuplicate}
             aria-label="Duplicate block"
           >
-            <Copy className="h-4 w-4" />
+            <Copy className="h-4 w-4" aria-hidden />
+            Duplicate
           </Button>
           <Button
             type="button"
             variant="destructive"
-            size="icon"
+            size="sm"
+            className="gap-1"
             disabled={busy}
             onClick={onDelete}
             aria-label="Delete block"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" aria-hidden />
+            Delete
           </Button>
         </div>
       </div>
@@ -627,11 +635,13 @@ export default function WmSuppliesWebsiteSettingsPage() {
                     </div>
                     <Button
                       type="button"
-                      size="icon"
+                      size="sm"
+                      className="gap-1"
                       aria-label="Add a homepage block"
                       onClick={() => startNewBlock()}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-4 w-4" aria-hidden />
+                      Add block
                     </Button>
                   </div>
                 </CardHeader>

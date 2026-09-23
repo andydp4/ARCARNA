@@ -982,12 +982,14 @@ export default function Customers() {
                                 <DialogTrigger asChild>
                                   <Button
                                     variant="ghost"
-                                    size="icon"
+                                    size="sm"
+                                    className="gap-1"
                                     aria-label={`Edit ${customer.name}`}
                                     onClick={() => handleEdit(customer)}
                                     data-testid={`button-edit-${customer.id}`}
                                   >
-                                    <Edit className="h-4 w-4" />
+                                    <Edit className="h-4 w-4" aria-hidden />
+                                    Edit
                                   </Button>
                                 </DialogTrigger>
                                 <DialogContent>
@@ -1060,12 +1062,14 @@ export default function Customers() {
                               </Dialog>
                               <Button
                                 variant="ghost"
-                                size="icon"
+                                size="sm"
+                                className="gap-1 text-destructive hover:text-destructive"
                                 aria-label={`Delete ${customer.name}`}
                                 onClick={() => handleDelete(customer.id)}
                                 data-testid={`button-delete-${customer.id}`}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <Trash2 className="h-4 w-4" aria-hidden />
+                                Delete
                               </Button>
                             </div>
                             )}

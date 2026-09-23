@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { suppliers, productSuppliers, products } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { checkSupplierCost } from "@shared/purchasing/supplierCostCheck";
 
 export class SupplierError extends Error {
   code: string;
@@ -124,7 +125,7 @@ export async function listProductSuppliers(orgId: string, productId?: string, su
   if (productId) conditions.push(eq(productSuppliers.productId, productId));
   if (supplierId) conditions.push(eq(productSuppliers.supplierId, supplierId));
 
-  return db
+  const rows = await db
     .select({
       id: productSuppliers.id,
       orgId: productSuppliers.orgId,
@@ -139,6 +140,10 @@ export async function listProductSuppliers(orgId: string, productId?: string, su
       createdAt: productSuppliers.createdAt,
       updatedAt: productSuppliers.updatedAt,
       productName: products.name,
+      productSku: products.productId,
+      // The cost on the product card, beside the supplier's price: the route
+      // is manager and above, the same line as every other cost (Q6).
+      productCostPrice: products.costPrice,
       supplierName: suppliers.name,
     })
     .from(productSuppliers)
@@ -146,6 +151,9 @@ export async function listProductSuppliers(orgId: string, productId?: string, su
     .innerJoin(suppliers, eq(productSuppliers.supplierId, suppliers.id))
     .where(and(...conditions))
     .orderBy(desc(productSuppliers.updatedAt));
+  // The flag is worked out here, once, so the page and anything else that
+  // reads this list agree on what "differs" means.
+  return rows.map((row) => ({ ...row, costCheck: checkSupplierCost(row.costPrice, row.productCostPrice) }));
 }
 
 async function assertProductInOrg(orgId: string, productId: string) {

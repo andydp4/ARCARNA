@@ -8,6 +8,8 @@ import {
   Users,
   Settings,
   LayoutTemplate,
+  Truck,
+  Boxes,
 } from "lucide-react";
 import type { Customer, Product } from "@shared/schema";
 import {
@@ -41,6 +43,9 @@ const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: L
   { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart, minRole: "CASHIER" },
   { id: "page-orders", label: VOCAB.operations, href: "/operations", icon: LayoutGrid, minRole: "CASHIER" },
   { id: "page-products", label: "Products", href: "/products", icon: Package, minRole: "CASHIER" },
+  // Stock Centre (v1.2 Phase 3).
+  { id: "page-stock-levels", label: "Stock levels", href: "/stock-levels", icon: Boxes, minRole: "CASHIER" },
+  { id: "page-suppliers", label: "Suppliers", href: "/suppliers", icon: Truck, minRole: "MANAGER" },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users, minRole: "CASHIER" },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings, minRole: "MANAGER" },
   {

@@ -24,7 +24,6 @@ import { apiRequest } from '@/lib/queryClient'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
 import { PageHeader, LM_CARD } from '@/components/PageHeader'
 import { ImportsHub } from '@/components/settings/ImportsHub'
-import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
@@ -34,7 +33,8 @@ import { getSelectedOrgId } from '@/lib/orgScope'
 import { APP_VERSION } from '@shared/version'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
-import { Link } from "wouter";
+import { SETTINGS_TABS } from '@/components/nav-items'
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Settings2,
   CreditCard,
@@ -84,7 +84,20 @@ export default function Settings() {
   const canEditOrgProfile = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState('general')
+  // The Settings Centre menu lists each tab (`/settings?tab=payment`), so the
+  // tab lives in the URL: a menu click, a deep link and Back all land on it.
+  const search = useSearch()
+  const [, navigate] = useLocation()
+  const tabParam = new URLSearchParams(search).get('tab')
+  // A tab this role has no trigger for (a cashier following an admin's link
+  // to Flags) falls back to General rather than showing an empty page.
+  const allowedTabs = SETTINGS_TABS.filter((t) => !t.roles || t.roles.some((r) => r === user?.role)).map((t) => t.tab)
+  const activeTab = tabParam && allowedTabs.includes(tabParam) ? tabParam : 'general'
+  const setActiveTab = (tab: string) => navigate(`/settings?tab=${encodeURIComponent(tab)}`, { replace: true })
+  useEffect(() => {
+    // Suppliers moved to the Stock Centre (v1.2 Phase 3); old links still arrive here.
+    if (tabParam === 'suppliers') navigate('/suppliers', { replace: true })
+  }, [tabParam, navigate])
   const [copiedText, setCopiedText] = useState('')
 
   const { data: orgSettings, isLoading: isLoadingSettings } = useQuery<OrgSettings>({
@@ -135,7 +148,7 @@ export default function Settings() {
           icon={Settings2}
           title="Settings"
           question="How is Arcarna set up for your business?"
-          explanation="Business name, branding, suppliers, cashiers and flags save to your account. A few cards below are placeholders for features that aren't wired up to anything yet — each says so plainly."
+          explanation="Business name, branding, cashiers and flags save to your account. A few cards below are placeholders for features that aren't wired up to anything yet — each says so plainly."
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -144,7 +157,6 @@ export default function Settings() {
             {/* Imports write products and suppliers carry cost prices: both are
                 manager and above on the server, so a cashier gets no tab. */}
             {canViewCashiers && <TabsTrigger value="imports">Imports</TabsTrigger>}
-            {canViewCashiers && <TabsTrigger value="suppliers">Suppliers</TabsTrigger>}
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -178,12 +190,6 @@ export default function Settings() {
             </Card>
             <WhatsAppSettings />
           </TabsContent>
-
-          {canViewCashiers && (
-            <TabsContent value="suppliers" className="space-y-6">
-              <SuppliersHub />
-            </TabsContent>
-          )}
 
           {canViewCashiers && (
             <TabsContent value="cashiers" className="space-y-6">

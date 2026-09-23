@@ -48,6 +48,7 @@ import { registerRefundRoutes } from "./routes/refunds";
 import { registerSaleIssueRoutes } from "./routes/saleIssues";
 import { registerGiftCardRoutes } from "./routes/giftCards";
 import { registerSavedViewRoutes } from "./routes/savedViews";
+import { registerTruthsLayoutRoutes } from "./routes/truthsLayout";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerV1Routes } from "./routes/v1";
 import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
@@ -101,6 +102,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerRefundRoutes(app, scoped);
   registerGiftCardRoutes(app, scoped);
   registerSavedViewRoutes(app, scoped);
+  registerTruthsLayoutRoutes(app, scoped);
   registerOnboardingRoutes(app, scoped);
   registerWhatsappRoutes(app, scoped);
   registerAssistantRoutes(app, scoped);

@@ -42,7 +42,7 @@ const WmSuppliesOrderSuccessPage = shopSurface(WmSuppliesOrderSuccessPageRaw);
 const Landing = lazy(() => import("@/pages/landing"));
 const Home = lazy(() => import("@/pages/home"));
 const Inventory = lazy(() => import("@/pages/inventory"));
-const Insights = lazy(() => import("@/pages/insights"));
+const TruthsAtAGlance = lazy(() => import("@/pages/truths"));
 const Locations = lazy(() => import("@/pages/locations"));
 const Loyalty = lazy(() => import("@/pages/loyalty"));
 const Promotions = lazy(() => import("@/pages/promotions"));
@@ -98,6 +98,8 @@ const AuditLogsPage = lazy(() => import("@/pages/audit-logs"));
 const ScheduledReportsPage = lazy(() => import("@/pages/scheduled-reports"));
 const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
 const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
+const SuppliersPage = lazy(() => import("@/pages/suppliers"));
+const StockLevelsPage = lazy(() => import("@/pages/stock-levels"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignOutPage = lazy(() => import("@/pages/sign-out"));
 const PrivacyNoticePageRaw = lazy(() => import("@/pages/privacy"));
@@ -198,9 +200,11 @@ function Router() {
           <Route path="/products">
             <RequireRole href="/products"><ProductManagement /></RequireRole>
           </Route>
-          <Route path="/insights">
-            <RequireRole href="/insights"><Insights /></RequireRole>
+          <Route path="/truths">
+            <RequireRole href="/truths"><TruthsAtAGlance /></RequireRole>
           </Route>
+          {/* The Truths Hub's charts are widgets on Truths at a glance now. */}
+          <Route path="/insights"><Redirect to="/truths" /></Route>
           <Route path="/reports">
             <RequireRole href="/reports"><ReportsHub /></RequireRole>
           </Route>
@@ -261,7 +265,7 @@ function Router() {
           <Route path="/reports/reseller-credit">
             <RequireRole href="/reports"><ResellerCreditReport /></RequireRole>
           </Route>
-          <Route path="/analytics"><Redirect to="/insights" /></Route>
+          <Route path="/analytics"><Redirect to="/truths" /></Route>
           <Route path="/analytics/rfm">
             <RequireRole href="/analytics/rfm"><RfmAnalyticsPage /></RequireRole>
           </Route>
@@ -340,6 +344,14 @@ function Router() {
           </Route>
           <Route path="/purchase-drafts">
             <RequireRole href="/purchase-drafts"><PurchaseDraftsPage /></RequireRole>
+          </Route>
+          {/* Stock Centre (v1.2 Phase 3). Suppliers moved here from the
+              Settings tabs; Stock levels is the cashier's cost-free view. */}
+          <Route path="/suppliers">
+            <RequireRole href="/suppliers"><SuppliersPage /></RequireRole>
+          </Route>
+          <Route path="/stock-levels">
+            <RequireRole href="/stock-levels"><StockLevelsPage /></RequireRole>
           </Route>
         </Layout>
         </AccessGate>

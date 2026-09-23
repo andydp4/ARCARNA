@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isUiSeenKey, opsTourAccountKey, whatsNewAccountKey } from "./uiSeen";
+import { CENTRE_TOUR_CENTRES, centreTourAccountKey, centreTourLocalKey, isUiSeenKey, opsTourAccountKey, whatsNewAccountKey } from "./uiSeen";
 
 describe("isUiSeenKey", () => {
   it("accepts the namespaced keys the app writes", () => {
@@ -17,5 +17,23 @@ describe("isUiSeenKey", () => {
     expect(isUiSeenKey("whatsNew:1.1.0; drop table")).toBe(false);
     expect(isUiSeenKey(`whatsNew:${"x".repeat(200)}`)).toBe(false);
     expect(isUiSeenKey(42)).toBe(false);
+  });
+});
+
+describe("centreTourAccountKey", () => {
+  it("names each Centre's tour by Centre and version, and passes the server's key check", () => {
+    for (const centre of ["control", "operations", "stock", "truths", "customer", "finance", "settings"]) {
+      const key = centreTourAccountKey(centre);
+      expect(key).toBe(`centreTour:${centre}-1.2.0`);
+      expect(isUiSeenKey(key)).toBe(true);
+    }
+  });
+});
+
+describe("centreTourLocalKey", () => {
+  it("is the per-device flag CentreTour reads, one per toured Centre", () => {
+    expect(centreTourLocalKey("stock")).toBe("arcarna.centreTour:stock-1.2.0");
+    expect(CENTRE_TOUR_CENTRES).not.toContain("operations");
+    expect(new Set(CENTRE_TOUR_CENTRES.map((c) => centreTourLocalKey(c))).size).toBe(CENTRE_TOUR_CENTRES.length);
   });
 });

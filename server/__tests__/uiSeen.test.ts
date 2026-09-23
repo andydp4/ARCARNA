@@ -48,6 +48,15 @@ describe.skipIf(!hasDb)("per-account seen markers", () => {
     expect(await svc.listSeenUiKeys(alice)).toEqual(["whatsNew:1.1.0"]);
   });
 
+  it("remembers each Centre's tour per account, so it shows once across devices (v1.2 Phase 3)", async () => {
+    const { centreTourAccountKey } = await import("@shared/uiSeen");
+    const stock = centreTourAccountKey("stock");
+    await request(appAs(alice)).post("/api/me/seen").send({ keys: [stock] }).expect(200);
+    // Another device asks the account, not the browser.
+    expect(await svc.listSeenUiKeys(alice)).toEqual([stock]);
+    expect(await svc.listSeenUiKeys(alice)).not.toContain(centreTourAccountKey("finance"));
+  });
+
   it("keeps one person's markers to themselves", async () => {
     await svc.markUiKeysSeen(alice, ["opsTour:1.1.0"]);
     expect(await svc.listSeenUiKeys(bob)).toEqual([]);

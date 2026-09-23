@@ -733,14 +733,14 @@ function ConversationView({
             />
             <Button
               type="button"
-              size="icon"
-              className="h-11 w-11 shrink-0"
+              className="h-11 shrink-0 gap-1"
               onClick={onSend}
               disabled={!canSend || sending || !reply.trim()}
               aria-label="Send reply"
               data-testid="whatsapp-send"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4" aria-hidden />
+              Send
             </Button>
           </div>
         )}

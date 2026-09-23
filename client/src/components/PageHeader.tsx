@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { navGroupLabelForHref } from "@/components/nav-items";
 
 /** Card surfaces inside Layout (`.liquid-metal`). */
 export const LM_CARD = "lm-card border-0 shadow-none";
@@ -19,7 +21,10 @@ export type PageHeaderProps = {
   explanation?: string;
   /** @deprecated Use `explanation`. Back-compat alias, rendered as the explanation. */
   description?: string;
-  /** Optional eyebrow (e.g. nav group or step indicator). */
+  /**
+   * Optional eyebrow (e.g. a step indicator). Defaults to the Centre the
+   * current route belongs to (v1.2 Phase 3), so every page names its Centre.
+   */
   eyebrow?: string;
   /** Optional leading icon. */
   icon?: LucideIcon;
@@ -39,8 +44,11 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   const explain = explanation ?? description;
+  const [location] = useLocation();
+  const shownEyebrow = eyebrow ?? navGroupLabelForHref(location);
   return (
     <div
+      data-testid="page-header"
       className={cn(
         "mb-6",
         action && "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
@@ -48,9 +56,9 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        {eyebrow ? (
-          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-metal-muted">
-            {eyebrow}
+        {shownEyebrow ? (
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-metal-muted" data-testid="page-eyebrow">
+            {shownEyebrow}
           </p>
         ) : null}
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-metal-warm-white sm:text-3xl">

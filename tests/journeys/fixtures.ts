@@ -21,6 +21,7 @@ import {
 } from "@playwright/test";
 import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
+import { CENTRE_TOUR_CENTRES, centreTourLocalKey } from "../../shared/uiSeen";
 
 export const ROLE_USERS = {
   SUPER_ADMIN: "seed-super-admin",
@@ -97,6 +98,12 @@ export async function pageAs(browser: Browser, role: Role, orgId: string): Promi
   await context.addInitScript((key) => {
     window.localStorage.setItem(key, "1");
   }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
+  // And each Centre's tour (v1.2 Phase 3): it auto-starts on the first page
+  // of every Centre but Operations, and its full-screen overlay would take
+  // the journey's first click (or the a11y scan) on those pages.
+  await context.addInitScript((keys) => {
+    for (const key of keys) localStorage.setItem(key, "1");
+  }, CENTRE_TOUR_CENTRES.map((centre) => centreTourLocalKey(centre)));
   return context.newPage();
 }
 

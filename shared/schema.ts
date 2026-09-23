@@ -3130,3 +3130,16 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   // never enqueue a worker job just to record that it happened.
   OrderStageChanged: [],
 };
+
+// Truths at a glance (v1.2 Phase 3, migration 100): the org's one widget
+// layout, set by admins. Checked against shared/truthsLayout.ts on save.
+export const orgTruthsLayouts = pgTable("org_truths_layouts", {
+  orgId: uuid("org_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  widgets: jsonb("widgets").$type<Array<{ id: string; size: string; window: string }>>().notNull(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type OrgTruthsLayout = typeof orgTruthsLayouts.$inferSelect;

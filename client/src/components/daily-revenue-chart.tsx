@@ -60,7 +60,7 @@ export default function DailyRevenueChart() {
         </div>
       }
       interpretation="One line per day; totals match the daily revenue endpoint (not a custom range). Watch for sustained dips or spikes."
-      action={{ label: "Open Truths for a custom range", href: "/insights" }}
+      action={{ label: "Open Truths at a glance", href: "/truths" }}
     >
       {isError ? (
         <ErrorState
