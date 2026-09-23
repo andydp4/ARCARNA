@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { centreTourAccountKey, isUiSeenKey, opsTourAccountKey, whatsNewAccountKey } from "./uiSeen";
+import { CENTRE_TOUR_CENTRES, centreTourAccountKey, centreTourLocalKey, isUiSeenKey, opsTourAccountKey, whatsNewAccountKey } from "./uiSeen";
 
 describe("isUiSeenKey", () => {
   it("accepts the namespaced keys the app writes", () => {
@@ -27,5 +27,13 @@ describe("centreTourAccountKey", () => {
       expect(key).toBe(`centreTour:${centre}-1.2.0`);
       expect(isUiSeenKey(key)).toBe(true);
     }
+  });
+});
+
+describe("centreTourLocalKey", () => {
+  it("is the per-device flag CentreTour reads, one per toured Centre", () => {
+    expect(centreTourLocalKey("stock")).toBe("arcarna.centreTour:stock-1.2.0");
+    expect(CENTRE_TOUR_CENTRES).not.toContain("operations");
+    expect(new Set(CENTRE_TOUR_CENTRES.map((c) => centreTourLocalKey(c))).size).toBe(CENTRE_TOUR_CENTRES.length);
   });
 });

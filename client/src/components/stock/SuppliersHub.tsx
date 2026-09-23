@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
+import { productHref } from "@/lib/productLink";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -403,7 +404,7 @@ export function SuppliersHub() {
                   <TableCell>
                     {/* The product card this cost belongs to. */}
                     <Link
-                      href={`/products?product=${encodeURIComponent(m.productId)}`}
+                      href={productHref(m.productId)}
                       className="font-medium underline-offset-4 hover:underline"
                     >
                       {m.productName}

@@ -3,6 +3,7 @@ import { ONBOARDING_STEPS } from "../../shared/onboarding";
 import { STORAGE_ORG_ID } from "../../shared/storageKeys";
 import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
+import { CENTRE_TOUR_CENTRES, centreTourLocalKey } from "../../shared/uiSeen";
 
 /** Dev bypass SUPER_ADMIN needs org scope + completed onboarding before tenant routes render. */
 export async function prepareTenantContext(
@@ -51,6 +52,12 @@ export async function prepareTenantContext(
   await page.addInitScript((key) => {
     localStorage.setItem(key, "1");
   }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
+  // And each Centre's tour (v1.2 Phase 3): it auto-starts on the first page
+  // of every Centre but Operations, and its full-screen overlay would take
+  // the journey's first click (or the a11y scan) on those pages.
+  await page.addInitScript((keys) => {
+    for (const key of keys) localStorage.setItem(key, "1");
+  }, CENTRE_TOUR_CENTRES.map((centre) => centreTourLocalKey(centre)));
 
   return orgId;
 }

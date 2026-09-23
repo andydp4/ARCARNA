@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "@shared/opsTour";
 import { opsTourAccountKey } from "@shared/uiSeen";
 import { SpotlightTour, type TourStep } from "@/components/tour/SpotlightTour";
+import { requestTourReplay } from "@/components/tour/tourReplay";
 
 /**
  * The Operations Centre's tour: five spotlight steps over the board, shown
@@ -17,7 +18,7 @@ const START_EVENT = "arcarna:ops-tour:start";
 
 /** Fired by the header's "Board tour" button to replay the tour on demand, seen or not. */
 export function startOpsTour() {
-  window.dispatchEvent(new Event(START_EVENT));
+  requestTourReplay(START_EVENT);
 }
 
 const TOUR_STEPS: TourStep[] = [

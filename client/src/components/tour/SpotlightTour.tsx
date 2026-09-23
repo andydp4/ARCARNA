@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
 import { useSeenOnce } from "@/hooks/useSeenOnce";
+import { clearPendingReplay, hasPendingReplay } from "@/components/tour/tourReplay";
 
 /**
  * The shared spotlight tour (v1.2 Phase 3). Started life as the Operations
@@ -132,12 +133,39 @@ export function SpotlightTour({
     };
   }, [eligible, ready, open, openWithSteps, findSteps, seen, minStepsToStart, allSteps.length]);
 
-  // "Replay tour" replays it on demand regardless of the seen flag.
+  // "Replay tour" replays it on demand regardless of the seen flag. The page
+  // may still be arriving (Replay tour from another page of the Centre), so
+  // it waits for `ready` and the steps the same way the auto-start does,
+  // rather than giving up on a first look that found nothing.
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
+  const replayTimer = useRef<number | undefined>(undefined);
+  const replay = useCallback(() => {
+    window.clearTimeout(replayTimer.current);
+    let attempts = 0;
+    const attempt = () => {
+      attempts += 1;
+      const found = findSteps();
+      const enough = readyRef.current && found.length >= Math.min(minStepsToStart, allSteps.length);
+      if (!enough && attempts < START_ATTEMPTS) {
+        replayTimer.current = window.setTimeout(attempt, START_RETRY_MS);
+        return;
+      }
+      clearPendingReplay(startEvent);
+      openWithSteps(found);
+    };
+    attempt();
+  }, [findSteps, openWithSteps, minStepsToStart, allSteps.length, startEvent]);
+
   useEffect(() => {
-    const onStart = () => openWithSteps();
-    window.addEventListener(startEvent, onStart);
-    return () => window.removeEventListener(startEvent, onStart);
-  }, [openWithSteps, startEvent]);
+    window.addEventListener(startEvent, replay);
+    // Asked for before this tour mounted: take it up now.
+    if (hasPendingReplay(startEvent)) replay();
+    return () => {
+      window.removeEventListener(startEvent, replay);
+      window.clearTimeout(replayTimer.current);
+    };
+  }, [replay, startEvent]);
 
   const finish = useCallback(() => {
     markSeen();

@@ -1,5 +1,5 @@
 import { SpotlightTour, type TourStep } from "@/components/tour/SpotlightTour";
-import { centreTourAccountKey } from "@shared/uiSeen";
+import { centreTourAccountKey, centreTourLocalKey } from "@shared/uiSeen";
 import type { CentreKey } from "@/components/nav-items";
 
 /**
@@ -11,7 +11,10 @@ import type { CentreKey } from "@/components/nav-items";
 
 const START_EVENT = "arcarna:centre-tour:start";
 
-/** "Replay tour" in the Centre menu. */
+/**
+ * "Replay tour" in the Centre menu. A plain event: the tour is mounted by the
+ * Layout on every page it applies to, so there is nothing to wait for.
+ */
 export function startCentreTour() {
   window.dispatchEvent(new Event(START_EVENT));
 }
@@ -94,7 +97,7 @@ export function CentreTour({ centre }: { centre: CentreKey }) {
       key={key}
       steps={STEPS[centre]}
       seenKey={key}
-      legacyLocalKey={`arcarna.${key}`}
+      legacyLocalKey={centreTourLocalKey(centre)}
       ready
       startEvent={START_EVENT}
       idPrefix="centre-tour"

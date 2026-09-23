@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { useNavigation } from '@/contexts/NavigationContext'
-import { centreForPath, visibleCentres, visibleTabs, type Centre, type CentreKey, type NavItem } from './nav-items'
+import { centreForPath, centreTourKeyForPath, visibleCentres, visibleTabs, type Centre, type CentreKey, type NavItem } from './nav-items'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { OrgSwitcher } from './OrgSwitcher'
@@ -26,6 +26,8 @@ import {
   HOVER_QUERY,
   PHONE_QUERY,
   SIDEBAR_CLOSE_DELAY_MS,
+  closesOnOutsidePointer,
+  closesOnToggleLeave,
   opensOnPointerEnter,
   sidebarLayout,
   sidebarMode,
@@ -214,6 +216,8 @@ export function Layout({ children }: LayoutProps) {
   const centres = useMemo(() => visibleCentres(role), [role])
   const routeCentre = centreForPath(location)
   const routeCentreKey = routeCentre?.key
+  // Only a Centre this viewer may open, on a page they may open.
+  const tourCentreKey = centreTourKeyForPath(location, role)
   const { expanded, pushesContent } = sidebarLayout({ mode, pinned, open: sidebarOpen })
 
   // A deep link opens the right Centre: the menu follows the route. Keyed on
@@ -266,18 +270,19 @@ export function Layout({ children }: LayoutProps) {
     return () => document.removeEventListener('keydown', onKey)
   }, [sidebarOpen, mode, cancelClose, setSidebarOpen])
 
-  // Tablets: a tap outside the open overlay puts it away.
+  // A tap (tablet) or click (mouse) outside the open overlay puts it away.
   useEffect(() => {
-    if (!sidebarOpen || mode !== 'tap' || pinned) return
+    if (!sidebarOpen || !closesOnOutsidePointer(mode, pinned)) return
     const onDown = (event: globalThis.PointerEvent) => {
       const target = event.target as Node | null
       if (!target) return
       if (asideRef.current?.contains(target) || toggleRef.current?.contains(target)) return
+      cancelClose()
       setSidebarOpen(false)
     }
     document.addEventListener('pointerdown', onDown)
     return () => document.removeEventListener('pointerdown', onDown)
-  }, [sidebarOpen, mode, pinned, setSidebarOpen])
+  }, [sidebarOpen, mode, pinned, cancelClose, setSidebarOpen])
 
   const onPointerEnter = (event: PointerEvent<HTMLElement>) => {
     pointerInside.current = true
@@ -334,8 +339,9 @@ export function Layout({ children }: LayoutProps) {
         startOpsTour()
       } else {
         navigate('/operations')
-        // The board mounts its tour on arrival; give it a beat to render.
-        window.setTimeout(startOpsTour, 800)
+        // The board and its tour are still loading: the request waits for
+        // the tour to mount and its steps to render (tourReplay.ts).
+        startOpsTour()
       }
       return
     }
@@ -425,6 +431,10 @@ export function Layout({ children }: LayoutProps) {
                   setSidebarOpen(!sidebarOpen)
                 }}
                 data-testid="button-nav-toggle"
+                onPointerEnter={cancelClose}
+                onPointerLeave={(event) => {
+                  if (sidebarOpen && closesOnToggleLeave(mode, pinned, event.pointerType)) scheduleClose()
+                }}
                 aria-label={expanded ? 'Close menu' : 'Open menu'}
                 aria-expanded={expanded}
                 aria-controls="app-sidebar"
@@ -528,7 +538,7 @@ export function Layout({ children }: LayoutProps) {
       </div>
       <WhatsAppPanel />
       <ArcarnaAssistantBar />
-      {routeCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={routeCentreKey} />}
+      {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
     </div>
   )
 }

@@ -588,3 +588,18 @@ export function rolesForHref(href: string): readonly Role[] | undefined {
   if (navItem) return navItem.roles
   return EXTRA_ROUTE_ROLES[href]
 }
+
+/**
+ * The Centre whose tour this viewer should get on this path, if any: only a
+ * Centre they can see, and only on a page they may open. A cashier on an old
+ * Truths bookmark lands on "no access" — touring a Centre they cannot open
+ * there (and marking it seen for their account) would be wrong twice over.
+ */
+export function centreTourKeyForPath(path: string, role: string | null | undefined): CentreKey | undefined {
+  const centre = centreForPath(path)
+  if (!centre) return undefined
+  if (!visibleCentres(role).some((visible) => visible.key === centre.key)) return undefined
+  const clean = (path.split(/[?#]/)[0] || '/').replace(/\/+$/, '') || '/'
+  if (!roleAllowed(rolesForHref(clean), role)) return undefined
+  return centre.key
+}

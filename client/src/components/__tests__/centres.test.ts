@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centreForPath, centreLandingHref, centres, navGroupLabelForHref, visibleCentres, visibleTabs, navItems } from "../nav-items";
+import { centreForPath, centreLandingHref, centreTourKeyForPath, centres, navGroupLabelForHref, visibleCentres, visibleTabs, navItems } from "../nav-items";
 
 const keys = (role: string) => visibleCentres(role).map((c) => c.key);
 const pageKeys = (role: string, centre: string) =>
@@ -73,5 +73,24 @@ describe("Centres (v1.2 Phase 3)", () => {
   it("gives page eyebrows the Centre name", () => {
     expect(navGroupLabelForHref("/products")).toBe("Stock Centre");
     expect(navGroupLabelForHref("/shifts")).toBe("Finance Centre");
+  });
+});
+
+describe("which Centre tour a viewer gets", () => {
+  it("tours the Centre of a page the viewer may open", () => {
+    expect(centreTourKeyForPath("/products", "MANAGER")).toBe("stock");
+    expect(centreTourKeyForPath("/stock-levels", "CASHIER")).toBe("stock");
+    expect(centreTourKeyForPath("/shifts", "CASHIER")).toBe("finance");
+    expect(centreTourKeyForPath("/truths", "MANAGER")).toBe("truths");
+    expect(centreTourKeyForPath("/reports/daily-sales", "MANAGER")).toBe("truths");
+  });
+
+  it("never tours a Centre, or a page, the viewer cannot open", () => {
+    // An old /insights bookmark lands a cashier on /truths: no access, no tour.
+    expect(centreTourKeyForPath("/truths", "CASHIER")).toBeUndefined();
+    expect(centreTourKeyForPath("/reports/daily-sales", "CASHIER")).toBeUndefined();
+    // The Stock Centre is visible to a cashier (Stock levels) but Products is not theirs.
+    expect(centreTourKeyForPath("/products", "CASHIER")).toBeUndefined();
+    expect(centreTourKeyForPath("/not-a-centre-page", "ADMIN")).toBeUndefined();
   });
 });

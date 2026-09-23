@@ -50,6 +50,25 @@ export function opensOnPointerEnter(mode: SidebarMode, pointerType: string | und
   return mode === "hover" && (pointerType === undefined || pointerType === "mouse" || pointerType === "pen");
 }
 
+/**
+ * Whether a press outside the open, unpinned overlay puts it away. Tablets
+ * need it (there is no pointer to leave), and so does a mouse that opened it
+ * with the menu button and never crossed into it: the leave timer only runs
+ * once the pointer has been over the sidebar or the button.
+ */
+export function closesOnOutsidePointer(mode: SidebarMode, pinned: boolean): boolean {
+  return mode !== "phone" && !pinned;
+}
+
+/**
+ * Leaving the header's menu button with the pointer (hover mode) starts the
+ * same close timer as leaving the sidebar, so a menu opened by click and then
+ * ignored folds away; moving onto the sidebar cancels it.
+ */
+export function closesOnToggleLeave(mode: SidebarMode, pinned: boolean, pointerType: string | undefined): boolean {
+  return mode === "hover" && !pinned && pointerType !== "touch";
+}
+
 export function readPinned(): boolean {
   try {
     return localStorage.getItem(STORAGE_SIDEBAR_PINNED) === "1";
