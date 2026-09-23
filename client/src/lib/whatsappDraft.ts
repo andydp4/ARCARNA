@@ -1,5 +1,6 @@
 /**
- * Hand-off for WhatsApp "create draft order" → POS prefill.
+ * Hand-off for WhatsApp "create draft order" (and the voice assistant's
+ * drafts) → POS prefill.
  *
  * The panel stashes the suggested items (and linked customer) in sessionStorage,
  * then navigates to /pos, which consumes it once on mount. No order is created
@@ -32,6 +33,14 @@ export interface WhatsappDraftOrder {
   customerId: string | null;
   note?: string;
   items: WhatsappDraftItem[];
+  /**
+   * Where the draft came from. The voice assistant uses the same hand-off
+   * (v1.2 Phase 1B): its drafts open in the till instead of being saved.
+   * Absent means WhatsApp.
+   */
+  source?: "whatsapp" | "voice";
+  /** A spoken name nobody on file matched, for the cashier to pick. */
+  customerName?: string | null;
 }
 
 export function stashWhatsappDraft(draft: WhatsappDraftOrder): void {

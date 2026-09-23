@@ -76,7 +76,10 @@ vi.mock("../../apps/server/src/engine.wiring", () => ({
 }));
 
 vi.mock("../services/orgTaxRate", () => ({
-  getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+  getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  // v1.2 Phase 1B: every order path requires the org's rate.
+  requireOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  ORG_VAT_RATE_MISSING_MESSAGE: "Set your VAT rate",
 }));
 
 vi.mock("../db", () => ({ db: {}, pool: {} }));

@@ -99,6 +99,8 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           payment_method: o.paymentMethod,
           status: o.status,
           channel: o.channel ?? 'pos',
+          // A manager edit re-prices the order: its breakdown moves with it.
+          ...pricingColumns((o as Order & OrderPersistenceCarrier).pricing),
         })
         .where(eq(s.orders.id, o.id as any))
       

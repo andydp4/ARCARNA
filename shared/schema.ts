@@ -422,7 +422,9 @@ export const websiteOrderSettings = pgTable("website_order_settings", {
   ),
   check(
     "website_order_settings_status_ck",
-    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed')`,
+    // No 'completed' (migration 083): a website order must be settled by the
+    // completion path, not born settled.
+    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent')`,
   ),
   check(
     "website_order_settings_min_order_value_ck",
@@ -828,6 +830,13 @@ export type ReplenishmentActionType = (typeof REPLENISHMENT_ACTION_TYPES)[number
 // Order status enum
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
+
+/**
+ * The statuses an order may be CREATED with (v1.2 Phase 1B). Never
+ * "completed": completing settles the order (settled total, credit leg,
+ * commission) and only the completion path does that.
+ */
+export const ORDER_CREATE_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent'] as const;
 
 export const ORDER_CHANNELS = ['pos', 'web', 'api', 'whatsapp', 'phone'] as const;
 export type OrderChannel = (typeof ORDER_CHANNELS)[number];
@@ -1613,6 +1622,8 @@ export const ORDER_EVENT_KINDS = [
   "reopened",
   "status_changed",
   "deleted",
+  // A manager's edit of lines/prices, with the money before and after (083).
+  "edited",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 
@@ -1647,7 +1658,7 @@ export const orderEvents = pgTable("order_events", {
 }, (table) => [
   check(
     "order_events_kind_check",
-    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted')`,
+    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted', 'edited')`,
   ),
   /** One card's own timeline. */
   index("order_events_order_idx").on(table.orgId, table.orderId, table.at),

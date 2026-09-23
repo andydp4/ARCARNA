@@ -47,7 +47,7 @@ function repo(): WebsiteRepository {
 function runtime(overrides: Partial<WebsiteOrderRuntime> = {}): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
-    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
     getOpsDueMinutes: vi.fn().mockImplementation(async (_orgId, fulfilmentMethod) =>
       fulfilmentMethod === "delivery" ? 45 : 20,
     ),

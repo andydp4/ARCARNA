@@ -10,7 +10,7 @@
 import type { Express } from "express";
 import { requireApiKey, requireScope } from "../middleware/apiKeyAuth";
 import { storage } from "../storage";
-import { sendServerError } from "../lib/errorScrub";
+import { safeErrorMessage, sendServerError } from "../lib/errorScrub";
 
 const auth = [requireApiKey];
 
@@ -184,6 +184,14 @@ export function registerV1Routes(app: Express): void {
     },
   );
 
+  /**
+   * An order from an integration (v1.2 Phase 1B). One transaction: the order,
+   * its payment record, its "received" event and the OrderCreated event the
+   * stock and loyalty workers read all commit together, or none of them do.
+   * Priced by the same priceOrder() as the till, at the org's VAT rate (none
+   * set is refused), with no discounts: an API caller cannot send its own.
+   * It may not create an order as "completed" — completing settles it.
+   */
   app.post(
     "/v1/orgs/:orgId/orders",
     ...auth,
@@ -192,19 +200,101 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
+        const { PlaceOrderInput } = await import("../../packages/domain/src/schemas");
+        const { requireOrgTaxRatePercent } = await import("../services/orgTaxRate");
+        const { taxRatePercent: _ignoredRate, payments: _ignoredLegs, ...rest } = req.body ?? {};
+        const parsed = PlaceOrderInput.safeParse({ ...rest, orgId });
+        if (!parsed.success) {
+          const issue = parsed.error.errors[0];
+          return res.status(400).json({
+            error: "validation_error",
+            message: issue ? `${issue.path.join(".") || "body"}: ${issue.message}` : "Invalid order",
+          });
+        }
+        const input = parsed.data;
+        // Split and gift-card tenders need legs and a card to redeem, which
+        // this API does not take: recording one would be money nobody holds.
+        if (input.paymentMethod === "split" || input.paymentMethod === "gift_card") {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "paymentMethod: split and gift_card are not supported through the API.",
+          });
+        }
+        if (input.paymentMethod === "tick" && !input.customerId) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "customerId: a tick (credit) order needs a customer.",
+          });
+        }
+        const taxRatePercent = await requireOrgTaxRatePercent(orgId);
+
+        const { withTransaction } = await import("../../apps/server/src/db");
+        const { orders, order_items } = await import("../../apps/server/src/db/schema");
+        const { orderPayments, orderEvents } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const { publishEventTx } = await import("../eventBus");
         const { engine } = await import("../../apps/server/src/engine.wiring");
-        const result = await engine.placeOrder({ ...req.body, orgId });
+
+        const result = await withTransaction(async (tx: any) => {
+          // withTransaction nests, so the engine's writes join this one.
+          const placed = await engine.placeOrder({ ...input, orgId, taxRatePercent });
+          const [created] = await tx.select().from(orders).where(eq(orders.id, placed.orderId));
+          const items = await tx.select().from(order_items).where(eq(order_items.order_id, placed.orderId));
+          await tx.insert(orderPayments).values({
+            orgId,
+            orderId: placed.orderId,
+            method: String(created.payment_method),
+            amount: String(created.total),
+          });
+          await tx.insert(orderEvents).values({
+            orgId,
+            orderId: placed.orderId,
+            kind: "received",
+            at: created.entered_at ?? created.created_at ?? new Date(),
+            userId: null,
+          });
+          const eventId = await publishEventTx(
+            tx,
+            "OrderCreated",
+            placed.orderId,
+            {
+              order: {
+                orderId: placed.orderId,
+                status: created.status || "pending",
+                customerId: created.customer_id,
+                total: parseFloat(created.total || "0"),
+                paymentMethod: created.payment_method,
+                items: items.map((item: any) => ({
+                  lineId: item.id,
+                  productId: item.product_id,
+                  qty: item.quantity,
+                  unitPrice: parseFloat(item.unit_price || "0"),
+                  lineTotal: parseFloat(item.total_price || "0"),
+                })),
+              },
+            },
+            { source: "api-v1", actor: { type: "system", id: "api-key" } },
+          );
+          return { ...placed, eventId, total: created.total, status: created.status };
+        });
         res.status(201).json(result);
       } catch (e: any) {
         console.error("[v1] order create:", e);
-        if (e?.name === "ZodError") {
-          return res.status(400).json({ error: "validation_error", message: e?.message });
+        if (e?.code === "ORG_VAT_RATE_MISSING") {
+          return res.status(422).json({ error: "vat_rate_missing", message: e.message });
         }
         sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
       }
     },
   );
 
+  /**
+   * A status change from an integration settles exactly as one made in
+   * arcarna does (v1.2 Phase 1B): "completed" goes through the completion
+   * path (settled total, Credit List, commission), with its event, in one
+   * transaction on the locked row. A completed order is not reopened from
+   * here: that moves settled money, and needs a person.
+   */
   app.patch(
     "/v1/orgs/:orgId/orders/:orderId",
     ...auth,
@@ -213,19 +303,42 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
-        const { db } = await import("../db");
+        const { updateOrderStatusSchema } = await import("@shared/schema");
+        const parsed = updateOrderStatusSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return res.status(400).json({ error: "validation_error", message: "status: not a valid order status" });
+        }
+        const { withTransaction } = await import("../../apps/server/src/db");
         const { orders } = await import("../../apps/server/src/db/schema");
         const { eq, and } = await import("drizzle-orm");
-        const [updated] = await db
-          .update(orders)
-          .set({ status: req.body.status, updated_at: new Date() })
-          .where(and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId)))
-          .returning();
-        if (!updated) return res.status(404).json({ error: "not_found" });
-        res.json(updated);
-      } catch (e) {
+        const { changeOrderStatusTx } = await import("../services/orderStatusChange");
+        const outcome = await withTransaction(async (tx: any) => {
+          const [row] = await tx
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, req.params.orderId), eq(orders.org_id, orgId)))
+            .for("update")
+            .limit(1);
+          if (!row) return null;
+          return changeOrderStatusTx(tx, row, {
+            requestedStatus: parsed.data.status,
+            actorId: null,
+            actorRole: null,
+            via: "api",
+            source: "api-v1",
+            allowReopen: false,
+          });
+        });
+        if (!outcome) return res.status(404).json({ error: "not_found" });
+        res.json(outcome.updated);
+      } catch (e: any) {
+        if ((e as any)?.code === "22P02" || (e as any)?.cause?.code === "22P02") return res.status(404).json({ error: "not_found" }); // uuid-guard-order
+        const status = typeof e?.statusCode === "number" ? e.statusCode : typeof e?.status === "number" ? e.status : 500;
+        if (status < 500) {
+          return res.status(status).json({ error: e?.code ?? "refused", message: safeErrorMessage(e, "Refused") });
+        }
         console.error("[v1] order patch:", e);
-        res.status(500).json({ error: "internal_error" });
+        sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
       }
     },
   );

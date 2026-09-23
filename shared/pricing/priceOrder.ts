@@ -315,3 +315,94 @@ export function storedDiscountTotal(row: {
 }): number {
   return fromPence(toPence(num(row.tierDiscount)) + toPence(num(row.promoDiscount)) + toPence(num(row.pointsDiscount)));
 }
+
+/**
+ * What a sale was given, read back from its order so a manager's edit keeps
+ * it (v1.2 Phase 1B, "Manager edits"). The tier % and points are what the
+ * customer earned or spent at the time; the promotion is re-applied by its own
+ * rules to the new lines, without re-checking its dates or usage — its use was
+ * counted when the sale was made.
+ */
+export type KeptDiscounts = {
+  tier: { id: string | null; name: string; percent: number } | null;
+  promotion:
+    | {
+        id: string | null;
+        code: string | null;
+        name: string;
+        /** The promotion row as it is now; null when it has since been deleted. */
+        rule: Pick<PricingPromotion, "type" | "value" | "maxDiscount"> | null;
+        /** What the sale was actually given, used when the rule is gone. */
+        storedDiscount: number;
+      }
+    | null;
+  pointsRedeemed: number;
+  pointsDiscount: number;
+};
+
+/**
+ * Re-prices an edited order: new lines, the org's VAT rate, the same
+ * discounts. Same order of application as priceOrder(). Points already spent
+ * that would now be worth more than the order is refused rather than
+ * shrunk: the points left the customer's balance at their full value.
+ */
+export function priceEditedOrder(input: {
+  lines: PricingLine[];
+  taxRatePercent: number;
+  kept: KeptDiscounts;
+}): PricedOrder {
+  const { kept } = input;
+  const subtotalP = input.lines.reduce((sum, l) => sum + toPence(l.quantity * l.unitPrice), 0);
+
+  const tierPercent = kept.tier ? Math.min(100, Math.max(0, num(kept.tier.percent))) : 0;
+  const tierDiscountP = Math.min(subtotalP, pct(subtotalP, tierPercent));
+
+  let promoDiscountP = 0;
+  const promo = kept.promotion;
+  if (promo) {
+    let raw: number;
+    const rule = promo.rule;
+    if (rule && rule.type === "percentage") {
+      raw = pct(subtotalP, Math.min(100, Math.max(0, num(rule.value))));
+    } else if (rule && rule.type === "fixed") {
+      raw = toPence(Math.max(0, num(rule.value)));
+    } else {
+      raw = toPence(Math.max(0, num(promo.storedDiscount)));
+    }
+    const cap = rule && num(rule.maxDiscount) > 0 ? toPence(num(rule.maxDiscount)) : Infinity;
+    promoDiscountP = Math.max(0, Math.min(raw, cap, subtotalP - tierDiscountP));
+  }
+
+  const netP = subtotalP - tierDiscountP - promoDiscountP;
+  const vatRate = Math.max(0, num(input.taxRatePercent));
+  const vatP = pct(netP, vatRate);
+  const grossP = netP + vatP;
+
+  const pointsDiscountP = toPence(Math.max(0, num(kept.pointsDiscount)));
+  if (pointsDiscountP > grossP) {
+    throw new PricingError(
+      `The ${kept.pointsRedeemed} points already spent on this order are worth ${formatMoney(
+        fromPence(pointsDiscountP),
+      )}, more than the new ${formatMoney(fromPence(grossP))}. Keep enough on the order, or refund it instead.`,
+      "POINTS_EXCEED_TOTAL",
+    );
+  }
+
+  const totalP = grossP - pointsDiscountP;
+  const total = fromPence(totalP);
+  return {
+    subtotal: fromPence(subtotalP),
+    tier: kept.tier && tierPercent > 0 ? { ...kept.tier, percent: tierPercent } : null,
+    tierDiscount: fromPence(tierDiscountP),
+    promotion: promo ? { id: promo.id, code: promo.code, name: promo.name } : null,
+    promoDiscount: fromPence(promoDiscountP),
+    netAfterDiscounts: fromPence(netP),
+    vatRate,
+    vatAmount: fromPence(vatP),
+    pointsRedeemed: pointsDiscountP > 0 ? kept.pointsRedeemed : 0,
+    pointsDiscount: fromPence(pointsDiscountP),
+    discountTotal: fromPence(tierDiscountP + promoDiscountP + pointsDiscountP),
+    total,
+    pointsEarned: pointsEarnedFor(total),
+  };
+}

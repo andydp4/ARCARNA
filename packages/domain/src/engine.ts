@@ -259,7 +259,16 @@ export class DomainEngine {
   }
 
   // Order editing - update line items, quantities, prices
-  async updateOrder(id: string, input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
+  /**
+   * `pricing` is the route's re-price of the edit (priceEditedOrder(): the
+   * org's VAT rate, the sale's own discounts kept) — trusted, never read from
+   * the request body. Without it the lines are priced at the rate alone.
+   */
+  async updateOrder(
+    id: string,
+    input: unknown,
+    pricing?: PricedOrder,
+  ): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = UpdateOrderInput.parse(input)
     const result = await this.withTransaction(async () => {
       const orderId = id as OrderId
@@ -298,13 +307,13 @@ export class DomainEngine {
       }
       // Stock deltas: InventoryWorker on OrderUpdated
 
-      // Calculate new totals
-      const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
-      // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
-    // applies when a caller supplies none.
-    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
-    const vat = +(subtotal * taxRate).toFixed(2)
-      const total = +(subtotal + vat).toFixed(2)
+      // New totals from the one pricing function, so an edit cannot price
+      // differently from a sale. Rate comes from the org's settings;
+      // DEFAULT_TAX_RATE_PERCENT only applies when a caller supplies none.
+      const priced =
+        pricing ??
+        priceOrder({ lines: dto.lines, taxRatePercent: (dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT })
+      const { subtotal, vatAmount: vat, total } = priced
 
       // Determine order status: 
       // - If warnings exist, set to on-hold
@@ -315,8 +324,10 @@ export class DomainEngine {
         : (existingOrder.status === 'on-hold' ? 'pending' : existingOrder.status)
 
       // Update order, preserving existing metadata
-      const updatedOrder: Order = {
+      const updatedOrder: Order & { pricing?: PricedOrder } = {
         ...existingOrder,
+        // Persisted alongside (migration 082) only when the route priced it.
+        ...(pricing ? { pricing } : {}),
         lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity * l.unitPrice).toFixed(2) })),
         subtotal,
         vat,

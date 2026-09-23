@@ -18,7 +18,8 @@ import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { publishOpsEvent } from "../services/opsBus";
 import { publishAlertRows, type OpsAlertCreatedRow } from "../services/opsAlerts";
-import { completeOrderTx, reopenOrderTx, OrderReopenRefusedError } from "../services/orderCompletion";
+import { OrderReopenRefusedError } from "../services/orderCompletion";
+import { changeOrderStatusTx } from "../services/orderStatusChange";
 import { CreditError } from "../services/creditLedger";
 import { safeErrorMessage } from "../lib/errorScrub";
 import { receiptPrivacyLines, shopPrivacyFromOrg } from "@shared/shopPrivacy";
@@ -37,7 +38,6 @@ import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } f
 import { isValidClientOrderId } from "@shared/orders/saleReference";
 import { recordAdminAudit } from "../adminAudit";
 import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
-import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
 import { PlaceOrderInput } from "../../packages/domain/src/schemas";
 
 /**
@@ -339,15 +339,18 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // customer was quoted one total and charged another. Both now derive
       // from the org's configured rate — shared with the website order path so
       // the two cannot drift apart again.
-      const { getOrgTaxRatePercent } = await import("../services/orgTaxRate");
-      const orgTaxRate = await getOrgTaxRatePercent(ctx.orgId);
+      // No rate set is a refusal (422 -> Needs attention), never a fallback.
+      const { requireOrgTaxRatePercent, ORG_VAT_RATE_MISSING_MESSAGE } = await import("../services/orgTaxRate");
+      const orgTaxRate = await requireOrgTaxRatePercent(ctx.orgId).catch(() => {
+        throw new SaleRefusedError(ORG_VAT_RATE_MISSING_MESSAGE);
+      });
 
       const body = {
         ...req.body,
         orgId: ctx.orgId ?? undefined,
         // A resent Needs attention sale sells from the shop it was rung in.
         locationId: saleIssue?.locationId ?? ctx.locationId ?? undefined,
-        ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
+        taxRatePercent: orgTaxRate,
       };
       const userId = req.user?.id ?? "unknown";
 
@@ -544,7 +547,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           orgId: ctx.orgId!,
           customerId: isPersonalUse ? null : placeInput.customerId ?? null,
           lines: placeInput.lines,
-          taxRatePercent: placeInput.taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT,
+          taxRatePercent: orgTaxRate,
           promoCode,
           redeemPoints,
           // An offline sale is priced as at when it was rung, not when it synced.
@@ -1208,9 +1211,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { withTransaction } = await import('../../apps/server/src/db');
       const { orders } = await import('../../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
-      const { orderEvents, updateOrderStatusSchema } = await import('@shared/schema');
-      const { publishEventTx } = await import('../eventBus');
-      const { assertTransitionRoleAllowed } = await import('../services/orderTransitions');
+      const { updateOrderStatusSchema } = await import('@shared/schema');
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
 
       const validation = updateOrderStatusSchema.safeParse(req.body);
@@ -1231,91 +1232,16 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const [row] = await tx.select().from(orders).where(orderCond).for('update').limit(1);
         if (!row) return { notFound: true as const };
 
-        const previousStatus = String(row.status ?? 'pending');
-        let backdatedShiftToSettle: Awaited<ReturnType<typeof cashierShiftForBackdatedOrder>> = null;
-
-        if (previousStatus === 'completed') {
-          if (requestedStatus === 'completed') {
-            const err: any = new Error('This order is already completed — only "reopen" is allowed on it.');
-            err.statusCode = 409;
-            err.code = 'ORDER_TRANSITION_INVALID';
-            throw err;
-          }
-          assertTransitionRoleAllowed({
-            action: 'reopen',
-            actorId: actorId ?? '',
-            actorRole,
-            assignedUserId: row.assigned_user_id ?? null,
-            completedUserId: row.completed_user_id ?? null,
-            settledAt: row.settled_at ? new Date(row.settled_at) : null,
-            now: new Date(),
-          });
-          const result = await reopenOrderTx(tx, row, { userId: actorId });
-          const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
-            orderId: req.params.id, from: previousStatus, to: result.row.status, changedAt: new Date().toISOString(),
-          }, { source: 'api-orders' });
-          return { notFound: false as const, updated: result.row, eventId, kind: 'reopened' as const, backdatedShiftToSettle };
-        }
-
-        if (requestedStatus === 'completed') {
-          const result = await completeOrderTx(
-            tx,
-            row,
-            { userId: actorId, cashierShift: cashierShift ?? null, role: actorRole },
-            {},
-          );
-          backdatedShiftToSettle = result.backdatedShiftToSettle;
-          const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
-            orderId: req.params.id, from: previousStatus, to: 'completed', changedAt: new Date().toISOString(),
-          }, { source: 'api-orders' });
-          return { notFound: false as const, updated: result.row, eventId, kind: result.event.kind, backdatedShiftToSettle };
-        }
-
-        if (requestedStatus === previousStatus) {
-          // Repeats are "no news", the same as every transition stamp.
-          return { notFound: false as const, updated: row, eventId: null, kind: null, backdatedShiftToSettle };
-        }
-
-        const now = new Date();
-        const patch: Record<string, unknown> = { status: requestedStatus, updated_at: now };
-        let eventKind: string;
-        let eventMeta: Record<string, unknown>;
-        if (requestedStatus === 'on-hold') {
-          patch.held_at = row.held_at ?? now;
-          eventKind = 'held';
-          eventMeta = { reason: null, fromStatus: previousStatus, via: 'patch' };
-        } else if (previousStatus === 'on-hold') {
-          patch.held_at = null;
-          const heldSeconds = row.held_at
-            ? Math.max(0, Math.round((now.getTime() - new Date(row.held_at).getTime()) / 1000))
-            : 0;
-          eventKind = 'unheld';
-          eventMeta = { heldSeconds, toStatus: requestedStatus, via: 'patch' };
-        } else {
-          eventKind = 'status_changed';
-          eventMeta = { from: previousStatus, to: requestedStatus, via: 'patch' };
-        }
-        // Choosing "awaiting-customer" on the board's status select runs the
-        // `ready` transition in spirit (brief, "Decisions locked" → Ready):
-        // PATCH writing it stamps `ready_at` too, first-write-wins.
-        if (requestedStatus === 'awaiting-customer' && !row.ready_at) {
-          patch.ready_at = now;
-        }
-
-        const [updated] = await tx.update(orders).set(patch).where(eq(orders.id, req.params.id)).returning();
-        await tx.insert(orderEvents).values({
-          orgId: ctx.orgId,
-          orderId: req.params.id,
-          kind: eventKind,
-          userId: actorId,
-          at: now,
-          meta: eventMeta,
+        const changed = await changeOrderStatusTx(tx, row, {
+          requestedStatus,
+          actorId,
+          actorRole,
+          cashierShift: cashierShift ?? null,
+          via: 'patch',
+          source: 'api-orders',
+          allowReopen: true,
         });
-        const eventId = await publishEventTx(tx, 'OrderStatusChanged', req.params.id, {
-          orderId: req.params.id, from: previousStatus, to: requestedStatus, changedAt: now.toISOString(),
-        }, { source: 'api-orders' });
-
-        return { notFound: false as const, updated, eventId, kind: eventKind, backdatedShiftToSettle };
+        return { notFound: false as const, ...changed };
       });
 
       if (outcome.notFound) {
@@ -1345,50 +1271,125 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.put("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
+  /**
+   * What an edit would come to, before it is saved (v1.2 Phase 1B): the
+   * dialog shows Subtotal, VAT and Total from the same pricing the save uses,
+   * and says up front when the order cannot be edited at all.
+   */
+  app.post("/api/orders/:id/edit-preview", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
+      const ctx = req.orgContext as { orgId: string | null };
+      if (!ctx?.orgId) return res.status(400).json({ message: "Org context required" });
       const { db } = await import('../../apps/server/src/db');
       const { orders, order_items } = await import('../../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
-      const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
-      const [existing] = await db.select().from(orders).where(orderCond);
-      if (!existing) return res.status(404).json({ message: 'Order not found' });
-      
-      const { engine } = await import('../../apps/server/src/engine.wiring');
-      const { publishEvent } = await import('../eventBus');
-      // An edit re-prices the order, so it uses the shop's own VAT rate — the
-      // engine otherwise fell back to its hardcoded default (20% until
-      // Sept 2026), adding VAT to every Ops-board line edit at a 0% shop. A
-      // caller never gets to choose the rate.
-      const { getOrgTaxRatePercent } = await import('../services/orgTaxRate');
-      const orgTaxRate = await getOrgTaxRatePercent(ctx?.orgId ?? existing.org_id);
-      const { taxRatePercent: _ignoredRate, ...editBody } = req.body ?? {};
-      const result = await engine.updateOrder(req.params.id, {
-        ...editBody,
-        ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
-        orgId: ctx.orgId,
-        locationId: ctx?.locationId ?? req.body.locationId,
-      });
-      
-      // Fetch updated order details
-      const [updatedOrder] = await db.select().from(orders).where(eq(orders.id, req.params.id));
-      const items = await db.select().from(order_items).where(eq(order_items.order_id, req.params.id));
+      const { UpdateOrderInput } = await import('../../packages/domain/src/schemas');
+      const { loadOrderEditState, keptDiscountsFor, priceEditOrRefuse, OrderEditRefusedError } = await import('../services/orderEdit');
+      const { requireOrgTaxRatePercent } = await import('../services/orgTaxRate');
 
-      // The engine can move `status` itself as a side effect of a line edit
-      // (packages/domain/src/engine.ts: a stock shortfall forces `on-hold`,
-      // clearing it promotes back to `pending`) — a `status_changed` event and
-      // `held_at` sync are owed here even though nothing ASKED for a status
-      // change. This runs as its own small transaction immediately after the
-      // engine's — `engine.updateOrder` owns its transaction boundary
-      // internally and does not expose it to route code, so the two cannot
-      // share one without touching `packages/domain/src/engine.ts`, which is
-      // out of this package's scope.
-      if (ctx?.orgId && updatedOrder && existing.status !== updatedOrder.status) {
-        const { withTransaction } = await import('../../apps/server/src/db');
-        const { orderEvents } = await import('@shared/schema');
-        await withTransaction(async (tx: any) => {
-          const now = new Date();
+      const [row] = await db.select().from(orders).where(and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)));
+      if (!row) return res.status(404).json({ message: 'Order not found' });
+      const items = await db.select().from(order_items).where(eq(order_items.order_id, row.id));
+      const state = await loadOrderEditState(db, row as any, items as any);
+      if (state.refusal) {
+        return res.json({ editable: false, code: state.refusal.code, message: state.refusal.message });
+      }
+      const parsed = UpdateOrderInput.safeParse({ lines: req.body?.lines });
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Check the lines", code: "ORDER_LINES_INVALID" });
+      }
+      const taxRatePercent = await requireOrgTaxRatePercent(ctx.orgId);
+      try {
+        const pricing = priceEditOrRefuse({
+          lines: parsed.data.lines,
+          taxRatePercent,
+          kept: await keptDiscountsFor(db, row as any),
+        });
+        return res.json({ editable: true, pricing });
+      } catch (error) {
+        if (error instanceof OrderEditRefusedError) {
+          return res.json({ editable: true, code: error.code, message: error.message, pricing: null });
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      console.error("Error pricing an order edit:", error);
+      const status = error?.statusCode ?? 500;
+      res.status(status).json({ message: safeErrorMessage(error, "Failed to price the edit"), code: error?.code });
+    }
+  });
+
+  /**
+   * A manager's edit of lines and prices (v1.2 Phase 1B). One transaction:
+   * lock the order, refuse what cannot be edited (server/services/orderEdit.ts),
+   * re-price at the org's VAT rate keeping the sale's discounts, write the
+   * lines and totals, move the payment record to the new total, and record an
+   * "edited" event with the money before and after — plus the status event
+   * when a stock shortfall moved the order on or off hold.
+   */
+  app.put("/api/orders/:id", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string | null; locationId?: string | null };
+      if (!ctx?.orgId) return res.status(400).json({ message: "Org context required" });
+      const orgId = ctx.orgId;
+      const { withTransaction } = await import('../../apps/server/src/db');
+      const { orders, order_items } = await import('../../apps/server/src/db/schema');
+      const { eq, and } = await import('drizzle-orm');
+      const { orderEvents } = await import('@shared/schema');
+      const { engine } = await import('../../apps/server/src/engine.wiring');
+      const { publishEventTx } = await import('../eventBus');
+      const { UpdateOrderInput } = await import('../../packages/domain/src/schemas');
+      const { requireOrgTaxRatePercent } = await import('../services/orgTaxRate');
+      const {
+        loadOrderEditState,
+        keptDiscountsFor,
+        priceEditOrRefuse,
+        rewritePaymentRecordTx,
+        snapshotOrderMoney,
+      } = await import('../services/orderEdit');
+
+      // Lines are checked before anything is locked. An empty price box
+      // arrives as null (JSON has no NaN) and is refused here, never read as £0.
+      const parsed = UpdateOrderInput.safeParse({ lines: req.body?.lines });
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.errors[0]?.message ?? "Check the lines",
+          code: "ORDER_LINES_INVALID",
+        });
+      }
+      const lines = parsed.data.lines;
+      // A caller never chooses the rate; none set is a refusal, not 0% or 20%.
+      const taxRatePercent = await requireOrgTaxRatePercent(orgId);
+      const actorId = req.user?.id ?? null;
+
+      const outcome = await withTransaction(async (tx: any) => {
+        const orderCond = and(eq(orders.id, req.params.id), eq(orders.org_id, orgId));
+        const [existing] = await tx.select().from(orders).where(orderCond).for('update').limit(1);
+        if (!existing) return { notFound: true as const };
+        const beforeItems = await tx.select().from(order_items).where(eq(order_items.order_id, existing.id));
+        const state = await loadOrderEditState(tx, existing, beforeItems);
+        if (state.refusal) throw state.refusal;
+
+        const pricing = priceEditOrRefuse({ lines, taxRatePercent, kept: await keptDiscountsFor(tx, existing) });
+        const before = snapshotOrderMoney(existing, beforeItems, state.legs);
+
+        // Joins this transaction (withTransaction nests), so the lines, the
+        // totals and everything below commit or roll back together.
+        const result = await engine.updateOrder(
+          existing.id,
+          { lines, taxRatePercent, orgId, locationId: existing.location_id ?? ctx.locationId ?? undefined },
+          pricing,
+        );
+        const legsAfter = await rewritePaymentRecordTx(tx, state.legs, pricing.total);
+
+        const [updatedOrder] = await tx.select().from(orders).where(eq(orders.id, existing.id));
+        const items = await tx.select().from(order_items).where(eq(order_items.order_id, existing.id));
+        const now = new Date();
+
+        // The engine moves `status` itself when a stock shortfall forces
+        // `on-hold` (or clears it): the status event and `held_at` are owed
+        // even though nobody asked for a status change.
+        if (updatedOrder && existing.status !== updatedOrder.status) {
           const heldPatch: Record<string, unknown> =
             updatedOrder.status === 'on-hold'
               ? { held_at: updatedOrder.held_at ?? now }
@@ -1396,45 +1397,57 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
                 ? { held_at: null }
                 : {};
           if (Object.keys(heldPatch).length > 0) {
-            await tx.update(orders).set(heldPatch).where(eq(orders.id, req.params.id));
+            await tx.update(orders).set(heldPatch).where(eq(orders.id, existing.id));
           }
           await tx.insert(orderEvents).values({
-            orgId: ctx.orgId,
-            orderId: req.params.id,
+            orgId,
+            orderId: existing.id,
             kind: 'status_changed',
-            userId: req.user?.id ?? null,
+            userId: actorId,
             at: now,
             meta: { from: existing.status, to: updatedOrder.status, via: 'put' },
           });
-        });
-      }
-
-      // Publish OrderUpdated event - critical, visible failure
-      const eventId = await publishEvent('OrderUpdated', req.params.id, {
-        order: {
-          orderId: req.params.id,
-          status: updatedOrder?.status,
-          customerId: updatedOrder?.customer_id,
-          total: parseFloat(updatedOrder?.total || '0'),
-          items: items.map(item => ({
-            lineId: item.id,
-            productId: item.product_id,
-            qty: item.quantity,
-            unitPrice: parseFloat(item.unit_price || '0'),
-            lineTotal: parseFloat(item.total_price || '0'),
-          })),
         }
-      }, { source: 'api-orders' });
-      
-      console.log(`[Orders] Updated order ${req.params.id} (event: ${eventId})`);
-      
-      res.json({ ...result, eventId });
+
+        const after = snapshotOrderMoney(updatedOrder, items, legsAfter);
+        await tx.insert(orderEvents).values({
+          orgId,
+          orderId: existing.id,
+          kind: 'edited',
+          userId: actorId,
+          at: now,
+          meta: { before, after },
+        });
+
+        const eventId = await publishEventTx(tx, 'OrderUpdated', existing.id, {
+          order: {
+            orderId: existing.id,
+            status: updatedOrder?.status,
+            customerId: updatedOrder?.customer_id,
+            total: parseFloat(updatedOrder?.total || '0'),
+            items: items.map((item: any) => ({
+              lineId: item.id,
+              productId: item.product_id,
+              qty: item.quantity,
+              unitPrice: parseFloat(item.unit_price || '0'),
+              lineTotal: parseFloat(item.total_price || '0'),
+            })),
+          },
+        }, { source: 'api-orders', ...(actorId ? { actor: { type: 'user' as const, id: actorId } } : {}) });
+
+        return { notFound: false as const, result, eventId, pricing };
+      });
+
+      if (outcome.notFound) return res.status(404).json({ message: 'Order not found' });
+      console.log(`[Orders] Edited order ${req.params.id} (event: ${outcome.eventId})`);
+      res.json({ ...outcome.result, eventId: outcome.eventId, pricing: outcome.pricing });
     } catch (error: any) {
       console.error("Error updating order:", error);
       const message = safeErrorMessage(error, "Failed to update order");
-      // Settled-order edits are a client error (409), not a server fault.
+      // Refused edits (settled, paid in parts, no VAT rate) are the order's
+      // state, not a server fault.
       const status = error.name === 'ZodError' ? 400 : (error.statusCode ?? 500);
-      res.status(status).json({ message, code: error.code, errors: error.errors });
+      res.status(status).json({ message, code: error.code });
     }
   });
 

@@ -276,7 +276,12 @@ export function normalizeWebsiteOrderSettings(row: WebsiteOrderSettingsRow | nul
   return {
     ...DEFAULT_WEBSITE_ORDER_SETTINGS,
     orderAccessMode: row?.orderAccessMode || DEFAULT_WEBSITE_ORDER_SETTINGS.orderAccessMode,
-    defaultOrderStatus: row?.defaultOrderStatus || DEFAULT_WEBSITE_ORDER_SETTINGS.defaultOrderStatus,
+    // "completed" was once allowed here; an order born completed skips
+    // settlement, so it reads as the default (migration 083 rewrote the rows).
+    defaultOrderStatus:
+      row?.defaultOrderStatus && row.defaultOrderStatus !== "completed"
+        ? row.defaultOrderStatus
+        : DEFAULT_WEBSITE_ORDER_SETTINGS.defaultOrderStatus,
     defaultLocationId: row?.defaultLocationId ?? null,
     allowOutOfStockOrders:
       row?.allowOutOfStockOrders ?? DEFAULT_WEBSITE_ORDER_SETTINGS.allowOutOfStockOrders,
@@ -584,6 +589,14 @@ export function createWebsiteService(repository: WebsiteRepository) {
         settings,
       });
 
+      // The org's VAT rate always applies (v1.2 Phase 1B). None set means the
+      // shop is not ready to sell: refused before anything is written, never
+      // priced at a guessed rate. The customer is not told about settings.
+      const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
+      if (taxRatePercent === undefined) {
+        throw new WebsitePublicOrderError(503, "This shop cannot take orders right now. Please contact the shop.");
+      }
+
       return runtime.withTransaction(async (tx) => {
         const customer = await runtime.engine.createCustomer({
           orgId,
@@ -593,7 +606,6 @@ export function createWebsiteService(repository: WebsiteRepository) {
           address: order.fulfilment.method === "delivery" ? order.fulfilment.address : undefined,
           source: "website",
         });
-        const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
         // Finding G19: the order form's own "pickup" is the board's
         // "collection" (`shared/orders/opsState.ts`'s `FulfilmentMethod`) —
         // every website order used to arrive with NO fulfilment method at
@@ -611,7 +623,7 @@ export function createWebsiteService(repository: WebsiteRepository) {
           channel: "web",
           status: settings.defaultOrderStatus,
           fulfilmentMethod,
-          ...(taxRatePercent === undefined ? {} : { taxRatePercent }),
+          taxRatePercent,
         });
         // Never `ready_at` (brief): a website order starts life the same
         // "received, not yet dealt with" way a till order does, promised only

@@ -285,19 +285,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       matched.push({ product, quantity, customPrice: price, subtotal: price * quantity });
     }
     if (matched.length > 0) setCart(matched);
+    let customerPicked = false;
     if (draft.customerId) {
       const customer = customers.find((c) => c.id === draft.customerId);
-      if (customer) setSelectedCustomer(customer);
+      if (customer) {
+        setSelectedCustomer(customer);
+        customerPicked = true;
+      }
     }
+    const fromVoice = draft.source === "voice";
     // The order came in over WhatsApp regardless of whether every line matched.
-    setChannel("whatsapp");
+    // A voice draft is a till sale like any other.
+    if (!fromVoice) setChannel("whatsapp");
     setDraftConsumed(true);
+    const itemsPart =
+      matched.length > 0
+        ? `${matched.length} item(s) added at the till's prices${unmatched.length ? `; ${unmatched.length} not matched` : ""}.`
+        : "No catalogue products matched. Add items manually.";
+    const customerPart =
+      fromVoice && !customerPicked && draft.customerName ? ` Pick the customer for "${draft.customerName}".` : "";
+    const notePart = fromVoice && draft.note ? ` ${draft.note}.` : "";
     toast({
-      title: "WhatsApp draft loaded",
-      description:
-        matched.length > 0
-          ? `${matched.length} item(s) added${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
-          : "No catalogue products matched the message. Add items manually.",
+      title: fromVoice ? "Voice draft opened" : "WhatsApp draft loaded",
+      description: `${itemsPart}${customerPart}${notePart} Review before checkout.`,
     });
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
