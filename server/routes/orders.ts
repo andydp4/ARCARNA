@@ -30,11 +30,14 @@ import { CreditError } from "../services/creditLedger";
  * guessing — an invented figure here would land in the expenses and in the
  * Signal a manager reads.
  */
-async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
+async function personalUseLines(
+  tx: any,
+  orderId: string,
+): Promise<{ stockCost: number; items: Array<{ name: string | null; qty: number }> }> {
   const { orderItems, products } = await import('@shared/schema');
   const { eq } = await import('drizzle-orm');
   const rows = await tx
-    .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
+    .select({ quantity: orderItems.quantity, costPrice: products.costPrice, name: products.name })
     .from(orderItems)
     .leftJoin(products, eq(orderItems.productId, products.id))
     .where(eq(orderItems.orderId, orderId));
@@ -43,7 +46,11 @@ async function personalUseStockCost(tx: any, orderId: string): Promise<number> {
       sum + (r.costPrice == null ? 0 : Number(r.quantity) * parseFloat(String(r.costPrice))),
     0,
   );
-  return Math.round(total * 100) / 100;
+  return {
+    stockCost: Math.round(total * 100) / 100,
+    // The Signal names what was taken (v1.2 Phase 0B); it no longer carries cost.
+    items: rows.map((r: { quantity: unknown; name: string | null }) => ({ name: r.name ?? null, qty: Number(r.quantity) })),
+  };
 }
 
 /**
@@ -637,7 +644,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           // Zero the sale and book the goods as a cost of the day. The stock has
           // already been deducted by the ordinary order path — it left the
           // building either way — so only the money side needs correcting.
-          const stockCost = await personalUseStockCost(tx, result.orderId);
+          const { stockCost, items: personalUseItems } = await personalUseLines(tx, result.orderId);
           await tx
             .update(orders)
             .set({ total: "0.00", personal_use_reason: body.personalUseReason })
@@ -657,9 +664,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             orgId: ctx.orgId,
             orderId: result.orderId,
             cashierName: req.user?.name ?? req.user?.email ?? null,
+            // The Signal goes to people who outrank this person, never to them.
+            cashierUserId: req.user?.id ?? null,
             reason: body.personalUseReason,
-            stockCost,
-            items: items.map((item: any) => ({ qty: item.quantity })),
+            items: personalUseItems,
           }, { source: 'api-orders' });
         }
 

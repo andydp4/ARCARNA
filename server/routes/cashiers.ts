@@ -7,7 +7,6 @@ import {
   cashierShiftSummaries,
   cashierCommissionPayments,
   organizations,
-  orgNotifications,
   users,
 } from "../../shared/schema";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
@@ -22,6 +21,7 @@ import {
 } from "../services/cashierShiftEngine";
 import { createCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
 import { resolveUserName } from "../services/userDisplayName";
+import { notify } from "../services/signals";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -526,12 +526,15 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         : await resolveUserName(payeeUserId ?? "unknown");
       const message = `Commission paid — ${payeeLabel} received ${amountLabel}`;
 
-      await db.insert(orgNotifications).values({
+      // Pay is admin business: this goes to admins (and the owner), never
+      // team-wide, and not to the person paid (shared/signals.ts).
+      await notify({
         orgId: ctx.orgId,
         title: "Cashier commission paid",
         message,
         severity: "info",
         source: "cashier_commission",
+        subjectUserId: payeeUserId ?? null,
         metadata: {
           cashierId: payeeCashierId,
           cashierCode: cashier?.cashierCode ?? null,

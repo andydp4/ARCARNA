@@ -14,10 +14,12 @@ import {
   workerRunLogs,
   deadLetters,
   userApprovalRequests,
-  orgNotifications,
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { getJobQueueStats } from "../eventBus";
+import { listSignalsFor } from "./signals";
+import { COMPUTED_SIGNAL_MIN_ROLE } from "@shared/signals";
+import { isAtLeast } from "@shared/accessPolicy";
 
 const COMPLETED_STATUS = "completed";
 const DEFAULT_WINDOW_DAYS = 30;
@@ -322,98 +324,110 @@ export type NotificationItem = {
   readAt?: string | null;
 };
 
-export async function getNotifications(orgId: string): Promise<NotificationItem[]> {
+/**
+ * The Signals one person sees (v1.2 Phase 0B). Stored Signals come from
+ * `listSignalsFor`, which applies each Signal's audience and this person's own
+ * read state; the computed ones below are gated by COMPUTED_SIGNAL_MIN_ROLE,
+ * so a cashier's bell carries only what is addressed to them.
+ */
+export async function getNotifications(
+  orgId: string,
+  viewer: { userId: string; role: string },
+): Promise<NotificationItem[]> {
   const notes: NotificationItem[] = [];
   const now = new Date().toISOString();
+  const sees = (kind: keyof typeof COMPUTED_SIGNAL_MIN_ROLE) =>
+    isAtLeast(viewer.role, COMPUTED_SIGNAL_MIN_ROLE[kind]);
 
-  try {
-    const smart = await getSmartStock(orgId, 14);
-    if (smart.summary.negativeStockCount > 0) {
-      notes.push({
-        id: `stock-neg-${orgId}`,
-        type: "stock",
-        title: "Negative stock detected",
-        message: `${smart.summary.negativeStockCount} product(s) have negative stock.`,
-        severity: "error",
-        createdAt: now,
-        entityType: "inventory",
-      });
+  if (sees("stock")) {
+    try {
+      const smart = await getSmartStock(orgId, 14);
+      if (smart.summary.negativeStockCount > 0) {
+        notes.push({
+          id: `stock-neg-${orgId}`,
+          type: "stock",
+          title: "Negative stock detected",
+          message: `${smart.summary.negativeStockCount} product(s) have negative stock.`,
+          severity: "error",
+          createdAt: now,
+          entityType: "inventory",
+        });
+      }
+      if (smart.summary.highRiskCount > 0) {
+        notes.push({
+          id: `stock-risk-${orgId}`,
+          type: "stock",
+          title: "High-risk stock items",
+          message: `${smart.summary.highRiskCount} product(s) need attention.`,
+          severity: "warning",
+          createdAt: now,
+          entityType: "inventory",
+        });
+      }
+      const reorder = smart.items.filter((i) => i.reorderSuggestion !== null).slice(0, 3);
+      for (const r of reorder) {
+        notes.push({
+          id: `reorder-${r.productId}`,
+          type: "stock",
+          title: `Reorder: ${r.name}`,
+          message: r.reorderNote ?? `Suggested qty: ${r.reorderSuggestion}`,
+          severity: "warning",
+          createdAt: now,
+          entityType: "product",
+          entityId: r.productId,
+        });
+      }
+    } catch {
+      // ignore
     }
-    if (smart.summary.highRiskCount > 0) {
-      notes.push({
-        id: `stock-risk-${orgId}`,
-        type: "stock",
-        title: "High-risk stock items",
-        message: `${smart.summary.highRiskCount} product(s) need attention.`,
-        severity: "warning",
-        createdAt: now,
-        entityType: "inventory",
-      });
+  }
+
+  if (sees("approval")) {
+    try {
+      const pending = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(userApprovalRequests)
+        .where(eq(userApprovalRequests.status, "pending"));
+      const count = pending[0]?.count ?? 0;
+      if (count > 0) {
+        notes.push({
+          id: `approval-pending-${orgId}`,
+          type: "approval",
+          title: "Pending user approvals",
+          message: `${count} user(s) awaiting approval.`,
+          severity: "info",
+          createdAt: now,
+          entityType: "user",
+        });
+      }
+    } catch {
+      // ignore
     }
-    const reorder = smart.items.filter((i) => i.reorderSuggestion !== null).slice(0, 3);
-    for (const r of reorder) {
-      notes.push({
-        id: `reorder-${r.productId}`,
-        type: "stock",
-        title: `Reorder: ${r.name}`,
-        message: r.reorderNote ?? `Suggested qty: ${r.reorderSuggestion}`,
-        severity: "warning",
-        createdAt: now,
-        entityType: "product",
-        entityId: r.productId,
-      });
+  }
+
+  if (sees("worker")) {
+    try {
+      const dead = await db.select().from(deadLetters).orderBy(desc(deadLetters.failedAt)).limit(5);
+      for (const d of dead.slice(0, 3)) {
+        notes.push({
+          id: `dl-${d.deadLetterId}`,
+          type: "worker",
+          title: "Worker dead letter",
+          message: `${d.workerName} failed permanently.`,
+          severity: "error",
+          createdAt: d.failedAt?.toISOString() ?? now,
+          entityType: "worker",
+          entityId: d.eventId,
+        });
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   try {
-    const pending = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.status, "pending"));
-    const count = pending[0]?.count ?? 0;
-    if (count > 0) {
-      notes.push({
-        id: `approval-pending-${orgId}`,
-        type: "approval",
-        title: "Pending user approvals",
-        message: `${count} user(s) awaiting approval.`,
-        severity: "info",
-        createdAt: now,
-        entityType: "user",
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    const dead = await db.select().from(deadLetters).orderBy(desc(deadLetters.failedAt)).limit(5);
-    for (const d of dead.slice(0, 3)) {
-      notes.push({
-        id: `dl-${d.deadLetterId}`,
-        type: "worker",
-        title: "Worker dead letter",
-        message: `${d.workerName} failed permanently.`,
-        severity: "error",
-        createdAt: d.failedAt?.toISOString() ?? now,
-        entityType: "worker",
-        entityId: d.eventId,
-      });
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    const orgNs = await db
-      .select()
-      .from(orgNotifications)
-      .where(eq(orgNotifications.orgId, orgId))
-      .orderBy(desc(orgNotifications.createdAt))
-      .limit(40);
-    for (const n of orgNs) {
+    const stored = await listSignalsFor(orgId, viewer);
+    for (const n of stored) {
       notes.push({
         id: n.id,
         type: "system",
@@ -426,8 +440,8 @@ export async function getNotifications(orgId: string): Promise<NotificationItem[
         readAt: n.readAt?.toISOString() ?? null,
       });
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("[signals] list failed:", err);
   }
 
   return notes.sort(

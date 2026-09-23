@@ -8,12 +8,12 @@ import {
   orderPayments,
   orders,
   organizations,
-  orgNotifications,
   shifts,
 } from "@shared/schema";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { lastClosedTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { closeCashierShift } from "./cashierShiftEngine";
+import { notify } from "./signals";
 import { isPersonalUse } from "@shared/reports/cashierShiftReport";
 
 /**
@@ -314,17 +314,20 @@ async function raiseSignals(
     );
   }
 
-  await client.insert(orgNotifications).values({
-    orgId,
-    title: `Trading day closed — ${tradingDay}`,
-    message: lines.join(" "),
-    severity: "info",
-    source: "daily_close",
-    metadata: { tradingDay, ...totals },
-  });
+  await notify(
+    {
+      orgId,
+      title: `Trading day closed — ${tradingDay}`,
+      message: lines.join(" "),
+      severity: "info",
+      source: "daily_close",
+      metadata: { tradingDay, ...totals },
+    },
+    client,
+  );
 
   if (totals.uncountedDrawers > 0) {
-    await client.insert(orgNotifications).values({
+    await notify({
       orgId,
       title: `${totals.uncountedDrawers} drawer${totals.uncountedDrawers === 1 ? "" : "s"} not counted`,
       // Deliberately not closed for them: a drawer closed without a count can
@@ -336,7 +339,7 @@ async function raiseSignals(
       severity: "warning",
       source: "daily_close",
       metadata: { tradingDay, uncountedDrawers: totals.uncountedDrawers },
-    });
+    }, client);
   }
 }
 

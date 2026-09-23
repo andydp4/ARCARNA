@@ -42,6 +42,18 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   registers as a cashier and fails on any canary it finds. Leaks still being
   closed by another part of Phase 0B sit in `KNOWN_LEAKS` with their owner;
   that list may only shrink.
+- **Signals.** Every Signal is raised through `notify()`
+  (`server/services/signals.ts`) with an audience — a minimum role, a list of
+  roles, or named people — and, when it names a member of staff, that person
+  as its subject. Routing lives in `shared/signals.ts` (`SIGNAL_ROUTES`):
+  existing Signals go to managers, commission paid to admins. A Signal that
+  names someone reaches only people who outrank them (never team-wide) and
+  not the person themselves unless `tellSubject` is set. The recipient lookup
+  always includes SUPER_ADMIN logins, whose `org_id` is NULL. Recipients are
+  stored per person (`org_notification_recipients`, migration 072), so read
+  and cleared are per person, and the read route re-checks the viewer's
+  current role. Stock warnings are for managers, account approvals for
+  admins, and worker dead letters (not scoped to one org) for SUPER_ADMIN only.
 - **Dev bypass.** With `DEV_AUTH_BYPASS=1` (`npm run dev`), `requireRole` lets
   everything through. Use Preview as role (Phase 0B part 10) or the role-matrix test to see
   what a role really gets.

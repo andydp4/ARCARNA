@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { scheduledReports, scheduledReportRuns, orgNotifications } from "@shared/schema";
+import { scheduledReports, scheduledReportRuns } from "@shared/schema";
+import { notify } from "./signals";
 import { and, eq, lte, desc } from "drizzle-orm";
 import { getBusinessHealth, getSmartStock } from "./operationalIntelligence";
 
@@ -101,7 +102,7 @@ export async function processScheduledReports(): Promise<number> {
       const methods = (report.deliveryMethods as string[]) || ["notification_center"];
 
       if (methods.includes("notification_center")) {
-        await db.insert(orgNotifications).values({
+        await notify({
           orgId: report.orgId,
           title: `Report: ${report.name}`,
           message: `Scheduled ${report.reportType} (${report.frequency}) is ready.`,

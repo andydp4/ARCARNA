@@ -2,38 +2,56 @@
  * Tells the business when staff take stock for themselves.
  *
  * Personal use is allowed and is not blocked at the till. The control is that
- * it cannot happen quietly: every instance raises a Signal naming the cashier,
- * what they took, what it cost and why. That is the difference between a
+ * it cannot happen quietly: every instance raises a Signal naming the member
+ * of staff, the products they took and why. That is the difference between a
  * recorded perk and unexplained shrinkage.
+ *
+ * The Signal names products, never cost (v1.2 Phase 0B): the goods are what a
+ * manager judges, and the cost is on the day's expenses for whoever may see
+ * it. It names a member of staff, so it goes to people who outrank them only
+ * (shared/signals.ts) — never team-wide, and never to the person themselves.
  *
  * It rides the outbox like every other event, so a Signal that fails to write
  * is retried and ends up in the dead-letter queue rather than silently not
  * happening — an alert nobody can rely on is worse than no alert.
  */
 import { db } from "../db";
-import { orgNotifications, processedEvents } from "@shared/schema";
+import { orderItems, processedEvents, products } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
+import { notify } from "../services/signals";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "@shared/schema";
+
+type PersonalUseItem = { name?: string | null; qty?: number };
 
 type PersonalUsePayload = {
   orgId?: string;
   orderId?: string;
   cashierName?: string;
+  cashierUserId?: string | null;
   reason?: string;
-  stockCost?: number;
-  items?: Array<{ name?: string; qty?: number }>;
+  items?: PersonalUseItem[];
 };
 
-function money(n: number): string {
-  return `£${n.toFixed(2)}`;
-}
-
-function describeItems(items: PersonalUsePayload["items"]): string {
+export function describePersonalUseItems(items: PersonalUseItem[] | undefined): string {
   if (!items?.length) return "";
   return items
-    .map((i) => `${i.qty ?? 1} × ${i.name ?? "item"}`)
+    .map((i) => `${i.qty ?? 1} × ${i.name?.trim() || "unnamed item"}`)
     .join(", ");
+}
+
+/**
+ * Events queued before the till started sending product names carry only
+ * quantities; read the names from the order so those Signals still say what
+ * was taken.
+ */
+async function itemsFromOrder(orderId: string): Promise<PersonalUseItem[]> {
+  const rows = await db
+    .select({ qty: orderItems.quantity, name: products.name })
+    .from(orderItems)
+    .leftJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(orderItems.orderId, orderId));
+  return rows.map((r: { qty: number; name: string | null }) => ({ qty: Number(r.qty), name: r.name }));
 }
 
 export class PersonalUseSignalWorker implements IWorker {
@@ -73,24 +91,26 @@ export class PersonalUseSignalWorker implements IWorker {
       };
     }
 
-    const cost = Number(payload.stockCost ?? 0);
     const who = payload.cashierName ?? "A member of staff";
-    const what = describeItems(payload.items);
+    let items = payload.items;
+    if (payload.orderId && (!items?.length || items.some((i) => !i.name))) {
+      items = await itemsFromOrder(payload.orderId);
+    }
+    const what = describePersonalUseItems(items);
 
-    await db.insert(orgNotifications).values({
+    await notify({
       orgId,
-      title: `Personal use — ${money(cost)}`,
+      title: `Personal use — ${who}`,
       // Everything a manager needs to judge it without opening anything.
       message: [
         `${who} took stock for personal use${what ? `: ${what}` : ""}.`,
-        `Cost to the business: ${money(cost)}.`,
         payload.reason ? `Reason given: ${payload.reason}` : "No reason was given.",
       ].join(" "),
       severity: "warning",
       source: "personal_use",
+      subjectUserId: payload.cashierUserId ?? null,
       metadata: {
         orderId: payload.orderId,
-        stockCost: cost,
         reason: payload.reason ?? null,
       },
     });
@@ -105,7 +125,7 @@ export class PersonalUseSignalWorker implements IWorker {
       worker: this.name,
       eventId: event.eventId,
       correlationId: event.correlationId,
-      summary: `Personal use of ${money(cost)} signalled to the org`,
+      summary: "Personal use signalled to managers",
     };
   }
 }

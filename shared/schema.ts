@@ -2236,7 +2236,16 @@ export const orgNotifications = pgTable(
     severity: varchar("severity", { length: 20 }).notNull().default("info"),
     source: varchar("source", { length: 64 }).notNull(),
     metadata: jsonb("metadata"),
+    /**
+     * Legacy org-wide read flag. No longer written: read state is per person
+     * on `org_notification_recipients` (migration 072). Kept so old rows keep
+     * their history.
+     */
     readAt: timestamp("read_at"),
+    /** Who the Signal is for — see shared/signals.ts `SignalAudience`. Null only on rows older than 072 that the backfill could not place. */
+    audience: jsonb("audience"),
+    /** The member of staff the Signal names, if any. They are never told unless the audience says so, and it only reaches people who outrank them. */
+    subjectUserId: varchar("subject_user_id", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [index("org_notifications_org_created_idx").on(table.orgId, table.createdAt)],
@@ -2244,6 +2253,39 @@ export const orgNotifications = pgTable(
 
 export type OrgNotification = typeof orgNotifications.$inferSelect;
 export type InsertOrgNotification = typeof orgNotifications.$inferInsert;
+
+/**
+ * Who a Signal was sent to, and what each of them has done with it
+ * (migration 072, v1.2 Phase 0B). One row per person per Signal, resolved at
+ * send time by `notify()` (server/services/signals.ts), so read and cleared
+ * are per person: clearing a Signal on one account leaves it on another.
+ *
+ * `userId` is the auth subject (`allowed_users.auth_user_id`, falling back to
+ * `replit_user_id`), the same value as `req.user.id`. No FK: the owner's
+ * SUPER_ADMIN login has no fixed org, and a row here must never be what
+ * blocks removing a person.
+ */
+export const orgNotificationRecipients = pgTable(
+  "org_notification_recipients",
+  {
+    notificationId: uuid("notification_id")
+      .references(() => orgNotifications.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    readAt: timestamp("read_at"),
+    dismissedAt: timestamp("dismissed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.notificationId, table.userId] }),
+    index("org_notification_recipients_user_idx").on(table.orgId, table.userId),
+  ],
+);
+
+export type OrgNotificationRecipient = typeof orgNotificationRecipients.$inferSelect;
 
 /**
  * One-time UI a person has already seen — What's New, tours, tutorials

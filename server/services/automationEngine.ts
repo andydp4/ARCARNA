@@ -3,7 +3,8 @@
  * No outbound events from actions (prevents recursion / fan-out loops).
  */
 import { db } from "../db";
-import { customers, orders, automationRules, orgNotifications } from "@shared/schema";
+import { customers, orders, automationRules } from "@shared/schema";
+import { notify } from "./signals";
 import { eq, and, asc, sql } from "drizzle-orm";
 import type { EventEnvelope, EventType } from "@shared/schema";
 
@@ -186,7 +187,7 @@ export async function executeRuleAction(args: {
   if (type === "in_app_notification" || type === "notify") {
     const title = action.title || args.ruleName;
     const message = action.message || "Automation notification";
-    await db.insert(orgNotifications).values({
+    await notify({
       orgId: args.orgId,
       title,
       message,

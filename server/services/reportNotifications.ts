@@ -11,6 +11,7 @@ import { db } from "../db";
 import { orgNotifications } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { ReportPayload } from "./reportsEngine";
+import { notify } from "./signals";
 
 const DEDUP_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -35,7 +36,7 @@ export async function notifyReportRedFlags(orgId: string, payload: ReportPayload
       .limit(1);
     if (existing.length) continue;
 
-    await db.insert(orgNotifications).values({
+    await notify({
       orgId,
       title: `${payload.title} — action required`,
       message: flag,
