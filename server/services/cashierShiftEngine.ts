@@ -27,6 +27,7 @@ import {
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
 import { storedDiscountTotal } from "@shared/pricing/priceOrder";
+import { commissionCostBasis, lineUnitCost } from "@shared/pricing/lineSnapshot";
 
 export class CashierShiftError extends Error {
   status: number;
@@ -130,13 +131,23 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
 }
 
-async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { costPrice: number | null; quantity: number }[]>> {
-  const map = new Map<string, { costPrice: number | null; quantity: number }[]>();
+type CostedLine = { costPrice: number | null; quantity: number; lineTotal: number };
+
+/**
+ * Each line's unit cost from its sale-time snapshot (PRC-06), so editing a
+ * cost does not change commission on sales already made; lines sold before
+ * snapshots fall back to today's cost. Null = unknown (usableCost rule).
+ */
+async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, CostedLine[]>> {
+  const map = new Map<string, CostedLine[]>();
   if (orderIds.length === 0) return map;
   const rows = await db
     .select({
       orderId: orderItems.orderId,
       quantity: orderItems.quantity,
+      totalPrice: orderItems.totalPrice,
+      listPrice: orderItems.listPrice,
+      unitCost: orderItems.unitCost,
       costPrice: products.costPrice,
     })
     .from(orderItems)
@@ -147,7 +158,8 @@ async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { co
     const list = map.get(row.orderId) ?? [];
     list.push({
       quantity: row.quantity,
-      costPrice: row.costPrice != null ? parseFloat(String(row.costPrice)) : null,
+      costPrice: lineUnitCost(row, row.costPrice),
+      lineTotal: parseFloat(String(row.totalPrice)) || 0,
     });
     map.set(row.orderId, list);
   }
@@ -409,15 +421,16 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
         : isTickPayment(row.paymentMethod) && row.status !== "completed"
           ? total
           : 0;
-    const items = costsByOrder.get(row.id) ?? [];
-    const stockCost = items.reduce(
-      (sum, item) => sum + (item.costPrice == null ? 0 : item.quantity * item.costPrice),
-      0,
+    // A line with no known cost is left out of commission, revenue and all
+    // (owner Q5, "cost missing") — not counted as pure profit at £0 cost.
+    const basis = commissionCostBasis(
+      (costsByOrder.get(row.id) ?? []).map((i) => ({ quantity: i.quantity, lineTotal: i.lineTotal, unitCost: i.costPrice })),
     );
     return {
       orderId: row.id,
-      paidContribution: Math.max(0, total - deferredCredit),
-      stockCost,
+      paidContribution: Math.max(0, total - deferredCredit) * basis.knownShare,
+      stockCost: basis.stockCost,
+      costMissingLines: basis.costMissingLines,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,
       overheadShare: 0, // filled in by the ledger, which apportions per day
       refunds: refundsByOrder.get(row.id) ?? 0,

@@ -22,6 +22,13 @@ import { resolveEditableStockLocationId } from "../services/stockLocationContext
 import { topSellingProducts } from "../services/topSellers";
 import { productForRole, productsForRole, rolesAtLeast } from "@shared/accessPolicy";
 import { sendServerError } from "../lib/errorScrub";
+import { createProductWithPricing, updateProductWithPricing, ProductPricingError } from "../services/productPricing";
+import { listPriceHistory } from "../services/priceHistory";
+import { withTillFloor } from "@shared/pricing/floor";
+
+function actorIdOf(req: any): string | null {
+  return req.user?.claims?.sub ?? req.user?.id ?? null;
+}
 
 /**
  * Product create, edit, delete and aliases change what things sell for and
@@ -48,6 +55,8 @@ export const updateProductBody = z
     productCode: z.preprocess(blankToUndefined, z.string().trim().min(1).max(100).optional()),
     barcode: z.string().max(255).nullable().optional(),
     costPrice: z.preprocess((v) => (v === "" ? null : v), money.nullable().optional()),
+    // null (or blank) clears it: the minimum follows the sale price again.
+    minPrice: z.preprocess((v) => (v === "" ? null : v), money.nullable().optional()),
     salePrice: money.optional(),
     defaultSalePrice: money.optional(),
     stockLimit: z.coerce.number().pipe(nonNegativeQuantity).optional(),
@@ -70,6 +79,7 @@ export const createProductBody = z.object({
     (v) => (v === "" ? null : v),
     z.coerce.number().min(0).max(9_999_999_999).finite().nullable().optional(),
   ),
+  minPrice: z.preprocess((v) => (v === "" ? null : v), money.nullable().optional()),
   salePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   defaultSalePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   stock: z.coerce.number().pipe(nonNegativeQuantity).optional(),
@@ -89,7 +99,9 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         userId: req.user?.claims?.sub ?? req.user?.id ?? null,
       });
       const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
-      res.json(productsForRole(list, ctx.role));
+      // Every role gets the minimum-only till floor (never cost, Q4); the till
+      // caches this list for offline selling, so the floor goes with it.
+      res.json(productsForRole(list.map(withTillFloor), ctx.role));
     } catch (error) {
       console.error("Error fetching products:", error);
       res.status(500).json({ message: "Failed to fetch products" });
@@ -110,7 +122,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(eq(products.orgId, ctx.orgId), eq(products.barcode, code)))
         .limit(1);
       if (!product) return res.status(404).json({ message: "Product not found" });
-      res.json(productForRole(product, ctx.role));
+      res.json(productForRole(withTillFloor(product), ctx.role));
     } catch (error) {
       console.error("Error fetching product by barcode:", error);
       res.status(500).json({ message: "Failed to fetch product" });
@@ -135,6 +147,20 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
+  // Sale, minimum and cost changes, newest first (PRC-07). Manager and above:
+  // it carries cost figures.
+  app.get("/api/products/:id/price-history", ...scoped, productWriteRoles, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const product = await storage.getProduct(req.params.id, ctx.orgId);
+      if (!product) return res.status(404).json({ message: "Product not found" });
+      res.json(await listPriceHistory(ctx.orgId, product.id));
+    } catch (error) {
+      console.error("Error fetching price history:", error);
+      res.status(500).json({ message: "Failed to fetch price history" });
+    }
+  });
+
   app.get("/api/products/:id", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
@@ -142,7 +168,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
-      res.json(productForRole(product, ctx.role));
+      res.json(productForRole(withTillFloor(product), ctx.role));
     } catch (error) {
       console.error("Error fetching product:", error);
       res.status(500).json({ message: "Failed to fetch product" });
@@ -162,10 +188,17 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         });
       }
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const { engine } = await import('../../apps/server/src/engine.wiring');
-      const product = await engine.createProduct({ ...parsed.data, orgId: ctx.orgId });
+      const product = await createProductWithPricing({
+        orgId: ctx.orgId,
+        body: parsed.data,
+        role: ctx.role,
+        actorId: actorIdOf(req),
+      });
       res.json(product);
     } catch (error: any) {
+      if (error instanceof ProductPricingError) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
       console.error("Error creating product:", error);
       
       // Check for duplicate product code error
@@ -193,12 +226,18 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         return res.status(400).json({ message: "Invalid product", errors: parsed.error.errors });
       }
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
-      const existing = await storage.getProduct(req.params.id, ctx.orgId);
-      if (!existing) return res.status(404).json({ message: "Product not found" });
-      const { engine } = await import('../../apps/server/src/engine.wiring');
-      const product = await engine.updateProduct(req.params.id, parsed.data, ctx.orgId);
+      const product = await updateProductWithPricing({
+        orgId: ctx.orgId,
+        productId: req.params.id,
+        patch: parsed.data,
+        role: ctx.role,
+        actorId: actorIdOf(req),
+      });
       res.json(product);
     } catch (error: any) {
+      if (error instanceof ProductPricingError) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
       console.error("Error updating product:", error);
       if (error?.message === 'Product not found') return res.status(404).json({ message: "Product not found" });
       if (error.message?.includes('duplicate key') || error.message?.includes('unique constraint') || error.code === '23505') {
@@ -320,6 +359,8 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       const result = await storage.importProducts(list, ctx.orgId, {
         duplicateMode,
         confirmed: true,
+        role: ctx.role,
+        actorId: actorIdOf(req),
       });
       res.json(result);
     } catch (error: any) {

@@ -272,6 +272,8 @@ describe("public website order submission", () => {
         paymentMethod: "transfer",
         lines: [{ productId, quantity: 2, unitPrice: 15 }],
       }),
+      undefined,
+      { pricedAtList: true },
     );
     expect(orderRuntime.engine.createCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ source: "website", name: "Ada Buyer" }),
@@ -307,6 +309,8 @@ describe("public website order submission", () => {
     expect(configured.getOrgTaxRatePercent).toHaveBeenCalledWith("org-1");
     expect(configured.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ taxRatePercent: 5 }),
+      undefined,
+      { pricedAtList: true },
     );
 
     // v1.2 Phase 1B: an org with no configured rate is refused before

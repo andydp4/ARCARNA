@@ -107,7 +107,11 @@ export interface WebsiteProductRow {
 
 export interface WebsiteOrderEngine {
   createCustomer(input: unknown): Promise<{ id: string }>;
-  placeOrder(input: unknown): Promise<{ orderId: string; warnings?: string[] }>;
+  placeOrder(
+    input: unknown,
+    pricing?: undefined,
+    context?: { pricedAtList?: boolean },
+  ): Promise<{ orderId: string; warnings?: string[] }>;
 }
 
 export interface WebsiteOrderRuntime {
@@ -624,7 +628,12 @@ export function createWebsiteService(repository: WebsiteRepository) {
           status: settings.defaultOrderStatus,
           fulfilmentMethod,
           taxRatePercent,
-        });
+        },
+        undefined,
+        // Every line above was priced at list by this checkout, so the silent
+        // price check skips it. Said here, by the server, rather than read
+        // from `channel: "web"`, which any till or API caller can send.
+        { pricedAtList: true });
         // Never `ready_at` (brief): a website order starts life the same
         // "received, not yet dealt with" way a till order does, promised only
         // the org's own SLA fallback — nobody has told this customer a

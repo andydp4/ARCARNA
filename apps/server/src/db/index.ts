@@ -9,6 +9,11 @@ export function getDb() {
   return txStore.getStore() ?? db
 }
 
+/** True inside `withTransaction` — a write there can use a savepoint. */
+export function inTransaction(): boolean {
+  return txStore.getStore() != null
+}
+
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
   max: 10,

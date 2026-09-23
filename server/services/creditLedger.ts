@@ -22,6 +22,7 @@ import {
   roundMoney,
 } from "@shared/reports/orderCommission";
 import { currentTradingDay } from "@shared/time/tradingDay";
+import { commissionCostBasis, lineUnitCost } from "@shared/pricing/lineSnapshot";
 import { resolveCommissionRate } from "./cashierShiftEngine";
 import { issueInvoiceForOrder } from "./invoices";
 
@@ -216,15 +217,27 @@ export async function commissionBasisFor(
     orgRate: org?.defaultRate,
   });
 
+  // Sale-time cost snapshots (PRC-06); a line with no known cost is left out
+  // of commission, its revenue with it (owner Q5, "cost missing").
   const itemRows = await client
-    .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
+    .select({
+      quantity: orderItems.quantity,
+      totalPrice: orderItems.totalPrice,
+      listPrice: orderItems.listPrice,
+      unitCost: orderItems.unitCost,
+      costPrice: products.costPrice,
+    })
     .from(orderItems)
     .leftJoin(products, eq(orderItems.productId, products.id))
     .where(eq(orderItems.orderId, orderId));
-  const stockCost = itemRows.reduce(
-    (sum, i) => sum + (i.costPrice == null ? 0 : Number(i.quantity) * parseFloat(String(i.costPrice))),
-    0,
+  const basis = commissionCostBasis(
+    itemRows.map((i) => ({
+      quantity: Number(i.quantity),
+      lineTotal: parseFloat(String(i.totalPrice)) || 0,
+      unitCost: lineUnitCost(i, i.costPrice),
+    })),
   );
+  const stockCost = basis.stockCost;
 
   const expenseRows = await client
     .select({ amount: orderExpensesTable.amount })
@@ -238,7 +251,9 @@ export async function commissionBasisFor(
     .where(eq(refunds.orderId, orderId));
   const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
 
+  // Only the known-cost share of what was collected earns commission.
   const settled = parseFloat(String(order.settledTotal ?? order.total));
+  const commissionable = settled * basis.knownShare;
   const commissionInput = {
     orderId,
     stockCost,
@@ -253,14 +268,14 @@ export async function commissionBasisFor(
   const result = buildOrderCommission(
     {
       ...commissionInput,
-      paidContribution: settled,
+      paidContribution: commissionable,
     },
     rate,
   );
   const upfrontResult = buildOrderCommission(
     {
       ...commissionInput,
-      paidContribution: Math.max(0, settled - roundMoney(creditAmountGiven)),
+      paidContribution: Math.max(0, commissionable - roundMoney(creditAmountGiven) * basis.knownShare),
     },
     rate,
   );

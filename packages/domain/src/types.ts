@@ -9,8 +9,11 @@ export type Product = {
   productCode: string
   name: string
   barcode?: string
-  costPrice: MoneyGBP
+  /** null = cost not known. Never 0 for "unknown": 0 reads as a free item. */
+  costPrice: MoneyGBP | null
   salePrice: MoneyGBP
+  /** null = follows the sale price (shared/pricing/floor.ts). */
+  minPrice?: MoneyGBP | null
   stock: number
   stockLimit: number
   categoryId?: string
@@ -34,7 +37,15 @@ export type Customer = {
   updatedAt: Date
 }
 
-export type OrderLine = { productId: ProductId; quantity: number; unitPrice: MoneyGBP; lineTotal: MoneyGBP }
+export type OrderLine = {
+  productId: ProductId; quantity: number; unitPrice: MoneyGBP; lineTotal: MoneyGBP
+  /**
+   * Snapshots at the moment of sale (PRC-06, shared/pricing/lineSnapshot.ts).
+   * Absent/null on lines sold before snapshots existed. floorPrice is the
+   * minimum as it applied (never cost); unitCost null = cost not known then.
+   */
+  listPrice?: MoneyGBP | null; floorPrice?: MoneyGBP | null; unitCost?: MoneyGBP | null
+}
 export type OrderChannel = 'pos'|'web'|'api'|'whatsapp'|'phone'
 export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];

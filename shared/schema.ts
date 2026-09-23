@@ -507,6 +507,11 @@ export const products = pgTable("products", {
     precision: 10,
     scale: 2,
   }).notNull(),
+  // The lowest price this should sell for (v1.2 Phase 2, PRC-01). NULL means
+  // "follows the sale price" and is the default — no backfill, so a copied
+  // figure can never go stale. Read only through effectiveFloor()
+  // (shared/pricing/floor.ts).
+  minPrice: numeric("min_price", { precision: 10, scale: 2 }),
   // numeric, not integer: shops selling by weight or length need 0.4 of a
   // product. mode:"number" keeps these JS numbers, so the arithmetic that
   // reads them is unchanged — string-mode numeric would have turned every
@@ -541,6 +546,29 @@ export const insertProductSchema = createInsertSchema(products).omit({
   stock: true
 });
 export type InsertProductData = z.infer<typeof insertProductSchema>;
+
+/**
+ * Every change to a product's sale price, minimum or cost (v1.2 Phase 2,
+ * PRC-07): old and new, who, and where from. Values are NULL when the figure
+ * was empty (no minimum / cost unknown), never 0.
+ */
+export const productPriceHistory = pgTable("product_price_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "cascade" }).notNull(),
+  field: varchar("field", { length: 16 }).notNull(),
+  oldValue: numeric("old_value", { precision: 10, scale: 2 }),
+  newValue: numeric("new_value", { precision: 10, scale: 2 }),
+  /** The actor's user id. NULL when the system made the change. */
+  changedBy: varchar("changed_by", { length: 255 }),
+  source: varchar("source", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("product_price_history_field_check", sql`${table.field} IN ('sale', 'min', 'cost')`),
+  index("product_price_history_product_idx").on(table.orgId, table.productId, table.createdAt),
+]);
+
+export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
 
 // Per-location stock (authoritative for inventory math)
 export const productLocationStock = pgTable(
@@ -1841,6 +1869,12 @@ export const orderItems = pgTable("order_items", {
   quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  // Snapshots at the moment of sale (PRC-06, migration 092). All NULL on lines
+  // sold before snapshots existed — no backfill. floor_price is the minimum as
+  // it applied, never cost; unit_cost NULL = cost not known then.
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("order_items_order_id_idx").on(table.orderId),
@@ -1849,6 +1883,37 @@ export const orderItems = pgTable("order_items", {
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+// Underpriced sales, recorded silently by the order engine (PRC-03, CMP-03,
+// migration 093). Never blocks a sale. Read by "Would have flagged" (admin).
+export const priceExceptions = pgTable("price_exceptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+  /** Who set the price: the till user, or the manager who edited the order. */
+  userId: varchar("user_id", { length: 255 }),
+  /** "sale" (placed) or "edit" (a manager's change to an open order). */
+  source: varchar("source", { length: 16 }).notNull(),
+  channel: varchar("channel", { length: 16 }),
+  quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }).notNull(),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }).notNull(),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
+  belowMinimum: boolean("below_minimum").notNull(),
+  belowCost: boolean("below_cost").notNull(),
+  underList: numeric("under_list", { precision: 12, scale: 2 }).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_exceptions_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  index("price_exceptions_org_created_idx").on(table.orgId, table.createdAt),
+  // An edit reads and replaces its order's rows.
+  index("price_exceptions_order_idx").on(table.orderId),
+]);
+
+export type PriceException = typeof priceExceptions.$inferSelect;
 
 // Refunds (F3)
 export const REFUND_REASONS = [

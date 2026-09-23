@@ -48,6 +48,10 @@ export const products = pgTable('products', {
   product_id: varchar('product_id',{length:100}).notNull().unique(), // SKU
   cost_price: numeric('cost_price', { precision: 10, scale: 2 }),
   default_sale_price: numeric('default_sale_price',{precision:10,scale:2}).notNull(),
+  // NULL = follows the sale price (shared/pricing/floor.ts effectiveFloor).
+  min_price: numeric('min_price', { precision: 10, scale: 2 }),
+  location_id: uuid('location_id'),
+  aliases: jsonb('aliases').$type<string[]>(),
   // Must match shared/schema.ts: these are the same physical columns, and
   // drizzle's integer mapper runs parseInt on what numeric returns, so a
   // declaration left as integer reads 0.400 as 0.
@@ -163,6 +167,10 @@ export const order_items = pgTable('order_items', {
   quantity: numeric('quantity', { precision: 14, scale: 3, mode: 'number' }).notNull(),
   unit_price: numeric('unit_price',{precision:10,scale:2}).notNull(),
   total_price: numeric('total_price',{precision:10,scale:2}).notNull(),
+  // PRC-06 snapshots (migration 092); see shared/schema.ts orderItems.
+  list_price: numeric('list_price',{precision:10,scale:2}),
+  floor_price: numeric('floor_price',{precision:10,scale:2}),
+  unit_cost: numeric('unit_cost',{precision:10,scale:2}),
   created_at: timestamp('created_at').defaultNow(),
 })
 

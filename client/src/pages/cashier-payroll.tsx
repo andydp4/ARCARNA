@@ -58,6 +58,8 @@ type CashierCommissionRow = {
   closedAt: string;
   netSalesProfit: string;
   commissionAmount: string;
+  /** Some lines had no known cost and were left out of commission (Q5). */
+  hasIncompleteCostData?: boolean;
   amountPaid: number;
   amountUnpaid: number;
   paidStatus: "paid" | "partial" | "unpaid";
@@ -66,6 +68,23 @@ type CashierCommissionRow = {
 function money(n: number | string): string {
   const value = typeof n === "string" ? parseFloat(n) : n;
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value || 0);
+}
+
+/**
+ * Owner Q5: a sale line with no known cost is left out of commission rather
+ * than counted as pure profit. Shown so the missing cost gets set.
+ */
+function CostMissingBadge() {
+  return (
+    <Badge
+      variant="outline"
+      className="ml-2"
+      title="Some items on this shift had no cost set, so they were left out of commission. Set their cost on the product."
+      data-testid="badge-cost-missing"
+    >
+      cost missing
+    </Badge>
+  );
 }
 
 function isoDaysAgo(days: number): string {
@@ -315,7 +334,10 @@ export default function CashierPayrollPage() {
                     </div>
                     <div className="space-y-1 border-t pt-2">
                       <ResponsiveCardRow label="Net profit">{money(row.netSalesProfit)}</ResponsiveCardRow>
-                      <ResponsiveCardRow label="Commission">{money(row.commissionAmount)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Commission">
+                        {money(row.commissionAmount)}
+                        {row.hasIncompleteCostData && <CostMissingBadge />}
+                      </ResponsiveCardRow>
                     </div>
                     {canConfirm(row) && (
                       <Button
@@ -337,7 +359,10 @@ export default function CashierPayrollPage() {
                   <TableCell>{row.cashierCode} · {row.cashierName}</TableCell>
                   <TableCell>{new Date(row.closedAt).toLocaleString()}</TableCell>
                   <TableCell>{money(row.netSalesProfit)}</TableCell>
-                  <TableCell>{money(row.commissionAmount)}</TableCell>
+                  <TableCell>
+                    {money(row.commissionAmount)}
+                    {row.hasIncompleteCostData && <CostMissingBadge />}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={row.paidStatus === "paid" ? "secondary" : row.paidStatus === "partial" ? "outline" : "destructive"}>
                       {row.paidStatus}

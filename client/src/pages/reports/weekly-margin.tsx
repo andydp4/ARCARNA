@@ -11,16 +11,22 @@ import type { FlagLevel } from "@/lib/reportBrand";
 interface Row {
   product: string;
   unitsSold: number;
-  costPrice: number;
+  /** Units sold with no cost set: left out of the margin, never costed at £0. */
+  costMissingUnits?: number;
+  /** Null when no unit sold had a known cost ("No cost set"). */
+  costPrice: number | null;
   avgSellPrice: number;
   minSellPrice: number;
   maxSellPrice: number;
-  grossMargin: number;
-  marginPct: number;
+  grossMargin: number | null;
+  marginPct: number | null;
   totalMargin: number;
 }
 
-function marginFlag(pctVal: number): FlagLevel {
+const NO_COST = "No cost set";
+
+function marginFlag(pctVal: number | null): FlagLevel {
+  if (pctVal == null) return "gold";
   if (pctVal >= 45) return "green";
   if (pctVal >= 30) return "blue";
   if (pctVal >= 20) return "amber";
@@ -31,7 +37,7 @@ const marginAction: Record<FlagLevel, string> = {
   blue: "Monitor",
   amber: "Review Pricing",
   red: "Reprice Now",
-  gold: "Review",
+  gold: "Set a cost",
 };
 
 export default function WeeklyMarginReport() {
@@ -54,7 +60,7 @@ export default function WeeklyMarginReport() {
           { level: "amber", meaning: "20–29% — review" },
           { level: "red", meaning: "< 20% — reprice" },
         ],
-        rowFlag: (r) => (r.marginPct < 20 ? "red" : undefined),
+        rowFlag: (r) => (r.marginPct != null && r.marginPct < 20 ? "red" : undefined),
         controls: (
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-muted-foreground">Week of</label>
@@ -78,11 +84,16 @@ export default function WeeklyMarginReport() {
         ],
         columns: [
           { header: "Product", cell: (r) => r.product },
-          { header: "Units", cell: (r) => int(r.unitsSold), align: "right" },
-          { header: "Cost", cell: (r) => money(r.costPrice), align: "right" },
+          {
+            header: "Units",
+            cell: (r) =>
+              r.costMissingUnits ? `${int(r.unitsSold)} (${int(r.costMissingUnits)} cost missing)` : int(r.unitsSold),
+            align: "right",
+          },
+          { header: "Cost", cell: (r) => (r.costPrice == null ? NO_COST : money(r.costPrice)), align: "right" },
           { header: "Avg Sell", cell: (r) => money(r.avgSellPrice), keyInfo: true, align: "right" },
-          { header: "Margin/Unit", cell: (r) => money(r.grossMargin), keyInfo: true, align: "right" },
-          { header: "Margin %", cell: (r) => pct(r.marginPct), keyInfo: true, align: "right" },
+          { header: "Margin/Unit", cell: (r) => (r.grossMargin == null ? "—" : money(r.grossMargin)), keyInfo: true, align: "right" },
+          { header: "Margin %", cell: (r) => (r.marginPct == null ? "—" : pct(r.marginPct)), keyInfo: true, align: "right" },
           { header: "Total Margin", cell: (r) => money(r.totalMargin), keyInfo: true, align: "right" },
           {
             header: "Flag",
@@ -93,12 +104,13 @@ export default function WeeklyMarginReport() {
         csvColumns: [
           { header: "Product Name", value: (r) => r.product },
           { header: "Units Sold", value: (r) => r.unitsSold },
-          { header: "Cost Price GBP", value: (r) => r.costPrice.toFixed(2) },
+          { header: "Units Cost Missing", value: (r) => r.costMissingUnits ?? 0 },
+          { header: "Cost Price GBP", value: (r) => (r.costPrice == null ? "" : r.costPrice.toFixed(2)) },
           { header: "Avg Sell Price GBP", value: (r) => r.avgSellPrice.toFixed(2) },
           { header: "Min Sell Price GBP", value: (r) => r.minSellPrice.toFixed(2) },
           { header: "Max Sell Price GBP", value: (r) => r.maxSellPrice.toFixed(2) },
-          { header: "Gross Margin Per Unit GBP", value: (r) => r.grossMargin.toFixed(2) },
-          { header: "Margin Pct", value: (r) => r.marginPct.toFixed(1) },
+          { header: "Gross Margin Per Unit GBP", value: (r) => (r.grossMargin == null ? "" : r.grossMargin.toFixed(2)) },
+          { header: "Margin Pct", value: (r) => (r.marginPct == null ? "" : r.marginPct.toFixed(1)) },
           { header: "Total Margin GBP", value: (r) => r.totalMargin.toFixed(2) },
         ],
       }}

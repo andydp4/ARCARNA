@@ -133,7 +133,7 @@ export default function OnboardingWizard() {
       name: productForm.name.trim(),
       productCode: productForm.productCode.trim(),
       defaultSalePrice: productForm.defaultSalePrice,
-      costPrice: "0",
+      // No cost entered here: unknown (NULL), not £0, which would read as free.
       stock: 10,
     });
     await patchStep.mutateAsync({ step: "product", completed: true });

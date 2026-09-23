@@ -1,7 +1,7 @@
 import { eq, and, sql } from 'drizzle-orm'
 import { getDb } from './index'
 import * as s from './schema'
-import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
+import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, OrderLine, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
 import type { PricedOrder } from '../../../../shared/pricing/priceOrder'
 
 /**
@@ -68,6 +68,16 @@ export type OrderPersistenceCarrier = {
   pricing?: PricedOrder;
 };
 
+/** A line's list price, floor and cost snapshots (PRC-06, migration 092). */
+function snapshotColumns(l: OrderLine) {
+  const col = (v: number | null | undefined) => (v == null ? null : String(v))
+  return { list_price: col(l.listPrice), floor_price: col(l.floorPrice), unit_cost: col(l.unitCost) }
+}
+
+function snapshotNumber(v: string | null | undefined): number | null {
+  return v == null ? null : parseFloat(String(v))
+}
+
 /** priceOrder()'s breakdown as order columns (migration 082). */
 function pricingColumns(p: PricedOrder | undefined) {
   if (!p) return {};
@@ -115,6 +125,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
+          ...snapshotColumns(l),
         }
         await getDb().insert(s.order_items).values(line)
       }
@@ -149,6 +160,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
+          ...snapshotColumns(l),
         }
         await getDb().insert(s.order_items).values(line)
       }
@@ -170,7 +182,12 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         quantity: orderLine.quantity!,
         unitPrice: parseFloat(String(orderLine.unit_price!)),
         lineTotal: parseFloat(String(orderLine.total_price!)),
+        listPrice: snapshotNumber(orderLine.list_price),
+        floorPrice: snapshotNumber(orderLine.floor_price),
+        unitCost: snapshotNumber(orderLine.unit_cost),
       })),
+      // Carried for the engine's silent price check on an edit.
+      orgId: orderRow.org_id,
       subtotal: parseFloat(String(orderRow.total!)) / 1.20,
       vat: parseFloat(String(orderRow.total!)) * 0.20 / 1.20,
       total: parseFloat(String(orderRow.total!)),
@@ -254,8 +271,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       product_id: product.productCode,
       name: product.name,
       barcode: product.barcode,
-      cost_price: product.costPrice === null ? null : String(product.costPrice || 0),
+      cost_price: product.costPrice == null ? null : String(product.costPrice),
       default_sale_price: String(product.salePrice || 0),
+      min_price: product.minPrice == null ? null : String(product.minPrice),
       stock: product.stock,
       stock_limit: product.stockLimit,
       created_at: product.createdAt,
@@ -280,6 +298,8 @@ export const ProductsRepoDrizzle: ProductsRepo = {
         // it (unknown cost); sale price is NOT NULL so null leaves it alone.
         cost_price: updates.costPrice === undefined ? undefined : updates.costPrice === null ? null : String(updates.costPrice),
         default_sale_price: updates.salePrice != null ? String(updates.salePrice) : undefined,
+        // Same rule as cost: absent leaves it, null clears it (follows sale price).
+        min_price: updates.minPrice === undefined ? undefined : updates.minPrice === null ? null : String(updates.minPrice),
         stock: updates.stock,
         stock_limit: updates.stockLimit,
         updated_at: updates.updatedAt,
@@ -292,8 +312,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: updated.product_id,
       name: updated.name,
       barcode: updated.barcode,
-      costPrice: parseFloat(updated.cost_price || '0'),
+      costPrice: updated.cost_price == null ? null : parseFloat(updated.cost_price),
       salePrice: parseFloat(updated.default_sale_price),
+      minPrice: updated.min_price == null ? null : parseFloat(updated.min_price),
       stock: updated.stock,
       stockLimit: updated.stock_limit,
       categoryId: undefined,
@@ -316,8 +337,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: product.product_id,
       name: product.name,
       barcode: product.barcode,
-      costPrice: parseFloat(product.cost_price || '0'),
+      costPrice: product.cost_price == null ? null : parseFloat(product.cost_price),
       salePrice: parseFloat(product.default_sale_price),
+      minPrice: product.min_price == null ? null : parseFloat(product.min_price),
       stock: product.stock,
       stockLimit: product.stock_limit,
       categoryId: undefined,
@@ -332,8 +354,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: product.product_id,
       name: product.name,
       barcode: product.barcode,
-      costPrice: parseFloat(product.cost_price || '0'),
+      costPrice: product.cost_price == null ? null : parseFloat(product.cost_price),
       salePrice: parseFloat(product.default_sale_price),
+      minPrice: product.min_price == null ? null : parseFloat(product.min_price),
       stock: product.stock,
       stockLimit: product.stock_limit,
       categoryId: undefined,

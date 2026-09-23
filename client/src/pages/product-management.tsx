@@ -84,6 +84,18 @@ import type { Role } from '@shared/schema'
 import { executeBulkAction, downloadBlob as downloadBulkCsv } from '@/lib/bulkActionsClient'
 import { captureViewState } from '@shared/savedViews/state'
 import type { WebsiteUploadItem } from '@/features/wm-supplies/adminWebsite'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { MinPriceField } from '@/components/products/MinPriceField'
+import { PriceHistoryPanel } from '@/components/products/PriceHistoryPanel'
+import { checkMinPrice, storedMinPrice } from '@shared/pricing/floor'
+import { usableCost } from '@shared/purchasing/purchaseLines'
+import { canEditMinPrice, canSeeCost, canSeeWouldHaveFlagged } from '@shared/accessPolicy'
+
+/** A cost the business knows (usableCost: blank or £0 is "not known"), for display. */
+function costLabel(value: unknown): string {
+  const cost = usableCost(value as string | number | null | undefined)
+  return cost == null ? 'No cost set' : `£${cost.toFixed(2)}`
+}
 
 const NO_WEBSITE_IMAGE = '__none__'
 
@@ -143,11 +155,20 @@ export default function ProductManagement() {
     barcode: '',
     costPrice: '',
     salePrice: '',
+    // '' = follows the sale price (products.min_price NULL).
+    minPrice: '',
     stock: '',
     stockLimit: '',
     categoryId: '',
     aliases: ''
   })
+  // handleSubmit is also called from the "lower the minimum too?" offer,
+  // straight after a setFormData, so it reads the latest form through a ref.
+  const formStateRef = useRef(formData)
+  formStateRef.current = formData
+  const [minPriceOffer, setMinPriceOffer] = useState<{ min: number; sale: number } | null>(null)
+  const [onlyNoCost, setOnlyNoCost] = useState(false)
+  const [editTab, setEditTab] = useState<'details' | 'history'>('details')
   const [websiteFormData, setWebsiteFormData] = useState<ProductWebsiteFormData>({
     availableForWebsite: false,
     websiteTitle: '',
@@ -335,6 +356,7 @@ export default function ProductManagement() {
       barcode: '',
       costPrice: '',
       salePrice: '',
+      minPrice: '',
       stock: '',
       stockLimit: '',
       categoryId: '',
@@ -392,7 +414,8 @@ export default function ProductManagement() {
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (overrides: Partial<typeof formData> = {}) => {
+    const formData = { ...formStateRef.current, ...overrides }
     if (!formData.name || !formData.salePrice) {
       toast({
         title: 'Error',
@@ -412,9 +435,32 @@ export default function ProductManagement() {
     // Real stock is per-location in product_location_stock, so an edited figure
     // is applied below through /api/inventory — the same endpoint Stock Truths
     // writes through. stockLimit (par level) IS on products and is saved here.
-    const { aliases: _aliases, stock: _stock, ...rest } = formData
+    // The minimum may not sit above the sale price (the server refuses it
+    // too). When it is the SALE price that dropped below an unchanged
+    // minimum, offer to lower the minimum as well rather than just refusing.
+    const mayEditMin = canEditMinPrice(user?.role)
+    if (mayEditMin) {
+      const refused = checkMinPrice(formData.minPrice, formData.salePrice)
+      if (refused) {
+        const typedMin = storedMinPrice(formData.minPrice)
+        const unchangedMin = editingProduct && typedMin != null && typedMin === storedMinPrice(editingProduct.minPrice)
+        if (unchangedMin) {
+          setMinPriceOffer({ min: typedMin, sale: parseFloat(formData.salePrice) })
+        } else {
+          toast({ title: 'Minimum price refused', description: refused.message, variant: 'destructive' })
+        }
+        return
+      }
+    }
+
+    const { aliases: _aliases, stock: _stock, minPrice: _minPrice, ...rest } = formData
     const productData = {
       ...rest,
+      // Blank = follows the sale price (null clears a stored minimum). Only
+      // sent by managers and admins; the server refuses it from anyone else.
+      ...(mayEditMin
+        ? { minPrice: String(formData.minPrice ?? '').trim() === '' ? null : parseFloat(formData.minPrice) }
+        : {}),
       // Blank means "cost not known" (null), not £0 — a real £0 is typed as 0
       // and now saves. Sending 0 for blank would turn an unknown cost into a
       // free one and flatter every margin figure.
@@ -448,6 +494,8 @@ export default function ProductManagement() {
 
   const handleEdit = (product: any) => {
     setEditingProduct(product)
+    setEditTab('details')
+    setMinPriceOffer(null)
     setFormData({
       productCode: product.productCode || product.productId || '',
       name: product.name,
@@ -455,6 +503,7 @@ export default function ProductManagement() {
       // `??`, not `||`: a £0 cost or price must show as 0, not as blank.
       costPrice: (product.costPrice ?? '').toString(),
       salePrice: (product.salePrice ?? product.defaultSalePrice ?? '').toString(),
+      minPrice: (product.minPrice ?? '').toString(),
       stock: (product.stock || '').toString(),
       stockLimit: (product.stockLimit || '').toString(),
       categoryId: product.categoryId || '',
@@ -550,13 +599,18 @@ export default function ProductManagement() {
     downloadBlob(PRODUCT_IMPORT_CSV_SAMPLE, 'products-template.csv')
   }
 
-  const filteredProducts = products.filter((product: any) => 
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.productId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.barcode?.includes(searchTerm)
-  )
-
   const { user } = useAuth()
+  const showCost = canSeeCost(user?.role)
+  const showMinPrice = canEditMinPrice(user?.role)
+  const showWouldHaveFlagged = canSeeWouldHaveFlagged(user?.role)
+
+  const filteredProducts = products.filter((product: any) =>
+    (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.productId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.barcode?.includes(searchTerm)) &&
+    // "No cost set": blank or £0, the same rule Evidence uses for "not known".
+    (!onlyNoCost || usableCost(product.costPrice) == null)
+  )
   const bulk = useBulkSelection(filteredProducts)
   const bulkActions = getBulkActionsForRole('products', (user?.role ?? 'CASHIER') as Role)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
@@ -618,6 +672,12 @@ export default function ProductManagement() {
           explanation="Add, edit, and manage your product catalogue."
           action={
             <div className="flex flex-col sm:flex-row gap-2">
+              {showWouldHaveFlagged && (
+                // Admin only (PRC-03): underpriced sales recorded silently.
+                <Button asChild variant="outline" className="gap-2 min-h-[44px]" data-testid="link-would-have-flagged">
+                  <Link href="/reports/would-have-flagged">Would have flagged</Link>
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="gap-2 min-h-[44px]"
@@ -757,6 +817,15 @@ export default function ProductManagement() {
                         />
                       </div>
                     </div>
+                    {showMinPrice && (
+                      <MinPriceField
+                        id="new-minPrice"
+                        value={formData.minPrice}
+                        onChange={(minPrice) => setFormData({ ...formData, minPrice })}
+                        salePrice={formData.salePrice}
+                        costPrice={formData.costPrice}
+                      />
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       {/* Stock is authoritative in product_location_stock, per
                           location. products.stock is a legacy display-only column,
@@ -790,7 +859,7 @@ export default function ProductManagement() {
                     <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
                       Cancel
                     </Button>
-                    <Button onClick={handleSubmit} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">
+                    <Button onClick={() => void handleSubmit()} disabled={createMutation.isPending} className="min-h-[44px]" data-testid="button-save-product">
                       {createMutation.isPending ? 'Creating...' : 'Create Product'}
                     </Button>
                   </DialogFooter>
@@ -1121,6 +1190,20 @@ export default function ProductManagement() {
               data-testid="input-search-products"
             />
           </div>
+          {showCost && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="filter-no-cost"
+                checked={onlyNoCost}
+                onCheckedChange={setOnlyNoCost}
+                data-testid="filter-no-cost"
+              />
+              <Label htmlFor="filter-no-cost" className="text-sm">
+                No cost set
+                {onlyNoCost ? ` (${filteredProducts.length})` : ''}
+              </Label>
+            </div>
+          )}
         </div>
 
         {/* Products Table */}
@@ -1199,10 +1282,10 @@ export default function ProductManagement() {
                                   <div className="font-mono text-xs">{product.barcode}</div>
                                 </div>
                               )}
-                              {(product.tax || product.costPrice) && (
+                              {showCost && (
                                 <div>
                                   <div className="text-xs text-muted-foreground">Cost</div>
-                                  <div className="font-medium">£{parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</div>
+                                  <div className="font-medium">{costLabel(product.costPrice)}</div>
                                 </div>
                               )}
                             </div>
@@ -1286,7 +1369,7 @@ export default function ProductManagement() {
                         <TableHead>Name</TableHead>
                         <TableHead>Barcode</TableHead>
                         <TableHead>Price</TableHead>
-                        <TableHead>Tax</TableHead>
+                        {showCost && <TableHead>Cost</TableHead>}
                         <TableHead>Stock</TableHead>
                         <TableHead>Website</TableHead>
                         <TableHead>Status</TableHead>
@@ -1309,7 +1392,11 @@ export default function ProductManagement() {
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
                         <TableCell>£{(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
-                        <TableCell>£{parseFloat(product.tax || product.costPrice || '0').toFixed(2)}</TableCell>
+                        {showCost && (
+                          <TableCell className={usableCost(product.costPrice) == null ? 'text-muted-foreground' : undefined}>
+                            {costLabel(product.costPrice)}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <span>{product.stock}</span>
@@ -1356,6 +1443,19 @@ export default function ProductManagement() {
                                     Update product information
                                   </DialogDescription>
                                 </DialogHeader>
+                                <Tabs value={editTab} onValueChange={(v) => setEditTab(v as 'details' | 'history')}>
+                                  {showMinPrice && (
+                                    <TabsList className="grid w-full grid-cols-2">
+                                      <TabsTrigger value="details">Details</TabsTrigger>
+                                      <TabsTrigger value="history" data-testid="tab-price-history">Price history</TabsTrigger>
+                                    </TabsList>
+                                  )}
+                                  {showMinPrice && (
+                                    <TabsContent value="history" className="max-h-[60vh] overflow-y-auto py-2">
+                                      {editTab === 'history' && <PriceHistoryPanel productId={product.id} />}
+                                    </TabsContent>
+                                  )}
+                                  <TabsContent value="details">
                                 <div className="grid gap-4 py-4">
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-productId">Product ID</Label>
@@ -1455,12 +1555,24 @@ export default function ProductManagement() {
                                         type="number"
                                         step="0.01"
                                         value={formData.salePrice}
-                                        onChange={(e) => setFormData({ ...formData, salePrice: e.target.value })}
+                                        onChange={(e) => {
+                                          setFormData({ ...formData, salePrice: e.target.value })
+                                          setMinPriceOffer(null)
+                                        }}
                                         placeholder="9.99"
                                         className="min-h-[44px]"
                                       />
                                     </div>
                                   </div>
+                                  {showMinPrice && (
+                                    <MinPriceField
+                                      id="edit-minPrice"
+                                      value={formData.minPrice}
+                                      onChange={(minPrice) => setFormData({ ...formData, minPrice })}
+                                      salePrice={formData.salePrice}
+                                      costPrice={formData.costPrice}
+                                    />
+                                  )}
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-stock">Stock</Label>
@@ -1493,12 +1605,66 @@ export default function ProductManagement() {
                                     </div>
                                   </div>
                                 </div>
+                                  </TabsContent>
+                                </Tabs>
+                                {/* Inline, not a second dialog: a stacked modal
+                                    could dismiss this one and turn the save
+                                    into a create. */}
+                                {minPriceOffer && (
+                                  <Alert data-testid="min-price-offer">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>Lower the minimum too?</AlertTitle>
+                                    <AlertDescription>
+                                      <p>
+                                        The new sale price (£{minPriceOffer.sale.toFixed(2)}) is below the minimum
+                                        price (£{minPriceOffer.min.toFixed(2)}). A minimum above the sale price is
+                                        not allowed.
+                                      </p>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        <Button
+                                          size="sm"
+                                          className="min-h-[44px]"
+                                          data-testid="button-min-lower"
+                                          onClick={() => {
+                                            const minPrice = minPriceOffer.sale.toFixed(2)
+                                            setMinPriceOffer(null)
+                                            setFormData({ ...formData, minPrice })
+                                            void handleSubmit({ minPrice })
+                                          }}
+                                        >
+                                          Lower it to £{minPriceOffer.sale.toFixed(2)}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="min-h-[44px]"
+                                          data-testid="button-min-follow-sale"
+                                          onClick={() => {
+                                            setMinPriceOffer(null)
+                                            setFormData({ ...formData, minPrice: '' })
+                                            void handleSubmit({ minPrice: '' })
+                                          }}
+                                        >
+                                          Follow the sale price
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="min-h-[44px]"
+                                          onClick={() => setMinPriceOffer(null)}
+                                        >
+                                          Keep editing
+                                        </Button>
+                                      </div>
+                                    </AlertDescription>
+                                  </Alert>
+                                )}
                                 <DialogFooter className="gap-2">
                                   <Button variant="outline" onClick={() => setEditingProduct(null)} className="min-h-[44px]">
                                     Cancel
                                   </Button>
                                   <Button
-                                    onClick={handleSubmit}
+                                    onClick={() => void handleSubmit()}
                                     disabled={updateMutation.isPending}
                                     className="min-h-[44px]"
                                     data-testid="button-update-product"
