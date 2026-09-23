@@ -20,6 +20,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerUiSeenRoutes } from "./routes/uiSeen";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerProductRoutes } from "./routes/products";
+import { registerPriceExceptionRoutes } from "./routes/priceExceptions";
 import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
 import { registerOrderTransitionRoutes } from "./routes/orderTransitions";
@@ -75,6 +76,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerChannelAuthenticatedRoutes(app, scoped);
   registerAnalyticsRoutes(app, scoped);
   registerProductRoutes(app, scoped);
+  registerPriceExceptionRoutes(app, scoped);
 
   registerSetupAndImportRoutes(app);
   registerOperationalRoutes(app);

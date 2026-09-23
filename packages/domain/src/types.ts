@@ -37,7 +37,15 @@ export type Customer = {
   updatedAt: Date
 }
 
-export type OrderLine = { productId: ProductId; quantity: number; unitPrice: MoneyGBP; lineTotal: MoneyGBP }
+export type OrderLine = {
+  productId: ProductId; quantity: number; unitPrice: MoneyGBP; lineTotal: MoneyGBP
+  /**
+   * Snapshots at the moment of sale (PRC-06, shared/pricing/lineSnapshot.ts).
+   * Absent/null on lines sold before snapshots existed. floorPrice is the
+   * minimum as it applied (never cost); unitCost null = cost not known then.
+   */
+  listPrice?: MoneyGBP | null; floorPrice?: MoneyGBP | null; unitCost?: MoneyGBP | null
+}
 export type OrderChannel = 'pos'|'web'|'api'|'whatsapp'|'phone'
 export type Order = {
   id: OrderId; customerId?: CustomerId; lines: OrderLine[];

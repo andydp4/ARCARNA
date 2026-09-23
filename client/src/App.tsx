@@ -69,6 +69,7 @@ const DailySalesReport = lazy(() => import("@/pages/reports/daily-sales"));
 const CurrentStockReport = lazy(() => import("@/pages/reports/current-stock"));
 const WeeklySalesReport = lazy(() => import("@/pages/reports/weekly-sales"));
 const WeeklyMarginReport = lazy(() => import("@/pages/reports/weekly-margin"));
+const WouldHaveFlaggedReport = lazy(() => import("@/pages/reports/would-have-flagged"));
 const LapseRetentionReport = lazy(() => import("@/pages/reports/lapse-retention"));
 const ClvReport = lazy(() => import("@/pages/reports/clv"));
 const StockRunwayReport = lazy(() => import("@/pages/reports/stock-runway"));
@@ -222,6 +223,10 @@ function Router() {
           </Route>
           <Route path="/reports/weekly-margin">
             <RequireRole href="/reports"><WeeklyMarginReport /></RequireRole>
+          </Route>
+          {/* Admin only (PRC-03): the page and the API both check. */}
+          <Route path="/reports/would-have-flagged">
+            <RequireRole href="/reports"><WouldHaveFlaggedReport /></RequireRole>
           </Route>
           <Route path="/reports/lapse-retention">
             <RequireRole href="/reports"><LapseRetentionReport /></RequireRole>

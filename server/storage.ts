@@ -1720,15 +1720,11 @@ export class DatabaseStorage implements IStorage {
    * window (`settled_at`, `status = 'completed'`), so a line only counts once
    * the sale it belongs to has actually completed.
    *
-   * COGS itself is still costed at product cost price AS OF NOW, not a
-   * snapshot of what the cost was at the moment of sale: `order_items` carries
-   * no cost-at-sale column to read instead (checked — see the schema; the
-   * closest thing, `cashier_shift_summaries.stock_cost`, is computed the same
-   * live-cost way in `cashierShiftEngine.ts`). Adding a real snapshot is a
-   * schema change of its own, tracked separately; until then this is stated
-   * on the Profit Truths card rather than presented as an exact historical
-   * figure, and `productsMissingCost` below flags when the number is
-   * incomplete because a sold product currently has no cost price at all.
+   * COGS is costed from each line's cost snapshot (v1.2 Phase 2, PRC-06),
+   * so editing a cost today does not move a past period. Lines sold before
+   * snapshots existed fall back to the product's cost today (no backfill) —
+   * see `lineUnitCostSql`. `productsMissingCost` flags when the number is
+   * incomplete because a sold line has no known cost.
    */
   async getProfitAnalysis(startDate: Date, endDate: Date, orgId: string): Promise<any> {
     const { settledRevenueByDay } = await import("./services/revenue");
@@ -1751,14 +1747,15 @@ export class DatabaseStorage implements IStorage {
       gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
       lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
     );
+    const { lineCostSql, lineUnitCostSql } = await import("./services/lineCost");
     const cogsData = await db
       .select({
-        totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
-        productsMissingCost: sql<number>`COUNT(DISTINCT ${products.id}) FILTER (WHERE ${products.costPrice} IS NULL)`,
+        totalCOGS: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
+        productsMissingCost: sql<number>`COUNT(DISTINCT ${orderItems.productId}) FILTER (WHERE ${lineUnitCostSql} IS NULL)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .innerJoin(products, eq(orderItems.productId, products.id))
+      .leftJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond);
 
     // Postgres numeric/decimal columns come back as strings over the wire —
@@ -1782,11 +1779,11 @@ export class DatabaseStorage implements IStorage {
     const dailyCOGS = await db
       .select({
         date: sql<string>`DATE(${orders.settledAt})`,
-        cogs: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+        cogs: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .innerJoin(products, eq(orderItems.productId, products.id))
+      .leftJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond)
       .groupBy(sql`DATE(${orders.settledAt})`);
     const cogsByDate = new Map(dailyCOGS.map((c) => [String(c.date), Number(c.cogs) || 0]));

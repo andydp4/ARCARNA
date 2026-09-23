@@ -89,7 +89,7 @@ import { MinPriceField } from '@/components/products/MinPriceField'
 import { PriceHistoryPanel } from '@/components/products/PriceHistoryPanel'
 import { checkMinPrice, storedMinPrice } from '@shared/pricing/floor'
 import { usableCost } from '@shared/purchasing/purchaseLines'
-import { canEditMinPrice, canSeeCost } from '@shared/accessPolicy'
+import { canEditMinPrice, canSeeCost, canSeeWouldHaveFlagged } from '@shared/accessPolicy'
 
 /** A cost the business knows (usableCost: blank or £0 is "not known"), for display. */
 function costLabel(value: unknown): string {
@@ -602,6 +602,7 @@ export default function ProductManagement() {
   const { user } = useAuth()
   const showCost = canSeeCost(user?.role)
   const showMinPrice = canEditMinPrice(user?.role)
+  const showWouldHaveFlagged = canSeeWouldHaveFlagged(user?.role)
 
   const filteredProducts = products.filter((product: any) =>
     (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -671,6 +672,12 @@ export default function ProductManagement() {
           explanation="Add, edit, and manage your product catalogue."
           action={
             <div className="flex flex-col sm:flex-row gap-2">
+              {showWouldHaveFlagged && (
+                // Admin only (PRC-03): underpriced sales recorded silently.
+                <Button asChild variant="outline" className="gap-2 min-h-[44px]" data-testid="link-would-have-flagged">
+                  <Link href="/reports/would-have-flagged">Would have flagged</Link>
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="gap-2 min-h-[44px]"

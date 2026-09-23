@@ -24,6 +24,7 @@ import { productForRole, productsForRole, rolesAtLeast } from "@shared/accessPol
 import { sendServerError } from "../lib/errorScrub";
 import { createProductWithPricing, updateProductWithPricing, ProductPricingError } from "../services/productPricing";
 import { listPriceHistory } from "../services/priceHistory";
+import { withTillFloor } from "@shared/pricing/floor";
 
 function actorIdOf(req: any): string | null {
   return req.user?.claims?.sub ?? req.user?.id ?? null;
@@ -98,7 +99,9 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         userId: req.user?.claims?.sub ?? req.user?.id ?? null,
       });
       const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
-      res.json(productsForRole(list, ctx.role));
+      // Every role gets the minimum-only till floor (never cost, Q4); the till
+      // caches this list for offline selling, so the floor goes with it.
+      res.json(productsForRole(list.map(withTillFloor), ctx.role));
     } catch (error) {
       console.error("Error fetching products:", error);
       res.status(500).json({ message: "Failed to fetch products" });
@@ -119,7 +122,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(eq(products.orgId, ctx.orgId), eq(products.barcode, code)))
         .limit(1);
       if (!product) return res.status(404).json({ message: "Product not found" });
-      res.json(productForRole(product, ctx.role));
+      res.json(productForRole(withTillFloor(product), ctx.role));
     } catch (error) {
       console.error("Error fetching product by barcode:", error);
       res.status(500).json({ message: "Failed to fetch product" });
@@ -165,7 +168,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
-      res.json(productForRole(product, ctx.role));
+      res.json(productForRole(withTillFloor(product), ctx.role));
     } catch (error) {
       console.error("Error fetching product:", error);
       res.status(500).json({ message: "Failed to fetch product" });

@@ -1869,6 +1869,12 @@ export const orderItems = pgTable("order_items", {
   quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  // Snapshots at the moment of sale (PRC-06, migration 092). All NULL on lines
+  // sold before snapshots existed — no backfill. floor_price is the minimum as
+  // it applied, never cost; unit_cost NULL = cost not known then.
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("order_items_order_id_idx").on(table.orderId),
@@ -1877,6 +1883,35 @@ export const orderItems = pgTable("order_items", {
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+// Underpriced sales, recorded silently by the order engine (PRC-03, CMP-03,
+// migration 093). Never blocks a sale. Read by "Would have flagged" (admin).
+export const priceExceptions = pgTable("price_exceptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+  /** Who set the price: the till user, or the manager who edited the order. */
+  userId: varchar("user_id", { length: 255 }),
+  /** "sale" (placed) or "edit" (a manager's change to an open order). */
+  source: varchar("source", { length: 16 }).notNull(),
+  channel: varchar("channel", { length: 16 }),
+  quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }).notNull(),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }).notNull(),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
+  belowMinimum: boolean("below_minimum").notNull(),
+  belowCost: boolean("below_cost").notNull(),
+  underList: numeric("under_list", { precision: 12, scale: 2 }).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_exceptions_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  index("price_exceptions_org_created_idx").on(table.orgId, table.createdAt),
+]);
+
+export type PriceException = typeof priceExceptions.$inferSelect;
 
 // Refunds (F3)
 export const REFUND_REASONS = [

@@ -533,10 +533,11 @@ export async function currentStockLevels(orgId: string, locationId?: string): Pr
  * ARC-T2-001 Weekly Margin Summary — realised margin per product for a week.
  *
  * Scoped to settled orders in the trading week (06:00–06:00 local), not a
- * server-local-midnight `createdAt` window (ARC-023/027). Margin is still
- * costed at today's `products.cost_price`, not a snapshot of what the cost
- * was at the moment of sale — `order_items` carries no cost-at-sale column to
- * read instead (see the same caveat on `storage.getProfitAnalysis`, ARC-025).
+ * server-local-midnight `createdAt` window (ARC-023/027). Margin is costed
+ * from each line's cost snapshot (v1.2 Phase 2, PRC-06), so a cost edited
+ * today does not change last week's margin; lines sold before snapshots fall
+ * back to today's cost (`lineUnitCostSql`). Units whose cost is unknown are
+ * left out of the margin and counted as `costMissingUnits`, never costed at £0.
  *
  * `filter` (ARC-026) scopes the margin calc to one location and/or cashier —
  * validate a caller-supplied filter with {@link validateReportScope} first.
@@ -561,12 +562,16 @@ export async function weeklyMarginSummary(
     ...scopeConds,
   );
 
+  const { lineCostSql, lineUnitCostSql } = await import("./lineCost");
+  const known = sql`${lineUnitCostSql} IS NOT NULL`;
   const grp = await db
     .select({
       name: products.name,
-      costPrice: products.costPrice,
       units: sql<number>`SUM(${orderItems.quantity})`,
       revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
+      knownUnits: sql<number>`COALESCE(SUM(${orderItems.quantity}) FILTER (WHERE ${known}), 0)`,
+      knownRevenue: sql<number>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)) FILTER (WHERE ${known}), 0)`,
+      knownCost: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
       minSell: sql<number>`MIN(CAST(${orderItems.unitPrice} AS DECIMAL))`,
       maxSell: sql<number>`MAX(CAST(${orderItems.unitPrice} AS DECIMAL))`,
     })
@@ -574,23 +579,31 @@ export async function weeklyMarginSummary(
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
     .innerJoin(products, eq(orderItems.productId, products.id))
     .where(cond)
-    .groupBy(products.name, products.costPrice);
+    .groupBy(products.id, products.name);
 
   const redFlags: string[] = [];
   let totalMarginAll = 0;
   const rows = grp.map((g) => {
     const units = num(g.units);
     const revenue = num(g.revenue);
-    const cost = num(g.costPrice);
+    const knownUnits = num(g.knownUnits);
+    const knownRevenue = num(g.knownRevenue);
     const avgSell = units ? revenue / units : 0;
-    const grossMargin = avgSell - cost;
-    const marginPct = avgSell ? (grossMargin / avgSell) * 100 : 0;
-    const totalMargin = grossMargin * units;
+    // Average snapshot cost per unit over the units whose cost is known; null
+    // when none is known ("No cost set"), never £0 — a £0 cost is a 100% margin.
+    const cost = knownUnits > 0 ? num(g.knownCost) / knownUnits : null;
+    const knownAvgSell = knownUnits ? knownRevenue / knownUnits : 0;
+    const grossMargin = cost == null ? null : knownAvgSell - cost;
+    const marginPct = grossMargin == null ? null : knownAvgSell ? (grossMargin / knownAvgSell) * 100 : 0;
+    const totalMargin = grossMargin == null ? 0 : grossMargin * knownUnits;
+    const costMissingUnits = Math.max(0, units - knownUnits);
     totalMarginAll += totalMargin;
-    if (marginPct < 20) redFlags.push(`${g.name} margin ${marginPct.toFixed(1)}% is below 20% — review pricing.`);
+    if (marginPct != null && marginPct < 20) redFlags.push(`${g.name} margin ${marginPct.toFixed(1)}% is below 20% — review pricing.`);
+    if (costMissingUnits > 0) redFlags.push(`${g.name}: ${costMissingUnits} unit(s) sold with no cost set are left out of the margin.`);
     return {
       product: g.name,
       unitsSold: units,
+      costMissingUnits,
       costPrice: cost,
       avgSellPrice: avgSell,
       minSellPrice: num(g.minSell),
@@ -610,7 +623,10 @@ export async function weeklyMarginSummary(
     summary: {
       products: rows.length,
       totalMargin: totalMarginAll,
-      avgMarginPct: rows.length ? rows.reduce((s, r) => s + r.marginPct, 0) / rows.length : 0,
+      avgMarginPct: (() => {
+        const costed = rows.filter((r) => r.marginPct != null);
+        return costed.length ? costed.reduce((s, r) => s + (r.marginPct ?? 0), 0) / costed.length : 0;
+      })(),
     },
     rows,
     redFlags,

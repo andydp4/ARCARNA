@@ -84,6 +84,17 @@ export function canEditMinPrice(role: string | null | undefined): boolean {
   return isAtLeast(role, MIN_PRICE_MIN_ROLE);
 }
 
+/**
+ * "Would have flagged" — underpriced sales recorded silently (PRC-03,
+ * CMP-03): admins and the owner only, so a manager never reviews (or can
+ * see the absence of) flags about their own prices.
+ */
+export const WOULD_HAVE_FLAGGED_MIN_ROLE: Role = "ADMIN";
+
+export function canSeeWouldHaveFlagged(role: string | null | undefined): boolean {
+  return isAtLeast(role, WOULD_HAVE_FLAGGED_MIN_ROLE);
+}
+
 // ---------------------------------------------------------------------------
 // Customer contact details (owner decision Q13a: admin and above). Staff below
 // that still find and serve customers: they get a flag saying whether there is
@@ -199,6 +210,12 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
     path: "/api/products/:id/price-history",
     minRole: "MANAGER",
     reason: "Price history carries cost changes; minimums are managed by managers and admins (PRC-07, Q6).",
+  },
+  {
+    method: "GET",
+    path: "/api/price-exceptions/would-have-flagged",
+    minRole: "ADMIN",
+    reason: "Would have flagged is admins and the owner only: managers do not review flags about themselves (PRC-03, CMP-03).",
   },
 
   // Suppliers and supplier-product mappings.

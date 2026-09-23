@@ -37,3 +37,31 @@ export interface AnalyticsSink {
   updateCustomerMetrics(customerId: CustomerId): Promise<void>
 }
 export interface AuditPort { log(event: string, payload: unknown): Promise<void> }
+/**
+ * One underpriced order line (PRC-03, CMP-03): sold below its minimum or
+ * below known cost. Written silently; the sale never waits on it.
+ */
+export type PriceExceptionRecord = {
+  orgId: string
+  orderId: string
+  productId: string
+  userId: string | null
+  source: 'sale' | 'edit'
+  channel: string | null
+  quantity: number
+  unitPrice: number
+  listPrice: number
+  floorPrice: number
+  unitCost: number | null
+  belowMinimum: boolean
+  belowCost: boolean
+  underList: number
+  underCost: number
+}
+export interface PriceExceptionsPort {
+  /**
+   * Must not leave the caller's transaction unusable when it fails (the
+   * Drizzle port writes under a savepoint); the engine swallows the error.
+   */
+  record(rows: PriceExceptionRecord[]): Promise<void>
+}

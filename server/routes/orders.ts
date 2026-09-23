@@ -562,7 +562,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           now: receivedAt,
         });
         assertChargedAsShown(pricing, isPersonalUse ? undefined : body.expectedTotal);
-        const result = await engine.placeOrder(body, pricing);
+        // Who rang it, for the silent price check's "by person" (PRC-03).
+        const result = await engine.placeOrder(body, pricing, {
+          actorUserId: saleIssue?.rungByUserId ?? req.user?.id ?? null,
+        });
         await consumeSalePricingInTx(tx, {
           orgId: ctx.orgId!,
           orderId: result.orderId,
@@ -1390,6 +1393,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           existing.id,
           { lines, taxRatePercent, orgId, locationId: existing.location_id ?? ctx.locationId ?? undefined },
           pricing,
+          // The manager making the edit is who set any new price (PRC-03).
+          { actorUserId: actorId, orgId },
         );
         const legsAfter = await rewritePaymentRecordTx(tx, state.legs, pricing.total);
         // An invoice already issued for this order (on request) follows it.

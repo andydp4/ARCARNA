@@ -333,6 +333,7 @@ jobs:
             server/__tests__/roleMatrix.test.ts \
             server/__tests__/productWrites.test.ts \
             server/__tests__/productMinPrice.test.ts \
+            server/__tests__/priceExceptions.test.ts \
             server/__tests__/signals.test.ts \
             server/__tests__/whatsappMarketingConsent.test.ts \
             server/__tests__/staffKpiHidden.test.ts \

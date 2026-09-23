@@ -167,6 +167,10 @@ export const order_items = pgTable('order_items', {
   quantity: numeric('quantity', { precision: 14, scale: 3, mode: 'number' }).notNull(),
   unit_price: numeric('unit_price',{precision:10,scale:2}).notNull(),
   total_price: numeric('total_price',{precision:10,scale:2}).notNull(),
+  // PRC-06 snapshots (migration 092); see shared/schema.ts orderItems.
+  list_price: numeric('list_price',{precision:10,scale:2}),
+  floor_price: numeric('floor_price',{precision:10,scale:2}),
+  unit_cost: numeric('unit_cost',{precision:10,scale:2}),
   created_at: timestamp('created_at').defaultNow(),
 })
 

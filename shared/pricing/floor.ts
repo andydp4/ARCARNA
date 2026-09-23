@@ -157,3 +157,22 @@ export function priceChanges(before: PriceSnapshot, after: PriceSnapshot): Price
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// The till's floor (PRC-01, owner Q4).
+// ---------------------------------------------------------------------------
+
+/**
+ * The floor the till receives with each product: the minimum only, never
+ * cost, so no cost figure can be read back from it by a cashier's device. It
+ * rides on the product list the till already caches for offline selling.
+ * Not shown yet (Phase 4 shows the lowest allowed price and one warning).
+ */
+export function tillFloor(product: FloorProduct): number {
+  return effectiveFloor(product, { includeCost: false }).floor;
+}
+
+/** A product row with its till floor attached, as the product reads send it. */
+export function withTillFloor<T extends FloorProduct>(product: T): T & { tillFloor: number } {
+  return { ...product, tillFloor: tillFloor(product) };
+}

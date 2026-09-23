@@ -56,6 +56,12 @@ export type CommissionOrderInput = {
   inputterUserId?: string | null;
   /** Personal use and anything else that is not a sale: never accrues. */
   excluded?: boolean;
+  /**
+   * Lines left out because their cost is unknown (owner Q5, "cost missing").
+   * `paidContribution` and `stockCost` already exclude them; this is the count
+   * a screen shows so the missing cost gets set.
+   */
+  costMissingLines?: number;
 };
 
 export type CommissionEntryRole = "completer" | "inputter";
