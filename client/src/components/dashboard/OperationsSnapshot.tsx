@@ -39,6 +39,15 @@ export function OperationsSnapshot() {
   const lateNow = data?.lateNow ?? 0;
   const dueSoonNow = data?.dueSoonNow ?? 0;
 
+  const laneHint = (earlier: number, scheduled: number, fallback: string) => {
+    const parts: string[] = [];
+    if (earlier > 0) parts.push(`+${earlier} still open from earlier days`);
+    if (scheduled > 0) parts.push(`${scheduled} scheduled`);
+    return parts.length ? parts.join(" · ") : fallback;
+  };
+  const collectEarlier = data?.toCollectEarlierDays ?? 0;
+  const deliverEarlier = data?.toDeliverEarlierDays ?? 0;
+
   const tiles: Tile[] = [
     {
       label: "Open orders",
@@ -54,18 +63,21 @@ export function OperationsSnapshot() {
       value: data?.toCollect ?? 0,
       href: "/operations?lane=collection",
       icon: ShoppingBag,
-      tone: "neutral",
       testId: "snapshot-to-collect",
-      hint: "Waiting at the counter",
+      // Same number as the Collection lane's own count; anything left open
+      // from an earlier day is named here rather than hidden, and the link
+      // opens those strips on the board.
+      tone: collectEarlier > 0 ? "warn" : "neutral",
+      hint: laneHint(collectEarlier, data?.toCollectScheduled ?? 0, "Waiting at the counter"),
     },
     {
       label: "To deliver",
       value: data?.toDeliver ?? 0,
       href: "/operations?lane=delivery",
       icon: Truck,
-      tone: "neutral",
       testId: "snapshot-to-deliver",
-      hint: "Going out on a round",
+      tone: deliverEarlier > 0 ? "warn" : "neutral",
+      hint: laneHint(deliverEarlier, data?.toDeliverScheduled ?? 0, "Going out on a round"),
     },
     {
       label: "Completed today",

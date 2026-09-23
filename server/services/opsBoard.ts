@@ -26,7 +26,7 @@ import { organizations, opsStaff, allowedUsers } from "@shared/schema";
 import { resolveUserNames } from "./userDisplayName";
 import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
 import type { CardState } from "@shared/orders/opsState";
-import { deriveCardState } from "@shared/orders/opsState";
+import { deriveCardState, isLiveLaneState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
 
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
@@ -110,6 +110,13 @@ export interface OpsBoardSummary {
   readyWaiting: number;
   carriedOver: number;
   completedToday: number;
+  /**
+   * Per lane: `live` is exactly what the lane's own count shows
+   * (isLiveLaneState); `carriedOver` and `scheduled` are the open orders
+   * folded into its "Earlier days" and "Scheduled" strips. The Control
+   * Centre's To collect / To deliver tiles read these.
+   */
+  lanes: Record<"collection" | "delivery", { live: number; carriedOver: number; scheduled: number }>;
 }
 
 export interface OpsBoardPayload {
@@ -577,6 +584,10 @@ export async function getOpsBoard(
     readyWaiting: open.filter((o) => derivedStates.get(o.id) === "ready").length,
     carriedOver: open.filter((o) => derivedStates.get(o.id) === "carried-over").length,
     completedToday: completedTodayCount,
+    lanes: {
+      collection: laneCounts(open, "collection", derivedStates),
+      delivery: laneCounts(open, "delivery", derivedStates),
+    },
   };
 
   // "my rows, unacked, unresolved, whose order is in `orders`" (brief) — the
@@ -657,4 +668,27 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
   ]);
 
   return projectBoardOrder(row as unknown as RawOrderRow, names, items.get(row.id as string), handoverOverrides.get(row.id as string));
+}
+
+/**
+ * Mirrors the board exactly: OpsBoard.tsx puts a card in a lane by
+ * `fulfilmentMethod === lane` (the column's CHECK allows only the two values).
+ */
+function laneCounts(
+  open: { id: string; fulfilmentMethod: string }[],
+  lane: "collection" | "delivery",
+  derivedStates: Map<string, CardState>,
+) {
+  const inLane = open.filter((o) => o.fulfilmentMethod === lane);
+  let live = 0;
+  let carriedOver = 0;
+  let scheduled = 0;
+  for (const o of inLane) {
+    const state = derivedStates.get(o.id);
+    if (!state) continue;
+    if (state === "carried-over") carriedOver++;
+    else if (state === "scheduled") scheduled++;
+    else if (isLiveLaneState(state)) live++;
+  }
+  return { live, carriedOver, scheduled };
 }

@@ -24,6 +24,7 @@ import {
   roundBuyQtyToPack,
   type PurchaseLineRequest,
 } from "./replenishmentMath";
+import { resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
 
 export type ReplenishmentRisk = "low" | "medium" | "high" | "critical";
 
@@ -39,6 +40,8 @@ export type SelectedSupplierInfo = {
   supplierName: string;
   supplierSku: string | null;
   costPrice: string | null;
+  /** Where `costPrice` came from — the supplier link, or the product card as a fallback. */
+  costSource?: "supplier" | "product" | null;
   packSize: number;
   minOrderQty: number;
   leadTimeDays: number;
@@ -156,6 +159,7 @@ export async function getReplenishmentRecommendations(
       productName: products.name,
       sku: products.productId,
       locationName: locations.name,
+      productCostPrice: products.costPrice,
     })
     .from(productLocationStock)
     .innerJoin(products, eq(productLocationStock.productId, products.id))
@@ -247,7 +251,24 @@ export async function getReplenishmentRecommendations(
 
     const buyQty = Math.max(0, requiredQty - transferableQty);
     const supplierMappings = suppliersByProduct.get(row.productId) ?? [];
-    const selectedSupplier = selectSupplier(supplierMappings);
+    const chosen = selectSupplier(supplierMappings);
+    // The supplier link's own price wins; when the link has none, price the
+    // line from the product card instead of leaving it blank — a blank cost
+    // became a £0.00 purchase order and silently skipped the minimum-order
+    // value check below.
+    const selectedSupplier: SelectedSupplierInfo | null = chosen
+      ? (() => {
+          const { unitCost, source } = resolvePurchaseUnitCost({
+            supplierCost: chosen.costPrice,
+            productCost: row.productCostPrice,
+          });
+          return {
+            ...chosen,
+            costPrice: unitCost != null ? String(unitCost) : null,
+            costSource: source === "line" ? null : source,
+          };
+        })()
+      : null;
     const packSize = selectedSupplier?.packSize ?? 1;
     let roundedBuyQty = roundBuyQtyToPack(buyQty, packSize);
 

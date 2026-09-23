@@ -4,37 +4,23 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "@shared/opsTour";
+import { opsTourAccountKey } from "@shared/uiSeen";
+import { useSeenOnce } from "@/hooks/useSeenOnce";
 
 /**
  * A five-step spotlight tour of the Operations Centre, shown once per
  * release to anyone who reaches `/operations` — alongside `WhatsNewModal`,
  * not instead of it (the two are independent: this one is board-specific and
- * points at real elements, that one is the app-wide text summary). Gated by
- * its own version-keyed localStorage flag, same courtesy-feature contract as
- * `WhatsNewModal` (read/write can legitimately throw and must never break
- * the page over it).
+ * points at real elements, that one is the app-wide text summary). Shown once
+ * per ACCOUNT via useSeenOnce (user_ui_seen, migration 069); it used to be a
+ * per-browser localStorage flag, so it came back on every other device. The
+ * old flag is still honoured, and copied up to the account once.
  *
  * Steps are resolved against the live DOM by `data-testid`, once, at the
  * moment the tour opens — a step whose target isn't currently rendered
  * (the "New order" pane doesn't exist in the phone/tablet tabbed layout) is
  * dropped rather than shown pointing at nothing.
  */
-
-function hasSeenTour(version: string): boolean {
-  try {
-    return localStorage.getItem(opsTourSeenKey(version)) === "1";
-  } catch {
-    return true;
-  }
-}
-
-function markSeen(version: string) {
-  try {
-    localStorage.setItem(opsTourSeenKey(version), "1");
-  } catch {
-    // Worst case the tour offers itself again next visit — not worth breaking the page over.
-  }
-}
 
 const START_EVENT = "arcarna:ops-tour:start";
 
@@ -111,6 +97,10 @@ export function OpsTour({ boardReady }: { boardReady: boolean }) {
   const focusedForStep = useRef<number | null>(null);
 
   const eligible = isAuthenticated && !!user && user.role !== "CUSTOMER";
+  const { seen, markSeen } = useSeenOnce(
+    opsTourAccountKey(LATEST_OPS_TOUR_VERSION),
+    opsTourSeenKey(LATEST_OPS_TOUR_VERSION),
+  );
 
   const openWithSteps = useCallback(() => {
     const found = TOUR_STEPS.filter((step) => document.querySelector(`[data-testid="${step.testId}"]`));
@@ -126,7 +116,7 @@ export function OpsTour({ boardReady }: { boardReady: boolean }) {
   // fighting for focus is worse than a tour that starts a beat late.
   useEffect(() => {
     if (!eligible || !boardReady || open) return;
-    if (hasSeenTour(LATEST_OPS_TOUR_VERSION)) return;
+    if (seen !== false) return;
     let cancelled = false;
     const tryStart = () => {
       if (cancelled) return;
@@ -141,7 +131,7 @@ export function OpsTour({ boardReady }: { boardReady: boolean }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [eligible, boardReady, open, openWithSteps]);
+  }, [eligible, boardReady, open, openWithSteps, seen]);
 
   // The header's "Board tour" button replays it on demand regardless of the seen flag.
   useEffect(() => {
@@ -151,9 +141,9 @@ export function OpsTour({ boardReady }: { boardReady: boolean }) {
   }, [openWithSteps]);
 
   const finish = useCallback(() => {
-    markSeen(LATEST_OPS_TOUR_VERSION);
+    markSeen();
     setOpen(false);
-  }, []);
+  }, [markSeen]);
 
   const step = steps[stepIndex] as TourStep | undefined;
 

@@ -12,47 +12,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LATEST_WHATS_NEW_VERSION, whatsNewForRole } from "@shared/whatsNew";
+import { whatsNewAccountKey } from "@shared/uiSeen";
+import { useSeenOnce } from "@/hooks/useSeenOnce";
 
-function seenKey(version: string) {
+/** The per-device flag this used before seen-state moved to the account; still honoured. */
+function legacySeenKey(version: string) {
   return `whatsNew:seen:${version}`;
 }
 
-/** localStorage only — read/write can legitimately throw (private mode,
- *  cleared/blocked site data) and this feature is a courtesy, not something
- *  that should ever break the app if storage is unavailable. */
-function hasSeen(version: string): boolean {
-  try {
-    return localStorage.getItem(seenKey(version)) === "1";
-  } catch {
-    return true;
-  }
-}
-
-function markSeen(version: string) {
-  try {
-    localStorage.setItem(seenKey(version), "1");
-  } catch {
-    // Nothing to do — worst case the modal shows again next login.
-  }
-}
-
 /**
- * A dismissible "What's New" summary shown once per browser after a new
+ * A dismissible "What's New" summary shown once per ACCOUNT after a new
  * version ships, filtered to the bullets relevant to the viewer's own role.
- * Gated by a version-keyed localStorage flag rather than a server-side
- * per-user column — this is a lightweight release courtesy, not durable
- * state that needs to sync across devices.
+ *
+ * It used to be gated by a localStorage flag alone, which is per browser — so
+ * it came back on every other device, in the installed app, and after site
+ * data was cleared ("every time you log in or switch device"). useSeenOnce
+ * records it against the account (user_ui_seen, migration 069).
  */
 export function WhatsNewModal() {
   const { isAuthenticated, user } = useAuth();
   const [open, setOpen] = useState(false);
+  const { seen, markSeen } = useSeenOnce(
+    whatsNewAccountKey(LATEST_WHATS_NEW_VERSION),
+    legacySeenKey(LATEST_WHATS_NEW_VERSION),
+  );
 
   useEffect(() => {
     if (!isAuthenticated || !user || user.role === "CUSTOMER") return;
-    if (!hasSeen(LATEST_WHATS_NEW_VERSION)) {
-      setOpen(true);
-    }
-  }, [isAuthenticated, user]);
+    if (seen === false) setOpen(true);
+  }, [isAuthenticated, user, seen]);
 
   if (!isAuthenticated || !user || user.role === "CUSTOMER") return null;
 
@@ -60,7 +48,7 @@ export function WhatsNewModal() {
   if (items.length === 0) return null;
 
   const dismiss = () => {
-    markSeen(LATEST_WHATS_NEW_VERSION);
+    markSeen();
     setOpen(false);
   };
 

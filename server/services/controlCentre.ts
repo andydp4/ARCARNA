@@ -76,8 +76,15 @@ export type ControlCentreSnapshot = {
   ordersCreatedToday: number;
   ordersCompletedToday: number;
   openOrders: number;
+  /** Live in the Collection / Delivery lane right now — the lane's own count. */
   toCollect: number;
   toDeliver: number;
+  /** Still open from an earlier trading day ("Earlier days" strip). */
+  toCollectEarlierDays: number;
+  toDeliverEarlierDays: number;
+  /** Pre-orders for a later day ("Scheduled" strip). */
+  toCollectScheduled: number;
+  toDeliverScheduled: number;
   /**
    * Sourced from `server/services/opsBoard.ts`'s own summary — the SAME
    * `deriveCardState`-driven counts the Operations Centre board shows,
@@ -334,8 +341,20 @@ export async function getControlCentreSnapshot(
     ordersCreatedToday: createdTodayRow[0]?.c ?? 0,
     ordersCompletedToday: completedTodayRow[0]?.c ?? 0,
     openOrders: openOrdersRow[0]?.c ?? 0,
-    toDeliver: openOrdersRow[0]?.toDeliver ?? 0,
-    toCollect: (openOrdersRow[0]?.c ?? 0) - (openOrdersRow[0]?.toDeliver ?? 0),
+    // What the board's lanes actually show (isLiveLaneState), not every open
+    // order from any day: the tiles used to count carried-over and scheduled
+    // orders too, so "To collect 5" sat over a Collection lane reading 0 with
+    // the five folded into its collapsed strips. Those are reported alongside
+    // instead, so forgotten earlier-day orders stay visible. The undated
+    // count is only a fallback if the board could not be built.
+    toCollect:
+      opsBoardSummary?.summary.lanes.collection.live ??
+      (openOrdersRow[0]?.c ?? 0) - (openOrdersRow[0]?.toDeliver ?? 0),
+    toDeliver: opsBoardSummary?.summary.lanes.delivery.live ?? openOrdersRow[0]?.toDeliver ?? 0,
+    toCollectEarlierDays: opsBoardSummary?.summary.lanes.collection.carriedOver ?? 0,
+    toCollectScheduled: opsBoardSummary?.summary.lanes.collection.scheduled ?? 0,
+    toDeliverEarlierDays: opsBoardSummary?.summary.lanes.delivery.carriedOver ?? 0,
+    toDeliverScheduled: opsBoardSummary?.summary.lanes.delivery.scheduled ?? 0,
 
     lateNow: opsBoardSummary?.summary.lateNow ?? 0,
     dueSoonNow: opsBoardSummary?.summary.dueSoonNow ?? 0,

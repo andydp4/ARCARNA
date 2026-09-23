@@ -34,8 +34,15 @@ export type ControlCentreSnapshot = {
   ordersCreatedToday: number;
   ordersCompletedToday: number;
   openOrders: number;
+  /** Live in the Collection / Delivery lane right now — the lane's own count. */
   toCollect: number;
   toDeliver: number;
+  /** Still open from an earlier trading day ("Earlier days" strip). */
+  toCollectEarlierDays: number;
+  toDeliverEarlierDays: number;
+  /** Pre-orders for a later day ("Scheduled" strip). */
+  toCollectScheduled: number;
+  toDeliverScheduled: number;
   /** From the Operations Centre board's own `deriveCardState`-driven summary — see server/services/controlCentre.ts. */
   lateNow: number;
   dueSoonNow: number;
