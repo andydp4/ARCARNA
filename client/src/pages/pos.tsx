@@ -75,6 +75,7 @@ import { usePriceGuard } from "@/hooks/usePriceGuard";
 import { buildConfirmation, choiceProblem, flaggedCartLines } from "@/lib/priceGuard";
 import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote";
 import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
+import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
 
 /** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
 function confirmVerb(paymentMethod: string): string {
@@ -137,6 +138,7 @@ function MyShiftSummary() {
   const { data: summaryData } = useQuery<{
     shift: { openedAt: string };
     summary: { grossSales: string | number; commissionAmount: string | number } | null;
+    priceOverrideCount?: number;
   }>({
     queryKey: ["/api/cashier-shifts", shiftId, "summary"],
     queryFn: async () => {
@@ -160,6 +162,7 @@ function MyShiftSummary() {
       <span className="font-medium text-foreground">£{grossSales.toFixed(2)}</span>
       {" · commission "}
       <span className="font-medium text-foreground">£{commission.toFixed(2)}</span>
+      <ShiftPriceOverrideCount count={summaryData.priceOverrideCount} />
     </p>
   );
 }

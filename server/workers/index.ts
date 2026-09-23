@@ -316,6 +316,13 @@ async function runHousekeeping(): Promise<void> {
     // exactly-once by unique key, so running it on every pass costs one query.
     ["daily-close", async () =>
       (await import("../services/dailyClose")).runDueDailyCloses()],
+    // Price guard (v1.2 Phase 4): the twice-daily below-minimum round-up and
+    // Needs a look's Monday line. Both are exactly-once, so running them on
+    // every pass costs a query each.
+    ["price-guard-digest", async () =>
+      (await import("../services/priceGuardDigest")).runDuePriceGuardDigests()],
+    ["needs-a-look-weekly", async () =>
+      (await import("../services/exceptionReviews")).runWeeklyNeedsALook()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

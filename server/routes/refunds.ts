@@ -19,6 +19,7 @@ import { touchCashierShiftActivity } from "../services/cashierShiftEngine";
 import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
+import { recordRefundExceptionInTx } from "../services/refundExceptions";
 
 /** Raised when the in-transaction ceiling re-check rejects a concurrent refund. */
 class RefundCeilingExceeded extends Error {}
@@ -28,12 +29,18 @@ const refundLineSchema = z.object({
   qty: z.coerce.number().int().positive(),
 });
 
-const createRefundSchema = z.object({
-  reason: z.enum(REFUND_REASONS),
-  notes: z.string().max(2000).optional(),
-  refundMethod: z.enum(REFUND_METHODS),
-  lines: z.array(refundLineSchema).min(1),
-});
+const createRefundSchema = z
+  .object({
+    reason: z.enum(REFUND_REASONS),
+    notes: z.string().max(2000).optional(),
+    refundMethod: z.enum(REFUND_METHODS),
+    lines: z.array(refundLineSchema).min(1),
+  })
+  // "Other" is a reason only with a word on what it was (v1.2 Phase 4, CMP-04).
+  .refine((b) => b.reason !== "other" || !!b.notes?.trim(), {
+    message: "Say what the reason is when you choose Other.",
+    path: ["notes"],
+  });
 
 async function sumRefundedQtyByLine(orderId: string): Promise<Map<string, number>> {
   const rows = await db
@@ -291,6 +298,22 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
               amount: String(line.amount),
             });
           }
+
+          // Refunds follow the same rule (CMP-04): never blocked; the ones
+          // the admin-set rules pick out raise an exception and a Signal.
+          await recordRefundExceptionInTx(tx, {
+            orgId: ctx.orgId,
+            refundId: refund.id,
+            orderId: order.id,
+            refunderUserId: userId,
+            refundMethod,
+            originalPaymentMethod: order.paymentMethod ?? null,
+            total: refundTotal,
+            reason: body.reason,
+            notes: body.notes ?? null,
+            saleUserId: order.completedUserId ?? order.inputUserId ?? null,
+            saleAt: order.settledAt ?? order.createdAt ?? null,
+          });
 
           let storeCreditGiftCard: Awaited<ReturnType<typeof issueGiftCardInTx>> | null = null;
           if (refundMethod === "store_credit") {

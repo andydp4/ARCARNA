@@ -11,9 +11,10 @@
  * The order-level below-cost check also runs here, after all discounts. It
  * tells managers and admins; the cashier is never a recipient (owner Q4).
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { allowedUsers, organizations, priceGuardOrders } from "@shared/schema";
+import { allowedUsers, organizations, orgNotifications, priceGuardOrders } from "@shared/schema";
+import { REPEAT_THRESHOLD, REPEAT_WINDOW_DAYS } from "@shared/review/exceptions";
 import {
   confirmationProblem,
   evaluateOrderGuard,
@@ -27,16 +28,25 @@ import {
 import type { OrderDiscounts } from "@shared/pricing/lineSnapshot";
 import { isAtLeast } from "@shared/accessPolicy";
 import { notify } from "./signals";
+import { raiseExceptionReview, staffRoleOf } from "./exceptionReviews";
 import { resolveUserNames } from "./userDisplayName";
 
 type Executor = typeof db | any;
 
 export async function priceGuardEnabled(orgId: string, client: Executor = db): Promise<boolean> {
+  return (await priceGuardSettings(orgId, client)).enabled;
+}
+
+/** The switch and when below-minimum Signals go out (admin settings). */
+export async function priceGuardSettings(
+  orgId: string,
+  client: Executor = db,
+): Promise<{ enabled: boolean; minSignal: "immediate" | "twice_daily" }> {
   const [row] = await client
-    .select({ enabled: organizations.priceGuardEnabled })
+    .select({ enabled: organizations.priceGuardEnabled, minSignal: organizations.priceGuardMinSignal })
     .from(organizations)
     .where(eq(organizations.id, orgId));
-  return row?.enabled === true;
+  return { enabled: row?.enabled === true, minSignal: row?.minSignal === "twice_daily" ? "twice_daily" : "immediate" };
 }
 
 export type GuardManager = { id: string; name: string; role: string };
@@ -147,7 +157,7 @@ export async function recordPriceGuardInTx(tx: Executor, args: RecordGuardArgs):
 }
 
 async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordGuardResult> {
-  const enabled = await priceGuardEnabled(args.orgId, tx);
+  const { enabled, minSignal } = await priceGuardSettings(args.orgId, tx);
   let confirmation: PriceGuardConfirmation | null = readConfirmation(args.rawConfirmation);
   if (!enabled && !confirmation) return null;
 
@@ -197,7 +207,6 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
     .onConflictDoNothing({ target: priceGuardOrders.orderId })
     .returning({ id: priceGuardOrders.id });
   if (!row) return null;
-  if (!enabled) return { verdict, guardId: row.id, signalled: false };
 
   const who = args.actorUserId ? (await resolveUserNames([args.actorUserId])).get(args.actorUserId) ?? "Unknown" : "Unknown";
   const orderRef = orderRefOf(args.orderId);
@@ -209,6 +218,47 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
     note: confirmation?.note ?? null,
     managerName,
   });
+  // Needs a look (CMP-02) works whatever the switch: every guard row is an
+  // exception to review, queued by the role of the person who rang it.
+  await raiseExceptionReview(tx, {
+    orgId: args.orgId,
+    kind: "price",
+    sourceId: row.id,
+    orderId: args.orderId,
+    subjectUserId: args.actorUserId,
+    subjectRole: await staffRoleOf(args.orgId, args.actorUserId, tx),
+    severity,
+    summary: message,
+    amount: verdict.underMinimum > 0 ? verdict.underMinimum : verdict.underCost,
+  });
+  if (!enabled) return { verdict, guardId: row.id, signalled: false };
+
+  // "Manager agreed" names someone: ask them (CMP-05). Addressed to that one
+  // person, straight away whatever the round-up setting. The sale stands
+  // whatever they answer.
+  if (managerUserId) {
+    await notify(
+      {
+        orgId: args.orgId,
+        title: `Did you agree this price? — ${who}`,
+        message: `${who} says you agreed £${verdict.underMinimum.toFixed(2)} under minimum on order ${orderRef}. Answer Yes, I agreed or No.`,
+        severity: "warning",
+        source: "price_guard_manager_check",
+        audience: { userIds: [managerUserId] },
+        metadata: { orderId: args.orderId, entityId: row.id },
+      },
+      tx,
+    );
+  }
+
+  // Below cost always goes now. Below minimum goes now or waits for the next
+  // twice-daily round-up, as an admin set it (PRC-04).
+  if (!belowCost && minSignal === "twice_daily") {
+    await tx.update(priceGuardOrders).set({ signalPending: true }).where(eq(priceGuardOrders.id, row.id));
+    await raiseRepeatPatternSignal(tx, args.orgId, args.actorUserId, who);
+    return { verdict, guardId: row.id, signalled: false };
+  }
+
   // One Signal per order (PRC-04). It names the person who rang it, so
   // notify() sends it only to people who outrank them: a cashier's to managers
   // and above, a manager's to admins and the owner only.
@@ -224,24 +274,52 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
     },
     tx,
   );
-  // "Manager agreed" names someone: ask them (CMP-05). Addressed to that one
-  // person. The sale stands whatever they answer.
-  if (managerUserId) {
-    await notify(
-      {
-        orgId: args.orgId,
-        title: `Did you agree this price? — ${who}`,
-        message: `${who} says you agreed £${verdict.underMinimum.toFixed(2)} under minimum on order ${orderRef}. Answer Yes, I agreed or No.`,
-        severity: "warning",
-        source: "price_guard_manager_check",
-        audience: { userIds: [managerUserId] },
-        metadata: { orderId: args.orderId, entityId: row.id },
-      },
-      tx,
-    );
-  }
   await tx.update(priceGuardOrders).set({ signalId: signal.id }).where(eq(priceGuardOrders.id, row.id));
+  await raiseRepeatPatternSignal(tx, args.orgId, args.actorUserId, who);
   return { verdict, guardId: row.id, signalled: true };
+}
+
+/**
+ * Repeat patterns (PRC-09): REPEAT_THRESHOLD flagged sales by one person in
+ * REPEAT_WINDOW_DAYS raise ONE Signal to admins (and the owner), and no other
+ * until a window has passed since it. It names the person, so an admin's own
+ * pattern reaches the owner only.
+ */
+export async function raiseRepeatPatternSignal(tx: Executor, orgId: string, userId: string | null, who: string): Promise<boolean> {
+  if (!userId) return false;
+  const since = new Date(Date.now() - REPEAT_WINDOW_DAYS * 86_400_000);
+  const [count] = await tx
+    .select({ n: sql<number>`COUNT(*)::int`, under: sql<string>`COALESCE(SUM(${priceGuardOrders.underMinimum}), 0)` })
+    .from(priceGuardOrders)
+    .where(and(eq(priceGuardOrders.orgId, orgId), eq(priceGuardOrders.userId, userId), gte(priceGuardOrders.createdAt, since)));
+  const n = Number(count?.n) || 0;
+  if (n < REPEAT_THRESHOLD) return false;
+  const [already] = await tx
+    .select({ id: orgNotifications.id })
+    .from(orgNotifications)
+    .where(
+      and(
+        eq(orgNotifications.orgId, orgId),
+        eq(orgNotifications.source, "price_guard_repeat"),
+        eq(orgNotifications.subjectUserId, userId),
+        gte(orgNotifications.createdAt, since),
+      ),
+    )
+    .limit(1);
+  if (already) return false;
+  await notify(
+    {
+      orgId,
+      title: `Repeat price overrides — ${who}`,
+      message: `${who} has ${n} sales flagged in the last ${REPEAT_WINDOW_DAYS} days, £${Number(count?.under ?? 0).toFixed(2)} under minimum. See Price overrides in Evidence.`,
+      severity: "warning",
+      source: "price_guard_repeat",
+      subjectUserId: userId,
+      metadata: { userId },
+    },
+    tx,
+  );
+  return true;
 }
 
 export class ManagerAnswerError extends Error {

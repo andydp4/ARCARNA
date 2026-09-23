@@ -126,7 +126,7 @@ export function parseMinPriceCell(value: unknown): number | null | undefined | "
 export type PriceField = "sale" | "min" | "cost";
 export const PRICE_FIELDS: readonly PriceField[] = ["sale", "min", "cost"];
 
-export type PriceChangeSource = "form" | "import" | "create";
+export type PriceChangeSource = "form" | "import" | "create" | "bulk";
 
 export type PriceSnapshot = {
   defaultSalePrice?: Money;

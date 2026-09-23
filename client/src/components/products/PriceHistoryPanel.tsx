@@ -23,6 +23,7 @@ const SOURCE_LABEL: Record<string, string> = {
   form: 'Product form',
   import: 'Import',
   create: 'Product created',
+  bulk: 'Bulk "Set minimum price"',
 }
 
 /** An empty figure means something different per field; never show it as £0. */

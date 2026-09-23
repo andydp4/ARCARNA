@@ -48,6 +48,20 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   price_guard: { minRole: "MANAGER" },
   price_guard_manager_check: { userIds: [] },
   price_guard_manager_no: { roles: ["SUPER_ADMIN"] },
+  // Twice-daily round-up of below-minimum sales: one per person, so it still
+  // reaches only people who outrank them.
+  price_guard_digest: { minRole: "MANAGER" },
+  // Repeat patterns in Price overrides (PRC-09): admins (and the owner).
+  price_guard_repeat: { minRole: "ADMIN" },
+  // Refunds the rule picks out (CMP-04). Names the refunder, so a manager's
+  // goes to admins and the owner only.
+  refund_exception: { minRole: "MANAGER" },
+  // Needs a look (CMP-02): an escalation names the reviewer, so it goes to
+  // people above them. The weekly line is sent per queue (see exceptionReviews).
+  exception_escalated: { minRole: "MANAGER" },
+  needs_a_look_weekly: { minRole: "MANAGER" },
+  // A manager's bulk "Set minimum price" (PRC-05) is the owner's to know.
+  bulk_min_price: { roles: ["SUPER_ADMIN"] },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

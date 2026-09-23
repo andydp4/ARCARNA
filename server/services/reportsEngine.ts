@@ -32,6 +32,7 @@ import {
   orderEvents,
   opsStaff,
   locations,
+  priceExceptions,
 } from "@shared/schema";
 import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
@@ -530,6 +531,16 @@ export async function currentStockLevels(orgId: string, locationId?: string): Pr
 }
 
 /**
+ * The Weekly Margin flag under the price policy (owner Q3): below cost is red,
+ * below minimum amber, otherwise within policy. Margin % is shown, not judged.
+ */
+export function weeklyMarginPolicyFlag(b: { belowMinimum: number; belowCost: number }): "below_cost" | "below_minimum" | "ok" {
+  if (b.belowCost > 0) return "below_cost";
+  if (b.belowMinimum > 0) return "below_minimum";
+  return "ok";
+}
+
+/**
  * ARC-T2-001 Weekly Margin Summary — realised margin per product for a week.
  *
  * Scoped to settled orders in the trading week (06:00–06:00 local), not a
@@ -566,6 +577,7 @@ export async function weeklyMarginSummary(
   const known = sql`${lineUnitCostSql} IS NOT NULL`;
   const grp = await db
     .select({
+      productId: products.id,
       name: products.name,
       units: sql<number>`SUM(${orderItems.quantity})`,
       revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
@@ -580,6 +592,21 @@ export async function weeklyMarginSummary(
     .innerJoin(products, eq(orderItems.productId, products.id))
     .where(cond)
     .groupBy(products.id, products.name);
+
+  // The price policy (v1.2 Phase 4, owner Q3) replaces the old hard-coded
+  // "margin below 20%" flag: a product is flagged when it was sold below its
+  // minimum or below cost this week, whatever its margin.
+  const policy = await db
+    .select({
+      productId: priceExceptions.productId,
+      belowMinimum: sql<number>`COUNT(*) FILTER (WHERE ${priceExceptions.belowMinimum})`,
+      belowCost: sql<number>`COUNT(*) FILTER (WHERE ${priceExceptions.belowCost})`,
+    })
+    .from(priceExceptions)
+    .innerJoin(orders, eq(priceExceptions.orderId, orders.id))
+    .where(cond)
+    .groupBy(priceExceptions.productId);
+  const policyBy = new Map(policy.map((p) => [p.productId, { belowMinimum: num(p.belowMinimum), belowCost: num(p.belowCost) }]));
 
   const redFlags: string[] = [];
   let totalMarginAll = 0;
@@ -598,7 +625,10 @@ export async function weeklyMarginSummary(
     const totalMargin = grossMargin == null ? 0 : grossMargin * knownUnits;
     const costMissingUnits = Math.max(0, units - knownUnits);
     totalMarginAll += totalMargin;
-    if (marginPct != null && marginPct < 20) redFlags.push(`${g.name} margin ${marginPct.toFixed(1)}% is below 20% — review pricing.`);
+    const breaches = policyBy.get(g.productId) ?? { belowMinimum: 0, belowCost: 0 };
+    const policyFlag = weeklyMarginPolicyFlag(breaches);
+    if (breaches.belowCost > 0) redFlags.push(`${g.name}: ${breaches.belowCost} sale line(s) below cost this week.`);
+    else if (breaches.belowMinimum > 0) redFlags.push(`${g.name}: ${breaches.belowMinimum} sale line(s) below the minimum price this week.`);
     if (costMissingUnits > 0) redFlags.push(`${g.name}: ${costMissingUnits} unit(s) sold with no cost set are left out of the margin.`);
     return {
       product: g.name,
@@ -611,6 +641,9 @@ export async function weeklyMarginSummary(
       grossMargin,
       marginPct,
       totalMargin,
+      belowMinimumLines: breaches.belowMinimum,
+      belowCostLines: breaches.belowCost,
+      policyFlag,
     };
   });
   rows.sort((a, b) => b.totalMargin - a.totalMargin);
