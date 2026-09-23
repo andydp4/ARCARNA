@@ -86,6 +86,9 @@ import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
 // --- Utility Functions ---
 import { parseImportInteger, parseImportNumber } from "@shared/importValues";
+import { MIN_PRICE_CLEAR_TOKEN, checkMinPrice, parseMinPriceCell } from "@shared/pricing/floor";
+import { canEditMinPrice } from "@shared/accessPolicy";
+import { recordPriceChanges } from "./services/priceHistory";
 
 function safeParseFloat(value: string | number | null | undefined, defaultValue: number = 0): number {
   return parseImportNumber(value) ?? defaultValue;
@@ -94,6 +97,15 @@ function safeParseFloat(value: string | number | null | undefined, defaultValue:
 function safeParseInt(value: string | number | null | undefined, defaultValue: number = 0): number {
   return parseImportInteger(value) ?? defaultValue;
 }
+
+export type ProductImportOptions = {
+  duplicateMode?: "skip" | "overwrite";
+  confirmed?: boolean;
+  /** The importer's role: a minimum-price column needs manager or above. */
+  role?: string | null;
+  /** Written to price history as who made the change. */
+  actorId?: string | null;
+};
 
 // --- CRITICAL NOTE: Storage <-> API Field Mapping ---
 /**
@@ -145,7 +157,7 @@ export interface IStorage {
   importProducts(
     products: any[],
     orgId: string,
-    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+    options?: ProductImportOptions,
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }>;
   importCustomers(
     customers: any[],
@@ -526,7 +538,7 @@ export class DatabaseStorage implements IStorage {
   async importProducts(
     productList: any[],
     orgId: string,
-    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+    options?: ProductImportOptions,
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }> {
     if (!options?.confirmed) {
       throw new Error("Import requires confirmed preview (confirmed: true)");
@@ -543,9 +555,14 @@ export class DatabaseStorage implements IStorage {
           parseImportNumber(
             productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
           );
+        // Blank or missing cost is "not known": a new product stores NULL and
+        // an overwrite keeps the cost already there. It used to become £0,
+        // so re-importing a price list without a cost column wiped every cost.
         const costPrice = parseImportNumber(
           productData.costPrice ?? productData.tax,
         );
+        // Blank or missing keeps the stored minimum; the clear token clears it.
+        const minCell = parseMinPriceCell(productData.minPrice);
         const stock =
           productData.stock !== undefined ? parseImportInteger(productData.stock) : undefined;
         const stockLimit =
@@ -561,8 +578,20 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
+        if (minCell === "invalid") {
+          errors.push(
+            `Row ${failed + imported + skipped + 1}: Invalid minimum price (a number, blank to keep, or ${MIN_PRICE_CLEAR_TOKEN} to clear)`,
+          );
+          failed++;
+          continue;
+        }
+        if (minCell !== undefined && !canEditMinPrice(options.role)) {
+          errors.push(`Row ${failed + imported + skipped + 1}: Only a manager or an admin can set a minimum price`);
+          failed++;
+          continue;
+        }
+
         productData.defaultSalePrice = salePrice;
-        productData.costPrice = costPrice ?? 0;
         if (stock !== undefined) productData.stock = stock;
         if (stockLimit !== undefined) productData.stockLimit = stockLimit;
 
@@ -580,21 +609,41 @@ export class DatabaseStorage implements IStorage {
             skipped++;
             continue;
           }
-          const updatedRows = await db
-            .update(products)
-            .set({
-              name: productData.name,
-              barcode: productData.barcode ?? existingProduct.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-              costPrice: productData.costPrice ?? productData.tax ?? existingProduct.costPrice,
-              stock: 0,
-              stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
-              locationId: productData.locationId ?? existingProduct.locationId,
-              updatedAt: new Date(),
-            })
-            .where(eq(products.id, existingProduct.id))
-            .returning();
-          const updatedProduct = updatedRows[0];
+          const nextMin = minCell === undefined ? existingProduct.minPrice : minCell == null ? null : String(minCell);
+          const minProblem = checkMinPrice(nextMin, salePrice);
+          if (minProblem) {
+            errors.push(`Row ${failed + imported + skipped + 1}: ${minProblem.message}`);
+            failed++;
+            continue;
+          }
+          const updatedProduct = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .update(products)
+              .set({
+                name: productData.name,
+                barcode: productData.barcode ?? existingProduct.barcode,
+                defaultSalePrice: String(salePrice),
+                costPrice: costPrice !== undefined ? String(costPrice) : existingProduct.costPrice,
+                minPrice: nextMin,
+                stock: 0,
+                stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
+                locationId: productData.locationId ?? existingProduct.locationId,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, existingProduct.id))
+              .returning();
+            if (row && orgId) {
+              await recordPriceChanges(tx, {
+                orgId,
+                productId: row.id,
+                before: existingProduct,
+                after: row,
+                changedBy: options.actorId ?? null,
+                source: "import",
+              });
+            }
+            return row;
+          });
           if (orgId && updatedProduct) {
             const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
               await import("./services/productLocationStock");
@@ -624,22 +673,43 @@ export class DatabaseStorage implements IStorage {
           }
           imported++;
         } else {
-          const [created] = await db
-            .insert(products)
-            .values({
-              productId: sku || `PRD-${Date.now()}-${imported}`,
-              name: productData.name,
-              barcode: productData.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-              costPrice: productData.costPrice ?? productData.tax ?? 0,
-              stock: 0,
-              stockLimit: productData.stockLimit ?? 100,
-              locationId: productData.locationId,
-              orgId: orgId ?? undefined,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .returning();
+          const newMin = typeof minCell === "number" ? minCell : null;
+          const minProblem = checkMinPrice(newMin, salePrice);
+          if (minProblem) {
+            errors.push(`Row ${failed + imported + skipped + 1}: ${minProblem.message}`);
+            failed++;
+            continue;
+          }
+          const created = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .insert(products)
+              .values({
+                productId: sku || `PRD-${Date.now()}-${imported}`,
+                name: productData.name,
+                barcode: productData.barcode,
+                defaultSalePrice: String(salePrice),
+                costPrice: costPrice !== undefined ? String(costPrice) : null,
+                minPrice: newMin == null ? null : String(newMin),
+                stock: 0,
+                stockLimit: productData.stockLimit ?? 100,
+                locationId: productData.locationId,
+                orgId: orgId ?? undefined,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning();
+            if (row && orgId) {
+              await recordPriceChanges(tx, {
+                orgId,
+                productId: row.id,
+                before: {},
+                after: row,
+                changedBy: options.actorId ?? null,
+                source: "import",
+              });
+            }
+            return row;
+          });
           if (orgId && created) {
             const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
               await import("./services/productLocationStock");

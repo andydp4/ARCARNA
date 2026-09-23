@@ -48,6 +48,10 @@ export const products = pgTable('products', {
   product_id: varchar('product_id',{length:100}).notNull().unique(), // SKU
   cost_price: numeric('cost_price', { precision: 10, scale: 2 }),
   default_sale_price: numeric('default_sale_price',{precision:10,scale:2}).notNull(),
+  // NULL = follows the sale price (shared/pricing/floor.ts effectiveFloor).
+  min_price: numeric('min_price', { precision: 10, scale: 2 }),
+  location_id: uuid('location_id'),
+  aliases: jsonb('aliases').$type<string[]>(),
   // Must match shared/schema.ts: these are the same physical columns, and
   // drizzle's integer mapper runs parseInt on what numeric returns, so a
   // declaration left as integer reads 0.400 as 0.

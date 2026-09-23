@@ -123,10 +123,12 @@ export class DomainEngine {
         productCode,
         name: (input as any).name,
         barcode: (input as any).barcode,
-        // An explicit null is "cost unknown" and stays null; only an absent
-        // cost defaults to 0, as it always has for older callers.
-        costPrice: (input as any).costPrice === null ? (null as any) : (input as any).costPrice ?? 0,
+        // No cost given is "cost unknown" (null), never £0: a £0 cost reads
+        // as a free item and flatters every margin (v1.2 Phase 2, PRC-F3).
+        costPrice: (input as any).costPrice ?? null,
         salePrice: (input as any).salePrice ?? (input as any).defaultSalePrice ?? 0,
+        // No minimum given means "follows the sale price".
+        minPrice: (input as any).minPrice ?? null,
         stock: (input as any).stock || 0,
         // `??`: a par level of 0 is a choice, not a missing value.
         stockLimit: (input as any).stockLimit ?? 100,

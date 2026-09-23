@@ -40,6 +40,13 @@ import { parseNonNegativeQuantityInput } from "@shared/quantity";
 import { Sparkles, ArrowRightLeft, PackageSearch, PackageCheck } from "lucide-react";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { usableCost } from "@shared/purchasing/purchaseLines";
+
+/** Blank or £0 is a cost nobody entered: say so rather than show £0.00. */
+function inventoryCostLabel(value: string | number | null | undefined): string {
+  const cost = usableCost(value)
+  return cost == null ? 'No cost set' : `£${cost.toFixed(2)}`
+}
 
 interface Product {
   id: string;
@@ -484,9 +491,7 @@ export default function Inventory() {
                               <div>
                                 <div className="text-xs text-muted-foreground">Cost Price</div>
                                 <div className="font-medium">
-                                  £{typeof product.costPrice === 'string' 
-                                    ? parseFloat(product.costPrice).toFixed(2) 
-                                    : (product.costPrice || 0).toFixed(2)}
+                                  {inventoryCostLabel(product.costPrice)}
                                 </div>
                               </div>
                               <div>
@@ -570,9 +575,7 @@ export default function Inventory() {
                             </TableCell>
                             <TableCell>{product.productId}</TableCell>
                             <TableCell>
-                              £{typeof product.costPrice === 'string' 
-                                ? parseFloat(product.costPrice).toFixed(2) 
-                                : (product.costPrice || 0).toFixed(2)}
+                              {inventoryCostLabel(product.costPrice)}
                             </TableCell>
                             <TableCell>
                               £{typeof product.defaultSalePrice === 'string' 

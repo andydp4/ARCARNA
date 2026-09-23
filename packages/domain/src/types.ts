@@ -9,8 +9,11 @@ export type Product = {
   productCode: string
   name: string
   barcode?: string
-  costPrice: MoneyGBP
+  /** null = cost not known. Never 0 for "unknown": 0 reads as a free item. */
+  costPrice: MoneyGBP | null
   salePrice: MoneyGBP
+  /** null = follows the sale price (shared/pricing/floor.ts). */
+  minPrice?: MoneyGBP | null
   stock: number
   stockLimit: number
   categoryId?: string

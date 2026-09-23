@@ -11,6 +11,7 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Sell, orders, own shift | Yes | Yes | Yes | Yes |
 | Products: create, edit, delete, aliases, import | No | Yes | Yes | Yes |
 | Cost prices and margins | Never, not even in API data | Yes | Yes | Yes |
+| Minimum prices: set, change, clear; price history (v1.2 Phase 2) | No | Yes | Yes | Yes |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
 | Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |

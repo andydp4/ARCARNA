@@ -373,6 +373,7 @@ export default function SetupWizard() {
                   { key: "productId", label: "SKU / Product ID" },
                   { key: "defaultSalePrice", label: "Sale price *" },
                   { key: "costPrice", label: "Cost price" },
+                  { key: "minPrice", label: "Minimum price (blank keeps, CLEAR clears)" },
                   { key: "stock", label: "Stock" },
                   { key: "barcode", label: "Barcode" },
                 ]}

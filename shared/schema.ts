@@ -507,6 +507,11 @@ export const products = pgTable("products", {
     precision: 10,
     scale: 2,
   }).notNull(),
+  // The lowest price this should sell for (v1.2 Phase 2, PRC-01). NULL means
+  // "follows the sale price" and is the default — no backfill, so a copied
+  // figure can never go stale. Read only through effectiveFloor()
+  // (shared/pricing/floor.ts).
+  minPrice: numeric("min_price", { precision: 10, scale: 2 }),
   // numeric, not integer: shops selling by weight or length need 0.4 of a
   // product. mode:"number" keeps these JS numbers, so the arithmetic that
   // reads them is unchanged — string-mode numeric would have turned every
@@ -541,6 +546,29 @@ export const insertProductSchema = createInsertSchema(products).omit({
   stock: true
 });
 export type InsertProductData = z.infer<typeof insertProductSchema>;
+
+/**
+ * Every change to a product's sale price, minimum or cost (v1.2 Phase 2,
+ * PRC-07): old and new, who, and where from. Values are NULL when the figure
+ * was empty (no minimum / cost unknown), never 0.
+ */
+export const productPriceHistory = pgTable("product_price_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "cascade" }).notNull(),
+  field: varchar("field", { length: 16 }).notNull(),
+  oldValue: numeric("old_value", { precision: 10, scale: 2 }),
+  newValue: numeric("new_value", { precision: 10, scale: 2 }),
+  /** The actor's user id. NULL when the system made the change. */
+  changedBy: varchar("changed_by", { length: 255 }),
+  source: varchar("source", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("product_price_history_field_check", sql`${table.field} IN ('sale', 'min', 'cost')`),
+  index("product_price_history_product_idx").on(table.orgId, table.productId, table.createdAt),
+]);
+
+export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
 
 // Per-location stock (authoritative for inventory math)
 export const productLocationStock = pgTable(

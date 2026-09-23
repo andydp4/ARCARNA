@@ -32,6 +32,7 @@ export function ImportsHub() {
           { key: "productId", label: "SKU" },
           { key: "defaultSalePrice", label: "Sale price *" },
           { key: "costPrice", label: "Cost" },
+          { key: "minPrice", label: "Minimum price (blank keeps, CLEAR clears)" },
           { key: "stock", label: "Stock" },
           { key: "barcode", label: "Barcode" },
         ]}

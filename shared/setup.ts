@@ -6,6 +6,7 @@ import {
   type Organization,
 } from "./schema";
 import { parseImportInteger, parseImportNumber } from "./importValues";
+import { MIN_PRICE_CLEAR_TOKEN, parseMinPriceCell } from "./pricing/floor";
 
 export { BUSINESS_TYPES, type BusinessType } from "./schema";
 export { COMMISSION_RATE_PRESETS, SHIFT_INACTIVITY_OPTIONS } from "./schema";
@@ -117,22 +118,36 @@ const zImportIntOptional = z.preprocess(
     .optional(),
 );
 
+/** Blank keeps the stored minimum (undefined), the clear token clears it (null). */
+const zImportMinPrice = z.preprocess(
+  (v) => {
+    const cell = parseMinPriceCell(v);
+    return cell === "invalid" ? Number.NaN : cell;
+  },
+  z
+    .number({ invalid_type_error: `Invalid minimum price (a number, blank to keep, or ${MIN_PRICE_CLEAR_TOKEN} to clear)` })
+    .min(0, "Minimum price cannot be negative")
+    .nullable()
+    .optional(),
+);
+
 export const productImportRowSchema = z.object({
   name: z.string().min(1, "Name is required"),
   productId: z.string().optional(),
   barcode: z.string().optional().nullable(),
   defaultSalePrice: zImportPriceRequired,
   costPrice: zImportPriceOptional,
+  minPrice: zImportMinPrice,
   stock: zImportIntOptional,
   stockLimit: zImportIntOptional,
 });
 
 /** CSV header row — keep identical to TEMPLATES.products in setupImports.ts */
 export const PRODUCT_IMPORT_CSV_HEADERS =
-  "name,productId,barcode,defaultSalePrice,costPrice,stock,stockLimit";
+  "name,productId,barcode,defaultSalePrice,costPrice,minPrice,stock,stockLimit";
 
 export const PRODUCT_IMPORT_CSV_SAMPLE =
-  `${PRODUCT_IMPORT_CSV_HEADERS}\nExample Product,SKU-001,1234567890123,9.99,5.00,10,100\n`;
+  `${PRODUCT_IMPORT_CSV_HEADERS}\nExample Product,SKU-001,1234567890123,9.99,5.00,,10,100\n`;
 
 const zImportEmail = z.preprocess((v) => {
   if (v === null || v === undefined || v === "") return null;

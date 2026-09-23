@@ -167,8 +167,13 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ message: "rows array is required" });
       }
-      const result = await storage.importProducts(rows, ctx.orgId, { duplicateMode, confirmed: true });
       const userId = req.user?.claims?.sub ?? req.user?.id;
+      const result = await storage.importProducts(rows, ctx.orgId, {
+        duplicateMode,
+        confirmed: true,
+        role: req.orgContext?.role ?? req.user?.role,
+        actorId: userId ?? null,
+      });
       await storage.recordImportHistory({
         orgId: ctx.orgId,
         importType: "products",

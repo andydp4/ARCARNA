@@ -33,13 +33,14 @@ const FILES = [
 
 /**
  * Tables both files are required to describe COMPLETELY, not merely
- * compatibly. Only `orders` so far, because it is the only table both files
- * declare in full and both write through. `organizations` is deliberately a
+ * compatibly: the tables both files declare in full and both write through.
+ * `products` and `order_items` joined in v1.2 Phase 2 because the minimum
+ * price and the order-line snapshots are read through both. `organizations` is deliberately a
  * four-column stub in the snake_case file and must not be listed here —
  * order_events, ops_staff and the organizations.ops_* settings live in
  * shared/schema.ts alone by design (see the Phase N brief's data model).
  */
-const PAIRED_TABLES = ["orders"];
+const PAIRED_TABLES = ["orders", "products", "order_items"];
 
 /**
  * Extracts `table -> column -> type` from a Drizzle schema file.

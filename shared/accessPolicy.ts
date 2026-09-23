@@ -73,6 +73,18 @@ export function productsForRole<T extends object>(list: readonly T[], role: stri
 }
 
 // ---------------------------------------------------------------------------
+// Minimum prices (v1.2 Phase 2, PRC-01): managers and admins edit them. The
+// product write routes are already manager and above; the service checks
+// this again so a new path that saves a product cannot skip it.
+// ---------------------------------------------------------------------------
+
+export const MIN_PRICE_MIN_ROLE: Role = "MANAGER";
+
+export function canEditMinPrice(role: string | null | undefined): boolean {
+  return isAtLeast(role, MIN_PRICE_MIN_ROLE);
+}
+
+// ---------------------------------------------------------------------------
 // Customer contact details (owner decision Q13a: admin and above). Staff below
 // that still find and serve customers: they get a flag saying whether there is
 // an email or phone on file (the receipt worker reads the address itself) and
@@ -182,6 +194,12 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PATCH", path: "/api/products/:id/aliases", minRole: "MANAGER", reason: PRODUCT_WRITE },
   { method: "PATCH", path: "/api/products/:id/website", minRole: "MANAGER", reason: PRODUCT_WRITE },
   { method: "POST", path: "/api/products/import", minRole: "MANAGER", reason: PRODUCT_WRITE },
+  {
+    method: "GET",
+    path: "/api/products/:id/price-history",
+    minRole: "MANAGER",
+    reason: "Price history carries cost changes; minimums are managed by managers and admins (PRC-07, Q6).",
+  },
 
   // Suppliers and supplier-product mappings.
   { method: "GET", path: "/api/suppliers", minRole: "MANAGER", reason: PURCHASING },
