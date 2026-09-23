@@ -386,8 +386,10 @@ export default function WorkerLogsPage() {
                                   size="sm"
                                   onClick={() => setSelectedLog(log)}
                                   data-testid={`btn-view-${log.logId}`}
+                                  className="gap-1"
                                 >
-                                  <Eye className="h-4 w-4" />
+                                  <Eye className="h-4 w-4" aria-hidden />
+                                  View
                                 </Button>
                               </DialogTrigger>
                               <DialogContent className="max-w-2xl">

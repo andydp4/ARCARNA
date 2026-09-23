@@ -37,6 +37,13 @@ describe("Centres (v1.2 Phase 3)", () => {
     expect(pageKeys("MANAGER", "finance")).toEqual(["shifts", "expenses", "reseller-partners", "cashier-payroll", "invoices"]);
   });
 
+  it("opens the Truths Centre on Truths at a glance for managers and above", () => {
+    expect(centreLandingHref("truths", "MANAGER")).toBe("/truths");
+    expect(pageKeys("MANAGER", "truths")?.[0]).toBe("truths-at-a-glance");
+    expect(centreForPath("/truths")?.key).toBe("truths");
+    expect(keys("CASHIER")).not.toContain("truths");
+  });
+
   it("keeps Profit Truths to admins", () => {
     expect(pageKeys("MANAGER", "truths")).not.toContain("profit");
     expect(pageKeys("ADMIN", "truths")).toContain("profit");

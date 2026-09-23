@@ -704,8 +704,10 @@ export default function PurchaseDraftsPage() {
                       size="sm"
                       variant="destructive"
                       onClick={() => deleteMutation.mutate(detail.id)}
+                      className="gap-1"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                      Delete draft
                     </Button>
                   )}
                 </div>

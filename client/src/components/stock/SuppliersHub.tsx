@@ -304,19 +304,23 @@ export function SuppliersHub() {
                     <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
+                        className="gap-1"
                         aria-label={`Edit supplier ${s.name}`}
                         onClick={() => openEditSupplier(s)}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" aria-hidden />
+                        Edit
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
+                        className="gap-1 text-destructive hover:text-destructive"
                         aria-label={`Delete supplier ${s.name}`}
                         onClick={() => deleteSupplier.mutate(s.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                        Delete
                       </Button>
                     </TableCell>
                   )}
@@ -431,11 +435,13 @@ export function SuppliersHub() {
                     <TableCell>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
+                        className="gap-1 text-destructive hover:text-destructive"
                         aria-label="Remove this product-supplier mapping"
                         onClick={() => deleteMapping.mutate(m.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                        Remove
                       </Button>
                     </TableCell>
                   )}

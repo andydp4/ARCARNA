@@ -247,11 +247,12 @@ export const centres: Centre[] = [
     pathPrefixes: ['/reports/', '/analytics/'],
     items: [
       {
-        key: 'insights',
-        label: VOCAB.truthsHub,
-        href: '/insights',
+        // The Centre's landing page: the org's widget layout, set by admins.
+        key: 'truths-at-a-glance',
+        label: VOCAB.truthsAtAGlance,
+        href: '/truths',
         icon: TrendingUp,
-        testId: 'nav-insights',
+        testId: 'nav-truths-at-a-glance',
         roles: MANAGER_ROLES
       },
       {

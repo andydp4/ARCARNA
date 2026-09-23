@@ -355,21 +355,23 @@ export function CashierCommissionSettings() {
                     <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="min-h-[44px] min-w-[44px]"
+                        size="sm"
+                        className="min-h-[44px] gap-1"
                         onClick={() => openEdit(cashier)}
                         aria-label={`Edit ${cashier.displayName}`}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" aria-hidden />
+                        Edit
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="min-h-[44px] min-w-[44px]"
+                        size="sm"
+                        className="min-h-[44px] gap-1"
                         onClick={() => toggleActive.mutate({ id: cashier.id, isActive: !cashier.isActive })}
                         aria-label={cashier.isActive ? `Deactivate ${cashier.displayName}` : `Reactivate ${cashier.displayName}`}
                       >
-                        {cashier.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                        {cashier.isActive ? <UserX className="h-4 w-4" aria-hidden /> : <UserCheck className="h-4 w-4" aria-hidden />}
+                        {cashier.isActive ? "Deactivate" : "Reactivate"}
                       </Button>
                     </TableCell>
                     )}

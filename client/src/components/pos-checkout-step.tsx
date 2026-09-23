@@ -250,12 +250,13 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        className="h-11 w-11"
+                        size="sm"
+                        className="h-11 gap-1 text-destructive hover:text-destructive"
                         aria-label={`Remove payment ${index + 1}`}
                         onClick={() => p.setTenderLegs((legs) => legs.filter((_, i) => i !== index))}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                        Remove
                       </Button>
                     )}
                   </div>
@@ -530,11 +531,12 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                     size="sm"
                     onClick={p.onAddExpense}
                     variant="outline"
-                    className="lm-btn-outline min-h-[44px] min-w-[44px]"
+                    className="lm-btn-outline min-h-[44px] min-w-[44px] gap-1"
                     aria-label="Add expense"
                     data-testid="button-add-order-expense"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add
                   </Button>
                 </div>
               </div>
@@ -549,14 +551,15 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                         <span className="font-medium">£{expense.amount.toFixed(2)}</span>
                         <Button
                           type="button"
-                          size="icon"
+                          size="sm"
                           variant="ghost"
                           onClick={() => p.onRemoveExpense(index)}
-                          className="h-9 w-9"
+                          className="h-9 gap-1 text-destructive hover:text-destructive"
                           aria-label={`Remove expense ${expense.description}`}
                           data-testid={`button-remove-expense-${index}`}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          Remove
                         </Button>
                       </div>
                     </div>

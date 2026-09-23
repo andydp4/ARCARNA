@@ -15,6 +15,8 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
 | Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |
+| Truths at a glance: read (widgets above their role hidden) | No | Yes, without Profit Truths | Yes | Yes |
+| Truths at a glance: change the org's layout (v1.2 Phase 3) | No | No | Yes, logged | Yes, logged |
 | Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |
 | Customer contact details (Q13a) | No | No | Yes | Yes |
 | Shift sheets | Own only | Cashiers' and own | All | All |

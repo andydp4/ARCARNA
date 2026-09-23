@@ -129,8 +129,9 @@ export function ViewSelector({
                     <Button variant="ghost" size="sm" onClick={() => onSetDefault(v.id)}>Set default</Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => onRename(v.id, v.name)}>Rename</Button>
-                  <Button variant="ghost" size="sm" onClick={() => onDelete(v.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                  <Button variant="ghost" size="sm" className="gap-1 text-destructive hover:text-destructive" onClick={() => onDelete(v.id)}>
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                    Delete
                   </Button>
                 </div>
               </li>

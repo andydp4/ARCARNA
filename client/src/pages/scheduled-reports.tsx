@@ -166,11 +166,13 @@ export default function ScheduledReportsPage() {
                 <Switch checked={!!r.isEnabled} onCheckedChange={() => toggleMutation.mutate(r)} />
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="gap-1"
                   aria-label={`View run history for ${r.name}`}
                   onClick={() => setHistoryId(r.id)}
                 >
-                  <History className="h-4 w-4" />
+                  <History className="h-4 w-4" aria-hidden />
+                  History
                 </Button>
               </div>
             </div>

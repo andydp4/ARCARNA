@@ -42,7 +42,7 @@ const WmSuppliesOrderSuccessPage = shopSurface(WmSuppliesOrderSuccessPageRaw);
 const Landing = lazy(() => import("@/pages/landing"));
 const Home = lazy(() => import("@/pages/home"));
 const Inventory = lazy(() => import("@/pages/inventory"));
-const Insights = lazy(() => import("@/pages/insights"));
+const TruthsAtAGlance = lazy(() => import("@/pages/truths"));
 const Locations = lazy(() => import("@/pages/locations"));
 const Loyalty = lazy(() => import("@/pages/loyalty"));
 const Promotions = lazy(() => import("@/pages/promotions"));
@@ -199,9 +199,11 @@ function Router() {
           <Route path="/products">
             <RequireRole href="/products"><ProductManagement /></RequireRole>
           </Route>
-          <Route path="/insights">
-            <RequireRole href="/insights"><Insights /></RequireRole>
+          <Route path="/truths">
+            <RequireRole href="/truths"><TruthsAtAGlance /></RequireRole>
           </Route>
+          {/* The Truths Hub's charts are widgets on Truths at a glance now. */}
+          <Route path="/insights"><Redirect to="/truths" /></Route>
           <Route path="/reports">
             <RequireRole href="/reports"><ReportsHub /></RequireRole>
           </Route>
@@ -258,7 +260,7 @@ function Router() {
           <Route path="/reports/reseller-credit">
             <RequireRole href="/reports"><ResellerCreditReport /></RequireRole>
           </Route>
-          <Route path="/analytics"><Redirect to="/insights" /></Route>
+          <Route path="/analytics"><Redirect to="/truths" /></Route>
           <Route path="/analytics/rfm">
             <RequireRole href="/analytics/rfm"><RfmAnalyticsPage /></RequireRole>
           </Route>

@@ -617,13 +617,14 @@ export default function SetupWizard() {
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
-                            className="min-h-[44px] min-w-[44px]"
+                            size="sm"
+                            className="min-h-[44px] gap-1"
                             disabled={cashierDrafts.length === 1}
                             onClick={() => setCashierDrafts((d) => d.filter((_, i) => i !== idx))}
                             aria-label="Remove cashier"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                            Remove
                           </Button>
                         </div>
                       ))}

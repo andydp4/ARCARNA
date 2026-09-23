@@ -600,8 +600,10 @@ export default function Inventory() {
                                   onClick={() => openAdjustmentDialog(product, "add")}
                                   disabled={locationFilter === ALL_LOCATIONS}
                                   data-testid={`button-add-stock-${product.id}`}
+                                  className="gap-1"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  <Plus className="h-3 w-3" aria-hidden />
+                                  Add
                                 </Button>
                                 <Button
                                   size="sm"

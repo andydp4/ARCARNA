@@ -28,7 +28,7 @@ const CENTRE_MENU_COPY: Record<Exclude<CentreKey, "operations">, { title: string
   },
   truths: {
     title: "The Truths Centre",
-    body: "Every Truth and all the Evidence behind them, in one place. Pick a page from this menu.",
+    body: "It opens on Truths at a glance: the widgets your admin chose, each with its window. Every Truth and all the Evidence are in this menu.",
   },
   customer: {
     title: "The Customer Centre",
