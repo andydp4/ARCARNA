@@ -173,7 +173,7 @@ type OrderCommissionBasis = {
  * money in that day, and this one brought none, so charging it a share now
  * would count the same overheads twice.
  */
-async function commissionBasisFor(
+export async function commissionBasisFor(
   orderId: string,
   creditAmountGiven = 0,
   client: CreditLedgerDb = db,
