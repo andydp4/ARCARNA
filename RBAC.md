@@ -42,6 +42,36 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   registers as a cashier and fails on any canary it finds. Leaks still being
   closed by another part of Phase 0B sit in `KNOWN_LEAKS` with their owner;
   that list may only shrink.
+- **Evidence and Truths (Q12).** Every Evidence read (`/api/reports`,
+  `/api/reports/:ref`), every Truths read (`/api/analytics/*`), the customer
+  intelligence routes and the assistant's summary and alerts are MANAGER and
+  above. Staff KPI (`ARC-T2-002`) rates managers too, so it is ADMIN and above
+  (`EVIDENCE_REF_MIN_ROLE`), and the page is hidden while it is rebuilt: it
+  counted cashier codes, which no shift carries any more. Profit and expense
+  Evidence (`/api/profit-analysis`, `/api/expense-report`,
+  `/api/expense-analytics`) is ADMIN and above. The home page hides its
+  Truths panel and Evidence picks below MANAGER, so cashiers do not land on
+  refusals.
+- **Exports (Q12).** Admin only, and every one writes an admin-audit row: the
+  Evidence export (`export.evidence`), the page exports made in the browser
+  (the toolbar records them through `POST /api/evidence/exports` first), the
+  customer RFM export (`export.customers_rfm`), the customer and product bulk
+  exports (`bulk.export`) and the payroll CSV (`export.payroll`). CSV cells
+  that a spreadsheet would run as a formula are prefixed with `'`
+  (`shared/csv.ts`).
+- **Customer contact in Evidence (PRV-02).** Top customers, Customer Truths
+  and the Credit List CSV carry no email; the command palette shows a
+  customer's tier and points. Only the admin RFM export includes email.
+- **Staff filter.** Daily Sales, Weekly Sales and Weekly Margin filter by the
+  person who completed the order (`orders.completed_user_id`, `?staffId=`),
+  listed by `GET /api/evidence/staff` (names and ids only). Before 27 August
+  2026 that person was inferred from who opened the shift (migration 057), and
+  the pages say so. An old `?cashierId=` link is refused.
+- **Payroll (Q12, Q13a).** One row per person, with sales per active hour
+  (first to last action on the shift). MANAGER and ADMIN see cashiers' rows
+  and their own; managers' pay is SUPER_ADMIN only (`canSeePayRow`,
+  `shared/reports/payroll.ts`). The route that opened coded shifts
+  (`POST /api/cashier-shifts/start`) is retired.
 - **Signals.** Every Signal is raised through `notify()`
   (`server/services/signals.ts`) with an audience — a minimum role, a list of
   roles, or named people — and, when it names a member of staff, that person

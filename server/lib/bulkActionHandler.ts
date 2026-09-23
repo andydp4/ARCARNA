@@ -11,6 +11,7 @@ import {
 } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { csvRow } from "@shared/csv";
 
 type OrgContext = { orgId: string; role: Role; userId?: string };
 
@@ -55,6 +56,15 @@ async function handleCustomerBulk(
       .select()
       .from(customers)
       .where(and(eq(customers.orgId, ctx.orgId), inArray(customers.id, ids)));
+    // Every export is logged (Q12): it is a customer list with contact details.
+    await recordAdminAudit(req, {
+      actorUserId,
+      actorRole: ctx.role,
+      action: "bulk.export",
+      targetType: "customer",
+      orgId: ctx.orgId,
+      metadata: { count: rows.length, ids },
+    });
     return { ok: true as const, result: { rows, format: "csv" } };
   }
 
@@ -152,15 +162,7 @@ export function rowsToCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
   const keys = Object.keys(rows[0]);
   const header = keys.join(",");
-  const lines = rows.map((row) =>
-    keys
-      .map((key) => {
-        const val = row[key];
-        if (val == null) return "";
-        const str = String(val);
-        return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-      })
-      .join(","),
-  );
+  // csvCell also neutralises cells a spreadsheet would run as a formula (PRV-02).
+  const lines = rows.map((row) => csvRow(keys.map((key) => row[key])));
   return [header, ...lines].join("\n");
 }

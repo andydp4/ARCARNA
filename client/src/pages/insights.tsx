@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { EXPORT_MIN_ROLE, isAtLeast } from "@shared/accessPolicy";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subDays } from "date-fns";
 import {
@@ -96,6 +98,8 @@ function useSpatialInsightsMode(): boolean {
 
 export default function Insights() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canExport = isAtLeast(user?.role, EXPORT_MIN_ROLE);
   const spatialMode = useSpatialInsightsMode();
   const [dateRange, setDateRange] = useState<{
     from: Date;
@@ -364,7 +368,8 @@ export default function Insights() {
 
               <Separator className="lg:hidden" />
 
-              {/* Export Options */}
+              {/* Export Options: exports are admin only and logged (Q12). */}
+              {canExport && (
               <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:max-w-sm lg:flex-nowrap">
                 <div className="min-w-0 flex-1 space-y-2 sm:flex-initial">
                   <Label className="text-muted-foreground">Export format</Label>
@@ -399,6 +404,7 @@ export default function Insights() {
                   </Button>
                 </div>
               </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -501,26 +507,28 @@ export default function Insights() {
                       Daily revenue and orders in the selected period
                     </CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExport("revenue")}
-                    disabled={isExporting}
-                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
-                    data-testid="button-export-revenue"
-                  >
-                    {isExporting ? (
-                      <>
-                        <ActionLoader className="text-primary" />
-                        Exporting…
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Export this tab
-                      </>
-                    )}
-                  </Button>
+                  {canExport && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExport("revenue")}
+                      disabled={isExporting}
+                      className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
+                      data-testid="button-export-revenue"
+                    >
+                      {isExporting ? (
+                        <>
+                          <ActionLoader className="text-primary" />
+                          Exporting…
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-3.5 w-3.5" />
+                          Export this tab
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -632,26 +640,28 @@ export default function Insights() {
                     <CardTitle className="text-lg">Order analysis</CardTitle>
                     <CardDescription className="mt-1.5 leading-relaxed">When orders land and what sold best</CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExport("orders")}
-                    disabled={isExporting}
-                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
-                    data-testid="button-export-orders"
-                  >
-                    {isExporting ? (
-                      <>
-                        <ActionLoader className="text-primary" />
-                        Exporting…
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Export this tab
-                      </>
-                    )}
-                  </Button>
+                  {canExport && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExport("orders")}
+                      disabled={isExporting}
+                      className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
+                      data-testid="button-export-orders"
+                    >
+                      {isExporting ? (
+                        <>
+                          <ActionLoader className="text-primary" />
+                          Exporting…
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-3.5 w-3.5" />
+                          Export this tab
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -729,26 +739,28 @@ export default function Insights() {
                       Segments, retention, and highest-value buyers
                     </CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExport("customers")}
-                    disabled={isExporting}
-                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
-                    data-testid="button-export-customers"
-                  >
-                    {isExporting ? (
-                      <>
-                        <ActionLoader className="text-primary" />
-                        Exporting…
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Export this tab
-                      </>
-                    )}
-                  </Button>
+                  {canExport && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExport("customers")}
+                      disabled={isExporting}
+                      className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
+                      data-testid="button-export-customers"
+                    >
+                      {isExporting ? (
+                        <>
+                          <ActionLoader className="text-primary" />
+                          Exporting…
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-3.5 w-3.5" />
+                          Export this tab
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -857,26 +869,28 @@ export default function Insights() {
                     <CardTitle className="text-lg">Inventory analysis</CardTitle>
                     <CardDescription className="mt-1.5 leading-relaxed">Stock value, risk SKUs, and velocity</CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExport("inventory")}
-                    disabled={isExporting}
-                    className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
-                    data-testid="button-export-inventory"
-                  >
-                    {isExporting ? (
-                      <>
-                        <ActionLoader className="text-primary" />
-                        Exporting…
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Export this tab
-                      </>
-                    )}
-                  </Button>
+                  {canExport && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExport("inventory")}
+                      disabled={isExporting}
+                      className="min-h-[44px] w-full justify-center gap-2 sm:min-w-[9.5rem] sm:w-auto sm:shrink-0"
+                      data-testid="button-export-inventory"
+                    >
+                      {isExporting ? (
+                        <>
+                          <ActionLoader className="text-primary" />
+                          Exporting…
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-3.5 w-3.5" />
+                          Export this tab
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

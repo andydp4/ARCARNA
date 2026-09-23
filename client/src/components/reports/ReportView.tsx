@@ -24,7 +24,7 @@ export interface KpiDef {
 
 export interface ReportViewConfig<T> {
   reportRef: string;
-  params?: { from?: string; to?: string; locationId?: string; cashierId?: string };
+  params?: { from?: string; to?: string; locationId?: string; staffId?: string };
   /** Header period label from the payload. */
   periodLabel?: (data: ReportPayload | undefined) => string;
   kpis: (summary: Record<string, any>) => KpiDef[];
@@ -62,7 +62,7 @@ export function ReportView<T>({ config }: { config: ReportViewConfig<T> }) {
     <div className={`mx-auto ${config.maxWidth ?? "max-w-5xl"} px-4 py-6`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> All reports
+          <ChevronLeft className="h-4 w-4" /> All Evidence
         </Link>
         {config.controls}
       </div>

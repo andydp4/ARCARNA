@@ -3,6 +3,11 @@ import { storage } from "../storage";
 import { runAssistantTurn } from "../assistant/engine";
 import { getAssistantAlerts, getDailySummary } from "../assistant/alerts";
 import type { QuickEntryDraft } from "../assistant/quickEntry";
+import { requireRole } from "../auth";
+import { EVIDENCE_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
+
+/** The day's summary and alerts read takings and customers: manager and above (PRV-02). */
+const evidenceRoles = requireRole(...rolesAtLeast(EVIDENCE_MIN_ROLE));
 
 /** Body shared by the web client and the Siri Shortcut: caller holds the draft, hands it back each turn. */
 interface AssistantTurnBody {
@@ -29,7 +34,7 @@ export function registerAssistantRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/assistant/summary", ...scoped, async (req: any, res) => {
+  app.get("/api/assistant/summary", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const orgId = req.orgContext?.orgId as string | undefined;
       if (!orgId) return res.status(400).json({ message: "Org context required" });
@@ -41,7 +46,7 @@ export function registerAssistantRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/assistant/alerts", ...scoped, async (req: any, res) => {
+  app.get("/api/assistant/alerts", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const orgId = req.orgContext?.orgId as string | undefined;
       if (!orgId) return res.status(400).json({ message: "Org context required" });

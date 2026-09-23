@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ReportFrame } from "@/components/reports/ReportFrame";
 import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
 import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
-import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
+import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, int, screenDate, isoDate, orDash } from "@/lib/reportBrand";
@@ -56,7 +56,7 @@ export default function WeeklySalesReport() {
     <div className="mx-auto max-w-4xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> All reports
+          <ChevronLeft className="h-4 w-4" /> All Evidence
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-muted-foreground">Week of</label>
@@ -128,6 +128,7 @@ export default function WeeklySalesReport() {
                 getRowKey={(r) => String(r.rank)}
               />
             </div>
+            <StaffFilterFootnote value={scope} />
           </>
         )}
       </ReportFrame>

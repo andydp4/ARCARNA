@@ -55,14 +55,22 @@ export type RevenueDay = DayKpi;
  */
 export interface RevenueScopeFilter {
   locationId?: string;
-  cashierId?: string;
+  /** A person's user id (auth subject), not a cashier code (STF-FN2). */
+  staffUserId?: string;
 }
 
-/** `orders`-table conditions for an optional location/cashier scope. Cashier is read off `completedCashierId` — who actually did the commission-earning work, the same column {@link import("./reportsEngine").staffKpiPerformance} attributes to, not the legacy last-writer-wins `cashierId`. */
+/**
+ * `orders`-table conditions for an optional location/person scope. The person
+ * is read off `completed_user_id`: whoever took the order to completed.
+ * Cashier codes are not used — no shift has carried one since the lazy-shift
+ * change, so `completed_cashier_id` is NULL on current trading. Before
+ * 27 Aug 2026 `completed_user_id` was backfilled by migration 057 from whoever
+ * opened the shift, so older weeks are an inference, not a record.
+ */
 function scopeConditions(filter?: RevenueScopeFilter) {
   const extra = [];
   if (filter?.locationId) extra.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) extra.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) extra.push(eq(orders.completedUserId, filter.staffUserId));
   return extra;
 }
 

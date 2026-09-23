@@ -14,7 +14,9 @@ export type BulkActionDef = {
 };
 
 const CUSTOMER_ACTIONS: BulkActionDef[] = [
-  { id: "export", label: "Export CSV", minRole: "CASHIER" },
+  // A customer list with contact details: exports are admin-only and logged
+  // (Q12, PRV-02).
+  { id: "export", label: "Export CSV", minRole: "ADMIN" },
   { id: "tag", label: "Set category", minRole: "MANAGER" },
   { id: "delete", label: "Delete", minRole: "MANAGER", destructive: true, confirmText: "DELETE" },
 ];

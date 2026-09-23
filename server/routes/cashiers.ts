@@ -13,7 +13,6 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import {
-  startCashierShift,
   closeCashierShift,
   getOpenCashierShift,
   computeCashierShiftBalanceSheet,
@@ -39,10 +38,6 @@ const updateCashierSchema = z.object({
   pinCode: z.string().trim().max(16).optional().nullable(),
   defaultCommissionRate: z.coerce.number().min(0).max(100).optional().nullable(),
   isActive: z.boolean().optional(),
-});
-
-const startShiftSchema = z.object({
-  cashierId: z.string().uuid("Valid cashierId is required"),
 });
 
 /**
@@ -243,32 +238,11 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.post("/api/cashier-shifts/start", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string };
-      const userId = req.user?.id ?? "unknown";
-      const body = startShiftSchema.parse(req.body ?? {});
-
-      const shift = await startCashierShift(ctx.orgId, body.cashierId, userId);
-
-      await recordAdminAudit(req, {
-        actorUserId: userId,
-        actorRole: req.orgContext?.role ?? "CASHIER",
-        action: "cashier_shift.opened",
-        targetType: "cashier_shift",
-        targetId: shift.id,
-        orgId: ctx.orgId,
-        metadata: { cashierId: body.cashierId },
-      });
-
-      res.status(201).json(cashierShiftWithReplayToken(shift));
-    } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
-      if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
-      console.error("[CashierShifts] start:", error);
-      res.status(500).json({ message: "Failed to start cashier shift" });
-    }
-  });
+  // POST /api/cashier-shifts/start is retired (STF-FN1). It opened a shift
+  // under a cashier code, which nothing in the app does any more: shifts open
+  // lazily on first sale, keyed by the person. Left in place it let any role
+  // open coded shifts through the API, which is what emptied the staff
+  // Evidence in the first place.
 
   app.post("/api/cashier-shifts/:id/end", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {

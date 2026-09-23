@@ -19,27 +19,27 @@ import { ResponsiveTable, ResponsiveCardRow } from "@/components/ui/responsive-t
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, getJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { EXPORT_MIN_ROLE, isAtLeast } from "@shared/accessPolicy";
 
-type CashierMetric = {
-  cashierId: string;
-  cashierCode: string;
-  cashierName: string;
+/** One row per person (STF-FN3); `key` is their user id, or `code:<id>` for old code-only history. */
+type PayrollMetric = {
+  key: string;
+  name: string;
   totalSales: number;
   netSalesProfit: number;
   commissionEarned: number;
   commissionPaid: number;
   commissionUnpaid: number;
   shiftCount: number;
-  shiftDurationHours: number;
-  salesPerHour: number;
-  profitPerHour: number;
+  activeHours: number;
+  salesPerActiveHour: number;
   orderCount: number;
   averageOrderValue: number;
 };
 
 type CashierAnalytics = {
-  metrics: CashierMetric[];
-  leaderboards: Record<string, CashierMetric[]>;
+  metrics: PayrollMetric[];
   shiftStatus: {
     open: number;
     closed: number;
@@ -76,17 +76,31 @@ export default function CashierPayrollPage() {
   const queryClient = useQueryClient();
   const [from, setFrom] = useState(isoDaysAgo(30));
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
-  const [cashierFilter, setCashierFilter] = useState<string>("all");
+  const [staffFilter, setStaffFilter] = useState<string>("all");
+  const { user } = useAuth();
+  // Exports are admin only and logged (Q12).
+  const canExport = isAtLeast(user?.role, EXPORT_MIN_ROLE);
 
   const params = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set("from", from);
     qs.set("to", to);
-    if (cashierFilter !== "all") qs.set("cashierId", cashierFilter);
     return qs.toString();
-  }, [from, to, cashierFilter]);
+  }, [from, to]);
+
+  const analyticsParams = useMemo(() => {
+    const qs = new URLSearchParams(params);
+    if (staffFilter !== "all") qs.set("staffId", staffFilter);
+    return qs.toString();
+  }, [params, staffFilter]);
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<CashierAnalytics>({
+    queryKey: ["/api/cashier-analytics", analyticsParams],
+    queryFn: () => getJson(`/api/cashier-analytics?${analyticsParams}`),
+  });
+  // The picker lists everyone in the period, so it keeps its options while a
+  // single person is selected.
+  const { data: everyone } = useQuery<CashierAnalytics>({
     queryKey: ["/api/cashier-analytics", params],
     queryFn: () => getJson(`/api/cashier-analytics?${params}`),
   });
@@ -137,7 +151,7 @@ export default function CashierPayrollPage() {
         icon={Wallet}
         title="Cashier Payroll"
         question="Who earned what, and has it been paid?"
-        explanation="Shift profit, commission earned and payment status by cashier."
+        explanation="Shift profit, commission earned and payment status, one row per person."
       />
 
       <Card className="border-0 shadow-none lm-card">
@@ -151,22 +165,24 @@ export default function CashierPayrollPage() {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-[44px]" />
           </div>
           <div className="space-y-2">
-            <Label>Cashier</Label>
-            <Select value={cashierFilter} onValueChange={setCashierFilter}>
-              <SelectTrigger className="min-h-[44px] w-48">
+            <Label>Person</Label>
+            <Select value={staffFilter} onValueChange={setStaffFilter}>
+              <SelectTrigger className="min-h-[44px] w-48" data-testid="select-payroll-person">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All cashiers</SelectItem>
-                {metrics.map((m) => (
-                  <SelectItem key={m.cashierId} value={m.cashierId}>{m.cashierCode} — {m.cashierName}</SelectItem>
+                <SelectItem value="all">Everyone</SelectItem>
+                {(everyone?.metrics ?? []).map((m) => (
+                  <SelectItem key={m.key} value={m.key}>{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" onClick={exportCsv} className="min-h-[44px]" data-testid="button-export-payroll-csv">
-            <Download className="mr-1.5 h-4 w-4" /> Export CSV
-          </Button>
+          {canExport && (
+            <Button variant="outline" onClick={exportCsv} className="min-h-[44px]" data-testid="button-export-payroll-csv">
+              <Download className="mr-1.5 h-4 w-4" /> Export CSV
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -182,35 +198,39 @@ export default function CashierPayrollPage() {
 
       <Card className="border-0 shadow-none lm-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5" /> Cashier performance</CardTitle>
-          <CardDescription>Sales, profit and commission by cashier for the selected period.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5" /> By person</CardTitle>
+          <CardDescription>
+            Sales, profit and commission per person for the selected trading days. Active hours run from the first to
+            the last thing each person did on a shift, not to when the shift was closed.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {analyticsLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : metrics.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No cashier shifts in this period.</p>
+            <p className="text-sm text-muted-foreground">No shifts in this period.</p>
           ) : (
             <ResponsiveTable
               rows={metrics}
-              getRowKey={(m) => m.cashierId}
+              getRowKey={(m) => m.key}
               head={
                 <TableRow>
-                  <TableHead>Cashier</TableHead>
+                  <TableHead>Person</TableHead>
                   <TableHead>Sales</TableHead>
                   <TableHead>Net profit</TableHead>
                   <TableHead>Commission earned</TableHead>
                   <TableHead>Paid</TableHead>
                   <TableHead>Unpaid</TableHead>
-                  <TableHead>Sales/hr</TableHead>
+                  <TableHead>Active hours</TableHead>
+                  <TableHead>Sales per active hour</TableHead>
                   <TableHead>Orders</TableHead>
                 </TableRow>
               }
               renderCard={(m) => (
-                <Card className="lm-card border-0 shadow-none" data-testid={`card-cashier-metric-${m.cashierCode}`}>
+                <Card className="lm-card border-0 shadow-none" data-testid={`card-payroll-person-${m.key}`}>
                   <CardContent className="pt-4">
                     <div className="mb-2 flex items-start justify-between gap-2">
-                      <p className="font-medium">{m.cashierCode} · {m.cashierName}</p>
+                      <p className="font-medium">{m.name}</p>
                       {m.commissionUnpaid > 0 && (
                         <Badge variant="destructive">{money(m.commissionUnpaid)} unpaid</Badge>
                       )}
@@ -220,7 +240,8 @@ export default function CashierPayrollPage() {
                       <ResponsiveCardRow label="Net profit">{money(m.netSalesProfit)}</ResponsiveCardRow>
                       <ResponsiveCardRow label="Commission earned">{money(m.commissionEarned)}</ResponsiveCardRow>
                       <ResponsiveCardRow label="Paid">{money(m.commissionPaid)}</ResponsiveCardRow>
-                      <ResponsiveCardRow label="Sales/hr">{money(m.salesPerHour)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Active hours">{m.activeHours.toFixed(1)}</ResponsiveCardRow>
+                      <ResponsiveCardRow label="Sales per active hour">{money(m.salesPerActiveHour)}</ResponsiveCardRow>
                       <ResponsiveCardRow label="Orders">{m.orderCount}</ResponsiveCardRow>
                     </div>
                   </CardContent>
@@ -228,8 +249,8 @@ export default function CashierPayrollPage() {
               )}
             >
               {metrics.map((m) => (
-                <TableRow key={m.cashierId} data-testid={`row-cashier-metric-${m.cashierCode}`}>
-                  <TableCell className="font-medium">{m.cashierCode} · {m.cashierName}</TableCell>
+                <TableRow key={m.key} data-testid={`row-payroll-person-${m.key}`}>
+                  <TableCell className="font-medium">{m.name}</TableCell>
                   <TableCell>{money(m.totalSales)}</TableCell>
                   <TableCell>{money(m.netSalesProfit)}</TableCell>
                   <TableCell>{money(m.commissionEarned)}</TableCell>
@@ -241,7 +262,8 @@ export default function CashierPayrollPage() {
                       money(0)
                     )}
                   </TableCell>
-                  <TableCell>{money(m.salesPerHour)}</TableCell>
+                  <TableCell>{m.activeHours.toFixed(1)}</TableCell>
+                  <TableCell>{money(m.salesPerActiveHour)}</TableCell>
                   <TableCell>{m.orderCount}</TableCell>
                 </TableRow>
               ))}

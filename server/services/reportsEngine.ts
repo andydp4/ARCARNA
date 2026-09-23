@@ -37,6 +37,7 @@ import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
 import { currentTradingDay, tradingDayBounds, tradingDayFor, shiftIsoDate } from "@shared/time/tradingDay";
 import { settledRevenueByTradingDay, type RevenueScopeFilter } from "./revenue";
+import { isEvidenceStaff } from "./evidenceStaff";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import {
   deriveOrderTiming,
@@ -70,7 +71,7 @@ function num(v: unknown): number {
 }
 
 /**
- * ARC-026: a `locationId`/`cashierId` from another org (a stale link, a typo,
+ * ARC-026: a `locationId`/`staffUserId` from another org (a stale link, a typo,
  * or a forged query param) must 404 the report, never silently fall back to
  * scoping the whole org's data instead — the caller asked to see ONE
  * location/cashier's numbers, and org-wide numbers under that label would be
@@ -82,7 +83,11 @@ export class ReportScopeError extends Error {
 
 export interface ReportScopeFilter {
   locationId?: string;
-  cashierId?: string;
+  /**
+   * A person's user id (the auth subject on `orders.completed_user_id`), not
+   * a cashier code (STF-FN2). See revenue.ts scopeConditions.
+   */
+  staffUserId?: string;
 }
 
 /**
@@ -95,7 +100,7 @@ export interface ReportScopeFilter {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Confirms a caller-supplied location/cashier filter actually belongs to this
+ * Confirms a caller-supplied location/staff filter actually belongs to this
  * org before any report query is scoped to it. Same shape as the
  * `orders`/`locations` ownership check `POST /api/shifts/open` already uses
  * (server/routes/shifts.ts) — id + org id, nothing implicitly inherited.
@@ -110,14 +115,12 @@ export async function validateReportScope(orgId: string, filter: ReportScopeFilt
       .limit(1);
     if (!loc) throw new ReportScopeError(`Location ${filter.locationId} not found`);
   }
-  if (filter.cashierId) {
-    if (!UUID_RE.test(filter.cashierId)) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
-    const [c] = await db
-      .select({ id: cashierProfiles.id })
-      .from(cashierProfiles)
-      .where(and(eq(cashierProfiles.id, filter.cashierId), eq(cashierProfiles.orgId, orgId)))
-      .limit(1);
-    if (!c) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
+  if (filter.staffUserId) {
+    // User ids are auth subjects ("user_…"), not UUIDs, so there is no UUID
+    // pre-check here; the lookup is a plain varchar comparison.
+    if (!(await isEvidenceStaff(orgId, filter.staffUserId))) {
+      throw new ReportScopeError(`Staff member ${filter.staffUserId} not found`);
+    }
   }
 }
 
@@ -204,7 +207,7 @@ async function channelBreakdown(
 
   const scopeConds = [];
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) scopeConds.push(eq(orders.completedUserId, filter.staffUserId));
 
   const orderRows = await db
     .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
@@ -371,7 +374,7 @@ export async function weeklySalesSummary(
 
   const topScopeConds = [];
   if (filter?.locationId) topScopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) topScopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) topScopeConds.push(eq(orders.completedUserId, filter.staffUserId));
   const top = await db
     .select({
       name: products.name,
@@ -545,7 +548,7 @@ export async function weeklyMarginSummary(
   const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
   const scopeConds = [];
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) scopeConds.push(eq(orders.completedUserId, filter.staffUserId));
   const cond = and(
     eq(orders.orgId, orgId),
     eq(orders.status, "completed"),
@@ -1864,12 +1867,12 @@ export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004" | "ARC-T2-005
 export async function runReport(
   ref: string,
   orgId: string,
-  opts: { from?: Date; to?: Date; locationId?: string; cashierId?: string } = {},
+  opts: { from?: Date; to?: Date; locationId?: string; staffUserId?: string } = {},
 ): Promise<ReportPayload> {
-  // ARC-026: callers MUST validate opts.locationId/cashierId belong to this
+  // ARC-026: callers MUST validate opts.locationId/staffUserId belong to this
   // org before calling runReport — the route layer does this once here
   // rather than in every branch below.
-  const filter: ReportScopeFilter = { locationId: opts.locationId, cashierId: opts.cashierId };
+  const filter: ReportScopeFilter = { locationId: opts.locationId, staffUserId: opts.staffUserId };
   switch (ref) {
     case "ARC-T1-001":
       return dailySalesSummary(orgId, opts.from, filter);

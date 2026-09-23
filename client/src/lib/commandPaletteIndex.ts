@@ -156,6 +156,12 @@ function buildPageItems(recentIds: string[], userRole: string | undefined): Comm
     }));
 }
 
+export function customerPaletteSubtext(customer: Pick<Customer, "category" | "loyaltyPoints">): string {
+  const tier = customer.category?.trim() || "Bronze";
+  const points = Number(customer.loyaltyPoints ?? 0);
+  return `${tier} · ${points.toLocaleString("en-GB")} ${points === 1 ? "point" : "points"}`;
+}
+
 function buildCustomerItems(customers: Customer[], recentIds: string[]): CommandPaletteItem[] {
   return [...customers]
     .sort((a, b) => {
@@ -170,7 +176,9 @@ function buildCustomerItems(customers: Customer[], recentIds: string[]): Command
         id,
         section: "customers" as const,
         label: customer.name,
-        subtext: customer.email ?? customer.phone ?? undefined,
+        // Tier and points, not contact details: the palette is open to every
+        // role, and cashiers see no customer contact details (PRV-02).
+        subtext: customerPaletteSubtext(customer),
         href: "/customers",
         recentBoost: recentBoostFor(id, recentIds),
       };

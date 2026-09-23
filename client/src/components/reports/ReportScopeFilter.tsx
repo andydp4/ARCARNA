@@ -1,12 +1,15 @@
 /**
- * ARC-026: location/cashier filter controls shared by every report that can
+ * ARC-026: location/staff filter controls shared by every report that can
  * sensibly be scoped this way (Daily Sales, Weekly Sales, Current Stock,
- * Weekly Margin). Fetches the same `/api/locations` and `/api/cashiers`
- * lists other pickers in the app already use (see
- * client/src/components/inventory/TransfersTab.tsx for the location list,
- * `/api/cashiers` for the cashier list) rather than inventing a new source.
+ * Weekly Margin). Locations come from `/api/locations`, the list other
+ * pickers already use.
  *
- * "All locations" / "All cashiers" is the default (no filter applied) — an
+ * Staff come from `/api/evidence/staff` and are keyed by the person, not a
+ * cashier code (STF-FN2): the Evidence counts whoever completed each order.
+ * No shift has carried a code since the lazy-shift change, so the old
+ * code-keyed picker answered £0 for everyone trading today.
+ *
+ * "All locations" / "All staff" is the default (no filter applied) — an
  * explicit choice, not a silent fallback to the caller's own current
  * location, since a report should default to the whole picture unless asked
  * to narrow it.
@@ -20,16 +23,17 @@ interface LocationOption {
   name: string;
 }
 
-interface CashierOption {
+interface StaffOption {
   id: string;
-  displayName: string;
+  name: string;
 }
 
 const ALL = "__all__";
 
 export interface ReportScopeValue {
   locationId?: string;
-  cashierId?: string;
+  /** A person's user id (who completed the order). */
+  staffId?: string;
 }
 
 export function ReportScopeFilter({
@@ -39,7 +43,7 @@ export function ReportScopeFilter({
 }: {
   value: ReportScopeValue;
   onChange: (next: ReportScopeValue) => void;
-  /** Some reports (e.g. Current Stock) have no cashier dimension — omit the picker there. */
+  /** Some reports (e.g. Current Stock) have no staff dimension — omit the picker there. */
   showCashier?: boolean;
 }) {
   const { data: locations = [] } = useQuery<LocationOption[]>({
@@ -51,10 +55,10 @@ export function ReportScopeFilter({
     },
   });
 
-  const { data: cashiers = [] } = useQuery<CashierOption[]>({
-    queryKey: ["/api/cashiers"],
+  const { data: staff = [] } = useQuery<StaffOption[]>({
+    queryKey: ["/api/evidence/staff"],
     queryFn: async () => {
-      const res = await apiFetch("/api/cashiers", { credentials: "include" });
+      const res = await apiFetch("/api/evidence/staff", { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -82,22 +86,38 @@ export function ReportScopeFilter({
 
       {showCashier && (
         <Select
-          value={value.cashierId ?? ALL}
-          onValueChange={(v) => onChange({ ...value, cashierId: v === ALL ? undefined : v })}
+          value={value.staffId ?? ALL}
+          onValueChange={(v) => onChange({ ...value, staffId: v === ALL ? undefined : v })}
         >
-          <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-cashier">
-            <SelectValue placeholder="All cashiers" />
+          <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-staff">
+            <SelectValue placeholder="All staff" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>All cashiers</SelectItem>
-            {cashiers.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.displayName}
+            <SelectItem value={ALL}>All staff</SelectItem>
+            {staff.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       )}
     </div>
+  );
+}
+
+/**
+ * Shown under a report filtered to one person. Orders from before 27 August
+ * 2026 were attributed by migration 057 from whoever opened the shift, so
+ * those weeks are an inference, not a record — the owner should know which
+ * figures are which.
+ */
+export function StaffFilterFootnote({ value }: { value: ReportScopeValue }) {
+  if (!value.staffId) return null;
+  return (
+    <p className="mt-3 text-xs text-muted-foreground" data-testid="text-staff-filter-footnote">
+      Filtered to the person who completed each order. Before 27 August 2026, who completed an order is inferred from
+      who opened the shift.
+    </p>
   );
 }

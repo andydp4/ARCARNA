@@ -329,7 +329,10 @@ jobs:
             server/__tests__/jobClaimRace.test.ts \
             server/__tests__/roleMatrix.test.ts \
             server/__tests__/productWrites.test.ts \
-            server/__tests__/signals.test.ts
+            server/__tests__/signals.test.ts \
+            server/__tests__/staffKpiHidden.test.ts \
+            server/__tests__/reportScopeFilter.test.ts \
+            server/__tests__/cashierAnalyticsRoutes.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

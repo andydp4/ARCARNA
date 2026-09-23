@@ -148,13 +148,8 @@ export async function getRfmSummary(orgId: string) {
   };
 }
 
-export async function getRfmCustomersBySegment(
-  orgId: string,
-  segment: RfmSegment,
-  limit = 50,
-  offset = 0,
-) {
-  const rows = await db
+async function selectRfmCustomers(orgId: string, segment: RfmSegment, limit: number, offset: number) {
+  return db
     .select({
       customerId: customerRfm.customerId,
       name: customers.name,
@@ -171,6 +166,23 @@ export async function getRfmCustomersBySegment(
     .where(and(eq(customerRfm.orgId, orgId), eq(customerRfm.segment, segment)))
     .limit(limit)
     .offset(offset);
+}
 
-  return rows;
+/**
+ * Customers in one RFM segment, without contact details: Customer Truths is
+ * a manager screen, and managers see no contact details (PRV-02, Q13a).
+ */
+export async function getRfmCustomersBySegment(
+  orgId: string,
+  segment: RfmSegment,
+  limit = 50,
+  offset = 0,
+) {
+  const rows = await selectRfmCustomers(orgId, segment, limit, offset);
+  return rows.map(({ email: _email, ...rest }) => rest);
+}
+
+/** The same rows with email, for the admin-only, logged RFM export. */
+export async function getRfmCustomersForExport(orgId: string, segment: RfmSegment, limit = 5000) {
+  return selectRfmCustomers(orgId, segment, limit, 0);
 }

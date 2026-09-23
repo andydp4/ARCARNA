@@ -5,8 +5,17 @@ import { getHourOfDayAnalytics } from "../services/hourOfDayService";
 import { getChannelAttribution } from "../services/channelAttributionService";
 import { getStockTurnAnalytics } from "../services/stockTurnService";
 import { getPromotionLift } from "../services/promoLiftService";
-import { getRfmCustomersBySegment, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
+import { getRfmCustomersBySegment, getRfmCustomersForExport, getRfmSummary, recomputeOrgRfm } from "../lib/rfmService";
 import { requireRole } from "../auth";
+import { recordAdminAudit } from "../adminAudit";
+import { EVIDENCE_MIN_ROLE, EXPORT_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
+import { csvRow } from "@shared/csv";
+
+// Truths are manager and above; the customer export is admin only and logged
+// (FIX-03, PRV-02, Q12). The home page hides its Truths panel below manager
+// in the same change, so a cashier never lands on these refusals.
+const evidenceRoles = requireRole(...rolesAtLeast(EVIDENCE_MIN_ROLE));
+const exportRoles = requireRole(...rolesAtLeast(EXPORT_MIN_ROLE));
 
 const HOD_CACHE_TTL_MS = 5 * 60_000;
 const CHANNEL_CACHE_TTL_MS = 5 * 60_000;
@@ -18,7 +27,7 @@ const stockTurnCache = new Map<string, { payload: unknown; expiresAt: number }>(
 const promoLiftCache = new Map<string, { payload: unknown; expiresAt: number }>();
 
 export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/analytics/top-customers", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/top-customers", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const limit = parseInt(req.query.limit as string) || 10;
@@ -27,7 +36,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
       const formattedCustomers = topCustomers.map(({ customer, metrics }) => ({
         id: customer.id,
         name: customer.name,
-        email: customer.email,
+        // No email: this list is on the home page (PRV-02).
         orderCount: metrics?.orderCount || 0,
         totalSpent: metrics?.totalSpent || "0",
         rfmScore: metrics?.rfmScore || 0,
@@ -43,7 +52,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/daily-revenue", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/daily-revenue", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const days = parseInt(req.query.days as string) || 30;
@@ -55,7 +64,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/monthly-summary", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/monthly-summary", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const months = parseInt(req.query.months as string) || 12;
@@ -67,7 +76,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/rfm", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/rfm", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       let summary = await getRfmSummary(ctx.orgId);
@@ -82,7 +91,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/rfm/customers", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/rfm/customers", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const segment = String(req.query.segment || "") as RfmSegment;
@@ -99,21 +108,30 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/rfm/export", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/rfm/export", ...scoped, exportRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role: string };
       const segment = String(req.query.segment || "") as RfmSegment;
       if (!RFM_SEGMENTS.includes(segment)) {
         return res.status(400).json({ message: "Invalid segment" });
       }
-      const rows = await getRfmCustomersBySegment(ctx.orgId, segment, 5000, 0);
+      const rows = await getRfmCustomersForExport(ctx.orgId, segment);
+      // Every export is logged (Q12): this one is a customer list with emails.
+      await recordAdminAudit(req, {
+        actorUserId: req.user?.id ?? "unknown",
+        actorRole: ctx.role,
+        action: "export.customers_rfm",
+        targetType: "customer",
+        orgId: ctx.orgId,
+        metadata: { segment, count: rows.length },
+      });
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", `attachment; filename="rfm-${segment.toLowerCase()}.csv"`);
       res.write("customer_id,name,email,segment,r,f,m,total_spent,loyalty_points\n");
       for (const row of rows) {
-        const line = [
+        const line = csvRow([
           row.customerId,
-          `"${(row.name || "").replace(/"/g, '""')}"`,
+          row.name || "",
           row.email || "",
           row.segment,
           row.recencyScore,
@@ -121,7 +139,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
           row.monetaryScore,
           row.totalSpent,
           row.loyaltyPoints,
-        ].join(",");
+        ]);
         res.write(line + "\n");
       }
       res.end();
@@ -142,7 +160,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/hour-of-day", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/hour-of-day", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const weeks = Math.min(parseInt(String(req.query.weeks || "12"), 10) || 12, 52);
@@ -161,7 +179,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/channels", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/channels", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const days = Math.min(parseInt(String(req.query.days || "90"), 10) || 90, 365);
@@ -180,7 +198,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/stock-turn", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/stock-turn", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const windowDays = Math.min(parseInt(String(req.query.windowDays || "90"), 10) || 90, 365);
@@ -199,7 +217,7 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
     }
   });
 
-  app.get("/api/analytics/promotions/:id/lift", ...scoped, async (req: any, res) => {
+  app.get("/api/analytics/promotions/:id/lift", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const { id } = req.params;

@@ -186,14 +186,12 @@ export const navGroups: NavGroup[] = [
         roles: MANAGER_ROLES
       },
       {
-        // Reports Hub links out to every individual report page
-        // (server/routes/reports.ts and reports/index.tsx, both outside this
-        // change's scope, apply no further per-report role check), so gating
-        // this one entry is the whole story for what a manager can reach
-        // through it — see the PR description for the judgment call this
-        // implies about business-wide report pages reachable from here.
+        // The Evidence hub (formerly "Reports", renamed for the brand
+        // vocabulary: Q20b). Every Evidence read behind it is manager and
+        // above on the server (shared/accessPolicy.ts), and the refs above
+        // the manager line (Q12) are refused there too.
         key: 'reports-hub',
-        label: 'Reports',
+        label: 'Evidence',
         href: '/reports',
         icon: FileBarChart,
         testId: 'nav-reports-hub',
@@ -234,8 +232,7 @@ export const navGroups: NavGroup[] = [
       {
         // Whole-business profit/loss — explicitly the owner's "business wide"
         // example of what a manager should NOT get by default (ARC-007/009).
-        // Nothing server-side (server/routes/expenses.ts) role-gates this
-        // today, so this is a nav-level tightening ahead of that.
+        // The server refuses its reads below ADMIN too (server/routes/expenses.ts).
         key: 'profit',
         label: VOCAB.profitTruths,
         href: '/expense-reports',

@@ -1,88 +1,40 @@
-/** ARC-T2-002 Staff KPI Performance Report. */
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { ReportView } from "@/components/reports/ReportView";
-import { FlagBadge } from "@/components/reports/ReportPrimitives";
-import { money, int, pct, screenDate, isoDate } from "@/lib/reportBrand";
-import { mondayWeekBounds } from "@/lib/weekBounds";
-import type { FlagLevel } from "@/lib/reportBrand";
-
-interface Row {
-  staff: string;
-  ordersHandled: number;
-  orderAccuracyRate: number | null;
-  satisfactionScore: number | null;
-  kpisAtTarget: number;
-  kpisMeasured: number;
-  kpisTotal: number;
-  bonusTier: "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD" | "INSUFFICIENT DATA";
-  bonusPayable: number | null;
-}
-
-const TIER_FLAG: Record<Row["bonusTier"], FlagLevel> = {
-  PLATINUM: "gold",
-  GOLD: "green",
-  SILVER: "blue",
-  "BELOW STANDARD": "red",
-  "INSUFFICIENT DATA": "amber",
-};
+/**
+ * ARC-T2-002 Staff KPI Performance — hidden while it is rebuilt (STF-FN1).
+ *
+ * The old report built its staff list from cashier codes and counted orders
+ * by `completed_cashier_id`. No shift has carried a code since the lazy-shift
+ * change, so on current data it told the owner every member of staff did
+ * nothing, under a heading that said "for bonus calculation". A wrong report
+ * is worse than none, so the page says so plainly instead of showing figures.
+ * The rebuild (STF-01) keys staff by login. The server also keeps this ref to
+ * admins (it rates managers too: Q12).
+ */
+import { Link } from "wouter";
+import { ChevronLeft, Wrench } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function StaffKpiReport() {
-  const [anchor, setAnchor] = useState(() => isoDate(new Date()));
-  const bounds = mondayWeekBounds(new Date(anchor));
-
   return (
-    <ReportView<Row>
-      config={{
-        reportRef: "ARC-T2-002",
-        params: bounds,
-        periodLabel: () => `Week ${screenDate(bounds.from)} – ${screenDate(bounds.to)}`,
-        tableHeading: "Staff Performance",
-        emptyText: "No active staff / no activity this week.",
-        flagLegend: [
-          { level: "gold", meaning: "Platinum bonus" },
-          { level: "red", meaning: "Below standard — review" },
-          { level: "amber", meaning: "Insufficient data — not all KPIs measured yet" },
-        ],
-        rowFlag: (r) => (r.bonusTier === "BELOW STANDARD" ? "red" : r.bonusTier === "INSUFFICIENT DATA" ? "amber" : undefined),
-        controls: (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-muted-foreground">Week of</label>
-            <Input type="date" value={anchor} max={isoDate(new Date())} onChange={(e) => setAnchor(e.target.value)} className="h-9 w-[160px]" />
+    <div className="mx-auto max-w-3xl px-4 py-6">
+      <Link href="/reports" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ChevronLeft className="h-4 w-4" /> All Evidence
+      </Link>
+      <PageHeader title="Staff KPI Performance" question="Being rebuilt" explanation="This Evidence is switched off for now." />
+      <Card className="lm-card mt-4 border-0 shadow-none" data-testid="staff-kpi-being-rebuilt">
+        <CardContent className="flex gap-3 p-5 text-sm">
+          <Wrench className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="space-y-2">
+            <p>
+              Staff are now tracked by their own login, not by cashier code. This report still counted cashier codes,
+              so it showed everyone on zero. It is being rebuilt to count each person's own orders.
+            </p>
+            <p className="text-muted-foreground">
+              Until then, pick a person on Daily Sales, Weekly Sales or Weekly Margin to see what they completed.
+            </p>
           </div>
-        ),
-        kpis: (s) => [
-          { label: "Staff", value: int(s.staff), keyInfo: true },
-          { label: "Platinum", value: int(s.platinum), flag: s.platinum ? "green" : undefined },
-          { label: "Below Standard", value: int(s.belowStandard), flag: s.belowStandard ? "red" : undefined },
-          { label: "Insufficient Data", value: int(s.insufficientData), flag: s.insufficientData ? "amber" : undefined },
-          { label: "Total Bonus", value: money(s.totalBonus), keyInfo: true },
-        ],
-        columns: [
-          { header: "Staff", cell: (r) => r.staff, keyInfo: true },
-          { header: "Orders", cell: (r) => int(r.ordersHandled), align: "right" },
-          { header: "Accuracy", cell: (r) => (r.orderAccuracyRate == null ? "—" : pct(r.orderAccuracyRate)), keyInfo: true, align: "right" },
-          { header: "Satisfaction", cell: (r) => (r.satisfactionScore == null ? "—" : r.satisfactionScore.toFixed(2)), keyInfo: true, align: "right" },
-          { header: "KPIs Measured", cell: (r) => `${r.kpisAtTarget}/${r.kpisTotal} (${r.kpisMeasured} measured)`, align: "center" },
-          {
-            header: "Bonus Tier",
-            cell: (r) => <FlagBadge level={TIER_FLAG[r.bonusTier]}>{r.bonusTier}</FlagBadge>,
-            align: "center",
-          },
-          { header: "Bonus", cell: (r) => (r.bonusPayable == null ? "—" : money(r.bonusPayable)), keyInfo: true, align: "right" },
-        ],
-        csvColumns: [
-          { header: "Staff Member", value: (r) => r.staff },
-          { header: "Orders Handled", value: (r) => r.ordersHandled },
-          { header: "Order Accuracy Rate Pct", value: (r) => (r.orderAccuracyRate == null ? "" : r.orderAccuracyRate.toFixed(1)) },
-          { header: "Satisfaction Score Avg", value: (r) => (r.satisfactionScore == null ? "" : r.satisfactionScore.toFixed(2)) },
-          { header: "KPIs At Target", value: (r) => r.kpisAtTarget },
-          { header: "KPIs Measured", value: (r) => r.kpisMeasured },
-          { header: "KPIs Required For A Tier", value: (r) => r.kpisTotal },
-          { header: "Bonus Tier", value: (r) => r.bonusTier },
-          { header: "Bonus Payable GBP", value: (r) => (r.bonusPayable == null ? "" : r.bonusPayable.toFixed(2)) },
-        ],
-      }}
-    />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

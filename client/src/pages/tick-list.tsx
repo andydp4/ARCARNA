@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { csvRow } from '@shared/csv'
 import { PageHeader } from '@/components/PageHeader'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
@@ -206,18 +207,19 @@ export default function TickList() {
       return
     }
     
-    const headers = ['Customer', 'Email', 'Phone', 'Total Debt', 'Last Order', 'Status']
+    // No email or phone: the CSV leaves the premises, and contact details are
+    // not part of what is owed (PRV-02). csvRow also stops a customer name
+    // like "=HYPERLINK(...)" running as a formula in a spreadsheet.
+    const headers = ['Customer', 'Total Debt', 'Last Order', 'Status']
     const rows = filteredCustomers.map(customer => [
       customer.name,
-      customer.email,
-      customer.phone,
       `£${(customer.totalDebt || 0).toFixed(2)}`,
       customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A',
       customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
-    
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
-    
+
+    const csv = [headers, ...rows].map(row => csvRow(row)).join('\n')
+
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')

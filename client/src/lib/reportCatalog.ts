@@ -17,6 +17,8 @@ export interface ReportCatalogEntry {
   formats: ("PNG" | "JPEG" | "PDF" | "CSV")[];
   /** "available" = built & routed; "planned" = catalogued, view not built yet. */
   status: "available" | "planned";
+  /** Badge on a card that is not available. Defaults to "Coming soon". */
+  statusLabel?: string;
 }
 
 const ALL: ("PNG" | "JPEG" | "PDF" | "CSV")[] = ["PNG", "JPEG", "PDF", "CSV"];
@@ -129,7 +131,10 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "Measures each staff member's performance against the 7 core KPIs every week — for bonus calculation and weekly check-ins.",
     route: "/reports/staff-kpi",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "available",
+    // Hidden while it is rebuilt (STF-FN1): it counted cashier codes, which
+    // no shift carries any more, so it showed every member of staff on zero.
+    status: "planned",
+    statusLabel: "Being rebuilt",
   },
   {
     ref: "ARC-T2-003",

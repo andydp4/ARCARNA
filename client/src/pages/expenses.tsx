@@ -49,6 +49,9 @@ export function ExpensesPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const canMutate = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.role === "MANAGER";
+  // The month's expense totals are expense Evidence: admin only on the server
+  // (FIX-03). Managers keep the list and the forms, not the totals.
+  const canSeeTotals = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
   const {
     data: expensesData,
@@ -77,6 +80,7 @@ export function ExpensesPage() {
     },
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
+    enabled: canSeeTotals,
   });
 
   const createMutation = useMutation({

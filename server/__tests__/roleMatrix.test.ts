@@ -127,6 +127,30 @@ describe("role matrix: ACCESS_POLICY is what the server enforces", () => {
     }
   });
 
+  it("the customer export (contact details) is admin only", async () => {
+    for (const role of STAFF_ROLES) {
+      const res = await request(app)
+        .post("/api/customers/bulk")
+        .set("x-test-role", role)
+        .set("x-test-org", orgId)
+        .send({ ids: [randomUUID()], action: "export" });
+      if (isAtLeast(role, "ADMIN")) expect(res.status, role).not.toBe(403);
+      else expect(res.status, role).toBe(403);
+    }
+  });
+
+  it("Staff KPI Evidence (managers' performance, Q12) is admin only", async () => {
+    for (const role of STAFF_ROLES) {
+      const res = await request(app)
+        .get("/api/reports/ARC-T2-002")
+        .set("x-test-role", role)
+        .set("x-test-org", orgId)
+        .set("x-org-id", orgId);
+      if (isAtLeast(role, "ADMIN")) expect(res.status, role).not.toBe(403);
+      else expect(res.status, role).toBe(403);
+    }
+  });
+
   it("the product export (every column, cost included) is admin only", async () => {
     for (const role of STAFF_ROLES) {
       const res = await request(app)
@@ -148,11 +172,6 @@ describe("role matrix: ACCESS_POLICY is what the server enforces", () => {
 type Canary = keyof typeof CANARIES | "foreignOrg";
 
 const KNOWN_LEAKS: Record<string, { canaries: Canary[]; owner: string }> = {
-  "GET /api/analytics/top-customers": { canaries: ["email"], owner: "0B part 4: emails removed from top customers" },
-  "GET /api/analytics/rfm/customers": { canaries: ["email"], owner: "0B part 4: customer intelligence manager+" },
-  "GET /api/analytics/rfm/export": { canaries: ["email"], owner: "0B part 4: customer (RFM) export admin only" },
-  "GET /api/reports/:ref": { canaries: ["costPrice"], owner: "0B part 4: Evidence reads manager+ (Weekly Margin)" },
-  "GET /api/profit-analysis": { canaries: ["costPrice"], owner: "0B part 4: Profit Evidence admin only" },
   "GET /api/invoices": { canaries: ["email"], owner: "0B part 7 / Q11: Invoices manager+" },
   "GET /api/customers": {
     canaries: ["phone", "email"],
@@ -401,6 +420,68 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     const one = await as("CASHIER", "get", `/api/products/${ids.productId}`);
     expect(one.status).toBe(200);
     expect(JSON.parse(one.body)).not.toHaveProperty("costPrice");
+  });
+
+  it("a manager's Truths carry no customer email; the customer exports are refused to a manager", async () => {
+    const top = await as("MANAGER", "get", "/api/analytics/top-customers");
+    expect(top.status).toBe(200);
+    expect(top.body).toContain("Canary Customer");
+    expect(canariesIn(top.body)).not.toContain("email");
+
+    // GET /api/analytics/rfm scores the org on first read.
+    expect((await as("MANAGER", "get", "/api/analytics/rfm")).status).toBe(200);
+    const { RFM_SEGMENTS } = await import("@shared/analytics/rfm");
+    let seen = false;
+    for (const segment of RFM_SEGMENTS) {
+      const res = await as("MANAGER", "get", `/api/analytics/rfm/customers?segment=${encodeURIComponent(segment)}`);
+      expect(res.status).toBe(200);
+      if (res.body.includes("Canary Customer")) seen = true;
+      expect(canariesIn(res.body), segment).not.toContain("email");
+      expect((await as("MANAGER", "get", `/api/analytics/rfm/export?segment=${encodeURIComponent(segment)}`)).status).toBe(403);
+    }
+    expect(seen, "the canary customer is in some RFM segment").toBe(true);
+
+    const bulk = await request(app)
+      .post("/api/customers/bulk")
+      .set("x-test-role", "MANAGER")
+      .set("x-test-org", ids.orgId)
+      .set("x-org-id", ids.orgId)
+      .send({ ids: [ids.customerId], action: "export" });
+    expect(bulk.status).toBe(403);
+  });
+
+  it("an admin's customer exports work and every one is logged", async () => {
+    const { RFM_SEGMENTS } = await import("@shared/analytics/rfm");
+    const { and, eq } = await import("drizzle-orm");
+    await as("ADMIN", "get", "/api/analytics/rfm");
+    let exported = "";
+    for (const segment of RFM_SEGMENTS) {
+      const res = await as("ADMIN", "get", `/api/analytics/rfm/export?segment=${encodeURIComponent(segment)}`);
+      expect(res.status).toBe(200);
+      exported += res.body;
+    }
+    expect(exported).toContain(CANARIES.email);
+
+    const bulk = await request(app)
+      .post("/api/customers/bulk")
+      .set("x-test-role", "ADMIN")
+      .set("x-test-org", ids.orgId)
+      .set("x-org-id", ids.orgId)
+      .send({ ids: [ids.customerId], action: "export" });
+    expect(bulk.status).toBe(200);
+    expect(bulk.text).toContain(CANARIES.email);
+
+    const report = await as("ADMIN", "get", "/api/reports/export?from=2000-01-01&to=2100-01-01&format=csv&type=customers");
+    expect(report.status).toBe(200);
+
+    const logs = await db
+      .select({ action: schema.adminAuditLogs.action })
+      .from(schema.adminAuditLogs)
+      .where(and(eq(schema.adminAuditLogs.orgId, ids.orgId), eq(schema.adminAuditLogs.actorRole, "ADMIN")));
+    const actions = logs.map((l: { action: string }) => l.action);
+    expect(actions.filter((a: string) => a === "export.customers_rfm")).toHaveLength(RFM_SEGMENTS.length);
+    expect(actions).toContain("bulk.export");
+    expect(actions).toContain("export.evidence");
   });
 
   it("no GET route hands a cashier a canary", async () => {

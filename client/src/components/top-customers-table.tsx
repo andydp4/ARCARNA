@@ -75,7 +75,6 @@ export default function TopCustomersTable() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="font-semibold">Customer</TableHead>
-                    <TableHead className="font-semibold">Email</TableHead>
                     <TableHead className="font-semibold">Orders</TableHead>
                     <TableHead className="font-semibold">Total Spent</TableHead>
                     <TableHead className="font-semibold">RFM Score</TableHead>
@@ -122,11 +121,6 @@ export default function TopCustomersTable() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <p className="text-sm text-foreground" data-testid={`text-customeremail-${customer.id}`}>
-                              {customer.email || "N/A"}
-                            </p>
-                          </TableCell>
-                          <TableCell>
                             <p className="text-sm font-medium tabular-nums text-foreground" data-testid={`text-ordercount-${customer.id}`}>
                               {customer.orderCount}
                             </p>
@@ -168,7 +162,7 @@ export default function TopCustomersTable() {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={6} className="text-center py-8">
                         <p className="text-muted-foreground">No customers available</p>
                       </TableCell>
                     </TableRow>

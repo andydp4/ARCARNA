@@ -88,8 +88,36 @@ export type RouteRule = {
   reason: string;
 };
 
+// ---------------------------------------------------------------------------
+// Evidence and Truths (owner decision Q12): managers run all Evidence except
+// staff pay and managers' performance; only admins export, and every export
+// is logged.
+// ---------------------------------------------------------------------------
+
+export const EVIDENCE_MIN_ROLE: Role = "MANAGER";
+export const EXPORT_MIN_ROLE: Role = "ADMIN";
+
+/**
+ * Evidence refs (GET /api/reports/:ref) that sit above the manager line.
+ * ARC-T2-002 rates every member of staff, managers included, so it is
+ * managers' performance (Q12). It is also hidden in the app while it is
+ * rebuilt (STF-FN1), because on current data it shows everyone at zero.
+ */
+export const EVIDENCE_REF_MIN_ROLE: Readonly<Record<string, Role>> = {
+  "ARC-T2-002": "ADMIN",
+};
+
+export function evidenceRefMinRole(ref: string): Role {
+  return EVIDENCE_REF_MIN_ROLE[ref.toUpperCase()] ?? EVIDENCE_MIN_ROLE;
+}
+
 const PRODUCT_WRITE = "Product create, edit, delete and aliases change prices and cost (FIX-02).";
 const PURCHASING = "Supplier, purchasing and transfer records carry cost prices (FIX-09, Q6).";
+const EVIDENCE = "Evidence and Truths are manager and above (FIX-03, Q12).";
+const EXPORT = "Exports are admin only and every one is logged (Q12).";
+const PROFIT = "Profit and expense Evidence is whole-business money: admin only (FIX-03).";
+const CUSTOMER_INTEL = "Customer lifetime value and order history are manager and above (PRV-02).";
+const PAY = "Staff pay is manager and above; a manager sees cashiers' rows only (Q12, Q13a).";
 
 export const ACCESS_POLICY: readonly RouteRule[] = [
   // Products: writes are manager and above.
@@ -118,6 +146,40 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "GET", path: "/api/replenishment/recommendations", minRole: "MANAGER", reason: PURCHASING },
   { method: "GET", path: "/api/inventory/transfers", minRole: "MANAGER", reason: PURCHASING },
   { method: "GET", path: "/api/inventory/transfers/:id", minRole: "MANAGER", reason: PURCHASING },
+
+  // Evidence (reports) and Truths (analytics).
+  { method: "GET", path: "/api/reports", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/reports/:ref", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/evidence/staff", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/top-customers", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/daily-revenue", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/monthly-summary", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/rfm", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/rfm/customers", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/hour-of-day", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/channels", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/stock-turn", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/analytics/promotions/:id/lift", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/assistant/summary", minRole: "MANAGER", reason: EVIDENCE },
+  { method: "GET", path: "/api/assistant/alerts", minRole: "MANAGER", reason: EVIDENCE },
+
+  // Profit and expense Evidence.
+  { method: "GET", path: "/api/profit-analysis", minRole: "ADMIN", reason: PROFIT },
+  { method: "GET", path: "/api/expense-report", minRole: "ADMIN", reason: PROFIT },
+  { method: "GET", path: "/api/expense-analytics", minRole: "ADMIN", reason: PROFIT },
+
+  // Exports.
+  { method: "GET", path: "/api/reports/export", minRole: "ADMIN", reason: EXPORT },
+  { method: "GET", path: "/api/analytics/rfm/export", minRole: "ADMIN", reason: EXPORT },
+  { method: "GET", path: "/api/cashier-analytics/export.csv", minRole: "ADMIN", reason: EXPORT },
+  { method: "POST", path: "/api/evidence/exports", minRole: "ADMIN", reason: EXPORT },
+
+  // Customer intelligence.
+  { method: "GET", path: "/api/customers/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
+  { method: "GET", path: "/api/customers/:id/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
+
+  // Payroll (the per-person table; rows are filtered by role in the handler).
+  { method: "GET", path: "/api/cashier-analytics", minRole: "MANAGER", reason: PAY },
 ];
 
 // ---------------------------------------------------------------------------

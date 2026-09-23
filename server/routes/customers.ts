@@ -27,6 +27,9 @@ const createCustomerBody = z.object({
 }).passthrough();
 
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+// Lifetime value and order history per customer: manager and above (PRV-02).
+// The only caller is the Customers page, which is manager and above already.
+const intelligenceRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 // Creating a brand-new customer is also allowed for CASHIER: the POS's own
 // embedded order form (NewCustomerPanel in pos-cart-panel.tsx) lets any till
 // user add a walk-in customer inline, and posts straight to this route with
@@ -36,7 +39,7 @@ const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 const createRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER");
 
 export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/customers/intelligence", ...scoped, async (req: any, res) => {
+  app.get("/api/customers/intelligence", ...scoped, intelligenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) {
@@ -77,7 +80,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.get("/api/customers/:id/intelligence", ...scoped, async (req: any, res) => {
+  app.get("/api/customers/:id/intelligence", ...scoped, intelligenceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) {

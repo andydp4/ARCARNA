@@ -73,29 +73,6 @@ export async function getOpenCashierShift(
   return open ?? null;
 }
 
-export async function startCashierShift(
-  orgId: string,
-  cashierId: string,
-  openedByUserId: string,
-): Promise<CashierShift> {
-  const [cashier] = await db
-    .select()
-    .from(cashierProfiles)
-    .where(and(eq(cashierProfiles.id, cashierId), eq(cashierProfiles.orgId, orgId)))
-    .limit(1);
-  if (!cashier) throw new CashierShiftError("Cashier profile not found", 404, "CASHIER_NOT_FOUND");
-  if (!cashier.isActive) throw new CashierShiftError("Cashier profile is deactivated", 400, "CASHIER_INACTIVE");
-
-  const existing = await getOpenCashierShift(orgId, cashierId);
-  if (existing) throw new CashierShiftError("Cashier already has an open shift", 409, "SHIFT_ALREADY_OPEN");
-
-  const [created] = await db
-    .insert(cashierShifts)
-    .values({ orgId, cashierId, openedByUserId, status: "open" })
-    .returning();
-  return created;
-}
-
 /** Bumps last-activity timestamp on a cashier shift; used to keep it alive against auto-close. */
 export async function touchCashierShiftActivity(shiftId: string): Promise<void> {
   await db

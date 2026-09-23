@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
-import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
+import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { money, int, pct, screenDate, isoDate } from "@/lib/reportBrand";
 import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { FlagLevel } from "@/lib/reportBrand";
@@ -66,6 +66,9 @@ export default function WeeklyMarginReport() {
               className="h-9 w-[160px]"
             />
             <ReportScopeFilter value={scope} onChange={setScope} />
+            <div className="basis-full">
+              <StaffFilterFootnote value={scope} />
+            </div>
           </div>
         ),
         kpis: (s) => [
