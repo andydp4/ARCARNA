@@ -28,3 +28,7 @@ CREATE TABLE IF NOT EXISTS price_exceptions (
 
 CREATE INDEX IF NOT EXISTS price_exceptions_org_created_idx
   ON price_exceptions (org_id, created_at);
+
+-- An order edit reads and replaces that order's rows (one breach, counted once).
+CREATE INDEX IF NOT EXISTS price_exceptions_order_idx
+  ON price_exceptions (order_id);

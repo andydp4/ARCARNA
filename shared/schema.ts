@@ -1909,6 +1909,8 @@ export const priceExceptions = pgTable("price_exceptions", {
 }, (table) => [
   check("price_exceptions_source_check", sql`${table.source} IN ('sale', 'edit')`),
   index("price_exceptions_org_created_idx").on(table.orgId, table.createdAt),
+  // An edit reads and replaces its order's rows.
+  index("price_exceptions_order_idx").on(table.orderId),
 ]);
 
 export type PriceException = typeof priceExceptions.$inferSelect;

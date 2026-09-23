@@ -74,40 +74,100 @@ export type UnderpricedCheck = {
  * such sale, no allowance, no trade exemption). Compared in pence so a price
  * keyed as 4.5 is not "below" a stored 4.50. Null when the line is fine or
  * has no snapshot to judge it against.
+ *
+ * `netLineTotal` is what the line actually brought in once the order's own
+ * discounts (tier, promotion, points) are shared out over it, see
+ * {@link netLineTotals}. Without it the line's own unit price is judged: a
+ * 30% trade tier leaves every unit price at list, so judging only that would
+ * miss a sale made below cost by the tier (Q3: no trade exemption).
  */
 export function underpricedLine(
-  line: { quantity: number; unitPrice: number },
+  line: { quantity: number; unitPrice: number; netLineTotal?: number | null },
   snap: LineSnapshot | null | undefined,
 ): UnderpricedCheck | null {
   if (!snap) return null;
-  const price = toPence(line.unitPrice);
-  const belowMinimum = price < toPence(snap.floorPrice);
-  const belowCost = snap.unitCost != null && price < toPence(snap.unitCost);
-  if (!belowMinimum && !belowCost) return null;
   const qty = Number(line.quantity) || 0;
+  if (qty <= 0) return null;
+  // Whole-line pence, so a discount shared out as 1000p over 3 units is not
+  // rounded per unit into or out of a breach.
+  const net =
+    line.netLineTotal != null && Number.isFinite(Number(line.netLineTotal))
+      ? toPence(Number(line.netLineTotal))
+      : toPence(line.unitPrice) * qty;
+  const at = (unit: number) => toPence(unit) * qty;
+  const belowMinimum = net < at(snap.floorPrice);
+  const belowCost = snap.unitCost != null && net < at(snap.unitCost);
+  if (!belowMinimum && !belowCost) return null;
   return {
     belowMinimum,
     belowCost,
-    underList: roundMoney((Math.max(0, toPence(snap.listPrice) - price) * qty) / 100),
-    underCost: belowCost ? roundMoney(((toPence(snap.unitCost!) - price) * qty) / 100) : 0,
+    underList: roundMoney(Math.max(0, at(snap.listPrice) - net) / 100),
+    underCost: belowCost ? roundMoney((at(snap.unitCost!) - net) / 100) : 0,
   };
+}
+
+/** The order-level discounts behind a priced order (priceOrder's result). */
+export type OrderDiscounts = {
+  subtotal: number;
+  /** Subtotal less tier and promotion, before VAT. */
+  netAfterDiscounts: number;
+  /** Points come off after VAT (owner Q2). */
+  pointsDiscount?: number | null;
+  vatRate?: number | null;
+};
+
+/**
+ * Each line's share of what the order actually brought in before VAT: the
+ * tier and promotion (taken off the subtotal) and the points (taken off after
+ * VAT, so brought back to a pre-VAT figure) shared out over the lines by
+ * value. Prices, minimums and costs are all VAT exclusive, so this is the
+ * figure a floor is judged against. Largest remainder in pence, so the shares
+ * add up to the order exactly. Without discounts each line keeps its own total.
+ */
+export function netLineTotals(
+  lines: Array<{ quantity: number; unitPrice: number }>,
+  pricing: OrderDiscounts | null | undefined,
+): number[] {
+  const gross = lines.map((l) => Math.max(0, toPence((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0))));
+  const subtotalP = gross.reduce((a, b) => a + b, 0);
+  if (!pricing || subtotalP <= 0) return gross.map((p) => p / 100);
+  const vat = Math.max(0, Number(pricing.vatRate) || 0);
+  const pointsPreVatP = toPence(Math.max(0, Number(pricing.pointsDiscount) || 0) / (1 + vat / 100));
+  const netP = Math.max(0, Math.min(subtotalP, toPence(Number(pricing.netAfterDiscounts) || 0) - pointsPreVatP));
+  if (netP >= subtotalP) return gross.map((p) => p / 100);
+  const exact = gross.map((p) => (p * netP) / subtotalP);
+  const shares = exact.map(Math.floor);
+  let left = netP - shares.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((x, i) => ({ i, r: x - Math.floor(x) }))
+    .sort((a, b) => b.r - a.r || a.i - b.i);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    shares[i] += 1;
+    left -= 1;
+  }
+  return shares.map((p) => p / 100);
 }
 
 /**
  * Sales the silent check does not look at.
  *  - Website orders price at list; the customer cannot change a price, so
- *    there is nothing to catch (brief). A manager's later edit of one is not
- *    exempt: that is a person choosing a price.
+ *    there is nothing to catch (brief). That is known only from the server's
+ *    own website checkout passing `pricedAtList` — never from the order's
+ *    `channel`, which any till or API caller can set to "web". A manager's
+ *    later edit of a website order is not exempt: that is a person choosing a
+ *    price.
  *  - Personal use is not a sale: its total is zeroed and the stock is booked
  *    at cost as an expense, so every line would read as "below cost".
  */
 export function isPriceCheckExempt(order: {
-  channel?: string | null;
   paymentMethod?: string | null;
   source: "sale" | "edit";
+  /** Set by the server's website checkout only, never from a request body. */
+  pricedAtList?: boolean;
 }): boolean {
   if (String(order.paymentMethod ?? "").toLowerCase() === "personal_use") return true;
-  return order.source === "sale" && order.channel === "web";
+  return order.source === "sale" && order.pricedAtList === true;
 }
 
 /**

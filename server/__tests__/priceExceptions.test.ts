@@ -26,6 +26,7 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
   let locationId: string;
   let productId: string;
   let freeProductId: string;
+  let costlyProductId: string;
   const orderIds: string[] = [];
 
   beforeAll(async () => {
@@ -65,6 +66,13 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
       .values({ orgId, name: "No Cost Thing", productId: `PE-${randomUUID().slice(0, 8)}`, defaultSalePrice: "2.00" })
       .returning();
     freeProductId = free.id;
+    // A minimum below cost (allowed, with a warning): the only case where a
+    // cost leaking into the till's floor would show.
+    const [costly] = await db
+      .insert(schema.products)
+      .values({ orgId, name: "Costly", productId: `PE-${randomUUID().slice(0, 8)}`, defaultSalePrice: "5.00", minPrice: "2.00", costPrice: "3.00" })
+      .returning();
+    costlyProductId = costly.id;
 
     const scoped: RequestHandler = (req: any, _res, next) => {
       const id = role === "CASHIER" ? cashierId : managerId;
@@ -87,6 +95,7 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
       await db.delete(schema.orderItems).where(inArray(schema.orderItems.orderId, orderIds));
       await db.delete(schema.orders).where(inArray(schema.orders.id, orderIds));
     }
+    await db.delete(schema.cashierShifts).where(eq(schema.cashierShifts.orgId, orgId));
     await db.delete(schema.inventoryMovements).where(eq(schema.inventoryMovements.orgId, orgId));
     await db.delete(schema.productLocationStock).where(eq(schema.productLocationStock.orgId, orgId));
     await db.delete(schema.productPriceHistory).where(eq(schema.productPriceHistory.orgId, orgId));
@@ -96,12 +105,16 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
     await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
   });
 
-  async function place(lines: Array<{ productId: string; quantity: number; unitPrice: number }>, extra: Record<string, unknown> = {}) {
+  async function place(
+    lines: Array<{ productId: string; quantity: number; unitPrice: number }>,
+    extra: Record<string, unknown> = {},
+    context: { pricedAtList?: boolean } = {},
+  ) {
     const { orderId } = await withTransaction(() =>
       engine.placeOrder(
         { orgId, locationId, paymentMethod: "cash", channel: "pos", lines, ...extra },
         undefined,
-        { actorUserId: cashierId },
+        { actorUserId: cashierId, ...context },
       ),
     );
     orderIds.push(orderId);
@@ -157,8 +170,12 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
     expect(row).toMatchObject({ belowCost: true, underCost: "0.50", underList: "2.50" });
   });
 
-  it("website orders are not recorded", async () => {
-    const orderId = await place([{ productId, quantity: 1, unitPrice: 1 }], { channel: "web", paymentMethod: "transfer" });
+  it("website orders are not recorded (the server's checkout says so, not the channel)", async () => {
+    const orderId = await place(
+      [{ productId, quantity: 1, unitPrice: 1 }],
+      { channel: "web", paymentMethod: "transfer" },
+      { pricedAtList: true },
+    );
     expect(await exceptions(orderId)).toHaveLength(0);
   });
 
@@ -216,6 +233,36 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
     await request(app).get("/api/price-exceptions/would-have-flagged").expect(403);
     role = "SUPER_ADMIN";
     await request(app).get("/api/price-exceptions/would-have-flagged").expect(200);
+    role = "ADMIN";
+  });
+
+  it("a till sale that claims channel 'web' is still recorded", async () => {
+    const orderId = await place([{ productId, quantity: 1, unitPrice: 0.5 }], { channel: "web" });
+    const rows = await exceptions(orderId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ channel: "web", belowCost: true, underList: "4.50", underCost: "2.50" });
+  });
+
+  it("a manager's edit counts a breach once, as it now stands, through the real port", async () => {
+    const orderId = await place([{ productId, quantity: 2, unitPrice: 3 }]);
+    const edit = (lines: Array<{ productId: string; quantity: number; unitPrice: number }>) =>
+      withTransaction(() => engine.updateOrder(orderId, { lines }, undefined, { actorUserId: managerId, orgId }));
+
+    // Unchanged: the sale's row stays, still against the cashier.
+    await edit([{ productId, quantity: 2, unitPrice: 3 }]);
+    let rows = await exceptions(orderId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ source: "sale", userId: cashierId, underList: "4.00" });
+
+    // More of it: one row for all 3 units, not a second one on top.
+    await edit([{ productId, quantity: 3, unitPrice: 3 }]);
+    rows = await exceptions(orderId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ source: "edit", userId: managerId, quantity: 3, underList: "6.00" });
+
+    // Lifted to list: the breach is gone.
+    await edit([{ productId, quantity: 3, unitPrice: 5 }]);
+    expect(await exceptions(orderId)).toHaveLength(0);
   });
 
   it("the till receives a minimum-only floor, and a cashier never sees cost", async () => {
@@ -224,10 +271,15 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
     const widget = res.body.find((p: any) => p.id === productId);
     expect(widget.tillFloor).toBe(4);
     expect(widget).not.toHaveProperty("costPrice");
+    // Cost £3 above a £2 minimum: a floor of 3 here would be cost leaking to
+    // the till (owner Q4, Q6).
+    const costly = res.body.find((p: any) => p.id === costlyProductId);
+    expect(costly.tillFloor).toBe(2);
+    expect(costly).not.toHaveProperty("costPrice");
     role = "ADMIN";
   });
 
-  it("editing a cost today does not change last week's margin, COGS or commission cost", async () => {
+  it("editing a cost today does not change last week's margin or COGS", async () => {
     const orderId = await place([
       { productId, quantity: 2, unitPrice: 5 },
       { productId: freeProductId, quantity: 1, unitPrice: 2 },
@@ -259,6 +311,44 @@ describe.skipIf(!hasDb)("snapshots, silent recording and Would have flagged", ()
     expect((after.rows as any[]).find((r) => r.product === "No Cost Thing")).toMatchObject({ costPrice: null });
     const cogsAfter = (await storage.getProfitAnalysis(from, to, orgId)).summary;
     expect(Number(cogsAfter.cogs)).toBeCloseTo(Number(cogsBefore.cogs), 2);
+  });
+
+  it("commission uses the sale-time cost and leaves a cost-missing line out (Q5)", async () => {
+    const { commissionBasisFor } = await import("../services/creditLedger");
+    const { computeCashierShiftBalanceSheet } = await import("../services/cashierShiftEngine");
+    await db.update(schema.products).set({ costPrice: "3.00" }).where(eq(schema.products.id, productId));
+    await db.update(schema.products).set({ costPrice: null }).where(eq(schema.products.id, freeProductId));
+    await db.update(schema.organizations).set({ defaultCashierCommissionRate: "10.00" }).where(eq(schema.organizations.id, orgId));
+
+    // £10 of Widget at £3 cost (known) and £2 of a line with no cost.
+    const orderId = await place([
+      { productId, quantity: 2, unitPrice: 5 },
+      { productId: freeProductId, quantity: 1, unitPrice: 2 },
+    ]);
+    const [shift] = await db
+      .insert(schema.cashierShifts)
+      .values({ orgId, userId: cashierId, openedByUserId: cashierId })
+      .returning();
+    await db
+      .update(schema.orders)
+      .set({ status: "completed", cashierShiftId: shift.id, completedUserId: cashierId })
+      .where(eq(schema.orders.id, orderId));
+
+    const expectBasis = async () => {
+      // Margin £10 − £6 = £4 at 10%. Today's £4.75 cost would give £0.05;
+      // the no-cost line as pure profit £0.60; its later £1 cost £0.50.
+      expect((await commissionBasisFor(orderId))?.fullPool).toBeCloseTo(0.4, 2);
+      const { commissionOrders } = await computeCashierShiftBalanceSheet(orgId, shift as any);
+      const row = commissionOrders.find((o) => o.orderId === orderId)!;
+      expect(row.stockCost).toBeCloseTo(6, 2);
+      expect(row.paidContribution).toBeCloseTo(10, 2);
+      expect(row.costMissingLines).toBe(1);
+    };
+    await expectBasis();
+
+    await db.update(schema.products).set({ costPrice: "4.75" }).where(eq(schema.products.id, productId));
+    await db.update(schema.products).set({ costPrice: "1.00" }).where(eq(schema.products.id, freeProductId));
+    await expectBasis();
   });
 
   it("a line sold before snapshots existed is costed at today's cost (no backfill)", async () => {

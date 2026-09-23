@@ -64,4 +64,12 @@ export interface PriceExceptionsPort {
    * Drizzle port writes under a savepoint); the engine swallows the error.
    */
   record(rows: PriceExceptionRecord[]): Promise<void>
+  /** The rows already recorded for an order, so an edit can tell what changed. */
+  forOrder(orgId: string, orderId: string): Promise<PriceExceptionRecord[]>
+  /**
+   * An edit's reconciliation: drops the order's rows for these products and
+   * writes `rows` in their place, so a breach is counted once, as it now
+   * stands. Same savepoint rule as record().
+   */
+  replaceForOrder(orgId: string, orderId: string, productIds: string[], rows: PriceExceptionRecord[]): Promise<void>
 }

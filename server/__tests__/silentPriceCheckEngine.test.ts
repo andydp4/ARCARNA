@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { DomainEngine } from "../../packages/domain/src/engine";
 import type { PriceExceptionRecord } from "../../packages/domain/src/ports";
+import { priceOrder } from "../../shared/pricing/priceOrder";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const P1 = "22222222-2222-2222-2222-222222222222";
@@ -39,9 +40,23 @@ function makeEngine(opts: { catalogue: Catalogue; failRecording?: boolean; noPor
   const invoices = { createAndStore: async () => ({ invoiceId: null }) };
   const analytics = { recordOrder: async () => undefined, updateCustomerMetrics: async () => undefined };
   const noop = async () => undefined;
+  const calls = { record: 0, replace: 0 };
+  // `recorded` is the table itself: an edit's replace mutates it in place.
   const port = {
     record: async (rows: PriceExceptionRecord[]) => {
+      calls.record += 1;
       if (opts.failRecording) throw new Error("exceptions table is on fire");
+      recorded.push(...rows);
+    },
+    forOrder: async (orgId: string, orderId: string) =>
+      recorded.filter((r) => r.orgId === orgId && r.orderId === orderId).map((r) => ({ ...r })),
+    replaceForOrder: async (orgId: string, orderId: string, productIds: string[], rows: PriceExceptionRecord[]) => {
+      calls.replace += 1;
+      if (opts.failRecording) throw new Error("exceptions table is on fire");
+      for (let i = recorded.length - 1; i >= 0; i--) {
+        const r = recorded[i];
+        if (r.orgId === orgId && r.orderId === orderId && productIds.includes(r.productId)) recorded.splice(i, 1);
+      }
       recorded.push(...rows);
     },
   };
@@ -56,7 +71,7 @@ function makeEngine(opts: { catalogue: Catalogue; failRecording?: boolean; noPor
     (async (fn: any) => fn()) as any,
     opts.noPort ? undefined : port,
   );
-  return { engine, saved, recorded };
+  return { engine, saved, recorded, calls };
 }
 
 const catalogue: Catalogue = {
@@ -150,24 +165,71 @@ describe("silent recording (PRC-03, CMP-03)", () => {
   });
 
   it("a recording failure never fails or blocks the sale", async () => {
-    const { engine, saved } = makeEngine({ catalogue, failRecording: true });
+    const { engine, saved, calls } = makeEngine({ catalogue, failRecording: true });
     const result = await engine.placeOrder({
       orgId: ORG,
       paymentMethod: "cash",
       lines: [{ productId: P1, quantity: 1, unitPrice: 0.5 }],
     });
+    // The recorder really ran (and threw); the sale was still saved.
+    expect(calls.record).toBe(1);
     expect(saved.get(result.orderId)).toBeTruthy();
   });
 
-  it("website orders are exempt: they price at list", async () => {
+  it("website orders are exempt only when the server's checkout says so", async () => {
     const { engine, recorded } = makeEngine({ catalogue });
-    await engine.placeOrder({
-      orgId: ORG,
-      paymentMethod: "transfer",
-      channel: "web",
-      lines: [{ productId: P1, quantity: 1, unitPrice: 1 }],
-    });
+    await engine.placeOrder(
+      {
+        orgId: ORG,
+        paymentMethod: "transfer",
+        channel: "web",
+        lines: [{ productId: P1, quantity: 1, unitPrice: 5 }],
+      },
+      undefined,
+      { pricedAtList: true },
+    );
     expect(recorded).toHaveLength(0);
+  });
+
+  it("a till or API caller sending channel 'web' is still checked", async () => {
+    const { engine, recorded } = makeEngine({ catalogue });
+    const { orderId } = await engine.placeOrder(
+      {
+        orgId: ORG,
+        paymentMethod: "cash",
+        channel: "web",
+        lines: [{ productId: P1, quantity: 1, unitPrice: 0.5 }],
+      },
+      undefined,
+      { actorUserId: "till-user" },
+    );
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ orderId, channel: "web", belowCost: true, underList: 4.5, underCost: 2.5 });
+  });
+
+  it("a trade tier that takes a list-priced line below cost is recorded (Q3: no trade exemption)", async () => {
+    const trade: Catalogue = { [P1]: { salePrice: 10, minPrice: null, costPrice: 8 } };
+    const { engine, recorded } = makeEngine({ catalogue: trade });
+    const pricing = priceOrder({
+      lines: [{ quantity: 1, unitPrice: 10 }],
+      taxRatePercent: 0,
+      customer: { loyaltyPoints: 1000 },
+      tiers: [{ id: "t", name: "Trade", pointsRequired: 0, discountPercentage: 30 }],
+    });
+    expect(pricing.total).toBe(7);
+    await engine.placeOrder(
+      { orgId: ORG, paymentMethod: "cash", lines: [{ productId: P1, quantity: 1, unitPrice: 10 }] },
+      pricing,
+    );
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      unitPrice: 7,
+      listPrice: 10,
+      belowMinimum: true,
+      belowCost: true,
+      underList: 3,
+      underCost: 1,
+    });
   });
 
   it("personal use is not a sale and is not checked", async () => {
@@ -225,5 +287,54 @@ describe("manager edits", () => {
     expect(lines[0]).toMatchObject({ listPrice: 5, floorPrice: 4, unitCost: 3 });
     expect(recorded).toHaveLength(2);
     expect(recorded[1]).toMatchObject({ productId: P2, source: "edit", userId: "manager-user", underList: 0.5 });
+  });
+
+  async function soldAt(unitPrice: number, quantity: number) {
+    const env = makeEngine({ catalogue });
+    const { orderId } = await env.engine.placeOrder(
+      { orgId: ORG, paymentMethod: "cash", lines: [{ productId: P1, quantity, unitPrice }] },
+      undefined,
+      { actorUserId: "till-user" },
+    );
+    const edit = (lines: Array<{ productId: string; quantity: number; unitPrice: number }>) =>
+      env.engine.updateOrder(orderId, { lines }, undefined, { actorUserId: "manager-user", orgId: ORG });
+    return { ...env, orderId, edit };
+  }
+  const totals = (rows: PriceExceptionRecord[]) => ({
+    lines: rows.length,
+    units: rows.reduce((a, r) => a + r.quantity, 0),
+    underList: Math.round(rows.reduce((a, r) => a + r.underList, 0) * 100) / 100,
+  });
+
+  it("raising the quantity of a breach counts it once, as it now stands", async () => {
+    const { recorded, edit } = await soldAt(3, 2);
+    expect(totals(recorded)).toEqual({ lines: 1, units: 2, underList: 4 });
+    await edit([{ productId: P1, quantity: 3, unitPrice: 3 }]);
+    expect(totals(recorded)).toEqual({ lines: 1, units: 3, underList: 6 });
+    expect(recorded[0]).toMatchObject({ source: "edit", userId: "manager-user" });
+  });
+
+  it("changing the price of a breach replaces it rather than adding to it", async () => {
+    const { recorded, edit } = await soldAt(3, 1);
+    await edit([{ productId: P1, quantity: 1, unitPrice: 3.5 }]);
+    expect(totals(recorded)).toEqual({ lines: 1, units: 1, underList: 1.5 });
+  });
+
+  it("an edit that lifts the line above its floor, or removes it, clears the breach", async () => {
+    const lifted = await soldAt(3, 1);
+    await lifted.edit([{ productId: P1, quantity: 1, unitPrice: 5 }]);
+    expect(lifted.recorded).toHaveLength(0);
+
+    const removed = await soldAt(3, 1);
+    await removed.edit([{ productId: P2, quantity: 1, unitPrice: 2 }]);
+    expect(removed.recorded).toHaveLength(0);
+  });
+
+  it("an edit that leaves a breach exactly as it was keeps the original row and who it was against", async () => {
+    const { recorded, edit, calls } = await soldAt(3, 2);
+    await edit([{ productId: P1, quantity: 2, unitPrice: 3 }]);
+    expect(calls.replace).toBe(0);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ source: "sale", userId: "till-user", underList: 4 });
   });
 });

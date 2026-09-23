@@ -3,6 +3,7 @@ import {
   commissionCostBasis,
   isPriceCheckExempt,
   lineUnitCost,
+  netLineTotals,
   snapshotFor,
   underpricedLine,
 } from "./lineSnapshot";
@@ -86,19 +87,72 @@ describe("underpricedLine", () => {
 });
 
 describe("isPriceCheckExempt", () => {
-  it("website sales are exempt; everything else is checked", () => {
-    expect(isPriceCheckExempt({ channel: "web", paymentMethod: "transfer", source: "sale" })).toBe(true);
-    expect(isPriceCheckExempt({ channel: "pos", paymentMethod: "cash", source: "sale" })).toBe(false);
-    expect(isPriceCheckExempt({ channel: "api", paymentMethod: "card", source: "sale" })).toBe(false);
-    expect(isPriceCheckExempt({ channel: "phone", paymentMethod: "cash", source: "sale" })).toBe(false);
+  it("only the server's own website checkout is exempt", () => {
+    expect(isPriceCheckExempt({ paymentMethod: "transfer", source: "sale", pricedAtList: true })).toBe(true);
+    expect(isPriceCheckExempt({ paymentMethod: "cash", source: "sale" })).toBe(false);
+    expect(isPriceCheckExempt({ paymentMethod: "card", source: "sale", pricedAtList: false })).toBe(false);
   });
 
   it("a manager's edit of a website order is checked", () => {
-    expect(isPriceCheckExempt({ channel: "web", paymentMethod: "transfer", source: "edit" })).toBe(false);
+    expect(isPriceCheckExempt({ paymentMethod: "transfer", source: "edit", pricedAtList: true })).toBe(false);
   });
 
   it("personal use is not a sale", () => {
-    expect(isPriceCheckExempt({ channel: "pos", paymentMethod: "personal_use", source: "sale" })).toBe(true);
+    expect(isPriceCheckExempt({ paymentMethod: "personal_use", source: "sale" })).toBe(true);
+  });
+});
+
+describe("netLineTotals (order discounts shared over the lines)", () => {
+  it("leaves each line's own total when there is no discount", () => {
+    expect(netLineTotals([{ quantity: 2, unitPrice: 5 }, { quantity: 1, unitPrice: 3 }], null)).toEqual([10, 3]);
+    expect(
+      netLineTotals([{ quantity: 2, unitPrice: 5 }], { subtotal: 10, netAfterDiscounts: 10, pointsDiscount: 0, vatRate: 20 }),
+    ).toEqual([10]);
+  });
+
+  it("shares a tier or promotion out by value, adding up to the order exactly", () => {
+    const shares = netLineTotals(
+      [
+        { quantity: 1, unitPrice: 10 },
+        { quantity: 1, unitPrice: 10 },
+        { quantity: 1, unitPrice: 10 },
+      ],
+      { subtotal: 30, netAfterDiscounts: 20, pointsDiscount: 0, vatRate: 0 },
+    );
+    expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(20, 10);
+    expect(shares.sort()).toEqual([6.66, 6.67, 6.67]);
+  });
+
+  it("takes points off after VAT, so brings them back to a pre-VAT figure", () => {
+    // £12 gross at 20% VAT; £6 of points is £5 of pre-VAT value.
+    expect(
+      netLineTotals([{ quantity: 1, unitPrice: 10 }], { subtotal: 10, netAfterDiscounts: 10, pointsDiscount: 6, vatRate: 20 }),
+    ).toEqual([5]);
+  });
+
+  it("a 100% discount leaves every line at nothing", () => {
+    expect(
+      netLineTotals([{ quantity: 3, unitPrice: 4 }], { subtotal: 12, netAfterDiscounts: 0, pointsDiscount: 0, vatRate: 0 }),
+    ).toEqual([0]);
+  });
+});
+
+describe("underpricedLine with order discounts (Q3: no trade exemption)", () => {
+  it("a 30% tier on a £10 item costing £8 is below cost though the unit price is list", () => {
+    const snap = { listPrice: 10, floorPrice: 10, unitCost: 8 };
+    expect(underpricedLine({ quantity: 1, unitPrice: 10 }, snap)).toBeNull();
+    expect(underpricedLine({ quantity: 1, unitPrice: 10, netLineTotal: 7 }, snap)).toEqual({
+      belowMinimum: true,
+      belowCost: true,
+      underList: 3,
+      underCost: 1,
+    });
+  });
+
+  it("judges the whole line in pence, not a rounded unit price", () => {
+    // £10 over 3 units is 333.33p each: below a £3.34 minimum, above £3.33.
+    expect(underpricedLine({ quantity: 3, unitPrice: 4, netLineTotal: 10 }, { listPrice: 4, floorPrice: 3.34, unitCost: null })).not.toBeNull();
+    expect(underpricedLine({ quantity: 3, unitPrice: 4, netLineTotal: 10 }, { listPrice: 4, floorPrice: 3.33, unitCost: null })).toBeNull();
   });
 });
 

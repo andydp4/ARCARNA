@@ -83,6 +83,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "collection" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 
@@ -93,6 +95,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "delivery" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 
@@ -107,6 +111,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "collection" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 });

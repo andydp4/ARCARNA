@@ -8,9 +8,11 @@ import type { Order, OrderId, OrderLine, Product, ProductId, Customer, CustomerI
 import { lineTotalFor, priceOrder, type PricedOrder } from '../../../shared/pricing/priceOrder'
 import {
   isPriceCheckExempt,
+  netLineTotals,
   snapshotFor,
   underpricedLine,
   type LineSnapshot,
+  type OrderDiscounts,
 } from '../../../shared/pricing/lineSnapshot'
 
 /**
@@ -21,6 +23,40 @@ export type OrderWriteContext = {
   actorUserId?: string | null
   /** The order's org, when the repo's order does not carry it. */
   orgId?: string | null
+  /**
+   * Set only by the server's own website checkout, which prices every line at
+   * list itself: the one sale the silent price check skips. Never derived
+   * from the order's `channel`, which a till or API caller can set to "web".
+   */
+  pricedAtList?: boolean
+}
+
+/**
+ * What identifies one recorded breach, for telling an edit's unchanged lines
+ * from changed ones. Pence and thousandths, so a numeric read back from the
+ * database as a string compares equal to the engine's number.
+ */
+function breachKey(r: PriceExceptionRecord): string {
+  const p = (v: unknown) => Math.round((Number(v) || 0) * 100)
+  return [
+    Math.round((Number(r.quantity) || 0) * 1000),
+    p(r.unitPrice),
+    p(r.underList),
+    p(r.underCost),
+    r.belowMinimum ? 1 : 0,
+    r.belowCost ? 1 : 0,
+  ].join('|')
+}
+
+function keysByProduct(rows: PriceExceptionRecord[]): Map<string, string> {
+  const grouped = new Map<string, string[]>()
+  for (const r of rows) {
+    if (!r.productId) continue
+    const list = grouped.get(r.productId) ?? []
+    list.push(breachKey(r))
+    grouped.set(r.productId, list)
+  }
+  return new Map([...grouped].map(([pid, keys]) => [pid, keys.sort().join(',')]))
 }
 
 type SnapshotFields = Pick<OrderLine, 'listPrice' | 'floorPrice' | 'unitCost'>
@@ -78,43 +114,69 @@ export class DomainEngine {
    * known cost is written to price_exceptions. Inside the engine so the till,
    * manager edits, the API and voice drafts are all covered by construction.
    * It never blocks and never errors: the sale has already been decided.
+   *
+   * Lines are judged on what they brought in after the order's tier,
+   * promotion and points (owner Q3: no trade exemption), not only on their
+   * unit price, which those discounts leave at list.
+   *
+   * On an edit the order's rows are reconciled rather than added to: a
+   * product whose breach is exactly as recorded keeps its row (and who it was
+   * recorded against); any other product's rows are replaced by the breach as
+   * it now stands, or removed when the line is now fine or gone. So each
+   * breach is counted once in "Would have flagged".
    */
   private async recordUnderpriced(args: {
     orgId: string | null | undefined
     orderId: string
     lines: OrderLine[]
+    pricing: OrderDiscounts
     source: 'sale' | 'edit'
     channel?: string | null
     paymentMethod?: string | null
     actorUserId?: string | null
-    /** On an edit, lines that were already on the order unchanged are not new breaches. */
-    alreadyRecorded?: (line: OrderLine) => boolean
+    pricedAtList?: boolean
   }): Promise<void> {
     try {
       if (!this.priceExceptions || !args.orgId) return
-      if (isPriceCheckExempt({ channel: args.channel, paymentMethod: args.paymentMethod, source: args.source })) return
+      if (isPriceCheckExempt({ paymentMethod: args.paymentMethod, source: args.source, pricedAtList: args.pricedAtList })) return
+      const nets = netLineTotals(args.lines, args.pricing)
       const rows: PriceExceptionRecord[] = []
-      for (const line of args.lines) {
-        if (args.alreadyRecorded?.(line)) continue
+      args.lines.forEach((line, i) => {
         const snap = snapshotOf(line)
-        const breach = underpricedLine(line, snap)
-        if (!breach || !snap) continue
+        const breach = underpricedLine({ ...line, netLineTotal: nets[i] }, snap)
+        if (!breach || !snap) return
+        const qty = Number(line.quantity) || 0
         rows.push({
-          orgId: args.orgId,
+          orgId: args.orgId as string,
           orderId: args.orderId,
           productId: line.productId as string,
           userId: args.actorUserId ?? null,
           source: args.source,
           channel: args.channel ?? null,
           quantity: line.quantity,
-          unitPrice: line.unitPrice,
+          // What each unit actually brought in after the order's discounts,
+          // which is the price the breach is about.
+          unitPrice: qty > 0 ? Math.round((nets[i] / qty) * 100) / 100 : line.unitPrice,
           listPrice: snap.listPrice,
           floorPrice: snap.floorPrice,
           unitCost: snap.unitCost,
           ...breach,
         })
+      })
+      if (args.source === 'sale') {
+        if (rows.length) await this.priceExceptions.record(rows)
+        return
       }
-      if (rows.length) await this.priceExceptions.record(rows)
+      const before = keysByProduct(await this.priceExceptions.forOrder(args.orgId, args.orderId))
+      const now = keysByProduct(rows)
+      const changed = [...new Set([...before.keys(), ...now.keys()])].filter((pid) => before.get(pid) !== now.get(pid))
+      if (changed.length === 0) return
+      await this.priceExceptions.replaceForOrder(
+        args.orgId,
+        args.orderId,
+        changed,
+        rows.filter((r) => changed.includes(r.productId)),
+      )
     } catch (error) {
       console.warn('[DomainEngine] underpriced-sale recording failed (sale unaffected):', error)
     }
@@ -192,10 +254,12 @@ export class DomainEngine {
         orgId: order.orgId,
         orderId: order.id,
         lines: order.lines,
+        pricing: priced,
         source: 'sale',
         channel: order.channel,
         paymentMethod: order.paymentMethod,
         actorUserId: context.actorUserId,
+        pricedAtList: context.pricedAtList === true,
       })
       // Stock mutations: InventoryWorker on OrderCreated (event-driven, per-location)
       
@@ -478,19 +542,11 @@ export class DomainEngine {
         orgId: (existingOrder as any).orgId ?? context.orgId,
         orderId,
         lines: updatedOrder.lines,
+        pricing: priced,
         source: 'edit',
         channel: existingOrder.channel,
         paymentMethod: existingOrder.paymentMethod,
         actorUserId: context.actorUserId,
-        // The same product at the same price, no more of it than before, was
-        // already judged when it was sold (or last edited).
-        alreadyRecorded: (line) =>
-          existingOrder.lines.some(
-            (prev) =>
-              prev.productId === line.productId &&
-              Math.round(prev.unitPrice * 100) === Math.round(line.unitPrice * 100) &&
-              line.quantity <= prev.quantity,
-          ),
       })
 
       await this.audit.log('OrderUpdated', { orderId, changes: input, newTotal: total, newStatus: orderStatus })
