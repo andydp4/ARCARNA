@@ -112,6 +112,15 @@ async function handleProductBulk(
       .select()
       .from(products)
       .where(and(eq(products.orgId, ctx.orgId), inArray(products.id, ids)));
+    // Every export is logged: it carries cost prices off the premises.
+    await recordAdminAudit(req, {
+      actorUserId,
+      actorRole: ctx.role,
+      action: "bulk.export",
+      targetType: "product",
+      orgId: ctx.orgId,
+      metadata: { count: rows.length, ids },
+    });
     return { ok: true as const, result: { rows, format: "csv" } };
   }
 

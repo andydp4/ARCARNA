@@ -20,7 +20,9 @@ const CUSTOMER_ACTIONS: BulkActionDef[] = [
 ];
 
 const PRODUCT_ACTIONS: BulkActionDef[] = [
-  { id: "export", label: "Export CSV", minRole: "CASHIER" },
+  // The CSV is every column of the products row, cost price included, and
+  // exports are admin-only and logged (owner decisions Q6/Q12).
+  { id: "export", label: "Export CSV", minRole: "ADMIN" },
   { id: "delete", label: "Delete", minRole: "MANAGER", destructive: true, confirmText: "DELETE" },
 ];
 

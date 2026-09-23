@@ -415,7 +415,10 @@ export default function ProductManagement() {
     const { aliases: _aliases, stock: _stock, ...rest } = formData
     const productData = {
       ...rest,
-      costPrice: formData.costPrice ? parseFloat(formData.costPrice) : 0,
+      // Blank means "cost not known" (null), not £0 — a real £0 is typed as 0
+      // and now saves. Sending 0 for blank would turn an unknown cost into a
+      // free one and flatter every margin figure.
+      costPrice: String(formData.costPrice ?? '').trim() === '' ? null : parseFloat(formData.costPrice),
       salePrice: parseFloat(formData.salePrice),
       // parseFloat, not parseInt: 046_decimal_quantities widened stock_limit to
       // numeric(14,3), so a 2.5 kg par level must not silently truncate to 2.
@@ -449,8 +452,9 @@ export default function ProductManagement() {
       productCode: product.productCode || product.productId || '',
       name: product.name,
       barcode: product.barcode || '',
-      costPrice: (product.costPrice || '').toString(),
-      salePrice: (product.salePrice || product.defaultSalePrice || '').toString(),
+      // `??`, not `||`: a £0 cost or price must show as 0, not as blank.
+      costPrice: (product.costPrice ?? '').toString(),
+      salePrice: (product.salePrice ?? product.defaultSalePrice ?? '').toString(),
       stock: (product.stock || '').toString(),
       stockLimit: (product.stockLimit || '').toString(),
       categoryId: product.categoryId || '',

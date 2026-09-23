@@ -9,10 +9,18 @@ import {
   transferErrorPayload,
 } from "../services/inventoryTransfers";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 import { positiveQuantity } from "@shared/quantity";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Reads are manager and above too: supplier, purchasing, receiving and
+ * transfer records all carry cost prices, which cashiers never see (owner
+ * decision Q6; shared/accessPolicy.ts).
+ */
+const readRoles = requireRole(...rolesAtLeast("MANAGER"));
 
 const createSchema = z.object({
   fromLocationId: z.string().uuid(),
@@ -55,7 +63,7 @@ function sendError(res: any, err: unknown, fallback = 500) {
 }
 
 export function registerInventoryTransferRoutes(app: Express) {
-  app.get("/api/inventory/transfers", ...scoped, async (req: any, res) => {
+  app.get("/api/inventory/transfers", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const items = await listTransfers(ctx.orgId);
@@ -88,7 +96,7 @@ export function registerInventoryTransferRoutes(app: Express) {
     }
   });
 
-  app.get("/api/inventory/transfers/:id", ...scoped, async (req: any, res) => {
+  app.get("/api/inventory/transfers/:id", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const transfer = await getTransfer(ctx.orgId, req.params.id);

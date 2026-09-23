@@ -18,4 +18,11 @@ describe("bulkActions role gating", () => {
     expect(isBulkActionAllowed("customers", "delete", "MANAGER")).toBe(true);
     expect(isBulkActionAllowed("products", "delete", "MANAGER")).toBe(true);
   });
+
+  it("keeps the product export (cost prices) to admins", () => {
+    expect(isBulkActionAllowed("products", "export", "CASHIER")).toBe(false);
+    expect(isBulkActionAllowed("products", "export", "MANAGER")).toBe(false);
+    expect(isBulkActionAllowed("products", "export", "ADMIN")).toBe(true);
+    expect(isBulkActionAllowed("products", "export", "SUPER_ADMIN")).toBe(true);
+  });
 });

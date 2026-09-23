@@ -139,8 +139,10 @@ export default function Settings() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-8 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="imports">Imports</TabsTrigger>
-            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+            {/* Imports write products and suppliers carry cost prices: both are
+                manager and above on the server, so a cashier gets no tab. */}
+            {canViewCashiers && <TabsTrigger value="imports">Imports</TabsTrigger>}
+            {canViewCashiers && <TabsTrigger value="suppliers">Suppliers</TabsTrigger>}
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -151,9 +153,11 @@ export default function Settings() {
             {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="imports" className="space-y-6">
-            <ImportsHub />
-          </TabsContent>
+          {canViewCashiers && (
+            <TabsContent value="imports" className="space-y-6">
+              <ImportsHub />
+            </TabsContent>
+          )}
 
           <TabsContent value="integrations" className="space-y-6">
             <Card className={LM_CARD}>
@@ -173,9 +177,11 @@ export default function Settings() {
             <WhatsAppSettings />
           </TabsContent>
 
-          <TabsContent value="suppliers" className="space-y-6">
-            <SuppliersHub />
-          </TabsContent>
+          {canViewCashiers && (
+            <TabsContent value="suppliers" className="space-y-6">
+              <SuppliersHub />
+            </TabsContent>
+          )}
 
           {canViewCashiers && (
             <TabsContent value="cashiers" className="space-y-6">

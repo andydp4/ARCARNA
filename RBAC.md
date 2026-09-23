@@ -1,28 +1,60 @@
 # RBAC (Role-Based Access Control)
 
-## Role Model
+## Who sees what (owner decisions, v1.2 Phase 0B)
 
-| Role | Description | Org scope | Admin access |
-|------|-------------|-----------|--------------|
-| **SUPER_ADMIN** | Platform owner, first user or legacy Owner | Must pass `X-Org-Id` or `?orgId=` to scope; no global view | Full |
-| **ADMIN** | Organisation administrator | Scoped to their org | Yes (org-level) |
-| **MANAGER** | Store manager | Scoped to their org | No admin; can do stock, price overrides |
-| **CASHIER** | Point-of-sale operator | Scoped to their org | No |
+"You" is the platform owner (SUPER_ADMIN). Every row is enforced on the
+server by the end of Phase 0B; a hidden menu entry is never the lock. Rows
+that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 
-## Role Matrix
+| | Cashier | Manager | Admin | You |
+|---|---|---|---|---|
+| Sell, orders, own shift | Yes | Yes | Yes | Yes |
+| Products: create, edit, delete, aliases, import | No | Yes | Yes | Yes |
+| Cost prices and margins | Never, not even in API data | Yes | Yes | Yes |
+| Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
+| Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
+| Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |
+| Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |
+| Customer contact details (Q13a) | No | No | Yes | Yes |
+| Shift sheets | Own only | Cashiers' and own | All | All |
+| Pay settings: commission rates and switch, overhead mode, targets, "on time" timing (Q16) | No | View cashiers' | Change, logged | Change, logged |
+| Access log, recordings, managers' pay (Q13a) | No | No | No | Yes |
+| Signals | Addressed to them | Cashier-related | All, including managers' | All |
+| Allowed users, approvals | No | No | Yes | Yes |
+| Worker logs, dead letters | No | No | No | Yes |
 
-| Action | SUPER_ADMIN | ADMIN | MANAGER | CASHIER |
-|--------|-------------|-------|---------|---------|
-| Place order | ✓ | ✓ | ✓ | ✓ |
-| View orders | ✓ (all) | ✓ (org) | ✓ (org) | ✓ (org) |
-| Stock adjustment | ✓ | ✓ | ✓ | ✗ |
-| Price override | ✓ | ✓ | ✓ | ✗ |
-| Product CRUD | ✓ | ✓ | ✓ | ✗ |
-| Admin: allowed users | ✓ | ✓ | ✗ | ✗ |
-| Admin: approve users | ✓ | ✓ | ✗ | ✗ |
-| Admin: worker logs, dead letters | ✓ only | ✗ | ✗ | ✗ |
-| Reports, analytics | ✓ | ✓ | ✓ | ✓ |
-| Settings | ✓ | ✓ | ✓ | ✗ |
+Everyone signs in as themselves (Q17); there are no shared till logins.
+
+### Where it is enforced
+
+- **Route table.** `shared/accessPolicy.ts` (`ACCESS_POLICY`) lists each locked
+  route with its lowest role and the reason. Routes guard with
+  `requireRole(...rolesAtLeast("MANAGER"))` so the table and the code use the
+  same ranks.
+- **Cost stripping.** `productForRole()` in the same file removes `costPrice`
+  (and the other cost fields) from product and inventory reads for anyone
+  below MANAGER. The key is removed, not nulled.
+- **Role-matrix CI test.** `server/__tests__/roleMatrix.test.ts` requests every
+  `ACCESS_POLICY` row as every staff role through the real route table and
+  expects 403 exactly below the row's role. With a database it also seeds
+  canaries — phone **07700 900123**, email **canary@example.invalid**, cost
+  **£13.37** — plus a second org, then calls every GET route the app
+  registers as a cashier and fails on any canary it finds. Leaks still being
+  closed by another part of Phase 0B sit in `KNOWN_LEAKS` with their owner;
+  that list may only shrink.
+- **Dev bypass.** With `DEV_AUTH_BYPASS=1` (`npm run dev`), `requireRole` lets
+  everything through. Use Preview as role (Phase 0B part 10) or the role-matrix test to see
+  what a role really gets.
+
+## Roles
+
+| Role | Description | Org scope |
+|------|-------------|-----------|
+| **SUPER_ADMIN** | Platform owner | Must pass `X-Org-Id` or `?orgId=` to scope; no global view |
+| **ADMIN** | Organisation administrator | Scoped to their org |
+| **MANAGER** | Store manager | Scoped to their org |
+| **CASHIER** | Point-of-sale operator | Scoped to their org |
+| **CUSTOMER** | Shop (website) account | Refused on every staff route; shop routes only |
 
 ## Org/Store Scoping Rules
 

@@ -11,11 +11,19 @@ import {
   goodsReceiptErrorPayload,
 } from "../services/goodsReceipts";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 import { nonNegativeQuantity, positiveQuantity } from "@shared/quantity";
 import { recordAdminAudit } from "../adminAudit";
 
 const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Reads are manager and above too: supplier, purchasing, receiving and
+ * transfer records all carry cost prices, which cashiers never see (owner
+ * decision Q6; shared/accessPolicy.ts).
+ */
+const readRoles = requireRole(...rolesAtLeast("MANAGER"));
 
 const createSchema = z.object({
   purchaseDraftId: z.string().uuid(),
@@ -65,7 +73,7 @@ function sendError(res: any, err: unknown) {
  */
 export function registerGoodsReceiptRoutes(app: Express, scopedMiddleware: RequestHandler[] = defaultScoped) {
   const scoped = scopedMiddleware;
-  app.get("/api/goods-receipts", ...scoped, async (req: any, res) => {
+  app.get("/api/goods-receipts", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const rows = await listGoodsReceipts(ctx.orgId, {
@@ -115,7 +123,7 @@ export function registerGoodsReceiptRoutes(app: Express, scopedMiddleware: Reque
     }
   });
 
-  app.get("/api/goods-receipts/:id", ...scoped, async (req: any, res) => {
+  app.get("/api/goods-receipts/:id", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const receipt = await getGoodsReceipt(ctx.orgId, req.params.id);
@@ -164,7 +172,7 @@ export function registerGoodsReceiptRoutes(app: Express, scopedMiddleware: Reque
     }
   });
 
-  app.get("/api/purchase-drafts/:id/receiving", ...scoped, async (req: any, res) => {
+  app.get("/api/purchase-drafts/:id/receiving", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const data = await getPurchaseDraftReceiving(ctx.orgId, req.params.id);

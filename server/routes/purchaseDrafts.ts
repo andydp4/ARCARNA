@@ -16,12 +16,20 @@ import {
 } from "../services/purchaseDrafts";
 import { PURCHASE_DRAFT_STATUSES } from "@shared/schema";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 import { positiveQuantity } from "@shared/quantity";
 import { resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
 import { recordAdminAudit } from "../adminAudit";
 
 const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Reads are manager and above too: supplier, purchasing, receiving and
+ * transfer records all carry cost prices, which cashiers never see (owner
+ * decision Q6; shared/accessPolicy.ts).
+ */
+const readRoles = requireRole(...rolesAtLeast("MANAGER"));
 
 function sendError(res: any, err: unknown) {
   if ((err as any)?.code === '23503') return res.status(409).json({ message: "Cannot delete: still referenced by goods receipts or other records. Archive it instead." });
@@ -76,7 +84,7 @@ const draftPatchSchema = z
  */
 export function registerPurchaseDraftRoutes(app: Express, scopedMiddleware: RequestHandler[] = defaultScoped) {
   const scoped = scopedMiddleware;
-  app.get("/api/purchase-drafts", ...scoped, async (req: any, res) => {
+  app.get("/api/purchase-drafts", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const status = req.query.status as string | undefined;
@@ -87,7 +95,7 @@ export function registerPurchaseDraftRoutes(app: Express, scopedMiddleware: Requ
     }
   });
 
-  app.get("/api/purchase-drafts/:id", ...scoped, async (req: any, res) => {
+  app.get("/api/purchase-drafts/:id", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const draft = await getPurchaseDraft(ctx.orgId, req.params.id);
@@ -105,7 +113,7 @@ export function registerPurchaseDraftRoutes(app: Express, scopedMiddleware: Requ
   // No role gate beyond `scoped`, matching the existing CSV export button
   // (any user who can view the draft can export it; only status-changing
   // actions are restricted to `mutateRoles`).
-  app.get("/api/purchase-drafts/:id/export", ...scoped, async (req: any, res) => {
+  app.get("/api/purchase-drafts/:id/export", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const data = await getPurchaseDraftForExport(ctx.orgId, req.params.id);

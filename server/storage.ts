@@ -1228,7 +1228,10 @@ export class DatabaseStorage implements IStorage {
     }).length;
     const outOfStock = withStock.filter((p) => (p.stock ?? 0) === 0).length;
 
-    const topMovingCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`;
+    // Parenthesised: unwrapped, `and(...)` below read this as
+    // "in range, OR (no order AND this org)", so every org's products with a
+    // sale in the window reached this org's Evidence and its export.
+    const topMovingCond = sql`(${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL)`;
     const topMovingWhere = and(topMovingCond, eq(products.orgId, orgId));
     const topMovingRaw = await db
       .select({

@@ -253,8 +253,11 @@ export const ProductsRepoDrizzle: ProductsRepo = {
         product_id: updates.productCode,
         name: updates.name,
         barcode: updates.barcode,
-        cost_price: updates.costPrice ? String(updates.costPrice) : undefined,
-        default_sale_price: updates.salePrice ? String(updates.salePrice) : undefined,
+        // `!= null`, not truthiness: £0 is a real price and a real cost, and
+        // the old check silently kept the previous figure. A null cost clears
+        // it (unknown cost); sale price is NOT NULL so null leaves it alone.
+        cost_price: updates.costPrice === undefined ? undefined : updates.costPrice === null ? null : String(updates.costPrice),
+        default_sale_price: updates.salePrice != null ? String(updates.salePrice) : undefined,
         stock: updates.stock,
         stock_limit: updates.stockLimit,
         updated_at: updates.updatedAt,
