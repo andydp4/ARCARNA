@@ -1922,83 +1922,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInvoicesWithDetails(orgId: string): Promise<any[]> {
-    const org = await this.getOrganization(orgId);
-    const taxRate = org?.defaultTaxRate != null ? parseFloat(String(org.defaultTaxRate)) / 100 : 0.20;
-
-    const ordersData = await db
-      .select({ order: orders, customer: customers, invoice: invoices })
-      .from(orders)
-      .leftJoin(customers, eq(orders.customerId, customers.id))
-      .leftJoin(invoices, eq(invoices.orderId, orders.id))
-      .where(eq(orders.orgId, orgId))
-      .orderBy(desc(orders.createdAt));
-
-    // For each order, fetch order items with product details
-    const result = await Promise.all(
-      ordersData.map(async ({ order, customer, invoice }) => {
-        const items = await db
-          .select({
-            item: orderItems,
-            product: products,
-          })
-          .from(orderItems)
-          .leftJoin(products, eq(orderItems.productId, products.id))
-          .where(eq(orderItems.orderId, order.id));
-
-        const createdAt = order.createdAt ?? new Date();
-        const orderTotal = parseFloat(order.total);
-        // Prefer the persisted invoice record (real id, actual tax) once the
-        // InvoiceWorker has created one; fall back to a synthetic view (using
-        // the org's configured tax rate) for orders it hasn't reached yet.
-        const invoiceNumber =
-          invoice?.invoiceNumber ?? `INV-${new Date(createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
-        const subtotal = invoice ? parseFloat(invoice.subtotal) : orderTotal / (1 + taxRate);
-        const vat = invoice ? parseFloat(String(invoice.tax ?? "0")) : orderTotal - subtotal;
-        const dueDate = new Date(createdAt);
-        dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
-
-        // Determine invoice status
-        // `order.status` is an untyped varchar column, not the ORDER_STATUSES
-        // enum — the domain type no longer allows 'cancelled', but the public
-        // `/v1` API (server/routes/v1.ts) writes `req.body.status` to this
-        // column with no validation, so this branch stays reachable in
-        // practice even though nothing in the domain engine can produce it.
-        let status: 'paid' | 'pending' | 'overdue' | 'cancelled' = 'pending';
-        if (order.status === 'cancelled') {
-          status = 'cancelled';
-        } else if (order.status === 'completed') {
-          status = 'paid';
-        } else if (new Date() > dueDate) {
-          status = 'overdue';
-        }
-
-        return {
-          id: invoice?.id ?? order.id,
-          invoiceNumber,
-          orderId: order.id,
-          customerId: order.customerId,
-          customerName: customer?.name || 'Walk-in Customer',
-          customerEmail: customer?.email || '',
-          date: (order.createdAt ?? new Date()).toISOString(),
-          dueDate: dueDate.toISOString(),
-          total: orderTotal,
-          subtotal,
-          vat,
-          status,
-          paymentMethod: order.paymentMethod,
-          hasGeneratedInvoice: !!invoice,
-          pdfUrl: invoice?.googleDriveLink ?? null,
-          items: items.map(({ item, product }) => ({
-            name: product?.name || 'Unknown Product',
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unitPrice),
-            total: parseFloat(item.totalPrice)
-          }))
-        };
-      })
-    );
-
-    return result;
+    // One list and one status rule (v1.2 Phase 1C): server/services/invoices.ts.
+    const { listInvoices } = await import("./services/invoices");
+    return listInvoices(orgId);
   }
 
   // Allow list operations

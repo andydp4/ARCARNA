@@ -18,7 +18,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db";
-import { customers, orderEvents, orderPayments, orders, organizations } from "@shared/schema";
+import { customers, invoices, orderEvents, orderPayments, orders, organizations } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { runOrderTransition } from "../services/orderTransitions";
 
@@ -34,6 +34,8 @@ afterAll(async () => {
   if (!orgId) return;
   await db.delete(orderPayments).where(eq(orderPayments.orgId, orgId));
   await db.delete(orderEvents).where(eq(orderEvents.orgId, orgId));
+  // A tab sale is invoiced when it completes (v1.2 Phase 1C).
+  await db.delete(invoices).where(eq(invoices.orgId, orgId));
   await db.delete(orders).where(eq(orders.orgId, orgId));
   await db.delete(customers).where(eq(customers.orgId, orgId));
   await db.delete(organizations).where(eq(organizations.id, orgId));

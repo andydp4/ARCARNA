@@ -97,12 +97,14 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   `/api/settings` and `/api/org/setup` below ADMIN. Scheduled Evidence lists
   and run history are MANAGER and above.
 - **Credit, gift cards and marketing (FIX-12, FIX-13, PRV-14, Q11).** Every
-  Credit List route (`/api/tick-customers*`, `/api/credit/*`) and both invoice
-  routes are MANAGER and above, and the Control Centre leaves credit totals
+  Credit List route (`/api/tick-customers*`, `/api/credit/*`) and every invoice
+  route (including `POST /api/invoices/for-order/:orderId`, v1.2 Phase 1C) are
+  MANAGER and above, and the Control Centre leaves credit totals
   out below MANAGER. A credit payment's method must be cash, card or transfer.
   It may be dated up to `BACKDATE_LIMIT_DAYS` (7) back, never ahead, and only
   by a manager (`shared/creditPolicy.ts`). Clearing a whole tab
-  (`/mark-paid`) needs the exact balance being cleared. A card or transfer
+  (`/mark-paid`) needs the exact balance being cleared and a "Paid by" method
+  (v1.2 Phase 1C). A card or transfer
   payment recorded below ADMIN raises a `credit_payment` Signal with the
   recorder as its subject, so it reaches the people above them. Issuing a
   gift card is MANAGER and above and needs a reason, kept on the audit log;

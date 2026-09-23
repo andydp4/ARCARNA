@@ -11,6 +11,7 @@ import {
   organizations,
   products,
   refunds,
+  shifts,
   users,
   type OrderCredit,
 } from "@shared/schema";
@@ -22,6 +23,7 @@ import {
 } from "@shared/reports/orderCommission";
 import { currentTradingDay } from "@shared/time/tradingDay";
 import { resolveCommissionRate } from "./cashierShiftEngine";
+import { issueInvoiceForOrder } from "./invoices";
 
 type CreditLedgerDb = Pick<typeof db, "select" | "insert" | "update">;
 
@@ -149,6 +151,11 @@ export async function openCreditForOrder(
         updatedAt: new Date(),
       },
     });
+
+  // Money is owed, so the customer gets an invoice (v1.2 Phase 1C): numbered,
+  // on the org's terms, in the same transaction as the tab it bills. A
+  // re-completion keeps the number it was first given.
+  await issueInvoiceForOrder(client, orgId, order.id);
 }
 
 type OrderCommissionBasis = {
@@ -318,6 +325,13 @@ export type RecordPaymentInput = {
   paidOn?: string;
   recordedByUserId?: string | null;
   note?: string | null;
+  /**
+   * The recorder's open till shift, when the payment is taken today (v1.2
+   * Phase 1C). A cash payment stamped to it is part of that drawer's expected
+   * cash. Ignored for a backdated payment — that money went into a drawer
+   * already counted — and dropped if the shift has closed in the meantime.
+   */
+  shiftId?: string | null;
 };
 
 /**
@@ -355,6 +369,7 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
     }
 
     const paidOn = input.paidOn ?? await tradingDayTodayForOrg(input.orgId, tx);
+    const shiftId = input.paidOn ? null : await liveShiftId(input.orgId, input.shiftId ?? null, tx);
     const [payment] = await tx
       .insert(creditPayments)
       .values({
@@ -365,6 +380,7 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
         paidOn,
         recordedByUserId: input.recordedByUserId ?? null,
         note: input.note ?? null,
+        shiftId,
       })
       .returning();
 
@@ -383,6 +399,22 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
     await releaseCommission(input.orgId, input.orderId, payment.id, paidOn, credit, newOutstanding, tx);
     return updated;
   });
+}
+
+/**
+ * The shift to stamp, if it is still this org's and still open. Read with a
+ * share lock so a close running alongside waits for this payment rather than
+ * counting the drawer without it.
+ */
+async function liveShiftId(orgId: string, shiftId: string | null, client: CreditLedgerDb): Promise<string | null> {
+  if (!shiftId) return null;
+  const [live] = await client
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(and(eq(shifts.id, shiftId), eq(shifts.orgId, orgId), inArray(shifts.status, ["open", "reopened"])))
+    .for("share")
+    .limit(1);
+  return live?.id ?? null;
 }
 
 async function releaseCommission(

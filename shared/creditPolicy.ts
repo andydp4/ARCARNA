@@ -38,6 +38,24 @@ export function parseCreditPaymentMethod(raw: unknown): { ok: true; method: Cred
 }
 
 /**
+ * "Clear account" settles a whole tab in one go, so how the money came in has
+ * to be said rather than assumed (v1.2 Phase 1C): a cash clear goes into the
+ * drawer's expected cash, a card or transfer one does not, and defaulting to
+ * cash would put money in the drawer that was never there.
+ */
+export function requireCreditPaymentMethod(raw: unknown): { ok: true; method: CreditPaymentMethod } | CreditRuleFailure {
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return {
+      ok: false,
+      status: 400,
+      code: "CREDIT_METHOD_REQUIRED",
+      message: "Choose how the customer paid (Paid by) before clearing the account.",
+    };
+  }
+  return parseCreditPaymentMethod(raw);
+}
+
+/**
  * Card and transfer money never passes through the till drawer, so nothing
  * at the close would catch one recorded that never arrived. When it is
  * recorded by anyone below admin, the people above them get a Signal.

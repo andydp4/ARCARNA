@@ -180,9 +180,12 @@ describe.skipIf(!hasDb)("credit, invoices and gift cards lock-down", () => {
   });
 
   it("clearing a whole tab needs the exact balance", async () => {
-    const stale = await post("manager", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance: 80 }).expect(409);
+    const stale = await post("manager", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance: 80, method: "cash" }).expect(409);
     expect(stale.body.code).toBe("CREDIT_BALANCE_CHANGED");
-    await post("manager", `/api/tick-customers/${customerId}/mark-paid`, {}).expect(400);
+    await post("manager", `/api/tick-customers/${customerId}/mark-paid`, { method: "cash" }).expect(400);
+    // "Paid by" is required to clear a whole account (v1.2 Phase 1C).
+    const noMethod = await post("manager", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance: 100 }).expect(400);
+    expect(noMethod.body.code).toBe("CREDIT_METHOD_REQUIRED");
     const ok = await post("manager", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance: 100, method: "transfer" }).expect(200);
     expect(ok.body.amountSettled).toBe(100);
     expect((await creditSignals()).signals).toHaveLength(1);

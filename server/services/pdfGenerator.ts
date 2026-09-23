@@ -19,6 +19,7 @@
  */
 
 import PDFDocument from 'pdfkit';
+import { showsVatLine } from '@shared/invoices/invoiceRules';
 
 // ============================================================================
 // Type Definitions
@@ -75,10 +76,17 @@ interface InvoiceData {
   subtotal: number;
   /** Tax amount */
   tax: number;
+  /**
+   * The VAT rate charged, in percent. At 0 (with no tax) the invoice shows no
+   * VAT line at all (v1.2 Phase 1C). Absent: derived from tax / subtotal.
+   */
+  vatRate?: number;
   /** Grand total */
   total: number;
-  /** Invoice status (e.g., "sent", "paid") */
+  /** Invoice status (e.g., "Paid", "Owed") */
   status: string;
+  /** The payment terms the invoice was issued on (e.g., "Net 30") */
+  paymentTerms?: string;
   /** Payment method used (for reference) */
   paymentMethod?: string;
 }
@@ -306,13 +314,15 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData, startY
   doc.text('Date:', labelX, y + rowHeight);
   doc.text('Due Date:', labelX, y + rowHeight * 2);
   doc.text('Status:', labelX, y + rowHeight * 3);
+  if (data.paymentTerms) doc.text('Terms:', labelX, y + rowHeight * 4);
 
   doc.fillColor(INK);
   doc.text(data.invoiceNumber, valueX, y);
   doc.text(formatDate(data.createdAt), valueX, y + rowHeight);
   doc.text(data.dueDate, valueX, y + rowHeight * 2);
   doc.text(data.status.toUpperCase(), valueX, y + rowHeight * 3);
-  let leftBottom = y + rowHeight * 3 + 14;
+  if (data.paymentTerms) doc.text(data.paymentTerms, valueX, y + rowHeight * 4, { width: 190 });
+  let leftBottom = y + rowHeight * (data.paymentTerms ? 4 : 3) + 14;
 
   // Right column: Customer billing address
   let rightBottom = y;
@@ -427,11 +437,18 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   doc.fillColor(INK).text(formatCurrency(data.subtotal, currency), valueX, y, { align: 'right', width: valueWidth });
   y += 18;
 
-  // VAT at the org's actual rate
-  const vatRate = data.subtotal > 0 ? Math.round((data.tax / data.subtotal) * 1000) / 10 : 0;
-  doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);
-  doc.fillColor(INK).text(formatCurrency(data.tax, currency), valueX, y, { align: 'right', width: valueWidth });
-  y += 22;
+  // VAT at the org's actual rate — and no VAT line at all when none was
+  // charged: a business that is not VAT-registered must not look as if it
+  // charged VAT at 0% (v1.2 Phase 1C).
+  const vatRate =
+    data.vatRate ?? (data.subtotal > 0 ? Math.round((data.tax / data.subtotal) * 1000) / 10 : 0);
+  if (showsVatLine(data.tax, vatRate)) {
+    doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);
+    doc.fillColor(INK).text(formatCurrency(data.tax, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 22;
+  } else {
+    y += 4;
+  }
 
   // Grand total — a tinted band the width of the totals column, in the org's
   // own brand colour, with the figure in white so it cannot be mistaken for

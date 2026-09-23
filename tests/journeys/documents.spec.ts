@@ -126,9 +126,14 @@ test.describe("documents: invoice", () => {
     await ensureOpenShift(api, locationId);
     const { orderId } = await orderForDocuments(api, locationId);
 
-    // loadInvoiceForPdf accepts an order id and synthesises the invoice when the
-    // async InvoiceWorker has not created the record yet — so a completed order
-    // can always produce paperwork.
+    // A plain till sale has a receipt, not an invoice (v1.2 Phase 1C): the PDF
+    // by order id says so until the customer asks for one, which issues it.
+    const before = await api.get(`/api/invoices/${orderId}/pdf`);
+    expect(before.status()).toBe(404);
+    expect((await before.json()).code).toBe("INVOICE_NOT_ISSUED");
+    const issued = await api.post(`/api/invoices/for-order/${orderId}`);
+    expect(issued.status(), `invoice should be issued. Body: ${await issued.text()}`).toBe(201);
+
     const res = await api.get(`/api/invoices/${orderId}/pdf`);
     expect(res.status(), `invoice should generate. Body: ${await res.text()}`).toBe(200);
     expect(res.headers()["content-type"]).toContain("application/pdf");
@@ -175,6 +180,8 @@ test.describe("documents: download buttons in the UI", () => {
       await expect(viewButton).toBeVisible({ timeout: 30_000 });
       await viewButton.click();
 
+      // A plain till sale's invoice is issued on request, after a confirm (v1.2 Phase 1C).
+      if (kind === "invoice") page.once("dialog", (dialog) => void dialog.accept());
       const button = page.getByTestId(`button-download-${kind}`);
       await expect(button, `${kind} download button should be on the order's details`).toBeVisible({
         timeout: 15_000,

@@ -4,6 +4,7 @@ import {
   checkCreditPaidOn,
   creditPaymentNeedsSignal,
   parseCreditPaymentMethod,
+  requireCreditPaymentMethod,
 } from "./creditPolicy";
 import { checkTemplateConsent, isMarketingTemplate } from "./marketingConsent";
 
@@ -78,5 +79,21 @@ describe("marketing WhatsApp templates (PRV-14)", () => {
     expect(checkTemplateConsent({ category: "MARKETING" }, { consentRecordedAt: null }).ok).toBe(false);
     expect(checkTemplateConsent({ category: "MARKETING" }, { consentRecordedAt: "2026-09-01" }).ok).toBe(true);
     expect(checkTemplateConsent({ category: "UTILITY" }, null).ok).toBe(true);
+  });
+});
+
+describe("Clear account needs Paid by (v1.2 Phase 1C)", () => {
+  it("refuses a clear with no method, rather than assuming cash", () => {
+    for (const missing of [undefined, null, "", "  "]) {
+      const verdict = requireCreditPaymentMethod(missing);
+      expect(verdict.ok).toBe(false);
+      if (!verdict.ok) expect(verdict.code).toBe("CREDIT_METHOD_REQUIRED");
+    }
+  });
+
+  it("accepts cash, card or transfer and still refuses anything else", () => {
+    expect(requireCreditPaymentMethod("Cash")).toEqual({ ok: true, method: "cash" });
+    expect(requireCreditPaymentMethod("transfer")).toEqual({ ok: true, method: "transfer" });
+    expect(requireCreditPaymentMethod("tick").ok).toBe(false);
   });
 });

@@ -9,7 +9,7 @@ import {
   voidCredit,
   writeOffCredit,
 } from "../services/creditLedger";
-import { creditPaymentTerms, signalCreditPayment } from "../services/creditPaymentRules";
+import { creditPaymentTerms, drawerForCreditPayment, signalCreditPayment } from "../services/creditPaymentRules";
 
 /**
  * Credit (tick) — what is owed, and what has been paid against it.
@@ -54,6 +54,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
       const checked = await creditPaymentTerms(ctx.orgId, req.body, role);
       if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
 
+      const drawerShiftId = await drawerForCreditPayment(ctx.orgId, req.user?.id, checked.terms);
       const credit = await recordCreditPayment({
         orgId: ctx.orgId,
         orderId: req.params.orderId,
@@ -62,6 +63,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
         paidOn: checked.terms.paidOn,
         recordedByUserId: req.user?.id ?? null,
         note: req.body?.note ?? null,
+        shiftId: drawerShiftId,
       });
       await signalCreditPayment({
         orgId: ctx.orgId,
@@ -72,7 +74,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
         orderIds: [req.params.orderId],
         paidOn: checked.terms.paidOn ?? null,
       }).catch((e) => console.error("[Credit] payment Signal failed", e));
-      res.status(201).json(credit);
+      res.status(201).json({ ...credit, drawerShiftId });
     } catch (error) {
       fail(res, error, "Failed to record the payment");
     }

@@ -75,6 +75,15 @@ export interface TickCustomer {
   orders: TickOrder[]
 }
 
+/** What a payment did to the till, said in the toast so nobody has to guess. */
+function drawerNote(method: string | undefined, drawerShiftId: string | null | undefined, backdated = false): string {
+  if (method !== 'cash') return ''
+  if (backdated) return ' Backdated, so it is not in today\'s till.'
+  return drawerShiftId
+    ? ' Added to your till\'s expected cash.'
+    : ' No till was open for you, so it is not in any drawer\'s expected cash.'
+}
+
 export default function TickList() {
   const { toast } = useToast()
   const { user } = useAuth()
@@ -86,7 +95,9 @@ export default function TickList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [payingCustomer, setPayingCustomer] = useState<TickCustomer | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
+  // No default: how the money came in decides whether it is in the drawer's
+  // expected cash, so somebody has to say (v1.2 Phase 1C).
+  const [paymentMethod, setPaymentMethod] = useState('')
   // Blank, or today, is today. A manager may backdate within the same window
   // an order can be backdated; the server holds the line (FIX-12).
   const [paymentDate, setPaymentDate] = useState('')
@@ -125,16 +136,19 @@ export default function TickList() {
   const markPaidMutation = useMutation({
     // Clearing a whole tab sends the balance the person was looking at: if
     // more went on the tab since, the server refuses rather than clear it.
-    mutationFn: async ({ customerId, expectedBalance }: { customerId: string; expectedBalance: number }) => {
-      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance })
-      return response.json()
+    // "Paid by" is required: the server refuses a clear without it.
+    mutationFn: async ({ customerId, expectedBalance, method }: { customerId: string; expectedBalance: number; method: string }) => {
+      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance, method })
+      return response.json() as Promise<{ amountSettled: number; method: string; drawerShiftId: string | null }>
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({
-        title: 'Payment Recorded',
-        description: 'Customer debt marked as paid',
+        title: 'Account cleared',
+        description: `£${Number(result.amountSettled ?? 0).toFixed(2)} received by ${result.method}.${drawerNote(result.method, result.drawerShiftId)}`,
       })
       queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
+      setPayingCustomer(null)
+      setPaymentAmount('')
     },
     onError: (error: any) => {
       toast({
@@ -168,15 +182,16 @@ export default function TickList() {
       const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method, paidOn })
       const body = await response.json()
       if (!response.ok) throw new Error(body?.message ?? 'Failed to record the payment')
-      return body as { amountApplied: number; remainingOwed: number }
+      return body as { amountApplied: number; remainingOwed: number; method: string; drawerShiftId: string | null }
     },
-    onSuccess: (result) => {
+    onSuccess: (result, vars) => {
       toast({
         title: 'Payment recorded',
         description:
-          result.remainingOwed > 0
+          (result.remainingOwed > 0
             ? `£${result.amountApplied.toFixed(2)} received. £${result.remainingOwed.toFixed(2)} still outstanding.`
-            : `£${result.amountApplied.toFixed(2)} received. The account is clear.`,
+            : `£${result.amountApplied.toFixed(2)} received. The account is clear.`) +
+          drawerNote(result.method, result.drawerShiftId, Boolean(vars.paidOn)),
       })
       queryClient.invalidateQueries({ queryKey: ['/api/tick-customers'] })
       setPayingCustomer(null)
@@ -190,7 +205,7 @@ export default function TickList() {
   const handleRecordPayment = (customer: TickCustomer) => {
     setPayingCustomer(customer)
     setPaymentAmount((customer.totalDebt || 0).toFixed(2))
-    setPaymentMethod('cash')
+    setPaymentMethod('')
     setPaymentDate('')
   }
 
@@ -512,8 +527,13 @@ export default function TickList() {
               <div className="space-y-2">
                 <Label htmlFor="tick-payment-method">Paid by</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger id="tick-payment-method" className="min-h-[44px]" aria-label="Paid by">
-                    <SelectValue />
+                  <SelectTrigger
+                    id="tick-payment-method"
+                    className="min-h-[44px]"
+                    aria-label="Paid by"
+                    data-testid="select-tick-payment-method"
+                  >
+                    <SelectValue placeholder="Choose how they paid" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
@@ -524,7 +544,7 @@ export default function TickList() {
                 {/* It matters which: only the cash leg reaches the drawer, so
                     the Z-report cannot reconcile without knowing. */}
                 <p className="text-xs text-muted-foreground">
-                  Only cash payments go into the till drawer.
+                  Cash taken today goes into your open till&apos;s expected cash. Card and transfer do not.
                 </p>
               </div>
               <div className="space-y-2">
@@ -548,9 +568,27 @@ export default function TickList() {
               <Button variant="outline" className="min-h-[44px]" onClick={() => setPayingCustomer(null)}>
                 Cancel
               </Button>
+              {/* Clears the whole balance shown, and is refused if it has
+                  changed since. Needs "Paid by" like any payment. */}
+              <Button
+                variant="outline"
+                className="min-h-[44px]"
+                disabled={markPaidMutation.isPending || !paymentMethod || !(payingCustomer?.totalDebt ?? 0)}
+                onClick={() =>
+                  payingCustomer &&
+                  markPaidMutation.mutate({
+                    customerId: payingCustomer.id,
+                    expectedBalance: payingCustomer.totalDebt,
+                    method: paymentMethod,
+                  })
+                }
+                data-testid="button-tick-clear-account"
+              >
+                Clear account
+              </Button>
               <Button
                 className="min-h-[44px]"
-                disabled={recordPaymentMutation.isPending || !(Number(paymentAmount) > 0)}
+                disabled={recordPaymentMutation.isPending || !paymentMethod || !(Number(paymentAmount) > 0)}
                 onClick={() =>
                   payingCustomer &&
                   recordPaymentMutation.mutate({

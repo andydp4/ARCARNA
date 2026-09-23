@@ -45,6 +45,11 @@ export type ZReportShift = {
   locationName: string;
   status: string;
   notes?: string | null;
+  /**
+   * Whether a STORED expected cash included cash tab repayments (migration
+   * 084). False on shifts closed before that rule, whose report says so.
+   */
+  tabCashInExpected?: boolean;
 };
 
 export type ZReportData = {
@@ -74,9 +79,21 @@ export type ZReportData = {
     openingFloat: number;
     cashSales: number;
     cashRefunds: number;
+    /**
+     * Cash taken against tabs on this shift's drawer (v1.2 Phase 1C). It is in
+     * the drawer, so it is in expected cash; it is not a sale, so it is not in
+     * net sales.
+     */
+    cashTabRepayments: number;
     expectedCash: number;
     closingCount: number | null;
     variance: number | null;
+    /**
+     * True when this report's expected cash was fixed at close before tab
+     * repayments counted towards it: any cash taken against a tab on that
+     * shift is not in the figure, so the variance reads over by that much.
+     */
+    expectedCashExcludesTabRepayments: boolean;
   };
   /**
    * Credit handed out during this shift — sales made, goods gone, no money in.
@@ -106,7 +123,22 @@ export type ZReportCreditPayment = {
   amount: number;
   givenOn: string;
   method: string;
+  /**
+   * Stamped to this shift's drawer (credit_payments.shift_id). Only a cash one
+   * stamped here is part of expected cash; one merely taken while the shift
+   * was open may have gone into somebody else's drawer, or none.
+   */
+  onThisShift?: boolean;
 };
+
+/** Cash tab repayments that went into this shift's drawer. */
+export function cashTabRepaymentsFrom(payments: ZReportCreditPayment[]): number {
+  return roundMoney(
+    payments
+      .filter((p) => p.onThisShift && isCashPayment(p.method))
+      .reduce((sum, p) => sum + Math.max(0, p.amount), 0),
+  );
+}
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -219,10 +251,11 @@ export function buildZReport(
       .reduce((sum, r) => sum + r.total, 0),
   );
   const openingFloat = shift.openingFloat;
+  const cashTabRepayments = cashTabRepaymentsFrom(creditPaid);
   const expectedCash =
     shift.expectedCash != null
       ? shift.expectedCash
-      : roundMoney(openingFloat + cashSales - cashRefunds);
+      : roundMoney(openingFloat + cashSales - cashRefunds + cashTabRepayments);
   const closingCount = shift.closingCount;
   const variance =
     shift.variance != null
@@ -246,9 +279,11 @@ export function buildZReport(
       openingFloat,
       cashSales,
       cashRefunds,
+      cashTabRepayments,
       expectedCash,
       closingCount,
       variance,
+      expectedCashExcludesTabRepayments: shift.expectedCash != null && shift.tabCashInExpected === false,
     },
     creditGivenOut: roundMoney(
       creditGiven.reduce((sum, c) => sum + Math.max(0, c.amountGiven), 0),
@@ -280,10 +315,11 @@ export function computeExpectedCash(
   openingFloat: number,
   orders: ZReportOrder[],
   refunds: ZReportRefund[],
+  cashTabRepayments = 0,
 ): number {
   const cashSales = cashTakenFrom(orders);
   const cashRefunds = refunds
     .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
     .reduce((sum, r) => sum + r.total, 0);
-  return roundMoney(openingFloat + cashSales - cashRefunds);
+  return roundMoney(openingFloat + cashSales - cashRefunds + cashTabRepayments);
 }

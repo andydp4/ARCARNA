@@ -74,6 +74,8 @@ export const organizations = pgTable("organizations", {
   invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
   invoiceStartNumber: integer("invoice_start_number").default(1000),
   paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
+  /** The last invoice number issued; NULL until the first (migration 085). */
+  invoiceLastNumber: integer("invoice_last_number"),
   defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("0.00"),
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
@@ -867,6 +869,12 @@ export const shifts = pgTable(
     notes: text("notes"),
     reopenReason: text("reopen_reason"),
     status: varchar("status", { length: 16 }).notNull().default("open"),
+    /**
+     * True once this shift's stored expected cash includes cash tab
+     * repayments (migration 084). Shifts closed before that rule stay false,
+     * and their Z-reports say so.
+     */
+    tabCashInExpected: boolean("tab_cash_in_expected").notNull().default(false),
   },
   (table) => [
     index("shifts_org_location_idx").on(table.orgId, table.locationId),
@@ -1340,10 +1348,18 @@ export const creditPayments = pgTable(
     // `seed-cashier`), not UUIDs.
     recordedByUserId: varchar("recorded_by_user_id", { length: 255 }),
     note: text("note"),
+    /**
+     * The till shift open for the recorder when the payment was taken today
+     * (migration 084). A cash one is part of that drawer's expected cash.
+     * NULL for backdated payments, for anyone with no till open, and for
+     * everything recorded before the rule.
+     */
+    shiftId: uuid("shift_id").references(() => shifts.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_shift_idx").on(table.shiftId),
     index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
     // A payment of zero or less is not a payment.
     check("credit_payments_amount_check", sql`${table.amount} > 0`),
@@ -2068,11 +2084,24 @@ export const invoices = pgTable("invoices", {
   dueDate: varchar("due_date", { length: 10 }),
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveLink: varchar("google_drive_link", { length: 1024 }),
+  // Migration 085. NULL on invoices written before numbering: those are not
+  // renumbered. A numbered invoice keeps the terms, name and VAT rate it was
+  // issued with.
+  sequenceNumber: integer("sequence_number"),
+  paymentTerms: varchar("payment_terms", { length: 255 }),
+  billingName: varchar("billing_name", { length: 255 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("invoices_org_id_idx").on(table.orgId),
   index("invoices_order_id_idx").on(table.orderId),
+  uniqueIndex("invoices_org_sequence_uq")
+    .on(table.orgId, table.sequenceNumber)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
+  uniqueIndex("invoices_order_numbered_uq")
+    .on(table.orderId)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
 ]);
 
 export type Invoice = typeof invoices.$inferSelect;

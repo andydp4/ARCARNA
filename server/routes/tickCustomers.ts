@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { rolesAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE, checkClearWholeTab } from "@shared/creditPolicy";
-import { creditPaymentTerms, signalCreditPayment } from "../services/creditPaymentRules";
+import { creditPaymentTerms, drawerForCreditPayment, signalCreditPayment } from "../services/creditPaymentRules";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -184,6 +184,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         });
       }
 
+      const drawerShiftId = await drawerForCreditPayment(ctx.orgId, req.user?.id, checked.terms);
       const applied: Array<{ orderId: string; amount: number }> = [];
       for (const row of owing) {
         if (remaining <= 0) break;
@@ -198,6 +199,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           paidOn: checked.terms.paidOn,
           recordedByUserId: req.user?.id ?? null,
           note: req.body?.note ?? null,
+          shiftId: drawerShiftId,
         });
         applied.push({ orderId: row.orderId, amount });
         remaining = Math.round((remaining - amount) * 100) / 100;
@@ -219,6 +221,8 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         applied,
         amountApplied: applied.reduce((sum, a) => sum + a.amount, 0),
         remainingOwed: Math.round((owed - applied.reduce((sum, a) => sum + a.amount, 0)) * 100) / 100,
+        method: checked.terms.method,
+        drawerShiftId,
       });
     } catch (error: any) {
       if (error?.status) {
@@ -242,7 +246,8 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const role = ctx.role ?? req.user?.role;
-      const checked = await creditPaymentTerms(ctx.orgId, req.body, role);
+      // "Paid by" is required here (v1.2 Phase 1C): see requireCreditPaymentMethod.
+      const checked = await creditPaymentTerms(ctx.orgId, req.body, role, { methodRequired: true });
       if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
 
       const { db } = await import('../db');
@@ -264,6 +269,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       const exact = checkClearWholeTab(req.body?.expectedBalance, owed);
       if (!exact.ok) return res.status(exact.status).json({ message: exact.message, code: exact.code });
 
+      const drawerShiftId = await drawerForCreditPayment(ctx.orgId, req.user?.id, checked.terms);
       let settled = 0;
       for (const row of owing) {
         const amount = parseFloat(String(row.outstanding));
@@ -276,6 +282,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           paidOn: checked.terms.paidOn,
           recordedByUserId: req.user?.id ?? null,
           note: 'Account cleared in full',
+          shiftId: drawerShiftId,
         });
         settled += amount;
       }
@@ -295,6 +302,8 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         message: "Customer debt marked as paid",
         ordersSettled: owing.length,
         amountSettled: Math.round(settled * 100) / 100,
+        method: checked.terms.method,
+        drawerShiftId,
       });
     } catch (error: any) {
       if (error?.status) {

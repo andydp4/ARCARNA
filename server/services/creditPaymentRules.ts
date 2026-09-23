@@ -9,10 +9,12 @@ import {
   checkCreditPaidOn,
   creditPaymentNeedsSignal,
   parseCreditPaymentMethod,
+  requireCreditPaymentMethod,
   type CreditPaymentMethod,
   type CreditRuleFailure,
 } from "@shared/creditPolicy";
 import { tradingDayTodayForOrg } from "./creditLedger";
+import { findOpenShiftForUser } from "../middleware/requireOpenShift";
 import { notify } from "./signals";
 import { resolveUserName } from "./userDisplayName";
 
@@ -23,8 +25,11 @@ export async function creditPaymentTerms(
   orgId: string,
   body: { method?: unknown; paidOn?: unknown } | undefined,
   recorderRole: string | null | undefined,
+  options: { methodRequired?: boolean } = {},
 ): Promise<{ ok: true; terms: CreditPaymentTerms } | CreditRuleFailure> {
-  const method = parseCreditPaymentMethod(body?.method);
+  const method = options.methodRequired
+    ? requireCreditPaymentMethod(body?.method)
+    : parseCreditPaymentMethod(body?.method);
   if (!method.ok) return method;
   const hasDate = body?.paidOn !== undefined && body?.paidOn !== null && body?.paidOn !== "";
   // Only a dated payment needs the org's today, so the ordinary case costs nothing extra.
@@ -32,6 +37,22 @@ export async function creditPaymentTerms(
   const date = hasDate ? checkCreditPaidOn(body?.paidOn, today, recorderRole) : ({ ok: true, paidOn: null } as const);
   if (!date.ok) return date;
   return { ok: true, terms: { method: method.method, paidOn: date.paidOn ?? undefined } };
+}
+
+/**
+ * The till drawer a payment taken today goes against: the recorder's own open
+ * shift, the same rule a desk refund follows (ARC-015). Nobody with a till
+ * open means no drawer — never a phantom shift opened as a side effect.
+ * A backdated payment has none: that day's drawer has already been counted.
+ */
+export async function drawerForCreditPayment(
+  orgId: string,
+  recorderUserId: string | null | undefined,
+  terms: CreditPaymentTerms,
+): Promise<string | null> {
+  if (terms.paidOn || !recorderUserId) return null;
+  const shift = await findOpenShiftForUser(orgId, recorderUserId);
+  return shift?.id ?? null;
 }
 
 /**
