@@ -77,5 +77,11 @@ export const PlaceOrderInput = z.object({
     .optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
-export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })
+// taxRatePercent is set by the route from the shop's own settings, never the
+// client. Without it here Zod stripped it and every edit fell back to the
+// engine default instead of the shop's rate.
+export const UpdateOrderInput = z.object({
+  lines: z.array(OrderLineInput).min(1),
+  taxRatePercent: z.number().min(0).max(100).optional(),
+})
 export type UpdateOrderDTO = z.infer<typeof UpdateOrderInput>

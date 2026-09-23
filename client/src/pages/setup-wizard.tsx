@@ -91,7 +91,7 @@ export default function SetupWizard() {
     invoicePrefix: "INV",
     invoiceStartNumber: 1000,
     paymentTerms: "Net 30",
-    defaultTaxRate: "20",
+    defaultTaxRate: "0",
     receiptFooter: "Thank you for your business",
     receiptStyle: "standard",
     accentStyle: "arcarna",

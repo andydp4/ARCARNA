@@ -4,7 +4,7 @@ import type { EventBus } from './bus'
 import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
 
 /** Fallback when no org rate is supplied. Matches the historic fixed rate. */
-export const DEFAULT_TAX_RATE_PERCENT = 20
+export const DEFAULT_TAX_RATE_PERCENT = 0
 
 export class DomainEngine {
   constructor(

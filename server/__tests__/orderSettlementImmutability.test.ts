@@ -74,10 +74,16 @@ describe("settled order financials are frozen", () => {
       total: 10,
       lines: [],
     });
-    await engine.updateOrder("o1", { lines: LINES, orgId: "org1" });
+    await engine.updateOrder("o1", { lines: LINES, orgId: "org1", taxRatePercent: 20 } as any);
     expect(saved).toHaveLength(1);
-    // 999 + 20% VAT
+    // 999 + the shop's 20% VAT
     expect(saved[0].total).toBeCloseTo(1198.8, 2);
+  });
+
+  it("re-prices an edit with no rate at 0%, never an assumed 20%", async () => {
+    const { engine, saved } = makeEngine({ id: "o1", status: "pending", orgId: "org1", total: 10, lines: [] });
+    await engine.updateOrder("o1", { lines: LINES, orgId: "org1" });
+    expect(saved[0].total).toBeCloseTo(999, 2);
   });
 });
 

@@ -74,7 +74,7 @@ export const organizations = pgTable("organizations", {
   invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
   invoiceStartNumber: integer("invoice_start_number").default(1000),
   paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
-  defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("20.00"),
+  defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("0.00"),
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
   receiptTemplateHtml: text("receipt_template_html"),

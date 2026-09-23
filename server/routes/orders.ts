@@ -1151,8 +1151,16 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       
       const { engine } = await import('../../apps/server/src/engine.wiring');
       const { publishEvent } = await import('../eventBus');
+      // An edit re-prices the order, so it uses the shop's own VAT rate — the
+      // engine otherwise fell back to its hardcoded default (20% until
+      // Sept 2026), adding VAT to every Ops-board line edit at a 0% shop. A
+      // caller never gets to choose the rate.
+      const { getOrgTaxRatePercent } = await import('../services/orgTaxRate');
+      const orgTaxRate = await getOrgTaxRatePercent(ctx?.orgId ?? existing.org_id);
+      const { taxRatePercent: _ignoredRate, ...editBody } = req.body ?? {};
       const result = await engine.updateOrder(req.params.id, {
-        ...req.body,
+        ...editBody,
+        ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
         orgId: ctx.orgId,
         locationId: ctx?.locationId ?? req.body.locationId,
       });
