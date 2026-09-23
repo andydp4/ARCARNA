@@ -21,12 +21,12 @@
  * `ops_alerts` rows yet, never omitted, so the client's `OpsBoardPayload`
  * type never has to treat the field as optional.
  */
-import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { organizations, opsStaff, allowedUsers } from "@shared/schema";
 import { resolveUserNames } from "./userDisplayName";
-import { currentTradingDay } from "@shared/time/tradingDay";
+import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
 import type { CardState } from "@shared/orders/opsState";
-import { deriveCardState } from "@shared/orders/opsState";
+import { deriveCardState, isLiveLaneState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
 
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
@@ -110,6 +110,13 @@ export interface OpsBoardSummary {
   readyWaiting: number;
   carriedOver: number;
   completedToday: number;
+  /**
+   * Per lane: `live` is exactly what the lane's own count shows
+   * (isLiveLaneState); `carriedOver` and `scheduled` are the open orders
+   * folded into its "Earlier days" and "Scheduled" strips. The Control
+   * Centre's To collect / To deliver tiles read these.
+   */
+  lanes: Record<"collection" | "delivery", { live: number; carriedOver: number; scheduled: number }>;
 }
 
 export interface OpsBoardPayload {
@@ -211,6 +218,33 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
     )
     .orderBy(orders.created_at);
   return rows as unknown as RawOrderRow[];
+}
+
+/**
+ * The real "done today" count — settled within today's trading day, not
+ * `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep `selectBoardRows`
+ * (and the 150ms-at-2,000-orders card render it feeds) cheap; it is not a
+ * day boundary, and reusing it for the tile means "Done today" silently
+ * drops anything settled more than two hours ago — the exact bug
+ * `controlCentre.ts`'s `ordersCompletedToday` was written to avoid. This is
+ * the same trading-day-bounded `count(*)` that field uses, against the
+ * snake_case table this file's row query already reads.
+ */
+async function countCompletedToday(orgId: string, bounds: { start: Date; end: Date }): Promise<number> {
+  const { db } = await import("../../apps/server/src/db");
+  const { orders } = await import("../../apps/server/src/db/schema");
+  const [row] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.org_id, orgId),
+        eq(orders.status, "completed"),
+        gte(orders.settled_at, bounds.start),
+        lt(orders.settled_at, bounds.end),
+      ),
+    );
+  return row?.c ?? 0;
 }
 
 interface ItemAggregate {
@@ -383,9 +417,40 @@ async function loadOrgSettings(orgId: string): Promise<{ timezone: string; setti
  * `allowed_users` of the org, minus CUSTOMER, joined to `ops_staff` —
  * exactly the brief's definition. `openCount` comes from the board rows
  * already fetched rather than a second query against `orders`.
+ *
+ * `viewerUserId` widens the match to also include the signed-in viewer's
+ * own row regardless of its stored `org_id`. A SUPER_ADMIN's `org_id` is
+ * `null` by design (server/auth/commonAuth.ts resolves their org per
+ * request — header/query/single-org fallback — never from their own row),
+ * so `eq(allowedUsers.orgId, orgId)` alone can never match it: that
+ * account silently vanishes from every list this function feeds — "Pass
+ * to…"'s candidates, the "who's on" strip, and `board.me` (itself `staff
+ * .find(s => s.userId === userId)`, so their own station/break state reads
+ * as permanently unset too). Scoped to one specific user's own row, not a
+ * role or a second org — it can only ever add the person who legitimately
+ * resolved into viewing this board just now.
  */
-async function loadStaff(orgId: string, openByAssignee: Map<string, number>, now: Date): Promise<OpsBoardStaffRow[]> {
+async function loadStaff(
+  orgId: string,
+  openByAssignee: Map<string, number>,
+  now: Date,
+  viewerUserId: string | null,
+): Promise<OpsBoardStaffRow[]> {
   const { db: mainDb } = await import("../db");
+  const orgOrViewer = viewerUserId
+    ? or(
+        eq(allowedUsers.orgId, orgId),
+        // Only a NULL org_id is widened — a viewer whose row genuinely
+        // belongs to a DIFFERENT org must still be excluded here, same as
+        // before this fix; this clause exists solely for the org-less
+        // SUPER_ADMIN case above, not as a blanket "always include the
+        // viewer" rule.
+        and(
+          isNull(allowedUsers.orgId),
+          or(eq(allowedUsers.authUserId, viewerUserId), eq(allowedUsers.replitUserId, viewerUserId)),
+        ),
+      )
+    : eq(allowedUsers.orgId, orgId);
   const [people, stationRows] = await Promise.all([
     mainDb
       .select({
@@ -396,7 +461,7 @@ async function loadStaff(orgId: string, openByAssignee: Map<string, number>, now
         role: allowedUsers.role,
       })
       .from(allowedUsers)
-      .where(and(eq(allowedUsers.orgId, orgId), ne(allowedUsers.role, "CUSTOMER"))),
+      .where(and(orgOrViewer, ne(allowedUsers.role, "CUSTOMER"))),
     mainDb.select().from(opsStaff).where(eq(opsStaff.orgId, orgId)),
   ]);
 
@@ -439,11 +504,14 @@ export async function getOpsBoard(
   const now = options.now ?? new Date();
   const { timezone, settings } = await loadOrgSettings(orgId);
   const cutoff = new Date(now.getTime() - RECENT_COMPLETED_MINUTES * 60_000);
+  const tradingDay = currentTradingDay(timezone, now);
+  const bounds = tradingDayBounds(tradingDay, timezone);
 
   const rows = await selectBoardRows(orgId, cutoff);
   const orderIds = rows.map((r) => r.id);
   const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
 
+  const completedTodayCount = await countCompletedToday(orgId, bounds);
   const [items, handoverOverrides] = await Promise.all([
     selectItemAggregates(orderIds),
     selectActualHandoverTimes(orgId, completedIds),
@@ -466,7 +534,7 @@ export async function getOpsBoard(
     if (row.status === "completed" || !row.assignedUserId) continue;
     openByAssignee.set(row.assignedUserId, (openByAssignee.get(row.assignedUserId) ?? 0) + 1);
   }
-  const staff = await loadStaff(orgId, openByAssignee, now);
+  const staff = await loadStaff(orgId, openByAssignee, now, userId);
 
   const me = userId ? staff.find((s) => s.userId === userId) ?? null : null;
 
@@ -515,7 +583,11 @@ export async function getOpsBoard(
     dueSoonNow: open.filter((o) => derivedStates.get(o.id) === "due-soon").length,
     readyWaiting: open.filter((o) => derivedStates.get(o.id) === "ready").length,
     carriedOver: open.filter((o) => derivedStates.get(o.id) === "carried-over").length,
-    completedToday: orders.filter((o) => o.status === "completed").length,
+    completedToday: completedTodayCount,
+    lanes: {
+      collection: laneCounts(open, "collection", derivedStates),
+      delivery: laneCounts(open, "delivery", derivedStates),
+    },
   };
 
   // "my rows, unacked, unresolved, whose order is in `orders`" (brief) — the
@@ -526,7 +598,7 @@ export async function getOpsBoard(
 
   return {
     serverNow: now.toISOString(),
-    tradingDay: currentTradingDay(timezone, now),
+    tradingDay,
     timezone,
     settings,
     me: { userId, station: me?.station ?? null, onBreak: me?.onBreak ?? false },
@@ -596,4 +668,27 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
   ]);
 
   return projectBoardOrder(row as unknown as RawOrderRow, names, items.get(row.id as string), handoverOverrides.get(row.id as string));
+}
+
+/**
+ * Mirrors the board exactly: OpsBoard.tsx puts a card in a lane by
+ * `fulfilmentMethod === lane` (the column's CHECK allows only the two values).
+ */
+function laneCounts(
+  open: { id: string; fulfilmentMethod: string }[],
+  lane: "collection" | "delivery",
+  derivedStates: Map<string, CardState>,
+) {
+  const inLane = open.filter((o) => o.fulfilmentMethod === lane);
+  let live = 0;
+  let carriedOver = 0;
+  let scheduled = 0;
+  for (const o of inLane) {
+    const state = derivedStates.get(o.id);
+    if (!state) continue;
+    if (state === "carried-over") carriedOver++;
+    else if (state === "scheduled") scheduled++;
+    else if (isLiveLaneState(state)) live++;
+  }
+  return { live, carriedOver, scheduled };
 }

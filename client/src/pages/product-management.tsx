@@ -54,10 +54,10 @@ import {
   AlertCircle,
   CheckCircle,
   Globe,
-  ImagePlus,
   X
 } from 'lucide-react'
 import { PRODUCT_IMPORT_CSV_SAMPLE } from '@shared/setup'
+import { LOW_STOCK_THRESHOLD_PERCENT } from '@shared/constants/stock'
 import {
   parseProductCsvText,
   previewProductImportFromMappedRows,
@@ -595,7 +595,7 @@ export default function ProductManagement() {
     const stockPercentage = (product.stock / (product.stockLimit || 100)) * 100
     if (product.stock === 0) {
       return { status: 'Out of Stock', variant: 'destructive' as const }
-    } else if (stockPercentage <= 20) {
+    } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
       return { status: 'Low Stock', variant: 'destructive' as const }
     } else if (stockPercentage <= 50) {
       return { status: 'Medium Stock', variant: 'secondary' as const }
@@ -1064,7 +1064,7 @@ export default function ProductManagement() {
               <div className="text-xl sm:text-2xl font-bold">
                 {products.filter((p: any) => {
                   const stockPercentage = (p.stock / (p.stockLimit || 100)) * 100
-                  return stockPercentage <= 20 && p.stock > 0
+                  return stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT && p.stock > 0
                 }).length}
               </div>
             </CardContent>
@@ -1203,16 +1203,30 @@ export default function ProductManagement() {
                               )}
                             </div>
 
-                            <div className="flex gap-2 pt-2 border-t">
+                            {/* Icon-only below `sm` for Edit/Delete: three flex-1
+                                buttons with full text labels (icon +
+                                "Website"/"Edit"/"Delete") don't shrink below their
+                                unwrapped (whitespace-nowrap) label width, so their
+                                combined min-content routinely exceeds a phone-width
+                                card and the last button — Delete — renders past the
+                                card's right edge instead of shrinking into it.
+                                Labels return once there's room to show them without
+                                collision. Website keeps its label at every width —
+                                unlike a pencil or a bin, an unlabelled globe icon
+                                sitting between two other icons does not read as
+                                "controls this product's public website listing";
+                                owners have reported not being able to find it. */}
+                            <div className="flex gap-1 pt-2 border-t">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleWebsiteEdit(product)}
                                 className="flex-1 min-h-[44px]"
                                 data-testid={`button-website-${product.id}`}
+                                aria-label={`Edit website listing for ${product.name}`}
                               >
-                                <ImagePlus className="h-4 w-4 mr-2" />
-                                Website
+                                <Globe className="h-4 w-4 mr-1" />
+                                <span>Website</span>
                               </Button>
                               {/* Trigger only. The Edit dialog is declared once, in
                                   the desktop table below. Radix portals dialog
@@ -1230,8 +1244,8 @@ export default function ProductManagement() {
                                 data-testid={`button-edit-${product.id}`}
                                 aria-label={`Edit ${product.name}`}
                               >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit
+                                <Edit className="h-4 w-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Edit</span>
                               </Button>
                               <Button
                                 variant="outline"
@@ -1239,9 +1253,10 @@ export default function ProductManagement() {
                                 onClick={() => handleDelete(product.id)}
                                 className="flex-1 min-h-[44px]"
                                 data-testid={`button-delete-${product.id}`}
+                                aria-label={`Delete ${product.name}`}
                               >
-                                <Trash2 className="h-4 w-4 mr-2 text-destructive" />
-                                Delete
+                                <Trash2 className="h-4 w-4 sm:mr-2 text-destructive" />
+                                <span className="hidden sm:inline">Delete</span>
                               </Button>
                             </div>
                           </div>
@@ -1316,7 +1331,7 @@ export default function ProductManagement() {
                               data-testid={`button-website-${product.id}`}
                               aria-label="Edit website listing"
                             >
-                              <ImagePlus className="h-4 w-4" />
+                              <Globe className="h-4 w-4" />
                             </Button>
                             <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
                               <DialogTrigger asChild>

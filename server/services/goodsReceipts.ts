@@ -14,6 +14,7 @@ import { eq, and, desc, gte, lte, sql, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { adjustProductLocationStock, StockError, stockErrorPayload } from "./productLocationStock";
 import { roundQuantity } from "@shared/quantity";
+import { overDeliveryExcess } from "@shared/purchasing/purchaseLines";
 
 export { StockError, stockErrorPayload };
 
@@ -231,6 +232,12 @@ async function validateReceiptLines(
   }[],
   excludeReceiptId?: string,
   tx: DbTx | typeof db = db,
+  opts: {
+    /** Draft line ids a manager confirmed may exceed what is outstanding. */
+    acceptedOverLines?: ReadonlySet<string>;
+    /** Filled with every accepted line that does exceed it. */
+    overages?: OverDelivery[];
+  } = {},
 ) {
   if (!lines.length) {
     throw new GoodsReceiptError("VALIDATION_ERROR", "At least one receipt line required");
@@ -304,6 +311,23 @@ async function validateReceiptLines(
     const pending = await pendingQtyForDraftItem(purchaseDraftItemId, excludeReceiptId, tx);
     const remaining = Math.max(0, roundQuantity(draftItem.quantity - already - pending));
 
+    if (want.quantity > remaining && opts.acceptedOverLines?.has(purchaseDraftItemId)) {
+      opts.overages?.push({
+        purchaseDraftItemId,
+        ordered: draftItem.quantity,
+        alreadyReceived: already,
+        pendingOnOtherReceipts: pending,
+        requested: want.quantity,
+        excess: overDeliveryExcess({
+          ordered: draftItem.quantity,
+          alreadyReceived: already,
+          pendingOnOtherReceipts: pending,
+          requested: want.quantity,
+        }),
+      });
+      continue;
+    }
+
     if (want.quantity > remaining) {
       throw new GoodsReceiptError(
         "OVER_RECEIVE",
@@ -323,6 +347,42 @@ async function validateReceiptLines(
   return draft;
 }
 
+export type OverDelivery = {
+  purchaseDraftItemId: string;
+  ordered: number;
+  alreadyReceived: number;
+  pendingOnOtherReceipts: number;
+  requested: number;
+  excess: number;
+};
+
+/** Locks the draft row: the one lock line edits, receipt creation and completion all take first. */
+async function lockDraft(tx: DbTx, orgId: string, purchaseDraftId: string) {
+  const [row] = await tx
+    .select({ id: purchaseDrafts.id })
+    .from(purchaseDrafts)
+    .where(and(eq(purchaseDrafts.id, purchaseDraftId), eq(purchaseDrafts.orgId, orgId)))
+    .for("update")
+    .limit(1);
+  if (!row) throw new GoodsReceiptError("NOT_FOUND", "Purchase draft not found");
+}
+
+/**
+ * Creates a PENDING receipt. Stock and the order are untouched until it is
+ * completed.
+ *
+ * `acceptOverDeliveryLineIds` are the draft lines a manager confirmed the
+ * supplier over-delivered on (the route is MANAGER+ only). Any other line over
+ * what is outstanding is still refused with OVER_RECEIVE, whose details the
+ * screen uses to ask. The acceptance is stored on the receipt line and only
+ * acted on at completion, so voiding the receipt leaves the order as it was.
+ *
+ * Validation runs inside the transaction, after locking the draft row — the
+ * same lock updatePurchaseDraftItem takes — so a line edit on an approved
+ * order and a receipt against it are strictly ordered: the edit either sees
+ * the receipt and refuses, or commits first and the receipt is checked
+ * against the new quantity.
+ */
 export async function createGoodsReceipt(
   orgId: string,
   body: {
@@ -337,10 +397,19 @@ export async function createGoodsReceipt(
       notes?: string;
     }[];
   },
+  opts: { acceptOverDeliveryLineIds?: readonly string[] } = {},
 ) {
-  const draft = await validateReceiptLines(orgId, body.purchaseDraftId, body.items);
+  const overages: OverDelivery[] = [];
+  const accepted = new Set(opts.acceptOverDeliveryLineIds ?? []);
 
   const receiptId = await db.transaction(async (tx) => {
+    await lockDraft(tx, orgId, body.purchaseDraftId);
+    const draft = await validateReceiptLines(orgId, body.purchaseDraftId, body.items, undefined, tx, {
+      acceptedOverLines: accepted,
+      overages,
+    });
+    const overLines = new Set(overages.map((o) => o.purchaseDraftItemId));
+
     const [receipt] = await tx
       .insert(goodsReceipts)
       .values({
@@ -361,6 +430,7 @@ export async function createGoodsReceipt(
         quantityReceived: line.quantityReceived,
         quantityDamaged: line.quantityDamaged ?? 0,
         notes: line.notes,
+        overDeliveryAccepted: overLines.has(line.purchaseDraftItemId),
       });
     }
 
@@ -369,12 +439,14 @@ export async function createGoodsReceipt(
       receiptId: receipt.id,
       purchaseDraftId: body.purchaseDraftId,
       lineCount: body.items.length,
+      overDeliveryLines: overLines.size,
     });
 
     return receipt.id;
   });
 
-  return loadReceipt(orgId, receiptId!);
+  const receipt = await loadReceipt(orgId, receiptId!);
+  return receipt ? { ...receipt, overDelivery: overages } : receipt;
 }
 
 export async function completeGoodsReceipt(
@@ -397,7 +469,7 @@ export async function completeGoodsReceipt(
       if (!locked) throw new GoodsReceiptError("NOT_FOUND", "Goods receipt not found");
       if (locked.status === "completed") {
         logCompletion("info", "completion_already_completed", { orgId, receiptId });
-        return { receipt: await loadReceipt(orgId, receiptId, tx), idempotent: true };
+        return { receipt: await loadReceipt(orgId, receiptId, tx), idempotent: true, overDeliveryRaised: [] };
       }
       if (locked.status === "voided") {
         throw new GoodsReceiptError("INVALID_STATUS", "Cannot complete voided receipt");
@@ -422,13 +494,27 @@ export async function completeGoodsReceipt(
         quantityDamaged: i.quantityDamaged,
       }));
 
+      // Same lock order as receipt creation and line edits: draft, then lines.
+      await lockDraft(tx, orgId, locked.purchaseDraftId);
+
       const draft = await validateReceiptLines(
         orgId,
         locked.purchaseDraftId,
         lineInputs,
         receiptId,
         tx,
+        {
+          acceptedOverLines: new Set(
+            items.filter((i) => i.overDeliveryAccepted).map((i) => i.purchaseDraftItemId),
+          ),
+        },
       );
+
+      const overDeliveryRaised: {
+        purchaseDraftItemId: string;
+        orderedBefore: number;
+        orderedAfter: number;
+      }[] = [];
 
       const [draftRow] = await tx
         .select({ supplierId: purchaseDrafts.supplierId })
@@ -450,10 +536,23 @@ export async function completeGoodsReceipt(
 
         const newReceived = roundQuantity((draftItem.quantityReceived ?? 0) + line.quantityReceived);
         if (newReceived > draftItem.quantity) {
-          throw new GoodsReceiptError("OVER_RECEIVE", "Would exceed ordered quantity on complete", {
-            purchaseDraftItemId: line.purchaseDraftItemId,
-            ordered: draftItem.quantity,
-            newReceived,
+          if (!line.overDeliveryAccepted) {
+            throw new GoodsReceiptError("OVER_RECEIVE", "Would exceed ordered quantity on complete", {
+              purchaseDraftItemId: line.purchaseDraftItemId,
+              ordered: draftItem.quantity,
+              newReceived,
+            });
+          }
+          // The manager confirmed the supplier sent extra: the order records
+          // what was really bought, under the lock that books the stock in.
+          await tx
+            .update(purchaseDraftItems)
+            .set({ quantity: newReceived })
+            .where(eq(purchaseDraftItems.id, draftItem.id));
+          overDeliveryRaised.push({
+            purchaseDraftItemId: draftItem.id,
+            orderedBefore: draftItem.quantity,
+            orderedAfter: newReceived,
           });
         }
 
@@ -527,7 +626,7 @@ export async function completeGoodsReceipt(
         correlationId,
       });
 
-      return { receipt: await loadReceipt(orgId, receiptId, tx), idempotent: false };
+      return { receipt: await loadReceipt(orgId, receiptId, tx), idempotent: false, overDeliveryRaised };
     });
 
     return result;

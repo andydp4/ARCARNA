@@ -524,7 +524,11 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
         break;
       }
       case "complete": {
-        const completeActor: CompleteOrderActor = { userId: actor.userId, cashierShift: actor.cashierShift ?? null };
+        const completeActor: CompleteOrderActor = {
+          userId: actor.userId,
+          cashierShift: actor.cashierShift ?? null,
+          role: actor.role,
+        };
         const result = await completeOrderTx(tx, row, completeActor, {
           label: input.label,
           actualAt: input.actualAt,

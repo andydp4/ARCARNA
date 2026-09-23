@@ -4,6 +4,8 @@ declare module "pg" {
     max?: number;
     idleTimeoutMillis?: number;
     connectionTimeoutMillis?: number;
+    /** TLS options, passed to tls.connect (server/lib/dbConnection.ts forces it for Neon). */
+    ssl?: boolean | { rejectUnauthorized?: boolean };
   };
 
   export type PoolClient = {

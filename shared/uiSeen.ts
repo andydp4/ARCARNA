@@ -1,0 +1,14 @@
+/**
+ * Keys for one-time UI remembered per account (table user_ui_seen, migration
+ * 069). Namespaced "<thing>:<version>" so shipping a new version of a tour or
+ * release note shows it once more — and only once — to everyone.
+ */
+export const UI_SEEN_KEY_PATTERN = /^[a-z][a-zA-Z0-9]*:[A-Za-z0-9._-]{1,100}$/;
+
+export function isUiSeenKey(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 128 && UI_SEEN_KEY_PATTERN.test(value);
+}
+
+/** Account-level keys. The per-device localStorage keys these replace live beside each feature. */
+export const whatsNewAccountKey = (version: string) => `whatsNew:${version}`;
+export const opsTourAccountKey = (version: string) => `opsTour:${version}`;

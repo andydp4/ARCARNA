@@ -27,13 +27,22 @@ export type ControlCentreSnapshot = {
   today: DayKpi;
   vsLastWeek: DayKpi | null;
   vsSameWeekdayAvg: DayKpi | null;
+  /** Fallback for vsSameWeekdayAvg while it's still null (under 4 weeks of history) — see server/services/controlCentre.ts. */
+  vsYesterday: DayKpi | null;
   revenueTrend: { date: string; revenue: number }[];
 
   ordersCreatedToday: number;
   ordersCompletedToday: number;
   openOrders: number;
+  /** Live in the Collection / Delivery lane right now — the lane's own count. */
   toCollect: number;
   toDeliver: number;
+  /** Still open from an earlier trading day ("Earlier days" strip). */
+  toCollectEarlierDays: number;
+  toDeliverEarlierDays: number;
+  /** Pre-orders for a later day ("Scheduled" strip). */
+  toCollectScheduled: number;
+  toDeliverScheduled: number;
   /** From the Operations Centre board's own `deriveCardState`-driven summary — see server/services/controlCentre.ts. */
   lateNow: number;
   dueSoonNow: number;

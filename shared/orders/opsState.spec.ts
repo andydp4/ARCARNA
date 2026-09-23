@@ -5,7 +5,7 @@
  * (e.g. a held order that is also past due stays "held", not "late").
  */
 import { describe, expect, it } from "vitest";
-import { deriveCardState, type OpsOrderInput, type OpsTimingSettings } from "./opsState";
+import { CARD_STATES, deriveCardState, isLiveLaneState, type OpsOrderInput, type OpsTimingSettings } from "./opsState";
 
 const LONDON = "Europe/London";
 const NOW = new Date("2026-01-12T14:00:00.000Z"); // 14:00 UTC = 14:00 London (GMT, no DST in January)
@@ -348,5 +348,12 @@ describe("backdated orders render on-time and never go late, delayed or due-soon
   it("can still become ready", () => {
     const order = baseOrder({ dateKind: "backdated", etaGiven: minutesAgo(500), readyAt: minutesAgo(1) });
     expect(deriveCardState(order, NOW, SETTINGS).state).toBe("ready");
+  });
+});
+
+describe("isLiveLaneState — what a lane's own count includes", () => {
+  it("excludes only done, earlier-day and scheduled cards", () => {
+    const offLane = CARD_STATES.filter((state) => !isLiveLaneState(state));
+    expect([...offLane].sort()).toEqual(["carried-over", "completed", "scheduled"]);
   });
 });

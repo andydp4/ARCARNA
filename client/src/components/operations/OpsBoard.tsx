@@ -33,6 +33,22 @@ import { OpsStaleBanner } from "./OpsStaleBanner";
 
 export interface OpsBoardProps {
   orders: BoardOrder[];
+  /**
+   * The trading-day-bounded count from the server's own `summary` field
+   * (server/services/opsBoard.ts's `countCompletedToday`) — NOT derived from
+   * `orders` here, which only ever holds open orders plus whatever completed
+   * within the last `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep
+   * card rendering cheap; a count meant to cover the whole trading day can't
+   * be built from a list that already dropped everything older than two
+   * hours.
+   */
+  completedToday: number;
+  /**
+   * Arriving from a Control Centre tile (`?lane=`): open that lane's "Earlier
+   * days" and "Scheduled" strips, so an order the tile counted as waiting is
+   * on screen rather than folded away under an apparently empty lane.
+   */
+  expandStripsLane?: BoardLane;
   now: Date;
   settings: OpsTimingSettings;
   filter: OpsFilter;
@@ -99,6 +115,8 @@ function isMine(order: BoardOrder, userId?: string): boolean {
 
 export function OpsBoard({
   orders,
+  completedToday,
+  expandStripsLane,
   now,
   settings,
   filter,
@@ -150,9 +168,9 @@ export function OpsBoard({
       lateNow: open.filter(({ derived }) => derived.state === "late" || derived.state === "customer-waiting")
         .length,
       dueSoonNow: open.filter(({ derived }) => derived.state === "due-soon").length,
-      completedToday: cards.filter(({ derived }) => derived.state === "completed").length,
+      completedToday,
     };
-  }, [cards]);
+  }, [cards, completedToday]);
 
   const cardsInLane = useCallback(
     (lane: BoardLane): HTMLElement[] =>
@@ -269,6 +287,7 @@ export function OpsBoard({
             cards={visible.filter((card) => card.order.fulfilmentMethod === lane)}
             filtered={filtered}
             searchActive={search.trim().length > 0}
+            expandStrips={expandStripsLane === lane}
             pendingIds={pendingIds}
             isAlertForOrder={isAlertForOrder}
             shouldIgnoreEnter={scannerGuard.shouldIgnoreEnter}

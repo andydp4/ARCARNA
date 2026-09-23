@@ -79,13 +79,28 @@ const state = vi.hoisted(() => ({
   appsSelectCalls: [] as string[],
   usersSelectCallCount: 0,
   lastOrdersWhereCondition: null as unknown,
+  /** `countCompletedToday`'s fixture — independent of `appsOrderRows` so a
+   *  test can prove the summary field comes from THIS query, not from
+   *  filtering the row set `selectBoardRows` returns. */
+  completedTodayCount: 0,
+  lastCompletedTodayWhereCondition: null as unknown,
 }));
 
 vi.mock("../../apps/server/src/db", () => ({
   db: {
-    select: () => ({
+    select: (selection?: Record<string, unknown>) => ({
       from: (table: unknown) => {
         if (table === appsOrders) {
+          // `countCompletedToday`'s aggregate select (`{ c: count(*) }`) hits
+          // the same table as `selectBoardRows`'s full row select — dispatch
+          // on the selection shape, the same discriminator drizzle itself
+          // would need a real column list to avoid.
+          if (selection && "c" in selection) {
+            state.appsSelectCalls.push("orders_count");
+            return chain([{ c: state.completedTodayCount }], (condition) => {
+              state.lastCompletedTodayWhereCondition = condition;
+            });
+          }
           state.appsSelectCalls.push("orders");
           return chain(state.appsOrderRows, (condition) => {
             state.lastOrdersWhereCondition = condition;
@@ -205,6 +220,8 @@ beforeEach(() => {
   state.appsSelectCalls = [];
   state.usersSelectCallCount = 0;
   state.lastOrdersWhereCondition = null;
+  state.completedTodayCount = 0;
+  state.lastCompletedTodayWhereCondition = null;
 });
 
 describe("route registration order", () => {
@@ -236,7 +253,6 @@ describe("getOpsBoard", () => {
     // the predicate against a real database.
     expect(ids).toContain("open-1");
     expect(ids).toContain("completed-recent");
-    expect(payload.summary.completedToday).toBe(2);
     expect(payload.serverNow).toBe(now.toISOString());
     expect(payload.tradingDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
@@ -253,6 +269,41 @@ describe("getOpsBoard", () => {
     expect(flat).toContain("settled_at");
     // 120 minutes before `now` — the "Done today" tray's own window.
     expect(flat).toContainEqual(new Date(now.getTime() - 120 * 60_000));
+  });
+
+  it("takes summary.completedToday from countCompletedToday, not from filtering the row-limited orders list", async () => {
+    const now = new Date("2026-09-12T12:00:00Z");
+    // Deliberately at odds with `appsOrderRows`, which the mock's no-op WHERE
+    // would happily let a naive `orders.filter(status === "completed")`
+    // count instead — that was the bug (ARC-032): "Done today" silently
+    // dropping anything settled more than 120 minutes ago. If this ever
+    // reads 0 or 1 again, `summary.completedToday` has been wired back to
+    // `orders`/`rows` instead of the dedicated trading-day query.
+    state.completedTodayCount = 7;
+    state.appsOrderRows = [orderRow({ id: "open-1", status: "pending" })];
+
+    const payload = await getOpsBoard(ORG_ID, "cashier-1", { now });
+
+    expect(payload.summary.completedToday).toBe(7);
+  });
+
+  it("bounds countCompletedToday's predicate by org, status=completed and today's trading day, not the 120-minute cutoff", async () => {
+    const now = new Date("2026-09-12T12:00:00Z");
+    await getOpsBoard(ORG_ID, null, { now });
+
+    const flat = flattenSqlCondition(state.lastCompletedTodayWhereCondition);
+    expect(flat).toContain("org_id");
+    expect(flat).toContain(ORG_ID);
+    expect(flat).toContain("status");
+    expect(flat).toContain("completed");
+    expect(flat).toContain("settled_at");
+    // Europe/London, no DST in September? Actually September IS BST
+    // (UTC+1) — 06:00 local on the 12th is 05:00 UTC, and the day rolls to
+    // the 13th at the same local clock time.
+    expect(flat).toContainEqual(new Date("2026-09-12T05:00:00.000Z"));
+    expect(flat).toContainEqual(new Date("2026-09-13T05:00:00.000Z"));
+    // Not the row query's rolling cutoff — a day boundary, not a recency one.
+    expect(flat).not.toContainEqual(new Date(now.getTime() - 120 * 60_000));
   });
 
   it("returns the exact contract shape", async () => {

@@ -1055,7 +1055,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           const result = await completeOrderTx(
             tx,
             row,
-            { userId: actorId, cashierShift: cashierShift ?? null },
+            { userId: actorId, cashierShift: cashierShift ?? null, role: actorRole },
             {},
           );
           backdatedShiftToSettle = result.backdatedShiftToSettle;

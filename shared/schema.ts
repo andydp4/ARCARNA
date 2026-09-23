@@ -794,6 +794,12 @@ export const goodsReceiptItems = pgTable(
       .notNull()
       .default(0),
     notes: varchar("notes", { length: 500 }),
+    /**
+     * A manager confirmed this line may exceed what was still outstanding on
+     * the order (migration 070). The ordered quantity is raised to match only
+     * when the receipt is completed — voiding it changes nothing.
+     */
+    overDeliveryAccepted: boolean("over_delivery_accepted").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
@@ -1343,6 +1349,18 @@ export const orders = pgTable("orders", {
   // (migration 057)
   inputUserId: varchar("input_user_id", { length: 255 }),
   completedUserId: varchar("completed_user_id", { length: 255 }),
+  // True when whoever completed this order was ADMIN/SUPER_ADMIN — an owner
+  // stepping in during a rush must not inflate their own commission/KPI
+  // figures. Set automatically from the completer's role, never a manual
+  // toggle. Written alongside `completedUserId` (same freeze-once-per-settle
+  // rule: reopening and re-completing before the trading day closes may
+  // change it again, exactly as completedUserId can). Read by
+  // cashierShiftEngine.ts when it builds each order's CommissionOrderInput —
+  // true here zeroes the WHOLE order's commission pool (shared/reports/
+  // orderCommission.ts), including any inputter's share, by design: an owner
+  // completing a colleague's queued order still takes none of their own cut,
+  // and the sale is not split for the exception. (migration 068)
+  excludeFromCommission: boolean("exclude_from_commission").notNull().default(false),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -2226,6 +2244,24 @@ export const orgNotifications = pgTable(
 
 export type OrgNotification = typeof orgNotifications.$inferSelect;
 export type InsertOrgNotification = typeof orgNotifications.$inferInsert;
+
+/**
+ * One-time UI a person has already seen — What's New, tours, tutorials
+ * (migration 069). Per ACCOUNT rather than per browser, so it does not come
+ * back on another device. `key` is namespaced, e.g. "whatsNew:1.1.0" — see
+ * shared/uiSeen.ts. No FK to users: see the migration.
+ */
+export const userUiSeen = pgTable(
+  "user_ui_seen",
+  {
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    key: varchar("key", { length: 128 }).notNull(),
+    seenAt: timestamp("seen_at").defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.key] })],
+);
+
+export type UserUiSeen = typeof userUiSeen.$inferSelect;
 
 // ==================== EVENT-DRIVEN SYNC SYSTEM ====================
 

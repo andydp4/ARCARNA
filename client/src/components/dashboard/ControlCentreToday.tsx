@@ -168,7 +168,16 @@ export function ControlCentreToday() {
           </div>
         </div>
         <ComparisonColumn title="vs last week" today={data.today} baseline={data.vsLastWeek} />
-        <ComparisonColumn title="vs same weekday (12mo avg)" today={data.today} baseline={data.vsSameWeekdayAvg} />
+        {/* vsSameWeekdayAvg needs 4+ matching weekdays of settled-revenue
+            history and reads null for weeks after opening — a permanent "—"
+            rather than a comparison that just isn't ready yet. vsYesterday
+            is always available from day two, so it fills that column until
+            there's enough history for the more meaningful weekday average. */}
+        {data.vsSameWeekdayAvg !== null ? (
+          <ComparisonColumn title="vs same weekday (12mo avg)" today={data.today} baseline={data.vsSameWeekdayAvg} />
+        ) : (
+          <ComparisonColumn title="vs yesterday" today={data.today} baseline={data.vsYesterday} />
+        )}
       </div>
     </section>
   );

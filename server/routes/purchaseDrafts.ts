@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
 import { z } from "zod";
 import {
   listPurchaseDrafts,
@@ -17,8 +17,10 @@ import {
 import { PURCHASE_DRAFT_STATUSES } from "@shared/schema";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
 import { positiveQuantity } from "@shared/quantity";
+import { resolvePurchaseUnitCost } from "@shared/purchasing/purchaseLines";
+import { recordAdminAudit } from "../adminAudit";
 
-const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 
 function sendError(res: any, err: unknown) {
@@ -52,7 +54,10 @@ const itemSchema = z.object({
 const itemPatchSchema = z
   .object({
     quantity: positiveQuantity.optional(),
-    estimatedCost: z.number().min(0).nullable().optional(),
+    // A unit cost must be a real amount; null clears it so the line prices
+    // from the supplier link or product card. 0 used to be accepted here and
+    // then silently treated as "no cost" everywhere it was read.
+    estimatedCost: z.number().positive().max(9_999_999_999).nullable().optional(),
     supplierSku: z.string().nullable().optional(),
   })
   .strict();
@@ -64,7 +69,13 @@ const draftPatchSchema = z
   })
   .strict();
 
-export function registerPurchaseDraftRoutes(app: Express) {
+/**
+ * `scopedMiddleware` defaults to the real auth + org-context chain; tests pass
+ * a stand-in that sets req.user / req.orgContext, so role checks
+ * (`mutateRoles`) still run for real.
+ */
+export function registerPurchaseDraftRoutes(app: Express, scopedMiddleware: RequestHandler[] = defaultScoped) {
+  const scoped = scopedMiddleware;
   app.get("/api/purchase-drafts", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
@@ -142,7 +153,14 @@ export function registerPurchaseDraftRoutes(app: Express) {
           sku: item.sku,
           productName: item.productName,
           quantity: item.quantity,
-          unitCost: item.estimatedCost != null ? Number(item.estimatedCost) : null,
+          // Drafts raised before the product-card fallback existed carry no
+          // line cost; price them from the product card at export rather than
+          // printing "—" and an estimated total of £0.00.
+          unitCost: resolvePurchaseUnitCost({
+            lineCost: item.estimatedCost,
+            supplierCost: item.supplierCostPrice,
+            productCost: item.productCostPrice,
+          }).unitCost,
           supplierSku: item.supplierSku,
         })),
       });
@@ -216,9 +234,29 @@ export function registerPurchaseDraftRoutes(app: Express) {
           message: parsed.error.errors[0]?.message ?? "Invalid body",
         });
       }
-      const ctx = req.orgContext as { orgId: string };
-      const item = await updatePurchaseDraftItem(ctx.orgId, req.params.id, req.params.itemId, parsed.data);
-      res.json(item);
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const { amendedAfterApproval, changed, previous, ...item } = await updatePurchaseDraftItem(
+        ctx.orgId,
+        req.params.id,
+        req.params.itemId,
+        parsed.data,
+      );
+      if (amendedAfterApproval && changed) {
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.claims?.sub ?? "unknown",
+          actorRole: ctx.role,
+          action: "purchase_draft.line_amended_after_approval",
+          targetType: "purchase_draft",
+          targetId: req.params.id,
+          orgId: ctx.orgId,
+          metadata: {
+            itemId: req.params.itemId,
+            from: previous,
+            to: { quantity: item.quantity, estimatedCost: item.estimatedCost, supplierSku: item.supplierSku },
+          },
+        });
+      }
+      res.json({ ...item, amendedAfterApproval: amendedAfterApproval && changed });
     } catch (e) {
       sendError(res, e);
     }

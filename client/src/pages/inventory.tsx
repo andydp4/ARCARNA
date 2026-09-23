@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { offlineStorage } from "@/lib/offline-storage";
 import { VOCAB } from "@/lib/vocabulary";
 import { invalidateAfterInventoryAdjustment } from "@/lib/query-invalidation";
+import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -128,7 +129,7 @@ export default function Inventory() {
   // Get low stock products
   const lowStockProducts = products.filter((product) => {
     const stockPercentage = (product.stock / product.stockLimit) * 100;
-    return stockPercentage <= 20 && product.stock > 0;
+    return stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT && product.stock > 0;
   });
 
   const outOfStockProducts = products.filter((product) => product.stock === 0);
@@ -216,7 +217,7 @@ export default function Inventory() {
     const stockPercentage = (product.stock / product.stockLimit) * 100;
     if (product.stock === 0) {
       return { status: "Out of Stock", variant: "destructive" as const, color: "text-red-600" };
-    } else if (stockPercentage <= 20) {
+    } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
       return { status: "Low Stock", variant: "destructive" as const, color: "text-orange-600" };
     } else if (stockPercentage <= 50) {
       return { status: "Medium Stock", variant: "secondary" as const, color: "text-yellow-600" };

@@ -3,7 +3,7 @@
  * Domain handlers live in server/routes/<domain>.ts.
  */
 import type { Express } from "express";
-import { setupAuth, isAuthenticated, requireOrgContext, requireOrgScope } from "./auth";
+import { setupAuth, isAuthenticated, requireOrgContext, requireOrgScope, requireCustomerOrgScope } from "./auth";
 import { registerChannelAuthenticatedRoutes } from "./routes/channels";
 import { registerSetupAndImportRoutes } from "./routes/setupImports";
 import { registerOperationalRoutes } from "./routes/operational";
@@ -17,6 +17,7 @@ import { registerGoodsReceiptRoutes } from "./routes/goodsReceipts";
 import { registerFeatureFlagRoutes } from "./routes/featureFlags";
 import { registerHealthRoutes } from "./routes/health";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerUiSeenRoutes } from "./routes/uiSeen";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerProductRoutes } from "./routes/products";
 import { registerCustomerRoutes } from "./routes/customers";
@@ -60,9 +61,12 @@ export async function registerRoutes(app: Express): Promise<void> {
   await setupAuth(app);
 
   registerAuthRoutes(app);
+  registerUiSeenRoutes(app);
 
   const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
-  const websiteCustomerScoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+  // Shop accounts (CUSTOMER) are refused by requireOrgScope; these four shop
+  // routes are the only org-scoped ones they may call.
+  const websiteCustomerScoped = [isAuthenticated, requireOrgContext, requireCustomerOrgScope];
   registerWebsitePublicRoutes(app, websiteCustomerScoped);
 
   registerChannelAuthenticatedRoutes(app, scoped);

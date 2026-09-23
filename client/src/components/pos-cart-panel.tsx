@@ -680,7 +680,7 @@ export function PosCartPanel({
         onClick={handleCheckout}
         disabled={cart.length === 0 || orderSubmitting}
         aria-label={
-          cart.length === 0 ? "Checkout disabled – add items to cart" : "Proceed to checkout"
+          cart.length === 0 ? "Checkout disabled – add items to cart" : "Continue to payment"
         }
         title={cart.length === 0 ? "Add items to cart" : undefined}
         className="lm-btn-metal min-h-[52px] w-full gap-2 text-base font-semibold"
@@ -695,7 +695,7 @@ export function PosCartPanel({
         ) : (
           <>
             <Receipt className="h-5 w-5" />
-            {cart.length === 0 ? "Add items to checkout" : "Checkout → Take payment"}
+            {cart.length === 0 ? "Add items to checkout" : "Continue to payment"}
           </>
         )}
       </Button>

@@ -83,6 +83,85 @@ describe.skipIf(!hasDb)("the Control Centre snapshot", () => {
     expect(snap.today.revenue).toBe(0);
   });
 
+  it("counts To collect exactly as the board's Collection lane does, and names what the lane folds away", async () => {
+    // Owner report: "To collect 5" on the Control Centre over an empty
+    // Collection lane. The tile counted every open order from any day; the
+    // lane shows only today's live work and folds earlier-day orders into
+    // "Earlier days" and future pre-orders into "Scheduled".
+    const open = (overrides: Record<string, unknown>) =>
+      db.insert(orders).values({
+        id: randomUUID(),
+        orgId,
+        total: "10.00",
+        paymentMethod: "cash",
+        status: "pending",
+        fulfilmentMethod: "collection",
+        dateKind: "live",
+        ...overrides,
+      } as never);
+
+    // Live in the lane: keyed today.
+    await open({ createdAt: new Date("2026-01-15T09:00:00.000Z"), enteredAt: new Date("2026-01-15T09:00:00.000Z") });
+    // Carried over: keyed on the 14th's trading day and never completed —
+    // including 05:30 on the 15th, which is before the 06:00 cut.
+    await open({ createdAt: new Date("2026-01-14T18:00:00.000Z"), enteredAt: new Date("2026-01-14T18:00:00.000Z") });
+    await open({ createdAt: new Date("2026-01-15T05:30:00.000Z"), enteredAt: new Date("2026-01-15T05:30:00.000Z") });
+    // Scheduled: a pre-order for the 17th, taken today.
+    await open({
+      dateKind: "preorder",
+      createdAt: new Date("2026-01-17T12:00:00.000Z"),
+      enteredAt: new Date("2026-01-15T08:00:00.000Z"),
+    });
+    // One live delivery, and one collection completed today (neither counts as To collect).
+    await open({
+      fulfilmentMethod: "delivery",
+      createdAt: new Date("2026-01-15T09:30:00.000Z"),
+      enteredAt: new Date("2026-01-15T09:30:00.000Z"),
+    });
+    await open({
+      status: "completed",
+      createdAt: new Date("2026-01-15T07:00:00.000Z"),
+      enteredAt: new Date("2026-01-15T07:00:00.000Z"),
+      settledTotal: "10.00",
+      settledAt: new Date("2026-01-15T07:30:00.000Z"),
+    });
+
+    const snap = await getControlCentreSnapshot(orgId, NOW);
+
+    // Before the fix this read 4: every open non-delivery order, any day.
+    expect(snap.toCollect).toBe(1);
+    expect(snap.toCollectEarlierDays).toBe(2);
+    expect(snap.toCollectScheduled).toBe(1);
+    expect(snap.toDeliver).toBe(1);
+    expect(snap.toDeliverEarlierDays).toBe(0);
+    // "Open orders" is still every order not yet completed.
+    expect(snap.openOrders).toBe(5);
+  });
+
+  it("reads vsYesterday from the previous trading day's settled revenue", async () => {
+    await db.insert(orders).values({
+      id: randomUUID(),
+      orgId,
+      total: "30.00",
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: new Date("2026-01-14T09:00:00.000Z"),
+      settledTotal: "30.00",
+      settledAt: new Date("2026-01-14T09:00:00.000Z"), // 14th's trading day = "yesterday" relative to NOW
+    } as never);
+
+    const snap = await getControlCentreSnapshot(orgId, NOW);
+
+    expect(snap.vsYesterday).not.toBeNull();
+    expect(snap.vsYesterday?.revenue).toBe(30);
+    expect(snap.vsYesterday?.txns).toBe(1);
+  });
+
+  it("leaves vsYesterday null when nothing settled the previous trading day", async () => {
+    const snap = await getControlCentreSnapshot(orgId, NOW);
+    expect(snap.vsYesterday).toBeNull();
+  });
+
   it("flags yesterday's close as missing when no close run is recorded", async () => {
     const snap = await getControlCentreSnapshot(orgId, NOW);
 

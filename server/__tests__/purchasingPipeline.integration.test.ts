@@ -20,6 +20,7 @@ import {
   purchaseDraftItems,
   goodsReceipts,
   inventoryMovements,
+  productSuppliers,
 } from "@shared/schema";
 import {
   getOnOrderQuantities,
@@ -27,12 +28,15 @@ import {
   createPurchaseDraftsBatch,
   setPurchaseDraftStatus,
   updatePurchaseDraftItem,
+  getPurchaseDraft,
+  getPurchaseDraftForExport,
   onOrderKey,
 } from "../services/purchaseDrafts";
 import { createPurchaseDraftsFromRecommendations } from "../services/replenishment";
 import {
   createGoodsReceipt,
   completeGoodsReceipt,
+  voidGoodsReceipt,
   getPurchaseDraftReceiving,
 } from "../services/goodsReceipts";
 import { storage } from "../storage";
@@ -400,7 +404,10 @@ describe.skipIf(!hasDb)("reviewed drafts stay editable (ARC-016)", () => {
     await cleanupDrafts([draftId]);
   });
 
-  it("still blocks editing a line's quantity once a draft is approved", async () => {
+  it("lets an approved order be amended until anything is booked in against it", async () => {
+    // The owner approved a draft at the recommended 3,864 meaning to order
+    // 10,000; with approved lines locked the only way out was to cancel and
+    // re-raise the whole order.
     const [draft] = await createPurchaseDraftsBatch(orgId, [
       { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
     ]);
@@ -408,6 +415,61 @@ describe.skipIf(!hasDb)("reviewed drafts stay editable (ARC-016)", () => {
     await setPurchaseDraftStatus(orgId, draftId, "reviewed");
     await setPurchaseDraftStatus(orgId, draftId, "approved");
 
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draftId));
+
+    const updated = await updatePurchaseDraftItem(orgId, draftId, line.id, {
+      quantity: 12,
+      estimatedCost: 0.5,
+    });
+    expect(updated.quantity).toBe(12);
+    expect(updated.estimatedCost).toBe("0.50");
+    expect(updated.amendedAfterApproval).toBe(true);
+    expect(updated.previous.quantity).toBe(8);
+
+    const reloaded = await getPurchaseDraftReceiving(orgId, draftId);
+    expect(reloaded.items[0].remaining).toBe(12);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("locks an approved order's lines once a receipt exists, and unlocks if it is voided", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+    await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+    await setPurchaseDraftStatus(orgId, draftId, "approved");
+    const receiving = await getPurchaseDraftReceiving(orgId, draftId);
+
+    const receipt = await createGoodsReceipt(orgId, {
+      purchaseDraftId: draftId,
+      items: [{ purchaseDraftItemId: receiving.items[0].id, productId: productA, quantityReceived: 2 }],
+    });
+
+    await expect(
+      updatePurchaseDraftItem(orgId, draftId, receiving.items[0].id, { quantity: 12 }),
+    ).rejects.toThrow(/already been booked in/i);
+    expect((await getPurchaseDraft(orgId, draftId))!.linesEditable).toBe(false);
+
+    await voidGoodsReceipt(orgId, receipt!.id);
+    expect((await getPurchaseDraft(orgId, draftId))!.linesEditable).toBe(true);
+    const updated = await updatePurchaseDraftItem(orgId, draftId, receiving.items[0].id, {
+      quantity: 12,
+    });
+    expect(updated.quantity).toBe(12);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("never allows edits to a cancelled draft", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8 }] },
+    ]);
+    const draftId = draft!.id;
+    await setPurchaseDraftStatus(orgId, draftId, "cancelled");
     const [line] = await db
       .select()
       .from(purchaseDraftItems)
@@ -690,6 +752,332 @@ describe.skipIf(!hasDb)("receive cycle", () => {
         ],
       }),
     ).rejects.toThrow(/approved or partially received/i);
+
+    await cleanupDrafts([draft!.id]);
+  });
+});
+
+describe.skipIf(!hasDb)("purchase line cost falls back to the product card", () => {
+  it("prices a line with no supplier cost from the product's cost price — not £0", async () => {
+    const [costed] = await db
+      .insert(products)
+      .values({
+        orgId,
+        locationId,
+        name: "40435 G BL",
+        productId: `GBL-${Date.now()}`,
+        defaultSalePrice: "0.30",
+        costPrice: "0.11",
+      })
+      .returning();
+
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: costed.id, quantity: 10000 }] },
+    ]);
+    const draftId = draft!.id;
+
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draftId));
+    expect(line.estimatedCost).toBe("0.11");
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("keeps a supplier cost the caller sent rather than overwriting it", async () => {
+    const [costed] = await db
+      .insert(products)
+      .values({
+        orgId,
+        locationId,
+        name: "Supplier-priced",
+        productId: `SP-${Date.now()}`,
+        defaultSalePrice: "1.00",
+        costPrice: "0.40",
+      })
+      .returning();
+
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      {
+        supplierId: supplierA,
+        locationId,
+        items: [{ productId: costed.id, quantity: 5, estimatedCost: 0.35 }],
+      },
+    ]);
+    const [line] = await db
+      .select()
+      .from(purchaseDraftItems)
+      .where(eq(purchaseDraftItems.purchaseDraftId, draft!.id));
+    expect(line.estimatedCost).toBe("0.35");
+
+    await cleanupDrafts([draft!.id]);
+  });
+
+  it("exposes the product card cost for drafts raised before the fallback existed", async () => {
+    const [costed] = await db
+      .insert(products)
+      .values({
+        orgId,
+        locationId,
+        name: "Legacy uncosted line",
+        productId: `LG-${Date.now()}`,
+        defaultSalePrice: "1.00",
+        costPrice: "0.11",
+      })
+      .returning();
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: costed.id, quantity: 3 }] },
+    ]);
+    // Simulate an old draft whose line was saved without a cost.
+    await db
+      .update(purchaseDraftItems)
+      .set({ estimatedCost: null })
+      .where(eq(purchaseDraftItems.purchaseDraftId, draft!.id));
+
+    const exported = await getPurchaseDraftForExport(orgId, draft!.id);
+    expect(exported!.items[0].estimatedCost).toBeNull();
+    expect(exported!.items[0].productCostPrice).toBe("0.11");
+
+    await cleanupDrafts([draft!.id]);
+  });
+});
+
+describe.skipIf(!hasDb)("over-delivery accepted at receiving", () => {
+  async function approvedDraft(items: { productId: string; quantity: number }[]) {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [{ supplierId: supplierA, locationId, items }]);
+    await setPurchaseDraftStatus(orgId, draft!.id, "reviewed");
+    await setPurchaseDraftStatus(orgId, draft!.id, "approved");
+    const receiving = await getPurchaseDraftReceiving(orgId, draft!.id);
+    const lineFor = (productId: string) => receiving.items.find((i) => i.productId === productId)!.id;
+    return { draftId: draft!.id, lineFor };
+  }
+
+  async function stockOf(productId: string) {
+    const [row] = await db
+      .select()
+      .from(productLocationStock)
+      .where(and(eq(productLocationStock.productId, productId), eq(productLocationStock.locationId, locationId)));
+    return row.stock;
+  }
+
+  async function orderedOn(lineId: string) {
+    const [line] = await db.select().from(purchaseDraftItems).where(eq(purchaseDraftItems.id, lineId));
+    return line.quantity;
+  }
+
+  it("still refuses an over-receipt unless the manager confirms that line", async () => {
+    const { draftId, lineFor } = await approvedDraft([{ productId: productB, quantity: 3864 }]);
+    await expect(
+      createGoodsReceipt(orgId, {
+        purchaseDraftId: draftId,
+        items: [{ purchaseDraftItemId: lineFor(productB), productId: productB, quantityReceived: 10000 }],
+      }),
+    ).rejects.toThrow(/exceeds remaining/i);
+    await cleanupDrafts([draftId]);
+  });
+
+  it("raises the order only when the receipt is completed, then books every unit into stock", async () => {
+    const { draftId, lineFor } = await approvedDraft([{ productId: productB, quantity: 3864 }]);
+    const lineId = lineFor(productB);
+    const before = await stockOf(productB);
+
+    const receipt = await createGoodsReceipt(
+      orgId,
+      {
+        purchaseDraftId: draftId,
+        items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 10000 }],
+      },
+      { acceptOverDeliveryLineIds: [lineId] },
+    );
+    expect(receipt!.overDelivery).toEqual([
+      expect.objectContaining({ purchaseDraftItemId: lineId, ordered: 3864, requested: 10000, excess: 6136 }),
+    ]);
+    // Pending: the order is untouched until the goods are actually booked in.
+    expect(await orderedOn(lineId)).toBe(3864);
+
+    const completed = await completeGoodsReceipt(orgId, receipt!.id, "test");
+    expect(completed.overDeliveryRaised).toEqual([
+      { purchaseDraftItemId: lineId, orderedBefore: 3864, orderedAfter: 10000 },
+    ]);
+    expect(await orderedOn(lineId)).toBe(10000);
+    expect(await stockOf(productB)).toBe(before + 10000);
+
+    const [after] = await db.select().from(purchaseDrafts).where(eq(purchaseDrafts.id, draftId));
+    expect(after.status).toBe("fully_received");
+    expect(await onOrderFor(orgId, productB, locationId)).toBe(0);
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("leaves the order exactly as it was when an accepted over-delivery is voided — a typo cannot inflate it", async () => {
+    const { draftId, lineFor } = await approvedDraft([{ productId: productB, quantity: 100 }]);
+    const lineId = lineFor(productB);
+    const first = await createGoodsReceipt(orgId, {
+      purchaseDraftId: draftId,
+      items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 60 }],
+    });
+    await completeGoodsReceipt(orgId, first!.id, "test");
+
+    // 400 typed for 40, confirmed, then spotted and voided.
+    const typo = await createGoodsReceipt(
+      orgId,
+      { purchaseDraftId: draftId, items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 400 }] },
+      { acceptOverDeliveryLineIds: [lineId] },
+    );
+    await voidGoodsReceipt(orgId, typo!.id);
+
+    expect(await orderedOn(lineId)).toBe(100);
+    expect(await onOrderFor(orgId, productB, locationId)).toBe(40);
+
+    // And the real delivery of 40 still goes through normally.
+    const real = await createGoodsReceipt(orgId, {
+      purchaseDraftId: draftId,
+      items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 40 }],
+    });
+    await completeGoodsReceipt(orgId, real!.id, "test");
+    const [after] = await db.select().from(purchaseDrafts).where(eq(purchaseDrafts.id, draftId));
+    expect(after.status).toBe("fully_received");
+
+    await cleanupDrafts([draftId]);
+  });
+
+  it("never lets a confirmation for one line accept an over-delivery on another", async () => {
+    const { draftId, lineFor } = await approvedDraft([
+      { productId: productA, quantity: 10 },
+      { productId: productB, quantity: 10 },
+    ]);
+    await expect(
+      createGoodsReceipt(
+        orgId,
+        {
+          purchaseDraftId: draftId,
+          items: [
+            { purchaseDraftItemId: lineFor(productA), productId: productA, quantityReceived: 12 },
+            { purchaseDraftItemId: lineFor(productB), productId: productB, quantityReceived: 15 },
+          ],
+        },
+        { acceptOverDeliveryLineIds: [lineFor(productA)] },
+      ),
+    ).rejects.toThrow(/exceeds remaining/i);
+    await cleanupDrafts([draftId]);
+  });
+
+  it("does not raise a line that fits, and reports no over-delivery", async () => {
+    const { draftId, lineFor } = await approvedDraft([{ productId: productB, quantity: 20 }]);
+    const lineId = lineFor(productB);
+    const receipt = await createGoodsReceipt(
+      orgId,
+      { purchaseDraftId: draftId, items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 5 }] },
+      { acceptOverDeliveryLineIds: [lineId] },
+    );
+    expect(receipt!.overDelivery).toEqual([]);
+    const completed = await completeGoodsReceipt(orgId, receipt!.id, "test");
+    expect(completed.overDeliveryRaised).toEqual([]);
+    expect(await orderedOn(lineId)).toBe(20);
+    await cleanupDrafts([draftId]);
+  });
+
+  it("measures the extra against what is still outstanding after earlier receipts", async () => {
+    const { draftId, lineFor } = await approvedDraft([{ productId: productB, quantity: 10 }]);
+    const lineId = lineFor(productB);
+    const first = await createGoodsReceipt(orgId, {
+      purchaseDraftId: draftId,
+      items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 6 }],
+    });
+    await completeGoodsReceipt(orgId, first!.id, "test");
+
+    const second = await createGoodsReceipt(
+      orgId,
+      { purchaseDraftId: draftId, items: [{ purchaseDraftItemId: lineId, productId: productB, quantityReceived: 7 }] },
+      { acceptOverDeliveryLineIds: [lineId] },
+    );
+    expect(second!.overDelivery[0].excess).toBe(3);
+    await completeGoodsReceipt(orgId, second!.id, "test");
+    expect(await orderedOn(lineId)).toBe(13);
+
+    await cleanupDrafts([draftId]);
+  });
+});
+
+describe.skipIf(!hasDb)("line edits and receipts on the same approved order are serialised", () => {
+  it("never leaves a pending receipt above what the line now orders", async () => {
+    for (let round = 0; round < 6; round++) {
+      const [draft] = await createPurchaseDraftsBatch(orgId, [
+        { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 10000 }] },
+      ]);
+      const draftId = draft!.id;
+      await setPurchaseDraftStatus(orgId, draftId, "reviewed");
+      await setPurchaseDraftStatus(orgId, draftId, "approved");
+      const lineId = (await getPurchaseDraftReceiving(orgId, draftId)).items[0].id;
+
+      const [edit, receipt] = await Promise.allSettled([
+        updatePurchaseDraftItem(orgId, draftId, lineId, { quantity: 5000 }),
+        createGoodsReceipt(orgId, {
+          purchaseDraftId: draftId,
+          items: [{ purchaseDraftItemId: lineId, productId: productA, quantityReceived: 10000 }],
+        }),
+      ]);
+
+      // Exactly one wins: either the edit lands first and the receipt is
+      // measured against 5000 (refused), or the receipt lands first and the
+      // edit sees it and refuses. Never both, never a deadlock.
+      expect([edit.status, receipt.status].sort()).toEqual(["fulfilled", "rejected"]);
+      const ordered = (await getPurchaseDraftReceiving(orgId, draftId)).items[0];
+      expect(ordered.pendingOnReceipts).toBeLessThanOrEqual(ordered.quantity);
+
+      await cleanupDrafts([draftId]);
+    }
+  });
+});
+
+describe.skipIf(!hasDb)("supplier price and amendment bookkeeping", () => {
+  it("prices an uncosted line from the supplier link before the product card", async () => {
+    const [costed] = await db
+      .insert(products)
+      .values({
+        orgId,
+        locationId,
+        name: "Supplier-linked",
+        productId: `SL-${Date.now()}`,
+        defaultSalePrice: "1.00",
+        costPrice: "0.11",
+      })
+      .returning();
+    await db.insert(productSuppliers).values({ orgId, productId: costed.id, supplierId: supplierA, costPrice: "0.10" });
+
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: costed.id, quantity: 3 }] },
+    ]);
+    await db
+      .update(purchaseDraftItems)
+      .set({ estimatedCost: null })
+      .where(eq(purchaseDraftItems.purchaseDraftId, draft!.id));
+
+    const detail = await getPurchaseDraft(orgId, draft!.id);
+    expect(detail!.items[0].supplierCostPrice).toBe("0.10");
+    const exported = await getPurchaseDraftForExport(orgId, draft!.id);
+    expect(exported!.items[0].supplierCostPrice).toBe("0.10");
+    // A different supplier's link must never price this draft.
+    await db.insert(productSuppliers).values({ orgId, productId: costed.id, supplierId: supplierB, costPrice: "0.05" });
+    expect((await getPurchaseDraft(orgId, draft!.id))!.items).toHaveLength(1);
+    expect((await getPurchaseDraft(orgId, draft!.id))!.items[0].supplierCostPrice).toBe("0.10");
+
+    await cleanupDrafts([draft!.id]);
+  });
+
+  it("reports an autosave of unchanged values as no change, so it is never audited as an amendment", async () => {
+    const [draft] = await createPurchaseDraftsBatch(orgId, [
+      { supplierId: supplierA, locationId, items: [{ productId: productA, quantity: 8, estimatedCost: 0.5 }] },
+    ]);
+    await setPurchaseDraftStatus(orgId, draft!.id, "reviewed");
+    await setPurchaseDraftStatus(orgId, draft!.id, "approved");
+    const lineId = (await getPurchaseDraftReceiving(orgId, draft!.id)).items[0].id;
+
+    const same = await updatePurchaseDraftItem(orgId, draft!.id, lineId, { quantity: 8, estimatedCost: 0.5 });
+    expect(same.changed).toBe(false);
+    const sku = await updatePurchaseDraftItem(orgId, draft!.id, lineId, { supplierSku: "SUP-1" });
+    expect(sku.changed).toBe(true);
 
     await cleanupDrafts([draft!.id]);
   });

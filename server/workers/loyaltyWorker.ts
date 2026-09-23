@@ -8,7 +8,7 @@
 
 import { db } from "../db";
 import { customers, loyaltyLedger } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { IWorker } from "./index";
 import type { EventEnvelope, EventType, WorkerName, WorkerResult } from "../../shared/schema";
 
@@ -92,9 +92,6 @@ export class LoyaltyWorker implements IWorker {
         };
       }
 
-      const customer = customerResult[0];
-      const previousBalance = customer.loyaltyPoints || 0;
-
       let pointsDelta = 0;
       let reason = 'earn';
 
@@ -136,27 +133,55 @@ export class LoyaltyWorker implements IWorker {
         };
       }
 
-      const newBalance = Math.max(0, previousBalance + pointsDelta);
+      // Apply under a lock on the customer row, re-checking the ledger for
+      // this event inside it. The check at the top of this method is only a
+      // fast path: two runs of the same event (or two different events for
+      // the same customer) could both pass it and then both write a balance
+      // read earlier — double-crediting, or losing one of the updates.
+      const applied = await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ loyaltyPoints: customers.loyaltyPoints })
+          .from(customers)
+          .where(eq(customers.id, customerId))
+          .for("update")
+          .limit(1);
+        if (!locked) return null;
 
-      // Update customer loyalty points
-      await db
-        .update(customers)
-        .set({
-          loyaltyPoints: newBalance,
-          updatedAt: new Date(),
-        })
-        .where(eq(customers.id, customerId));
+        const [already] = await tx
+          .select({ id: loyaltyLedger.ledgerId })
+          .from(loyaltyLedger)
+          .where(and(eq(loyaltyLedger.eventId, event.eventId), eq(loyaltyLedger.customerId, customerId)))
+          .limit(1);
+        if (already) return null;
 
-      // Record in loyalty ledger
-      await db.insert(loyaltyLedger).values({
-        customerId,
-        orderId,
-        eventId: event.eventId,
-        pointsDelta,
-        reason,
-        previousBalance,
-        newBalance,
+        const lockedBalance = locked.loyaltyPoints || 0;
+        const balanceAfter = Math.max(0, lockedBalance + pointsDelta);
+        await tx
+          .update(customers)
+          .set({ loyaltyPoints: balanceAfter, updatedAt: new Date() })
+          .where(eq(customers.id, customerId));
+        await tx.insert(loyaltyLedger).values({
+          customerId,
+          orderId,
+          eventId: event.eventId,
+          pointsDelta,
+          reason,
+          previousBalance: lockedBalance,
+          newBalance: balanceAfter,
+        });
+        return balanceAfter;
       });
+
+      if (applied === null) {
+        return {
+          worker: this.name,
+          eventId: event.eventId,
+          correlationId: event.correlationId,
+          status: 'success',
+          summary: 'Already processed (idempotent skip)',
+        };
+      }
+      const newBalance = applied;
 
       return {
         worker: this.name,
