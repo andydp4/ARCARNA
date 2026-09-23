@@ -311,6 +311,17 @@ export const centres: Centre[] = [
         roles: ADMIN_ROLES
       },
       {
+        // Phase 2's silent recording: every sale below cost or minimum while
+        // the till shows no warning yet (owner Q3). Admins and the owner only
+        // — managers must not be able to review flags about themselves.
+        key: 'would-have-flagged',
+        label: 'Would have flagged',
+        href: '/reports/would-have-flagged',
+        icon: AlertTriangle,
+        testId: 'nav-would-have-flagged',
+        roles: ADMIN_ROLES
+      },
+      {
         key: 'scheduled-reports',
         label: 'Scheduled Evidence',
         href: '/scheduled-reports',

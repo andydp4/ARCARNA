@@ -3,6 +3,7 @@ import { Link } from 'wouter'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { queryClient, apiRequest, getJson } from '@/lib/queryClient'
 import { invalidateAfterCatalogMutation } from '@/lib/query-invalidation'
+import { productIdFromSearch } from '@/lib/productLink'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/PageHeader'
 import { VOCAB } from '@/lib/vocabulary'
@@ -491,6 +492,21 @@ export default function ProductManagement() {
     // Clear autosave after successful submission
     localStorage.removeItem(AUTOSAVE_KEY)
   }
+
+  // A link from Suppliers' price check (`/products?product=<id>`) opens that
+  // product's card: filter the list down to it so its row (and so its edit
+  // dialog) is rendered, then open it. Once per link, not on every refetch.
+  const linkedProductHandled = useRef(false)
+  useEffect(() => {
+    if (linkedProductHandled.current || products.length === 0) return
+    const linkedId = productIdFromSearch(window.location.search)
+    if (!linkedId) return
+    linkedProductHandled.current = true
+    const linked = products.find((p: any) => p.id === linkedId)
+    if (!linked) return
+    setSearchTerm(linked.name)
+    handleEdit(linked)
+  }, [products])
 
   const handleEdit = (product: any) => {
     setEditingProduct(product)

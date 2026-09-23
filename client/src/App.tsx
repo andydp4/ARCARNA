@@ -230,7 +230,7 @@ function Router() {
           </Route>
           {/* Admin only (PRC-03): the page and the API both check. */}
           <Route path="/reports/would-have-flagged">
-            <RequireRole href="/reports"><WouldHaveFlaggedReport /></RequireRole>
+            <RequireRole href="/reports/would-have-flagged"><WouldHaveFlaggedReport /></RequireRole>
           </Route>
           <Route path="/reports/lapse-retention">
             <RequireRole href="/reports"><LapseRetentionReport /></RequireRole>
