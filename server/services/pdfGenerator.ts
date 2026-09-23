@@ -72,10 +72,14 @@ interface InvoiceData {
   customerAddress?: string;
   /** Line items to display in invoice table */
   items: InvoiceLineItem[];
-  /** Subtotal before tax */
+  /** The lines, before discounts and tax */
   subtotal: number;
+  /** Tier and promotion discounts, taken off before VAT */
+  discount?: number;
   /** Tax amount */
   tax: number;
+  /** Points, taken off after VAT */
+  pointsDiscount?: number;
   /**
    * The VAT rate charged, in percent. At 0 (with no tax) the invoice shows no
    * VAT line at all (v1.2 Phase 1C). Absent: derived from tax / subtotal.
@@ -437,18 +441,30 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   doc.fillColor(INK).text(formatCurrency(data.subtotal, currency), valueX, y, { align: 'right', width: valueWidth });
   y += 18;
 
+  // Discounts are shown so the figures add up: subtotal − discount + VAT −
+  // points = total. VAT is charged on the discounted amount.
+  if ((data.discount ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text('Discount:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.discount ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+
   // VAT at the org's actual rate — and no VAT line at all when none was
   // charged: a business that is not VAT-registered must not look as if it
   // charged VAT at 0% (v1.2 Phase 1C).
-  const vatRate =
-    data.vatRate ?? (data.subtotal > 0 ? Math.round((data.tax / data.subtotal) * 1000) / 10 : 0);
+  const net = data.subtotal - (data.discount ?? 0);
+  const vatRate = data.vatRate ?? (net > 0 ? Math.round((data.tax / net) * 1000) / 10 : 0);
   if (showsVatLine(data.tax, vatRate)) {
     doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);
     doc.fillColor(INK).text(formatCurrency(data.tax, currency), valueX, y, { align: 'right', width: valueWidth });
-    y += 22;
-  } else {
-    y += 4;
+    y += 18;
   }
+  if ((data.pointsDiscount ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text('Points:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.pointsDiscount ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+  y += 4;
 
   // Grand total — a tinted band the width of the totals column, in the org's
   // own brand colour, with the figure in white so it cannot be mistaken for

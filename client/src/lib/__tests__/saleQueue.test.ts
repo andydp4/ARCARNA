@@ -6,7 +6,10 @@ import {
   isSaleDue,
   isSaleMine,
   referenceFor,
+  referenceForAttempt,
   replayPayload,
+  saleFingerprint,
+  sendLeftSaleUncertain,
   sendSale,
 } from "../saleQueue";
 
@@ -116,5 +119,53 @@ describe("did it land?", () => {
         },
       }),
     ).toEqual({ result: "unknown" });
+  });
+});
+
+describe("a failed send that may have landed", () => {
+  it("asks 'did it land?' after no answer or a 5xx, not after a refusal", () => {
+    expect(sendLeftSaleUncertain({ ok: false, status: null, message: "", timedOut: true })).toBe(true);
+    expect(sendLeftSaleUncertain({ ok: false, status: 502, message: "", timedOut: false })).toBe(true);
+    expect(sendLeftSaleUncertain({ ok: false, status: 500, message: "", timedOut: false })).toBe(true);
+    expect(sendLeftSaleUncertain({ ok: false, status: 422, message: "", timedOut: false })).toBe(false);
+    expect(sendLeftSaleUncertain({ ok: true, body: {} })).toBe(false);
+  });
+});
+
+describe("the reference a changed sale is sent under", () => {
+  const first = saleFingerprint({ lines: [{ id: "a", quantity: 1 }], expectedTotal: 20 });
+  const changed = saleFingerprint({ lines: [{ id: "a", quantity: 2 }], expectedTotal: 25 });
+  const never = async () => {
+    throw new Error("must not ask");
+  };
+
+  it("keeps the reference for a first attempt and for a resend of the same sale", async () => {
+    expect(await referenceForAttempt("R", null, first, { check: never })).toEqual({ kind: "send", ref: "R" });
+    expect(await referenceForAttempt("R", { ref: "R", fingerprint: first }, first, { check: never })).toEqual({
+      kind: "send",
+      ref: "R",
+    });
+  });
+
+  it("does not answer a changed sale as a repeat of an earlier attempt that landed", async () => {
+    const landed = await referenceForAttempt("R", { ref: "R", fingerprint: first }, changed, {
+      check: async () => ({ result: "landed", body: { orderId: "o1", order: { total: "20.00" } } }),
+    });
+    expect(landed).toEqual({ kind: "landed", body: { orderId: "o1", order: { total: "20.00" } } });
+  });
+
+  it("gives a changed sale a new reference once the earlier attempt is known not to have landed", async () => {
+    const fresh = await referenceForAttempt("R", { ref: "R", fingerprint: first }, changed, {
+      check: async () => ({ result: "not_found" }),
+      makeRef: () => "R2",
+    });
+    expect(fresh).toEqual({ kind: "send", ref: "R2" });
+  });
+
+  it("sends nothing while it cannot tell", async () => {
+    const unknown = await referenceForAttempt("R", { ref: "R", fingerprint: first }, changed, {
+      check: async () => ({ result: "unknown" }),
+    });
+    expect(unknown).toEqual({ kind: "unknown" });
   });
 });

@@ -144,6 +144,15 @@ function pct(pence: number, percent: number): number {
   return Math.round((pence * percent) / 100);
 }
 
+/**
+ * One line's total, rounded exactly as priceOrder() rounds it, so the stored
+ * line totals add up to the subtotal charged (toFixed(2) would store 0.5 ×
+ * £2.01 as £1.00 while the sale charged £1.01).
+ */
+export function lineTotalFor(quantity: number, unitPrice: number): number {
+  return fromPence(toPence(quantity * unitPrice));
+}
+
 /** The customer's tier: the highest one whose threshold their balance reaches. */
 export function tierForPoints(points: number, tiers: PricingTier[]): PricingTier | null {
   let best: PricingTier | null = null;

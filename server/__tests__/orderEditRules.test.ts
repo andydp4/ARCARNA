@@ -56,8 +56,18 @@ describe("orderEditRefusal", () => {
 
   it("refuses an order from before discounts were recorded that had money taken off", () => {
     expect(orderEditRefusal(row({ subtotal: null, total: "45.00" }), lines, [], null)?.code).toBe("ORDER_EDIT_LEGACY_DISCOUNT");
-    // Same era, nothing taken off (or VAT added): nothing to lose.
-    expect(orderEditRefusal(row({ subtotal: null, total: "60.00" }), lines, [], null)).toBeNull();
+    // Lines £50 + 20% VAT − £4 of points = £56: above the lines, yet a
+    // discount is hidden in it.
+    expect(orderEditRefusal(row({ subtotal: null, total: "56.00" }), lines, [], null)?.code).toBe("ORDER_EDIT_LEGACY_DISCOUNT");
+    // Same era, total exactly its lines: nothing to lose.
+    expect(orderEditRefusal(row({ subtotal: null, total: "50.00" }), lines, [], null)).toBeNull();
+  });
+
+  it("refuses an order whose till shift is closed and counted", () => {
+    expect(orderEditRefusal(row({ payment_method: "cash" }), lines, [leg("cash", "50")], null, true)?.code).toBe(
+      "ORDER_EDIT_SHIFT_CLOSED",
+    );
+    expect(orderEditRefusal(row({ payment_method: "cash" }), lines, [leg("cash", "50")], null, false)).toBeNull();
   });
 });
 

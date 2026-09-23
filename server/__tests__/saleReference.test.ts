@@ -3,6 +3,7 @@ import {
   alreadyRecordedResponse,
   isSaleReferenceConflict,
   readClientOrderId,
+  repeatDiffersFromRecorded,
 } from "../services/saleReference";
 
 describe("the sale reference on POST /api/orders", () => {
@@ -36,5 +37,17 @@ describe("the sale reference on POST /api/orders", () => {
       dateKind: null,
     });
     expect(body).toMatchObject({ orderId: "o1", duplicate: true, order: { id: "o1", total: "10.00", dateKind: "live" } });
+  });
+});
+
+describe("a repeat under a used reference", () => {
+  const recorded = { id: "o1", status: "pending", total: "20.00", paymentMethod: "cash", createdAt: null, dateKind: null };
+  it("is a repeat when the till total matches, or when there is none to compare", () => {
+    expect(repeatDiffersFromRecorded(recorded, 20)).toBe(false);
+    expect(repeatDiffersFromRecorded(recorded, "20.00")).toBe(false);
+    expect(repeatDiffersFromRecorded(recorded, undefined)).toBe(false);
+  });
+  it("is a different sale when the till total differs", () => {
+    expect(repeatDiffersFromRecorded(recorded, 25)).toBe(true);
   });
 });

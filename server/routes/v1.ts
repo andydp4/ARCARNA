@@ -226,6 +226,15 @@ export function registerV1Routes(app: Express): void {
             message: "customerId: a tick (credit) order needs a customer.",
           });
         }
+        // The id is only checked to be a uuid by the schema. A customer from
+        // another org would take this org's loyalty points and debts (the
+        // loyalty worker reads the customer by id alone), so it must be ours.
+        if (input.customerId && !(await storage.getCustomer(input.customerId, orgId))) {
+          return res.status(400).json({
+            error: "validation_error",
+            message: "customerId: no such customer in this organisation.",
+          });
+        }
         const taxRatePercent = await requireOrgTaxRatePercent(orgId);
 
         const { withTransaction } = await import("../../apps/server/src/db");

@@ -30,6 +30,8 @@ import {
   isSaleReferenceConflict,
   lockSaleReference,
   readClientOrderId,
+  repeatDiffersFromRecorded,
+  reusedReferenceResponse,
   SaleAlreadyRecordedError,
   SaleRefusedError,
   type RecordedSale,
@@ -58,6 +60,9 @@ const answerRepeatSale: RequestHandler = async (req: any, res, next) => {
     const { db } = await import("../db");
     const existing = await findSaleByReference(db, orgId, parsed.value);
     if (!existing) return next();
+    if (repeatDiffersFromRecorded(existing, req.body?.expectedTotal)) {
+      return res.status(409).json(reusedReferenceResponse(existing));
+    }
     if (req.saleIssue) {
       await markSaleIssueResolved(db, {
         orgId,
@@ -341,8 +346,11 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // the two cannot drift apart again.
       // No rate set is a refusal (422 -> Needs attention), never a fallback.
       const { requireOrgTaxRatePercent, ORG_VAT_RATE_MISSING_MESSAGE } = await import("../services/orgTaxRate");
-      const orgTaxRate = await requireOrgTaxRatePercent(ctx.orgId).catch(() => {
-        throw new SaleRefusedError(ORG_VAT_RATE_MISSING_MESSAGE);
+      // Only "no rate set" is a refusal. A failed read (a database blip) must
+      // stay a 500, so a queued sale is retried rather than sent to a manager.
+      const orgTaxRate = await requireOrgTaxRatePercent(ctx.orgId).catch((error: any) => {
+        if (error?.code === "ORG_VAT_RATE_MISSING") throw new SaleRefusedError(ORG_VAT_RATE_MISSING_MESSAGE);
+        throw error;
       });
 
       const body = {
@@ -917,6 +925,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           const existing: RecordedSale | null =
             error instanceof SaleAlreadyRecordedError ? error.sale : await findSaleByReference(db, req.orgContext.orgId, clientOrderId);
           if (existing) {
+            if (repeatDiffersFromRecorded(existing, req.body?.expectedTotal)) {
+              return res.status(409).json(reusedReferenceResponse(existing));
+            }
             if (saleIssue) {
               await markSaleIssueResolved(db, {
                 orgId: req.orgContext.orgId,
@@ -1381,6 +1392,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           pricing,
         );
         const legsAfter = await rewritePaymentRecordTx(tx, state.legs, pricing.total);
+        // An invoice already issued for this order (on request) follows it.
+        const { refreshInvoiceForOrderTx } = await import('../services/invoices');
+        await refreshInvoiceForOrderTx(tx, orgId, existing.id);
 
         const [updatedOrder] = await tx.select().from(orders).where(eq(orders.id, existing.id));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, existing.id));
@@ -1435,10 +1449,23 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           },
         }, { source: 'api-orders', ...(actorId ? { actor: { type: 'user' as const, id: actorId } } : {}) });
 
-        return { notFound: false as const, result, eventId, pricing };
+        return { notFound: false as const, result, eventId, pricing, cashierShiftId: existing.cashier_shift_id as string | null };
       });
 
       if (outcome.notFound) return res.status(404).json({ message: 'Order not found' });
+      if (outcome.cashierShiftId) {
+        // A closed cashier shift keeps a commission snapshot; the edit moved
+        // this order's money, so the snapshot is taken again. Best effort, as
+        // on create: the edit itself has committed.
+        try {
+          const { refreshClosedCashierShiftSummary } = await import('../services/cashierShiftEngine');
+          await refreshClosedCashierShiftSummary(orgId, outcome.cashierShiftId);
+        } catch (refreshError: any) {
+          if (refreshError?.code !== 'SHIFT_STILL_OPEN') {
+            console.warn('[Orders] Could not refresh the cashier shift after an edit:', refreshError?.message);
+          }
+        }
+      }
       console.log(`[Orders] Edited order ${req.params.id} (event: ${outcome.eventId})`);
       res.json({ ...outcome.result, eventId: outcome.eventId, pricing: outcome.pricing });
     } catch (error: any) {

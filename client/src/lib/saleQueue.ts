@@ -188,6 +188,45 @@ export async function checkSaleLanded(
   return { result: "unknown" };
 }
 
+/**
+ * Whether a failed send leaves it unknown if the sale was recorded. No answer
+ * at all, and a 5xx too: a proxy timeout or an error after the commit answers
+ * 5xx for a sale that did land, so the till must ask before it says "failed".
+ */
+export function sendLeftSaleUncertain(outcome: SendOutcome): boolean {
+  return !outcome.ok && (outcome.status === null || outcome.status >= 500);
+}
+
+/** What was last sent under a reference; the content is compared as sent. */
+export type SentSale = { ref: string; fingerprint: string };
+
+export function saleFingerprint(payload: unknown): string {
+  return JSON.stringify(payload ?? null);
+}
+
+/**
+ * The reference to send this attempt under. Resending the same sale keeps its
+ * reference, so it is recorded once. A reference already sent with different
+ * content (the cashier changed the cart after a failure) must not be reused
+ * blindly: had the first attempt landed, the changed sale would be answered
+ * as a repeat of it and never recorded. So ask first: if the first attempt
+ * landed, that is what was recorded; if not, the changed sale gets a new one.
+ */
+export async function referenceForAttempt(
+  saleRef: string,
+  lastSent: SentSale | null,
+  fingerprint: string,
+  opts: { check?: typeof checkSaleLanded; makeRef?: () => string } = {},
+): Promise<{ kind: "send"; ref: string } | { kind: "landed"; body: any } | { kind: "unknown" }> {
+  if (!lastSent || lastSent.ref !== saleRef || lastSent.fingerprint === fingerprint) {
+    return { kind: "send", ref: saleRef };
+  }
+  const landed = await (opts.check ?? checkSaleLanded)(saleRef);
+  if (landed.result === "landed") return { kind: "landed", body: landed.body };
+  if (landed.result === "not_found") return { kind: "send", ref: (opts.makeRef ?? newClientOrderId)() };
+  return { kind: "unknown" };
+}
+
 /** Hand a sale to Needs attention. True once the server holds it (or already recorded it). */
 export async function reportSaleIssue(
   input: {

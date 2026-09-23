@@ -18,12 +18,16 @@
  *    re-tender flow yet;
  *  - personal use, which is not a sale;
  *  - an order already on the Credit List;
- *  - an order taken before discounts were recorded that shows money taken
- *    off: the edit cannot know what to keep;
- *  - points already spent that would be worth more than the new total.
+ *  - an order taken before discounts were recorded whose total differs from
+ *    its lines: the edit cannot know what to keep;
+ *  - points already spent that would be worth more than the new total;
+ *  - an order whose till shift is closed: that drawer was counted against the
+ *    old total, and moving it would leave the Z-report's expected cash and
+ *    variance disagreeing with its own sales, with nothing to say where the
+ *    difference went.
  */
 import { and, eq } from "drizzle-orm";
-import { orderCredit, orderPayments, promotions } from "@shared/schema";
+import { orderCredit, orderPayments, promotions, shifts } from "@shared/schema";
 import {
   PricingError,
   priceEditedOrder,
@@ -40,7 +44,8 @@ export type OrderEditRefusalCode =
   | "ORDER_EDIT_PERSONAL_USE"
   | "ORDER_EDIT_ON_CREDIT_LIST"
   | "ORDER_EDIT_LEGACY_DISCOUNT"
-  | "ORDER_EDIT_POINTS_EXCEED_TOTAL";
+  | "ORDER_EDIT_POINTS_EXCEED_TOTAL"
+  | "ORDER_EDIT_SHIFT_CLOSED";
 
 /** The route answers 409: the order's state, not the request, is the problem. */
 export class OrderEditRefusedError extends Error {
@@ -61,6 +66,7 @@ export type EditableOrderRow = {
   status: string | null;
   total: string;
   payment_method: string;
+  shift_id?: string | null;
   subtotal: string | null;
   tier_discount: string | null;
   tier_discount_percent: string | null;
@@ -142,6 +148,7 @@ export function orderEditRefusal(
   lines: OrderLineRow[],
   legs: PaymentLeg[],
   creditStatus: string | null,
+  tillShiftClosed = false,
 ): OrderEditRefusedError | null {
   if (row.status === "completed") {
     return new OrderEditRefusedError(
@@ -169,15 +176,23 @@ export function orderEditRefusal(
       "ORDER_EDIT_ON_CREDIT_LIST",
     );
   }
+  if (tillShiftClosed) {
+    return new OrderEditRefusedError(
+      "The till shift this order was taken on is closed and counted, so its prices cannot change now. Refund it and ring it up again on an open shift.",
+      "ORDER_EDIT_SHIFT_CLOSED",
+    );
+  }
   if (row.subtotal === null || row.subtotal === undefined) {
-    // Before migration 082 the breakdown was not recorded. Points used to be
-    // taken off the total afterwards; if the total is below its lines, the
-    // edit cannot know what was taken off or why, and would silently drop it.
+    // Before migration 082 the breakdown was not recorded, and points were
+    // taken off after VAT without leaving a trace on the order. Any gap
+    // between the total and its lines may hide a discount — a points discount
+    // smaller than the VAT still leaves the total above the lines — so the
+    // edit cannot know what to keep and would silently drop it.
     const linesTotal = round2(lines.reduce((s, l) => s + (money(l.total_price) ?? 0), 0));
     const total = money(row.total) ?? 0;
-    if (total < linesTotal - 0.005) {
+    if (Math.abs(total - linesTotal) > 0.005) {
       return new OrderEditRefusedError(
-        "This order was taken before discounts were recorded, and money was taken off it. Refund it and ring it up again rather than lose the discount.",
+        "This order was taken before discounts and VAT were recorded, so an edit cannot tell what it kept. Refund it and ring it up again rather than lose a discount.",
         "ORDER_EDIT_LEGACY_DISCOUNT",
       );
     }
@@ -242,7 +257,13 @@ export async function loadOrderEditState(
     .where(eq(orderCredit.orderId, row.id))
     .limit(1);
   const creditStatus = credit?.status ?? null;
-  return { legs, creditStatus, refusal: orderEditRefusal(row, lines, legs, creditStatus) };
+  let tillShiftClosed = false;
+  if (row.shift_id) {
+    const [shift] = await tx.select({ status: shifts.status }).from(shifts).where(eq(shifts.id, row.shift_id)).limit(1);
+    // A reopened shift is being recounted, so an edit still lands before its count.
+    tillShiftClosed = !!shift && shift.status !== "open" && shift.status !== "reopened";
+  }
+  return { legs, creditStatus, refusal: orderEditRefusal(row, lines, legs, creditStatus, tillShiftClosed) };
 }
 
 /**

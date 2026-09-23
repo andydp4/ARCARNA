@@ -2,7 +2,7 @@ import { PlaceOrderInput, UpdateOrderInput } from './schemas'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSink, AuditPort } from './ports'
 import type { EventBus } from './bus'
 import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
-import { priceOrder, type PricedOrder } from '../../../shared/pricing/priceOrder'
+import { lineTotalFor, priceOrder, type PricedOrder } from '../../../shared/pricing/priceOrder'
 
 /** Fallback when no org rate is supplied. Matches the historic fixed rate. */
 export const DEFAULT_TAX_RATE_PERCENT = 0
@@ -67,7 +67,7 @@ export class DomainEngine {
       } = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
-        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
+        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: lineTotalFor(l.quantity, l.unitPrice) })),
         subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, channel: dto.channel, createdAt: new Date(),
         orgId: (dto as any).orgId,
         locationId: (dto as any).locationId,
@@ -328,7 +328,7 @@ export class DomainEngine {
         ...existingOrder,
         // Persisted alongside (migration 082) only when the route priced it.
         ...(pricing ? { pricing } : {}),
-        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity * l.unitPrice).toFixed(2) })),
+        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: lineTotalFor(l.quantity, l.unitPrice) })),
         subtotal,
         vat,
         total,

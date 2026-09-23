@@ -6,6 +6,7 @@ import {
   tierForPoints,
   type PricingPromotion,
   type PricingTier,
+  lineTotalFor,
 } from "./priceOrder";
 
 const now = new Date("2026-09-23T12:00:00Z");
@@ -170,5 +171,14 @@ describe("priceOrder", () => {
     expect(tierForPoints(999, tiers)?.id).toBe("silver");
     expect(tierForPoints(1000, tiers)?.id).toBe("gold");
     expect(tierForPoints(5, [])).toBeNull();
+  });
+});
+
+describe("a line's stored total", () => {
+  it("rounds as the sale's subtotal does, so the lines add up to what was charged", () => {
+    const priced = priceOrder({ lines: [{ quantity: 0.5, unitPrice: 2.01 }], taxRatePercent: 0 });
+    expect(priced.subtotal).toBe(1.01);
+    expect(lineTotalFor(0.5, 2.01)).toBe(1.01);
+    expect(lineTotalFor(3, 1.1)).toBe(3.3);
   });
 });

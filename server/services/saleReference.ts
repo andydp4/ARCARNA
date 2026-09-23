@@ -134,3 +134,26 @@ export function alreadyRecordedResponse(sale: RecordedSale) {
     },
   };
 }
+
+/**
+ * A "repeat" whose till total differs from what the reference recorded is a
+ * different sale sent under a used reference (the cart changed after a failed
+ * attempt that had in fact landed). Answering it as a repeat would leave the
+ * new sale unrecorded while the till said it was, so it is refused instead.
+ * Without a total (personal use, API callers) there is nothing to compare.
+ */
+export function repeatDiffersFromRecorded(sale: RecordedSale, expectedTotal: unknown): boolean {
+  if (expectedTotal === undefined || expectedTotal === null || expectedTotal === "") return false;
+  const shown = Number(expectedTotal);
+  const recorded = Number(sale.total);
+  if (!Number.isFinite(shown) || !Number.isFinite(recorded)) return false;
+  return Math.abs(shown - recorded) > 0.005;
+}
+
+export function reusedReferenceResponse(sale: RecordedSale) {
+  return {
+    code: "SALE_REFERENCE_REUSED",
+    message: `This sale's reference was already used for a sale recorded at £${Number(sale.total).toFixed(2)}, so this one was not recorded. Check that order, then start this sale again.`,
+    order: { id: sale.id, total: sale.total },
+  };
+}

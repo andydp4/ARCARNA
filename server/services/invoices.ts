@@ -17,6 +17,7 @@ import {
   invoices,
   orderCredit,
   orderItems,
+  orderPayments,
   orders,
   organizations,
   products,
@@ -31,7 +32,9 @@ import {
   invoiceAmountDue,
   invoiceAmounts,
   invoiceStatus,
+  isMoneyTakenMethod,
   nextInvoiceSequence,
+  type InvoiceAmounts,
   type InvoiceCreditState,
   type InvoiceStatus,
 } from "@shared/invoices/invoiceRules";
@@ -54,16 +57,70 @@ const num = (v: unknown): number => {
 };
 const numOrNull = (v: unknown): number | null => (v == null || v === "" ? null : num(v));
 
-function amountsForOrder(
-  order: { total: string | null; vatAmount: string | null; vatRate: string | null },
-  orgVatRate: unknown,
-) {
+type OrderMoneyColumns = {
+  total: string | null;
+  vatAmount: string | null;
+  vatRate: string | null;
+  subtotal?: string | null;
+  tierDiscount?: string | null;
+  promoDiscount?: string | null;
+  pointsDiscount?: string | null;
+};
+
+function amountsForOrder(order: OrderMoneyColumns, orgVatRate: unknown): InvoiceAmounts {
   return invoiceAmounts({
     total: num(order.total),
     vatAmount: numOrNull(order.vatAmount),
     vatRate: numOrNull(order.vatRate),
     orgVatRate: num(orgVatRate),
+    subtotal: numOrNull(order.subtotal),
+    tierDiscount: numOrNull(order.tierDiscount),
+    promoDiscount: numOrNull(order.promoDiscount),
+    pointsDiscount: numOrNull(order.pointsDiscount),
   });
+}
+
+const orderMoneySelection = {
+  total: orders.total,
+  vatAmount: orders.vatAmount,
+  vatRate: orders.vatRate,
+  subtotal: orders.subtotal,
+  tierDiscount: orders.tierDiscount,
+  promoDiscount: orders.promoDiscount,
+  pointsDiscount: orders.pointsDiscount,
+};
+
+/**
+ * What an invoice shows: the order's own breakdown while the invoice still
+ * matches the order (it follows the order), otherwise its stored figures.
+ */
+function shownAmounts(invoice: Invoice | null | undefined, live: InvoiceAmounts, orderTotal: number) {
+  if (!invoice || Math.abs(num(invoice.total) - orderTotal) <= 0.005) {
+    return { ...live, total: invoice ? num(invoice.total) : orderTotal };
+  }
+  return {
+    subtotal: num(invoice.subtotal),
+    discount: 0,
+    tax: num(invoice.tax),
+    vatRate: invoiceVatRate(invoice),
+    pointsDiscount: 0,
+    total: num(invoice.total),
+  };
+}
+
+/** Money taken at the till per order, from its payment legs; absent for an order with none. */
+async function paidAtTillByOrder(orderIds: string[]): Promise<Map<string, number>> {
+  const paid = new Map<string, number>();
+  if (orderIds.length === 0) return paid;
+  const legs = await db
+    .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
+    .from(orderPayments)
+    .where(inArray(orderPayments.orderId, orderIds));
+  for (const leg of legs) {
+    const taken = isMoneyTakenMethod(leg.method) ? num(leg.amount) : 0;
+    paid.set(leg.orderId, Math.round(((paid.get(leg.orderId) ?? 0) + taken) * 100) / 100);
+  }
+  return paid;
 }
 
 async function numberedInvoiceFor(orderId: string, client: Pick<typeof db, "select">) {
@@ -91,9 +148,7 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
       id: orders.id,
       orgId: orders.orgId,
       customerId: orders.customerId,
-      total: orders.total,
-      vatAmount: orders.vatAmount,
-      vatRate: orders.vatRate,
+      ...orderMoneySelection,
     })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)))
@@ -117,23 +172,7 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
 
   const amounts = amountsForOrder(order, org.vatRate);
   const existing = await numberedInvoiceFor(orderId, tx);
-  if (existing) {
-    if (num(existing.total) !== num(order.total) || num(existing.tax) !== amounts.tax) {
-      const [updated] = await tx
-        .update(invoices)
-        .set({
-          subtotal: String(amounts.subtotal),
-          tax: String(amounts.tax),
-          total: String(num(order.total)),
-          vatRate: String(amounts.vatRate),
-          updatedAt: new Date(),
-        })
-        .where(eq(invoices.id, existing.id))
-        .returning();
-      return updated;
-    }
-    return existing;
-  }
+  if (existing) return followOrder(tx, existing, order.total, amounts);
 
   const [customer] = order.customerId
     ? await tx
@@ -167,6 +206,56 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
     })
     .returning();
   return created;
+}
+
+/** A numbered invoice's amounts follow its order: it is for what the customer was charged. */
+async function followOrder(
+  tx: InvoiceTx,
+  existing: Invoice,
+  orderTotal: string | null,
+  amounts: InvoiceAmounts,
+): Promise<Invoice> {
+  if (
+    num(existing.total) === num(orderTotal) &&
+    num(existing.tax) === amounts.tax &&
+    num(existing.subtotal) === amounts.subtotal
+  ) {
+    return existing;
+  }
+  const [updated] = await tx
+    .update(invoices)
+    .set({
+      subtotal: String(amounts.subtotal),
+      tax: String(amounts.tax),
+      total: String(num(orderTotal)),
+      vatRate: String(amounts.vatRate),
+      updatedAt: new Date(),
+    })
+    .where(eq(invoices.id, existing.id))
+    .returning();
+  return updated;
+}
+
+/**
+ * After a manager's edit: an order that already has a numbered invoice (a
+ * customer asked for one) gets its amounts moved in the same transaction. An
+ * order with none gets none — an edit is not a request for an invoice.
+ */
+export async function refreshInvoiceForOrderTx(tx: InvoiceTx, orgId: string, orderId: string): Promise<void> {
+  const existing = await numberedInvoiceFor(orderId, tx);
+  if (!existing || existing.orgId !== orgId) return;
+  const [order] = await tx
+    .select(orderMoneySelection)
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)))
+    .limit(1);
+  if (!order) return;
+  const [org] = await tx
+    .select({ vatRate: organizations.defaultTaxRate })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  await followOrder(tx, existing, order.total, amountsForOrder(order, org?.vatRate));
 }
 
 /** A customer asked for an invoice: issue one (or return the one they have). */
@@ -212,8 +301,12 @@ export type InvoiceListRow = {
   dueDate: string;
   total: number;
   subtotal: number;
+  /** Tier and promotion discounts, before VAT. */
+  discount: number;
   vat: number;
   vatRate: number;
+  /** Points, after VAT. */
+  pointsDiscount: number;
   amountDue: number;
   status: InvoiceStatus;
   paymentTerms: string | null;
@@ -294,14 +387,23 @@ export async function listInvoices(orgId: string): Promise<InvoiceListRow[]> {
     itemsByOrder.set(item.orderId, list);
   }
 
+  const paidAtTill = await paidAtTillByOrder(orderRows.map(({ order }) => order.id));
+
   return orderRows.map(({ order, customer }) => {
     const invoice = numberedByOrder.get(order.id) ?? legacyByOrder.get(order.id) ?? null;
     const credit = creditState(creditByOrder.get(order.id));
     const createdAt = invoice?.createdAt ?? order.createdAt ?? new Date();
     const dueDate = invoice?.dueDate || legacyDueDate(order.createdAt);
-    const fallback = amountsForOrder(order, orgVatRate);
-    const total = invoice ? num(invoice.total) : num(order.total);
-    const statusInput = { orderStatus: order.status, orderTotal: total, credit, dueDate, today };
+    const shown = shownAmounts(invoice, amountsForOrder(order, orgVatRate), num(order.total));
+    const total = shown.total;
+    const statusInput = {
+      orderStatus: order.status,
+      orderTotal: total,
+      credit,
+      paidAtTill: paidAtTill.get(order.id) ?? null,
+      dueDate,
+      today,
+    };
     return {
       id: invoice?.id ?? order.id,
       invoiceNumber:
@@ -314,9 +416,11 @@ export async function listInvoices(orgId: string): Promise<InvoiceListRow[]> {
       date: new Date(createdAt).toISOString(),
       dueDate,
       total,
-      subtotal: invoice ? num(invoice.subtotal) : fallback.subtotal,
-      vat: invoice ? num(invoice.tax) : fallback.tax,
-      vatRate: invoice ? invoiceVatRate(invoice) : fallback.vatRate,
+      subtotal: shown.subtotal,
+      discount: shown.discount,
+      vat: shown.tax,
+      vatRate: shown.vatRate,
+      pointsDiscount: shown.pointsDiscount,
       amountDue: invoiceAmountDue(statusInput),
       status: invoiceStatus(statusInput),
       paymentTerms: invoice?.paymentTerms ?? null,
@@ -332,8 +436,10 @@ export type InvoiceDocument = {
   createdAt: Date;
   dueDate: string;
   subtotal: number;
+  discount: number;
   tax: number;
   vatRate: number;
+  pointsDiscount: number;
   total: number;
   status: InvoiceStatus;
   paymentTerms: string | null;
@@ -397,8 +503,9 @@ export async function loadInvoiceDocument(
     if (!invoice && !credit) return { receiptOnly: true };
   }
 
-  const fallback = amountsForOrder(order, orgVatRate);
-  const total = invoice ? num(invoice.total) : num(order.total);
+  const shown = shownAmounts(invoice, amountsForOrder(order, orgVatRate), num(order.total));
+  const total = shown.total;
+  const paidAtTill = (await paidAtTillByOrder([order.id])).get(order.id) ?? null;
   const dueDate = invoice?.dueDate || legacyDueDate(order.createdAt);
   const [customer] = order.customerId
     ? await db.select({ name: customers.name }).from(customers).where(eq(customers.id, order.customerId)).limit(1)
@@ -411,11 +518,13 @@ export async function loadInvoiceDocument(
         `INV-${(order.createdAt ?? new Date()).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`,
       createdAt: invoice?.createdAt ?? order.createdAt ?? new Date(),
       dueDate,
-      subtotal: invoice ? num(invoice.subtotal) : fallback.subtotal,
-      tax: invoice ? num(invoice.tax) : fallback.tax,
-      vatRate: invoice ? invoiceVatRate(invoice) : fallback.vatRate,
+      subtotal: shown.subtotal,
+      discount: shown.discount,
+      tax: shown.tax,
+      vatRate: shown.vatRate,
+      pointsDiscount: shown.pointsDiscount,
       total,
-      status: invoiceStatus({ orderStatus: order.status, orderTotal: total, credit, dueDate, today }),
+      status: invoiceStatus({ orderStatus: order.status, orderTotal: total, credit, paidAtTill, dueDate, today }),
       paymentTerms: invoice?.paymentTerms ?? null,
       paymentMethod: order.paymentMethod,
       orgId,

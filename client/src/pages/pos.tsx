@@ -31,7 +31,7 @@
  * omitted) is unchanged, because a standalone form's container is the
  * viewport.
  */
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -54,7 +54,15 @@ import { computeTierProgress } from "@shared/loyalty/progress";
 import { PricingError, priceOrder, tierForPoints, type PricingPromotion, type PricingTier } from "@shared/pricing/priceOrder";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
 import { consumeSaleIssueDraft, readSaleIssuePayload, type SaleIssueDraft } from "@/lib/saleIssueDraft";
-import { checkSaleLanded, newClientOrderId, sendSale } from "@/lib/saleQueue";
+import {
+  checkSaleLanded,
+  newClientOrderId,
+  referenceForAttempt,
+  saleFingerprint,
+  sendLeftSaleUncertain,
+  sendSale,
+  type SentSale,
+} from "@/lib/saleQueue";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
@@ -200,6 +208,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // landed or been kept on the till; a refused attempt keeps it, because that
   // attempt recorded nothing.
   const [saleRef, setSaleRef] = useState<string>(() => newClientOrderId());
+  // What was last sent under saleRef, so a changed cart is never sent under a
+  // reference an earlier (possibly recorded) attempt already used.
+  const lastSentRef = useRef<SentSale | null>(null);
   // A refused sale a manager opened from Needs attention to fix. It keeps the
   // sale's own reference and is sent as a resend of that sale.
   const [editingIssue, setEditingIssue] = useState<SaleIssueDraft | null>(null);
@@ -436,9 +447,26 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
+      const fingerprint = saleFingerprint(orderData);
+      let ref = saleRef;
+      // A sale from Needs attention is always a resend of its own reference.
+      if (!editingIssue) {
+        const decided = await referenceForAttempt(saleRef, lastSentRef.current, fingerprint);
+        if (decided.kind === "landed") return { ...decided.body, earlierAttemptRecorded: true };
+        if (decided.kind === "unknown") {
+          throw new Error(
+            "arcarna could not confirm whether the first try of this sale was recorded, so the changed sale was not sent. Check the connection and try again.",
+          );
+        }
+        if (decided.ref !== saleRef) {
+          ref = decided.ref;
+          setSaleRef(ref);
+        }
+      }
+      lastSentRef.current = { ref, fingerprint };
       const payload = {
         ...orderData,
-        clientOrderId: saleRef,
+        clientOrderId: ref,
         ...(editingIssue ? { saleIssueId: editingIssue.issueId, saleIssueMode: "edit" } : {}),
       };
       const keepOnTill = async (why: "offline" | "timeout") => {
@@ -452,7 +480,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           method: 'POST',
           endpoint: '/api/orders',
           data: payload,
-          clientOrderId: saleRef,
+          clientOrderId: ref,
           queuedByUserId: (authUser as { id?: string } | null)?.id,
         });
         return { offline: true, why, orderId: null };
@@ -463,15 +491,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       const outcome = await sendSale(payload);
       if (outcome.ok) return outcome.body;
 
-      if (outcome.status === null) {
-        // No answer. On a slow line the sale may well have been recorded, so
-        // ask before keeping it — the cashier should hear the truth. Keeping
-        // it would still be safe: the reference makes the replay a repeat.
+      if (sendLeftSaleUncertain(outcome)) {
+        // No answer, or a 5xx that may have come after the commit. On a slow
+        // line the sale may well have been recorded, so ask before saying
+        // anything — the cashier should hear the truth. Keeping it would
+        // still be safe: the reference makes the replay a repeat.
         if (navigator.onLine) {
-          const landed = await checkSaleLanded(saleRef);
+          const landed = await checkSaleLanded(ref);
           if (landed.result === "landed") return { ...landed.body, landedAfterTimeout: true };
         }
-        return keepOnTill(navigator.onLine && outcome.timedOut ? "timeout" : "offline");
+        if (outcome.status === null) {
+          return keepOnTill(navigator.onLine && outcome.timedOut ? "timeout" : "offline");
+        }
       }
       throw new Error(outcome.message);
     },
@@ -488,6 +519,15 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             data.why === "timeout"
               ? "arcarna did not answer in time, so this sale is saved on this till and will be sent automatically. It will only be recorded once."
               : "No connection. This sale is saved on this till and will be sent when the connection is back. It will only be recorded once.",
+        });
+      } else if (data?.earlierAttemptRecorded) {
+        // The first try landed after all; the changes made since were not sent.
+        const recordedTotal = Number(data?.order?.total);
+        toast({
+          title: "The first try of this sale was recorded",
+          description: `It was recorded${Number.isFinite(recordedTotal) ? ` at £${recordedTotal.toFixed(2)}` : ""}. The changes made after it were not sent — edit that order if the sale changed.`,
+          variant: "destructive",
+          duration: 10000,
         });
       } else if (data?.duplicate || data?.landedAfterTimeout) {
         toast({

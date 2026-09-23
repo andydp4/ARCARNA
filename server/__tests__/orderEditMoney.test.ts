@@ -389,6 +389,29 @@ describe.skipIf(!hasDb)("manager edits and order paths keep charged = recorded",
     }
   });
 
+  it("an API order cannot name another organisation's customer", async () => {
+    const { eq } = await import("drizzle-orm");
+    const otherOrg = randomUUID();
+    await db.insert(schema.organizations).values({ id: otherOrg, name: "ZZ Order Edit Other Org", defaultTaxRate: "0" });
+    const [foreign] = await db
+      .insert(schema.customers)
+      .values({ orgId: otherOrg, name: "Someone Else's Customer", loyaltyPoints: 0 })
+      .returning();
+    try {
+      const before = await db.select().from(schema.orders).where(eq(schema.orders.orgId, orgId));
+      const res = await request(app)
+        .post(`/v1/orgs/${orgId}/orders`)
+        .send({ lines: widgets(1), paymentMethod: "cash", customerId: foreign.id })
+        .expect(400);
+      expect(res.body.error).toBe("validation_error");
+      const after = await db.select().from(schema.orders).where(eq(schema.orders.orgId, orgId));
+      expect(after.length).toBe(before.length);
+    } finally {
+      await db.delete(schema.customers).where(eq(schema.customers.id, foreign.id));
+      await db.delete(schema.organizations).where(eq(schema.organizations.id, otherOrg));
+    }
+  });
+
   it("an API order whose lines are refused leaves nothing behind", async () => {
     const { eq } = await import("drizzle-orm");
     const before = await db.select().from(schema.orders).where(eq(schema.orders.orgId, orgId));

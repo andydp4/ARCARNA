@@ -159,6 +159,18 @@ describe.skipIf(!hasDb)("a till sale is recorded once", () => {
     expect(payments).toHaveLength(1);
   });
 
+  it("refuses a different sale sent under a reference that already recorded one", async () => {
+    const ref = randomUUID();
+    await post("cashier", "/api/orders", sale(ref, { expectedTotal: 10 })).expect(201);
+    const reused = await post(
+      "cashier",
+      "/api/orders",
+      sale(ref, { lines: [{ productId, quantity: 2, unitPrice: 10 }], expectedTotal: 20 }),
+    ).expect(409);
+    expect(reused.body.code).toBe("SALE_REFERENCE_REUSED");
+    expect(await ordersFor(ref)).toHaveLength(1);
+  });
+
   it("copies of one sale arriving together are recorded once", async () => {
     const ref = randomUUID();
     as = "cashier";

@@ -9,8 +9,10 @@ type InvoicePdfData = {
   createdAt: Date;
   dueDate: string;
   subtotal: number;
+  discount: number;
   tax: number;
   vatRate: number;
+  pointsDiscount: number;
   total: number;
   status: string;
   paymentTerms: string | null;
@@ -72,7 +74,9 @@ async function loadInvoiceForPdf(
     createdAt: doc.createdAt,
     dueDate: doc.dueDate,
     subtotal: doc.subtotal,
+    discount: doc.discount,
     tax: doc.tax,
+    pointsDiscount: doc.pointsDiscount,
     vatRate: doc.vatRate,
     total: doc.total,
     status: INVOICE_STATUS_LABELS[doc.status],
@@ -152,7 +156,9 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         customerAddress: data.customerAddress,
         items: data.items,
         subtotal: data.subtotal,
+        discount: data.discount,
         tax: data.tax,
+        pointsDiscount: data.pointsDiscount,
         vatRate: data.vatRate,
         total: data.total,
         status: data.status,

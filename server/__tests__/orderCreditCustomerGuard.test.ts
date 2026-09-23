@@ -413,3 +413,21 @@ describe("a sale on credit needs a customer", () => {
     );
   });
 });
+
+describe("reading the org's VAT rate", () => {
+  it("refuses the sale (422) only when no rate is set; a failed read stays a 500 so it is retried", async () => {
+    const { requireOrgTaxRatePercent } = await import("../services/orgTaxRate");
+    const sale = { lines: [{ productId: "p1", quantity: 1, unitPrice: 20 }], paymentMethod: "cash" };
+
+    vi.mocked(requireOrgTaxRatePercent).mockRejectedValueOnce(
+      Object.assign(new Error("no rate"), { code: "ORG_VAT_RATE_MISSING" }),
+    );
+    const missing = await placeOrder(sale);
+    expect(missing.status).toBe(422);
+    expect(missing.payload.message).toBe("Set your VAT rate");
+
+    vi.mocked(requireOrgTaxRatePercent).mockRejectedValueOnce(new Error("Connection terminated unexpectedly"));
+    const blip = await placeOrder(sale);
+    expect(blip.status).toBe(500);
+  });
+});
