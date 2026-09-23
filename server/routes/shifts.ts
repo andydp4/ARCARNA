@@ -16,6 +16,7 @@ import { and, eq, desc, gte, lte, inArray, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
+import { storedDiscountTotal } from "@shared/pricing/priceOrder";
 import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
 import { maySeeShiftSheet } from "@shared/staffPolicy";
@@ -98,6 +99,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       total: parseFloat(String(order.total)),
       paymentMethod: order.paymentMethod,
       payments: legsByOrder.get(order.id),
+      discounts: storedDiscountTotal(order),
       createdAt: order.createdAt?.toISOString() ?? "",
       items: items.map((i) => ({
         productId: i.productId ?? "",

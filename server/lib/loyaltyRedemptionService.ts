@@ -6,12 +6,17 @@ import { and, eq } from "drizzle-orm";
 const DEFAULT_RATE = 0.01;
 const DEFAULT_MIN = 100;
 
-export async function getLoyaltySettings(orgId: string) {
-  const [row] = await db.select().from(loyaltySettings).where(eq(loyaltySettings.orgId, orgId)).limit(1);
+/** An org's settings row, or the defaults when it has none. */
+export function loyaltySettingsFrom(row: { redemptionRate?: string | null; minRedeemPoints?: number | null } | undefined) {
   return {
     redemptionRate: parseFloat(String(row?.redemptionRate ?? DEFAULT_RATE)),
     minRedeemPoints: row?.minRedeemPoints ?? DEFAULT_MIN,
   };
+}
+
+export async function getLoyaltySettings(orgId: string) {
+  const [row] = await db.select().from(loyaltySettings).where(eq(loyaltySettings.orgId, orgId)).limit(1);
+  return loyaltySettingsFrom(row);
 }
 
 export async function upsertLoyaltySettings(

@@ -55,6 +55,14 @@ export function ZReportView({ report }: { report: ZReportData }) {
             <span className="text-right font-medium">{money(report.refundsTotal)}</span>
             <span>Net sales</span>
             <span className="text-right font-semibold">{money(report.netSales)}</span>
+            {/* Already out of the sales above; shown so a till that took less
+                than its list prices explains itself. Older reports have none. */}
+            {(report.discountsGiven ?? 0) > 0 && (
+              <>
+                <span className="text-muted-foreground">Discounts given (included above)</span>
+                <span className="text-right text-muted-foreground">{money(report.discountsGiven)}</span>
+              </>
+            )}
           </div>
 
           <Separator />

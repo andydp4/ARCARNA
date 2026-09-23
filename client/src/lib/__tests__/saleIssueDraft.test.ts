@@ -42,6 +42,10 @@ describe("a refused sale opened in the till", () => {
     expect(readSaleIssuePayload(payload).dropped).toEqual(["gift card", "points"]);
   });
 
+  it("leaves a promotion to be applied again too: its use is counted when the sale lands", () => {
+    expect(readSaleIssuePayload({ ...payload, promoCode: "SAVE5" }).dropped).toEqual(["gift card", "points", "promotion"]);
+  });
+
   it("totals the lines for the list", () => {
     expect(saleIssueLinesTotal(payload)).toBe(13);
   });

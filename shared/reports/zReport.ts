@@ -22,6 +22,8 @@ export type ZReportOrder = {
    * single-tender sale, which is what every order was before split tender.
    */
   payments?: Array<{ method: string; amount: number }>;
+  /** Tier, promotion and points taken off this sale (v1.2 Phase 1B). Already out of `total`. */
+  discounts?: number;
 };
 
 export type ZReportRefund = {
@@ -59,6 +61,12 @@ export type ZReportData = {
   grossSales: number;
   refundsTotal: number;
   netSales: number;
+  /**
+   * Discounts given on this shift's sales: tier, promotion and points. For
+   * information only — `grossSales` is already what customers were charged,
+   * so this is never taken off again.
+   */
+  discountsGiven: number;
   salesByPaymentMethod: Array<{ method: string; total: number; count: number }>;
   salesByCategory: Array<{ category: string; total: number }>;
   topSkus: Array<{ sku: string; name: string; qty: number; revenue: number }>;
@@ -145,6 +153,7 @@ export function buildZReport(
     refunds.reduce((sum, r) => sum + Math.max(0, r.total), 0),
   );
   const netSales = roundMoney(grossSales - refundsTotal);
+  const discountsGiven = roundMoney(orders.reduce((sum, o) => sum + Math.max(0, o.discounts ?? 0), 0));
 
   // Split by tender leg: a £100 sale taken as £50 cash and £50 on tick appears
   // under both, for £50 each, rather than £100 under whichever was picked first.
@@ -228,6 +237,7 @@ export function buildZReport(
     orderCount: orders.length,
     grossSales,
     refundsTotal,
+    discountsGiven,
     netSales,
     salesByPaymentMethod,
     salesByCategory,

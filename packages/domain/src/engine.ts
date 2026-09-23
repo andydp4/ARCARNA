@@ -2,6 +2,7 @@ import { PlaceOrderInput, UpdateOrderInput } from './schemas'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSink, AuditPort } from './ports'
 import type { EventBus } from './bus'
 import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
+import { priceOrder, type PricedOrder } from '../../../shared/pricing/priceOrder'
 
 /** Fallback when no org rate is supplied. Matches the historic fixed rate. */
 export const DEFAULT_TAX_RATE_PERCENT = 0
@@ -18,14 +19,21 @@ export class DomainEngine {
     private readonly withTransaction: <T>(fn: ()=>Promise<T>)=>Promise<T>,
   ){}
 
-  async placeOrder(input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
+  /**
+   * `pricing` is the till route's server-side priceOrder() result (tier,
+   * promotion, points already validated inside the sale's transaction). It is
+   * a separate, trusted argument — never read from the request body — so a
+   * caller cannot post its own discount. Without it the sale is priced from
+   * its lines and the org rate alone, by the same function (v1.2 Phase 1B).
+   */
+  async placeOrder(input: unknown, pricing?: PricedOrder): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = PlaceOrderInput.parse(input)
-    const subtotal = +dto.lines.reduce((s: number, l: any)=> s + l.quantity*l.unitPrice, 0).toFixed(2)
     // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
     // applies when a caller supplies none.
-    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
-    const vat = +(subtotal * taxRate).toFixed(2)
-    const total = +(subtotal + vat).toFixed(2)
+    const priced =
+      pricing ??
+      priceOrder({ lines: dto.lines, taxRatePercent: (dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT })
+    const { subtotal, vatAmount: vat, total } = priced
 
     const result = await this.withTransaction(async () => {
       // Check stock availability for all line items
@@ -55,6 +63,7 @@ export class DomainEngine {
         orgId?: string
         locationId?: string
         fulfilmentMethod?: 'collection' | 'delivery'
+        pricing?: PricedOrder
       } = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
@@ -65,6 +74,8 @@ export class DomainEngine {
         // Carried alongside the domain Order rather than inside it, the same way
         // orgId/locationId are: OrdersRepo persists it, no engine rule reads it.
         fulfilmentMethod: (dto as any).fulfilmentMethod,
+        // The breakdown behind `total`, persisted alongside it (migration 082).
+        pricing: priced,
       }
       await this.orders.save(order)
       // Stock mutations: InventoryWorker on OrderCreated (event-driven, per-location)

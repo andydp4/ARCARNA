@@ -13,7 +13,6 @@ import { orderTenderLegSchema, sumTenderLegs } from "@shared/schema";
 import { validateGiftCardCode } from "@shared/giftCards/code";
 import { roundMoney } from "@shared/giftCards/balance";
 import { redeemGiftCardInTx } from "../lib/giftCardService";
-import { redeemPointsInTx } from "../lib/loyaltyRedemptionService";
 import { resolveUserNames } from "../services/userDisplayName";
 import { currentTradingDay, localInstantAt } from "@shared/time/tradingDay";
 import { orgTimeZone } from "../services/tradingDayShift";
@@ -37,6 +36,9 @@ import {
 import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } from "../services/saleIssues";
 import { isValidClientOrderId } from "@shared/orders/saleReference";
 import { recordAdminAudit } from "../adminAudit";
+import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
+import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
+import { PlaceOrderInput } from "../../packages/domain/src/schemas";
 
 /**
  * A repeat of a sale that already landed gets the original order back and
@@ -415,6 +417,20 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         });
       }
 
+      // What the sale may take off its price (v1.2 Phase 1B). Validated here,
+      // priced inside the transaction below against locked rows.
+      const promoCode = typeof body.promoCode === "string" && body.promoCode.trim() ? body.promoCode.trim() : null;
+      const redeemPointsRaw = body.redeemPoints ?? 0;
+      const redeemPoints = Number(redeemPointsRaw);
+      if (!Number.isInteger(redeemPoints) || redeemPoints < 0) {
+        return res.status(400).json({ message: "Points must be a positive whole number.", code: "ORDER_POINTS_INVALID" });
+      }
+      if (isPersonalUse && (promoCode || redeemPoints > 0)) {
+        return res.status(400).json({
+          message: "Personal use is not a sale: it takes no promotion or points.",
+          code: "PERSONAL_USE_NO_DISCOUNTS",
+        });
+      }
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
@@ -505,11 +521,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         body.fulfilmentMethod === "delivery" ? "delivery" : "collection";
       const autoClaimEnabled = explicitAssigneeId ? false : await opsAutoClaimEnabled(ctx.orgId);
 
+      // Lines are validated before pricing reads them; the engine parses the
+      // same schema again, which is cheap and keeps it callable on its own.
+      const placeInput = PlaceOrderInput.parse(body);
+
       // Rows `alertAssignedInTx` actually inserts below — pushed to `opsBus`
       // AFTER commit, the same discipline `orderTransitions.ts` and
       // `reportCapture.ts` already apply to their own alert-creating paths.
       let newAlerts: OpsAlertCreatedRow[] = [];
-      const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
+      const { result, eventId, createdOrder, items, pricing } = await withTransaction(async (tx) => {
         // Two copies of one sale arriving together: the second waits here for
         // the first to commit, then finds its order and records nothing.
         if (clientOrderId) {
@@ -517,7 +537,27 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           const existing = await findSaleByReference(tx, ctx.orgId!, clientOrderId);
           if (existing) throw new SaleAlreadyRecordedError(existing);
         }
-        const result = await engine.placeOrder(body);
+        // One price, before anything is written (v1.2 Phase 1B): the order's
+        // total, every tender leg below and the loyalty earned all read this.
+        // Personal use prices without a customer: no tier, nothing to spend.
+        const pricing = await priceSaleInTx(tx, {
+          orgId: ctx.orgId!,
+          customerId: isPersonalUse ? null : placeInput.customerId ?? null,
+          lines: placeInput.lines,
+          taxRatePercent: placeInput.taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT,
+          promoCode,
+          redeemPoints,
+          // An offline sale is priced as at when it was rung, not when it synced.
+          now: receivedAt,
+        });
+        assertChargedAsShown(pricing, isPersonalUse ? undefined : body.expectedTotal);
+        const result = await engine.placeOrder(body, pricing);
+        await consumeSalePricingInTx(tx, {
+          orgId: ctx.orgId!,
+          orderId: result.orderId,
+          customerId: placeInput.customerId ?? null,
+          pricing,
+        });
         // The till shift is the drawer. A backdated sale's money was in a
         // drawer that has since been counted, so it joins no drawer at all:
         // putting it in today's would make today's count come up short.
@@ -762,15 +802,6 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           }, { source: 'api-orders' });
         }
 
-        const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);
-        if (redeemPoints > 0) {
-          if (!createdOrder?.customer_id) throw new SaleRefusedError("Customer required for points redemption");
-          const discount = await redeemPointsInTx(tx, ctx.orgId!, createdOrder.customer_id, redeemPoints);
-          const newTotal = roundMoney(Math.max(0, parseFloat(String(createdOrder.total)) - discount));
-          await tx.update(orders).set({ total: String(newTotal) }).where(eq(orders.id, result.orderId));
-          createdOrder.total = String(newTotal);
-        }
-
         const sendEmailReceipt = body.sendEmailReceipt === true;
         const eventId = await publishEventTx(tx, 'OrderCreated', result.orderId, {
           order: {
@@ -800,7 +831,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           });
         }
 
-        return { result, eventId, createdOrder, items };
+        return { result, eventId, createdOrder, items, pricing };
       });
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
@@ -864,6 +895,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           paymentMethod: createdOrder.payment_method,
           createdAt: createdOrder.created_at,
           dateKind: createdOrder.date_kind ?? dating.dating.kind,
+          // The breakdown the till's receipt prints (v1.2 Phase 1B).
+          subtotal: pricing.subtotal,
+          tierDiscount: pricing.tierDiscount,
+          promoDiscount: pricing.promoDiscount,
+          pointsDiscount: pricing.pointsDiscount,
+          vatRate: pricing.vatRate,
+          vatAmount: pricing.vatAmount,
         } : null
       });
     } catch (error: any) {

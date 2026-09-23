@@ -38,9 +38,10 @@ export function consumeSaleIssueDraft(): SaleIssueDraft | null {
 export type DraftLine = { productId: string; quantity: number; unitPrice: number };
 
 /**
- * The parts of a stored sale the till can put back on screen. Gift-card and
- * points redemptions are not restored: both move a balance, so the manager
- * applies them again deliberately (`dropped` says which were left out).
+ * The parts of a stored sale the till can put back on screen. Gift-card,
+ * points and promotion redemptions are not restored: each moves a balance or
+ * a usage count, so the manager applies them again deliberately (`dropped`
+ * says which were left out).
  */
 export function readSaleIssuePayload(payload: Record<string, unknown>): {
   lines: DraftLine[];
@@ -83,6 +84,8 @@ export function readSaleIssuePayload(payload: Record<string, unknown>): {
   const dropped: string[] = [];
   if (payload.giftCardCode) dropped.push("gift card");
   if (Number(payload.redeemPoints) > 0) dropped.push("points");
+  // A promotion's use is counted when the sale lands; re-applied deliberately.
+  if (payload.promoCode) dropped.push("promotion");
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
     lines,

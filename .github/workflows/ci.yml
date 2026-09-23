@@ -342,7 +342,8 @@ jobs:
             server/__tests__/overdueInvoiceCount.test.ts \
             server/__tests__/shopPrivacyNotice.test.ts \
             server/__tests__/previewRole.test.ts \
-            server/__tests__/saleRecordedOnce.test.ts
+            server/__tests__/saleRecordedOnce.test.ts \
+            server/__tests__/salePricing.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

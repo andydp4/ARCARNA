@@ -51,6 +51,7 @@ import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-typ
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
+import { PricingError, priceOrder, tierForPoints, type PricingPromotion, type PricingTier } from "@shared/pricing/priceOrder";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
 import { consumeSaleIssueDraft, readSaleIssuePayload, type SaleIssueDraft } from "@/lib/saleIssueDraft";
 import { checkSaleLanded, newClientOrderId, sendSale } from "@/lib/saleQueue";
@@ -169,9 +170,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<any>(null);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-  const [customerTier, setCustomerTier] = useState<any>(null);
+  const [appliedPromo, setAppliedPromo] = useState<PricingPromotion | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
   const [redeemPanelOpen, setRedeemPanelOpen] = useState(false);
@@ -353,7 +352,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     queryKey: ["/api/settings"],
   });
 
-  const { data: loyaltyTiers = [] } = useQuery<any[]>({
+  const { data: loyaltyTiers = [] } = useQuery<Array<PricingTier & { color?: string | null }>>({
     queryKey: ["/api/loyalty-tiers"],
   });
 
@@ -531,6 +530,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       setSaleRef(newClientOrderId());
       setCart([]);
       setSelectedCustomer(null);
+      // One customer's promotion must not follow the next sale.
+      setAppliedPromo(null);
+      setPromoCode("");
       setView("build");
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
@@ -644,24 +646,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     void addProductByBarcode(code);
   });
 
-  // Update customer tier when customer is selected
-  useEffect(() => {
-    if (selectedCustomer && loyaltyTiers.length > 0) {
-      const sortedTiers = [...loyaltyTiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
-      const tier = sortedTiers.find((t: any) => selectedCustomer.loyaltyPoints >= t.pointsRequired);
-      setCustomerTier(tier);
-
-      // Calculate loyalty discount based on tier
-      if (tier) {
-        setLoyaltyDiscount(parseFloat(tier.discountPercentage || 0));
-      } else {
-        setLoyaltyDiscount(0);
-      }
-    } else {
-      setCustomerTier(null);
-      setLoyaltyDiscount(0);
-    }
-  }, [selectedCustomer, loyaltyTiers]);
+  // The customer's tier, by the same rule priceOrder() prices with.
+  const customerTier = useMemo(
+    () => (selectedCustomer ? tierForPoints(selectedCustomer.loyaltyPoints ?? 0, loyaltyTiers) : null),
+    [selectedCustomer, loyaltyTiers],
+  );
 
   useEffect(() => {
     setRedeemPoints(0);
@@ -702,22 +691,62 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setDueTime("");
   }, []);
 
-  // Calculate totals with discounts
-  const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
-  const promoDiscountAmount = appliedPromo ?
-    (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
-    : 0;
-  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
-  const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
   // Mirrors the server: organizations.default_tax_rate, surfaced as vatRate.
   const taxRatePercent =
     orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
-  const tax = +(discountedSubtotal * (taxRatePercent / 100)).toFixed(2);
-  const total = +(discountedSubtotal + tax).toFixed(2);
 
-  // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
-  const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
+  // One price (v1.2 Phase 1B): the same priceOrder() the server records the
+  // sale with, so the total shown here — offline too — is the total charged
+  // and every tender is checked against it. A promotion or points the rules
+  // refuse are left off and said why, rather than shown and then refused.
+  const { pricing, promoProblem, pointsProblemMessage } = useMemo(() => {
+    const lines = cart.map((item) => ({ quantity: item.quantity, unitPrice: item.customPrice }));
+    const base = {
+      lines,
+      taxRatePercent,
+      customer: selectedCustomer ? { loyaltyPoints: selectedCustomer.loyaltyPoints ?? 0 } : null,
+      tiers: loyaltyTiers,
+    };
+    const points =
+      redeemPoints > 0 && selectedCustomer
+        ? {
+            points: redeemPoints,
+            // The preview's own amount when settings have not loaded (offline, first run).
+            redemptionRate: loyaltySettings?.redemptionRate ?? pointsRedemptionAmount / redeemPoints,
+            minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 0,
+            balance: selectedCustomer.loyaltyPoints ?? 0,
+          }
+        : null;
+    let promoProblem: string | null = null;
+    let pointsProblemMessage: string | null = null;
+    const attempt = (promotion: typeof appliedPromo, pts: typeof points) =>
+      priceOrder({ ...base, promotion, points: pts });
+    try {
+      return { pricing: attempt(appliedPromo, points), promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+    }
+    // Drop the refused part and try again; a second refusal drops both.
+    try {
+      const pricing = promoProblem ? attempt(null, points) : attempt(appliedPromo, null);
+      return { pricing, promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+      return { pricing: attempt(null, null), promoProblem, pointsProblemMessage };
+    }
+  }, [cart, taxRatePercent, selectedCustomer, loyaltyTiers, appliedPromo, redeemPoints, loyaltySettings, pointsRedemptionAmount]);
+  const subtotal = pricing.subtotal;
+  const loyaltyDiscountAmount = pricing.tierDiscount;
+  const loyaltyDiscount = pricing.tier?.percent ?? 0;
+  const promoDiscountAmount = pricing.promoDiscount;
+  const tax = pricing.vatAmount;
+  const total = pricing.total;
+  // Earned on what is paid — the server's rule, not a tier multiplier it never applied.
+  const pointsEarned = pricing.pointsEarned;
 
   // What is still to be taken on a split payment. Negative means over-tendered.
   const splitRemaining =
@@ -957,8 +986,16 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
     }
-    if (redeemPoints > 0) {
-      orderData.redeemPoints = redeemPoints;
+    // Only what the price above actually used, so the server prices the same
+    // sale; it re-checks everything inside the sale and refuses a mismatch.
+    if (pricing.pointsRedeemed > 0) {
+      orderData.redeemPoints = pricing.pointsRedeemed;
+    }
+    if (pricing.promotion && appliedPromo?.code) {
+      orderData.promoCode = appliedPromo.code;
+    }
+    if (paymentMethod !== "personal_use") {
+      orderData.expectedTotal = total;
     }
     orderData.sendEmailReceipt = emailReceipt && !!selectedCustomer?.email;
 
@@ -999,6 +1036,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setPromoCode,
     appliedPromo: appliedPromo as { name?: string } | null,
     setAppliedPromo,
+    promoProblem,
+    pointsProblem: pointsProblemMessage,
     validatePromoMutation,
     customerTier: customerTier as PosCartPanelProps["customerTier"],
     loyaltyDiscount,
@@ -1012,7 +1051,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     tierProgress,
     minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 100,
     redeemPoints,
-    pointsRedemptionAmount,
+    // What the price actually took off — 0 when the points were refused.
+    pointsRedemptionAmount: pricing.pointsDiscount,
     redeemPanelOpen,
     redeemInput,
     setRedeemInput,

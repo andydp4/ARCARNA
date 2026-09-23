@@ -1483,10 +1483,29 @@ export const orders = pgTable("orders", {
   // landed instead of recording the sale twice. NULL for orders that did not
   // come from the till (web, API). (migration 080)
   clientOrderId: varchar("client_order_id", { length: 64 }),
+  // How the total was reached, from the one priceOrder() the till and server
+  // share (v1.2 Phase 1B, shared/pricing/priceOrder.ts):
+  //   subtotal − tierDiscount − promoDiscount + vatAmount − pointsDiscount = total
+  // NULL on orders placed before it — never recorded, so not claimed as 0.
+  // `promotionId` has no FK on purpose: deleting a spent promotion must not be
+  // blocked by, or rewrite, the sales it was used on. (migration 082)
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
+  tierDiscount: numeric("tier_discount", { precision: 10, scale: 2 }),
+  tierDiscountPercent: numeric("tier_discount_percent", { precision: 5, scale: 2 }),
+  promotionId: uuid("promotion_id"),
+  promoCode: varchar("promo_code", { length: 50 }),
+  promoDiscount: numeric("promo_discount", { precision: 10, scale: 2 }),
+  pointsRedeemed: integer("points_redeemed"),
+  pointsDiscount: numeric("points_discount", { precision: 10, scale: 2 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
+  vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  index("orders_promotion_idx")
+    .on(table.orgId, table.promotionId)
+    .where(sql`${table.promotionId} IS NOT NULL`),
   uniqueIndex("orders_org_client_order_id_uq")
     .on(table.orgId, table.clientOrderId)
     .where(sql`${table.clientOrderId} IS NOT NULL`),
