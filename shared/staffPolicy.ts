@@ -39,6 +39,34 @@ export function maySeeShiftSheet(viewer: ShiftSheetViewer, owner: ShiftSheetOwne
   return owner.role == null || owner.role === "CASHIER";
 }
 
+/**
+ * Fields of a cashier balance sheet that are cost, or are worked out from it
+ * (profit, overhead share, expenses that include personal-use stock at cost).
+ * Cost never reaches a cashier, not even in the data (Q6).
+ */
+const SHEET_COST_FIELDS = [
+  "stockCost",
+  "personalUseCost",
+  "orderExpenses",
+  "globalExpenseAllocation",
+  "netSalesProfit",
+  "businessRetainedProfit",
+  "hasIncompleteCostData",
+] as const;
+
+/**
+ * A cashier shift sheet (the live balance sheet or the stored summary row) as
+ * a viewer may see it. Below manager, the cost fields go; below admin, the
+ * commission rate goes too (Q16). What the till shows a cashier — sales and
+ * the commission they have earned — stays.
+ */
+export function shiftSheetForRole<T extends Record<string, unknown>>(sheet: T, role: string | null | undefined): Partial<T> {
+  const out: Record<string, unknown> = { ...sheet };
+  if (!canSeeCommissionRates(role)) delete out.commissionRate;
+  if (!isAtLeast(role, "MANAGER")) for (const key of SHEET_COST_FIELDS) delete out[key];
+  return out as Partial<T>;
+}
+
 // ---------------------------------------------------------------------------
 // The staff list (cashier profiles).
 // ---------------------------------------------------------------------------

@@ -37,7 +37,7 @@ import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
 import { currentTradingDay, tradingDayBounds, tradingDayFor, shiftIsoDate } from "@shared/time/tradingDay";
 import { settledRevenueByTradingDay, type RevenueScopeFilter } from "./revenue";
-import { isEvidenceStaff } from "./evidenceStaff";
+import { evidenceStaffRole, mayFilterEvidenceBy, type EvidenceViewer } from "./evidenceStaff";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import {
   deriveOrderTiming,
@@ -78,7 +78,9 @@ function num(v: unknown): number {
  * a wrong answer presented as a right one, not a graceful degradation.
  */
 export class ReportScopeError extends Error {
-  statusCode = 404;
+  constructor(message: string, public statusCode: 403 | 404 = 404) {
+    super(message);
+  }
 }
 
 export interface ReportScopeFilter {
@@ -105,7 +107,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * `orders`/`locations` ownership check `POST /api/shifts/open` already uses
  * (server/routes/shifts.ts) — id + org id, nothing implicitly inherited.
  */
-export async function validateReportScope(orgId: string, filter: ReportScopeFilter): Promise<void> {
+export async function validateReportScope(orgId: string, filter: ReportScopeFilter, viewer?: EvidenceViewer): Promise<void> {
   if (filter.locationId) {
     if (!UUID_RE.test(filter.locationId)) throw new ReportScopeError(`Location ${filter.locationId} not found`);
     const [loc] = await db
@@ -118,8 +120,10 @@ export async function validateReportScope(orgId: string, filter: ReportScopeFilt
   if (filter.staffUserId) {
     // User ids are auth subjects ("user_…"), not UUIDs, so there is no UUID
     // pre-check here; the lookup is a plain varchar comparison.
-    if (!(await isEvidenceStaff(orgId, filter.staffUserId))) {
-      throw new ReportScopeError(`Staff member ${filter.staffUserId} not found`);
+    const role = await evidenceStaffRole(orgId, filter.staffUserId);
+    if (role === null) throw new ReportScopeError(`Staff member ${filter.staffUserId} not found`);
+    if (viewer && !mayFilterEvidenceBy(viewer, { id: filter.staffUserId, role })) {
+      throw new ReportScopeError("You can filter Evidence by cashiers and yourself only", 403);
     }
   }
 }

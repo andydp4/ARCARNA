@@ -73,6 +73,54 @@ export function productsForRole<T extends object>(list: readonly T[], role: stri
 }
 
 // ---------------------------------------------------------------------------
+// Customer contact details (owner decision Q13a: admin and above). Staff below
+// that still find and serve customers: they get a flag saying whether there is
+// an email or phone on file (the receipt worker reads the address itself) and
+// the phone's last four digits to tell two customers with one name apart.
+// ---------------------------------------------------------------------------
+
+export const CONTACT_MIN_ROLE: Role = "ADMIN";
+
+export function canSeeContactDetails(role: string | null | undefined): boolean {
+  return isAtLeast(role, CONTACT_MIN_ROLE);
+}
+
+export const CONTACT_FIELDS = ["phone", "email", "address"] as const;
+
+export type CustomerContactHints = { hasEmail: boolean; hasPhone: boolean; phoneLast4: string | null };
+
+export function customerForRole<T extends object>(
+  customer: T,
+  role: string | null | undefined,
+): T | (Omit<T, (typeof CONTACT_FIELDS)[number]> & CustomerContactHints) {
+  if (canSeeContactDetails(role)) return customer;
+  const out: Record<string, unknown> = { ...(customer as Record<string, unknown>) };
+  const phone = typeof out.phone === "string" ? out.phone : "";
+  const email = typeof out.email === "string" ? out.email : "";
+  for (const field of CONTACT_FIELDS) delete out[field];
+  const digits = phone.replace(/\D/g, "");
+  out.hasEmail = email.trim() !== "";
+  out.hasPhone = digits !== "";
+  out.phoneLast4 = digits.length >= 4 ? digits.slice(-4) : null;
+  return out as Omit<T, (typeof CONTACT_FIELDS)[number]> & CustomerContactHints;
+}
+
+/**
+ * A customer edit from someone who cannot see contact details. They cannot see
+ * what is there, so a blank (the edit form's empty field) must not wipe it; a
+ * value they type is still saved.
+ */
+export function customerEditForRole<T extends Record<string, unknown>>(body: T, role: string | null | undefined): T {
+  if (canSeeContactDetails(role)) return body;
+  const out: Record<string, unknown> = { ...body };
+  for (const field of CONTACT_FIELDS) {
+    const v = out[field];
+    if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) delete out[field];
+  }
+  return out as T;
+}
+
+// ---------------------------------------------------------------------------
 // Route table.
 // ---------------------------------------------------------------------------
 
@@ -116,6 +164,7 @@ const PURCHASING = "Supplier, purchasing and transfer records carry cost prices 
 const EVIDENCE = "Evidence and Truths are manager and above (FIX-03, Q12).";
 const EXPORT = "Exports are admin only and every one is logged (Q12).";
 const PROFIT = "Profit and expense Evidence is whole-business money: admin only (FIX-03).";
+const EXPENSE_LIST = "Expense lists are the money the totals are built from, and a personal-use expense is stock at cost: manager and above (Q6).";
 const CUSTOMER_INTEL = "Customer lifetime value and order history are manager and above (PRV-02).";
 const PAY = "Staff pay is manager and above; a manager sees cashiers' rows only (Q12, Q13a).";
 const STAFF_LIST = "The staff list is manager and above; PINs never leave the server, rates are admin only (STF-FN4).";
@@ -171,6 +220,8 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "GET", path: "/api/profit-analysis", minRole: "ADMIN", reason: PROFIT },
   { method: "GET", path: "/api/expense-report", minRole: "ADMIN", reason: PROFIT },
   { method: "GET", path: "/api/expense-analytics", minRole: "ADMIN", reason: PROFIT },
+  { method: "GET", path: "/api/overhead-expenses", minRole: "MANAGER", reason: EXPENSE_LIST },
+  { method: "GET", path: "/api/orders/:orderId/expenses", minRole: "MANAGER", reason: EXPENSE_LIST },
 
   // Exports.
   { method: "GET", path: "/api/reports/export", minRole: "ADMIN", reason: EXPORT },

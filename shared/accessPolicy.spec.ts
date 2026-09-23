@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ACCESS_POLICY, canSeeCost, isAtLeast, productForRole, productsForRole, rolesAtLeast } from "./accessPolicy";
+import {
+  ACCESS_POLICY,
+  canSeeCost,
+  customerEditForRole,
+  customerForRole,
+  isAtLeast,
+  productForRole,
+  productsForRole,
+  rolesAtLeast,
+} from "./accessPolicy";
 
 describe("access policy helpers", () => {
   it("rolesAtLeast lists staff roles only, lowest first", () => {
@@ -44,5 +53,43 @@ describe("access policy helpers", () => {
       expect(rule.reason.length, rule.path).toBeGreaterThan(10);
       expect(rule.path.startsWith("/api/"), rule.path).toBe(true);
     }
+  });
+});
+
+describe("customer contact details (Q13a)", () => {
+  const customer = {
+    id: "c1",
+    name: "Canary Customer",
+    phone: "07700 900123",
+    email: "canary@example.invalid",
+    address: "1 Test Street",
+    loyaltyPoints: 5,
+  };
+
+  it("below admin: no phone, email or address, only hints", () => {
+    for (const role of ["CASHIER", "MANAGER"]) {
+      const seen = customerForRole(customer, role) as Record<string, unknown>;
+      expect(seen).not.toHaveProperty("phone");
+      expect(seen).not.toHaveProperty("email");
+      expect(seen).not.toHaveProperty("address");
+      expect(seen).toMatchObject({ name: "Canary Customer", loyaltyPoints: 5, hasEmail: true, hasPhone: true, phoneLast4: "0123" });
+      expect(JSON.stringify(seen)).not.toContain("7700900123");
+    }
+    expect(customerForRole({ id: "c2", name: "No contact", phone: null, email: "" }, "CASHIER")).toMatchObject({
+      hasEmail: false,
+      hasPhone: false,
+      phoneLast4: null,
+    });
+  });
+
+  it("admin and the owner see them", () => {
+    expect(customerForRole(customer, "ADMIN")).toEqual(customer);
+    expect(customerForRole(customer, "SUPER_ADMIN")).toEqual(customer);
+  });
+
+  it("an edit below admin never blanks a contact field it could not see, but saves one typed in", () => {
+    expect(customerEditForRole({ name: "N", phone: "", email: null, address: "  " }, "MANAGER")).toEqual({ name: "N" });
+    expect(customerEditForRole({ phone: "07700 900999" }, "MANAGER")).toEqual({ phone: "07700 900999" });
+    expect(customerEditForRole({ phone: "" }, "ADMIN")).toEqual({ phone: "" });
   });
 });

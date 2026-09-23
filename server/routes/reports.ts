@@ -30,9 +30,9 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
   /** People an Evidence page can be filtered by — names and ids only (STF-FN2). */
   app.get("/api/evidence/staff", ...scoped, evidenceRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role: string };
       const { listEvidenceStaff } = await import("../services/evidenceStaff");
-      res.json(await listEvidenceStaff(ctx.orgId, req.user?.id ?? null));
+      res.json(await listEvidenceStaff(ctx.orgId, { userId: req.user?.id ?? null, role: ctx.role }));
     } catch (error) {
       console.error("Error listing Evidence staff:", error);
       res.status(500).json({ message: "Failed to list staff" });
@@ -199,10 +199,14 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
       const { runReport, validateReportScope, ReportScopeError } = await import("../services/reportsEngine");
       if (opts.locationId || opts.staffUserId) {
         try {
-          await validateReportScope(ctx.orgId, { locationId: opts.locationId, staffUserId: opts.staffUserId });
+          await validateReportScope(
+            ctx.orgId,
+            { locationId: opts.locationId, staffUserId: opts.staffUserId },
+            { userId: req.user?.id ?? null, role: ctx.role },
+          );
         } catch (scopeError) {
           if (scopeError instanceof ReportScopeError) {
-            return res.status(404).json({ message: scopeError.message });
+            return res.status(scopeError.statusCode).json({ message: scopeError.message });
           }
           throw scopeError;
         }

@@ -23,35 +23,11 @@ import {
   type PayrollPerson,
 } from "@shared/reports/payroll";
 import { orgTimeZone } from "../services/tradingDayShift";
+import { shiftsInRange, tradingDayRange } from "../services/payrollRange";
 
 const VIEW_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"] as const;
 // Exports are admin only and every one is logged (Q12).
 const exportRoles = requireRole(...rolesAtLeast(EXPORT_MIN_ROLE));
-
-function parseRange(req: { query: Record<string, unknown> }): { from: Date; to: Date } {
-  const now = new Date();
-  const to = req.query.to ? new Date(String(req.query.to)) : now;
-  const from = req.query.from
-    ? new Date(String(req.query.from))
-    : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return { from, to };
-}
-
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The trading days a payroll request covers, inclusive, and their instant span. */
-function tradingDayRange(query: Record<string, unknown>, timeZone: string) {
-  const today = currentTradingDay(timeZone);
-  const day = (v: unknown) => (typeof v === "string" && ISO_DAY.test(v.slice(0, 10)) ? v.slice(0, 10) : null);
-  const toIso = day(query.to) ?? today;
-  const fromIso = day(query.from) ?? shiftIsoDate(toIso, -30);
-  return {
-    fromIso,
-    toIso,
-    start: tradingDayBounds(fromIso, timeZone).start,
-    end: tradingDayBounds(toIso, timeZone).end,
-  };
-}
 
 /**
  * Name and role for every row key. A person is named from their org login
@@ -129,19 +105,7 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
       const range = tradingDayRange(req.query, timeZone);
       const staffId = typeof req.query.staffId === "string" && req.query.staffId ? req.query.staffId : null;
 
-      const shifts = await db
-        .select()
-        .from(cashierShifts)
-        .where(
-          and(
-            eq(cashierShifts.orgId, ctx.orgId),
-            or(
-              and(gte(cashierShifts.tradingDay, range.fromIso), lte(cashierShifts.tradingDay, range.toIso)),
-              // Shifts from before trading days existed (migration 058).
-              and(isNull(cashierShifts.tradingDay), gte(cashierShifts.openedAt, range.start), lt(cashierShifts.openedAt, range.end)),
-            ),
-          ),
-        );
+      const shifts = await shiftsInRange(ctx.orgId, range);
       const shiftIds = shifts.map((s) => s.id);
 
       const [summaries, payments, orderAgg] = await Promise.all([
@@ -230,23 +194,23 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
   app.get("/api/cashier-analytics/export.csv", ...scoped, exportRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role: string };
-      const { from, to } = parseRange(req);
+      // The same trading days and the same shifts as the Payroll table, so the
+      // export's total matches the screen it was exported from (the whole `to`
+      // day included, not only up to its midnight).
+      const range = tradingDayRange(req.query, await orgTimeZone(ctx.orgId));
+      const shiftIds = (await shiftsInRange(ctx.orgId, range)).map((s) => s.id);
       // LEFT join for the same reason /api/cashier-commission uses one: a
       // shift opened on first sale has no cashier code, and an inner join on
       // that null would drop every shift taken since L2 out of the export —
       // quietly, leaving a CSV that looks complete and is not.
-      const summaries = await db
-        .select({ summary: cashierShiftSummaries, cashierCode: cashierProfiles.cashierCode })
-        .from(cashierShiftSummaries)
-        .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
-        .where(
-          and(
-            eq(cashierShiftSummaries.orgId, ctx.orgId),
-            gte(cashierShiftSummaries.closedAt, from),
-            lte(cashierShiftSummaries.closedAt, to),
-          ),
-        )
-        .orderBy(cashierShiftSummaries.closedAt);
+      const summaries = shiftIds.length
+        ? await db
+            .select({ summary: cashierShiftSummaries, cashierCode: cashierProfiles.cashierCode })
+            .from(cashierShiftSummaries)
+            .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+            .where(and(eq(cashierShiftSummaries.orgId, ctx.orgId), inArray(cashierShiftSummaries.shiftId, shiftIds)))
+            .orderBy(cashierShiftSummaries.closedAt)
+        : [];
 
       const header = [
         "cashierCode",
@@ -286,7 +250,7 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
         action: "export.payroll",
         targetType: "payroll",
         orgId: ctx.orgId,
-        metadata: { from: from.toISOString(), to: to.toISOString(), rows: rows.length },
+        metadata: { from: range.fromIso, to: range.toIso, rows: rows.length },
       });
       const csv = [header.join(","), ...rows].join("\n");
 

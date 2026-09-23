@@ -15,14 +15,29 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { allowedUsers } from "@shared/schema";
 import { db } from "../db";
+import { isRole, roleRank } from "@shared/rbac";
 
 export type EvidenceStaffMember = { id: string; name: string; role: string };
+export type EvidenceViewer = { userId: string | null; role: string | null | undefined };
+
+/**
+ * Whose sales a viewer may filter Evidence by. Admins and the owner: anyone.
+ * Below that, cashiers and yourself — a manager running Daily Sales for a peer
+ * manager or the admin is "managers' performance", which Q12 keeps above the
+ * manager line (as ARC-T2-002 is).
+ */
+export function mayFilterEvidenceBy(viewer: EvidenceViewer, target: { id: string; role: string | null }): boolean {
+  if (viewer.role && isRole(viewer.role) && roleRank(viewer.role) >= roleRank("ADMIN")) return true;
+  if (viewer.userId && target.id === viewer.userId) return true;
+  return target.role === "CASHIER";
+}
 
 function subjectOf(row: { authUserId: string | null; replitUserId: string }): string {
   return row.authUserId || row.replitUserId;
 }
 
-export async function listEvidenceStaff(orgId: string, viewerUserId: string | null): Promise<EvidenceStaffMember[]> {
+export async function listEvidenceStaff(orgId: string, viewer: EvidenceViewer): Promise<EvidenceStaffMember[]> {
+  const viewerUserId = viewer.userId;
   const orgOrViewer = viewerUserId
     ? or(
         eq(allowedUsers.orgId, orgId),
@@ -48,18 +63,20 @@ export async function listEvidenceStaff(orgId: string, viewerUserId: string | nu
       name: r.name?.trim() || `Unnamed ${String(r.role ?? "staff").toLowerCase()}`,
       role: String(r.role ?? "CASHIER"),
     }))
+    .filter((m) => mayFilterEvidenceBy(viewer, m))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
- * True when `userId` is someone who can have completed an order in this org:
- * a non-customer member of it, or an org-less SUPER_ADMIN (the owner steps in
- * on the till too). Used to 404 a staff filter that names nobody here, rather
- * than silently answering org-wide under a person's name (ARC-026).
+ * The role of `userId` if they are someone who can have completed an order in
+ * this org — a non-customer member of it, or an org-less SUPER_ADMIN (the
+ * owner steps in on the till too) — else null. Used to 404 a staff filter that
+ * names nobody here, rather than silently answering org-wide under a person's
+ * name (ARC-026), and to refuse one the viewer may not see (Q12).
  */
-export async function isEvidenceStaff(orgId: string, userId: string): Promise<boolean> {
+export async function evidenceStaffRole(orgId: string, userId: string): Promise<string | null> {
   const [row] = await db
-    .select({ id: allowedUsers.id })
+    .select({ role: allowedUsers.role })
     .from(allowedUsers)
     .where(
       and(
@@ -69,5 +86,9 @@ export async function isEvidenceStaff(orgId: string, userId: string): Promise<bo
       ),
     )
     .limit(1);
-  return !!row;
+  return row ? String(row.role ?? "CASHIER") : null;
+}
+
+export async function isEvidenceStaff(orgId: string, userId: string): Promise<boolean> {
+  return (await evidenceStaffRole(orgId, userId)) !== null;
 }

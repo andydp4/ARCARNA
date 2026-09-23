@@ -21,7 +21,9 @@ const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
 const profitRoles = requireRole("SUPER_ADMIN", "ADMIN");
 
 export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/overhead-expenses", ...scoped, async (req: any, res) => {
+  // The overhead list is the same money the admin-only totals are built from,
+  // so it is at least manager, like the Expenses page and the writes.
+  app.get("/api/overhead-expenses", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const expenses = await storage.getOverheadExpenses(ctx.orgId);
@@ -75,7 +77,9 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.get("/api/orders/:orderId/expenses", ...scoped, async (req: any, res) => {
+  // A personal-use sale books its stock at cost as an order expense, so this
+  // list is cost price: never a cashier's (Q6).
+  app.get("/api/orders/:orderId/expenses", ...scoped, mutateRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const expenses = await storage.getOrderExpenses(req.params.orderId, ctx.orgId);

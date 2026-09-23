@@ -98,7 +98,16 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       const headerOrg = req.headers["x-org-id"] as string | undefined;
       const queryOrg = req.query?.orgId as string | undefined;
-      const resolvedOrgId = headerOrg || queryOrg || roleAndOrg?.orgId || undefined;
+      const ownOrgId = roleAndOrg?.orgId ?? undefined;
+      // Only the owner may name an org. Anyone else is pinned to their own:
+      // trusting X-Org-Id / ?orgId= let an org A admin list org B's staff,
+      // emails and commission rates.
+      const askedOrgId = headerOrg || queryOrg || undefined;
+      if (role !== "SUPER_ADMIN" && askedOrgId && askedOrgId !== ownOrgId) {
+        return res.status(403).json({ message: "You can only list your own organization's users" });
+      }
+      const resolvedOrgId = role === "SUPER_ADMIN" ? askedOrgId || ownOrgId : ownOrgId;
+      if (role !== "SUPER_ADMIN" && !resolvedOrgId) return res.json([]);
       const allowedUserRows =
         role === "SUPER_ADMIN" && !headerOrg && !queryOrg
           ? await storage.adminGetAllAllowedUsers()

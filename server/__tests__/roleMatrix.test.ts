@@ -172,11 +172,6 @@ describe("role matrix: ACCESS_POLICY is what the server enforces", () => {
 type Canary = keyof typeof CANARIES | "foreignOrg";
 
 const KNOWN_LEAKS: Record<string, { canaries: Canary[]; owner: string }> = {
-  "GET /api/customers": {
-    canaries: ["phone", "email"],
-    owner: "0B part 4 / Q13(a): contact details admin only — the till's customer picker reads this list",
-  },
-  "GET /api/customers/:id": { canaries: ["phone", "email"], owner: "0B part 4 / Q13(a): contact details admin only" },
   "GET /api/orders/board": {
     canaries: ["phone"],
     owner: "owner decision: the Operations board shows the customer's phone to whoever works the order",
@@ -212,7 +207,13 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     customerId: "",
     orderId: "",
     supplierId: "",
+    // The cashier's own shifts: their sheets are theirs to read, so the sweep
+    // must reach them with real ids, not a product id that 404s.
+    cashierShiftId: "",
+    closedCashierShiftId: "",
+    tillShiftId: "",
   };
+  const CASHIER_ID = "role-matrix-cashier";
 
   beforeAll(async () => {
     ({ db } = await import("../db"));
@@ -280,6 +281,43 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
       unitPrice: "20.00",
       totalPrice: "20.00",
     });
+    // A personal-use expense books stock at cost on the order.
+    await db.insert(s.orderExpenses).values({
+      orgId: ids.orgId,
+      orderId: order.id,
+      category: "personal_use",
+      amount: CANARIES.costPrice,
+    });
+    // The cashier's open lazy shift holds the canary sale, so its live sheet
+    // costs it at £13.37; a closed one carries a stored summary with that cost.
+    const [openShift] = await db
+      .insert(s.cashierShifts)
+      .values({ orgId: ids.orgId, userId: CASHIER_ID, openedByUserId: CASHIER_ID, status: "open" })
+      .returning();
+    ids.cashierShiftId = openShift.id;
+    const { eq } = await import("drizzle-orm");
+    await db.update(s.orders).set({ cashierShiftId: openShift.id }).where(eq(s.orders.id, order.id));
+    const [closedShift] = await db
+      .insert(s.cashierShifts)
+      .values({ orgId: ids.orgId, userId: CASHIER_ID, openedByUserId: CASHIER_ID, status: "closed", closedAt: new Date() })
+      .returning();
+    ids.closedCashierShiftId = closedShift.id;
+    await db.insert(s.cashierShiftSummaries).values({
+      orgId: ids.orgId,
+      shiftId: closedShift.id,
+      userId: CASHIER_ID,
+      grossSales: "20.00",
+      stockCost: CANARIES.costPrice,
+      netSalesProfit: "6.63",
+      commissionRate: "12.50",
+      commissionAmount: "1.33",
+      closedAt: new Date(),
+    });
+    const [till] = await db
+      .insert(s.shifts)
+      .values({ orgId: ids.orgId, locationId: loc.id, userId: CASHIER_ID, status: "open" })
+      .returning();
+    ids.tillShiftId = till.id;
     const [sup] = await db
       .insert(s.suppliers)
       .values({ orgId: ids.orgId, name: "Canary Supplies", phone: CANARIES.phone, email: CANARIES.email })
@@ -326,8 +364,12 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     // snapshots) is swept by org id where the table has one.
     for (const table of [
       s.adminAuditLogs,
+      s.orderExpenses,
       s.orderItems,
       s.orders,
+      s.cashierShiftSummaries,
+      s.cashierShifts,
+      s.shifts,
       s.inventoryMovements,
       s.productLocationStock,
       s.productSuppliers,
@@ -378,6 +420,8 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
   function paramsFor(path: string): Record<string, string> {
     const byPrefix =
       path.startsWith("/api/customers") ? ids.customerId
+      : path.startsWith("/api/cashier-shifts") ? ids.cashierShiftId
+      : path.startsWith("/api/shifts") ? ids.tillShiftId
       : path.startsWith("/api/orders") ? ids.orderId
       : path.startsWith("/api/suppliers") ? ids.supplierId
       : path.startsWith("/api/locations") ? ids.locationId
@@ -399,6 +443,33 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     const supplierList = await as("MANAGER", "get", "/api/suppliers");
     expect(supplierList.status).toBe(200);
     expect(canariesIn(supplierList.body)).toEqual(expect.arrayContaining(["phone", "email"]));
+  });
+
+  it("the sweep really reaches the cashier's own shift sheets", async () => {
+    // Otherwise a 404 reads as an empty, canary-free body and proves nothing.
+    const live = await as("CASHIER", "get", `/api/cashier-shifts/${ids.cashierShiftId}/summary`);
+    expect(live.status).toBe(200);
+    expect(JSON.parse(live.body).summary.grossSales).toBe(20);
+    const stored = await as("CASHIER", "get", `/api/cashier-shifts/${ids.closedCashierShiftId}/summary`);
+    expect(stored.status).toBe(200);
+    expect(JSON.parse(stored.body).summary.grossSales).toBe("20.00");
+    expect((await as("CASHIER", "get", `/api/shifts/${ids.tillShiftId}/report`)).status).toBe(200);
+    // And a manager, who may see cost, does see it there.
+    const manager = await as("MANAGER", "get", `/api/cashier-shifts/${ids.cashierShiftId}/summary`);
+    expect(canariesIn(manager.body)).toContain("costPrice");
+  });
+
+  it("customer contact details reach an admin, not a manager or a cashier (Q13a)", async () => {
+    for (const role of ["CASHIER", "MANAGER"]) {
+      const list = await as(role, "get", "/api/customers");
+      expect(list.status).toBe(200);
+      expect(list.body).toContain("Canary Customer");
+      expect(canariesIn(list.body), role).toEqual([]);
+      const one = await as(role, "get", `/api/customers/${ids.customerId}`);
+      expect(JSON.parse(one.body)).toMatchObject({ hasEmail: true, hasPhone: true, phoneLast4: "0123" });
+    }
+    const admin = await as("ADMIN", "get", `/api/customers/${ids.customerId}`);
+    expect(canariesIn(admin.body)).toEqual(expect.arrayContaining(["phone", "email"]));
   });
 
   it("the Evidence export carries only this org's products", async () => {
@@ -509,6 +580,11 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
       targets.push({ key, url: `${fillParams(path, paramsFor(path), randomUUID())}?${query}` });
     }
     targets.push({ key: "GET /api/reports/export", url: `/api/reports/export?${query.replace("type=full", "type=inventory")}` });
+    // The stored summary of a closed shift, as well as the live open one.
+    targets.push({
+      key: "GET /api/cashier-shifts/:id/summary",
+      url: `/api/cashier-shifts/${ids.closedCashierShiftId}/summary`,
+    });
 
     const leaks: string[] = [];
     const stillKnown = new Set<string>();

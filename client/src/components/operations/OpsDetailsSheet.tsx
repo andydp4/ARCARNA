@@ -177,14 +177,15 @@ function OpsDetailsBody({
     },
   });
 
-  // The list projection carries no phone number and the detail endpoint does
-  // not join the customer's contact details, so the number comes from the
-  // customers query every other screen already keeps warm.
+  // The board row carries the customer's phone for whoever works the order
+  // (owner decision). The customers list only has it for admins (Q13a), so it
+  // is the fallback, not the source.
   const { data: customers } = useQuery<CustomerRow[]>({
     queryKey: ["/api/customers"],
-    enabled: Boolean(order.customerId),
+    enabled: Boolean(order.customerId) && !order.customerPhone,
   });
-  const phone = customers?.find((customer) => customer.id === order.customerId)?.phone ?? null;
+  const phone =
+    order.customerPhone ?? customers?.find((customer) => customer.id === order.customerId)?.phone ?? null;
 
   const copy = async (value: string, label: string) => {
     try {

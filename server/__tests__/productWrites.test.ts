@@ -95,6 +95,20 @@ describe.skipIf(!hasDb)("product write routes", () => {
     expect((await row()).costPrice).toBeNull();
   });
 
+  it("creates with a blank cost as unknown (NULL), the same as an edit does, and keeps £0 as £0", async () => {
+    const blank = await request(app)
+      .post("/api/products")
+      .send({ name: "No Cost Yet", salePrice: 5, costPrice: null, categoryId: "" })
+      .expect(200);
+    const empty = await request(app).post("/api/products").send({ name: "Empty Cost", salePrice: 5, costPrice: "" }).expect(200);
+    const free = await request(app).post("/api/products").send({ name: "Free Sample", salePrice: 5, costPrice: 0 }).expect(200);
+    const cost = async (id: string) =>
+      (await db.select().from(schema.products).where(eq(schema.products.id, id)))[0].costPrice;
+    expect(await cost(blank.body.id)).toBeNull();
+    expect(await cost(empty.body.id)).toBeNull();
+    expect(await cost(free.body.id)).toBe("0.00");
+  });
+
   it("ignores stock and strips fields the table does not have, such as categoryId", async () => {
     await request(app)
       .put(`/api/products/${productId}`)

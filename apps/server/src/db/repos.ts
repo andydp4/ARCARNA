@@ -232,7 +232,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       product_id: product.productCode,
       name: product.name,
       barcode: product.barcode,
-      cost_price: String(product.costPrice || 0),
+      cost_price: product.costPrice === null ? null : String(product.costPrice || 0),
       default_sale_price: String(product.salePrice || 0),
       stock: product.stock,
       stock_limit: product.stockLimit,

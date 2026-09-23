@@ -183,18 +183,30 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
     }
   });
 
-  it("GET routes on all four files stay open to every authenticated role (no guard inserted)", () => {
+  it("GET routes on the other three files stay open to every authenticated role (no guard inserted)", () => {
     const getOnly = [
       [customerRoutes, "GET /api/customers"],
       [loyaltyRoutes, "GET /api/loyalty-tiers"],
       [promotionRoutes, "GET /api/promotions"],
-      [expenseRoutes, "GET /api/overhead-expenses"],
     ] as const;
     for (const [routes, key] of getOnly) {
       const chain = routes[key];
       expect(chain, `expected ${key} to be registered`).toBeDefined();
       // With scoped=[], an unguarded GET is just [businessHandler].
       expect(chain.length).toBe(1);
+    }
+  });
+
+  it("the expense lists are MANAGER+ too: overheads are the money behind the totals, and an order's expenses include personal-use stock at cost (Q6)", async () => {
+    for (const key of ["GET /api/overhead-expenses", "GET /api/orders/:orderId/expenses"] as const) {
+      const chain = expenseRoutes[key];
+      expect(chain, `expected ${key} to be registered`).toBeDefined();
+      const [guard] = chain;
+      const refused = await runGuard(guard, "CASHIER");
+      expect(refused.next).not.toHaveBeenCalled();
+      expect(refused.status).toHaveBeenCalledWith(403);
+      const admitted = await runGuard(guard, "MANAGER");
+      expect(admitted.next).toHaveBeenCalledTimes(1);
     }
   });
 });

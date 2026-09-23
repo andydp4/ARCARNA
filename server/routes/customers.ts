@@ -6,6 +6,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { customerEditForRole, customerForRole } from "@shared/accessPolicy";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -60,7 +61,10 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const list = await storage.getCustomers(ctx.orgId);
-      res.json(list);
+      // Contact details are admin only (Q13a). The till's picker and its
+      // offline cache read this list, so below admin they get hints, not
+      // the phone and email themselves.
+      res.json(list.map((c) => customerForRole(c, ctx.role)));
     } catch (error) {
       console.error("Error fetching customers:", error);
       res.status(500).json({ message: "Failed to fetch customers" });
@@ -74,7 +78,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       if (!customer) {
         return res.status(404).json({ message: "Customer not found" });
       }
-      res.json(customer);
+      res.json(customerForRole(customer, ctx.role));
     } catch (error) {
       console.error("Error fetching customer:", error);
       res.status(500).json({ message: "Failed to fetch customer" });
@@ -133,8 +137,9 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       const existing = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!existing) return res.status(404).json({ message: "Customer not found" });
       const { engine } = await import('../../apps/server/src/engine.wiring');
-      const customer = await engine.updateCustomer(req.params.id, req.body, ctx.orgId);
-      res.json(customer);
+      const body = customerEditForRole({ ...(req.body ?? {}) }, ctx.role);
+      const customer = await engine.updateCustomer(req.params.id, body, ctx.orgId);
+      res.json(customerForRole(customer, ctx.role));
     } catch (error: any) {
       console.error("Error updating customer:", error);
       if (error?.message === 'Customer not found') return res.status(404).json({ message: "Customer not found" });

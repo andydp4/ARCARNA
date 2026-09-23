@@ -386,11 +386,15 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         if (shift.status !== "open" && shift.status !== "reopened") {
           return res.status(400).json({ message: "Shift is not open" });
         }
-        if (
-          req.orgContext?.role === "CASHIER" &&
-          shift.userId !== userId
-        ) {
-          return res.status(403).json({ message: "Cannot close another cashier's shift" });
+        // Closing returns the Z-report, so only someone who may read this
+        // sheet may close it: a cashier their own, a manager cashiers' and
+        // their own (maySeeShiftSheet), the same line as GET /:id/report.
+        const viewer = { userId: (userId as string | undefined) ?? null, role: req.orgContext?.role ?? req.user?.role ?? null };
+        const ownerRole = (await loadStaffRoles(ctx.orgId, [shift.userId])).get(shift.userId) ?? null;
+        if (!maySeeShiftSheet(viewer, { userId: shift.userId, role: ownerRole })) {
+          return res.status(403).json({
+            message: viewer.role === "CASHIER" ? "Cannot close another cashier's shift" : "You can only close shifts whose sheet you can see.",
+          });
         }
 
         const loaded = await loadShiftReportData(shift.id, ctx.orgId);

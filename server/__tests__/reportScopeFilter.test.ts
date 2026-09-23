@@ -57,8 +57,12 @@ describe.skipIf(!hasDb)("ARC-026: report location/staff scope", () => {
   let staffA: string;
   let staffB: string;
   let foreignStaffId: string;
+  // Admin by default: an admin may filter by anyone. The manager's narrower
+  // view (Q12) has its own test below.
+  let viewer = { id: "report-scope-admin", role: "ADMIN" };
 
   beforeEach(async () => {
+    viewer = { id: "report-scope-admin", role: "ADMIN" };
     ({ db } = await import("../db"));
     const { registerReportRoutes } = await import("../routes/reports");
 
@@ -121,8 +125,8 @@ describe.skipIf(!hasDb)("ARC-026: report location/staff scope", () => {
     app = express();
     app.use(express.json());
     app.use((req: any, _res, next) => {
-      req.orgContext = { orgId, locationId: null, role: "MANAGER" };
-      req.user = { id: "report-scope-manager", role: "MANAGER" };
+      req.orgContext = { orgId, locationId: null, role: viewer.role };
+      req.user = { id: viewer.id, role: viewer.role };
       next();
     });
     registerReportRoutes(app, []);
@@ -203,6 +207,32 @@ describe.skipIf(!hasDb)("ARC-026: report location/staff scope", () => {
       .get(`/api/reports/ARC-T1-001?from=2026-01-15&to=2026-01-15&staffId=${staffB}`)
       .expect(200);
     expect(resB.body.summary.totalRevenue).toBe(40);
+  });
+
+  it("a manager filters by cashiers and themself, never by a peer manager or above (Q12)", async () => {
+    viewer = { id: "report-scope-manager", role: "MANAGER" };
+    const picker = await request(app).get("/api/evidence/staff").expect(200);
+    expect(picker.body.map((m: { id: string }) => m.id)).toEqual([staffA]);
+
+    await request(app)
+      .get(`/api/reports/ARC-T1-001?from=2026-01-15&to=2026-01-15&staffId=${staffA}`)
+      .expect(200);
+    for (const ref of ["ARC-T1-001", "ARC-T1-004", "ARC-T2-001"]) {
+      await request(app).get(`/api/reports/${ref}?from=2026-01-12&to=2026-01-18&staffId=${staffB}`).expect(403);
+    }
+
+    // Their own sales are theirs to see.
+    viewer = { id: staffB, role: "MANAGER" };
+    const own = await request(app)
+      .get(`/api/reports/ARC-T1-001?from=2026-01-15&to=2026-01-15&staffId=${staffB}`)
+      .expect(200);
+    expect(own.body.summary.totalRevenue).toBe(40);
+    const ownPicker = await request(app).get("/api/evidence/staff").expect(200);
+    expect(ownPicker.body.map((m: { id: string }) => m.id).sort()).toEqual([staffA, staffB].sort());
+
+    viewer = { id: "report-scope-admin", role: "ADMIN" };
+    const adminPicker = await request(app).get("/api/evidence/staff").expect(200);
+    expect(adminPicker.body.map((m: { id: string }) => m.id).sort()).toEqual([staffA, staffB].sort());
   });
 
   it("scopes Weekly Sales and Weekly Margin the same way", async () => {

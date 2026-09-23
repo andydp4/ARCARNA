@@ -112,7 +112,9 @@ export class DomainEngine {
         productCode,
         name: (input as any).name,
         barcode: (input as any).barcode,
-        costPrice: (input as any).costPrice ?? 0,
+        // An explicit null is "cost unknown" and stays null; only an absent
+        // cost defaults to 0, as it always has for older callers.
+        costPrice: (input as any).costPrice === null ? (null as any) : (input as any).costPrice ?? 0,
         salePrice: (input as any).salePrice ?? (input as any).defaultSalePrice ?? 0,
         stock: (input as any).stock || 0,
         // `??`: a par level of 0 is a choice, not a missing value.

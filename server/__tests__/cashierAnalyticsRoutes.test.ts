@@ -195,4 +195,16 @@ describe.skipIf(!hasDb)("GET /api/cashier-analytics: one row per person", () => 
     expect(logs).toHaveLength(1);
     expect(logs[0].actorUserId).toBe(ids.admin);
   });
+
+  it("the CSV covers the whole `to` day, the same shifts as the table", async () => {
+    // Casey's summary closed at 23:00 on DAY. A raw `closedAt <= new Date(to)`
+    // stopped at 00:00 on DAY and left it out, so the CSV total disagreed
+    // with the table the admin exported it from.
+    const app = await appAs("SUPER_ADMIN", ids.owner);
+    const table = await request(app).get(`/api/cashier-analytics?${range}`).expect(200);
+    expect(table.body.metrics.map((m: any) => m.key).sort()).toEqual([ids.cashier, ids.manager].sort());
+    const csv = await request(app).get(`/api/cashier-analytics/export.csv?${range}`).expect(200);
+    expect(csv.text).toContain("Casey Cashier");
+    expect(csv.text).toContain("Morgan Manager");
+  });
 });

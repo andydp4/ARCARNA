@@ -341,7 +341,9 @@ jobs:
             server/__tests__/creditLockdown.test.ts \
             server/__tests__/overdueInvoiceCount.test.ts \
             server/__tests__/shopPrivacyNotice.test.ts \
-            server/__tests__/previewRole.test.ts
+            server/__tests__/previewRole.test.ts \
+            server/__tests__/tickCustomerRoutes.test.ts \
+            server/__tests__/allowedUsersOrgScope.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

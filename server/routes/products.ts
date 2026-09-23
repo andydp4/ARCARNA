@@ -60,11 +60,16 @@ export const updateProductBody = z
   }));
 
 /** Bounds mirror the products table column widths in shared/schema.ts. */
-const createProductBody = z.object({
+export const createProductBody = z.object({
   name: z.string().min(1).max(255),
   productCode: z.string().max(100).optional(),
   barcode: z.string().max(255).optional().nullable(),
-  costPrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
+  // A blank cost is "unknown" (NULL), as on edit — not £0, which would read as
+  // a free item with a 100% margin in Weekly Margin and profit Evidence.
+  costPrice: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.coerce.number().min(0).max(9_999_999_999).finite().nullable().optional(),
+  ),
   salePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   defaultSalePrice: z.coerce.number().min(0).max(9_999_999_999).finite().optional(),
   stock: z.coerce.number().pipe(nonNegativeQuantity).optional(),

@@ -34,8 +34,11 @@ export interface PosCartItem {
 export interface PosCustomer {
   id: string;
   name: string;
+  /** Present for admins only (Q13a); below that the hints below stand in. */
   phone?: string | null;
   email?: string | null;
+  hasEmail?: boolean;
+  phoneLast4?: string | null;
   /** Undefined/true = the customer accepts a receipt email; false opts out. */
   receiptEmailOptIn?: boolean | null;
   category: string;

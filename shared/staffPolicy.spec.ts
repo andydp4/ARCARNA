@@ -5,6 +5,7 @@ import {
   mayConfirmCommissionPayment,
   maySeeShiftSheet,
   orgSettingsForRole,
+  shiftSheetForRole,
 } from "./staffPolicy";
 
 describe("shift sheets (STF-FN4)", () => {
@@ -108,5 +109,38 @@ describe("confirming commission payments", () => {
     expect(mayConfirmCommissionPayment({ userId: "a1", role: "ADMIN" }, { userId: "m2", role: "MANAGER" }).ok).toBe(false);
     expect(mayConfirmCommissionPayment({ userId: "o1", role: "SUPER_ADMIN" }, { userId: "m2", role: "MANAGER" }).ok).toBe(true);
     expect(mayConfirmCommissionPayment({ userId: "c9", role: "CASHIER" }, { userId: "c1", role: "CASHIER" }).ok).toBe(false);
+  });
+});
+
+describe("shift sheet fields by role (Q6, Q16)", () => {
+  const sheet = {
+    grossSales: 20,
+    cashSales: 20,
+    stockCost: 13.37,
+    personalUseCost: 13.37,
+    orderExpenses: 13.37,
+    globalExpenseAllocation: 1,
+    netSalesProfit: 6.63,
+    businessRetainedProfit: 5.3,
+    hasIncompleteCostData: false,
+    commissionRate: 20,
+    commissionAmount: 1.33,
+  };
+
+  it("a cashier keeps sales and their commission earned, never cost or the rate", () => {
+    const out = shiftSheetForRole(sheet, "CASHIER");
+    expect(out).toEqual({ grossSales: 20, cashSales: 20, commissionAmount: 1.33 });
+    expect(JSON.stringify(out)).not.toContain("13.37");
+  });
+
+  it("a manager sees cost, not the commission rate", () => {
+    const out = shiftSheetForRole(sheet, "MANAGER");
+    expect(out.stockCost).toBe(13.37);
+    expect(out).not.toHaveProperty("commissionRate");
+  });
+
+  it("an admin and the owner see everything", () => {
+    expect(shiftSheetForRole(sheet, "ADMIN")).toEqual(sheet);
+    expect(shiftSheetForRole(sheet, "SUPER_ADMIN")).toEqual(sheet);
   });
 });

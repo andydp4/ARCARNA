@@ -63,6 +63,14 @@ import { cn } from "@/lib/utils";
 
 type Product = PosProduct;
 type Customer = PosCustomer;
+
+/**
+ * Whether the customer has an email on file. Below admin the address itself
+ * is not sent (Q13a), only `hasEmail`; the receipt worker looks it up.
+ */
+function customerHasEmail(customer: Customer | null | undefined): boolean {
+  return !!customer && (!!customer.email || customer.hasEmail === true);
+}
 type CartItem = PosCartItem;
 
 export interface PosEmbeddedProps {
@@ -234,12 +242,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const staff = staffData?.staff ?? [];
 
   useEffect(() => {
-    if (selectedCustomer?.email && selectedCustomer.receiptEmailOptIn !== false) {
+    if (customerHasEmail(selectedCustomer) && selectedCustomer?.receiptEmailOptIn !== false) {
       setEmailReceipt(true);
     } else {
       setEmailReceipt(false);
     }
-  }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.receiptEmailOptIn]);
+  }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.hasEmail, selectedCustomer?.receiptEmailOptIn]);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -322,7 +330,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const filteredCustomers = customers.filter(
     (customer) =>
       customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      (customer.phone && customer.phone.includes(customerSearch)) ||
+      ((customer.phone ?? customer.phoneLast4 ?? "") !== "" &&
+        (customer.phone ?? customer.phoneLast4 ?? "").includes(customerSearch)) ||
       (customer.email && customer.email.toLowerCase().includes(customerSearch.toLowerCase()))
   );
 
@@ -910,7 +919,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (redeemPoints > 0) {
       orderData.redeemPoints = redeemPoints;
     }
-    orderData.sendEmailReceipt = emailReceipt && !!selectedCustomer?.email;
+    orderData.sendEmailReceipt = emailReceipt && customerHasEmail(selectedCustomer);
 
     placeOrderMutation.mutate(orderData);
   };
@@ -989,7 +998,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             total={total}
             itemCount={cartItemCount}
             customerName={selectedCustomer?.name ?? null}
-            customerEmail={selectedCustomer?.email ?? null}
+            customerEmail={
+              selectedCustomer?.email ?? (customerHasEmail(selectedCustomer) ? "the email on file" : null)
+            }
             paymentMethod={paymentMethod}
             setPaymentMethod={setPaymentMethod}
             personalUseReason={personalUseReason}

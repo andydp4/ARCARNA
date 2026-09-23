@@ -66,9 +66,24 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
 - **Customer contact in Evidence (PRV-02).** Top customers, Customer Truths
   and the Credit List CSV carry no email; the command palette shows a
   customer's tier and points. Only the admin RFM export includes email.
+- **Customer contact details (Q13a).** `GET /api/customers` and
+  `/api/customers/:id` return phone, email and address to ADMIN and above
+  only (`customerForRole`, `shared/accessPolicy.ts`). Below that the row
+  carries `hasEmail`, `hasPhone` and `phoneLast4`, so the till can still pick
+  a customer and offer an email receipt (the receipt worker reads the
+  address itself), and its offline cache holds no contact details. An edit
+  below ADMIN never blanks a contact field it could not see
+  (`customerEditForRole`). The Operations board keeps the phone for whoever
+  works the order (owner decision), and the order sheet reads it from there.
+- **Expense lists.** `GET /api/overhead-expenses` and
+  `GET /api/orders/:orderId/expenses` are MANAGER and above: a personal-use
+  sale books its stock at cost as an order expense.
 - **Staff filter.** Daily Sales, Weekly Sales and Weekly Margin filter by the
   person who completed the order (`orders.completed_user_id`, `?staffId=`),
-  listed by `GET /api/evidence/staff` (names and ids only). Before 27 August
+  listed by `GET /api/evidence/staff` (names and ids only). A MANAGER may
+  filter by cashiers and themselves only; filtering by a peer manager or an
+  admin is managers' performance (Q12) and answers 403
+  (`mayFilterEvidenceBy`, `server/services/evidenceStaff.ts`). Before 27 August
   2026 that person was inferred from who opened the shift (migration 057), and
   the pages say so. An old `?cashierId=` link is refused.
 - **Payroll (Q12, Q13a).** One row per person, with sales per active hour
@@ -80,13 +95,19 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   (`/api/shifts`, `/api/shifts/:id/report`) and the cashier balance sheet
   (`/api/cashier-shifts`, `/:id/summary`, `/current/:cashierId`) — follow
   `maySeeShiftSheet` (`shared/staffPolicy.ts`): a cashier's list is filtered
-  to their own shifts in the query and a colleague's sheet is a 403. The staff
+  to their own shifts in the query and a colleague's sheet is a 403. Closing
+  a till shift or ending a cashier shift returns its sheet, so it follows the
+  same rule. The cashier balance sheet itself goes through
+  `shiftSheetForRole`: a cashier's own sheet has no cost, profit, overhead or
+  expense fields, and the commission rate is admin only. The staff
   list (`GET /api/cashiers`) is MANAGER and above; the PIN never leaves the
   server for anyone (`hasPin` says whether one is set) and the commission
   override is ADMIN and above (`cashierProfileForRole`). The commission list
   and payments are filtered by `canSeePayRow`, and the rate a shift was paid
   at is admin only. Nobody confirms their own commission payment, and below
-  SUPER_ADMIN only cashiers' (`mayConfirmCommissionPayment`). The commission
+  SUPER_ADMIN only cashiers' (`mayConfirmCommissionPayment`). When a payment
+  names a shift, the payee is whoever that shift belongs to; a payee the
+  client sends that disagrees is refused. The commission
   switch, default rate, overhead mode and the four "on time" minutes
   (`ADMIN_ONLY_SETTING_KEYS`) are refused to a manager through
   `PATCH /api/org/setup` when they would change, and every change writes an
