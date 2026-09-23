@@ -61,3 +61,10 @@ export function migrateStorageKey(legacyKey: string, newKey: string): string | n
 
 /** The sidebar pin (v1.2 Phase 3): remembered per device, like the other shell preferences. */
 export const STORAGE_SIDEBAR_PINNED = "arcarna.sidebar.pinned";
+
+/**
+ * Price guard at the till (v1.2 Phase 4), per device: the switch and the
+ * managers a cashier can name, kept so the till can check and confirm with no
+ * connection; and each person's last reason, offered again next time.
+ */
+export const STORAGE_PRICE_GUARD = "arcarna.priceGuard";

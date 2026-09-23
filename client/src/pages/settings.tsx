@@ -27,6 +27,7 @@ import { ImportsHub } from '@/components/settings/ImportsHub'
 import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
+import { PriceGuardSettings } from '@/components/settings/PriceGuardSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
 import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
 import { getSelectedOrgId } from '@/lib/orgScope'
@@ -289,6 +290,8 @@ export default function Settings() {
               {canEditOrgProfile && (
                 <ShopPrivacySettings orgId={user?.orgId ?? getSelectedOrgId()} />
               )}
+
+              {canEditOrgProfile && <PriceGuardSettings />}
 
               <Separator />
 

@@ -46,6 +46,8 @@ export type PosOrderLinesProps = {
   disabled?: boolean;
   /** Rendered between the search box and the lines: the top-seller chips. */
   aboveLines?: React.ReactNode;
+  /** Under each line: the price guard's note (v1.2 Phase 4), when it is on. */
+  renderLineNote?: (line: OrderLine, index: number, setPrice: (price: number) => void) => React.ReactNode;
 };
 
 const MAX_RESULTS = 8;
@@ -218,6 +220,7 @@ export function PosOrderLines({
   showStockWarnings = true,
   disabled = false,
   aboveLines,
+  renderLineNote,
 }: PosOrderLinesProps) {
   const update = (index: number, patch: Partial<OrderLine>) => {
     const next = lines.map((line, i) => {
@@ -378,6 +381,7 @@ export function PosOrderLines({
                     Only {formatQuantity(line.product.stock)} in stock — this line will be held for review.
                   </p>
                 )}
+                {renderLineNote?.(line, index, (customPrice) => update(index, { customPrice, priceInput: undefined }))}
               </div>
             );
           })}

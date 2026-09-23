@@ -114,6 +114,12 @@ export const organizations = pgTable("organizations", {
    * name on it is the case the rule exists to remove.
    */
   opsAutoClaimOnCreate: boolean("ops_auto_claim_on_create").default(true).notNull(),
+  /**
+   * "Price guard at the till" (v1.2 Phase 4, migration 110): admin only, off by
+   * default, every change logged. Off: the till shows nothing and the server
+   * records silently (Phase 2). On: the amber line, the reason at Pay, Signals.
+   */
+  priceGuardEnabled: boolean("price_guard_enabled").default(false).notNull(),
   /** Reconciliation poll interval; the board is otherwise fed by server push. */
   opsReconcilePollSeconds: integer("ops_reconcile_poll_seconds").default(60).notNull(),
   /**
@@ -1914,6 +1920,46 @@ export const priceExceptions = pgTable("price_exceptions", {
 ]);
 
 export type PriceException = typeof priceExceptions.$inferSelect;
+
+/**
+ * The price guard's verdict on one order (v1.2 Phase 4, PRC-02, CMP-05,
+ * migration 110): the cashier's reason, whether every flagged line was
+ * confirmed, the order-level below-cost check and the "Manager agreed"
+ * question. One row per order; the lines stay in price_exceptions.
+ */
+export const priceGuardOrders = pgTable("price_guard_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  /** Who rang the sale. */
+  userId: varchar("user_id", { length: 255 }),
+  reason: varchar("reason", { length: 24 }),
+  reasonNote: text("reason_note"),
+  /** Null when no line needed the cashier's confirmation. */
+  confirmed: boolean("confirmed"),
+  offline: boolean("offline").default(false).notNull(),
+  confirmedAt: varchar("confirmed_at", { length: 40 }),
+  /** "error" for an unconfirmed arrival or below cost; otherwise "warning". */
+  severity: varchar("severity", { length: 8 }).notNull(),
+  flaggedLines: integer("flagged_lines").default(0).notNull(),
+  unconfirmedLines: integer("unconfirmed_lines").default(0).notNull(),
+  underMinimum: numeric("under_minimum", { precision: 12, scale: 2 }).default("0").notNull(),
+  linesBelowCost: integer("lines_below_cost").default(0).notNull(),
+  orderBelowCost: boolean("order_below_cost").default(false).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).default("0").notNull(),
+  managerUserId: varchar("manager_user_id", { length: 255 }),
+  managerAnswer: varchar("manager_answer", { length: 8 }),
+  managerAnsweredAt: timestamp("manager_answered_at"),
+  signalId: uuid("signal_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_guard_orders_severity_check", sql`${table.severity} IN ('warning', 'error')`),
+  check("price_guard_orders_answer_check", sql`${table.managerAnswer} IS NULL OR ${table.managerAnswer} IN ('yes', 'no')`),
+  uniqueIndex("price_guard_orders_order_uq").on(table.orderId),
+  index("price_guard_orders_org_created_idx").on(table.orgId, table.createdAt),
+]);
+
+export type PriceGuardOrder = typeof priceGuardOrders.$inferSelect;
 
 // Refunds (F3)
 export const REFUND_REASONS = [

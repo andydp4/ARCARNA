@@ -661,6 +661,23 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
 
+        // Price guard (v1.2 Phase 4): the cashier's reason, unconfirmed
+        // arrivals and the below-cost check after all discounts. Never blocks:
+        // it runs under its own savepoint and a problem only logs.
+        {
+          const { recordPriceGuardInTx } = await import("../services/priceGuard");
+          await recordPriceGuardInTx(tx, {
+            orgId: ctx.orgId!,
+            orderId: result.orderId,
+            actorUserId: inputUserId,
+            items,
+            pricing,
+            rawConfirmation: body.priceGuard,
+            isPersonalUse,
+            offline: body._offlineOrderReplay === true || !!req.offlineQueuedAt,
+          });
+        }
+
         // `received` — the first order_events row for this order, mirroring
         // the milestone `shared/orders/opsState.ts` calls `receivedAt`
         // (brief, "Order lifecycle & timing model" table). `userId` is NULL

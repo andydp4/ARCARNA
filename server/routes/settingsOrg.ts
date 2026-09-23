@@ -88,6 +88,9 @@ function mapOrgToSettings(org: Organization) {
     opsReconcilePollSeconds: org.opsReconcilePollSeconds ?? 60,
     opsAlertOnSlaDue: org.opsAlertOnSlaDue ?? false,
     opsKeepScreenAwake: org.opsKeepScreenAwake ?? true,
+    // Price guard at the till (v1.2 Phase 4). Every role reads it: the till
+    // is a cashier's screen. Only admins change it (PUT /api/settings/price-guard).
+    priceGuardEnabled: org.priceGuardEnabled ?? false,
     // The shop's customer privacy notice + complaints contact (PRV-15). Public
     // by nature (shown to shop customers), so every staff role may read it.
     ...shopPrivacyFromOrg(org),

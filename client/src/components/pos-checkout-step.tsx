@@ -155,6 +155,11 @@ export type PosCheckoutStepProps = {
   submitting: boolean;
   onBack: () => void;
   onConfirm: () => void;
+
+  /** The price guard's inline panel (v1.2 Phase 4), shown first when a line is below the lowest price. */
+  priceGuardPanel?: React.ReactNode;
+  /** Replaces the confirm button's label ("Confirm and take payment"). */
+  confirmLabel?: string;
 };
 
 export function PosCheckoutStep(p: PosCheckoutStepProps) {
@@ -192,6 +197,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-2xl space-y-5">
+          {p.priceGuardPanel}
           <section>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-medium text-metal-warm-white" id="payment-method-label">
@@ -614,7 +620,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             type="button"
             onClick={p.onConfirm}
             disabled={p.itemCount === 0 || p.submitting}
-            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : confirmActionLabel(p.paymentMethod)}
+            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : p.confirmLabel ?? confirmActionLabel(p.paymentMethod)}
             data-testid="button-confirm-payment"
             className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
             size="lg"
@@ -625,7 +631,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 Processing…
               </>
             ) : (
-              confirmActionLabel(p.paymentMethod)
+              p.confirmLabel ?? confirmActionLabel(p.paymentMethod)
             )}
           </Button>
         </div>

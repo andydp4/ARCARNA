@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { STORAGE_NOTIFICATIONS_DISMISSED } from "@shared/storageKeys";
+import { PriceGuardManagerAnswer } from "@/components/price-guard/PriceGuardManagerAnswer";
 
 type NotificationItem = {
   id: string;
@@ -22,6 +23,8 @@ type NotificationItem = {
   createdAt: string;
   persisted?: boolean;
   readAt?: string | null;
+  entityType?: string;
+  entityId?: string;
 };
 
 /*
@@ -153,6 +156,9 @@ export function NotificationCenter() {
                     <div className="min-w-0">
                       <p className="font-medium">{n.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{n.message}</p>
+                      {n.entityType === "price_guard_manager_check" && n.entityId && (
+                        <PriceGuardManagerAnswer checkId={n.entityId} />
+                      )}
                     </div>
                     <Button
                       variant="ghost"

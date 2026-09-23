@@ -42,6 +42,12 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   credit_payment: { minRole: "MANAGER" },
   // Pay is admin business (owner decisions Q13/Q16).
   cashier_commission: { minRole: "ADMIN" },
+  // Price guard (v1.2 Phase 4, PRC-04). The order's Signal names who rang it,
+  // so it reaches only people who outrank them. The "Manager agreed" question
+  // is addressed to the manager named; a "No" goes to the owner alone.
+  price_guard: { minRole: "MANAGER" },
+  price_guard_manager_check: { userIds: [] },
+  price_guard_manager_no: { roles: ["SUPER_ADMIN"] },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

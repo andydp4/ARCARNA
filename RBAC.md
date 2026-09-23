@@ -13,6 +13,10 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Cost prices and margins | Never, not even in API data | Yes | Yes | Yes |
 | Minimum prices: set, change, clear; price history (v1.2 Phase 2) | No | Yes | Yes | Yes |
 | "Would have flagged": underpriced sales recorded silently, by product and person (v1.2 Phase 2) | No | No | Yes | Yes |
+| "Price guard at the till" switch (off by default; every change logged) (v1.2 Phase 4) | No | No | Yes | Yes |
+| Till price warning: one amber line with the lowest price, never a cost; reason at Pay (v1.2 Phase 4) | Yes | Yes | Yes | Yes |
+| Price guard Signals: below minimum and below cost; a manager's own go to admins and the owner only (v1.2 Phase 4) | No | Yes | Yes | Yes |
+| Answer "Manager agreed": only the manager named (v1.2 Phase 4) | No | Named | Named | Named |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |

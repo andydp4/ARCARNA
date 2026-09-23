@@ -120,6 +120,8 @@ export type ViewerSignal = {
   source: string;
   createdAt: Date | null;
   readAt: Date | null;
+  /** metadata.entityId, for a Signal the bell can act on (the price guard's "Manager agreed"). */
+  entityId: string | null;
 };
 
 /**
@@ -142,6 +144,7 @@ export async function listSignalsFor(orgId: string, viewer: Viewer, limit = 40):
       severity: orgNotifications.severity,
       source: orgNotifications.source,
       createdAt: orgNotifications.createdAt,
+      metadata: orgNotifications.metadata,
       audience: orgNotifications.audience,
       subjectUserId: orgNotifications.subjectUserId,
       readAt: orgNotificationRecipients.readAt,
@@ -172,6 +175,7 @@ export async function listSignalsFor(orgId: string, viewer: Viewer, limit = 40):
       source: r.source,
       createdAt: r.createdAt,
       readAt: r.readAt ?? null,
+      entityId: typeof r.metadata?.entityId === "string" ? r.metadata.entityId : null,
     }));
 }
 

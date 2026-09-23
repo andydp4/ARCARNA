@@ -436,6 +436,7 @@ export async function getNotifications(
         severity: (n.severity as "info" | "warning" | "error") || "info",
         createdAt: n.createdAt?.toISOString() ?? now,
         entityType: n.source,
+        ...(n.entityId ? { entityId: n.entityId } : {}),
         persisted: true,
         readAt: n.readAt?.toISOString() ?? null,
       });
