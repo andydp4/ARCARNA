@@ -1965,11 +1965,18 @@ export const priceGuardOrders = pgTable("price_guard_orders", {
   signalId: uuid("signal_id"),
   /** Held for the next twice-daily round-up (migration 111). */
   signalPending: boolean("signal_pending").default(false).notNull(),
+  /**
+   * "sale": the till's sale (one per order). "edit": a manager's later edit
+   * that made a new breach, `userId` being the manager (migration 112).
+   */
+  source: varchar("source", { length: 8 }).default("sale").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   check("price_guard_orders_severity_check", sql`${table.severity} IN ('warning', 'error')`),
   check("price_guard_orders_answer_check", sql`${table.managerAnswer} IS NULL OR ${table.managerAnswer} IN ('yes', 'no')`),
-  uniqueIndex("price_guard_orders_order_uq").on(table.orderId),
+  check("price_guard_orders_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  uniqueIndex("price_guard_orders_sale_uq").on(table.orderId).where(sql`${table.source} = 'sale'`),
+  index("price_guard_orders_order_idx").on(table.orderId),
   index("price_guard_orders_org_created_idx").on(table.orgId, table.createdAt),
   index("price_guard_orders_pending_idx").on(table.orgId, table.createdAt).where(sql`${table.signalPending}`),
 ]);

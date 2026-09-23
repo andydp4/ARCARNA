@@ -12,10 +12,16 @@ import { checkMinPrice, salePriceOf, storedMinPrice, type FloorProduct } from ".
 export const BULK_MIN_RULES = ["follow", "sale_minus_pct", "cost_plus_pct", "fixed"] as const;
 export type BulkMinRuleKind = (typeof BULK_MIN_RULES)[number];
 
+/**
+ * "Cost + x%" needs a real margin. The minimum is shown to cashiers at the
+ * till, so cost + 0% would print the cost on the till (owner Q4).
+ */
+export const COST_PLUS_MIN_PERCENT = 1;
+
 export const bulkMinRuleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("follow") }),
   z.object({ kind: z.literal("sale_minus_pct"), percent: z.number().finite().min(0).max(100) }),
-  z.object({ kind: z.literal("cost_plus_pct"), percent: z.number().finite().min(0).max(1000) }),
+  z.object({ kind: z.literal("cost_plus_pct"), percent: z.number().finite().min(COST_PLUS_MIN_PERCENT).max(1000) }),
   z.object({ kind: z.literal("fixed"), amount: z.number().finite().min(0).max(1_000_000) }),
 ]);
 export type BulkMinRule = z.infer<typeof bulkMinRuleSchema>;

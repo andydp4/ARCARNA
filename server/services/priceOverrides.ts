@@ -168,7 +168,16 @@ export async function priceOverrides(
     .from(priceExceptions)
     .innerJoin(orders, eq(priceExceptions.orderId, orders.id))
     .leftJoin(products, eq(priceExceptions.productId, products.id))
-    .leftJoin(priceGuardOrders, eq(priceGuardOrders.orderId, priceExceptions.orderId))
+    // The sale's reason belongs to the sale's lines only; a manager's edit
+    // carries none (and an order can have several edit rows).
+    .leftJoin(
+      priceGuardOrders,
+      and(
+        eq(priceGuardOrders.orderId, priceExceptions.orderId),
+        eq(priceGuardOrders.source, "sale"),
+        eq(priceExceptions.source, "sale"),
+      ),
+    )
     .where(
       and(
         eq(priceExceptions.orgId, orgId),

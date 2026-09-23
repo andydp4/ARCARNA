@@ -157,9 +157,9 @@ export async function recordPriceGuardInTx(tx: Executor, args: RecordGuardArgs):
 }
 
 async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordGuardResult> {
-  const { enabled, minSignal } = await priceGuardSettings(args.orgId, tx);
+  const settings = await priceGuardSettings(args.orgId, tx);
   let confirmation: PriceGuardConfirmation | null = readConfirmation(args.rawConfirmation);
-  if (!enabled && !confirmation) return null;
+  if (!settings.enabled && !confirmation) return null;
 
   // "Manager agreed" must name a manager or admin of this shop who is not the
   // cashier. Anyone else leaves the reason incomplete, so the lines count as
@@ -177,19 +177,55 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
 
   const verdict = evaluateOrderGuard(guardLinesFromItems(args.items), args.pricing, confirmation);
   if (!verdict.any) return null;
-
   const complete = !!confirmation && confirmationProblem(confirmation) == null;
+  return persistGuard(tx, {
+    orgId: args.orgId,
+    orderId: args.orderId,
+    actorUserId: args.actorUserId,
+    source: "sale",
+    verdict,
+    confirmation,
+    managerName,
+    managerUserId: complete && confirmation?.reason === "manager_agreed" ? confirmation.managerUserId ?? null : null,
+    offline: args.offline,
+    settings,
+  });
+}
+
+/**
+ * Stores one guard row with its Needs a look row and, with the switch on, its
+ * Signals. Shared by the sale and a manager's edit so both are told the same
+ * way: the Signal names the person, so notify() sends it only to people who
+ * outrank them.
+ */
+async function persistGuard(
+  tx: Executor,
+  args: {
+    orgId: string;
+    orderId: string;
+    actorUserId: string | null;
+    source: "sale" | "edit";
+    verdict: OrderGuardVerdict;
+    confirmation: PriceGuardConfirmation | null;
+    managerName: string | null;
+    managerUserId: string | null;
+    offline: boolean;
+    settings: { enabled: boolean; minSignal: "immediate" | "twice_daily" };
+  },
+): Promise<RecordGuardResult> {
+  const { verdict, confirmation, managerUserId } = args;
+  const { enabled, minSignal } = args.settings;
   const belowCost = verdict.linesBelowCost > 0 || verdict.orderBelowCost;
   const severity: "warning" | "error" = verdict.confirmed === false || belowCost ? "error" : "warning";
   const unconfirmedLines = verdict.flagged.filter((f) => f.needsConfirmation && !f.confirmed).length;
-  const managerUserId = complete && confirmation?.reason === "manager_agreed" ? confirmation.managerUserId ?? null : null;
 
-  const [row] = await tx
+  const insert = tx
     .insert(priceGuardOrders)
     .values({
       orgId: args.orgId,
       orderId: args.orderId,
       userId: args.actorUserId,
+      source: args.source,
       reason: confirmation?.reason ?? null,
       reasonNote: confirmation?.note?.trim() ? confirmation.note.trim() : null,
       confirmed: verdict.confirmed,
@@ -203,9 +239,12 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
       orderBelowCost: verdict.orderBelowCost,
       underCost: verdict.underCost.toFixed(2),
       managerUserId,
-    })
-    .onConflictDoNothing({ target: priceGuardOrders.orderId })
-    .returning({ id: priceGuardOrders.id });
+    });
+  // A replayed sale is recorded once; each edit is its own row.
+  const [row] = await (args.source === "sale"
+    ? insert.onConflictDoNothing({ target: priceGuardOrders.orderId, where: sql`${priceGuardOrders.source} = 'sale'` })
+    : insert
+  ).returning({ id: priceGuardOrders.id });
   if (!row) return null;
 
   const who = args.actorUserId ? (await resolveUserNames([args.actorUserId])).get(args.actorUserId) ?? "Unknown" : "Unknown";
@@ -216,7 +255,8 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
     who,
     reason: confirmation?.reason ?? null,
     note: confirmation?.note ?? null,
-    managerName,
+    managerName: args.managerName,
+    edited: args.source === "edit",
   });
   // Needs a look (CMP-02) works whatever the switch: every guard row is an
   // exception to review, queued by the role of the person who rang it.
@@ -262,10 +302,11 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
   // One Signal per order (PRC-04). It names the person who rang it, so
   // notify() sends it only to people who outrank them: a cashier's to managers
   // and above, a manager's to admins and the owner only.
+  const kindTitle = belowCost ? "Below cost" : verdict.confirmed === false ? "Unconfirmed price" : "Below minimum";
   const signal = await notify(
     {
       orgId: args.orgId,
-      title: belowCost ? `Below cost — ${who}` : verdict.confirmed === false ? `Unconfirmed price — ${who}` : `Below minimum — ${who}`,
+      title: args.source === "edit" ? `${kindTitle} after an edit — ${who}` : `${kindTitle} — ${who}`,
       message,
       severity,
       source: "price_guard",
@@ -277,6 +318,105 @@ async function recordInner(tx: Executor, args: RecordGuardArgs): Promise<RecordG
   await tx.update(priceGuardOrders).set({ signalId: signal.id }).where(eq(priceGuardOrders.id, row.id));
   await raiseRepeatPatternSignal(tx, args.orgId, args.actorUserId, who);
   return { verdict, guardId: row.id, signalled: true };
+}
+
+export type RecordGuardEditArgs = {
+  orgId: string;
+  orderId: string;
+  /** The manager or admin who made the edit. */
+  actorUserId: string | null;
+  beforeItems: OrderItemRow[];
+  afterItems: OrderItemRow[];
+  /** The order's discounts before the edit and after it. */
+  beforePricing: OrderDiscounts | null;
+  pricing: OrderDiscounts | null;
+};
+
+/** An order row's discounts, as the guard shares them over its lines. */
+export function orderDiscountsOf(row: {
+  subtotal?: unknown;
+  tier_discount?: unknown;
+  promo_discount?: unknown;
+  points_discount?: unknown;
+  vat_rate?: unknown;
+}): OrderDiscounts | null {
+  const subtotal = num(row.subtotal);
+  if (subtotal == null) return null;
+  return {
+    subtotal,
+    netAfterDiscounts: subtotal - (num(row.tier_discount) ?? 0) - (num(row.promo_discount) ?? 0),
+    pointsDiscount: num(row.points_discount),
+    vatRate: num(row.vat_rate),
+  };
+}
+
+const lineKey = (i: OrderItemRow) => `${num(i.unit_price) ?? 0}|${num(i.quantity) ?? 0}`;
+
+/**
+ * A manager's edit after the sale (PUT /api/orders/:id). Only what the edit
+ * changed is theirs: a line whose price or quantity is new, and the order
+ * going below cost when it was not before. A breach the sale already had
+ * stays the cashier's and is not counted again. With the switch OFF this
+ * does nothing: silent recording (price_exceptions, source 'edit') has it.
+ * Never blocks the edit: own savepoint, a problem only logs.
+ */
+export async function recordPriceGuardEditInTx(tx: Executor, args: RecordGuardEditArgs): Promise<RecordGuardResult> {
+  try {
+    await tx.execute(sql`SAVEPOINT price_guard_edit`);
+  } catch (error) {
+    console.warn("[PriceGuard] could not start recording an edit (edit unaffected):", error);
+    return null;
+  }
+  try {
+    const result = await recordEditInner(tx, args);
+    await tx.execute(sql`RELEASE SAVEPOINT price_guard_edit`);
+    return result;
+  } catch (error) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT price_guard_edit`);
+    console.warn("[PriceGuard] recording an edit failed (edit unaffected):", error);
+    return null;
+  }
+}
+
+async function recordEditInner(tx: Executor, args: RecordGuardEditArgs): Promise<RecordGuardResult> {
+  const settings = await priceGuardSettings(args.orgId, tx);
+  if (!settings.enabled) return null;
+  const before = new Map<string, string>();
+  for (const i of args.beforeItems) if (i.product_id) before.set(i.product_id, lineKey(i));
+  const changed = new Set(
+    args.afterItems.filter((i) => !!i.product_id && before.get(i.product_id) !== lineKey(i)).map((i) => i.product_id as string),
+  );
+  const now = evaluateOrderGuard(guardLinesFromItems(args.afterItems), args.pricing, null);
+  const was = evaluateOrderGuard(guardLinesFromItems(args.beforeItems), args.beforePricing, null);
+  const flagged = now.flagged.filter((f) => changed.has(f.productId)).map((f) => ({ ...f, needsConfirmation: false, confirmed: false }));
+  const belowCostProductIds = now.belowCostProductIds.filter((p) => changed.has(p));
+  const orderBelowCost = now.orderBelowCost && !was.orderBelowCost;
+  if (flagged.length === 0 && belowCostProductIds.length === 0 && !orderBelowCost) return null;
+  const underMinimum = Math.round(flagged.reduce((s, f) => s + f.underMinimum * 100, 0)) / 100;
+  const verdict: OrderGuardVerdict = {
+    flagged,
+    underMinimum,
+    // Nobody at a till was asked: a manager's edit carries no reason.
+    needsConfirmation: 0,
+    confirmed: null,
+    linesBelowCost: belowCostProductIds.length,
+    belowCostProductIds,
+    orderBelowCost,
+    underCost: belowCostProductIds.length > 0 || orderBelowCost ? now.underCost : 0,
+    any: true,
+  };
+  return persistGuard(tx, {
+    orgId: args.orgId,
+    orderId: args.orderId,
+    actorUserId: args.actorUserId,
+    source: "edit",
+    verdict,
+    confirmation: null,
+    managerName: null,
+    managerUserId: null,
+    offline: false,
+    settings,
+  });
 }
 
 /**

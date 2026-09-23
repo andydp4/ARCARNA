@@ -176,6 +176,8 @@ export type OrderGuardVerdict = {
   /** Every such line was confirmed with a complete reason. Null when none needed one. */
   confirmed: boolean | null;
   linesBelowCost: number;
+  /** The products of those lines (managers' use only; never sent to a till). */
+  belowCostProductIds: string[];
   /** After all discounts, the known-cost lines brought in less than they cost. */
   orderBelowCost: boolean;
   /** £ under cost: the order-level shortfall, or the lines' own when larger. */
@@ -208,6 +210,7 @@ export function evaluateOrderGuard(
   let knownNet = 0;
   let knownCost = 0;
   let linesBelowCost = 0;
+  const belowCostProductIds: string[] = [];
   let lineShortfall = 0;
   lines.forEach((line, i) => {
     const qty = Number(line.quantity) || 0;
@@ -219,6 +222,7 @@ export function evaluateOrderGuard(
       knownCost += cost;
       if (net < cost) {
         linesBelowCost += 1;
+        belowCostProductIds.push(line.productId);
         lineShortfall += cost - net;
       }
     }
@@ -247,6 +251,7 @@ export function evaluateOrderGuard(
     needsConfirmation: needing.length,
     confirmed: needing.length === 0 ? null : needing.every((f) => f.confirmed),
     linesBelowCost,
+    belowCostProductIds,
     orderBelowCost,
     underCost,
     any: flagged.length > 0 || linesBelowCost > 0 || orderBelowCost,
@@ -265,13 +270,17 @@ export function priceGuardSignalLine(args: {
   reason: PriceGuardReason | null;
   note?: string | null;
   managerName?: string | null;
+  /** A manager's edit after the sale, not the till: no reason was asked. */
+  edited?: boolean;
 }): string {
   const { verdict, orderRef, who } = args;
+  const by = args.edited ? `edited by ${who}` : `by ${who}`;
   const parts: string[] = [];
   if (verdict.flagged.length > 0) {
     const n = verdict.flagged.length;
     let reason = "no reason given (unconfirmed)";
-    if (verdict.confirmed === null && !args.reason) reason = "pushed below by the order's discounts";
+    if (args.edited) reason = "price changed after the sale";
+    else if (verdict.confirmed === null && !args.reason) reason = "pushed below by the order's discounts";
     else if (args.reason) {
       reason = PRICE_GUARD_REASON_LABELS[args.reason];
       if (args.reason === "manager_agreed" && args.managerName) reason += `: ${args.managerName}`;
@@ -279,14 +288,14 @@ export function priceGuardSignalLine(args: {
       if (verdict.confirmed === false) reason += " (not every line confirmed)";
     }
     parts.push(
-      `£${verdict.underMinimum.toFixed(2)} under minimum on order ${orderRef} by ${who}: ${n} ${n === 1 ? "line" : "lines"}, reason: ${reason}.`,
+      `£${verdict.underMinimum.toFixed(2)} under minimum on order ${orderRef} ${by}: ${n} ${n === 1 ? "line" : "lines"}, reason: ${reason}.`,
     );
   }
   if (verdict.linesBelowCost > 0 || verdict.orderBelowCost) {
     parts.push(
       verdict.flagged.length > 0
         ? `Also £${verdict.underCost.toFixed(2)} below cost after discounts.`
-        : `£${verdict.underCost.toFixed(2)} below cost after discounts on order ${orderRef} by ${who}.`,
+        : `£${verdict.underCost.toFixed(2)} below cost after discounts on order ${orderRef} ${by}.`,
     );
   }
   return parts.join(" ");

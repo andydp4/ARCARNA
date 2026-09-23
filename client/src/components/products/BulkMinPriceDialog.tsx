@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   BULK_MIN_RULE_LABELS,
   BULK_MIN_RULES,
+  COST_PLUS_MIN_PERCENT,
   bulkMinSkipLabel,
   type BulkMinPreviewRow,
   type BulkMinRule,
@@ -32,6 +33,7 @@ function ruleOf(kind: BulkMinRuleKind, value: string): BulkMinRule | null {
   if (value.trim() === "" || !Number.isFinite(n) || n < 0) return null;
   if (kind === "fixed") return { kind, amount: n };
   if (kind === "sale_minus_pct" && n > 100) return null;
+  if (kind === "cost_plus_pct" && n < COST_PLUS_MIN_PERCENT) return null;
   return { kind, percent: n };
 }
 
@@ -122,7 +124,7 @@ export function BulkMinPriceDialog({
               <Input
                 id="bulk-min-value"
                 type="number"
-                min={0}
+                min={kind === "cost_plus_pct" ? COST_PLUS_MIN_PERCENT : 0}
                 step={kind === "fixed" ? "0.01" : "1"}
                 inputMode="decimal"
                 value={value}
@@ -145,6 +147,11 @@ export function BulkMinPriceDialog({
             Preview
           </Button>
         </div>
+        {kind === "cost_plus_pct" && (
+          <p className="text-xs text-muted-foreground" data-testid="text-bulk-min-cost-note">
+            Cashiers see the minimum at the till. Keep your margin to yourself: at least {COST_PLUS_MIN_PERCENT}% over cost.
+          </p>
+        )}
         {preview && (
           <div className="max-h-[320px] overflow-auto">
             <Table>

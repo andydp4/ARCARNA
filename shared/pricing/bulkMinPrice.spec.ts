@@ -40,4 +40,10 @@ describe('bulk "Set minimum price"', () => {
     ).toBe(false);
     expect(describeBulkMinRule({ kind: "cost_plus_pct", percent: 30 })).toBe("cost +30%");
   });
+  it("cost + 0% is refused: the till shows the minimum, so it would show the cost", () => {
+    const ids = ["7f0c1d64-3c8e-4f27-9d7b-2c0a4f1e9b11"];
+    expect(bulkMinRequestSchema.safeParse({ productIds: ids, rule: { kind: "cost_plus_pct", percent: 0 } }).success).toBe(false);
+    expect(bulkMinRequestSchema.safeParse({ productIds: ids, rule: { kind: "cost_plus_pct", percent: 0.5 } }).success).toBe(false);
+    expect(bulkMinRequestSchema.safeParse({ productIds: ids, rule: { kind: "cost_plus_pct", percent: 1 } }).success).toBe(true);
+  });
 });

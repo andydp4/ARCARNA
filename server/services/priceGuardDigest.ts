@@ -16,6 +16,7 @@ import { priceGuardOrders } from "@shared/schema";
 import { latestDigestSlot } from "@shared/review/exceptions";
 import { orderRefOf, PRICE_GUARD_REASON_LABELS, isPriceGuardReason } from "@shared/pricing/priceGuard";
 import { notify } from "./signals";
+import { priceGuardEnabled } from "./priceGuard";
 import { resolveUserNames } from "./userDisplayName";
 import { orgTimeZone } from "./tradingDayShift";
 
@@ -64,6 +65,9 @@ export async function sendDigestForOrg(orgId: string, slot: Date): Promise<numbe
       .update(priceGuardOrders)
       .set({ signalPending: false })
       .where(inArray(priceGuardOrders.id, due.map((r) => r.id)));
+    // The switch was turned off after these were held: Signals have stopped,
+    // so the round-up is dropped. The rows stay in Needs a look and Evidence.
+    if (!(await priceGuardEnabled(orgId, tx))) return 0;
 
     const byPerson = new Map<string, GuardRow[]>();
     for (const r of due) {

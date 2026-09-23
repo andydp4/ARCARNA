@@ -40,5 +40,6 @@ CREATE TABLE IF NOT EXISTS price_guard_orders (
   CONSTRAINT price_guard_orders_answer_check CHECK (manager_answer IS NULL OR manager_answer IN ('yes', 'no'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS price_guard_orders_order_uq ON price_guard_orders (order_id);
+-- One row per sale: the unique index is in migration 112 (a manager's edit
+-- adds its own rows).
 CREATE INDEX IF NOT EXISTS price_guard_orders_org_created_idx ON price_guard_orders (org_id, created_at);

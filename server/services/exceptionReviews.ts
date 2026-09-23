@@ -10,7 +10,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { exceptionReviews, orgNotifications } from "@shared/schema";
+import { exceptionReviews, orgNotifications, priceGuardOrders } from "@shared/schema";
 import type { Role } from "@shared/rbac";
 import {
   EXCEPTION_STATE_LABELS,
@@ -249,7 +249,14 @@ export function reviewStateLabel(state: ExceptionState): string {
   return EXCEPTION_STATE_LABELS[state];
 }
 
-/** A cashier's own count (their shift summary): exceptions about them in a window. */
+/**
+ * A cashier's own count (their shift summary): exceptions about them in a
+ * window. For prices it counts only sales where the till itself warned and
+ * asked for a reason (price_guard_orders.confirmed is set). A sale flagged
+ * only because it was below cost, or pushed under the minimum by the order's
+ * discounts, is the managers' to see: counting it here would tell the cashier
+ * that sale was below cost (owner Q4).
+ */
 export async function ownExceptionCount(
   orgId: string,
   userId: string,
@@ -257,18 +264,22 @@ export async function ownExceptionCount(
   to: Date | null,
   kind: ExceptionKind = "price",
 ): Promise<number> {
+  const conds = [
+    eq(exceptionReviews.orgId, orgId),
+    eq(exceptionReviews.kind, kind),
+    eq(exceptionReviews.subjectUserId, userId),
+    sql`${exceptionReviews.createdAt} >= ${from}`,
+    to ? sql`${exceptionReviews.createdAt} <= ${to}` : sql`TRUE`,
+  ];
+  if (kind === "price") {
+    conds.push(
+      sql`EXISTS (SELECT 1 FROM ${priceGuardOrders} WHERE ${priceGuardOrders.id} = ${exceptionReviews.sourceId} AND ${priceGuardOrders.confirmed} IS NOT NULL)`,
+    );
+  }
   const [row] = await db
     .select({ n: sql<number>`COUNT(*)::int` })
     .from(exceptionReviews)
-    .where(
-      and(
-        eq(exceptionReviews.orgId, orgId),
-        eq(exceptionReviews.kind, kind),
-        eq(exceptionReviews.subjectUserId, userId),
-        sql`${exceptionReviews.createdAt} >= ${from}`,
-        to ? sql`${exceptionReviews.createdAt} <= ${to}` : sql`TRUE`,
-      ),
-    );
+    .where(and(...conds));
   return Number(row?.n) || 0;
 }
 

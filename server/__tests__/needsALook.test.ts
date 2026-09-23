@@ -465,6 +465,113 @@ describe.skipIf(!hasDb)("price guard review: Signals, Needs a look, refunds, Evi
     expect(JSON.stringify(summary)).not.toMatch(/under minimum|underCost/);
   });
 
+  it("a cashier's own count leaves out a sale flagged only as below cost (the till never warned)", async () => {
+    // Minimum £3 but cost £5: £4 is above the till floor, below cost.
+    const [under] = await db
+      .insert(schema.products)
+      .values({ orgId, locationId, name: "Look Under", productId: `NAL-U-${tag}`, defaultSalePrice: "6.00", minPrice: "3.00", costPrice: "5.00", stock: 1000 })
+      .returning();
+    await db.insert(schema.productLocationStock).values({ orgId, productId: under.id, locationId, stock: 1000 });
+    const openedAt = new Date(Date.now() - 60_000);
+    const { ownExceptionCount } = await import("../services/exceptionReviews");
+    const before = await ownExceptionCount(orgId, samId, openedAt, null);
+    as(samId);
+    const res = await request(app).post("/api/orders").send(sale([{ productId: under.id, quantity: 1, unitPrice: 4 }])).expect(201);
+    // Managers are told; it is in Needs a look about Sam.
+    const [row] = await reviewFor("price", { orderId: res.body.orderId });
+    expect(row).toMatchObject({ subjectUserId: samId, severity: "error" });
+    expect(row.summary).toMatch(/below cost/);
+    // Sam's own count does not move: it would tell Sam the item's cost.
+    expect(await ownExceptionCount(orgId, samId, openedAt, null)).toBe(before);
+    // A sale the till did warn about still counts.
+    await underMinSale(samId);
+    expect(await ownExceptionCount(orgId, samId, openedAt, null)).toBe(before + 1);
+  });
+
+  // Its own product, so these edits stay out of the Weekly Margin figures below.
+  let editId = "";
+  const editProduct = async () => {
+    if (editId) return editId;
+    const [p] = await db
+      .insert(schema.products)
+      .values({ orgId, locationId, name: "Look Edit", productId: `NAL-E-${tag}`, defaultSalePrice: "10.00", costPrice: "6.00", stock: 1000 })
+      .returning();
+    await db.insert(schema.productLocationStock).values({ orgId, productId: p.id, locationId, stock: 1000 });
+    editId = p.id;
+    return editId;
+  };
+
+  it("a manager's edit below minimum and cost is their own exception: admins and the owner are told", async () => {
+    await editProduct();
+    as(samId);
+    const sold = await request(app).post("/api/orders").send(sale([{ productId: editId, quantity: 1, unitPrice: 10 }])).expect(201);
+    const orderId = sold.body.orderId;
+    expect(await reviewFor("price", { orderId })).toHaveLength(0);
+
+    as(alexId);
+    await request(app).put(`/api/orders/${orderId}`).send({ lines: [{ productId: editId, quantity: 1, unitPrice: 2 }] }).expect(200);
+    const { eq } = await import("drizzle-orm");
+    const guards = await db.select().from(schema.priceGuardOrders).where(eq(schema.priceGuardOrders.orderId, orderId));
+    expect(guards).toHaveLength(1);
+    expect(guards[0]).toMatchObject({ source: "edit", userId: alexId, reason: null, confirmed: null, severity: "error", linesBelowCost: 1 });
+    const [row] = await reviewFor("price", { orderId });
+    expect(row).toMatchObject({ subjectUserId: alexId, subjectRole: "MANAGER", state: "open" });
+    expect(row.summary).toMatch(/under minimum on order #\w+ edited by Alex Boss: 1 line, reason: price changed after the sale/);
+    const told = await signals({ orderId, source: "price_guard" });
+    expect(told).toHaveLength(1);
+    expect(told[0].title).toMatch(/after an edit — Alex Boss/);
+    expect(told[0].recipients).toEqual(expect.arrayContaining([adaId, ownerId]));
+    expect(told[0].recipients).not.toContain(morganId);
+    expect(told[0].recipients).not.toContain(samId);
+
+    // The same lines again is not a new breach: recorded once.
+    await request(app).put(`/api/orders/${orderId}`).send({ lines: [{ productId: editId, quantity: 1, unitPrice: 2 }] }).expect(200);
+    expect(await db.select().from(schema.priceGuardOrders).where(eq(schema.priceGuardOrders.orderId, orderId))).toHaveLength(1);
+
+    // A breach the sale already had stays the cashier's; the edit adds its own.
+    const flagged = await underMinSale(samId);
+    as(alexId);
+    await request(app)
+      .put(`/api/orders/${flagged.body.orderId}`)
+      .send({ lines: [{ productId: widgetId, quantity: 1, unitPrice: 3 }, { productId: editId, quantity: 1, unitPrice: 1 }] })
+      .expect(200);
+    const both = await db.select().from(schema.priceGuardOrders).where(eq(schema.priceGuardOrders.orderId, flagged.body.orderId));
+    expect(both.map((g) => [g.source, g.userId, g.flaggedLines]).sort()).toEqual([
+      ["edit", alexId, 1],
+      ["sale", samId, 1],
+    ]);
+  });
+
+  it("with the switch off, an edit is left to silent recording and held round-ups are dropped", async () => {
+    await editProduct();
+    const { eq } = await import("drizzle-orm");
+    await setRules({ priceGuardMinSignal: "twice_daily" });
+    const held = await underMinSale(samId);
+    await db.update(schema.organizations).set({ priceGuardEnabled: false }).where(eq(schema.organizations.id, orgId));
+    try {
+      as(samId);
+      const sold = await request(app).post("/api/orders").send(sale([{ productId: editId, quantity: 1, unitPrice: 10 }])).expect(201);
+      as(alexId);
+      await request(app).put(`/api/orders/${sold.body.orderId}`).send({ lines: [{ productId: editId, quantity: 1, unitPrice: 2 }] }).expect(200);
+      expect(await db.select().from(schema.priceGuardOrders).where(eq(schema.priceGuardOrders.orderId, sold.body.orderId))).toHaveLength(0);
+      // Silent recording still has the manager's line.
+      const silent = await db.select().from(schema.priceExceptions).where(eq(schema.priceExceptions.orderId, sold.body.orderId));
+      expect(silent.map((r) => [r.source, r.userId])).toEqual([["edit", alexId]]);
+
+      // Signals have stopped: the held round-up is not sent, and not kept for later.
+      const { sendDigestForOrg } = await import("../services/priceGuardDigest");
+      expect(await sendDigestForOrg(orgId, new Date(Date.now() + 1000))).toBe(0);
+      expect(await signals({ orderId: held.body.orderId, source: "price_guard_digest" })).toHaveLength(0);
+      const [guard] = await db.select().from(schema.priceGuardOrders).where(eq(schema.priceGuardOrders.orderId, held.body.orderId));
+      expect(guard.signalPending).toBe(false);
+      // Still in Needs a look.
+      expect(await reviewFor("price", { orderId: held.body.orderId })).toHaveLength(1);
+    } finally {
+      await db.update(schema.organizations).set({ priceGuardEnabled: true }).where(eq(schema.organizations.id, orgId));
+      await setRules({ priceGuardMinSignal: "immediate" });
+    }
+  });
+
   it('bulk "Set minimum price": manager and above, preview then apply, price history, the owner told', async () => {
     const body = { productIds: [plainId, lossId], rule: { kind: "sale_minus_pct", percent: 10 } };
     as(samId);

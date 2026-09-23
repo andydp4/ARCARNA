@@ -170,4 +170,23 @@ describe("priceGuardSignalLine", () => {
       "no reason given (unconfirmed)",
     );
   });
+
+  it("a manager's edit says who edited it and that no reason was asked", () => {
+    expect(priceGuardSignalLine({ verdict, orderRef: "#9", who: "Alex", reason: null, edited: true })).toBe(
+      "£6.40 under minimum on order #9 edited by Alex: 2 lines, reason: price changed after the sale.",
+    );
+  });
+
+  it("lists the products below cost (for the manager-side edit check)", () => {
+    const v = evaluateOrderGuard(
+      [
+        { productId: "a", quantity: 1, unitPrice: 3, listPrice: 5, floorPrice: 2, unitCost: 4 },
+        { productId: "b", quantity: 1, unitPrice: 9, listPrice: 9, floorPrice: 9, unitCost: 1 },
+      ],
+      null,
+      null,
+    );
+    expect(v.belowCostProductIds).toEqual(["a"]);
+    expect(v.orderBelowCost).toBe(false);
+  });
 });
