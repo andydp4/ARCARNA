@@ -444,7 +444,8 @@ test.describe("fulfilment method", () => {
       locationId,
       [{ productId: product.id, quantity: 1, unitPrice: Number(product.defaultSalePrice) }],
       "cash",
-      { fulfilmentMethod: "delivery" },
+      // Phase 5: a delivery needs its address and postcode on the order.
+      { fulfilmentMethod: "delivery", deliveryAddress: "1 Journey Road", deliveryPostcode: "JN1 1JN" },
     );
     const order = await okJson<any>(res);
     const orderId = order.orderId ?? order.id ?? order.order?.id;

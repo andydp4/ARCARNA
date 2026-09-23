@@ -49,6 +49,8 @@ export function readSaleIssuePayload(payload: Record<string, unknown>): {
   paymentMethod: string | null;
   payments: Array<{ method: string; amount: number }> | null;
   fulfilmentMethod: "collection" | "delivery";
+  /** Where a delivery goes (v1.2 Phase 5): carried back to the till with the sale. */
+  delivery: { address: string; postcode: string; notes: string };
   channel: string | null;
   personalUseReason: string | null;
   orderDate: string | null;
@@ -93,6 +95,11 @@ export function readSaleIssuePayload(payload: Record<string, unknown>): {
     paymentMethod: str(payload.paymentMethod),
     payments: payments && payments.length > 0 ? payments : null,
     fulfilmentMethod: payload.fulfilmentMethod === "delivery" ? "delivery" : "collection",
+    delivery: {
+      address: str(payload.deliveryAddress) ?? "",
+      postcode: str(payload.deliveryPostcode) ?? "",
+      notes: str(payload.deliveryNotes) ?? "",
+    },
     channel: str(payload.channel),
     personalUseReason: str(payload.personalUseReason),
     orderDate: str(payload.orderDate),

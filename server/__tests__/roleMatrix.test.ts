@@ -169,13 +169,26 @@ describe("role matrix: ACCESS_POLICY is what the server enforces", () => {
  * of Phase 0B (see the brief). Key: "GET /path" → the canaries it may still
  * carry and who closes it. Remove a line when its part lands.
  */
-type Canary = keyof typeof CANARIES | "foreignOrg";
+type Canary = keyof typeof CANARIES | "foreignOrg" | "deliveredAddress";
 
 const KNOWN_LEAKS: Record<string, { canaries: Canary[]; owner: string }> = {
-  "GET /api/orders/board": {
-    canaries: ["phone"],
-    owner: "owner decision: the Operations board shows the customer's phone to whoever works the order",
-  },
+  // Empty since v1.2 Phase 5: the Operations board no longer carries the
+  // customer's phone; the driver asks for it and the reveal is logged (Q8a).
+};
+
+/**
+ * A completed delivery's address (v1.2 Phase 5, Q8a): staff see a delivery's
+ * address while it is live; once it is completed, managers and above only.
+ * Seeded on the canary sale, which is a completed delivery.
+ */
+const DELIVERED_ADDRESS = "7 Delivered Row";
+
+/**
+ * Not customers: the canary supplier carries the same phone and email, and a
+ * supplier's contact details are a manager's to see (Stock Centre › Suppliers).
+ */
+const MANAGER_MAY_SEE: Record<string, Canary[]> = {
+  "GET /api/suppliers": ["phone", "email"],
 };
 
 /**
@@ -212,6 +225,7 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     cashierShiftId: "",
     closedCashierShiftId: "",
     tillShiftId: "",
+    conversationId: "",
   };
   const CASHIER_ID = "role-matrix-cashier";
 
@@ -255,7 +269,13 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
       .values({ orgId: ids.orgId, productId: prod.id, locationId: loc.id, stock: 2 });
     const [cust] = await db
       .insert(s.customers)
-      .values({ orgId: ids.orgId, name: "Canary Customer", phone: CANARIES.phone, email: CANARIES.email })
+      .values({
+        orgId: ids.orgId,
+        name: "Canary Customer",
+        phone: CANARIES.phone,
+        email: CANARIES.email,
+        address: CANARIES.address,
+      })
       .returning();
     ids.customerId = cust.id;
     const [order] = await db
@@ -270,6 +290,12 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
         // Settled, so the sale counts in every Evidence figure, cost included.
         settledAt: new Date(),
         settledTotal: "20.00",
+        // A finished delivery: its address is a manager's, no longer a cashier's.
+        fulfilmentMethod: "delivery",
+        deliveryAddress: DELIVERED_ADDRESS,
+        deliveryPostcode: "CA1 1RY",
+        outForDeliveryAt: new Date(),
+        assignedUserId: CASHIER_ID,
       })
       .returning();
     ids.orderId = order.id;
@@ -280,6 +306,36 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
       quantity: 1,
       unitPrice: "20.00",
       totalPrice: "20.00",
+    });
+    // The customer wrote in on WhatsApp: the sender's number is their phone.
+    const [wa] = await db
+      .insert(s.whatsappAccounts)
+      .values({ orgId: ids.orgId, phoneNumber: "0000", phoneNumberId: `canary-${randomUUID().slice(0, 8)}` })
+      .returning();
+    const [conv] = await db
+      .insert(s.whatsappConversations)
+      .values({
+        orgId: ids.orgId,
+        whatsappAccountId: wa.id,
+        customerId: cust.id,
+        phone: CANARIES.phone,
+        waId: "447700900123",
+        profileName: "Canary WhatsApp",
+        lastMessagePreview: "hello",
+        lastMessageAt: new Date(),
+      })
+      .returning();
+    ids.conversationId = conv.id;
+    // Money owed on the sale, so the Credit List (manager and above) has the
+    // canary customer on it: its contact details are a manager's masks only.
+    await db.insert(s.orderCredit).values({
+      orgId: ids.orgId,
+      orderId: order.id,
+      customerId: cust.id,
+      amountGiven: "20.00",
+      amountOutstanding: "20.00",
+      status: "outstanding",
+      givenOn: new Date().toISOString().slice(0, 10),
     });
     // A personal-use expense books stock at cost on the order.
     await db.insert(s.orderExpenses).values({
@@ -364,6 +420,8 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     // snapshots) is swept by org id where the table has one.
     for (const table of [
       s.adminAuditLogs,
+      s.whatsappConversations,
+      s.whatsappAccounts,
       s.orderExpenses,
       s.orderItems,
       s.orders,
@@ -413,6 +471,8 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     if (body.includes(CANARIES.phone) || digits.includes("7700900123")) found.push("phone");
     if (body.toLowerCase().includes(CANARIES.email)) found.push("email");
     if (body.includes(CANARIES.costPrice)) found.push("costPrice");
+    if (body.includes(CANARIES.address)) found.push("address");
+    if (body.includes(DELIVERED_ADDRESS)) found.push("deliveredAddress");
     if (body.includes(FOREIGN_MARKER)) found.push("foreignOrg");
     return found;
   }
@@ -420,6 +480,7 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
   function paramsFor(path: string): Record<string, string> {
     const byPrefix =
       path.startsWith("/api/customers") ? ids.customerId
+      : path.startsWith("/api/whatsapp/conversations") ? ids.conversationId
       : path.startsWith("/api/cashier-shifts") ? ids.cashierShiftId
       : path.startsWith("/api/shifts") ? ids.tillShiftId
       : path.startsWith("/api/orders") ? ids.orderId
@@ -554,7 +615,11 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     expect(actions).toContain("export.evidence");
   });
 
-  it("no GET route hands a cashier a canary", async () => {
+  /**
+   * Every GET route the app registers, called as `role`, with real ids.
+   * Returns the canaries found that `role` must not see.
+   */
+  async function sweep(role: "CASHIER" | "MANAGER", forbidden: Canary[]): Promise<{ leaks: string[]; stillKnown: Set<string> }> {
     const routes = ((app as any).router.stack as any[])
       .filter((l) => l.route && l.route.methods.get)
       .map((l) => l.route.path as string)
@@ -566,7 +631,7 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     const from = new Date(Date.now() - 30 * day).toISOString().slice(0, 10);
     const to = new Date(Date.now() + day).toISOString().slice(0, 10);
     const query = new URLSearchParams({
-      from, to, startDate: from, endDate: to, segment: "Loyal", format: "csv", type: "full",
+      from, to, startDate: from, endDate: to, segment: "Loyal", format: "csv", type: "full", q: "Canary",
     }).toString();
 
     const targets: Array<{ key: string; url: string }> = [];
@@ -591,25 +656,109 @@ describe.skipIf(!hasDb)("role matrix: canaries never reach a cashier", () => {
     for (const { key, url } of targets) {
       let body = "";
       try {
-        const res = await as("CASHIER", "get", url);
+        const res = await as(role, "get", url);
         body = typeof res.body === "string" ? res.body : "";
       } catch (e) {
-        // A timeout or a dropped socket carried nothing to the cashier.
+        // A timeout or a dropped socket carried nothing to the caller.
         continue;
       }
-      if (process.env.ROLE_MATRIX_DEBUG) console.log("SWEEP", key, body.length, body.slice(0, 80).replace(/\s+/g, " "));
-      const found = canariesIn(body);
+      if (process.env.ROLE_MATRIX_DEBUG) console.log("SWEEP", role, key, body.length, body.slice(0, 80).replace(/\s+/g, " "));
+      const found = canariesIn(body).filter((c) => forbidden.includes(c));
       if (found.length === 0) continue;
-      const allowed = KNOWN_LEAKS[key]?.canaries ?? [];
+      const allowed = role === "CASHIER" ? KNOWN_LEAKS[key]?.canaries ?? [] : MANAGER_MAY_SEE[key] ?? [];
       const unexpected = found.filter((c) => !allowed.includes(c));
       if (unexpected.length) leaks.push(`${key} (${url.split("?")[0]}) → ${unexpected.join(", ")}`);
       else stillKnown.add(key);
     }
+    return { leaks, stillKnown };
+  }
 
+  it("the sweep really reaches the canary customer and the delivered order", async () => {
+    // Otherwise an empty page reads as a clean one and proves nothing.
+    const inbox = await as("CASHIER", "get", `/api/whatsapp/conversations/${ids.conversationId}`);
+    expect(inbox.status).toBe(200);
+    expect(inbox.body).toContain("Canary WhatsApp");
+    // Masked (••0123): the sweep below proves the full number is not there.
+    expect(inbox.body).toContain("0123");
+    const credit = await as("MANAGER", "get", "/api/tick-customers");
+    expect(credit.status).toBe(200);
+    expect(credit.body).toContain("Canary Customer");
+    const managerOrder = await as("MANAGER", "get", `/api/orders/${ids.orderId}`);
+    expect(managerOrder.status).toBe(200);
+    expect(canariesIn(managerOrder.body)).toContain("deliveredAddress");
+    const cashierList = await as("CASHIER", "get", "/api/orders");
+    expect(cashierList.status).toBe(200);
+    // The canary sale was keyed in today, so it is in a cashier's bounded history.
+    expect(cashierList.body).toContain(ids.orderId);
+    const admin = await as("ADMIN", "get", `/api/customers/${ids.customerId}`);
+    expect(canariesIn(admin.body)).toEqual(expect.arrayContaining(["phone", "email", "address"]));
+  });
+
+  it("no GET route hands a cashier a canary", async () => {
+    const { leaks, stillKnown } = await sweep("CASHIER", [
+      "phone", "email", "costPrice", "address", "deliveredAddress", "foreignOrg",
+    ]);
     const closed = Object.keys(KNOWN_LEAKS).filter((k) => !stillKnown.has(k));
     if (closed.length) {
       console.warn(`[roleMatrix] closed since listed — remove from KNOWN_LEAKS: ${closed.join("; ")}`);
     }
     expect(leaks, "cashier-visible canaries (see KNOWN_LEAKS for the ones already owned)").toEqual([]);
   }, 180_000);
+
+  it("no GET route hands a manager the customer's contact details (Q7, Q13a)", async () => {
+    // Managers see masks until the Phase 6 grant; cost and a finished
+    // delivery's address are theirs to see.
+    const { leaks } = await sweep("MANAGER", ["phone", "email", "address", "foreignOrg"]);
+    expect(leaks, "manager-visible contact details").toEqual([]);
+  }, 180_000);
+
+  it("the live stream's replay carries no phone, and no finished delivery's address to a cashier", async () => {
+    const http = await import("node:http");
+    const { publishOpsEvent } = await import("../services/opsBus");
+    const { getOpsBoardOrder } = await import("../services/opsBoard");
+    const card = await getOpsBoardOrder(ids.orgId, ids.orderId);
+    expect(card?.deliveryAddress).toBe(DELIVERED_ADDRESS);
+    // A marker first, so a reconnect naming it replays what follows.
+    const marker = publishOpsEvent(ids.orgId, { type: "summary", summary: {} });
+    publishOpsEvent(ids.orgId, { type: "order", order: card! });
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    const read = (role: string) =>
+      new Promise<string>((resolve) => {
+        let body = "";
+        const req = http.get(
+          {
+            port,
+            path: "/api/orders/board/stream",
+            headers: {
+              "x-test-role": role,
+              "x-test-org": ids.orgId,
+              "x-org-id": ids.orgId,
+              "last-event-id": String(marker.id),
+            },
+          },
+          (res) => {
+            res.on("data", (c: Buffer) => {
+              body += c.toString("utf8");
+              if (body.includes(ids.orderId)) req.destroy();
+            });
+            res.on("close", () => resolve(body));
+          },
+        );
+        req.on("error", () => resolve(body));
+        setTimeout(() => req.destroy(), 3_000);
+      });
+    try {
+      const cashier = await read("CASHIER");
+      expect(cashier, "the replay reached the cashier").toContain(ids.orderId);
+      expect(canariesIn(cashier)).toEqual([]);
+      const manager = await read("MANAGER");
+      expect(manager).toContain(ids.orderId);
+      expect(canariesIn(manager)).toEqual(["deliveredAddress"]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 30_000);
 });

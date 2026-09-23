@@ -5,6 +5,7 @@ import {
   OFFLINE_DB_PREFIX_LEGACY,
 } from "@shared/storageKeys";
 import type { QueuedSaleFields } from "./saleQueue";
+import { DEVICE_CUSTOMER_FIELDS, deviceCustomerRow, hasContactDetails, withoutContactDetails } from "@shared/customerView";
 
 export { offlineDbNameForOrg, legacyOfflineDbNameForOrg };
 
@@ -18,6 +19,56 @@ type OfflineQueueRecord = (OfflineOrder | QueuedMutation) & Record<string, unkno
 
 const QUEUE_STORE_NAMES: QueueStoreName[] = ['offline-orders', 'mutations-queue'];
 const CACHE_STORE_NAMES = ['products-cache', 'customers-cache'] as const;
+
+/** Customer edits the till may have queued; they must not hold contact details. */
+const CUSTOMER_MUTATION_TYPES = new Set(['CUSTOMER_CREATE', 'CUSTOMER_UPDATE']);
+
+/** A queued mutation as it may sit on the device: customer edits lose their contact details. */
+export function queueSafeMutation<T extends { type: string; data: any }>(mutation: T): T {
+  if (!CUSTOMER_MUTATION_TYPES.has(mutation.type) || !mutation.data || typeof mutation.data !== 'object') {
+    return mutation;
+  }
+  return { ...mutation, data: withoutContactDetails(mutation.data) };
+}
+
+const DEVICE_FIELD_SET = new Set<string>(DEVICE_CUSTOMER_FIELDS);
+
+/**
+ * The PRV-07 purge (v1.2 Phase 5). Customer rows cached before the till kept
+ * only the cashier view are cut down to it, and customer edits queued before
+ * queued edits stopped holding contact details lose them. Run on every open
+ * rather than as a schema upgrade: a version bump would wait on any tab still
+ * running the old app, and a till must never hang on its offline store.
+ * Idempotent, and a no-op once the device is clean.
+ */
+export async function purgeContactDetails(db: IDBDatabase): Promise<void> {
+  const stores = (['customers-cache', 'mutations-queue'] as const).filter((n) => db.objectStoreNames.contains(n));
+  if (stores.length === 0) return;
+  const tx = db.transaction([...stores], 'readwrite');
+  if (stores.includes('customers-cache')) {
+    const req = tx.objectStore('customers-cache').openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const row = cursor.value as Record<string, unknown>;
+      if (Object.keys(row).some((k) => !DEVICE_FIELD_SET.has(k))) cursor.update(deviceCustomerRow(row));
+      cursor.continue();
+    };
+  }
+  if (stores.includes('mutations-queue')) {
+    const req = tx.objectStore('mutations-queue').openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const record = cursor.value as QueuedMutation;
+      if (CUSTOMER_MUTATION_TYPES.has(record.type) && hasContactDetails(record.data)) {
+        cursor.update(queueSafeMutation(record));
+      }
+      cursor.continue();
+    };
+  }
+  await transactionDone(tx);
+}
 
 function upgradeOfflineDbSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains('offline-orders')) {
@@ -162,7 +213,7 @@ async function copyCacheStoreIfEmpty(
   const tx = targetDb.transaction(storeName, 'readwrite');
   const store = tx.objectStore(storeName);
   for (const record of sourceRecords) {
-    store.put(record);
+    store.put(storeName === 'customers-cache' ? deviceCustomerRow(record) : record);
   }
   await transactionDone(tx);
   return sourceRecords.length;
@@ -259,7 +310,10 @@ export async function replaceCacheStore(
   storeName: (typeof CACHE_STORE_NAMES)[number],
   rows: unknown[],
 ): Promise<void> {
-  const valid = rows.filter(
+  const projected = storeName === "customers-cache"
+    ? rows.map((r) => (r && typeof r === "object" ? deviceCustomerRow(r as Record<string, unknown>) : r))
+    : rows;
+  const valid = projected.filter(
     (r): r is Record<string, unknown> & { id: IDBValidKey } =>
       !!r &&
       typeof r === "object" &&
@@ -410,7 +464,11 @@ class OfflineStorage {
 
     this.dbPromise = (async () => {
       const dbName = await resolveOfflineDbName(orgId);
-      return openOfflineDb(dbName);
+      const db = await openOfflineDb(dbName);
+      // Before anything reads it: old full customer rows and queued contact
+      // details go (PRV-07). A failure here must not take the till offline.
+      await purgeContactDetails(db).catch((err) => console.warn('[OfflineStorage] contact purge failed:', err));
+      return db;
     })();
 
     return this.dbPromise;
@@ -513,6 +571,7 @@ class OfflineStorage {
     });
   }
 
+  /** Only the cashier view is kept, whoever fetched the list (PRV-07). */
   async cacheCustomers(customers: any[]): Promise<void> {
     await replaceCacheStore(await this.openDB(), 'customers-cache', customers);
   }
@@ -537,8 +596,9 @@ class OfflineStorage {
     const tx = db.transaction('mutations-queue', 'readwrite');
     const store = tx.objectStore('mutations-queue');
 
+    // Queued customer edits hold no contact details (PRV-07), whichever screen queued them.
     const queuedMutation: QueuedMutation = {
-      ...mutation,
+      ...queueSafeMutation(mutation),
       timestamp: mutation.timestamp ?? Date.now(),
       synced: 0
     };
@@ -562,7 +622,7 @@ class OfflineStorage {
       getRequest.onsuccess = () => {
         const current = getRequest.result;
         if (!current) return resolve();
-        const put = store.put({ ...current, ...patch, id });
+        const put = store.put(queueSafeMutation({ ...current, ...patch, id }));
         put.onsuccess = () => resolve();
         put.onerror = () => reject(put.error);
       };

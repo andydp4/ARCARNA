@@ -332,8 +332,9 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       if (!outcome.ok) return res.status(outcome.status).json({ message: outcome.message });
       const result = outcome.result as { format?: string; rows?: Record<string, unknown>[] };
       if (result.format === "csv" && result.rows) {
-        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", 'attachment; filename="products-export.csv"');
+        res.setHeader("Cache-Control", "no-store, private");
         return res.send(rowsToCsv(result.rows));
       }
       res.json(outcome.result);

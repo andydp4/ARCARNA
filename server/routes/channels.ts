@@ -1,3 +1,4 @@
+import { WEBHOOK_EVENT_TYPES } from "@shared/webhookPayload";
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { requireRole } from "../auth";
@@ -121,6 +122,13 @@ export function registerChannelAuthenticatedRoutes(
           return res.status(400).json({
             message:
               "Webhook URL must be https:// and resolve to a public address",
+          });
+        }
+        // Only events that have an explicit webhook payload can be chosen (CMP-14).
+        const unknown = (eventTypes ?? []).filter((t) => !WEBHOOK_EVENT_TYPES.includes(t));
+        if (unknown.length > 0) {
+          return res.status(400).json({
+            message: `These events cannot be sent to a webhook: ${unknown.join(", ")}. Choose from ${WEBHOOK_EVENT_TYPES.join(", ")}.`,
           });
         }
         if (secret.length < 16) {

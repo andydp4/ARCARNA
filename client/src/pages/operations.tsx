@@ -822,6 +822,7 @@ export default function OperationsCentre() {
               onOpenChange={(open) => !open && setDetailsOrderId(null)}
               settings={board.settings}
               role={user?.role}
+              currentUserId={user?.id ?? null}
               statusPending={detailsOrder ? pendingIds.has(detailsOrder.id) : false}
               blockedReason={blockedReason}
               onStatusChange={onSheetStatusChange}

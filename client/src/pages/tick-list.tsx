@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { csvRow } from '@shared/csv'
+import { csvDocument } from '@shared/csv'
 import { BACKDATE_LIMIT_DAYS, localIsoDate } from '@shared/orders/orderDate'
 import { shiftIsoDate } from '@shared/time/tradingDay'
 import { PageHeader } from '@/components/PageHeader'
@@ -68,8 +68,11 @@ export interface TickOrder {
 export interface TickCustomer {
   id: string
   name: string
-  email: string
-  phone: string
+  /** Admin and above only (Q13a); managers get the masks (Q7, v1.2 Phase 5). */
+  email?: string
+  phone?: string
+  emailMasked?: string | null
+  phoneMasked?: string | null
   totalDebt: number
   lastOrderDate: string
   orders: TickOrder[]
@@ -161,8 +164,8 @@ export default function TickList() {
 
   const filteredCustomers = tickCustomers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.phone.includes(searchTerm)
+                         (customer.email ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (customer.phone ?? '').includes(searchTerm)
     
     if (filterStatus === 'all') return matchesSearch
     if (filterStatus === 'paid') return matchesSearch && customer.totalDebt === 0
@@ -231,8 +234,8 @@ export default function TickList() {
     }
     
     // No email or phone: the CSV leaves the premises, and contact details are
-    // not part of what is owed (PRV-02). csvRow also stops a customer name
-    // like "=HYPERLINK(...)" running as a formula in a spreadsheet.
+    // not part of what is owed (PRV-02). The shared writer also stops a customer name
+    // like "=HYPERLINK(...)" running as a formula in a spreadsheet (FIX-14).
     const headers = ['Customer', 'Total Debt', 'Last Order', 'Status']
     const rows = filteredCustomers.map(customer => [
       customer.name,
@@ -241,9 +244,9 @@ export default function TickList() {
       customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
 
-    const csv = [headers, ...rows].map(row => csvRow(row)).join('\n')
+    const csv = csvDocument(headers, rows)
 
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -394,8 +397,8 @@ export default function TickList() {
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
-                              <div>{customer.email}</div>
-                              <div className="text-muted-foreground">{customer.phone}</div>
+                              <div>{customer.email || customer.emailMasked}</div>
+                              <div className="text-muted-foreground">{customer.phone || customer.phoneMasked}</div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -458,8 +461,8 @@ export default function TickList() {
                             onClick={() => setSelectedCustomer(customer)}
                           >
                             <p className="font-medium hover:underline hover:underline-offset-4">{customer.name}</p>
-                            <p className="text-sm text-muted-foreground">{customer.email}</p>
-                            <p className="text-sm text-muted-foreground">{customer.phone}</p>
+                            <p className="text-sm text-muted-foreground">{customer.email || customer.emailMasked}</p>
+                            <p className="text-sm text-muted-foreground">{customer.phone || customer.phoneMasked}</p>
                           </button>
                           <div className="text-right">
                             <p className="text-xl font-bold">£{(customer.totalDebt || 0).toFixed(2)}</p>

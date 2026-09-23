@@ -7,6 +7,7 @@ import {
   Check,
   Clock,
   Globe2,
+  MapPin,
   Pause,
   type LucideIcon,
 } from "lucide-react";
@@ -265,6 +266,19 @@ function OpsCardInner({
           <span>In at {formatTimeOfDay(derived.receivedAt, settings.timezone)}</span>
           {elapsed && <span className="tabular-nums">{elapsed} here</span>}
         </p>
+
+        {/* Where a live delivery goes (v1.2 Phase 5, Q8a): every member of
+            staff sees it while the delivery is live; the card leaves the board
+            when it is completed. No phone here: the assigned driver asks for
+            it from the order's details, and that reveal is logged. */}
+        {order.fulfilmentMethod === "delivery" && order.status !== "completed" && (order.deliveryAddress || order.deliveryPostcode) && (
+          <p className="flex items-start gap-1.5 text-xs text-foreground" data-testid={`ops-card-address-${order.id}`}>
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="min-w-0 break-words">
+              {[order.deliveryAddress, order.deliveryPostcode].filter(Boolean).join(", ")}
+            </span>
+          </p>
+        )}
 
         {(derived.urgent ||
           derived.backdated ||

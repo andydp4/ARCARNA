@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Check, Copy, Download, Phone, RotateCcw, X } from "lucide-react";
+import { Check, Copy, Download, RotateCcw, X } from "lucide-react";
 import { apiFetch } from "@/lib/appPaths";
 import { useToast } from "@/hooks/use-toast";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -25,6 +25,7 @@ import { formatTimeOfDay } from "@/lib/opsClock";
 import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsTimeline } from "./OpsTimeline";
 import { OpsRateChips } from "./OpsRateChips";
+import { OpsCustomerCall } from "./OpsCustomerCall";
 import { isAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
@@ -75,18 +76,14 @@ interface OrderDetail {
   }>;
 }
 
-interface CustomerRow {
-  id: string;
-  name?: string | null;
-  phone?: string | null;
-}
-
 export interface OpsDetailsSheetProps {
   order: BoardOrder | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   settings: OpsTimingSettings;
   role?: string;
+  /** Who is looking: the driver's call is theirs only when the delivery is assigned to them (Q8a). */
+  currentUserId?: string | null;
   statusPending?: boolean;
   /** Held while the board is stale — the same rule the cards follow. */
   blockedReason?: string | null;
@@ -156,6 +153,7 @@ function OpsDetailsBody({
   order,
   settings,
   role,
+  currentUserId,
   statusPending,
   blockedReason,
   onStatusChange,
@@ -176,16 +174,6 @@ function OpsDetailsBody({
       return response.json();
     },
   });
-
-  // The board row carries the customer's phone for whoever works the order
-  // (owner decision). The customers list only has it for admins (Q13a), so it
-  // is the fallback, not the source.
-  const { data: customers } = useQuery<CustomerRow[]>({
-    queryKey: ["/api/customers"],
-    enabled: Boolean(order.customerId) && !order.customerPhone,
-  });
-  const phone =
-    order.customerPhone ?? customers?.find((customer) => customer.id === order.customerId)?.phone ?? null;
 
   const copy = async (value: string, label: string) => {
     try {
@@ -264,14 +252,7 @@ function OpsDetailsBody({
             <p className="text-lg font-semibold text-foreground">
               {order.customerName ?? "Walk-in"}
             </p>
-            {phone && (
-              <Button asChild variant="outline" size="touch" data-testid="button-call-customer">
-                <a href={`tel:${phone}`}>
-                  <Phone className="h-4 w-4" aria-hidden />
-                  {phone}
-                </a>
-              </Button>
-            )}
+            <OpsCustomerCall key={order.id} order={order} role={role} currentUserId={currentUserId} />
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>
@@ -310,21 +291,6 @@ function OpsDetailsBody({
             )}
             Copy order number
           </Button>
-          {phone && (
-            <Button
-              size="touch"
-              variant="outline"
-              onClick={() => copy(phone, "Phone number")}
-              data-testid="button-copy-phone"
-            >
-              {copied === "Phone number" ? (
-                <Check className="h-4 w-4" aria-hidden />
-              ) : (
-                <Copy className="h-4 w-4" aria-hidden />
-              )}
-              Copy phone
-            </Button>
-          )}
         </div>
       </div>
 

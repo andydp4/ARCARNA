@@ -519,7 +519,10 @@ test.describe("order form on a phone, embedded in the Operations Centre", () => 
     await expect(nameInput, "the name field takes focus on open").toBeFocused();
     await expect(dialogs, "no dialog while the form is focused").toHaveCount(0);
 
-    await page.locator('[data-testid="input-new-customer-phone"]').fill("+447700900123");
+    // A number nobody else has: since Phase 5 a number already on file gets
+    // the "Already on the system" prompt instead of a new customer.
+    const newCustomerPhone = `+447700${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`;
+    await page.locator('[data-testid="input-new-customer-phone"]').fill(newCustomerPhone);
     await page.locator('[data-testid="input-new-customer-email"]').fill(`${suffix}@example.test`);
     await expect(dialogs, "no dialog while filling the form").toHaveCount(0);
 
@@ -548,7 +551,7 @@ test.describe("order form on a phone, embedded in the Operations Centre", () => 
     const [customerRow] = await db.select().from(customers).where(eq(customers.name, newCustomerName));
     expect(customerRow, "the customer must really be created, not merely selected in the UI").toBeTruthy();
     expect(customerRow.orgId).toBe(orgId);
-    expect(customerRow.phone).toBe("+447700900123");
+    expect(customerRow.phone).toBe(newCustomerPhone);
     expect(customerRow.email).toBe(`${suffix}@example.test`);
   });
 });

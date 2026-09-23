@@ -399,6 +399,8 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       category: customer.category,
       source: c.source,
       loyalty_points: customer.loyaltyPoints,
+      ...(typeof c.receiptEmailOptIn === 'boolean' ? { receipt_email_opt_in: c.receiptEmailOptIn } : {}),
+      ...(c.createdByUserId ? { created_by_user_id: c.createdByUserId } : {}),
       created_at: customer.createdAt,
       updated_at: customer.updatedAt,
     }).returning()
@@ -419,6 +421,9 @@ export const CustomersRepoDrizzle: CustomersRepo = {
         address: updates.address,
         category: updates.category,
         loyalty_points: updates.loyaltyPoints,
+        // The receipt-email switch never saved: the column was missing here
+        // (v1.2 Phase 5, PRV-08).
+        receipt_email_opt_in: typeof (updates as any).receiptEmailOptIn === 'boolean' ? (updates as any).receiptEmailOptIn : undefined,
         updated_at: updates.updatedAt,
         ...(updates.category !== undefined ? { manual_override_protected: 1 } : {}),
       })

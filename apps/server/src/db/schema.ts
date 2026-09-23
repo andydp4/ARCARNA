@@ -19,6 +19,10 @@ export const customers = pgTable('customers', {
   source: varchar('source', { length: 32 }),
   manual_override_protected: integer('manual_override_protected').default(0).notNull(),
   loyalty_points: integer('loyalty_points').default(0),
+  // See shared/schema.ts and migration 120. phone_e164 is kept by a trigger.
+  receipt_email_opt_in: boolean('receipt_email_opt_in').default(true).notNull(),
+  phone_e164: varchar('phone_e164', { length: 20 }),
+  created_by_user_id: varchar('created_by_user_id', { length: 255 }),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })
@@ -155,6 +159,10 @@ export const orders = pgTable('orders', {
   points_discount: numeric('points_discount',{precision:10,scale:2}),
   vat_rate: numeric('vat_rate',{precision:5,scale:2}),
   vat_amount: numeric('vat_amount',{precision:10,scale:2}),
+  // Delivery address on the order — see shared/schema.ts and migration 120.
+  delivery_address: varchar('delivery_address', { length: 1024 }),
+  delivery_postcode: varchar('delivery_postcode', { length: 16 }),
+  delivery_notes: varchar('delivery_notes', { length: 500 }),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

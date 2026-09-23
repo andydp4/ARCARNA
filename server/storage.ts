@@ -1356,52 +1356,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   async generateCSVReport(data: any, type: string): Promise<string> {
-    let csv = '';
+    // The shared writer (FIX-14): a product or customer name starting with
+    // "=" exports as text, every cell is quoted, and Excel reads it as UTF-8.
+    const { csvDocument } = await import("@shared/csv");
+    const byDay = (): unknown[][] =>
+      (data.revenue?.byDay ?? []).map((day: any) => [day.date, day.revenue, day.orders]);
 
     switch (type) {
       case 'revenue':
-        csv = 'Date,Revenue,Orders\n';
-        data.revenue.byDay.forEach((day: any) => {
-          csv += `${day.date},${day.revenue},${day.orders}\n`;
-        });
-        break;
-
+        return csvDocument(['Date', 'Revenue', 'Orders'], byDay());
       case 'orders':
-        csv = 'Product,Quantity,Revenue\n';
-        data.orders.topProducts.forEach((product: any) => {
-          csv += `${product.name},${product.quantity},${product.revenue}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Product', 'Quantity', 'Revenue'],
+          (data.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, p.revenue]),
+        );
       case 'customers':
-        csv = 'Customer,Orders,Revenue,Loyalty Points\n';
-        data.customers.topCustomers.forEach((customer: any) => {
-          csv += `${customer.name},${customer.orders},${customer.revenue},${customer.loyalty}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Customer', 'Orders', 'Revenue', 'Loyalty Points'],
+          (data.customers?.topCustomers ?? []).map((c: any) => [c.name, c.orders, c.revenue, c.loyalty]),
+        );
       case 'inventory':
-        csv = 'Product,Sold,Remaining\n';
-        data.inventory.topMoving.forEach((item: any) => {
-          csv += `${item.product},${item.sold},${item.remaining}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Product', 'Sold', 'Remaining'],
+          (data.inventory?.topMoving ?? []).map((i: any) => [i.product, i.sold, i.remaining]),
+        );
       case 'full':
-        // Generate comprehensive report
-        csv = 'FULL REPORT\n\n';
-        csv += 'REVENUE SUMMARY\n';
-        csv += `Total Revenue,${data.revenue.total}\n\n`;
-        csv += 'Daily Revenue\n';
-        csv += 'Date,Revenue,Orders\n';
-        data.revenue.byDay.forEach((day: any) => {
-          csv += `${day.date},${day.revenue},${day.orders}\n`;
-        });
-        csv += '\n';
-        break;
+        return csvDocument(['FULL REPORT'], [
+          [],
+          ['REVENUE SUMMARY'],
+          ['Total Revenue', data.revenue?.total],
+          [],
+          ['Daily Revenue'],
+          ['Date', 'Revenue', 'Orders'],
+          ...byDay(),
+        ]);
+      default:
+        return '';
     }
-
-    return csv;
   }
 
   async generatePDFReport(data: any, type: string, period?: string): Promise<Buffer> {

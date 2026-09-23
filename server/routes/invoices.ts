@@ -19,8 +19,6 @@ type InvoicePdfData = {
   paymentMethod: string | null;
   company: InvoiceCompany;
   customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
 };
@@ -65,8 +63,14 @@ async function loadInvoiceForPdf(
         }))
       : [{ name: "Order total", quantity: 1, unitPrice: doc.total, total: doc.total }];
 
+  // A VAT invoice needs the name and the billing address, nothing else
+  // (v1.2 Phase 5): no email or phone on the PDF.
   const [customer] = doc.customerId
-    ? await db.select().from(customers).where(eq(customers.id, doc.customerId)).limit(1)
+    ? await db
+        .select({ name: customers.name, address: customers.address })
+        .from(customers)
+        .where(eq(customers.id, doc.customerId))
+        .limit(1)
     : [null];
 
   return {
@@ -86,23 +90,22 @@ async function loadInvoiceForPdf(
     // Made out to the name the invoice was issued to, not whatever the
     // customer record says today.
     customerName: doc.billingName || customer?.name || undefined,
-    customerEmail: customer?.email || undefined,
-    customerPhone: customer?.phone || undefined,
     customerAddress: customer?.address || undefined,
     items,
   };
 }
 
 export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): void {
-  // Invoices carry the customer's name, email, phone and address and what they
-  // owe: manager and above, like the Credit List (owner decision Q11).
+  // Invoices carry the customer's name, billing address and what they owe:
+  // manager and above, like the Credit List (owner decision Q11). The list's
+  // email is admin only (Q13a); managers get the mask.
   const invoiceRoles = requireRole(...rolesAtLeast(CREDIT_MIN_ROLE));
 
   app.get("/api/invoices", ...scoped, invoiceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const { listInvoices } = await import("../services/invoices");
-      res.json(await listInvoices(ctx.orgId));
+      res.json(await listInvoices(ctx.orgId, ctx.role));
     } catch (error) {
       console.error("Error fetching invoices:", error);
       res.status(500).json({ message: "Failed to fetch invoices" });
@@ -151,8 +154,6 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         dueDate: data.dueDate,
         company: data.company,
         customerName: data.customerName,
-        customerEmail: data.customerEmail,
-        customerPhone: data.customerPhone,
         customerAddress: data.customerAddress,
         items: data.items,
         subtotal: data.subtotal,

@@ -25,6 +25,7 @@ import type { Express, RequestHandler } from "express";
 import { subscribeOpsEvents, replaySince, type OpsBusEntry } from "../services/opsBus";
 import { db } from "../db";
 import { opsStaff } from "@shared/schema";
+import { boardOrderForViewer } from "../services/opsBoard";
 
 /** One write per org:user per 60s — see the module doc and the brief's presence row. */
 const PRESENCE_THROTTLE_MS = 60_000;
@@ -70,8 +71,24 @@ function writeSseLine(res: { write: (chunk: string) => unknown; flush?: () => un
   res.flush?.();
 }
 
-function writeEntry(res: { write: (chunk: string) => unknown; flush?: () => unknown }, entry: OpsBusEntry): void {
-  writeSseLine(res, `id: ${entry.id}\ndata: ${JSON.stringify(entry.event)}\n\n`);
+/**
+ * One bus entry as this connection's viewer may see it. The bus carries the
+ * full card once per org; each tablet's copy is cut down for whoever signed in
+ * on it (Q8a: a completed delivery's address is managers and above), on the
+ * live stream and on a reconnect's replay alike.
+ */
+export function entryForViewer(entry: OpsBusEntry, role: string | null | undefined): OpsBusEntry {
+  if (entry.event.type !== "order") return entry;
+  return { ...entry, event: { type: "order", order: boardOrderForViewer(entry.event.order, role) } };
+}
+
+function writeEntry(
+  res: { write: (chunk: string) => unknown; flush?: () => unknown },
+  entry: OpsBusEntry,
+  role: string | null | undefined,
+): void {
+  const seen = entryForViewer(entry, role);
+  writeSseLine(res, `id: ${seen.id}\ndata: ${JSON.stringify(seen.event)}\n\n`);
 }
 
 /** Registers the SSE route. `scoped` is the same `[isAuthenticated, requireOrgContext, requireOrgScope]` chain every board-adjacent route uses. */
@@ -84,6 +101,7 @@ export function registerOpsStreamRoutes(app: Express, scoped: RequestHandler[]):
     }
     const orgId = ctx.orgId;
     const userId: string | null = req.user?.id ?? null;
+    const role: string | null = (req.orgContext as { role?: string } | undefined)?.role ?? null;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -104,10 +122,10 @@ export function registerOpsStreamRoutes(app: Express, scoped: RequestHandler[]):
       // no longer produce.
       writeSseLine(res, `event: reload\ndata: ${JSON.stringify({ reason: "gap" })}\n\n`);
     } else {
-      for (const entry of replay.entries) writeEntry(res, entry);
+      for (const entry of replay.entries) writeEntry(res, entry, role);
     }
 
-    const unsubscribe = subscribeOpsEvents(orgId, (entry) => writeEntry(res, entry));
+    const unsubscribe = subscribeOpsEvents(orgId, (entry) => writeEntry(res, entry, role));
 
     void touchPresence(orgId, userId);
 

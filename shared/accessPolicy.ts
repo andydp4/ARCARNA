@@ -1,4 +1,5 @@
 import { roleRank, type Role } from "./rbac";
+import { isMaskedValue, maskEmail, maskPhone } from "./customerView";
 
 /**
  * Who may reach what, in one place (v1.2 Phase 0B, CMP-16).
@@ -100,9 +101,19 @@ export const PRICE_GUARD_SWITCH_MIN_ROLE: Role = "ADMIN";
 
 // ---------------------------------------------------------------------------
 // Customer contact details (owner decision Q13a: admin and above). Staff below
-// that still find and serve customers: they get a flag saying whether there is
-// an email or phone on file (the receipt worker reads the address itself) and
-// the phone's last four digits to tell two customers with one name apart.
+// that still find and serve customers: they get flags saying whether there is
+// an email or phone on file (the receipt worker reads the address itself), the
+// phone's last four digits and the masked phone and email (Q7: ••4821,
+// j•••@gmail.com) to tell two customers with one name apart.
+//
+// One customer view, three versions (v1.2 Phase 5, PRV-03):
+//   Cashier  name, tier, points, the hints and masks.
+//   Manager  the cashier's view plus the past-order summary. Full contact only
+//            inside a 24-hour grant (Phase 6), so for now masks only.
+//   Admin    everything.
+// The server's queries select only the columns the version needs
+// (server/services/customerView.ts); customerForRole is the last line, applied
+// to whatever a route is about to send.
 // ---------------------------------------------------------------------------
 
 export const CONTACT_MIN_ROLE: Role = "ADMIN";
@@ -111,9 +122,59 @@ export function canSeeContactDetails(role: string | null | undefined): boolean {
   return isAtLeast(role, CONTACT_MIN_ROLE);
 }
 
-export const CONTACT_FIELDS = ["phone", "email", "address"] as const;
+/** Managers see the past-order summary (PRV-03); cashiers do not. */
+export const ORDER_SUMMARY_MIN_ROLE: Role = "MANAGER";
 
-export type CustomerContactHints = { hasEmail: boolean; hasPhone: boolean; phoneLast4: string | null };
+export function canSeeCustomerOrderSummary(role: string | null | undefined): boolean {
+  return isAtLeast(role, ORDER_SUMMARY_MIN_ROLE);
+}
+
+/**
+ * Every spelling a contact field travels under: the camelCase row, the
+ * snake_case row from apps/server's schema, and the formatted phone (it IS
+ * the phone). `scripts/audit-contact-fields.mjs` reads the same idea from the
+ * source side.
+ */
+export const CONTACT_FIELDS = ["phone", "email", "address", "phoneE164", "phone_e164"] as const;
+
+/** Customer fields that are the past-order summary or back-office bookkeeping: manager and above. */
+export const CUSTOMER_MANAGER_FIELDS = [
+  "totalSpent",
+  "total_spent",
+  "orderCount",
+  "lastOrderAt",
+  "clv",
+  "rfmScore",
+  "createdByUserId",
+  "created_by_user_id",
+  "manualOverrideProtected",
+  "manual_override_protected",
+] as const;
+
+/** Admin only: the merge flag points at another person's record. */
+export const CUSTOMER_ADMIN_FIELDS = ["possibleDuplicateOf", "possible_duplicate_of"] as const;
+
+export type CustomerContactHints = {
+  hasEmail: boolean;
+  hasPhone: boolean;
+  phoneLast4: string | null;
+  phoneMasked: string | null;
+  emailMasked: string | null;
+};
+
+/** The hints for one phone and email, computed from values that are then thrown away. */
+export function contactHints(phone: unknown, email: unknown): CustomerContactHints {
+  const p = typeof phone === "string" ? phone : "";
+  const e = typeof email === "string" ? email : "";
+  const digits = p.replace(/\D/g, "");
+  return {
+    hasEmail: e.trim() !== "",
+    hasPhone: digits !== "",
+    phoneLast4: digits.length >= 4 ? digits.slice(-4) : null,
+    phoneMasked: maskPhone(p),
+    emailMasked: maskEmail(e),
+  };
+}
 
 export function customerForRole<T extends object>(
   customer: T,
@@ -121,29 +182,143 @@ export function customerForRole<T extends object>(
 ): T | (Omit<T, (typeof CONTACT_FIELDS)[number]> & CustomerContactHints) {
   if (canSeeContactDetails(role)) return customer;
   const out: Record<string, unknown> = { ...(customer as Record<string, unknown>) };
-  const phone = typeof out.phone === "string" ? out.phone : "";
-  const email = typeof out.email === "string" ? out.email : "";
+  // A row from the view already carries the hints (computed in SQL, so the
+  // contact columns were never read); keep them rather than blank them.
+  const hints =
+    "phone" in out || "email" in out
+      ? contactHints(out.phone, out.email)
+      : {
+          hasEmail: out.hasEmail === true,
+          hasPhone: out.hasPhone === true,
+          phoneLast4: typeof out.phoneLast4 === "string" ? out.phoneLast4 : null,
+          phoneMasked: typeof out.phoneMasked === "string" ? out.phoneMasked : null,
+          emailMasked: typeof out.emailMasked === "string" ? out.emailMasked : null,
+        };
   for (const field of CONTACT_FIELDS) delete out[field];
-  const digits = phone.replace(/\D/g, "");
-  out.hasEmail = email.trim() !== "";
-  out.hasPhone = digits !== "";
-  out.phoneLast4 = digits.length >= 4 ? digits.slice(-4) : null;
+  for (const field of CUSTOMER_ADMIN_FIELDS) delete out[field];
+  if (!canSeeCustomerOrderSummary(role)) {
+    for (const field of CUSTOMER_MANAGER_FIELDS) delete out[field];
+  }
+  Object.assign(out, hints);
   return out as Omit<T, (typeof CONTACT_FIELDS)[number]> & CustomerContactHints;
 }
 
+// ---------------------------------------------------------------------------
+// Edit without reading (PRV-08). Each role edits its own set of fields; points
+// and total spent are never typed in by anyone (they come from sales and the
+// loyalty ledger); a masked value is never saved; and below admin a blank does
+// not wipe what the person could not see. The phone below admin is changed
+// only through the manager's write-only "Replace number", which is logged.
+// ---------------------------------------------------------------------------
+
+export const CUSTOMER_EDIT_FIELDS: Readonly<Record<"CASHIER" | "MANAGER" | "ADMIN", readonly string[]>> = {
+  // A cashier creates a walk-in customer at the till; they never edit one.
+  CASHIER: ["name", "phone", "email", "address", "receiptEmailOptIn", "source"],
+  MANAGER: ["name", "email", "address", "category", "receiptEmailOptIn", "source"],
+  ADMIN: ["name", "phone", "email", "address", "category", "receiptEmailOptIn", "source"],
+};
+
+export function customerEditFieldsFor(role: string | null | undefined): readonly string[] {
+  if (canSeeContactDetails(role)) return CUSTOMER_EDIT_FIELDS.ADMIN;
+  if (isAtLeast(role, "MANAGER")) return CUSTOMER_EDIT_FIELDS.MANAGER;
+  if (isAtLeast(role, "CASHIER")) return CUSTOMER_EDIT_FIELDS.CASHIER;
+  return [];
+}
+
 /**
- * A customer edit from someone who cannot see contact details. They cannot see
- * what is there, so a blank (the edit form's empty field) must not wipe it; a
- * value they type is still saved.
+ * A customer create or edit, cut down to what `role` may write. Unknown
+ * fields, points, total spent, org and ids are dropped; so is any masked
+ * value (it came back from a mask, not from a person); and below admin a
+ * blank contact field is dropped rather than saved over what is there.
  */
-export function customerEditForRole<T extends Record<string, unknown>>(body: T, role: string | null | undefined): T {
-  if (canSeeContactDetails(role)) return body;
-  const out: Record<string, unknown> = { ...body };
-  for (const field of CONTACT_FIELDS) {
-    const v = out[field];
-    if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) delete out[field];
+export function customerEditForRole<T extends Record<string, unknown>>(
+  body: T,
+  role: string | null | undefined,
+): Partial<T> {
+  const allowed = new Set(customerEditFieldsFor(role));
+  const seesContact = canSeeContactDetails(role);
+  const out: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(body)) {
+    if (!allowed.has(field)) continue;
+    if (isMaskedValue(value)) continue;
+    const isContact = (CONTACT_FIELDS as readonly string[]).includes(field);
+    if (isContact && !seesContact && (value === null || value === undefined || (typeof value === "string" && value.trim() === ""))) {
+      continue;
+    }
+    if (field === "receiptEmailOptIn" && typeof value !== "boolean") continue;
+    out[field] = value;
   }
-  return out as T;
+  return out as Partial<T>;
+}
+
+/** The manager's write-only "Replace number" (PRV-08): managers and above, logged. */
+export const REPLACE_PHONE_MIN_ROLE: Role = "MANAGER";
+
+/**
+ * The customers:read_contact API permission (PRV-03): an API key without it
+ * gets the same masked view a manager gets. `*` keys have every permission.
+ */
+export const API_READ_CONTACT_SCOPE = "customers:read_contact";
+
+export function apiKeyCanReadContact(scopes: readonly string[] | null | undefined): boolean {
+  return !!scopes && (scopes.includes(API_READ_CONTACT_SCOPE) || scopes.includes("*"));
+}
+
+// ---------------------------------------------------------------------------
+// Order history (owner decision Q10a, CMP-06). A cashier's history is the
+// current trading day plus the orders they keyed in or completed in the last
+// seven days; managers and above see all of it. The palette searches on the
+// server within the same bound, so no device is pre-loaded with every order.
+// ---------------------------------------------------------------------------
+
+export const ORDER_HISTORY_FULL_MIN_ROLE: Role = "MANAGER";
+export const CASHIER_ORDER_HISTORY_DAYS = 7;
+
+export function seesFullOrderHistory(role: string | null | undefined): boolean {
+  return isAtLeast(role, ORDER_HISTORY_FULL_MIN_ROLE);
+}
+
+// ---------------------------------------------------------------------------
+// Delivery address and the driver's call (owner decision Q8a, PRV-04/05). The
+// address is on the order: every member of staff sees it while the delivery is
+// live, managers and above afterwards too. The phone is revealed only to the
+// person the order is assigned to, once it is out for delivery and until it is
+// completed; admins always. Every reveal is logged and never cached.
+// Managers get the phone inside a Phase 6 grant, not before.
+// ---------------------------------------------------------------------------
+
+export const DELIVERY_ADDRESS_AFTER_MIN_ROLE: Role = "MANAGER";
+
+export type DeliveryOrderState = {
+  fulfilmentMethod: string | null | undefined;
+  status: string | null | undefined;
+};
+
+export function canSeeDeliveryAddress(role: string | null | undefined, order: DeliveryOrderState): boolean {
+  if (!isAtLeast(role, "CASHIER")) return false;
+  if (order.status !== "completed") return true;
+  return isAtLeast(role, DELIVERY_ADDRESS_AFTER_MIN_ROLE);
+}
+
+export type DriverCallState = DeliveryOrderState & {
+  assignedUserId: string | null | undefined;
+  outForDeliveryAt: Date | string | null | undefined;
+};
+
+export type DriverCallVerdict = { ok: true; via: "admin" | "assigned-driver" } | { ok: false; reason: string };
+
+export function driverCallVerdict(
+  role: string | null | undefined,
+  userId: string | null | undefined,
+  order: DriverCallState,
+): DriverCallVerdict {
+  if (canSeeContactDetails(role)) return { ok: true, via: "admin" };
+  if (!isAtLeast(role, "CASHIER") || !userId) return { ok: false, reason: "Staff only." };
+  if (order.fulfilmentMethod !== "delivery") return { ok: false, reason: "Only a delivery has a driver's call." };
+  if (order.assignedUserId !== userId) return { ok: false, reason: "Only the person delivering this order can call the customer." };
+  if (!order.outForDeliveryAt) return { ok: false, reason: "The number is shown once the order is out for delivery." };
+  if (order.status === "completed") return { ok: false, reason: "This delivery is finished." };
+  return { ok: true, via: "assigned-driver" };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +382,14 @@ const NEEDS_A_LOOK =
   "Needs a look and Price overrides Evidence are manager and above, and each viewer gets only exceptions about people they outrank; the rules are admin only and logged (v1.2 Phase 4, CMP-02, CMP-04, PRC-09).";
 const BULK_MIN =
   "Bulk \"Set minimum price\" is managers and admins, previewed first and written to price history; a manager's change tells the owner (v1.2 Phase 4, PRC-05).";
+const CUSTOMER_VIEW =
+  "One customer view per role: contact details are admin only, managers see masks and the order summary, cashiers name, tier and points (PRV-03, Q7, Q13a).";
+const PHONE_LOOKUP =
+  "Finding a customer by phone is exact-match on the formatted number, at most three, masked, and rate-limited per person (PRV-06).";
+const DELIVERY =
+  "The delivery address is on the order; the driver's call reveals the phone to the assigned driver only while out for delivery, admins always, every reveal logged (Q8a, PRV-04/05).";
+const ORDER_HISTORY =
+  "A cashier's order history is today plus their own last seven days; the palette searches on the server inside that bound (Q10a, CMP-06).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -297,6 +480,18 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "GET", path: "/api/cashier-analytics/export.csv", minRole: "ADMIN", reason: EXPORT },
   { method: "POST", path: "/api/evidence/exports", minRole: "ADMIN", reason: EXPORT },
 
+  // Customer view (v1.2 Phase 5).
+  { method: "POST", path: "/api/customers/lookup-phone", minRole: "CASHIER", reason: PHONE_LOOKUP },
+  { method: "GET", path: "/api/customers/possible-duplicates", minRole: "ADMIN", reason: CUSTOMER_VIEW },
+  { method: "POST", path: "/api/customers/:id/replace-phone", minRole: "MANAGER", reason: CUSTOMER_VIEW },
+  { method: "POST", path: "/api/customers/:id/saved-address", minRole: "CASHIER", reason: DELIVERY },
+  { method: "POST", path: "/api/orders/board/phone-search", minRole: "CASHIER", reason: PHONE_LOOKUP },
+  { method: "POST", path: "/api/orders/:id/customer-phone", minRole: "CASHIER", reason: DELIVERY },
+  { method: "PATCH", path: "/api/orders/:id/delivery", minRole: "CASHIER", reason: DELIVERY },
+  { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
+  { method: "GET", path: "/api/whatsapp/conversations", minRole: "CASHIER", reason: CUSTOMER_VIEW },
+  { method: "GET", path: "/api/whatsapp/conversations/:id", minRole: "CASHIER", reason: CUSTOMER_VIEW },
+
   // Customer intelligence.
   { method: "GET", path: "/api/customers/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
   { method: "GET", path: "/api/customers/:id/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },
@@ -344,4 +539,6 @@ export const CANARIES = {
   email: "canary@example.invalid",
   /** £13.37, as stored (numeric(10,2) → "13.37") and as a JSON number. */
   costPrice: "13.37",
+  /** The customer's saved address: admin only (v1.2 Phase 5). */
+  address: "1 Canary Lane",
 } as const;

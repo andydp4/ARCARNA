@@ -13,7 +13,7 @@ import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { EXPORT_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
-import { csvRow } from "@shared/csv";
+import { csvDocument } from "@shared/csv";
 import { isRole, type Role } from "@shared/rbac";
 import { currentTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import {
@@ -233,7 +233,7 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
         return canSeePayRow(viewer, { key, role: people.get(key)?.role ?? null });
       });
       const rows = visible.map((row) =>
-        csvRow([
+        [
           row.cashierCode ?? "",
           people.get(keyOf(row))?.name ?? "Unknown",
           row.summary.closedAt?.toISOString() ?? "",
@@ -242,7 +242,7 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
           row.summary.commissionRate,
           row.summary.commissionAmount,
           row.summary.businessRetainedProfit,
-        ]),
+        ],
       );
       await recordAdminAudit(req, {
         actorUserId: req.user?.id ?? "unknown",
@@ -252,9 +252,9 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
         orgId: ctx.orgId,
         metadata: { from: range.fromIso, to: range.toIso, rows: rows.length },
       });
-      const csv = [header.join(","), ...rows].join("\n");
+      const csv = csvDocument(header, rows);
 
-      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="cashier-payroll-export.csv"');
       res.send(csv);
     } catch (error) {

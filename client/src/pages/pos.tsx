@@ -31,6 +31,7 @@
  * omitted) is unchanged, because a standalone form's container is the
  * viewport.
  */
+import { deliveryOrderFields, EMPTY_POS_DELIVERY, type PosDeliveryState } from "@/components/pos-delivery-details";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
@@ -195,6 +196,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">("collection");
+  const [delivery, setDelivery] = useState<PosDeliveryState>(EMPTY_POS_DELIVERY);
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -369,6 +371,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       setTenderLegs(sale.payments.map((leg) => ({ method: leg.method, amount: leg.amount.toFixed(2) })));
     }
     setFulfilmentMethod(sale.fulfilmentMethod);
+    setDelivery({ ...EMPTY_POS_DELIVERY, ...sale.delivery });
     if (sale.channel === "pos" || sale.channel === "phone" || sale.channel === "whatsapp") setChannel(sale.channel);
     if (sale.personalUseReason) setPersonalUseReason(sale.personalUseReason);
     if (sale.orderDate) setOrderDate(sale.orderDate);
@@ -415,12 +418,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     );
   }, [selectedCustomer, loyaltyTiers]);
 
-  // Filter customers for search
+  // Filter customers for search. Below admin there is no number here to
+  // search (not even the last four: no partial matches, PRV-06); a whole
+  // number is looked up on the server by the picker instead.
   const filteredCustomers = customers.filter(
     (customer) =>
       customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      ((customer.phone ?? customer.phoneLast4 ?? "") !== "" &&
-        (customer.phone ?? customer.phoneLast4 ?? "").includes(customerSearch)) ||
+      (!!customer.phone && customer.phone.includes(customerSearch)) ||
       (customer.email && customer.email.toLowerCase().includes(customerSearch.toLowerCase()))
   );
 
@@ -610,6 +614,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
+      setDelivery(EMPTY_POS_DELIVERY);
       // Same reason: one backdated entry must not quietly date every later
       // sale on this till to last week.
       setOrderDate(localIsoDate());
@@ -966,7 +971,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       return;
     }
 
+    // A delivery needs somewhere to go (v1.2 Phase 5); the server refuses it too.
+    if (fulfilmentMethod === "delivery" && (!delivery.address.trim() || !delivery.postcode.trim())) {
+      toast({
+        title: "Add the delivery address",
+        description: "A delivery needs the address and postcode before payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const orderData: any = {
+      ...deliveryOrderFields(fulfilmentMethod, delivery, selectedCustomer?.id ?? null),
       lines: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -1171,7 +1187,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             itemCount={cartItemCount}
             customerName={selectedCustomer?.name ?? null}
             customerEmail={
-              selectedCustomer?.email ?? (customerHasEmail(selectedCustomer) ? "the email on file" : null)
+              selectedCustomer?.email ??
+              selectedCustomer?.emailMasked ??
+              (customerHasEmail(selectedCustomer) ? "the email on file" : null)
             }
             paymentMethod={paymentMethod}
             setPaymentMethod={setPaymentMethod}
@@ -1186,6 +1204,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             setOrderDate={setOrderDate}
             fulfilmentMethod={fulfilmentMethod}
             setFulfilmentMethod={setFulfilmentMethod}
+            delivery={delivery}
+            setDelivery={setDelivery}
+            customerId={selectedCustomer?.id ?? null}
             giftCardPayment={giftCardPayment}
             setGiftCardPayment={setGiftCardPayment}
             channel={channel}

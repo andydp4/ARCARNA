@@ -42,6 +42,9 @@ jobs:
       - name: Audit migration numbering (no two migrations share a number)
         run: node scripts/audit-migration-numbers.mjs
 
+      - name: Audit customer contact fields (read only through the customer view)
+        run: node scripts/audit-contact-fields.mjs
+
       # --omit=dev deliberately: a CVE in eslint or playwright does not reach a
       # customer, and failing the build on one trains everyone to ignore this
       # step. This gates only what actually ships.
@@ -331,6 +334,8 @@ jobs:
             server/__tests__/uiSeen.test.ts \
             server/__tests__/jobClaimRace.test.ts \
             server/__tests__/roleMatrix.test.ts \
+            server/__tests__/customerViews.test.ts \
+            server/__tests__/customerExports.test.ts \
             server/__tests__/productWrites.test.ts \
             server/__tests__/productMinPrice.test.ts \
             server/__tests__/priceExceptions.test.ts \

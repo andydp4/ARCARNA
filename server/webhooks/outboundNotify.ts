@@ -1,16 +1,24 @@
 import { createHmac } from "crypto";
 import { storage } from "../storage";
 import { assertPublicHttpsUrl } from "../lib/safeUrl";
+import { orderIdInPayload, orgIdInPayload, webhookPayloadFor } from "@shared/webhookPayload";
 
 const WEBHOOK_TIMEOUT_MS = 5_000;
 
-function orgIdFromPayload(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as Record<string, unknown>;
-  const order = p.order as Record<string, unknown> | undefined;
-  if (order?.orgId) return String(order.orgId);
-  if (order?.org_id) return String(order.org_id);
-  return null;
+/**
+ * The org an event belongs to. Order events carry only the order id (the
+ * org is not repeated in every payload), so it is read from the order.
+ */
+async function resolveOrgId(payload: unknown): Promise<string | null> {
+  const direct = orgIdInPayload(payload);
+  if (direct) return direct;
+  const orderId = orderIdInPayload(payload);
+  if (!orderId) return null;
+  const { db } = await import("../db");
+  const { sql } = await import("drizzle-orm");
+  const res = await db.execute(sql`SELECT org_id FROM orders WHERE id = ${orderId} LIMIT 1`);
+  const row = res.rows?.[0] as { org_id?: string } | undefined;
+  return row?.org_id ? String(row.org_id) : null;
 }
 
 /**
@@ -22,14 +30,18 @@ export async function notifyOutboundWebhooksForEvent(event: {
   eventType: string;
   payload: unknown;
 }): Promise<void> {
-  const orgId = orgIdFromPayload(event.payload);
+  // An explicit payload per event (CMP-14): never the internal outbox payload.
+  const payload = webhookPayloadFor(event.eventType, event.payload);
+  if (!payload) return;
+  const orgId = await resolveOrgId(event.payload);
   if (!orgId) return;
 
   const hooks = await storage.listActiveOutboundWebhooksForOrg(orgId);
+  if (hooks.length === 0) return;
   const bodyObj = {
     eventId: event.eventId,
     eventType: event.eventType,
-    payload: event.payload,
+    payload,
   };
   const body = JSON.stringify(bodyObj);
 

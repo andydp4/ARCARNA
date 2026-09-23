@@ -12,6 +12,8 @@
  *   POST /api/whatsapp/conversations/:id/read
  *   POST /api/whatsapp/conversations/:id/reply
  */
+import { canSeeContactDetails, customerForRole, rolesAtLeast } from "@shared/accessPolicy";
+import { isMaskedValue, maskPhone, whatsappMessageForInbox } from "@shared/customerView";
 import type { Express, Request, RequestHandler } from "express";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
@@ -27,6 +29,23 @@ const OUTSIDE_WINDOW_MESSAGE =
   "This conversation is outside WhatsApp's customer service window. Use an approved template.";
 
 /** Public webhook endpoints — must be registered BEFORE auth middleware. */
+/**
+ * A WhatsApp conversation as `role` may see it (v1.2 Phase 5, Q7): the
+ * sender's number is the customer's phone, so below admin it is masked
+ * (••4821). Replies still go out: the server sends to the stored number.
+ */
+function conversationForRole<T extends { phone?: string | null; waId?: string | null }>(
+  conversation: T,
+  role: string | null | undefined,
+): T {
+  if (canSeeContactDetails(role)) return conversation;
+  return {
+    ...conversation,
+    phone: maskPhone(conversation.phone) ?? null,
+    waId: maskPhone(conversation.waId) ?? "",
+  };
+}
+
 export function registerWhatsappPublicRoutes(app: Express): void {
   // GET verification handshake.
   app.get("/api/whatsapp/webhook", (req, res) => {
@@ -119,27 +138,40 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.get("/api/whatsapp/conversations", ...scoped, async (req: any, res) => {
+  // The inbox is staff only, and neither the list nor a conversation is kept
+  // by a browser or the service worker (v1.2 Phase 5, PRV-07).
+  const inboxRoles = requireRole(...rolesAtLeast("CASHIER"));
+  const noStore = (res: any) => {
+    res.setHeader("Cache-Control", "no-store, private");
+    res.setHeader("Pragma", "no-cache");
+  };
+
+  app.get("/api/whatsapp/conversations", ...scoped, inboxRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      noStore(res);
+      const ctx = req.orgContext as { orgId: string; role?: string };
       const search = typeof req.query.search === "string" ? req.query.search : undefined;
-      const conversations = await store.listConversations(ctx.orgId, { search });
-      res.json(conversations);
+      const conversations = await store.listConversations(ctx.orgId, {
+        search,
+        searchPhone: canSeeContactDetails(ctx.role),
+      });
+      res.json(conversations.map((c) => conversationForRole(c, ctx.role)));
     } catch (error) {
       console.error("[whatsapp] list conversations error", error);
       res.status(500).json({ message: "Failed to list conversations" });
     }
   });
 
-  app.get("/api/whatsapp/conversations/:id", ...scoped, async (req: any, res) => {
+  app.get("/api/whatsapp/conversations/:id", ...scoped, inboxRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      noStore(res);
+      const ctx = req.orgContext as { orgId: string; role?: string };
       const conversation = await store.getConversation(req.params.id, ctx.orgId);
       if (!conversation) return res.status(404).json({ message: "Conversation not found" });
       const messages = await store.listMessages(req.params.id, ctx.orgId);
       res.json({
-        conversation,
-        messages,
+        conversation: conversationForRole(conversation, ctx.role),
+        messages: messages.map((m) => whatsappMessageForInbox(m)),
         withinServiceWindow: isWithinServiceWindow(conversation.lastInboundAt),
       });
     } catch (error) {
@@ -282,12 +314,12 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
         const conversation = await store.getConversation(req.params.id, ctx.orgId);
         if (!conversation) return res.status(404).json({ message: "Conversation not found" });
 
-        const name =
-          (typeof req.body?.name === "string" && req.body.name.trim()) ||
-          conversation.profileName ||
-          conversation.phone;
-        const phone =
-          (typeof req.body?.phone === "string" && req.body.phone.trim()) || conversation.phone;
+        // A masked value sent back from the inbox is never saved (PRV-08): the
+        // stored number is used instead.
+        const typedName = typeof req.body?.name === "string" && !isMaskedValue(req.body.name) ? req.body.name.trim() : "";
+        const typedPhone = typeof req.body?.phone === "string" && !isMaskedValue(req.body.phone) ? req.body.phone.trim() : "";
+        const name = typedName || conversation.profileName || conversation.phone;
+        const phone = typedPhone || conversation.phone;
 
         const customer = await store.createCustomerFromConversation({
           orgId: ctx.orgId,
@@ -305,7 +337,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           orgId: ctx.orgId,
           metadata: { conversationId: conversation.id },
         });
-        res.status(201).json({ customer });
+        res.status(201).json({ customer: customerForRole(customer, ctx.role) });
       } catch (error) {
         console.error("[whatsapp] create customer error", error);
         res.status(500).json({ message: "Failed to create customer" });
@@ -376,7 +408,9 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
             customerId: conversation.customerId,
             channel: "whatsapp",
             conversationId: conversation.id,
-            note: `WhatsApp order from ${conversation.profileName || conversation.phone}: ${intent?.rawText ?? ""}`.trim(),
+            // The till's draft note: a name or the masked number, never the
+            // number itself (drafts hold no contact details, PRV-07).
+            note: `WhatsApp order from ${conversation.profileName || maskPhone(conversation.phone) || "a customer"}: ${intent?.rawText ?? ""}`.trim(),
             items,
           },
         });

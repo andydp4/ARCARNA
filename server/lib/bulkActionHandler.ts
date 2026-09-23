@@ -11,7 +11,7 @@ import {
 } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { csvRow } from "@shared/csv";
+import { csvFromRecords } from "@shared/csv";
 
 type OrgContext = { orgId: string; role: Role; userId?: string };
 
@@ -158,11 +158,7 @@ async function handleProductBulk(
 }
 
 
+/** The shared writer: quoted, formula-safe, UTF-8 marked (FIX-14). */
 export function rowsToCsv(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return "";
-  const keys = Object.keys(rows[0]);
-  const header = keys.join(",");
-  // csvCell also neutralises cells a spreadsheet would run as a formula (PRV-02).
-  const lines = rows.map((row) => csvRow(keys.map((key) => row[key])));
-  return [header, ...lines].join("\n");
+  return csvFromRecords(rows);
 }

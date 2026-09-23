@@ -44,19 +44,22 @@ export async function findCustomerCandidatesByName(
   orgId: string,
   name: string,
   limit = 5,
-): Promise<Customer[]> {
+): Promise<Array<{ id: string; name: string }>> {
   const term = name.trim();
+  // The name and id only: the assistant is open to every role, and a pick
+  // list needs nothing else (v1.2 Phase 5, PRV-03).
+  const cols = { id: customers.id, name: customers.name };
   if (!term) return [];
   // Every exact match, not the first: two customers called "Bunny" is the
   // case that must be asked about.
   const exact = await db
-    .select()
+    .select(cols)
     .from(customers)
     .where(and(eq(customers.orgId, orgId), ilike(customers.name, escapeLike(term))))
     .limit(limit);
   if (exact.length > 0) return exact;
   return db
-    .select()
+    .select(cols)
     .from(customers)
     .where(and(eq(customers.orgId, orgId), ilike(customers.name, `%${escapeLike(term)}%`)))
     .limit(limit);

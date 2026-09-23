@@ -62,13 +62,13 @@ interface InvoiceData {
   dueDate: string;
   /** Issuing organisation's details */
   company: InvoiceCompanyInfo;
-  /** Customer name for billing section */
+  /**
+   * The billing section is the name and the billing address, which is all a
+   * VAT invoice needs (v1.2 Phase 5). There is deliberately no email or phone
+   * field: a PDF is forwarded and printed, and neither belongs on it.
+   */
   customerName?: string;
-  /** Customer email for billing section */
-  customerEmail?: string;
-  /** Customer phone for billing section */
-  customerPhone?: string;
-  /** Customer address (multi-line supported) */
+  /** Customer billing address (multi-line supported) */
   customerAddress?: string;
   /** Line items to display in invoice table */
   items: InvoiceLineItem[];
@@ -330,7 +330,7 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData, startY
 
   // Right column: Customer billing address
   let rightBottom = y;
-  if (data.customerName || data.customerEmail) {
+  if (data.customerName || data.customerAddress) {
     const billX = 350;
     const billWidth = 195;
     doc.font('Helvetica-Bold').fontSize(10).fillColor(INK);
@@ -340,12 +340,6 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData, startY
     doc.font('Helvetica').fontSize(10).fillColor(MUTED);
     if (data.customerName) {
       billY = drawLine(doc, data.customerName, billX, billY, { width: billWidth, gap: 2 });
-    }
-    if (data.customerEmail) {
-      billY = drawLine(doc, data.customerEmail, billX, billY, { width: billWidth, gap: 2 });
-    }
-    if (data.customerPhone) {
-      billY = drawLine(doc, data.customerPhone, billX, billY, { width: billWidth, gap: 2 });
     }
     if (data.customerAddress) {
       billY = drawLine(doc, data.customerAddress, billX, billY, { width: billWidth, gap: 2 });

@@ -1,3 +1,4 @@
+import { csvFromRecords } from "@shared/csv";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -112,19 +113,17 @@ export function ExpenseReportsPage() {
       });
       return;
     }
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      Object.keys(data[0]).join(",") +
-      "\n" +
-      data.map((e: any) => Object.values(e).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
+    // The shared writer (FIX-14): quoted, formula-safe, UTF-8 marked. A blob
+    // rather than a data: URI, which encodeURI mangled on "#" and "%".
+    const blob = new Blob([csvFromRecords(data)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `${filename}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast({
       title: "Download started",
       description: "Your CSV file should begin downloading shortly.",
