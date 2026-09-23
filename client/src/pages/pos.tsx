@@ -45,6 +45,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { PosOrderLines } from "@/components/pos-order-lines";
 import { PosTopSellers } from "@/components/pos-top-sellers";
 import { PosCheckoutStep, type OrderExpense, type TenderLeg } from "@/components/pos-checkout-step";
+import { freshSplitLegs, hasUnchosenMethod } from "@/lib/splitTender";
 import { classifyOrderDate, localIsoDate } from "@shared/orders/orderDate";
 import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-types";
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
@@ -149,10 +150,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // default, because most sales are one tender and the extra controls would
   // just slow the till down.
   const [splitPayment, setSplitPayment] = useState(false);
-  const [tenderLegs, setTenderLegs] = useState<TenderLeg[]>([
-    { method: "cash", amount: "" },
-    { method: "card", amount: "" },
-  ]);
+  const [tenderLegs, setTenderLegs] = useState<TenderLeg[]>(() => freshSplitLegs());
+  // Switching Split on starts clean rows, seeded from the method already
+  // picked — never a stale row from the last sale or a pre-filled "Card".
+  const toggleSplitPayment = (on: boolean) => {
+    if (on) setTenderLegs(freshSplitLegs(paymentMethod));
+    setSplitPayment(on);
+  };
   // The day the order is for. Today unless the cashier says otherwise — a
   // missed day being keyed in afterwards, or a pre-order. Sent only when it is
   // not today, so an ordinary sale is dated by the server, in the org's zone.
@@ -485,6 +489,9 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       // sale on this till to last week.
       setOrderDate(localIsoDate());
       setOrderExpenses([]);
+      // Nor may one split sale leave its rows and amounts for the next customer.
+      setSplitPayment(false);
+      setTenderLegs(freshSplitLegs());
       setExpenseDescription("");
       setExpenseAmount("");
       setChannel("pos");
@@ -827,6 +834,14 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       orderData.expenses = orderExpenses;
     }
     if (splitPayment) {
+      if (hasUnchosenMethod(tenderLegs)) {
+        toast({
+          title: "Say how each part was paid",
+          description: "Pick Cash, Card, Transfer or On credit for every amount in the split.",
+          variant: "destructive",
+        });
+        return;
+      }
       const legs = tenderLegs
         .map((leg) => ({ method: leg.method, amount: Number(leg.amount) }))
         .filter((leg) => Number.isFinite(leg.amount) && leg.amount > 0);
@@ -980,7 +995,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             personalUseReason={personalUseReason}
             setPersonalUseReason={setPersonalUseReason}
             splitPayment={splitPayment}
-            setSplitPayment={setSplitPayment}
+            setSplitPayment={toggleSplitPayment}
             tenderLegs={tenderLegs}
             setTenderLegs={setTenderLegs}
             splitRemaining={splitRemaining}

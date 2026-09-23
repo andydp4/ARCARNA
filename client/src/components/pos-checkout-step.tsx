@@ -220,8 +220,12 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                         p.setTenderLegs((legs) => legs.map((l, i) => (i === index ? { ...l, method: v } : l)))
                       }
                     >
-                      <SelectTrigger className="min-h-[44px] flex-1" aria-label={`Payment type ${index + 1}`}>
-                        <SelectValue />
+                      <SelectTrigger
+                        className={cn("min-h-[44px] flex-1", !leg.method && "border-warning")}
+                        aria-label={`Payment type ${index + 1}`}
+                        data-testid={`select-tender-method-${index}`}
+                      >
+                        <SelectValue placeholder="Choose…" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
@@ -262,7 +266,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                     variant="outline"
                     size="sm"
                     className="lm-btn-outline min-h-[44px]"
-                    onClick={() => p.setTenderLegs((legs) => [...legs, { method: "cash", amount: "" }])}
+                    onClick={() => p.setTenderLegs((legs) => [...legs, { method: "", amount: "" }])}
                   >
                     <Plus className="mr-1 h-4 w-4" />
                     Add payment
