@@ -12,3 +12,11 @@ export function isUiSeenKey(value: unknown): value is string {
 /** Account-level keys. The per-device localStorage keys these replace live beside each feature. */
 export const whatsNewAccountKey = (version: string) => `whatsNew:${version}`;
 export const opsTourAccountKey = (version: string) => `opsTour:${version}`;
+
+/**
+ * Each Centre's short tour (v1.2 Phase 3), e.g. "centreTour:stock-1.2.0".
+ * Bump the version when a Centre's layout changes enough to show it again.
+ */
+export const CENTRE_TOUR_VERSION = "1.2.0";
+export const centreTourAccountKey = (centre: string, version: string = CENTRE_TOUR_VERSION) =>
+  `centreTour:${centre}-${version}`;

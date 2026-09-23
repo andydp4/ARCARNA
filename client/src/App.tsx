@@ -97,6 +97,8 @@ const AuditLogsPage = lazy(() => import("@/pages/audit-logs"));
 const ScheduledReportsPage = lazy(() => import("@/pages/scheduled-reports"));
 const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
 const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
+const SuppliersPage = lazy(() => import("@/pages/suppliers"));
+const StockLevelsPage = lazy(() => import("@/pages/stock-levels"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignOutPage = lazy(() => import("@/pages/sign-out"));
 const PrivacyNoticePageRaw = lazy(() => import("@/pages/privacy"));
@@ -335,6 +337,14 @@ function Router() {
           </Route>
           <Route path="/purchase-drafts">
             <RequireRole href="/purchase-drafts"><PurchaseDraftsPage /></RequireRole>
+          </Route>
+          {/* Stock Centre (v1.2 Phase 3). Suppliers moved here from the
+              Settings tabs; Stock levels is the cashier's cost-free view. */}
+          <Route path="/suppliers">
+            <RequireRole href="/suppliers"><SuppliersPage /></RequireRole>
+          </Route>
+          <Route path="/stock-levels">
+            <RequireRole href="/stock-levels"><StockLevelsPage /></RequireRole>
           </Route>
         </Layout>
         </AccessGate>

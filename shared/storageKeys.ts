@@ -58,3 +58,6 @@ export function migrateStorageKey(legacyKey: string, newKey: string): string | n
   }
   return null;
 }
+
+/** The sidebar pin (v1.2 Phase 3): remembered per device, like the other shell preferences. */
+export const STORAGE_SIDEBAR_PINNED = "arcarna.sidebar.pinned";

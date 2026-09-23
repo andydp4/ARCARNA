@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,7 +31,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import type { SupplierCostCheck } from "@shared/purchasing/supplierCostCheck";
+import { SUPPLIER_COST_TOLERANCE_PERCENT } from "@shared/purchasing/supplierCostCheck";
 
 type Supplier = {
   id: string;
@@ -55,8 +59,34 @@ type ProductSupplier = {
   leadTimeOverrideDays?: number | null;
   isPreferred: number;
   productName: string;
+  productSku?: string;
+  /** The cost on the product card, beside the supplier's price. */
+  productCostPrice?: string | null;
+  /** Worked out on the server (shared/purchasing/supplierCostCheck.ts). */
+  costCheck?: SupplierCostCheck;
   supplierName: string;
 };
+
+const money = (value: number | null | undefined) => (value == null ? "—" : `£${value.toFixed(2)}`);
+
+/** What the flag says, in the shop's words. */
+function costCheckLabel(check: SupplierCostCheck | undefined): string {
+  if (!check) return "—";
+  switch (check.status) {
+    case "match":
+      return "Matches";
+    case "differs": {
+      const pct = check.diffPercent ?? 0;
+      return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}% vs card`;
+    }
+    case "missing-supplier":
+      return "No supplier price";
+    case "missing-card":
+      return "No cost on card";
+    default:
+      return "No prices";
+  }
+}
 
 type Product = { id: string; name: string; productId: string };
 
@@ -88,6 +118,9 @@ export function SuppliersHub() {
     leadTimeOverrideDays: "",
     isPreferred: false,
   });
+
+  const [supplierFilter, setSupplierFilter] = useState<string>("all");
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
@@ -159,7 +192,7 @@ export function SuppliersHub() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/product-suppliers"] });
       setMappingOpen(false);
-      toast({ title: "Mapping saved" });
+      toast({ title: "Supplier price saved" });
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -206,6 +239,16 @@ export function SuppliersHub() {
   };
 
   const activeSuppliers = suppliers.filter((s) => s.isActive === 1);
+  const flaggedCount = mappings.filter((m) => m.costCheck?.flagged).length;
+  const shownMappings = useMemo(
+    () =>
+      mappings.filter(
+        (m) =>
+          (supplierFilter === "all" || m.supplierId === supplierFilter) &&
+          (!flaggedOnly || m.costCheck?.flagged),
+      ),
+    [mappings, supplierFilter, flaggedOnly],
+  );
 
   return (
     <div className="space-y-6">
@@ -287,35 +330,94 @@ export function SuppliersHub() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Product–supplier mapping</CardTitle>
-            <CardDescription>Cost, pack size, and preferred supplier per product</CardDescription>
+            <CardTitle>Supplier prices</CardTitle>
+            <CardDescription>
+              Each supplier's price beside the cost on the product card. Flagged when they differ by more than{" "}
+              {SUPPLIER_COST_TOLERANCE_PERCENT}%, or when either is missing — margins are worked out from the card.
+            </CardDescription>
           </div>
           {canMutate && (
             <Button size="sm" onClick={() => setMappingOpen(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Add mapping
+              Add supplier price
             </Button>
           )}
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="space-y-3 overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="w-full sm:w-64">
+              <Label htmlFor="supplier-price-filter" className="sr-only">
+                Supplier
+              </Label>
+              <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                <SelectTrigger id="supplier-price-filter" data-testid="supplier-price-filter">
+                  <SelectValue placeholder="All suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All suppliers</SelectItem>
+                  {activeSuppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="supplier-price-flagged-only"
+                checked={flaggedOnly}
+                onCheckedChange={setFlaggedOnly}
+                data-testid="supplier-price-flagged-only"
+              />
+              <Label htmlFor="supplier-price-flagged-only">Only flagged ({flaggedCount})</Label>
+            </div>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
                 <TableHead>Supplier</TableHead>
-                <TableHead>Cost</TableHead>
+                <TableHead className="text-right">Supplier price</TableHead>
+                <TableHead className="text-right">Card cost</TableHead>
+                <TableHead>Check</TableHead>
                 <TableHead>Pack</TableHead>
                 <TableHead>Preferred</TableHead>
                 {canMutate && <TableHead />}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappings.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>{m.productName}</TableCell>
-                  <TableCell>{m.supplierName}</TableCell>
+              {shownMappings.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={canMutate ? 8 : 7} className="text-center text-sm text-muted-foreground">
+                    {flaggedOnly ? "Nothing flagged — every supplier price is within tolerance." : "No supplier prices yet."}
+                  </TableCell>
+                </TableRow>
+              )}
+              {shownMappings.map((m) => (
+                <TableRow key={m.id} data-testid={`supplier-price-row-${m.id}`} data-flagged={m.costCheck?.flagged ? "true" : "false"}>
                   <TableCell>
-                    {m.costPrice != null ? `£${Number(m.costPrice).toFixed(2)}` : "—"}
+                    {/* The product card this cost belongs to. */}
+                    <Link
+                      href={`/products?product=${encodeURIComponent(m.productId)}`}
+                      className="font-medium underline-offset-4 hover:underline"
+                    >
+                      {m.productName}
+                    </Link>
+                    {m.productSku && <div className="text-xs text-muted-foreground">{m.productSku}</div>}
+                  </TableCell>
+                  <TableCell>{m.supplierName}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(m.costCheck?.supplierCost)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(m.costCheck?.cardCost)}</TableCell>
+                  <TableCell>
+                    {m.costCheck?.flagged ? (
+                      <Badge variant="destructive" className="gap-1 whitespace-nowrap" data-testid={`supplier-price-flag-${m.id}`}>
+                        <AlertTriangle className="h-3 w-3" aria-hidden />
+                        {costCheckLabel(m.costCheck)}
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">{costCheckLabel(m.costCheck)}</span>
+                    )}
                   </TableCell>
                   <TableCell>{m.packSize}</TableCell>
                   <TableCell>
@@ -394,7 +496,7 @@ export function SuppliersHub() {
       <Dialog open={mappingOpen} onOpenChange={setMappingOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Product–supplier mapping</DialogTitle>
+            <DialogTitle>Supplier price for a product</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div>
@@ -432,6 +534,28 @@ export function SuppliersHub() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="mapping-cost">Supplier price (£)</Label>
+                <Input
+                  id="mapping-cost"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={mappingForm.costPrice}
+                  onChange={(e) => setMappingForm({ ...mappingForm, costPrice: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="mapping-sku">Supplier's code</Label>
+                <Input
+                  id="mapping-sku"
+                  value={mappingForm.supplierSku}
+                  onChange={(e) => setMappingForm({ ...mappingForm, supplierSku: e.target.value })}
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Switch

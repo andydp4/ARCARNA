@@ -12,6 +12,7 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Products: create, edit, delete, aliases, import | No | Yes | Yes | Yes |
 | Cost prices and margins | Never, not even in API data | Yes | Yes | Yes |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
+| Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
 | Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |
 | Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |

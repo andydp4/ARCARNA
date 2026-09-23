@@ -1,30 +1,39 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from 'react'
+import { readPinned, writePinned } from '@/lib/sidebar'
 
 interface NavigationContextType {
+  /**
+   * Open for now: hovered, focused or tapped open (or the phone sheet showing).
+   * Not remembered — a sidebar left open on the last visit would cover the
+   * board on the next one.
+   */
   sidebarOpen: boolean
-  toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
+  toggleSidebar: () => void
+  /** Pinned open, pushing the page aside. Remembered on this device. */
+  pinned: boolean
+  setPinned: (pinned: boolean) => void
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined)
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    const stored = localStorage.getItem('sidebar-open')
-    return stored ? JSON.parse(stored) : true
-  })
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pinned, setPinnedState] = useState(readPinned)
 
-  useEffect(() => {
-    localStorage.setItem('sidebar-open', JSON.stringify(sidebarOpen))
-  }, [sidebarOpen])
+  const setPinned = useCallback((next: boolean) => {
+    setPinnedState(next)
+    writePinned(next)
+  }, [])
 
-  const toggleSidebar = () => setSidebarOpen(!sidebarOpen)
+  const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), [])
 
-  return (
-    <NavigationContext.Provider value={{ sidebarOpen, toggleSidebar, setSidebarOpen }}>
-      {children}
-    </NavigationContext.Provider>
+  const value = useMemo(
+    () => ({ sidebarOpen, setSidebarOpen, toggleSidebar, pinned, setPinned }),
+    [sidebarOpen, toggleSidebar, pinned, setPinned],
   )
+
+  return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>
 }
 
 export function useNavigation() {

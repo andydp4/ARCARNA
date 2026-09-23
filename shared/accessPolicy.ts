@@ -171,6 +171,8 @@ const STAFF_LIST = "The staff list is manager and above; PINs never leave the se
 const SCHEDULED = "Scheduled Evidence is Evidence: manager and above (STF-FN4, Q12).";
 const CREDIT = "The Credit List and Invoices are manager and above, menu and server (Q11).";
 const GIFT_ISSUE = "Issuing a gift card hands out money: managers only, with a reason (FIX-13).";
+const STOCK_LEVELS =
+  "Stock levels is every staff member's read-only count, built from an allow-list with no cost field (v1.2 Phase 3); the Canary check proves no cost reaches a cashier.";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -183,7 +185,11 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PATCH", path: "/api/products/:id/website", minRole: "MANAGER", reason: PRODUCT_WRITE },
   { method: "POST", path: "/api/products/import", minRole: "MANAGER", reason: PRODUCT_WRITE },
 
-  // Suppliers and supplier-product mappings.
+  // Stock Centre › Stock levels: open to all staff, never a cost.
+  { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },
+
+  // Suppliers and supplier-product mappings (Stock Centre › Suppliers). The
+  // mappings now carry the product-card cost beside the supplier price.
   { method: "GET", path: "/api/suppliers", minRole: "MANAGER", reason: PURCHASING },
   { method: "GET", path: "/api/product-suppliers", minRole: "MANAGER", reason: PURCHASING },
 
