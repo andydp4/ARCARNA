@@ -16,6 +16,7 @@ import {
   insertOrderExpenseSchema,
 } from "@shared/schema";
 import { handleBulkAction, rowsToCsv } from "../lib/bulkActionHandler";
+import { sendServerError } from "../lib/errorScrub";
 
 /** Bounds mirror the customers table column widths in shared/schema.ts. */
 const createCustomerBody = z.object({
@@ -175,7 +176,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
       res.json(outcome.result);
     } catch (error: any) {
       console.error("Error in customer bulk action:", error);
-      res.status(500).json({ message: error.message || "Bulk action failed" });
+      sendServerError(res, error, "Bulk action failed");
     }
   });
 

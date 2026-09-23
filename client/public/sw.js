@@ -8,8 +8,11 @@ const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
  *  board and any text/event-stream request instead of caching them — a
  *  client still running the old handler would answer the board from a stale
  *  cache and silently swallow the SSE stream's `text/event-stream` body into
- *  its API cache logic, which reads and re-serves it as ordinary JSON. */
-const CACHE_VERSION = "7";
+ *  its API cache logic, which reads and re-serves it as ordinary JSON.
+ *  Bumped 7 -> 8 (Phase 0B): drops asset caches that may hold index.html
+ *  stored under a missing chunk's URL (the server used to answer a missing
+ *  /assets file with the app shell and a 200). */
+const CACHE_VERSION = "8";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
@@ -108,18 +111,33 @@ async function handleNavigationRequest(request) {
   }
 }
 
+/**
+ * Only a real file may be cached under an asset URL. An HTML body for a
+ * script/style/image request is the SPA shell standing in for a file that no
+ * longer exists (a stale chunk after a deploy); caching it would replay the
+ * "not a valid JavaScript MIME type" crash even after the server is fixed.
+ */
+function isHtmlResponse(response) {
+  return (response.headers.get("content-type") || "").toLowerCase().includes("text/html");
+}
+
+function isCacheableAssetResponse(response) {
+  if (!response || !response.ok || response.type !== "basic") return false;
+  return !isHtmlResponse(response);
+}
+
 /** Network-first for static assets; cache fallback on failure, never throw. */
 async function handleAssetRequest(request) {
   try {
     const response = await fetch(request);
-    if (response && response.ok && response.type === "basic") {
+    if (isCacheableAssetResponse(response)) {
       const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone());
     }
     return response;
   } catch {
     const cached = await caches.match(request);
-    if (cached) return cached;
+    if (cached && !isHtmlResponse(cached)) return cached;
     return new Response("", { status: 404, statusText: "Not Found" });
   }
 }
@@ -222,7 +240,9 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          // A role preview's answers are that role's view, not this device's:
+          // never let them replace the real offline copy.
+          if (response.ok && !request.headers.get("X-Preview-Role")) {
             const responseClone = response.clone();
             caches.open(API_CACHE_NAME).then((cache) => {
               cache.put(cacheKey, responseClone);

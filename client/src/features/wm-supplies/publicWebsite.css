@@ -753,3 +753,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Privacy notice + complaints contact (PRV-15); hidden until the owner fills them in. */
+.wm-privacy-links {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+
+.wm-privacy-links a {
+  text-decoration: underline;
+}

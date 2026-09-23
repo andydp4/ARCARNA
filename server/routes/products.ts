@@ -21,6 +21,7 @@ import { nonNegativeQuantity } from "@shared/quantity";
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
 import { topSellingProducts } from "../services/topSellers";
 import { productForRole, productsForRole, rolesAtLeast } from "@shared/accessPolicy";
+import { sendServerError } from "../lib/errorScrub";
 
 /**
  * Product create, edit, delete and aliases change what things sell for and
@@ -294,7 +295,7 @@ export function registerProductRoutes(app: Express, scoped: RequestHandler[]): v
       res.json(outcome.result);
     } catch (error: any) {
       console.error("Error in product bulk action:", error);
-      res.status(500).json({ message: error.message || "Bulk action failed" });
+      sendServerError(res, error, "Bulk action failed");
     }
   });
 

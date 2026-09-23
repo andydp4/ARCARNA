@@ -21,6 +21,12 @@ describe("nav-items role visibility", () => {
     }
   });
 
+  it("guards the shop website settings page to managers and above (FIX-15)", () => {
+    for (const href of ["/settings/wm-supplies-website", "/admin/wm-supplies/website"]) {
+      expect(rolesForHref(href)?.slice().sort(), href).toEqual(["ADMIN", "MANAGER", "SUPER_ADMIN"]);
+    }
+  });
+
   it("keeps Invoices and the Credit List to managers and above (owner decision Q11)", () => {
     for (const key of ["invoices", "tick-list"]) {
       expect(itemByKey(key).roles?.slice().sort(), key).toEqual(["ADMIN", "MANAGER", "SUPER_ADMIN"]);

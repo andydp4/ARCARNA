@@ -5,15 +5,20 @@
 import * as Sentry from "@sentry/react";
 
 const dsn = (import.meta.env.VITE_SENTRY_DSN as string | undefined)?.trim();
+const isShopBuild = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
 if (dsn) {
   const tracesSampleRate = Math.min(
     1,
     Math.max(0, Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1)),
   );
-  const replaysSessionSampleRate = Math.min(
-    1,
-    Math.max(0, Number(import.meta.env.VITE_SENTRY_REPLAY_SESSION_RATE ?? 0.1)),
-  );
+  // Replays are recorded only around an error (replaysOnErrorSampleRate), never
+  // for whole sessions: recording staff all day, or shop customers at all,
+  // needs a notice/consent we do not have, and the plan includes ~50 replays a
+  // month which random sampling would burn. The env var stays as an explicit,
+  // deliberate opt-in for a short investigation window.
+  const replaysSessionSampleRate = isShopBuild
+    ? 0
+    : Math.min(1, Math.max(0, Number(import.meta.env.VITE_SENTRY_REPLAY_SESSION_RATE ?? 0)));
 
   Sentry.init({
     dsn,
@@ -34,7 +39,7 @@ if (dsn) {
     ],
 
     replaysSessionSampleRate,
-    replaysOnErrorSampleRate: 1.0,
+    replaysOnErrorSampleRate: isShopBuild ? 0 : 1.0,
   });
 
   // Session Replay is ~250kB raw / ~84kB gzip — the single largest thing in the
@@ -59,10 +64,24 @@ if (dsn) {
       });
   };
 
-  if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(loadReplay, { timeout: 5000 });
-  } else {
-    setTimeout(loadReplay, 2000);
+  // The shop site never loads Replay at all. The staff build also serves the
+  // shop's /order pages and CUSTOMER accounts; App.tsx stops replay there
+  // (stopReplayForShopVisitor) once the path or role is known.
+  if (!isShopBuild) {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(loadReplay, { timeout: 5000 });
+    } else {
+      setTimeout(loadReplay, 2000);
+    }
+  }
+}
+
+/** Stop (and never restart) Replay for a shop visitor on the staff build. */
+export function stopReplayForShopVisitor(): void {
+  try {
+    void Sentry.getReplay()?.stop();
+  } catch {
+    // Replay not loaded / no DSN: nothing is recording.
   }
 }
 

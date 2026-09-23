@@ -3,6 +3,7 @@ import {
   STORAGE_ORG_ID,
   STORAGE_ORG_ID_LEGACY,
 } from "@shared/storageKeys";
+import { previewRoleHeaders } from "./previewRole";
 
 export function getSelectedOrgId(): string | null {
   if (typeof window === "undefined") return null;
@@ -15,9 +16,16 @@ export function setSelectedOrgId(orgId: string | null): void {
   else localStorage.removeItem(STORAGE_ORG_ID);
 }
 
-export function orgScopeHeaders(): Record<string, string> {
+/** Org scope only — no preview header (used to start/stop a preview itself). */
+export function orgOnlyHeaders(): Record<string, string> {
   const orgId = getSelectedOrgId();
+  return orgId ? { "X-Org-Id": orgId } : {};
+}
+
+export function orgScopeHeaders(): Record<string, string> {
   return {
-    ...(orgId ? { "X-Org-Id": orgId } : {}),
+    ...orgOnlyHeaders(),
+    // "Preview as role": every API call carries it while a preview is on.
+    ...previewRoleHeaders(),
   };
 }

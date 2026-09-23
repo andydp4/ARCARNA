@@ -185,7 +185,6 @@ export function registerWorkerAdminRoutes(app: Express): void {
       res.status(500).json({ 
         success: false,
         message: "Failed to create test event",
-        error: error instanceof Error ? error.message : String(error)
       });
     }
   });

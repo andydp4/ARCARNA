@@ -5,6 +5,7 @@ import { getAssistantAlerts, getDailySummary } from "../assistant/alerts";
 import type { QuickEntryDraft } from "../assistant/quickEntry";
 import { requireRole } from "../auth";
 import { EVIDENCE_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
+import { sendServerError } from "../lib/errorScrub";
 
 /** The day's summary and alerts read takings and customers: manager and above (PRV-02). */
 const evidenceRoles = requireRole(...rolesAtLeast(EVIDENCE_MIN_ROLE));
@@ -30,7 +31,7 @@ export function registerAssistantRoutes(app: Express, scoped: RequestHandler[]):
       await handleTurn(orgId, req.body ?? {}, req.user?.id, res);
     } catch (e: any) {
       console.error("[assistant] turn:", e);
-      res.status(500).json({ message: e?.message || "Assistant turn failed" });
+      sendServerError(res, e, "Assistant turn failed");
     }
   });
 
@@ -42,7 +43,7 @@ export function registerAssistantRoutes(app: Express, scoped: RequestHandler[]):
       res.json({ text });
     } catch (e: any) {
       console.error("[assistant] summary:", e);
-      res.status(500).json({ message: e?.message || "Failed to build summary" });
+      sendServerError(res, e, "Failed to build summary");
     }
   });
 
@@ -54,7 +55,7 @@ export function registerAssistantRoutes(app: Express, scoped: RequestHandler[]):
       res.json({ alerts });
     } catch (e: any) {
       console.error("[assistant] alerts:", e);
-      res.status(500).json({ message: e?.message || "Failed to load alerts" });
+      sendServerError(res, e, "Failed to load alerts");
     }
   });
 }
@@ -77,7 +78,7 @@ export function registerAssistantPublicRoutes(app: Express): void {
       await handleTurn(orgId, req.body ?? {}, undefined, res);
     } catch (e: any) {
       console.error("[assistant] public turn:", e);
-      res.status(500).json({ message: e?.message || "Assistant turn failed" });
+      sendServerError(res, e, "Assistant turn failed");
     }
   });
 }

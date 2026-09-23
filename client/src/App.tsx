@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { APP_BASE } from "@/lib/appPaths";
 import { queryClient } from "./lib/queryClient";
@@ -16,10 +16,26 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import {
-  WmSuppliesHomePage,
-  WmSuppliesOrderPage,
-  WmSuppliesOrderSuccessPage,
+  WmSuppliesHomePage as WmSuppliesHomePageRaw,
+  WmSuppliesOrderPage as WmSuppliesOrderPageRaw,
+  WmSuppliesOrderSuccessPage as WmSuppliesOrderSuccessPageRaw,
 } from "@/features/wm-supplies/WmSuppliesPublicSite";
+import { stopReplayForShopVisitor } from "./instrument";
+
+/**
+ * Shop pages are never session-replayed, even on the staff build (which also
+ * serves /order and the CUSTOMER home): shop customers have not been told
+ * about recording.
+ */
+function shopSurface(Page: ComponentType) {
+  return function ShopSurface() {
+    useEffect(() => stopReplayForShopVisitor(), []);
+    return <Page />;
+  };
+}
+const WmSuppliesHomePage = shopSurface(WmSuppliesHomePageRaw);
+const WmSuppliesOrderPage = shopSurface(WmSuppliesOrderPageRaw);
+const WmSuppliesOrderSuccessPage = shopSurface(WmSuppliesOrderSuccessPageRaw);
 
 // Route-level code splitting: each page ships as its own chunk, fetched on
 // first navigation, instead of one ~1.5MB bundle loaded up front.
@@ -82,6 +98,8 @@ const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
 const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignOutPage = lazy(() => import("@/pages/sign-out"));
+const PrivacyNoticePageRaw = lazy(() => import("@/pages/privacy"));
+const PrivacyNoticePage = shopSurface(PrivacyNoticePageRaw);
 
 function RouteLoadingFallback() {
   return (
@@ -95,6 +113,9 @@ function Router() {
   const { isAuthenticated, isLoading, error: authError, user } = useAuth();
   const isCustomerOnly = user?.role === "CUSTOMER";
   const isWmSuppliesCustomerSite = import.meta.env.VITE_WM_SUPPLIES_CUSTOMER_SITE === "1";
+  useEffect(() => {
+    if (isCustomerOnly) stopReplayForShopVisitor();
+  }, [isCustomerOnly]);
 
   if (isWmSuppliesCustomerSite) {
     return (
@@ -104,6 +125,7 @@ function Router() {
         <Route path="/sign-out" component={SignOutPage} />
         <Route path="/order" component={WmSuppliesOrderPage} />
         <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
+        <Route path="/privacy" component={PrivacyNoticePage} />
         <Route path="/pending-approval" component={PendingApproval} />
         <Route path="/no-access" component={NoAccess} />
         <Route path="/" component={WmSuppliesHomePage} />
@@ -123,6 +145,8 @@ function Router() {
       <Route path="/sign-out" component={SignOutPage} />
       <Route path="/order" component={WmSuppliesOrderPage} />
       <Route path="/order/success" component={WmSuppliesOrderSuccessPage} />
+      {/* Public: the shop's privacy notice, linked from the shop and receipts. */}
+      <Route path="/privacy" component={PrivacyNoticePage} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/onboarding/wizard" component={OnboardingWizard} />
@@ -278,8 +302,12 @@ function Router() {
           <Route path="/settings/developer">
             <RequireRole href="/settings/developer"><DeveloperSettingsPage /></RequireRole>
           </Route>
-          <Route path="/settings/wm-supplies-website" component={WmSuppliesWebsiteSettingsPage} />
-          <Route path="/admin/wm-supplies/website" component={WmSuppliesWebsiteSettingsPage} />
+          <Route path="/settings/wm-supplies-website">
+            <RequireRole href="/settings/wm-supplies-website"><WmSuppliesWebsiteSettingsPage /></RequireRole>
+          </Route>
+          <Route path="/admin/wm-supplies/website">
+            <RequireRole href="/admin/wm-supplies/website"><WmSuppliesWebsiteSettingsPage /></RequireRole>
+          </Route>
           <Route path="/tick-list">
             <RequireRole href="/tick-list"><TickList /></RequireRole>
           </Route>
@@ -329,7 +357,7 @@ import { OfflineIndicator } from "@/components/offline-indicator";
 
 function App() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary scope="app">
       <QueryClientProvider client={queryClient}>
         <AuthProviders>
         <NavigationProvider>

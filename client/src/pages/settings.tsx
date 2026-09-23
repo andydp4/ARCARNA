@@ -29,6 +29,8 @@ import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
+import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
+import { getSelectedOrgId } from '@/lib/orgScope'
 import { APP_VERSION } from '@shared/version'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
@@ -277,6 +279,10 @@ export default function Settings() {
                   )}
                 </CardContent>
               </Card>
+
+              {canEditOrgProfile && (
+                <ShopPrivacySettings orgId={user?.orgId ?? getSelectedOrgId()} />
+              )}
 
               <Separator />
 

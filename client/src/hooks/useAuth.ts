@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
+import { clearPreviewRole } from "@/lib/previewRole";
 
 export type AccessState = "ok" | "pending" | "no_org" | "no_access";
 
@@ -26,6 +27,8 @@ export interface AuthUser {
   clerkTwoFactorEnabled?: boolean | null;
   /** One-time UI this account has already seen (user_ui_seen); see useSeenOnce. */
   seenUi?: string[];
+  /** Set while an admin previews a lower role: `role` is the previewed one. */
+  preview?: { role: "MANAGER" | "CASHIER"; realRole: string } | null;
 }
 
 /**
@@ -38,7 +41,7 @@ export interface AuthUser {
  */
 const AUTH_REQUEST_TIMEOUT_MS = 10_000;
 
-export async function fetchAuthUser(): Promise<AuthUser | null> {
+export async function fetchAuthUser(retriedWithoutPreview = false): Promise<AuthUser | null> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), AUTH_REQUEST_TIMEOUT_MS);
   let res: Response;
@@ -59,6 +62,13 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
       code?: string;
       isPending?: boolean;
     };
+    // A stale "Preview as role" the server will not honour (the account is no
+    // longer an admin, or a different person signed in on this tab): drop it
+    // and ask again as yourself, rather than locking the app on a 403.
+    if (!retriedWithoutPreview && typeof body.code === "string" && body.code.startsWith("PREVIEW_")) {
+      clearPreviewRole();
+      return fetchAuthUser(true);
+    }
     if (body.code === "PENDING_APPROVAL" || body.isPending) {
       return {
         id: "pending",
@@ -87,7 +97,7 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
 export function useAuth() {
   const { data: user, isLoading, error } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
-    queryFn: fetchAuthUser,
+    queryFn: () => fetchAuthUser(),
     /**
      * A `null` answer means the server said you are not signed in. That is
      * data, not an error, and React Query never retries it.

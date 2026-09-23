@@ -1,8 +1,9 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { offlineStorage } from "./offline-storage";
+import { offlineCacheTargetFor, offlineStorage } from "./offline-storage";
 import { orgScopeHeaders } from "./orgScope";
 import { resolveApiUrl } from "./appPaths";
 import { withClerkAuthHeaders } from "./clerkApiAuth";
+import { getPreviewRole } from "./previewRole";
 
 /**
  * Turns a failed API response into a message worth showing a person.
@@ -92,12 +93,14 @@ export const getQueryFn: <T>(options: {
 
       await throwIfResNotOk(res);
       const data = await res.json();
-      
-      if (url.includes("/api/products") && Array.isArray(data)) {
+
+      // A role preview sees that role's view; it must not overwrite the till's offline copy.
+      const cacheTarget = getPreviewRole() ? null : offlineCacheTargetFor(url);
+      if (cacheTarget === "products" && Array.isArray(data)) {
         offlineStorage.cacheProducts(data).catch(err => 
           console.warn('[QueryClient] Failed to cache products:', err)
         );
-      } else if (url.includes("/api/customers") && Array.isArray(data)) {
+      } else if (cacheTarget === "customers" && Array.isArray(data)) {
         offlineStorage.cacheCustomers(data).catch(err => 
           console.warn('[QueryClient] Failed to cache customers:', err)
         );
@@ -106,10 +109,11 @@ export const getQueryFn: <T>(options: {
       return data;
     } catch (error) {
       if (!navigator.onLine || (error as Error).message.includes('Failed to fetch')) {
-        if (url.includes("/api/products")) {
+        const offlineTarget = offlineCacheTargetFor(url);
+        if (offlineTarget === "products") {
           console.log('[QueryClient] Offline: Loading products from cache');
           return await offlineStorage.getCachedProducts();
-        } else if (url.includes("/api/customers")) {
+        } else if (offlineTarget === "customers") {
           console.log('[QueryClient] Offline: Loading customers from cache');
           return await offlineStorage.getCachedCustomers();
         }

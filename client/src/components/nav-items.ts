@@ -433,6 +433,10 @@ const EXTRA_ROUTE_ROLES: Record<string, readonly Role[]> = {
   '/settings/loyalty': MANAGER_ROLES,
   // Reached only from a link on the (MANAGER+-gated) Promotions page.
   '/promotions/:id/lift': MANAGER_ROLES,
+  // Shop website settings: server/routes/website.ts requireWebsiteStaffRole is
+  // MANAGER+ for every read and write, so a cashier only ever saw a broken page.
+  '/settings/wm-supplies-website': MANAGER_ROLES,
+  '/admin/wm-supplies/website': MANAGER_ROLES,
 }
 
 /**

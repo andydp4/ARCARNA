@@ -17,6 +17,8 @@ import { BrandLogo } from '@/components/BrandLogo'
 import { BRAND_NAME, BRAND_PRODUCT_NAME } from '@shared/brand'
 import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
 import { ArcarnaAssistantBar } from '@/components/assistant/ArcarnaAssistantBar'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { PreviewRoleBanner, PreviewRoleMenu } from '@/components/PreviewRole'
 
 interface LayoutProps {
   children: ReactNode
@@ -150,6 +152,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
           <div className="flex items-center gap-3">
             <OrgSwitcher />
+            <PreviewRoleMenu />
             <NotificationCenter />
             {devAuthBypass && (
               <Badge variant="secondary" className="hidden border-metal-edge bg-metal-charcoal text-xs text-metal-muted sm:inline-flex" data-testid="dev-auth-badge">Dev bypass</Badge>
@@ -161,6 +164,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </header>
+      <PreviewRoleBanner />
       <PwaInstallBanner />
       <div className="flex">
         {!isMobile && (
@@ -184,7 +188,11 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </aside>
         )}
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1">
+          {/* Per-page boundary: a crash on one page no longer blanks the whole
+              app (till included); navigating away clears it. */}
+          <ErrorBoundary scope="page" resetKey={location}>{children}</ErrorBoundary>
+        </main>
       </div>
       <WhatsAppPanel />
       <ArcarnaAssistantBar />

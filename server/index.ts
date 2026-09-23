@@ -12,7 +12,8 @@ import { withAppBase } from "@shared/appPaths";
 import { BRAND_PRODUCT_NAME } from "@shared/brand";
 import { requestIdMiddleware, type RequestWithId } from "./requestId";
 import { sentryRequestContextMiddleware } from "./sentryRequestContext";
-import { logApiJson } from "./structuredLog";
+import { httpLogMiddleware, SENTRY_CAPTURED } from "./httpLog";
+import { genericServerMessage, safeErrorMessage } from "./lib/errorScrub";
 
 validateProductionEnv();
 
@@ -62,46 +63,7 @@ app.use(
 );
 app.use(express.urlencoded({ extended: false, limit: IMPORT_JSON_BODY_LIMIT }));
 
-app.use((req: RequestWithId, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      logApiJson({
-        msg: "http_request",
-        requestId: req.requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: duration,
-        responseSnippet:
-          capturedJsonResponse !== undefined
-            ? JSON.stringify(capturedJsonResponse).slice(0, 200)
-            : undefined,
-      });
-    } else {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-      log(logLine);
-    }
-  });
-
-  next();
-});
+app.use(httpLogMiddleware);
 
 process.on("unhandledRejection", (reason) => {
   console.error("[process] Unhandled promise rejection:", reason);
@@ -155,23 +117,29 @@ process.on("unhandledRejection", (reason) => {
 
   const server = createServer(app);
 
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     const status =
       typeof err === "object" && err !== null && "status" in err
         ? Number((err as { status?: number }).status) || 500
         : typeof err === "object" && err !== null && "statusCode" in err
           ? Number((err as { statusCode?: number }).statusCode) || 500
           : 500;
+    const requestId = (req as RequestWithId).requestId;
+    // A 4xx from middleware (bad JSON, payload too large) keeps its own text
+    // unless it reads like database output; a 5xx never echoes the error.
     const message =
-      err instanceof Error ? err.message : "Internal Server Error";
+      status >= 500
+        ? genericServerMessage(requestId)
+        : safeErrorMessage(err, "Request could not be processed");
     console.error("[express] Request error:", err);
     if (process.env.SENTRY_DSN?.trim()) {
+      res.locals[SENTRY_CAPTURED] = true;
       import("@sentry/node")
-        .then((Sentry) => Sentry.captureException(err))
+        .then((Sentry) => Sentry.captureException(err, { tags: { request_id: requestId ?? "unknown" } }))
         .catch(() => {});
     }
     if (!res.headersSent) {
-      res.status(status).json({ message });
+      res.status(status).json({ message, ...(requestId ? { requestId } : {}) });
     }
   });
 

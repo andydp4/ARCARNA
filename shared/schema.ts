@@ -122,6 +122,12 @@ export const organizations = pgTable("organizations", {
   opsAlertOnSlaDue: boolean("ops_alert_on_sla_due").default(false).notNull(),
   /** Hold a screen wake lock while the board is open, so the tablet stays lit. */
   opsKeepScreenAwake: boolean("ops_keep_screen_awake").default(true).notNull(),
+  // The shop's customer privacy notice and complaints contact (migration 073,
+  // PRV-15). Empty until the owner writes them; see shared/shopPrivacy.ts.
+  privacyNoticeUrl: varchar("privacy_notice_url", { length: 1024 }),
+  privacyNoticeText: text("privacy_notice_text"),
+  complaintsContactName: varchar("complaints_contact_name", { length: 255 }),
+  complaintsContactEmail: varchar("complaints_contact_email", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

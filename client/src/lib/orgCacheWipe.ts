@@ -1,4 +1,5 @@
 import { resolveAppPath } from "@/lib/appPaths";
+import { clearPreviewRole } from "./previewRole";
 import {
   legacyOfflineDbNameForOrg,
   offlineDbNameForOrg,
@@ -61,5 +62,7 @@ export async function wipeAllOfflineData(): Promise<void> {
 
 /** Sign out — clears offline data and ends Clerk / legacy session. */
 export async function navigateToLogout(): Promise<void> {
+  // A role preview belongs to this sign-in; the next person must not inherit it.
+  clearPreviewRole();
   window.location.href = resolveAppPath("/sign-out");
 }

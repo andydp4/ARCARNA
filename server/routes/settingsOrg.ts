@@ -7,6 +7,7 @@ import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role, Organization } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { orgSettingsForRole } from "@shared/staffPolicy";
+import { shopPrivacyFromOrg, shopPrivacyPatchSchema } from "@shared/shopPrivacy";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -87,6 +88,9 @@ function mapOrgToSettings(org: Organization) {
     opsReconcilePollSeconds: org.opsReconcilePollSeconds ?? 60,
     opsAlertOnSlaDue: org.opsAlertOnSlaDue ?? false,
     opsKeepScreenAwake: org.opsKeepScreenAwake ?? true,
+    // The shop's customer privacy notice + complaints contact (PRV-15). Public
+    // by nature (shown to shop customers), so every staff role may read it.
+    ...shopPrivacyFromOrg(org),
   };
 }
 
@@ -104,7 +108,14 @@ const settingsPatchSchema = z.object({
   businessEmail: z.union([z.literal(""), z.string().trim().max(255).email()]).optional(),
   vatNumber: z.string().trim().max(50).optional(),
   vatRate: z.number().min(0).max(100).optional(),
-});
+}).merge(shopPrivacyPatchSchema);
+
+const PRIVACY_KEYS = [
+  "privacyNoticeUrl",
+  "privacyNoticeText",
+  "complaintsContactName",
+  "complaintsContactEmail",
+] as const;
 
 export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/settings", ...scoped, async (req: any, res) => {
@@ -148,7 +159,27 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
         if (businessEmail !== undefined) patch.email = businessEmail;
         if (vatNumber !== undefined) patch.vatNumber = vatNumber;
         if (vatRate !== undefined) patch.defaultTaxRate = String(vatRate);
+        const privacyChanged: string[] = [];
+        for (const key of PRIVACY_KEYS) {
+          const value = parsed.data[key];
+          if (value === undefined) continue;
+          // Blank clears the field (and hides its link), rather than storing "".
+          patch[key] = value === "" ? null : value;
+          privacyChanged.push(key);
+        }
         const org = await storage.updateOrgProfile(ctx.orgId, patch);
+        if (privacyChanged.length > 0) {
+          // What customers are told about their data is a legal statement: keep a trail.
+          await recordAdminAudit(req, {
+            actorUserId: req.user?.id ?? "unknown",
+            actorRole: req.orgContext?.role ?? "ADMIN",
+            action: "shop_privacy.updated",
+            targetType: "organization",
+            targetId: ctx.orgId,
+            orgId: ctx.orgId,
+            metadata: { fields: privacyChanged },
+          });
+        }
         res.json(mapOrgToSettings(org));
       } catch (error: any) {
         console.error("Error updating settings:", error);

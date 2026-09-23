@@ -30,6 +30,9 @@ jobs:
       - name: Audit storage orgId usage
         run: node scripts/audit-storage-orgid.mjs
 
+      - name: Audit 5xx responses never echo database error text
+        run: node scripts/audit-db-error-echo.mjs
+
       - name: Audit UI wiring (dead links, unparsed mutation results)
         run: node scripts/audit-ui-wiring.mjs
 
@@ -334,7 +337,10 @@ jobs:
             server/__tests__/reportScopeFilter.test.ts \
             server/__tests__/cashierAnalyticsRoutes.test.ts \
             server/__tests__/staffPayLockdown.test.ts \
-            server/__tests__/creditLockdown.test.ts
+            server/__tests__/creditLockdown.test.ts \
+            server/__tests__/overdueInvoiceCount.test.ts \
+            server/__tests__/shopPrivacyNotice.test.ts \
+            server/__tests__/previewRole.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

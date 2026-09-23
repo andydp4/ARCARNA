@@ -19,6 +19,8 @@ import { signUnsubscribeToken } from "../services/receiptSigning";
 import { storage } from "../storage";
 import { APP_BASE_PATH } from "../appBase";
 import { apiPathWithBase } from "@shared/appPaths";
+import { privacyNoticeHref, shopPrivacyFromOrg } from "@shared/shopPrivacy";
+import { privacyTextPageUrl } from "../routes/privacyNotice";
 
 const POINTS_PER_UNIT = 1;
 
@@ -246,6 +248,14 @@ export class ReceiptEmailWorker implements IWorker {
         },
         unsubscribeUrl: unsubUrl,
         footer: org.receiptFooter || "Thank you for your purchase.",
+        privacy: (() => {
+          const info = shopPrivacyFromOrg(org);
+          return {
+            noticeUrl: privacyNoticeHref(info, privacyTextPageUrl(orgId)),
+            complaintsName: info.complaintsContactName,
+            complaintsEmail: info.complaintsContactEmail,
+          };
+        })(),
       });
 
       const { Resend } = await import("resend");

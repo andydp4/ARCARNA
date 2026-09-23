@@ -5,6 +5,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { canPreview, isPreviewableRole, previewOf } from "../auth/previewRole";
 import { listSeenUiKeys } from "../services/uiSeen";
 import { isOnboardingComplete, parseOnboardingState } from "@shared/onboarding";
 import {
@@ -16,6 +17,7 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { sendServerError } from "../lib/errorScrub";
 
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
@@ -92,11 +94,40 @@ export function registerAuthRoutes(app: Express): void {
         needsSetupWizard: !!setupOrgId && !setupComplete && !needsOrgOnboarding,
         runtime: getAuthRuntimeSnapshot(),
         clerkTwoFactorEnabled,
+        // Set while an admin previews a lower role (X-Preview-Role): `role`
+        // above is the previewed one, this says who is really looking.
+        preview: previewOf(req) ?? null,
       });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
+  });
+
+  /**
+   * Start or end "Preview as role" — only an audit record; the preview itself
+   * is the X-Preview-Role header (server/auth/previewRole.ts). Sent WITHOUT
+   * that header, so it is the admin's own request, not the previewed role's.
+   */
+  app.post("/api/auth/preview-role", isAuthenticated, async (req: any, res) => {
+    const realRole = req.user?.role ?? (req.user?.isOwner ? "SUPER_ADMIN" : "CASHIER");
+    if (!canPreview(realRole)) {
+      return res.status(403).json({ code: "PREVIEW_NOT_ALLOWED", message: "Only admins can preview another role." });
+    }
+    const role = req.body?.role ?? null;
+    if (role !== null && !isPreviewableRole(role)) {
+      return res.status(400).json({ code: "PREVIEW_ROLE_INVALID", message: "You can preview as Manager or Cashier." });
+    }
+    const headerOrg = req.headers["x-org-id"] as string | undefined;
+    await recordAdminAudit(req, {
+      actorUserId: req.user?.claims?.sub ?? req.user?.id ?? "unknown",
+      actorRole: realRole,
+      action: role ? "preview_role.started" : "preview_role.ended",
+      targetType: "role",
+      targetId: role,
+      orgId: realRole === "SUPER_ADMIN" ? headerOrg || req.user?.orgId || null : req.user?.orgId ?? null,
+    });
+    res.json({ ok: true, role });
   });
 
   app.get("/api/auth/bootstrap", isAuthenticated, async (req: any, res) => {
@@ -165,7 +196,7 @@ export function registerAuthRoutes(app: Express): void {
       res.status(201).json(org);
     } catch (error: any) {
       console.error("Error creating organization:", error);
-      res.status(500).json({ message: error.message || "Failed to create organization" });
+      sendServerError(res, error, "Failed to create organization");
     }
   });
 
@@ -191,9 +222,10 @@ export function registerAuthRoutes(app: Express): void {
       return res.status(403).json({ message: "Access denied" });
     } catch (error: any) {
       console.error("Error updating organization:", error);
-      res.status(error.message === "Organization not found" ? 404 : 500).json({
-        message: error.message || "Failed to update organization",
-      });
+      if (error.message === "Organization not found") {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      sendServerError(res, error, "Failed to update organization");
     }
   });
 }

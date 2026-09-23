@@ -789,6 +789,8 @@ export class DatabaseStorage implements IStorage {
       "opsPrepSlaMinutes", "opsDueSoonLeadMinutes", "opsLateGraceMinutes",
       "opsDeliveryLeadMinutes", "opsAutoClaimOnCreate", "opsReconcilePollSeconds",
       "opsAlertOnSlaDue", "opsKeepScreenAwake",
+      // Shop privacy notice + complaints contact (migration 073).
+      "privacyNoticeUrl", "privacyNoticeText", "complaintsContactName", "complaintsContactEmail",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];

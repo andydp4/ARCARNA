@@ -51,12 +51,15 @@ import { registerV1Routes } from "./routes/v1";
 import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
 import { registerAssistantPublicRoutes, registerAssistantRoutes } from "./routes/assistant";
 import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./routes/website";
+import { registerPrivacyNoticeRoutes } from "./routes/privacyNotice";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
   registerAssistantPublicRoutes(app);
+  // Readable signed out: shop customers see it before signing in / ordering.
+  registerPrivacyNoticeRoutes(app);
 
   await setupAuth(app);
 

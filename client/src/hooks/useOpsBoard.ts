@@ -5,6 +5,7 @@ import type { OpsAlertKind, OpsAlertStation } from "@shared/orders/opsAlerts";
 import type { BoardOrder } from "@/lib/orderTypes";
 import { resolveApiUrl } from "@/lib/appPaths";
 import { getSelectedOrgId } from "@/lib/orgScope";
+import { getPreviewRole } from "@/lib/previewRole";
 
 /**
  * Everything the board draws, and how it stays current — N3a's hand-over
@@ -199,7 +200,13 @@ function parseOpsBusEvent(raw: string): OpsBusEvent | null {
 function boardStreamUrl(): string {
   const orgId = getSelectedOrgId();
   const base = resolveApiUrl("/api/orders/board/stream");
-  return orgId ? `${base}${base.includes("?") ? "&" : "?"}orgId=${encodeURIComponent(orgId)}` : base;
+  const params = new URLSearchParams();
+  if (orgId) params.set("orgId", orgId);
+  // EventSource cannot send X-Preview-Role, so a role preview rides here.
+  const previewRole = getPreviewRole();
+  if (previewRole) params.set("previewRole", previewRole);
+  const qs = params.toString();
+  return qs ? `${base}${base.includes("?") ? "&" : "?"}${qs}` : base;
 }
 
 /**

@@ -3,9 +3,9 @@
  * existing operational-intelligence queries plus overdue invoices and
  * unprocessed goods receipts.
  */
-import { and, eq, lt, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "../db";
-import { invoices, goodsReceipts } from "@shared/schema";
+import { invoices, goodsReceipts, orderCredit } from "@shared/schema";
 import { getSmartStock, getBusinessHealth } from "../services/operationalIntelligence";
 
 export interface AssistantAlert {
@@ -18,12 +18,29 @@ function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
-async function overdueInvoiceCount(orgId: string): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
+/**
+ * Invoices that are genuinely owed: the sale was put on credit (the tick /
+ * account list, order_credit) and still has money outstanding past the due
+ * date. The worker writes an invoice for EVERY sale as 'sent' and nothing ever
+ * marks one 'paid', so counting invoices.status alone made every till sale
+ * "overdue" 30 days later and the alert only ever grew (FIX-15).
+ */
+export async function overdueInvoiceCount(orgId: string, today = new Date().toISOString().slice(0, 10)): Promise<number> {
   const rows = await db
     .select({ id: invoices.id })
     .from(invoices)
-    .where(and(eq(invoices.orgId, orgId), ne(invoices.status, "paid"), lt(invoices.dueDate, today)));
+    .innerJoin(
+      orderCredit,
+      and(eq(orderCredit.orderId, invoices.orderId), eq(orderCredit.orgId, invoices.orgId)),
+    )
+    .where(
+      and(
+        eq(invoices.orgId, orgId),
+        lt(invoices.dueDate, today),
+        inArray(orderCredit.status, ["outstanding", "partial"]),
+        gt(orderCredit.amountOutstanding, "0"),
+      ),
+    );
   return rows.length;
 }
 

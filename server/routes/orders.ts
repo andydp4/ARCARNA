@@ -21,6 +21,9 @@ import { publishOpsEvent } from "../services/opsBus";
 import { publishAlertRows, type OpsAlertCreatedRow } from "../services/opsAlerts";
 import { completeOrderTx, reopenOrderTx, OrderReopenRefusedError } from "../services/orderCompletion";
 import { CreditError } from "../services/creditLedger";
+import { safeErrorMessage } from "../lib/errorScrub";
+import { receiptPrivacyLines, shopPrivacyFromOrg } from "@shared/shopPrivacy";
+import { privacyTextPageUrl } from "./privacyNotice";
 
 /**
  * What the goods on a personal-use order cost the business.
@@ -751,7 +754,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       });
     } catch (error: any) {
       console.error("Error creating order:", error);
-      const message = error.message || "Failed to create order";
+      // Domain messages ("Payments add up to £X but the order is £Y") still
+      // reach the till; database text never does (safeErrorMessage).
+      const message = safeErrorMessage(error, "Failed to create order");
       const status = error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message) ? 400 : 500;
       res.status(status).json({ message, errors: error.errors });
     }
@@ -953,6 +958,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         .select({
           defaultTaxRate: organizations.defaultTaxRate,
           receiptFooter: organizations.receiptFooter,
+          privacyNoticeUrl: organizations.privacyNoticeUrl,
+          privacyNoticeText: organizations.privacyNoticeText,
+          complaintsContactName: organizations.complaintsContactName,
+          complaintsContactEmail: organizations.complaintsContactEmail,
         })
         .from(organizations)
         .where(eq(organizations.id, ctx.orgId))
@@ -977,7 +986,14 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         total,
         paymentMethod: order.paymentMethod ?? undefined,
         customerName: customer?.name ?? undefined,
-        footerNote: org?.receiptFooter ?? undefined,
+        // The shop's privacy notice + complaints contact, only once filled in (PRV-15).
+        footerNote:
+          [
+            org?.receiptFooter ?? "",
+            ...receiptPrivacyLines(shopPrivacyFromOrg(org), privacyTextPageUrl(ctx.orgId)),
+          ]
+            .filter(Boolean)
+            .join("\n") || undefined,
       });
 
       res.setHeader("Content-Type", "application/pdf");
@@ -1143,7 +1159,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         return res.status(403).json({ message: error.message, code: error.code ?? 'ORDER_TRANSITION_FORBIDDEN' });
       }
       const status = error?.statusCode ?? 500;
-      res.status(status).json({ message: error?.message || "Failed to update order", code: error?.code });
+      res.status(status).json({ message: safeErrorMessage(error, "Failed to update order"), code: error?.code });
     }
   });
 
@@ -1233,7 +1249,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       res.json({ ...result, eventId });
     } catch (error: any) {
       console.error("Error updating order:", error);
-      const message = error.message || "Failed to update order";
+      const message = safeErrorMessage(error, "Failed to update order");
       // Settled-order edits are a client error (409), not a server fault.
       const status = error.name === 'ZodError' ? 400 : (error.statusCode ?? 500);
       res.status(status).json({ message, code: error.code, errors: error.errors });

@@ -104,8 +104,13 @@ export async function tryDevAuthBypass(
   return true;
 }
 
+/** Dev bypass opens every role gate — except while previewing a role, whose point is to see them shut. */
+function devBypassesGates(req: Request): boolean {
+  return isDevAuthBypassEnabled() && !(req.user as { preview?: unknown } | undefined)?.preview;
+}
+
 export const isOwner: RequestHandler = async (req, res, next) => {
-  if (isDevAuthBypassEnabled()) return next();
+  if (devBypassesGates(req)) return next();
   const user = req.user as { isOwner?: boolean } | undefined;
   if (!user?.isOwner) {
     return res.status(403).json({ message: "Access denied. Owner only." });
@@ -115,7 +120,7 @@ export const isOwner: RequestHandler = async (req, res, next) => {
 
 export function requireRole(...allowedRoles: string[]): RequestHandler {
   return async (req, res, next) => {
-    if (isDevAuthBypassEnabled()) return next();
+    if (devBypassesGates(req)) return next();
     const user = req.user as { role?: string; isOwner?: boolean } | undefined;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     const role = user.role ?? (user.isOwner ? "SUPER_ADMIN" : "CASHIER");

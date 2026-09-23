@@ -8,6 +8,14 @@ import "./index.css";
 initProductAnalytics();
 import { APP_BASE } from "./lib/appPaths";
 import { syncService } from "./lib/sync-service";
+import { reloadOnceInBrowser } from "./lib/crashReporting";
+
+// Vite fires this when a lazy route's chunk (or its CSS) fails to load — after
+// a deploy the old hashed files are gone. Reload once to pick up the new build;
+// if that already happened recently, let the error reach the page boundary.
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadOnceInBrowser()) event.preventDefault();
+});
 
 async function registerServiceWorker(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
@@ -52,7 +60,9 @@ window.addEventListener("load", () => {
 });
 
 createRoot(document.getElementById("root")!).render(
-  <Sentry.ErrorBoundary fallback={<p className="p-6 text-center text-sm">Something went wrong. Refresh the page.</p>} showDialog>
+  // Last resort only (the app's own boundaries report with a reference code).
+  // No showDialog: Sentry's dialog asks staff for a name and email we already have.
+  <Sentry.ErrorBoundary fallback={<p className="p-6 text-center text-sm">Something went wrong. Refresh the page.</p>}>
     <App />
   </Sentry.ErrorBoundary>,
 );

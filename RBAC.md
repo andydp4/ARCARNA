@@ -196,3 +196,24 @@ the row-dependent ones).
 - `PATCH /api/operations/station/:userId` — MANAGER+, audited (`ops.station_set`).
 - Alert acknowledgement (`PATCH /api/operations/alerts/:id/ack`,
   `POST /api/operations/alerts/ack-all`) is N5a's, not built yet.
+
+## Preview as role (Phase 0B, CMP-09)
+
+A SUPER_ADMIN or ADMIN can view the app as a MANAGER or CASHIER ("Preview as"
+in the header). The browser sends `X-Preview-Role` (or `?previewRole=` for the
+board stream); `server/auth/previewRole.ts` then runs that request as the
+previewed role, pinned to the admin's org (the owner's picked org), so every
+check in this file applies exactly as for a real manager or cashier.
+
+- Read only: any request other than GET/HEAD/OPTIONS is refused
+  (`PREVIEW_READ_ONLY`). Real permissions never change.
+- Refused for MANAGER, CASHIER and CUSTOMER (`PREVIEW_NOT_ALLOWED`); only
+  MANAGER and CASHIER can be previewed.
+- Start and end are audit-logged (`preview_role.started` / `preview_role.ended`,
+  `POST /api/auth/preview-role`).
+- CI gate: `server/__tests__/previewRole.test.ts`.
+
+## Shop privacy notice (Phase 0B, PRV-15)
+
+- `PATCH /api/settings` privacy fields — ADMIN+, audit-logged (`shop_privacy.updated`).
+- `GET /api/public/privacy-notice` — public (no sign-in): only what the owner published.

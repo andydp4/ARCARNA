@@ -210,6 +210,73 @@ export interface QueuedMutation {
   error?: string;
 }
 
+/**
+ * Which offline cache (if any) a successful GET should refresh.
+ *
+ * Only the two list endpoints themselves qualify. This used to be a substring
+ * match, so `/api/products/top-sellers` (rows of {productId, units}, no `id`)
+ * was written into the product cache — the clear committed, the first put
+ * threw, and the till was left with an empty offline catalogue.
+ */
+export function offlineCacheTargetFor(url: string): "products" | "customers" | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url, "http://local.invalid").pathname;
+  } catch {
+    return null;
+  }
+  pathname = pathname.replace(/\/+$/, "");
+  if (/(^|\/)api\/products$/.test(pathname)) return "products";
+  if (/(^|\/)api\/customers$/.test(pathname)) return "customers";
+  return null;
+}
+
+/**
+ * Replace a cache store's contents in ONE transaction: write the new rows
+ * first, then delete keys that are no longer present. Rows without an `id`
+ * are skipped rather than allowed to throw mid-way. If anything fails the
+ * whole transaction aborts, so the previous (good) cache survives.
+ */
+export async function replaceCacheStore(
+  db: IDBDatabase,
+  storeName: (typeof CACHE_STORE_NAMES)[number],
+  rows: unknown[],
+): Promise<void> {
+  const valid = rows.filter(
+    (r): r is Record<string, unknown> & { id: IDBValidKey } =>
+      !!r &&
+      typeof r === "object" &&
+      (typeof (r as { id?: unknown }).id === "string" ||
+        typeof (r as { id?: unknown }).id === "number"),
+  );
+  // An empty or wholly-invalid response is not evidence the catalogue is empty.
+  if (valid.length === 0 && rows.length > 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    const keep = new Set<IDBValidKey>();
+    try {
+      for (const row of valid) {
+        store.put(row);
+        keep.add(row.id);
+      }
+    } catch (err) {
+      tx.abort();
+      reject(err);
+      return;
+    }
+    const keysReq = store.getAllKeys();
+    keysReq.onsuccess = () => {
+      for (const key of keysReq.result) {
+        if (!keep.has(key)) store.delete(key);
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("cache transaction aborted"));
+  });
+}
+
 class OfflineStorage {
   private orgId: string | null = null;
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -327,15 +394,7 @@ class OfflineStorage {
   }
 
   async cacheProducts(products: any[]): Promise<void> {
-    const db = await this.openDB();
-    const tx = db.transaction('products-cache', 'readwrite');
-    const store = tx.objectStore('products-cache');
-
-    await store.clear();
-
-    for (const product of products) {
-      await store.put(product);
-    }
+    await replaceCacheStore(await this.openDB(), 'products-cache', products);
   }
 
   async getCachedProducts(): Promise<any[]> {
@@ -351,15 +410,7 @@ class OfflineStorage {
   }
 
   async cacheCustomers(customers: any[]): Promise<void> {
-    const db = await this.openDB();
-    const tx = db.transaction('customers-cache', 'readwrite');
-    const store = tx.objectStore('customers-cache');
-
-    await store.clear();
-
-    for (const customer of customers) {
-      await store.put(customer);
-    }
+    await replaceCacheStore(await this.openDB(), 'customers-cache', customers);
   }
 
   async getCachedCustomers(): Promise<any[]> {

@@ -10,6 +10,7 @@
 import type { Express } from "express";
 import { requireApiKey, requireScope } from "../middleware/apiKeyAuth";
 import { storage } from "../storage";
+import { sendServerError } from "../lib/errorScrub";
 
 const auth = [requireApiKey];
 
@@ -196,10 +197,10 @@ export function registerV1Routes(app: Express): void {
         res.status(201).json(result);
       } catch (e: any) {
         console.error("[v1] order create:", e);
-        res.status(e?.name === "ZodError" ? 400 : 500).json({
-          error: e?.name === "ZodError" ? "validation_error" : "internal_error",
-          message: e?.message,
-        });
+        if (e?.name === "ZodError") {
+          return res.status(400).json({ error: "validation_error", message: e?.message });
+        }
+        sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
       }
     },
   );
@@ -283,7 +284,7 @@ export function registerV1Routes(app: Express): void {
         res.status(201).json(customer);
       } catch (e: any) {
         console.error("[v1] customer create:", e);
-        res.status(500).json({ error: "internal_error", message: e?.message });
+        sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
       }
     },
   );
@@ -377,7 +378,7 @@ export function registerV1Routes(app: Express): void {
         res.json({ ok: true });
       } catch (e: any) {
         console.error("[v1] inventory adjust:", e);
-        res.status(500).json({ error: "internal_error", message: e?.message });
+        sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
       }
     },
   );
