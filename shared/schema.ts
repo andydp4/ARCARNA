@@ -299,10 +299,23 @@ export const customers = pgTable("customers", {
   loyaltyPoints: integer("loyalty_points").default(0),
   tierId: uuid("tier_id").references(() => loyaltyTiers.id),
   totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
+  // The phone as +44 E.164, kept by a trigger from `phone` so every writer
+  // agrees (v1.2 Phase 5, PRV-06, migration 120). Exact-match lookups only.
+  // Never write it directly; shared/customerView.ts formatUkPhone is the same rule.
+  phoneE164: varchar("phone_e164", { length: 20 }),
+  // Who created the record, for the staff report (migration 120). NULL for
+  // older rows and for the website and WhatsApp.
+  createdByUserId: varchar("created_by_user_id", { length: 255 }),
+  // A website order that matched someone on phone OR email (not both) lands on
+  // a new record pointing here, for an admin to merge (migration 120).
+  possibleDuplicateOf: uuid("possible_duplicate_of"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("customers_org_id_idx").on(table.orgId),
+  index("customers_org_phone_e164_idx")
+    .on(table.orgId, table.phoneE164)
+    .where(sql`${table.phoneE164} IS NOT NULL`),
 ]);
 
 export type Customer = typeof customers.$inferSelect;
@@ -1552,10 +1565,20 @@ export const orders = pgTable("orders", {
   pointsDiscount: numeric("points_discount", { precision: 10, scale: 2 }),
   vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
   vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }),
+  // Where a delivery goes (v1.2 Phase 5, PRV-05, migration 120). The order
+  // holds its own address rather than pointing at the customer's saved one:
+  // staff see it while the delivery is live, and it never exposes the
+  // customer record. Required at the till when Delivery is chosen.
+  deliveryAddress: varchar("delivery_address", { length: 1024 }),
+  deliveryPostcode: varchar("delivery_postcode", { length: 16 }),
+  deliveryNotes: varchar("delivery_notes", { length: 500 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  // A customer's past-order summary (the manager's customer view) and the
+  // board's phone search read orders by customer (v1.2 Phase 5, migration 120).
+  index("orders_customer_id_idx").on(table.customerId),
   index("orders_promotion_idx")
     .on(table.orgId, table.promotionId)
     .where(sql`${table.promotionId} IS NOT NULL`),
@@ -2296,6 +2319,9 @@ export const allowedUsers = pgTable("allowed_users", {
   isOwner: integer("is_owner").default(0).notNull(), // legacy; 1 => SUPER_ADMIN
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
+  // A shop account (role CUSTOMER) is linked to one customer record; its
+  // website orders attach there (v1.2 Phase 5, migration 120).
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("allowed_users_org_id_idx").on(table.orgId),

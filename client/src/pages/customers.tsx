@@ -48,6 +48,7 @@ import { BulkActionBar } from '@/components/BulkActionBar'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useAuth } from '@/hooks/useAuth'
+import { canSeeContactDetails } from '@shared/accessPolicy'
 import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
 import type { Role } from '@shared/schema'
 import { executeBulkAction, downloadBlob } from '@/lib/bulkActionsClient'
@@ -182,11 +183,19 @@ export default function Customers() {
           type: 'CUSTOMER_UPDATE',
           method: 'PUT',
           endpoint: `/api/customers/${id}`,
-          data
+          // A queued edit holds no contact details (PRV-07): a replacement
+          // number needs a connection, like the logged write it is.
+          data: { ...data, replacePhone: undefined }
         });
         return { offline: true };
       }
       await apiRequest('PUT', `/api/customers/${id}`, data);
+      // A manager cannot read the number, only replace it (v1.2 Phase 5,
+      // PRV-08): a number typed into the box goes through "Replace number",
+      // which the server logs. Blank keeps what is there.
+      if (data?.replacePhone) {
+        await apiRequest('POST', `/api/customers/${id}/replace-phone`, { phone: data.replacePhone });
+      }
       return { offline: false };
     },
     onSuccess: (data: any) => {
@@ -274,7 +283,11 @@ export default function Customers() {
     }
 
     if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, data: formData })
+      // Below admin the phone box is "Replace number": sent separately, never
+      // as part of the edit (the server would drop it there).
+      const { phone, ...rest } = formData
+      const data = seesContact ? formData : { ...rest, ...(phone.trim() ? { replacePhone: phone.trim() } : {}) }
+      updateMutation.mutate({ id: editingCustomer.id, data })
     } else {
       createMutation.mutate(formData)
     }
@@ -350,6 +363,8 @@ export default function Customers() {
 
   const { user } = useAuth()
   const canMutate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  // Contact details are admin only (Q13a); a manager edits them without reading them.
+  const seesContact = canSeeContactDetails(user?.role)
   const bulk = useBulkSelection(filteredCustomers)
   const bulkActions = getBulkActionsForRole('customers', (user?.role ?? 'CASHIER') as Role)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
@@ -804,10 +819,11 @@ export default function Customers() {
                                     />
                                   </div>
                                   <div className="grid gap-2">
-                                    <Label htmlFor="edit-phone-mobile">Phone</Label>
+                                    <Label htmlFor="edit-phone-mobile">{seesContact ? 'Phone' : 'Replace number'}</Label>
                                     <Input
                                       id="edit-phone-mobile"
                                       value={formData.phone}
+                                      placeholder={seesContact ? undefined : (editingCustomer as any)?.phoneMasked ?? 'No number on file'}
                                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                       className="min-h-[44px]"
                                     />
@@ -1008,10 +1024,11 @@ export default function Customers() {
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-phone">Phone</Label>
+                                      <Label htmlFor="edit-phone">{seesContact ? 'Phone' : 'Replace number'}</Label>
                                       <Input
                                         id="edit-phone"
                                         value={formData.phone}
+                                        placeholder={seesContact ? undefined : (editingCustomer as any)?.phoneMasked ?? 'No number on file'}
                                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                         className="min-h-[44px]"
                                       />

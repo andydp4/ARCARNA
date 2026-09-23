@@ -34,6 +34,8 @@ export type CommandPaletteItem = {
   href?: string;
   icon?: LucideIcon;
   recentBoost?: number;
+  /** Extra words the item matches on: a server search result carries the term it was found by. */
+  keywords?: string;
 };
 
 // Labels mirror the sidebar (nav-items.ts) — both read from VOCAB so the
@@ -136,9 +138,8 @@ export async function ensurePaletteData(queryClient: QueryClient, userRole?: str
   if (readArrayFromCache<Product>(queryClient, ["/api/products"]).length === 0) {
     tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/products"] }));
   }
-  if (readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]).length === 0) {
-    tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/orders"] }));
-  }
+  // Orders are searched on the server as you type (Q10a, CMP-06): no device is
+  // pre-loaded with the order book to search it.
   await Promise.allSettled(tasks);
 }
 
@@ -216,7 +217,7 @@ function buildProductItems(
     });
 }
 
-function buildOrderItems(orders: ApiOrderRow[], recentIds: string[]): CommandPaletteItem[] {
+export function buildOrderItems(orders: ApiOrderRow[], recentIds: string[]): CommandPaletteItem[] {
   return [...orders]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10)
@@ -259,7 +260,6 @@ export function buildCommandPaletteIndex(
 
   const customers = readArrayFromCache<Customer>(queryClient, ["/api/customers"]);
   const products = readArrayFromCache<Product>(queryClient, ["/api/products"]);
-  const orders = readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]);
   const salesRank = productSalesRank(queryClient);
   const actions = getVisibleCommandPaletteActions(userRole);
 
@@ -267,7 +267,6 @@ export function buildCommandPaletteIndex(
     ...buildPageItems(recentIds, userRole),
     ...buildCustomerItems(customers, recentIds),
     ...buildProductItems(products, salesRank, recentIds),
-    ...buildOrderItems(orders, recentIds),
     ...buildActionItems(actions, recentIds),
   ].sort((a, b) => (b.recentBoost ?? 0) - (a.recentBoost ?? 0));
 }

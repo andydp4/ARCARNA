@@ -510,3 +510,73 @@ describe("public product projection", () => {
     expect(products.map((product) => product.sku)).toEqual(["A", "B"]);
   });
 });
+
+describe("website orders: who they belong to and where they go (v1.2 Phase 5)", () => {
+  const productId = "00000000-0000-4000-8000-000000000001";
+  const products = [
+    { id: productId, productId: "SKU-1", name: "Cups", defaultSalePrice: "15.00", availableForWebsite: true, stock: 10 },
+  ];
+  const delivery = {
+    customer: { name: "Jane Smith", phone: "07700 904821", email: "jane@example.com" },
+    fulfilment: { method: "delivery" as const, address: "5 Gift Road", postcode: "gf1 1ft", notes: "leave with neighbour" },
+    items: [{ productId, quantity: 1 }],
+  };
+
+  function phase5Runtime(resolved: { kind: "matched"; customerId: string } | { kind: "new"; possibleDuplicateOf: string | null }) {
+    const rt = runtime();
+    return {
+      ...rt,
+      findShopAccountCustomer: vi.fn().mockResolvedValue(null),
+      resolveWebsiteCustomer: vi.fn().mockResolvedValue(resolved),
+      markPossibleDuplicate: vi.fn().mockResolvedValue(undefined),
+      linkShopAccount: vi.fn().mockResolvedValue(undefined),
+      setOrderDelivery: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("writes the address to the order, never to the customer", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.setOrderDelivery).toHaveBeenCalledWith({ tx: true }, "order-1", {
+      deliveryAddress: "5 Gift Road",
+      deliveryPostcode: "GF1 1FT",
+      deliveryNotes: "leave with neighbour",
+    });
+    const created = (rt.engine.createCustomer as any).mock.calls[0][0];
+    expect(created).not.toHaveProperty("address");
+  });
+
+  it("attaches to the one customer whose phone AND email both match", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "matched", customerId: "jane-1" });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.engine.createCustomer).not.toHaveBeenCalled();
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "jane-1" });
+  });
+
+  it("a half-match makes a new record flagged for an admin to merge", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: "jane-1" });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.engine.createCustomer).toHaveBeenCalled();
+    expect(rt.markPossibleDuplicate).toHaveBeenCalledWith({ tx: true }, "customer-1", "jane-1");
+  });
+
+  it("a signed-in shop account's order goes to its linked customer", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
+    rt.findShopAccountCustomer.mockResolvedValue("linked-1");
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect(rt.resolveWebsiteCustomer).not.toHaveBeenCalled();
+    expect(rt.engine.createCustomer).not.toHaveBeenCalled();
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "linked-1" });
+  });
+
+  it("an unlinked shop account is linked to the customer its first order lands on", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "matched", customerId: "jane-1" });
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect(rt.linkShopAccount).toHaveBeenCalledWith({ tx: true }, "shop-user", "jane-1");
+  });
+});

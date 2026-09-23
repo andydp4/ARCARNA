@@ -61,7 +61,6 @@ export interface BoardOrder {
   shortCode: string;
   customerId: string | null;
   customerName: string | null;
-  customerPhone: string | null;
   total: string;
   paymentMethod: string;
   channel: string;
@@ -98,6 +97,14 @@ export interface BoardOrder {
   itemCount: number;
   /** First few order lines, formatted "<qty>× <name>" — see opsBoard.ts. */
   itemsPreview: string[];
+  /**
+   * Where a delivery goes (v1.2 Phase 5). Null on a collection, and null once
+   * a delivery is completed unless the viewer is a manager or above (Q8a).
+   * There is no phone on the board: see OpsCustomerCall.
+   */
+  deliveryAddress: string | null;
+  deliveryPostcode: string | null;
+  deliveryNotes: string | null;
   updatedAt: string | null;
 }
 

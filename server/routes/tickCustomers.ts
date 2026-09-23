@@ -1,3 +1,4 @@
+import { getCustomerForRole } from "../services/customerView";
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
@@ -32,7 +33,10 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
 
-      const allCustomers = await storage.getCustomers(ctx.orgId);
+      // Through the customer view: a manager's Credit List gets the masks,
+      // an admin's the details (Q7, Q13a; v1.2 Phase 5).
+      const { listCustomersForRole } = await import('../services/customerView');
+      const allCustomers = (await listCustomersForRole(ctx.orgId, ctx.role)) as Array<Record<string, any>>;
       // What is owed comes from the credit records, not from order status. An
       // order's status says whether the goods have gone; only the credit record
       // knows whether the money has arrived, and a part-paid account owes the
@@ -73,8 +77,9 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         return {
           id: customerId,
           name: customer?.name || 'Unknown Customer',
-          email: customer?.email || '',
-          phone: customer?.phone || '',
+          ...(customer && 'phone' in customer
+            ? { email: customer.email || '', phone: customer.phone || '' }
+            : { emailMasked: customer?.emailMasked ?? null, phoneMasked: customer?.phoneMasked ?? null }),
           totalDebt: roundMoney(rows.reduce((sum, r) => sum + Number(r.amountOutstanding), 0)),
           // `rows` is already newest-first (query is ordered desc(givenOn)).
           lastOrderDate: rows[0].givenOn,
@@ -104,7 +109,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
       try {
         const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
         if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
-        const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+        const customer = await getCustomerForRole(ctx.orgId, req.params.id, 'CASHIER');
         if (!customer) return res.status(404).json({ message: 'Customer not found' });
 
         const { db } = await import('../db');
@@ -205,7 +210,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
         remaining = Math.round((remaining - amount) * 100) / 100;
       }
 
-      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+      const customer = await getCustomerForRole(ctx.orgId, req.params.id, 'CASHIER');
       await signalCreditPayment({
         orgId: ctx.orgId,
         recorderUserId: req.user?.id,
@@ -243,7 +248,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
-      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+      const customer = await getCustomerForRole(ctx.orgId, req.params.id, 'CASHIER');
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
       const role = ctx.role ?? req.user?.role;
       // "Paid by" is required here (v1.2 Phase 1C): see requireCreditPaymentMethod.

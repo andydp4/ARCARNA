@@ -254,15 +254,18 @@ export interface ConversationListItem extends WhatsappConversation {
 
 export async function listConversations(
   orgId: string,
-  opts: { search?: string; limit?: number } = {},
+  opts: { search?: string; limit?: number; searchPhone?: boolean } = {},
 ): Promise<ConversationListItem[]> {
   const conds = [eq(whatsappConversations.orgId, orgId)];
   if (opts.search?.trim()) {
     const q = `%${opts.search.trim()}%`;
+    // Part of a number finds nobody below admin (v1.2 Phase 5, PRV-06):
+    // otherwise the search box reads the numbers the list masks.
     const searchCond = or(
       ilike(whatsappConversations.profileName, q),
-      ilike(whatsappConversations.phone, q),
-      ilike(whatsappConversations.waId, q),
+      ...(opts.searchPhone === false
+        ? []
+        : [ilike(whatsappConversations.phone, q), ilike(whatsappConversations.waId, q)]),
       ilike(whatsappConversations.lastMessagePreview, q),
       ilike(customers.name, q),
     );

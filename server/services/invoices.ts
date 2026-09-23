@@ -11,6 +11,8 @@
  * shared/invoices/invoiceRules.ts from the credit record, so the Invoices
  * page, the PDF and the Credit List cannot drift apart.
  */
+import { canSeeContactDetails } from "@shared/accessPolicy";
+import { maskEmail } from "@shared/customerView";
 import { db } from "../db";
 import {
   customers,
@@ -296,7 +298,10 @@ export type InvoiceListRow = {
   orderId: string;
   customerId: string | null;
   customerName: string;
+  /** Admin and above; "" below (Q13a). */
   customerEmail: string;
+  /** j•••@gmail.com for everyone (Q7), so a manager can see there is one. */
+  customerEmailMasked: string | null;
   date: string;
   dueDate: string;
   total: number;
@@ -322,7 +327,8 @@ export type InvoiceListRow = {
  * are not listed — they have receipts. Invoices written for them before this
  * release are still reachable from the order, but are not chased here.
  */
-export async function listInvoices(orgId: string): Promise<InvoiceListRow[]> {
+export async function listInvoices(orgId: string, role: string | null | undefined = null): Promise<InvoiceListRow[]> {
+  const seesContact = canSeeContactDetails(role);
   const { today, vatRate: orgVatRate } = await orgToday(orgId);
 
   const numbered = await db
@@ -356,8 +362,9 @@ export async function listInvoices(orgId: string): Promise<InvoiceListRow[]> {
   const legacyByOrder = new Map<string, Invoice>();
   for (const inv of legacy) if (inv.orderId && !legacyByOrder.has(inv.orderId)) legacyByOrder.set(inv.orderId, inv);
 
+  // The name and email only, never the whole customer row (PRV-03).
   const orderRows = await db
-    .select({ order: orders, customer: customers })
+    .select({ order: orders, customer: { name: customers.name, email: customers.email } })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
     .where(and(eq(orders.orgId, orgId), inArray(orders.id, orderIds)))
@@ -412,7 +419,8 @@ export async function listInvoices(orgId: string): Promise<InvoiceListRow[]> {
       orderId: order.id,
       customerId: order.customerId,
       customerName: invoice?.billingName || customer?.name || "Walk-in customer",
-      customerEmail: customer?.email || "",
+      customerEmail: seesContact ? customer?.email || "" : "",
+      customerEmailMasked: maskEmail(customer?.email),
       date: new Date(createdAt).toISOString(),
       dueDate,
       total,

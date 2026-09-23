@@ -170,6 +170,8 @@ export const publicWebsiteOrderSchema = z
         // form and any existing integration already speak "pickup".
         method: z.enum(["pickup", "delivery"]).default("pickup"),
         address: z.string().trim().max(1024).optional(),
+        // Written to the order with the address (v1.2 Phase 5, PRV-05).
+        postcode: z.string().trim().max(16).optional(),
         notes: z.string().trim().max(2000).optional(),
       })
       .strict()

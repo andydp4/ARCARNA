@@ -375,6 +375,10 @@ export class DomainEngine {
         email: (input as any).email,
         address: (input as any).address,
         source: (input as any).source,
+        // Who created it, for the staff report, and the receipt switch as the
+        // till left it (v1.2 Phase 5). The repo writes both when present.
+        ...((input as any).createdByUserId ? { createdByUserId: (input as any).createdByUserId } : {}),
+        ...(typeof (input as any).receiptEmailOptIn === 'boolean' ? { receiptEmailOptIn: (input as any).receiptEmailOptIn } : {}),
         category: (input as any).category || 'Bronze',
         loyaltyPoints: 0,
         totalSpent: 0,

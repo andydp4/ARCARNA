@@ -1,3 +1,4 @@
+import { useBoardPhoneSearch } from "@/lib/boardPhoneSearch";
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { deriveCardState, type OpsTimingSettings } from "@shared/orders/opsState";
 import { formatOrderChannel } from "@shared/orders/channel";
@@ -82,16 +83,20 @@ export interface OpsBoardProps {
   cardHandlers: Omit<StripCardHandlers, "shouldIgnoreEnter">;
 }
 
-/** Does this card match what was typed: id, customer, payment or channel. */
-function matchesSearch(order: BoardOrder, query: string): boolean {
+/**
+ * Does this card match what was typed: id, customer, payment or channel. A
+ * whole phone number is matched on the server (`phoneHits`), because the board
+ * carries no phone (v1.2 Phase 5).
+ */
+function matchesSearch(order: BoardOrder, query: string, phoneHits: Set<string> | null): boolean {
   if (!query) return true;
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
+  if (phoneHits) return phoneHits.has(order.id);
   return (
     order.id.toLowerCase().includes(needle) ||
     order.shortCode.toLowerCase().includes(needle) ||
     (order.customerName ?? "").toLowerCase().includes(needle) ||
-    (order.customerPhone ?? "").toLowerCase().includes(needle) ||
     formatPaymentLabel(order.paymentMethod).toLowerCase().includes(needle) ||
     formatOrderChannel(order.channel).toLowerCase().includes(needle)
   );
@@ -150,15 +155,17 @@ export function OpsBoard({
     [orders, now, settings],
   );
 
+  const phoneHits = useBoardPhoneSearch(search);
+
   const visible = useMemo(
     () =>
       cards.filter(({ order }) => {
-        if (!matchesSearch(order, search)) return false;
+        if (!matchesSearch(order, search, phoneHits)) return false;
         if (filter === "all") return true;
         if (filter === "mine") return isMine(order, currentUserId);
         return !order.assignedUserId;
       }),
-    [cards, search, filter, currentUserId],
+    [cards, search, phoneHits, filter, currentUserId],
   );
 
   const summary = useMemo(() => {

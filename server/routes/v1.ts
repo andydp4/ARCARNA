@@ -11,6 +11,8 @@ import type { Express } from "express";
 import { requireApiKey, requireScope } from "../middleware/apiKeyAuth";
 import { storage } from "../storage";
 import { safeErrorMessage, sendServerError } from "../lib/errorScrub";
+import { apiKeyCanReadContact, customerEditForRole } from "@shared/accessPolicy";
+import { getCustomerForRole, listCustomersForRole } from "../services/customerView";
 
 const auth = [requireApiKey];
 
@@ -21,6 +23,14 @@ function orgGuard(req: any, res: any): string | null {
     return null;
   }
   return orgId;
+}
+
+/**
+ * The role an API key reads customers as: an admin's full view with the
+ * customers:read_contact permission, a manager's masked view without (PRV-03).
+ */
+function apiCustomerRole(req: any): "ADMIN" | "MANAGER" {
+  return apiKeyCanReadContact(req.apiKeyContext?.scopes) ? "ADMIN" : "MANAGER";
 }
 
 export function registerV1Routes(app: Express): void {
@@ -158,13 +168,14 @@ export function registerV1Routes(app: Express): void {
           .leftJoin(products, eq(order_items.product_id, products.id))
           .where(eq(order_items.order_id, req.params.orderId));
 
+        // The email only with the customers:read_contact permission (PRV-03).
         let customer = null;
         if (order.customer_id) {
-          const [c] = await db
-            .select({ id: customers.id, name: customers.name, email: customers.email })
-            .from(customers)
-            .where(eq(customers.id, order.customer_id));
-          customer = c ?? null;
+          customer = await getCustomerForRole(orgId, order.customer_id, apiCustomerRole(req));
+          if (customer) {
+            const c = customer as Record<string, unknown>;
+            customer = { id: c.id, name: c.name, ...("email" in c ? { email: c.email } : { emailMasked: c.emailMasked }) } as any;
+          }
         }
 
         res.json({
@@ -229,7 +240,7 @@ export function registerV1Routes(app: Express): void {
         // The id is only checked to be a uuid by the schema. A customer from
         // another org would take this org's loyalty points and debts (the
         // loyalty worker reads the customer by id alone), so it must be ours.
-        if (input.customerId && !(await storage.getCustomer(input.customerId, orgId))) {
+        if (input.customerId && !(await getCustomerForRole(orgId, input.customerId, "CASHIER"))) {
           return res.status(400).json({
             error: "validation_error",
             message: "customerId: no such customer in this organisation.",
@@ -365,7 +376,9 @@ export function registerV1Routes(app: Express): void {
       if (!orgId) return;
       try {
         const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10), 500);
-        const list = await storage.getCustomers(orgId);
+        // Contact details need the customers:read_contact permission (PRV-03);
+        // without it a key gets the masked view, selected without them.
+        const list = await listCustomersForRole(orgId, apiCustomerRole(req));
         res.json(list.slice(0, limit));
       } catch (e) {
         console.error("[v1] customers list:", e);
@@ -382,7 +395,7 @@ export function registerV1Routes(app: Express): void {
       const orgId = orgGuard(req, res);
       if (!orgId) return;
       try {
-        const customer = await storage.getCustomer(req.params.customerId, orgId);
+        const customer = await getCustomerForRole(orgId, req.params.customerId, apiCustomerRole(req));
         if (!customer) return res.status(404).json({ error: "not_found" });
         res.json(customer);
       } catch (e) {
@@ -402,8 +415,14 @@ export function registerV1Routes(app: Express): void {
       if (!orgId) return;
       try {
         const { engine } = await import("../../apps/server/src/engine.wiring");
-        const customer = await engine.createCustomer({ ...req.body, orgId });
-        res.status(201).json(customer);
+        // An integration writes the admin's field set: never points or total
+        // spent, never a masked value (PRV-08).
+        const fields = customerEditForRole({ ...(req.body ?? {}) }, "ADMIN");
+        if (typeof fields.name !== "string" || !fields.name.trim()) {
+          return res.status(400).json({ error: "invalid_request", message: "name is required" });
+        }
+        const created = await engine.createCustomer({ ...fields, orgId });
+        res.status(201).json(await getCustomerForRole(orgId, created.id, apiCustomerRole(req)));
       } catch (e: any) {
         console.error("[v1] customer create:", e);
         sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
@@ -420,7 +439,10 @@ export function registerV1Routes(app: Express): void {
       if (!orgId) return;
       try {
         const { engine } = await import("../../apps/server/src/engine.wiring");
-        const customer = await engine.updateCustomer(req.params.customerId, req.body, orgId);
+        const fields = customerEditForRole({ ...(req.body ?? {}) }, "ADMIN");
+        if (Object.keys(fields).length > 0) await engine.updateCustomer(req.params.customerId, fields, orgId);
+        const customer = await getCustomerForRole(orgId, req.params.customerId, apiCustomerRole(req));
+        if (!customer) return res.status(404).json({ error: "not_found" });
         res.json(customer);
       } catch (e: any) {
         if (e?.message === "Customer not found") return res.status(404).json({ error: "not_found" });

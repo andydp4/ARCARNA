@@ -49,7 +49,8 @@ export function CreditCustomerDetailDialog({ customer, open, onOpenChange }: Cre
         <DialogHeader>
           <DialogTitle>{customer.name}</DialogTitle>
           <DialogDescription>
-            {[customer.email, customer.phone].filter(Boolean).join(" · ") || "No contact details on file"}
+            {[customer.email || customer.emailMasked, customer.phone || customer.phoneMasked].filter(Boolean).join(" · ") ||
+              "No contact details on file"}
           </DialogDescription>
         </DialogHeader>
 

@@ -33,6 +33,8 @@ export interface InvoiceListItem {
   invoiceNumber: string;
   customerName: string;
   customerEmail: string;
+  /** j•••@gmail.com: what a manager sees (v1.2 Phase 5, Q7). */
+  customerEmailMasked?: string | null;
   date: string;
   dueDate: string;
   total: number;
@@ -184,7 +186,7 @@ function InvoiceRowInner({
       <TableCell className="min-w-0 max-w-[14rem] lg:max-w-[18rem]">
         <div className="text-sm leading-snug">
           <div className="truncate font-medium text-foreground">{invoice.customerName}</div>
-          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail}</div>
+          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail || invoice.customerEmailMasked}</div>
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
@@ -276,7 +278,7 @@ function InvoiceCardInner({
 
         <div className="text-sm leading-snug">
           <div className="truncate font-medium text-foreground">{invoice.customerName}</div>
-          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail}</div>
+          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail || invoice.customerEmailMasked}</div>
         </div>
 
         <div className="mt-2 space-y-1 border-t pt-2">

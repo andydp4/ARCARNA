@@ -1,3 +1,5 @@
+import { canSeeContactDetails } from "@shared/accessPolicy";
+import { maskEmail, maskPhone } from "@shared/customerView";
 import type { Express } from "express";
 import { storage } from "../storage";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
@@ -51,6 +53,34 @@ const TEMPLATES: Record<string, { filename: string; content: string }> = {
     content: CUSTOMER_IMPORT_CSV_SAMPLE,
   },
 };
+
+/**
+ * An import preview names the existing customer a row duplicates. Below admin
+ * that is the name and the masks, not the existing phone and email (Q7, Q13a):
+ * a row matched on its name must not read back someone's number.
+ */
+function customerPreviewForRole<T extends { rows: Array<{ duplicateOf?: { id: string; name: string; email?: string | null; phone?: string | null } }> }>(
+  preview: T,
+  role: string | null | undefined,
+): T {
+  if (canSeeContactDetails(role)) return preview;
+  return {
+    ...preview,
+    rows: preview.rows.map((row) =>
+      row.duplicateOf
+        ? {
+            ...row,
+            duplicateOf: {
+              id: row.duplicateOf.id,
+              name: row.duplicateOf.name,
+              emailMasked: maskEmail(row.duplicateOf.email),
+              phoneMasked: maskPhone(row.duplicateOf.phone),
+            },
+          }
+        : row,
+    ),
+  };
+}
 
 export function registerSetupAndImportRoutes(app: Express) {
   app.get("/api/org/setup", ...setupScoped, async (req: any, res) => {
@@ -211,7 +241,7 @@ export function registerSetupAndImportRoutes(app: Express) {
         duplicateMode,
         source === "csv" ? "csv" : "vcard",
       );
-      res.json({ headers: [], ...preview });
+      res.json({ headers: [], ...customerPreviewForRole(preview, req.orgContext?.role) });
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Preview failed" });
     }
@@ -243,14 +273,14 @@ export function registerSetupAndImportRoutes(app: Express) {
           duplicateMode,
           defaultCategory,
         );
-        return res.json({ headers: [], ...preview });
+        return res.json({ headers: [], ...customerPreviewForRole(preview, req.orgContext?.role) });
       }
 
       const b64 = readBase64FromBody({ contentBase64 });
       const sheet = await parseSpreadsheet(b64, fileName, mimeType);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
       const preview = previewCustomerImport(mapped, existing, duplicateMode, defaultCategory);
-      res.json({ headers: sheet.headers, ...preview });
+      res.json({ headers: sheet.headers, ...customerPreviewForRole(preview, req.orgContext?.role) });
     } catch (error: any) {
       const status = error.message?.includes("exceeds") ? 413 : 400;
       res.status(status).json({ message: error.message || "Preview failed" });

@@ -21,6 +21,13 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Truths at a glance: change the org's layout (v1.2 Phase 3) | No | No | Yes, logged | Yes, logged |
 | Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |
 | Customer contact details (Q13a) | No | No | Yes | Yes |
+| Customer: name, tier, points, masked phone and email (••4821, j•••@gmail.com; Q7, v1.2 Phase 5) | Yes | Yes | Full | Full |
+| Customer: past-order summary and total spent (v1.2 Phase 5) | No | Yes | Yes | Yes |
+| Customer: edit (points and total spent never typed; masked values never saved) | Create only | Name, email, address, tier, receipt switch; "Replace number" (logged) | All but points | All but points |
+| Delivery address on the order: live / after completion (Q8a) | Yes / No | Yes / Yes | Yes / Yes | Yes / Yes |
+| Driver's call: the customer's phone (Q8a, every reveal logged) | Assigned driver, out for delivery, until completed | Same as cashier (Phase 6 grant to come) | Always | Always |
+| Order history (Q10a) | Today, plus own last 7 days | All | All | All |
+| Find a customer by phone: whole number, up to three, rate-limited per person | Yes | Yes | Yes | Yes |
 | Shift sheets | Own only | Cashiers' and own | All | All |
 | Pay settings: commission rates and switch, overhead mode, targets, "on time" timing (Q16) | No | Cashiers' pay, no rates; cannot change | Change, logged | Change, logged |
 | Staff list (cashier profiles) | No | Yes, no PINs, no rates | Yes, no PINs | Yes, no PINs |
@@ -80,8 +87,18 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   a customer and offer an email receipt (the receipt worker reads the
   address itself), and its offline cache holds no contact details. An edit
   below ADMIN never blanks a contact field it could not see
-  (`customerEditForRole`). The Operations board keeps the phone for whoever
-  works the order (owner decision), and the order sheet reads it from there.
+  (`customerEditForRole`).
+- **One customer view (v1.2 Phase 5, PRV-03).** Every staff read of a
+  customer goes through `server/services/customerView.ts`: below ADMIN the
+  query selects no contact column — the hints and masks are made in the
+  database. `scripts/audit-contact-fields.mjs` fails CI when a contact column
+  is read anywhere else not on its allow-list. The Operations board and its
+  live stream carry no phone for anyone; the driver asks for it
+  (`POST /api/orders/:id/customer-phone`, logged as
+  `order.customer_phone_revealed`, `Cache-Control: no-store`). "Use saved
+  address" is logged (`customer.saved_address_used`), as is a manager's
+  "Replace number" (`customer.phone_replaced`). The public API returns contact
+  details only to a key with the `customers:read_contact` permission.
 - **Expense lists.** `GET /api/overhead-expenses` and
   `GET /api/orders/:orderId/expenses` are MANAGER and above: a personal-use
   sale books its stock at cost as an order expense.

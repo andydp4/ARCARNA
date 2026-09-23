@@ -13,6 +13,7 @@
  * rarer controls (split tender, expenses, gift card) keep their selects; they
  * sit in normal page flow where a select behaves.
  */
+import { PosDeliveryDetails, type PosDeliveryState } from "@/components/pos-delivery-details";
 import {
   ArrowLeft,
   Clock3,
@@ -115,6 +116,10 @@ export type PosCheckoutStepProps = {
   setOrderDate: (v: string) => void;
   fulfilmentMethod: "collection" | "delivery";
   setFulfilmentMethod: (v: "collection" | "delivery") => void;
+  /** Where a delivery goes (v1.2 Phase 5): asked for whenever Delivery is chosen. */
+  delivery: PosDeliveryState;
+  setDelivery: (v: PosDeliveryState) => void;
+  customerId: string | null;
 
   giftCardPayment: GiftCardPaymentState | null;
   setGiftCardPayment: (v: GiftCardPaymentState | null) => void;
@@ -357,6 +362,12 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 ))}
               </div>
             </div>
+
+            {p.fulfilmentMethod === "delivery" && (
+              <div className="sm:col-span-2">
+                <PosDeliveryDetails value={p.delivery} onChange={p.setDelivery} customerId={p.customerId} />
+              </div>
+            )}
 
             <div>
               <label className="mb-2 block text-sm font-medium text-metal-warm-white" htmlFor="order-date">
