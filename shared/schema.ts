@@ -1199,6 +1199,57 @@ export type OrderPayment = typeof orderPayments.$inferSelect;
 export type InsertOrderPayment = typeof orderPayments.$inferInsert;
 
 /**
+ * Till sales the server refused (v1.2 Phase 1A, "Needs attention").
+ *
+ * A sale queued on a till while the connection was down can be refused when it
+ * is finally sent — the customer it names was removed, a gift card ran out, a
+ * split no longer adds up. It used to sit in the till's browser storage,
+ * retried every 30 seconds for ever, and was deleted with everything else on
+ * sign-out. The till now hands it here, so a manager on any device can see it,
+ * and nothing is dropped without a person deciding to (a discard is logged).
+ *
+ * `payload` is the sale exactly as the till sent it. `clientOrderId` is its
+ * reference, so a retry can never land twice. Unique per org: the till may
+ * report the same refusal more than once. (migration 081)
+ */
+export const saleIssues = pgTable(
+  "sale_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    clientOrderId: varchar("client_order_id", { length: 64 }).notNull(),
+    // Where the till was selling. A retry sells from here, so stock comes off
+    // the shelf the goods actually left.
+    locationId: uuid("location_id"),
+    // The signed-in person on the till that rang the sale — the auth subject,
+    // like orders.input_user_id, and credited as the inputter on a retry.
+    rungByUserId: varchar("rung_by_user_id", { length: 255 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    reason: text("reason").notNull(),
+    httpStatus: integer("http_status"),
+    // When the sale was made on the till, not when it was reported.
+    queuedAt: timestamp("queued_at"),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    resolvedOrderId: uuid("resolved_order_id"),
+    resolvedByUserId: varchar("resolved_by_user_id", { length: 255 }),
+    resolvedAt: timestamp("resolved_at"),
+    discardReason: text("discard_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sale_issues_org_ref_uq").on(table.orgId, table.clientOrderId),
+    index("sale_issues_org_status_idx").on(table.orgId, table.status),
+    check("sale_issues_status_check", sql`${table.status} IN ('open', 'resolved', 'discarded')`),
+  ],
+);
+
+export type SaleIssue = typeof saleIssues.$inferSelect;
+export type InsertSaleIssue = typeof saleIssues.$inferInsert;
+
+/**
  * A tender leg as the till submits it. The legs must sum to the order total —
  * a split that does not add up is a sale where some money is unaccounted for,
  * which is exactly the state this table exists to make impossible.
@@ -1426,10 +1477,19 @@ export const orders = pgTable("orders", {
   // (migration 062, shared/orders/orderDate.ts)
   enteredAt: timestamp("entered_at").defaultNow(),
   dateKind: varchar("date_kind", { length: 16 }).notNull().default("live"),
+  // The till's own reference for the sale, made when the sale starts and sent
+  // on every attempt (v1.2 Phase 1A). Unique per org, so a retry after a
+  // timeout, a double tap or an offline replay returns the order that already
+  // landed instead of recording the sale twice. NULL for orders that did not
+  // come from the till (web, API). (migration 080)
+  clientOrderId: varchar("client_order_id", { length: 64 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  uniqueIndex("orders_org_client_order_id_uq")
+    .on(table.orgId, table.clientOrderId)
+    .where(sql`${table.clientOrderId} IS NOT NULL`),
   index("orders_dated_idx")
     .on(table.orgId, table.dateKind, table.createdAt)
     .where(sql`${table.dateKind} <> 'live'`),

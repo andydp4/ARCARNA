@@ -22,6 +22,8 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Confirm a commission payment | No | Cashiers', never own | Cashiers', never own | Anyone's, never own |
 | Scheduled Evidence | No | Yes | Yes | Yes |
 | Issue a gift card (with a reason) | No | Yes | Yes | Yes |
+| Needs attention: retry, edit, export or discard a refused till sale (discard logged) | No (sees the count) | Yes | Yes | Yes |
+| Sign out with till sales unsent (logged) | No | Yes | Yes | Yes |
 | Access log, recordings, managers' pay (Q13a) | No | No | No | Yes |
 | Signals | Addressed to them | Cashier-related | All, including managers' | All |
 | Allowed users, approvals | No | No | Yes | Yes |
@@ -108,6 +110,14 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   money). WhatsApp templates in the MARKETING category, or of unknown
   category, are refused until the customer's marketing consent is recorded —
   and nothing records it yet (`shared/marketingConsent.ts`).
+- **Needs attention (v1.2 Phase 1A).** A till sale the server refuses is
+  reported to `POST /api/sale-issues` by the till (any till role) and listed
+  at `GET /api/sale-issues` for MANAGER and above. A retry or an edit is
+  `POST /api/orders` with `saleIssueId`, MANAGER and above, and keeps the
+  sale's own reference, so it cannot land twice. A discard needs a reason and
+  writes `sale_issue.discarded` (with the whole sale) in the same transaction.
+  Signing a till out while sales are unsent is blocked; a manager may
+  override, and `till.sign_out_override` is written before the till signs out.
 - **Signals.** Every Signal is raised through `notify()`
   (`server/services/signals.ts`) with an audience — a minimum role, a list of
   roles, or named people — and, when it names a member of staff, that person

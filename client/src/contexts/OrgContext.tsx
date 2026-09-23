@@ -89,10 +89,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setSelectedOrgIdState(null);
       prevOrgIdRef.current = null;
       offlineStorage.setActiveOrg(null);
-      void wipeAllOfflineData();
+      offlineStorage.setActiveUser(null);
+      // Nobody pressed Sign out — the session lapsed — so sales not yet sent
+      // are kept for when their person signs back in (v1.2 Phase 1A).
+      void wipeAllOfflineData({ keepUnsentSales: true });
       return;
     }
     if (!user) return;
+    offlineStorage.setActiveUser(user.id);
     void deleteIndexedDb(LEGACY_OFFLINE_DB_NAME);
   }, [shouldWipeOfflineData, user]);
 

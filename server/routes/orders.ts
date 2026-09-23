@@ -24,6 +24,52 @@ import { CreditError } from "../services/creditLedger";
 import { safeErrorMessage } from "../lib/errorScrub";
 import { receiptPrivacyLines, shopPrivacyFromOrg } from "@shared/shopPrivacy";
 import { privacyTextPageUrl } from "./privacyNotice";
+import {
+  alreadyRecordedResponse,
+  findSaleByReference,
+  isSaleReferenceConflict,
+  lockSaleReference,
+  readClientOrderId,
+  SaleAlreadyRecordedError,
+  SaleRefusedError,
+  type RecordedSale,
+} from "../services/saleReference";
+import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } from "../services/saleIssues";
+import { isValidClientOrderId } from "@shared/orders/saleReference";
+import { recordAdminAudit } from "../adminAudit";
+
+/**
+ * A repeat of a sale that already landed gets the original order back and
+ * nothing else happens (v1.2 Phase 1A). Runs before the shift middleware, so
+ * a replay arriving after the drawer closed is still answered, and no shift is
+ * opened as a side effect of a sale that is not being recorded.
+ */
+const answerRepeatSale: RequestHandler = async (req: any, res, next) => {
+  const parsed = readClientOrderId(req.body);
+  if (!parsed.ok) {
+    return res.status(400).json({ message: parsed.message, code: "CLIENT_ORDER_ID_INVALID" });
+  }
+  req.clientOrderId = parsed.value;
+  const orgId: string | null | undefined = req.orgContext?.orgId;
+  if (!parsed.value || !orgId) return next();
+  try {
+    const { db } = await import("../db");
+    const existing = await findSaleByReference(db, orgId, parsed.value);
+    if (!existing) return next();
+    if (req.saleIssue) {
+      await markSaleIssueResolved(db, {
+        orgId,
+        issueId: req.saleIssue.id,
+        orderId: existing.id,
+        userId: req.user?.id ?? null,
+      });
+    }
+    return res.status(200).json(alreadyRecordedResponse(existing));
+  } catch (error) {
+    console.error("[Orders] Sale reference lookup failed:", error);
+    return res.status(500).json({ message: "Failed to create order" });
+  }
+};
 
 /**
  * What the goods on a personal-use order cost the business.
@@ -246,7 +292,37 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     }
   });
 
-  app.post("/api/orders", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), requireOpenShift, requireActiveCashierShift, async (req: any, res) => {
+  // "Did it land?" (v1.2 Phase 1A). A till whose send timed out asks this
+  // before queueing the sale, so it can tell the cashier the truth. Queueing
+  // anyway would be safe — the reference makes the replay a repeat — but the
+  // cashier would be told "saved on this till" about a sale already recorded.
+  app.get("/api/orders/by-reference/:clientOrderId", ...scoped, requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'), async (req: any, res) => {
+    try {
+      const orgId: string | null | undefined = req.orgContext?.orgId;
+      if (!orgId) return res.status(400).json({ message: "Org context required" });
+      const ref = req.params.clientOrderId;
+      if (!isValidClientOrderId(ref)) return res.status(400).json({ message: "Invalid sale reference" });
+      const { db } = await import("../db");
+      const sale = await findSaleByReference(db, orgId, ref);
+      if (!sale) return res.json({ found: false });
+      return res.json({ found: true, ...alreadyRecordedResponse(sale) });
+    } catch (error) {
+      console.error("Error checking a sale reference:", error);
+      res.status(500).json({ message: "Failed to check the sale" });
+    }
+  });
+
+  app.post(
+    "/api/orders",
+    ...scoped,
+    requireRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'CASHIER'),
+    attachSaleIssueResubmission,
+    answerRepeatSale,
+    unlessSaleIssue(requireOpenShift),
+    unlessSaleIssue(requireActiveCashierShift),
+    async (req: any, res) => {
+    const clientOrderId: string | null = req.clientOrderId ?? null;
+    const saleIssue = req.saleIssue ?? null;
     try {
       const ctx = req.orgContext as { orgId: string | null; locationId: string | null; role: string };
       if (!ctx?.orgId) {
@@ -267,7 +343,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const body = {
         ...req.body,
         orgId: ctx.orgId ?? undefined,
-        locationId: ctx.locationId ?? undefined,
+        // A resent Needs attention sale sells from the shop it was rung in.
+        locationId: saleIssue?.locationId ?? ctx.locationId ?? undefined,
         ...(Number.isFinite(orgTaxRate) ? { taxRatePercent: orgTaxRate } : {}),
       };
       const userId = req.user?.id ?? "unknown";
@@ -433,6 +510,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // `reportCapture.ts` already apply to their own alert-creating paths.
       let newAlerts: OpsAlertCreatedRow[] = [];
       const { result, eventId, createdOrder, items } = await withTransaction(async (tx) => {
+        // Two copies of one sale arriving together: the second waits here for
+        // the first to commit, then finds its order and records nothing.
+        if (clientOrderId) {
+          await lockSaleReference(tx, ctx.orgId!, clientOrderId);
+          const existing = await findSaleByReference(tx, ctx.orgId!, clientOrderId);
+          if (existing) throw new SaleAlreadyRecordedError(existing);
+        }
         const result = await engine.placeOrder(body);
         // The till shift is the drawer. A backdated sale's money was in a
         // drawer that has since been counted, so it joins no drawer at all:
@@ -442,11 +526,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         // Whoever is logged in loaded this order. Recorded independently of any
         // cashier code: the user is always known on a till sale, whereas a code
         // is only present when one was picked (migration 057).
-        const inputUserId = req.user?.id ?? null;
-        if (inputUserId) {
+        // A resent Needs attention sale is still the sale of whoever rang it.
+        const inputUserId = saleIssue?.rungByUserId ?? req.user?.id ?? null;
+        if (inputUserId || clientOrderId) {
           await tx
             .update(orders)
-            .set({ input_user_id: inputUserId })
+            .set({
+              ...(inputUserId ? { input_user_id: inputUserId } : {}),
+              ...(clientOrderId ? { client_order_id: clientOrderId } : {}),
+            })
             .where(eq(orders.id, result.orderId));
         }
         if (shiftId || cashierShift) {
@@ -618,7 +706,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           const orderTotal = roundMoney(parseFloat(String(createdOrder.total)));
           const legTotal = sumTenderLegs(body.payments);
           if (Math.abs(legTotal - orderTotal) > 0.005) {
-            throw new Error(
+            throw new SaleRefusedError(
               `Payments add up to £${legTotal.toFixed(2)} but the order is £${orderTotal.toFixed(2)}`,
             );
           }
@@ -676,7 +764,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
 
         const redeemPoints = parseInt(String(body.redeemPoints || 0), 10);
         if (redeemPoints > 0) {
-          if (!createdOrder?.customer_id) throw new Error("Customer required for points redemption");
+          if (!createdOrder?.customer_id) throw new SaleRefusedError("Customer required for points redemption");
           const discount = await redeemPointsInTx(tx, ctx.orgId!, createdOrder.customer_id, redeemPoints);
           const newTotal = roundMoney(Math.max(0, parseFloat(String(createdOrder.total)) - discount));
           await tx.update(orders).set({ total: String(newTotal) }).where(eq(orders.id, result.orderId));
@@ -703,10 +791,36 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           sendEmailReceipt,
         }, { source: 'api-orders' });
 
+        if (saleIssue) {
+          await markSaleIssueResolved(tx, {
+            orgId: ctx.orgId!,
+            issueId: saleIssue.id,
+            orderId: result.orderId,
+            userId: req.user?.id ?? null,
+          });
+        }
+
         return { result, eventId, createdOrder, items };
       });
       
       console.log(`[Orders] Created order ${result.orderId} with event ${eventId}`);
+      if (saleIssue) {
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.id ?? "unknown",
+          actorRole: req.user?.role ?? ctx.role,
+          action: "sale_issue.resent",
+          targetType: "sale_issue",
+          targetId: saleIssue.id,
+          orgId: ctx.orgId,
+          metadata: {
+            orderId: result.orderId,
+            clientOrderId,
+            rungByUserId: saleIssue.rungByUserId,
+            // Edit changes what the till sends; Retry sends the stored sale.
+            mode: req.body?.saleIssueMode === "edit" ? "edit" : "retry",
+          },
+        });
+      }
       if (req.cashierShift?.replayedToClosedShift && ctx.orgId) {
         await refreshClosedCashierShiftSummary(ctx.orgId, req.cashierShift.cashierShiftId);
       }
@@ -753,11 +867,41 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         } : null
       });
     } catch (error: any) {
+      // A repeat of a sale that landed while this one waited — the lock above,
+      // or the unique index if the lock was ever bypassed. Answer with the
+      // original, exactly as the pre-check does.
+      if (clientOrderId && (error instanceof SaleAlreadyRecordedError || isSaleReferenceConflict(error))) {
+        try {
+          const { db } = await import("../db");
+          const existing: RecordedSale | null =
+            error instanceof SaleAlreadyRecordedError ? error.sale : await findSaleByReference(db, req.orgContext.orgId, clientOrderId);
+          if (existing) {
+            if (saleIssue) {
+              await markSaleIssueResolved(db, {
+                orgId: req.orgContext.orgId,
+                issueId: saleIssue.id,
+                orderId: existing.id,
+                userId: req.user?.id ?? null,
+              });
+            }
+            return res.status(200).json(alreadyRecordedResponse(existing));
+          }
+        } catch (lookupError) {
+          console.error("[Orders] Repeat-sale lookup failed:", lookupError);
+        }
+      }
       console.error("Error creating order:", error);
       // Domain messages ("Payments add up to £X but the order is £Y") still
       // reach the till; database text never does (safeErrorMessage).
       const message = safeErrorMessage(error, "Failed to create order");
-      const status = error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message) ? 400 : 500;
+      // 422, not 500, for a sale the server has looked at and refused: the
+      // till hands those to a manager instead of retrying them for ever.
+      const refused =
+        error instanceof SaleRefusedError ||
+        /^(Minimum redemption is|Points must be a positive|Insufficient points balance)/.test(message);
+      const status = refused
+        ? 422
+        : error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message) ? 400 : 500;
       res.status(status).json({ message, errors: error.errors });
     }
   });

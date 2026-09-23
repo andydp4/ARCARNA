@@ -137,6 +137,9 @@ export const orders = pgTable('orders', {
   // sale is for — see shared/schema.ts and migration 062.
   entered_at: timestamp('entered_at').defaultNow(),
   date_kind: varchar('date_kind', { length: 16 }).notNull().default('live'),
+  // The till's sale reference, unique per org — see shared/schema.ts and
+  // migration 080. The unique index is declared there.
+  client_order_id: varchar('client_order_id', { length: 64 }),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

@@ -52,6 +52,8 @@ import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustome
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
+import { consumeSaleIssueDraft, readSaleIssuePayload, type SaleIssueDraft } from "@/lib/saleIssueDraft";
+import { checkSaleLanded, newClientOrderId, sendSale } from "@/lib/saleQueue";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
@@ -193,6 +195,15 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // least-loaded present station member → Unassigned); a specific id is the
   // inputter's explicit override, sent as `assignedUserId`.
   const [assigneeUserId, setAssigneeUserId] = useState("");
+  // The sale's reference (v1.2 Phase 1A), made when the sale starts and sent
+  // on every attempt at it — a retry after a timeout, a double tap, an offline
+  // replay — so the server records it once. A new one only once this sale has
+  // landed or been kept on the till; a refused attempt keeps it, because that
+  // attempt recorded nothing.
+  const [saleRef, setSaleRef] = useState<string>(() => newClientOrderId());
+  // A refused sale a manager opened from Needs attention to fix. It keeps the
+  // sale's own reference and is sent as a resend of that sale.
+  const [editingIssue, setEditingIssue] = useState<SaleIssueDraft | null>(null);
 
   const { data: currentShiftData } = useQuery<{
     shift: { id: string; status: string; locationId?: string } | null;
@@ -291,6 +302,50 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     });
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
+  // Edit from Needs attention: put the refused sale back on the till.
+  const [issueDraftConsumed, setIssueDraftConsumed] = useState(false);
+  useEffect(() => {
+    if (issueDraftConsumed || productsLoading || customersLoading) return;
+    setIssueDraftConsumed(true);
+    const draft = consumeSaleIssueDraft();
+    if (!draft) return;
+    const sale = readSaleIssuePayload(draft.payload);
+    const matched: CartItem[] = [];
+    let unmatched = 0;
+    for (const line of sale.lines) {
+      const product = products.find((p) => p.id === line.productId) as PosProduct | undefined;
+      if (!product) {
+        unmatched += 1;
+        continue;
+      }
+      matched.push({ product, quantity: line.quantity, customPrice: line.unitPrice, subtotal: line.quantity * line.unitPrice });
+    }
+    setCart(matched);
+    const customer = sale.customerId ? customers.find((c) => c.id === sale.customerId) : undefined;
+    setSelectedCustomer(customer ?? null);
+    if (sale.paymentMethod && sale.paymentMethod !== "split") setPaymentMethod(sale.paymentMethod);
+    if (sale.payments && sale.payments.length > 1) {
+      setSplitPayment(true);
+      setTenderLegs(sale.payments.map((leg) => ({ method: leg.method, amount: leg.amount.toFixed(2) })));
+    }
+    setFulfilmentMethod(sale.fulfilmentMethod);
+    if (sale.channel === "pos" || sale.channel === "phone" || sale.channel === "whatsapp") setChannel(sale.channel);
+    if (sale.personalUseReason) setPersonalUseReason(sale.personalUseReason);
+    if (sale.orderDate) setOrderDate(sale.orderDate);
+    if (sale.expenses.length > 0) setOrderExpenses(sale.expenses);
+    setSaleRef(draft.clientOrderId);
+    setEditingIssue(draft);
+    const notes = [
+      unmatched ? `${unmatched} line(s) are no longer in the catalogue` : "",
+      sale.customerId && !customer ? "the customer was not found" : "",
+      sale.dropped.length ? `apply the ${sale.dropped.join(" and ")} again if still wanted` : "",
+    ].filter(Boolean);
+    toast({
+      title: "Editing a sale from Needs attention",
+      description: notes.length ? `Check it before taking payment: ${notes.join("; ")}.` : "Check it, then take payment.",
+    });
+  }, [issueDraftConsumed, productsLoading, customersLoading, products, customers, toast]);
+
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
   // total and charged another.
@@ -372,76 +427,65 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
-      const queueOffline = async () => {
-        console.log('[POS] Queueing order mutation offline');
-        try {
-          await offlineStorage.queueMutation({
-            type: 'ORDER_CREATE',
-            method: 'POST',
-            endpoint: '/api/orders',
-            data: orderData,
-          });
-          console.log('[POS] Order mutation queued successfully');
-        } catch (queueError) {
-          console.error('[POS] Failed to queue mutation:', queueError);
-          throw queueError;
+      const payload = {
+        ...orderData,
+        clientOrderId: saleRef,
+        ...(editingIssue ? { saleIssueId: editingIssue.issueId, saleIssueMode: "edit" } : {}),
+      };
+      const keepOnTill = async (why: "offline" | "timeout") => {
+        // A manager's edit is a resend of a sale arcarna already holds on
+        // Needs attention; keeping a second copy here would only confuse.
+        if (editingIssue) {
+          throw new Error("No connection, so the edit was not sent. The sale is still on Needs attention — try again when you are back online.");
         }
-
-        return { offline: true, orderId: null };
+        await offlineStorage.queueMutation({
+          type: 'ORDER_CREATE',
+          method: 'POST',
+          endpoint: '/api/orders',
+          data: payload,
+          clientOrderId: saleRef,
+          queuedByUserId: (authUser as { id?: string } | null)?.id,
+        });
+        return { offline: true, why, orderId: null };
       };
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+      if (!navigator.onLine) return keepOnTill("offline");
 
-        const response = await apiFetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData),
-          credentials: 'include',
-          signal: controller.signal
-        });
+      const outcome = await sendSale(payload);
+      if (outcome.ok) return outcome.body;
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const text = await response.text() || response.statusText;
-          if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
-            // A readable toast rather than the raw response body (which is
-            // what fell through to the generic `throw` below before N6).
-            let message = "An active cashier shift is required before taking sales.";
-            try {
-              const parsed = JSON.parse(text);
-              if (typeof parsed?.message === "string") message = parsed.message;
-            } catch {
-              /* the default message above already covers this */
-            }
-            throw new Error(message);
-          }
-          throw new Error(`${response.status}: ${text}`);
+      if (outcome.status === null) {
+        // No answer. On a slow line the sale may well have been recorded, so
+        // ask before keeping it — the cashier should hear the truth. Keeping
+        // it would still be safe: the reference makes the replay a repeat.
+        if (navigator.onLine) {
+          const landed = await checkSaleLanded(saleRef);
+          if (landed.result === "landed") return { ...landed.body, landedAfterTimeout: true };
         }
-
-        return response.json();
-      } catch (error) {
-        const isNetworkError = !navigator.onLine ||
-          (error as Error).name === 'AbortError' ||
-          (error as Error).message.includes('Failed to fetch') ||
-          (error as Error).message.includes('NetworkError');
-
-        if (isNetworkError) {
-          return queueOffline();
-        }
-        throw error;
+        return keepOnTill(navigator.onLine && outcome.timedOut ? "timeout" : "offline");
       }
+      throw new Error(outcome.message);
     },
     onSuccess: async (data: any) => {
       const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
       const hadNoDueTime = dueMinutes == null && !dueTime;
 
       if (data?.offline) {
+        // It used to say "You're offline" for every failure, including a
+        // server that was merely slow while the till was online.
         toast({
-          title: "Order Saved Offline",
-          description: "You're offline. Order will sync automatically when connection returns.",
+          title: "Sale saved on this till",
+          description:
+            data.why === "timeout"
+              ? "arcarna did not answer in time, so this sale is saved on this till and will be sent automatically. It will only be recorded once."
+              : "No connection. This sale is saved on this till and will be sent when the connection is back. It will only be recorded once.",
+        });
+      } else if (data?.duplicate || data?.landedAfterTimeout) {
+        toast({
+          title: "Order placed",
+          description: data?.landedAfterTimeout
+            ? "The connection was slow, but the sale reached arcarna."
+            : "This sale was already recorded, so nothing was added twice.",
         });
       } else if (data?.warnings && data.warnings.length > 0) {
         // Order was created but with stock warnings
@@ -479,6 +523,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         embedded?.onPlaced(createdOrderId);
       }
 
+      if (editingIssue) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues/summary"] });
+      }
+      setEditingIssue(null);
+      setSaleRef(newClientOrderId());
       setCart([]);
       setSelectedCustomer(null);
       setView("build");
@@ -1077,6 +1127,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   </p>
                 ) : null}
                 <MyShiftSummary />
+              </div>
+            )}
+            {editingIssue && (
+              <div
+                className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
+                style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+                data-testid="pos-editing-sale-issue"
+              >
+                <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
+                {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
+                their sale, when you take payment.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => {
+                    setEditingIssue(null);
+                    setSaleRef(newClientOrderId());
+                    setCart([]);
+                  }}
+                  data-testid="pos-editing-sale-issue-cancel"
+                >
+                  Stop editing
+                </button>
               </div>
             )}
 

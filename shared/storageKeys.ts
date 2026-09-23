@@ -15,6 +15,9 @@ export const STORAGE_SHIFT_ID_LEGACY = "midnight_currentShiftId";
 export const STORAGE_WHATSAPP_DRAFT = "arcarna.whatsapp.draftOrder";
 export const STORAGE_WHATSAPP_DRAFT_LEGACY = "midnight.whatsapp.draftOrder";
 
+/** A Needs attention sale opened in the till for a manager to edit (v1.2 Phase 1A). */
+export const STORAGE_SALE_ISSUE_DRAFT = "arcarna.saleIssue.draft";
+
 export const STORAGE_WHATSAPP_SOUND = "arcarna.whatsapp.sound";
 export const STORAGE_WHATSAPP_SOUND_LEGACY = "midnight.whatsapp.sound";
 
