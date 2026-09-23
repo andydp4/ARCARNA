@@ -53,6 +53,28 @@ const createCustomerBody = z.object({
  */
 export const phoneLookupLimit = perPersonRateLimit({ windowMs: 60_000, max: 20, name: "phone_lookup" });
 
+/**
+ * The duplicate check on create answers "is this number or email on file,
+ * and whose is it?", so it counts against the same per-person limit as the
+ * lookup. Skipped when nothing would be looked up (no phone or email, or
+ * "No, add new" already answered): creating a customer is not a lookup.
+ */
+const duplicateCheckLimit: RequestHandler = (req: any, res, next) => {
+  const body = req.body ?? {};
+  const looksUp =
+    !body.confirmNew &&
+    ((typeof body.phone === "string" && body.phone.trim() !== "") ||
+      (typeof body.email === "string" && body.email.trim() !== ""));
+  return looksUp ? phoneLookupLimit(req, res, next) : next();
+};
+
+/**
+ * "Use saved address" (PRV-05) is for filling in the delivery being keyed in,
+ * one customer at a time; it is not a way to read the address book. A till
+ * takes a handful of deliveries an hour, so this is never felt at the counter.
+ */
+export const savedAddressLimit = perPersonRateLimit({ windowMs: 10 * 60_000, max: 10, name: "saved_address" });
+
 /** Contact reads are never stored by a browser, a proxy or the service worker (PRV-07). */
 function noStore(res: any) {
   res.setHeader("Cache-Control", "no-store, private");
@@ -177,7 +199,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.post("/api/customers", ...scoped, createRoles, async (req: any, res) => {
+  app.post("/api/customers", ...scoped, createRoles, duplicateCheckLimit, async (req: any, res) => {
     try {
       // No schema here previously: req.body went straight to the engine, so an
       // empty body or an oversized field failed at the database as a 500.
@@ -302,6 +324,7 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
     "/api/customers/:id/saved-address",
     ...scoped,
     requireRole(...rolesAtLeast("CASHIER")),
+    savedAddressLimit,
     async (req: any, res) => {
       try {
         const ctx = req.orgContext as { orgId: string; role: string };

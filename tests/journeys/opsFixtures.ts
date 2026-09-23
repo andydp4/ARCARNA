@@ -425,6 +425,8 @@ export async function orderInState(
       opts.paymentMethod ?? "cash",
       {
         fulfilmentMethod: fulfilment,
+        // Phase 5: the create route refuses a delivery without its address.
+        ...(fulfilment === "delivery" ? { deliveryAddress: "1 Fixture Street", deliveryPostcode: "FX1 1FX" } : {}),
         channel: opts.channel ?? "pos",
         ...(opts.customerId ? { customerId: opts.customerId } : {}),
         ...(orderDate ? { orderDate } : {}),

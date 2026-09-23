@@ -645,7 +645,9 @@ export function createWebsiteService(repository: WebsiteRepository) {
           if (resolved.kind === "matched") customerId = resolved.customerId;
           else possibleDuplicateOf = resolved.possibleDuplicateOf;
         }
+        let createdHere = false;
         if (!customerId) {
+          createdHere = true;
           const created = await runtime.engine.createCustomer({
             orgId,
             name: order.customer.name,
@@ -658,7 +660,11 @@ export function createWebsiteService(repository: WebsiteRepository) {
             await runtime.markPossibleDuplicate(tx, customerId, possibleDuplicateOf);
           }
         }
-        if (context.shopAccountUserId && runtime.linkShopAccount) {
+        // Linked for good only to a record made for this account. A match
+        // came from the phone and email typed into the form (a parent's,
+        // when ordering for them), not from the account itself, so it
+        // attaches this one order and nothing after it.
+        if (context.shopAccountUserId && createdHere && runtime.linkShopAccount) {
           await runtime.linkShopAccount(tx, context.shopAccountUserId, customerId);
         }
         const customer = { id: customerId };

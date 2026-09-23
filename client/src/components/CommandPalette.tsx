@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getJson } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import type { ApiOrderRow } from "@/lib/orderTypes";
 import {
   CommandDialog,
@@ -88,7 +88,8 @@ export function CommandPalette() {
   }, [search]);
   const { data: foundOrders } = useQuery<ApiOrderRow[]>({
     queryKey: ["/api/orders/search", term],
-    queryFn: () => getJson<ApiOrderRow[]>(`/api/orders/search?q=${encodeURIComponent(term)}`),
+    // POST: a typed phone number stays out of the URL and the access logs.
+    queryFn: async () => (await apiRequest("POST", "/api/orders/search", { q: term })).json() as Promise<ApiOrderRow[]>,
     enabled: open && term.length >= 2,
     staleTime: 0,
     gcTime: 0,

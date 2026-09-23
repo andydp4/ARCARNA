@@ -56,7 +56,9 @@ test.describe("Credit customer click-through detail", () => {
     const customerName = `ZZ Credit Detail Customer ${suffix}`;
     const customer = await okJson<{ id: string }>(
       await api.post("/api/customers", {
-        data: { name: customerName, email: `credit-detail-${suffix}@seed.local`, phone: "07700900123" },
+        // confirmNew: this journey is about credit, not the duplicate prompt,
+        // and the fixed number is shared with other journeys (Phase 5).
+        data: { name: customerName, email: `credit-detail-${suffix}@seed.local`, phone: "07700900123", confirmNew: true },
       }),
     );
 

@@ -13,7 +13,7 @@
  *   POST /api/whatsapp/conversations/:id/reply
  */
 import { canSeeContactDetails, customerForRole, rolesAtLeast } from "@shared/accessPolicy";
-import { isMaskedValue, maskPhone } from "@shared/customerView";
+import { isMaskedValue, maskPhone, whatsappMessageForInbox } from "@shared/customerView";
 import type { Express, Request, RequestHandler } from "express";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
@@ -171,7 +171,7 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
       const messages = await store.listMessages(req.params.id, ctx.orgId);
       res.json({
         conversation: conversationForRole(conversation, ctx.role),
-        messages,
+        messages: messages.map((m) => whatsappMessageForInbox(m)),
         withinServiceWindow: isWithinServiceWindow(conversation.lastInboundAt),
       });
     } catch (error) {

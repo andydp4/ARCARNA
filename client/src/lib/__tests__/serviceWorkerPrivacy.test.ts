@@ -72,6 +72,6 @@ describe("service worker: people's details are never cached (PRV-07)", () => {
   });
 
   it("bumped its cache version so the old API cache is dropped on activate", () => {
-    expect(Number(sw.CACHE_VERSION)).toBeGreaterThanOrEqual(9);
+    expect(Number(sw.CACHE_VERSION)).toBeGreaterThanOrEqual(10);
   });
 });

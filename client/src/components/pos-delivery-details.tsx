@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Loader2, MapPin } from "lucide-react";
 import { apiFetch } from "@/lib/appPaths";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   DELIVERY_ADDRESS_MAX,
   DELIVERY_NOTES_MAX,
   DELIVERY_POSTCODE_MAX,
+  splitSavedAddress,
 } from "@shared/orders/delivery";
 
 export type PosDeliveryState = {
@@ -54,6 +55,10 @@ export function PosDeliveryDetails({
 }) {
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // What was typed while the saved address was on its way is kept: the fetch
+  // merges into the latest value, not the one it started from.
+  const latest = useRef(value);
+  latest.current = value;
 
   const useSaved = async () => {
     if (!customerId) return;
@@ -71,7 +76,9 @@ export function PosDeliveryDetails({
         setNote("No saved address for this customer.");
         return;
       }
-      onChange({ ...value, address: body.address });
+      const saved = splitSavedAddress(String(body.address));
+      const current = latest.current;
+      onChange({ ...current, address: saved.address, postcode: saved.postcode ?? current.postcode });
     } catch (e) {
       setNote(e instanceof Error ? e.message : "Could not read the saved address");
     } finally {

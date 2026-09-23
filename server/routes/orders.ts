@@ -43,6 +43,7 @@ import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../
 import { PlaceOrderInput } from "../../packages/domain/src/schemas";
 import {
   checkDeliveryDetails,
+  isQueuedOrRetriedSale,
   hasDeliveryFields,
   NO_DELIVERY,
   readDeliveryDetails,
@@ -56,6 +57,7 @@ import {
   seesFullOrderHistory,
 } from "@shared/accessPolicy";
 import { phoneLookupLimit } from "./customers";
+import { formatUkPhone } from "@shared/customerView";
 
 /**
  * A repeat of a sale that already landed gets the original order back and
@@ -662,8 +664,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Required at the till. A sale queued offline before the till knew to
       // ask is recorded anyway: the money is taken, and a refusal would only
       // move it to Needs attention with the address still missing.
+      // Keyed on the replay itself, not on req.offlineQueuedAt: that is unset
+      // for a sale queued before today's trading day (or on a skewed clock),
+      // which is exactly the old queued sale this exemption is for; a
+      // manager's Retry of a sale issue is the same money, already taken.
+      const queuedOrRetried = isQueuedOrRetriedSale(req.body, { offlineQueuedAt: req.offlineQueuedAt, saleIssue: req.saleIssue });
       const deliveryCheck = checkDeliveryDetails(fulfilmentMethodForAssignment, readDeliveryDetails(body));
-      if (!deliveryCheck.ok && !(req.offlineQueuedAt && deliveryCheck.code === "DELIVERY_ADDRESS_REQUIRED")) {
+      if (!deliveryCheck.ok && !(queuedOrRetried && deliveryCheck.code === "DELIVERY_ADDRESS_REQUIRED")) {
         return res.status(400).json({ message: deliveryCheck.message, code: deliveryCheck.code });
       }
       const delivery = deliveryCheck.ok
@@ -1131,6 +1138,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // today's trading day plus what they keyed in or completed in the last
       // seven days. It used to be every order ever taken, on every device.
       const bound = await orderHistoryBound(ctx.orgId, ctx.role, req.user?.id ?? null);
+      // Not kept by the service worker: its cache is per org, not per person,
+      // so a manager's whole order book would be served offline to the next
+      // cashier on the till (Q10a, PRV-07).
+      res.setHeader("Cache-Control", "no-store, private");
       const rows = await selectOrderListRows(ctx.orgId, bound, null);
       res.json(await withInputUserNames(rows));
     } catch (error) {
@@ -1144,12 +1155,19 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
    * same history bound, so a device never holds the whole order book to
    * search it. Matches the order's short code, the customer's name, or — a
    * whole UK number only — the customer's phone exactly.
+   *
+   * POST, like the phone lookup, so a typed number stays out of URLs and
+   * access logs; and a phone-shaped search counts against the same
+   * per-person limit, since it answers "whose number is this?" (PRV-06).
    */
-  app.get("/api/orders/search", ...scoped, async (req: any, res) => {
+  const searchPhoneLimit = (req: any, res: any, next: any) =>
+    formatUkPhone(String(req.body?.q ?? "")) ? phoneLookupLimit(req, res, next) : next();
+  app.post("/api/orders/search", ...scoped, searchPhoneLimit, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role: string };
       if (!ctx?.orgId) return res.status(400).json({ message: "Org context required" });
-      const q = String(req.query.q ?? "").trim().slice(0, 100);
+      res.setHeader("Cache-Control", "no-store, private");
+      const q = String(req.body?.q ?? "").trim().slice(0, 100);
       if (q.length < 2) return res.json([]);
       const bound = await orderHistoryBound(ctx.orgId, ctx.role, req.user?.id ?? null);
       const rows = await selectOrderListRows(ctx.orgId, bound, q);
@@ -1168,6 +1186,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { refunds: refundsTable, refundLines } = await import('@shared/schema');
       const { eq, and } = await import('drizzle-orm');
       const mainDb = (await import('../db')).db;
+      // Per role (a finished delivery's address is manager-only, Q8a), so never
+      // left in the till's shared service-worker cache (PRV-07).
+      res.setHeader("Cache-Control", "no-store, private");
       const orderCond = ctx?.orgId ? and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)) : eq(orders.id, req.params.id);
       const [order] = await db.select().from(orders).where(orderCond);
       if (!order) {

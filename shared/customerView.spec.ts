@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deviceCustomerRow, duplicatePrompt, formatUkPhone, hasContactDetails, isMaskedValue, maskEmail, maskPhone, shortName, withoutContactDetails } from "./customerView";
-import { checkDeliveryDetails, normalisePostcode, readDeliveryDetails } from "./orders/delivery";
+import { deviceCustomerRow, duplicatePrompt, formatUkPhone, hasContactDetails, isMaskedValue, maskEmail, maskPhone, shortName, whatsappMessageForInbox, withoutContactDetails } from "./customerView";
+import { checkDeliveryDetails, isQueuedOrRetriedSale, normalisePostcode, readDeliveryDetails, savedAddressLine, splitSavedAddress } from "./orders/delivery";
 
 describe("formatUkPhone (PRV-06)", () => {
   it("reads the ways a UK number is written as one +44 number", () => {
@@ -98,5 +98,38 @@ describe("device copies (PRV-07)", () => {
     expect(hasContactDetails(edit)).toBe(true);
     expect(withoutContactDetails(edit)).toEqual({ name: "Jane", category: "Gold" });
     expect(hasContactDetails({ name: "Jane", phone: "" })).toBe(false);
+  });
+});
+
+describe("whatsappMessageForInbox (Q7)", () => {
+  it("drops Meta's raw payload, whose `from` is the full number", () => {
+    const out = whatsappMessageForInbox({ id: "m1", body: "hi", rawPayload: { from: "447700904821" } });
+    expect(out).toEqual({ id: "m1", body: "hi" });
+    expect(JSON.stringify(out)).not.toContain("447700904821");
+  });
+});
+
+describe("splitSavedAddress (PRV-05)", () => {
+  it("reads back what Save as their address wrote, postcode in its own box", () => {
+    const line = savedAddressLine({ deliveryAddress: "5 Live Lane", deliveryPostcode: "LV1 1VE", deliveryNotes: null });
+    expect(splitSavedAddress(line)).toEqual({ address: "5 Live Lane", postcode: "LV1 1VE" });
+    expect(splitSavedAddress("Flat 2, 5 Live Lane, lv11ve")).toEqual({ address: "Flat 2, 5 Live Lane", postcode: "LV1 1VE" });
+  });
+
+  it("leaves an address without a trailing postcode whole", () => {
+    expect(splitSavedAddress("9 Saved Street")).toEqual({ address: "9 Saved Street", postcode: null });
+    expect(splitSavedAddress("9 Saved Street, Leeds")).toEqual({ address: "9 Saved Street, Leeds", postcode: null });
+  });
+});
+
+describe("isQueuedOrRetriedSale (PRV-05)", () => {
+  it("an offline replay is exempt even when its queued time is not trusted as today", () => {
+    expect(isQueuedOrRetriedSale({ _offlineOrderReplay: true, _offlineQueuedAt: "2020-01-01T00:00:00Z" }, { offlineQueuedAt: undefined })).toBe(true);
+    expect(isQueuedOrRetriedSale({ _offlineQueuedAt: "2020-01-01T00:00:00Z" }, {})).toBe(true);
+    expect(isQueuedOrRetriedSale({}, { saleIssue: { id: "i1" } })).toBe(true);
+  });
+
+  it("a sale rung at the till now is not", () => {
+    expect(isQueuedOrRetriedSale({ fulfilmentMethod: "delivery" }, { offlineQueuedAt: null })).toBe(false);
   });
 });

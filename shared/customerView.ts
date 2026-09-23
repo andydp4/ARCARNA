@@ -127,3 +127,13 @@ export function hasContactDetails(data: Record<string, unknown> | null | undefin
   if (!data) return false;
   return DEVICE_CONTACT_FIELDS.some((f) => typeof data[f] === "string" && (data[f] as string).trim() !== "");
 }
+
+/**
+ * A WhatsApp message as the inbox sends it (Q7/Q13a). `rawPayload` is Meta's
+ * own message object, whose `from` is the sender's full number: the inbox never
+ * reads it, so it is dropped for every role rather than masked.
+ */
+export function whatsappMessageForInbox<T extends Record<string, unknown>>(message: T): Omit<T, "rawPayload"> {
+  const { rawPayload: _raw, ...rest } = message;
+  return rest;
+}

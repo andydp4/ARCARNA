@@ -140,7 +140,7 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
 
   it("POST /api/customers strips category from a CASHIER's body — the till can create a customer, not self-assign a loyalty tier", async () => {
     createCustomer.mockClear();
-    const [, handler] = customerRoutes["POST /api/customers"];
+    const handler = customerRoutes["POST /api/customers"].at(-1)!;
     const req = {
       orgContext: { orgId: "org-1", locationId: null, role: "CASHIER" },
       body: { name: "Self-Escalated VIP", category: "Platinum", loyaltyPoints: 99999 },
@@ -155,7 +155,7 @@ describe("ARC-005: customers/loyalty-tiers/promotions/overhead-expenses mutation
 
   it("POST /api/customers keeps a MANAGER's category (setting a tier at creation is a manager-level choice)", async () => {
     createCustomer.mockClear();
-    const [, handler] = customerRoutes["POST /api/customers"];
+    const handler = customerRoutes["POST /api/customers"].at(-1)!;
     const req = {
       orgContext: { orgId: "org-1", locationId: null, role: "MANAGER" },
       body: { name: "VIP Customer", category: "Platinum" },

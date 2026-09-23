@@ -573,10 +573,18 @@ describe("website orders: who they belong to and where they go (v1.2 Phase 5)", 
     expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "linked-1" });
   });
 
-  it("an unlinked shop account is linked to the customer its first order lands on", async () => {
+  it("an unlinked shop account is linked to the record made for its first order", async () => {
     const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
-    const rt = phase5Runtime({ kind: "matched", customerId: "jane-1" });
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
     await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
-    expect(rt.linkShopAccount).toHaveBeenCalledWith({ tx: true }, "shop-user", "jane-1");
+    expect(rt.linkShopAccount).toHaveBeenCalledWith({ tx: true }, "shop-user", "customer-1");
+  });
+
+  it("a match on typed-in details attaches the order but never links the account to that person", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "matched", customerId: "parent-1" });
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "parent-1" });
+    expect(rt.linkShopAccount).not.toHaveBeenCalled();
   });
 });

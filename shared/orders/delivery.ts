@@ -87,3 +87,42 @@ export function savedAddressLine(details: DeliveryDetails): string | null {
   const parts = [details.deliveryAddress, details.deliveryPostcode].filter(Boolean);
   return parts.length ? parts.join(", ") : null;
 }
+
+const UK_POSTCODE = /^[A-Z]{1,2}[0-9][A-Z0-9]?\s*[0-9][A-Z]{2}$/i;
+
+/**
+ * "Use saved address" reads back what "Save as their address" wrote
+ * (savedAddressLine: "address, POSTCODE"), so a UK postcode at the end goes
+ * back in the Postcode box instead of staying in the Address one. Anything
+ * else (an address typed on the Customers page) is left whole.
+ */
+export function splitSavedAddress(line: string | null | undefined): { address: string; postcode: string | null } {
+  const text = String(line ?? "").trim();
+  const comma = text.lastIndexOf(",");
+  if (comma > 0) {
+    const tail = text.slice(comma + 1).trim();
+    if (UK_POSTCODE.test(tail)) {
+      return { address: text.slice(0, comma).trim(), postcode: normalisePostcode(tail) };
+    }
+  }
+  return { address: text, postcode: null };
+}
+
+/**
+ * A sale whose money was already taken before the till could ask for an
+ * address: an offline replay (whatever its queued time, which the server may
+ * not trust as today's) or a manager's Retry of a sale issue. Such a delivery
+ * is recorded without an address rather than refused.
+ */
+export function isQueuedOrRetriedSale(
+  body: Record<string, unknown> | null | undefined,
+  context: { offlineQueuedAt?: Date | null; saleIssue?: unknown },
+): boolean {
+  const b = body ?? {};
+  return (
+    Boolean(context.offlineQueuedAt) ||
+    b._offlineOrderReplay === true ||
+    b._offlineQueuedAt !== undefined ||
+    Boolean(context.saleIssue)
+  );
+}

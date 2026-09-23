@@ -216,6 +216,23 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     phoneLookupLimit.reset();
   });
 
+  it("the duplicate check on create and a phone-shaped order search count against the same limit", async () => {
+    const { phoneLookupLimit } = await import("../routes/customers");
+    phoneLookupLimit.reset();
+    for (let i = 0; i < 20; i++) {
+      await as("CASHIER", "views-prober2").post("/api/customers", { name: "Jane Smith", phone: "07700 904821" });
+    }
+    expect((await as("CASHIER", "views-prober2").post("/api/customers", { name: "Jane Smith", email: "jane.smith@gmail.com" })).status).toBe(429);
+    phoneLookupLimit.reset();
+    for (let i = 0; i < 20; i++) {
+      await as("MANAGER", "views-searcher").post("/api/orders/search", { q: "07700 904821" });
+    }
+    expect((await as("MANAGER", "views-searcher").post("/api/orders/search", { q: "07700 904821" })).status).toBe(429);
+    // A name search is not a phone lookup.
+    expect((await as("MANAGER", "views-searcher").post("/api/orders/search", { q: "jane" })).status).toBe(200);
+    phoneLookupLimit.reset();
+  });
+
   it("creating Jane again prompts; confirmed, the new record stores who made it", async () => {
     const again = await as("CASHIER").post("/api/customers", { name: "Jane Smith", phone: "07700904821" });
     expect(again.status).toBe(409);
@@ -293,6 +310,17 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect(logs.length).toBeGreaterThan(0);
   });
 
+  it("Use saved address is rate-limited per person: it is not a way to read the address book", async () => {
+    const { savedAddressLimit } = await import("../routes/customers");
+    savedAddressLimit.reset();
+    let last = 0;
+    for (let i = 0; i < 11; i++) {
+      last = (await as("CASHIER", "views-address-walker").post(`/api/customers/${ids.jane}/saved-address`)).status;
+    }
+    expect(last).toBe(429);
+    savedAddressLimit.reset();
+  });
+
   it("a cashier's history is today plus their own last seven days (Q10a); a manager's is all of it", async () => {
     const cashier = await as("CASHIER", CASHIER).get("/api/orders");
     const seen = new Set((cashier.body as Array<{ id: string }>).map((o) => o.id));
@@ -300,20 +328,22 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect(seen.has(ids.recentMine)).toBe(true);
     expect(seen.has(ids.recentOther)).toBe(false);
     expect(seen.has(ids.oldMine)).toBe(false);
+    // Per person, so never kept in the till's shared service-worker cache.
+    expect(cashier.headers["cache-control"]).toContain("no-store");
     const manager = await as("MANAGER").get("/api/orders");
     const all = new Set((manager.body as Array<{ id: string }>).map((o) => o.id));
     for (const id of Object.values(ids).filter((v) => v !== ids.jane)) expect(all.has(id)).toBe(true);
   });
 
   it("the palette's order search runs on the server, inside the same bound", async () => {
-    const byName = await as("CASHIER", CASHIER).get("/api/orders/search?q=jane");
+    const byName = await as("CASHIER", CASHIER).post("/api/orders/search", { q: "jane" });
     expect((byName.body as Array<{ id: string }>).map((o) => o.id).sort()).toEqual([ids.doneDelivery, ids.liveDelivery].sort());
-    const byPhone = await as("CASHIER", CASHIER).get(`/api/orders/search?q=${encodeURIComponent("07700 904821")}`);
+    const byPhone = await as("CASHIER", CASHIER).post("/api/orders/search", { q: "07700 904821" });
     expect((byPhone.body as unknown[]).length).toBe(2);
     expect(JSON.stringify(byPhone.body)).not.toContain("904821");
-    const old = await as("CASHIER", CASHIER).get(`/api/orders/search?q=${ids.oldMine.slice(0, 8)}`);
+    const old = await as("CASHIER", CASHIER).post("/api/orders/search", { q: ids.oldMine.slice(0, 8) });
     expect(old.body).toEqual([]);
-    const managerOld = await as("MANAGER").get(`/api/orders/search?q=${ids.oldMine.slice(0, 8)}`);
+    const managerOld = await as("MANAGER").post("/api/orders/search", { q: ids.oldMine.slice(0, 8) });
     expect((managerOld.body as Array<{ id: string }>).map((o) => o.id)).toEqual([ids.oldMine]);
   });
 
@@ -360,6 +390,7 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect(live.body).toMatchObject({ deliveryAddress: "5 Live Lane" });
     const manager = await as("MANAGER").get(`/api/orders/${ids.doneDelivery}`);
     expect(manager.body).toMatchObject({ deliveryAddress: "6 Done Drive" });
+    expect(manager.headers["cache-control"]).toContain("no-store");
   });
 
   it("the API needs customers:read_contact for contact details", async () => {

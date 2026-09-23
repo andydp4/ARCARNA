@@ -13,8 +13,10 @@ const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
  *  stored under a missing chunk's URL (the server used to answer a missing
  *  /assets file with the app shell and a 200).
  *  Bumped 8 -> 9 (v1.2 Phase 5, PRV-07): activate drops the old API cache,
- *  which could hold customer, credit, invoice and WhatsApp responses. */
-const CACHE_VERSION = "9";
+ *  which could hold customer, credit, invoice and WhatsApp responses.
+ *  Bumped 9 -> 10 (Phase 5 review): the order list and order details are now
+ *  no-store (per role, and this cache is per org only); drop old copies. */
+const CACHE_VERSION = "10";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;

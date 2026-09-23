@@ -252,7 +252,7 @@ function OpsDetailsBody({
             <p className="text-lg font-semibold text-foreground">
               {order.customerName ?? "Walk-in"}
             </p>
-            <OpsCustomerCall order={order} role={role} currentUserId={currentUserId} />
+            <OpsCustomerCall key={order.id} order={order} role={role} currentUserId={currentUserId} />
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>

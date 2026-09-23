@@ -29,8 +29,16 @@ const ALLOWED = {
     why: "The domain engine's customer repository: it writes the row and returns it to the engine, never to a route.",
   },
   "server/storage.ts": {
-    reads: 3,
-    why: "Storage's own customer reads (getCustomer/getCustomers); callers are counted separately below.",
+    reads: 4,
+    why: "Storage's own customer reads (getCustomer/getCustomers, getTopCustomers whose route sends name and metrics only); callers are counted separately below.",
+  },
+  "server/routes/orders.ts": {
+    reads: 1,
+    why: "The palette's order search matches a whole typed number against customers.phone_e164 in WHERE; the number is never selected.",
+  },
+  "server/services/opsBoard.ts": {
+    reads: 1,
+    why: "The board's phone search matches customers.phone_e164 in WHERE and returns order ids only.",
   },
   "server/lib/rfmService.ts": {
     reads: 1,
@@ -82,11 +90,24 @@ const ALLOWED = {
   },
 };
 
+// The customers table under its usual names: `customers`, `schema.customers`,
+// or an import alias such as `customersTable`.
+const T = String.raw`(?:\w+\.)?customers(?:Table)?`;
 const PATTERNS = [
-  { name: "contact column", re: /\bcustomers\.(?:phone|email|address|phoneE164)\b/g },
-  { name: "whole customer row", re: /\.select\(\s*\)\s*\.from\(\s*(?:\w+\.)?customers\s*\)/g },
+  { name: "contact column", re: new RegExp(String.raw`\b${T}\.(?:phone|email|address|phoneE164|phone_e164)\b`, "g") },
+  { name: "whole customer row", re: new RegExp(String.raw`\.select\(\s*\)\s*\.from\(\s*${T}\s*\)`, "g") },
+  // select({ c: customers }) hands back the whole row under a key.
+  { name: "whole customer row (keyed)", re: new RegExp(String.raw`\.select\(\s*\{[^()]*?:\s*${T}\s*[,}]`, "g") },
+  // select() of another table joined to customers carries the customer's columns too.
+  {
+    name: "whole customer row (join)",
+    re: new RegExp(String.raw`\.select\(\s*\)\s*\.from\([^)]*\)(?:\s*\.\w*[jJ]oin\([^()]*(?:\([^()]*\)[^()]*)*\))*?\s*\.\w*[jJ]oin\(\s*${T}\s*,`, "g"),
+  },
+  { name: "whole customer row (query API)", re: /\bquery\.customers\.find(?:First|Many)\(/g },
   { name: "whole customer row (storage)", re: /\bstorage\.getCustomers?\(/g },
   { name: "joined customer row", re: /\brow\.customers\.(?:phone|email|address)\b/g },
+  // Raw SQL naming a contact column of the customers table.
+  { name: "raw SQL contact column", re: /\bsql`[^`]*\bcustomers\.(?:phone|email|address|phone_e164)\b[^`]*`/g },
 ];
 
 function walk(dir, out = []) {

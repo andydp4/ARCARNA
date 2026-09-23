@@ -49,7 +49,7 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useAuth } from '@/hooks/useAuth'
 import { canSeeContactDetails, canSeeCustomerOrderSummary } from '@shared/accessPolicy'
-import { hasContactDetails, withoutContactDetails } from '@shared/customerView'
+import { hasContactDetails, withoutContactDetails, type CustomerMatch } from '@shared/customerView'
 import { usePhoneLookup } from '@/hooks/usePhoneLookup'
 import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
 import type { Role } from '@shared/schema'
@@ -140,6 +140,11 @@ export default function Customers() {
     return m
   }, [intelResp])
 
+  // "Already on the system: Jane S. (••4821), use them?" (PRV-06): the same
+  // prompt the till gives, so a shared family phone or email does not block
+  // adding a second person here.
+  const [duplicate, setDuplicate] = useState<{ message: string; matches: CustomerMatch[]; data: any } | null>(null)
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       if (!navigator.onLine) {
@@ -152,10 +157,24 @@ export default function Customers() {
         });
         return { offline: true, droppedContact: hasContactDetails(data) };
       }
-      await apiRequest('POST', '/api/customers', data);
+      const response = await apiFetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const body = await response.json().catch(() => null);
+      if (response.status === 409 && body?.code === 'CUSTOMER_POSSIBLE_DUPLICATE') {
+        return { offline: false, duplicate: { message: String(body.message), matches: (body.matches ?? []) as CustomerMatch[], data } };
+      }
+      if (!response.ok) throw new Error(body?.message ?? `${response.status}`);
       return { offline: false };
     },
     onSuccess: (data: any) => {
+      if (data?.duplicate) {
+        setDuplicate(data.duplicate)
+        return
+      }
+      setDuplicate(null)
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setShowAddDialog(false)
       resetForm()
@@ -168,10 +187,10 @@ export default function Customers() {
           : 'Customer created successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: 'Error',
-        description: 'Failed to create customer',
+        description: error?.message || 'Failed to create customer',
         variant: 'destructive',
       })
     },
@@ -179,6 +198,7 @@ export default function Customers() {
 
   const closeAddDialog = () => {
     setShowAddDialog(false)
+    setDuplicate(null)
     createMutation.reset()
     dismiss()
   }
@@ -574,6 +594,43 @@ export default function Customers() {
                     </Select>
                   </div>
                 </div>
+                {duplicate && (
+                  <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3" role="alert" data-testid="customer-duplicate-prompt">
+                    <p className="text-sm text-foreground">{duplicate.message}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {duplicate.matches.map((match) => {
+                        const existing = customers.find((c) => c.id === match.id)
+                        return (
+                          <Button
+                            key={match.id}
+                            type="button"
+                            size="sm"
+                            disabled={!existing}
+                            onClick={() => {
+                              if (!existing) return
+                              closeAddDialog()
+                              handleEdit(existing)
+                            }}
+                            data-testid={`button-use-existing-${match.id}`}
+                          >
+                            Open {match.displayName}
+                            {match.phoneMasked ? ` (${match.phoneMasked})` : ''}
+                          </Button>
+                        )
+                      })}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={createMutation.isPending}
+                        onClick={() => createMutation.mutate({ ...duplicate.data, confirmNew: true })}
+                        data-testid="button-add-new-anyway"
+                      >
+                        No, add new
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
                     Cancel
