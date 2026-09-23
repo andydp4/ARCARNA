@@ -29,6 +29,7 @@ import {
   STORAGE_WHATSAPP_SOUND_LEGACY,
 } from "@shared/storageKeys";
 import { stashWhatsappDraft } from "@/lib/whatsappDraft";
+import { checkTemplateConsent } from "@shared/marketingConsent";
 
 interface WhatsappStatus {
   enabled: boolean;
@@ -85,6 +86,7 @@ interface ConversationDetail {
 interface Template {
   id: string;
   templateName: string;
+  category?: string | null;
   language: string;
   status: string;
   body: string | null;
@@ -782,11 +784,16 @@ function TemplateComposer({
         data-testid="whatsapp-template-select"
       >
         <option value="">Choose a template…</option>
-        {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.templateName} ({t.status})
-          </option>
-        ))}
+        {templates.map((t) => {
+          // Marketing needs the customer's recorded consent, which arcarna does
+          // not hold yet, so the server refuses these (PRV-14).
+          const blocked = !checkTemplateConsent(t, null).ok;
+          return (
+            <option key={t.id} value={t.id} disabled={blocked}>
+              {t.templateName} ({t.status}){blocked ? " — marketing, needs consent" : ""}
+            </option>
+          );
+        })}
       </select>
       {template && (
         <>

@@ -17,7 +17,11 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |
 | Customer contact details (Q13a) | No | No | Yes | Yes |
 | Shift sheets | Own only | Cashiers' and own | All | All |
-| Pay settings: commission rates and switch, overhead mode, targets, "on time" timing (Q16) | No | View cashiers' | Change, logged | Change, logged |
+| Pay settings: commission rates and switch, overhead mode, targets, "on time" timing (Q16) | No | Cashiers' pay, no rates; cannot change | Change, logged | Change, logged |
+| Staff list (cashier profiles) | No | Yes, no PINs, no rates | Yes, no PINs | Yes, no PINs |
+| Confirm a commission payment | No | Cashiers', never own | Cashiers', never own | Anyone's, never own |
+| Scheduled Evidence | No | Yes | Yes | Yes |
+| Issue a gift card (with a reason) | No | Yes | Yes | Yes |
 | Access log, recordings, managers' pay (Q13a) | No | No | No | Yes |
 | Signals | Addressed to them | Cashier-related | All, including managers' | All |
 | Allowed users, approvals | No | No | Yes | Yes |
@@ -72,6 +76,38 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   and their own; managers' pay is SUPER_ADMIN only (`canSeePayRow`,
   `shared/reports/payroll.ts`). The route that opened coded shifts
   (`POST /api/cashier-shifts/start`) is retired.
+- **Staff and pay (STF-FN4, FIX-10).** Shift sheets — the till Z-report
+  (`/api/shifts`, `/api/shifts/:id/report`) and the cashier balance sheet
+  (`/api/cashier-shifts`, `/:id/summary`, `/current/:cashierId`) — follow
+  `maySeeShiftSheet` (`shared/staffPolicy.ts`): a cashier's list is filtered
+  to their own shifts in the query and a colleague's sheet is a 403. The staff
+  list (`GET /api/cashiers`) is MANAGER and above; the PIN never leaves the
+  server for anyone (`hasPin` says whether one is set) and the commission
+  override is ADMIN and above (`cashierProfileForRole`). The commission list
+  and payments are filtered by `canSeePayRow`, and the rate a shift was paid
+  at is admin only. Nobody confirms their own commission payment, and below
+  SUPER_ADMIN only cashiers' (`mayConfirmCommissionPayment`). The commission
+  switch, default rate, overhead mode and the four "on time" minutes
+  (`ADMIN_ONLY_SETTING_KEYS`) are refused to a manager through
+  `PATCH /api/org/setup` when they would change, and every change writes an
+  admin-audit row with the old and new value (`org.pay_setting.changed`,
+  `org.timing_setting.changed`); the default rate is left out of
+  `/api/settings` and `/api/org/setup` below ADMIN. Scheduled Evidence lists
+  and run history are MANAGER and above.
+- **Credit, gift cards and marketing (FIX-12, FIX-13, PRV-14, Q11).** Every
+  Credit List route (`/api/tick-customers*`, `/api/credit/*`) and both invoice
+  routes are MANAGER and above, and the Control Centre leaves credit totals
+  out below MANAGER. A credit payment's method must be cash, card or transfer.
+  It may be dated up to `BACKDATE_LIMIT_DAYS` (7) back, never ahead, and only
+  by a manager (`shared/creditPolicy.ts`). Clearing a whole tab
+  (`/mark-paid`) needs the exact balance being cleared. A card or transfer
+  payment recorded below ADMIN raises a `credit_payment` Signal with the
+  recorder as its subject, so it reaches the people above them. Issuing a
+  gift card is MANAGER and above and needs a reason, kept on the audit log;
+  `POST /api/gift-cards/:code/redeem` is now `/validate` (it never moved
+  money). WhatsApp templates in the MARKETING category, or of unknown
+  category, are refused until the customer's marketing consent is recorded —
+  and nothing records it yet (`shared/marketingConsent.ts`).
 - **Signals.** Every Signal is raised through `notify()`
   (`server/services/signals.ts`) with an audience — a minimum role, a list of
   roles, or named people — and, when it names a member of staff, that person

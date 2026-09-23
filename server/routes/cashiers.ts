@@ -9,7 +9,7 @@ import {
   organizations,
   users,
 } from "../../shared/schema";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import {
@@ -21,6 +21,18 @@ import {
 import { createCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
 import { resolveUserName } from "../services/userDisplayName";
 import { notify } from "../services/signals";
+import { loadStaffRole, loadStaffRoles } from "../services/staffRoles";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { canSeePayRow } from "@shared/reports/payroll";
+import {
+  STAFF_LIST_MIN_ROLE,
+  canSeeCommissionRates,
+  cashierProfileForRole,
+  mayConfirmCommissionPayment,
+  maySeeShiftSheet,
+  type ShiftSheetOwner,
+} from "@shared/staffPolicy";
+import type { Role } from "@shared/rbac";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -63,6 +75,31 @@ const commissionPaymentSchema = z
     message: "One of cashierId, userId or shiftId is required to identify who is being paid",
   });
 
+type CashierShiftRow = typeof cashierShifts.$inferSelect;
+
+/**
+ * Whose shift sheet this is. A lazy shift belongs to its user. A legacy
+ * coded shift has no user, only a cashier code — codes were only ever
+ * cashiers — and belongs to whoever opened it under that code.
+ */
+function shiftOwner(shift: CashierShiftRow, roles: Map<string, Role | null>): ShiftSheetOwner {
+  if (shift.userId) return { userId: shift.userId, role: roles.get(shift.userId) ?? null };
+  return { userId: shift.openedByUserId, role: "CASHIER" };
+}
+
+function viewerOf(req: any): { userId: string | null; role: string | null } {
+  return { userId: req.user?.id ?? null, role: req.orgContext?.role ?? req.user?.role ?? null };
+}
+
+async function canViewShiftSheet(req: any, orgId: string, shift: CashierShiftRow): Promise<boolean> {
+  const viewer = viewerOf(req);
+  if (viewer.role === "SUPER_ADMIN" || viewer.role === "ADMIN") return true;
+  const roles = await loadStaffRoles(orgId, [shift.userId]);
+  return maySeeShiftSheet(viewer, shiftOwner(shift, roles));
+}
+
+const NOT_YOUR_SHIFT = "You can only see your own shift sheet.";
+
 function formatMoney(amount: number, currency = "GBP"): string {
   try {
     return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(amount);
@@ -91,7 +128,9 @@ function cashierShiftWithReplayToken(shift: typeof cashierShifts.$inferSelect) {
 export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): void {
   // ---------------- Cashier profiles ----------------
 
-  app.get("/api/cashiers", ...scoped, async (req: any, res) => {
+  // The staff list is manager and above. PINs never leave the server, and the
+  // commission override is admin only (cashierProfileForRole).
+  app.get("/api/cashiers", ...scoped, requireRole(...rolesAtLeast(STAFF_LIST_MIN_ROLE)), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const includeInactive = req.query.includeInactive === "true";
@@ -102,7 +141,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .from(cashierProfiles)
         .where(and(...conditions))
         .orderBy(cashierProfiles.cashierCode);
-      res.json(rows);
+      res.json(rows.map((row) => cashierProfileForRole(row, viewerOf(req).role)));
     } catch (error) {
       console.error("[Cashiers] list:", error);
       res.status(500).json({ message: "Failed to list cashier profiles" });
@@ -141,10 +180,14 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         targetType: "cashier_profile",
         targetId: created.id,
         orgId: ctx.orgId,
-        metadata: { cashierCode: created.cashierCode },
+        metadata: {
+          cashierCode: created.cashierCode,
+          defaultCommissionRate: created.defaultCommissionRate,
+          pinSet: !!created.pinCode,
+        },
       });
 
-      res.status(201).json(created);
+      res.status(201).json(cashierProfileForRole(created, viewerOf(req).role));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       console.error("[Cashiers] create:", error);
@@ -165,6 +208,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       }
       if (body.isActive !== undefined) patch.isActive = body.isActive;
 
+      // The old rate goes on the log beside the new one: a rate change is a pay change.
+      const [before] = await db
+        .select({ defaultCommissionRate: cashierProfiles.defaultCommissionRate })
+        .from(cashierProfiles)
+        .where(and(eq(cashierProfiles.id, req.params.id), eq(cashierProfiles.orgId, ctx.orgId)))
+        .limit(1);
+
       const [updated] = await db
         .update(cashierProfiles)
         .set(patch)
@@ -179,10 +229,17 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         targetType: "cashier_profile",
         targetId: updated.id,
         orgId: ctx.orgId,
-        metadata: { patch: body },
+        // Never the PIN itself: the audit log is read by more people than set it.
+        metadata: {
+          patch: { ...body, pinCode: undefined },
+          pinChanged: body.pinCode !== undefined,
+          ...(body.defaultCommissionRate !== undefined
+            ? { commissionRate: { from: before?.defaultCommissionRate ?? null, to: updated.defaultCommissionRate } }
+            : {}),
+        },
       });
 
-      res.json(updated);
+      res.json(cashierProfileForRole(updated, viewerOf(req).role));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       console.error("[Cashiers] update:", error);
@@ -210,7 +267,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         orgId: ctx.orgId,
       });
 
-      res.json(updated);
+      res.json(cashierProfileForRole(updated, viewerOf(req).role));
     } catch (error) {
       console.error("[Cashiers] deactivate:", error);
       res.status(500).json({ message: "Failed to deactivate cashier profile" });
@@ -222,16 +279,26 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
   app.get("/api/cashier-shifts", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
+      const viewer = viewerOf(req);
       const conditions = [eq(cashierShifts.orgId, ctx.orgId)];
       if (req.query.cashierId) conditions.push(eq(cashierShifts.cashierId, req.query.cashierId as string));
       if (req.query.status) conditions.push(eq(cashierShifts.status, req.query.status as string));
+      // A cashier's list is their own shifts, filtered in the query so the
+      // 200-row cap is theirs too rather than the whole team's.
+      if (viewer.role === "CASHIER") {
+        const me = viewer.userId ?? "";
+        conditions.push(
+          or(eq(cashierShifts.userId, me), and(isNull(cashierShifts.userId), eq(cashierShifts.openedByUserId, me)))!,
+        );
+      }
       const rows = await db
         .select()
         .from(cashierShifts)
         .where(and(...conditions))
         .orderBy(desc(cashierShifts.openedAt))
         .limit(200);
-      res.json(rows);
+      const roles = await loadStaffRoles(ctx.orgId, rows.map((r) => r.userId));
+      res.json(rows.filter((row) => maySeeShiftSheet(viewer, shiftOwner(row, roles))));
     } catch (error) {
       console.error("[CashierShifts] list:", error);
       res.status(500).json({ message: "Failed to list cashier shifts" });
@@ -283,6 +350,9 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(eq(cashierShifts.id, req.params.id), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
       if (!shift) return res.status(404).json({ message: "Cashier shift not found" });
+      if (!(await canViewShiftSheet(req, ctx.orgId, shift))) {
+        return res.status(403).json({ message: NOT_YOUR_SHIFT });
+      }
 
       if (shift.status === "open") {
         const { sheet } = await computeCashierShiftBalanceSheet(ctx.orgId, shift);
@@ -329,6 +399,9 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const shift = await getOpenCashierShift(ctx.orgId, req.params.cashierId);
+      if (shift && !(await canViewShiftSheet(req, ctx.orgId, shift))) {
+        return res.status(403).json({ message: NOT_YOUR_SHIFT });
+      }
       res.json({ shift: shift ? cashierShiftWithReplayToken(shift) : null });
     } catch (error) {
       console.error("[CashierShifts] current:", error);
@@ -379,8 +452,18 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         paidMap.set(row.shiftId, (paidMap.get(row.shiftId) ?? 0) + parseFloat(String(row.amountPaid)));
       }
 
+      // Only the rows whose pay this viewer may see (Q12, Q13a), and the rate
+      // each was paid at only for admins (Q16).
+      const viewer = viewerOf(req);
+      const payRoles = await loadStaffRoles(ctx.orgId, summaries.map((row) => row.summary.userId));
+      const showRates = canSeeCommissionRates(viewer.role);
+      const visible = summaries.filter((row) => {
+        const key = row.summary.userId ?? `code:${row.summary.cashierId ?? ""}`;
+        return canSeePayRow(viewer, { key, role: row.summary.userId ? payRoles.get(row.summary.userId) ?? null : null });
+      });
+
       res.json(
-        summaries.map((row) => {
+        visible.map((row) => {
           const commissionAmount = parseFloat(String(row.summary.commissionAmount));
           const paid = paidMap.get(row.summary.shiftId) ?? 0;
           // Whoever the shift belonged to, named however we can name them: the
@@ -391,8 +474,10 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
             .filter(Boolean)
             .join(" ")
             .trim();
+          const { commissionRate, ...summary } = row.summary;
           return {
-            ...row.summary,
+            ...summary,
+            ...(showRates ? { commissionRate } : {}),
             cashierCode: row.cashierCode,
             cashierName:
               row.cashierDisplayName || userName || row.userEmail || "Unknown",
@@ -424,7 +509,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(...conditions))
         .orderBy(desc(cashierCommissionPayments.paidAt))
         .limit(500);
-      res.json(rows);
+      const viewer = viewerOf(req);
+      const payRoles = await loadStaffRoles(ctx.orgId, rows.map((r) => r.userId));
+      res.json(
+        rows.filter((r) =>
+          canSeePayRow(viewer, { key: r.userId ?? `code:${r.cashierId ?? ""}`, role: r.userId ? payRoles.get(r.userId) ?? null : null }),
+        ),
+      );
     } catch (error) {
       console.error("[CashierCommission] payments list:", error);
       res.status(500).json({ message: "Failed to load commission payments" });
@@ -476,6 +567,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       if (!payeeCashierId && !payeeUserId) {
         return res.status(400).json({ message: "Could not identify who this payment is for" });
       }
+
+      // No one confirms their own pay; below the owner, only cashiers' (Q13a).
+      const verdict = mayConfirmCommissionPayment(viewerOf(req), {
+        userId: payeeUserId,
+        role: await loadStaffRole(ctx.orgId, payeeUserId),
+      });
+      if (!verdict.ok) return res.status(verdict.status).json({ message: verdict.message, code: "COMMISSION_CONFIRM_FORBIDDEN" });
 
       const [payment] = await db
         .insert(cashierCommissionPayments)

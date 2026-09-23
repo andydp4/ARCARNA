@@ -16,8 +16,14 @@ function itemByKey(key: string) {
 
 describe("nav-items role visibility", () => {
   it("keeps Control Centre, Sell, and Settings open to every role", () => {
-    for (const key of ["home", "pos", "orders", "shifts", "invoices", "tick-list", "settings"]) {
+    for (const key of ["home", "pos", "orders", "shifts", "settings"]) {
       expect(itemByKey(key).roles, `${key} should have no role restriction`).toBeUndefined();
+    }
+  });
+
+  it("keeps Invoices and the Credit List to managers and above (owner decision Q11)", () => {
+    for (const key of ["invoices", "tick-list"]) {
+      expect(itemByKey(key).roles?.slice().sort(), key).toEqual(["ADMIN", "MANAGER", "SUPER_ADMIN"]);
     }
   });
 

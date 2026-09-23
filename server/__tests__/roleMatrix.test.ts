@@ -172,7 +172,6 @@ describe("role matrix: ACCESS_POLICY is what the server enforces", () => {
 type Canary = keyof typeof CANARIES | "foreignOrg";
 
 const KNOWN_LEAKS: Record<string, { canaries: Canary[]; owner: string }> = {
-  "GET /api/invoices": { canaries: ["email"], owner: "0B part 7 / Q11: Invoices manager+" },
   "GET /api/customers": {
     canaries: ["phone", "email"],
     owner: "0B part 4 / Q13(a): contact details admin only — the till's customer picker reads this list",

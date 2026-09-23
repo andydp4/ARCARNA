@@ -14,13 +14,20 @@ import {
   insertOverheadExpenseSchema,
   insertOrderExpenseSchema,
 } from "@shared/schema";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE, checkClearWholeTab } from "@shared/creditPolicy";
+import { creditPaymentTerms, signalCreditPayment } from "../services/creditPaymentRules";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
 export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/tick-customers", ...scoped, async (req: any, res) => {
+  // The Credit List is manager and above (owner decision Q11), on the menu and
+  // here: a hidden menu entry does not stop the till's session calling these.
+  const creditRoles = requireRole(...rolesAtLeast(CREDIT_MIN_ROLE));
+
+  app.get("/api/tick-customers", ...scoped, creditRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
@@ -92,7 +99,7 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
   app.delete(
     "/api/tick-customers/:id",
     ...scoped,
-    requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"),
+    creditRoles,
     async (req: any, res) => {
       try {
         const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
@@ -141,15 +148,18 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
    * That is both what a shop does by hand and what keeps the oldest debt from
    * ageing indefinitely while newer ones get cleared.
    */
-  app.post("/api/tick-customers/:id/payments", ...scoped, async (req: any, res) => {
+  app.post("/api/tick-customers/:id/payments", ...scoped, creditRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role?: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
 
       let remaining = Math.round(Number(req.body?.amount) * 100) / 100;
       if (!Number.isFinite(remaining) || remaining <= 0) {
         return res.status(400).json({ message: "Enter how much the customer paid." });
       }
+      const role = ctx.role ?? req.user?.role;
+      const checked = await creditPaymentTerms(ctx.orgId, req.body, role);
+      if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
 
       const { db } = await import('../db');
       const { orderCredit } = await import('@shared/schema');
@@ -184,13 +194,26 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           orgId: ctx.orgId,
           orderId: row.orderId,
           amount,
-          method: String(req.body?.method ?? 'cash'),
+          method: checked.terms.method,
+          paidOn: checked.terms.paidOn,
           recordedByUserId: req.user?.id ?? null,
           note: req.body?.note ?? null,
         });
         applied.push({ orderId: row.orderId, amount });
         remaining = Math.round((remaining - amount) * 100) / 100;
       }
+
+      const customer = await storage.getCustomer(req.params.id, ctx.orgId);
+      await signalCreditPayment({
+        orgId: ctx.orgId,
+        recorderUserId: req.user?.id,
+        recorderRole: role,
+        method: checked.terms.method,
+        amount: roundMoney(applied.reduce((sum, a) => sum + a.amount, 0)),
+        customerName: customer?.name ?? null,
+        orderIds: applied.map((a) => a.orderId),
+        paidOn: checked.terms.paidOn ?? null,
+      }).catch((e) => console.error("[Credit] payment Signal failed", e));
 
       res.status(201).json({
         applied,
@@ -212,12 +235,15 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
   // every credit sale read as paid the moment the goods left. It now posts a
   // real payment against each outstanding order, which is what releases the
   // commission those sales earned.
-  app.post("/api/tick-customers/:id/mark-paid", ...scoped, async (req: any, res) => {
+  app.post("/api/tick-customers/:id/mark-paid", ...scoped, creditRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       if (!ctx?.orgId) return res.status(403).json({ message: 'Organization scope required' });
       const customer = await storage.getCustomer(req.params.id, ctx.orgId);
       if (!customer) return res.status(404).json({ message: 'Customer not found' });
+      const role = ctx.role ?? req.user?.role;
+      const checked = await creditPaymentTerms(ctx.orgId, req.body, role);
+      if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
 
       const { db } = await import('../db');
       const { orderCredit } = await import('@shared/schema');
@@ -233,6 +259,11 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           inArray(orderCredit.status, ['outstanding', 'partial']),
         ));
 
+      // Clearing the whole tab needs the exact balance the person was shown.
+      const owed = owing.reduce((sum, r) => sum + parseFloat(String(r.outstanding)), 0);
+      const exact = checkClearWholeTab(req.body?.expectedBalance, owed);
+      if (!exact.ok) return res.status(exact.status).json({ message: exact.message, code: exact.code });
+
       let settled = 0;
       for (const row of owing) {
         const amount = parseFloat(String(row.outstanding));
@@ -241,19 +272,34 @@ export function registerTickCustomerRoutes(app: Express, scoped: RequestHandler[
           orgId: ctx.orgId,
           orderId: row.orderId,
           amount,
-          method: String(req.body?.method ?? 'cash'),
+          method: checked.terms.method,
+          paidOn: checked.terms.paidOn,
           recordedByUserId: req.user?.id ?? null,
           note: 'Account cleared in full',
         });
         settled += amount;
       }
 
+      await signalCreditPayment({
+        orgId: ctx.orgId,
+        recorderUserId: req.user?.id,
+        recorderRole: role,
+        method: checked.terms.method,
+        amount: roundMoney(settled),
+        customerName: customer.name,
+        orderIds: owing.map((r) => r.orderId),
+        paidOn: checked.terms.paidOn ?? null,
+      }).catch((e) => console.error("[Credit] payment Signal failed", e));
+
       res.json({
         message: "Customer debt marked as paid",
         ordersSettled: owing.length,
         amountSettled: Math.round(settled * 100) / 100,
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.status) {
+        return res.status(error.status).json({ message: error.message, code: error.code });
+      }
       console.error("Error marking customer as paid:", error);
       res.status(500).json({ message: "Failed to mark customer as paid" });
     }

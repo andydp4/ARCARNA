@@ -25,6 +25,8 @@ import { formatTimeOfDay } from "@/lib/opsClock";
 import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsTimeline } from "./OpsTimeline";
 import { OpsRateChips } from "./OpsRateChips";
+import { isAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
 /**
  * Everything about one order that does not belong on its card.
@@ -164,6 +166,7 @@ function OpsDetailsBody({
   const [copied, setCopied] = useState<string>("");
   const [downloading, setDownloading] = useState<"receipt" | "invoice" | null>(null);
   const canEditOrDelete = role !== "CASHIER";
+  const canSeeInvoices = isAtLeast(role, CREDIT_MIN_ROLE);
 
   const { data: detail, isLoading } = useQuery<OrderDetail>({
     queryKey: ["/api/orders", order.id],
@@ -392,16 +395,20 @@ function OpsDetailsBody({
           <Download className="h-4 w-4" aria-hidden />
           {downloading === "receipt" ? "Preparing…" : "Receipt"}
         </Button>
-        <Button
-          size="touch"
-          variant="outline"
-          disabled={downloading !== null}
-          onClick={() => download("invoice")}
-          data-testid="button-download-invoice"
-        >
-          <Download className="h-4 w-4" aria-hidden />
-          {downloading === "invoice" ? "Preparing…" : "Invoice"}
-        </Button>
+        {/* Invoices are manager and above (owner decision Q11); the receipt
+            is what a cashier hands over. */}
+        {canSeeInvoices && (
+          <Button
+            size="touch"
+            variant="outline"
+            disabled={downloading !== null}
+            onClick={() => download("invoice")}
+            data-testid="button-download-invoice"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            {downloading === "invoice" ? "Preparing…" : "Invoice"}
+          </Button>
+        )}
         <Button asChild size="touch" variant="outline" data-testid="button-refund-order">
           <Link href={`/open-orders/${order.id}/refund`}>
             <RotateCcw className="h-4 w-4" aria-hidden />

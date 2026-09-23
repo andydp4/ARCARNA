@@ -41,6 +41,7 @@ import {
   type SetupWizardStep,
 } from "@shared/setup";
 import { useAuth } from "@/hooks/useAuth";
+import { PAY_SETTING_KEYS, canSeeCommissionRates } from "@shared/staffPolicy";
 import { useToast } from "@/hooks/use-toast";
 
 const STEP_META = [
@@ -69,6 +70,7 @@ export default function SetupWizard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const canEditPay = canSeeCommissionRates(user?.role);
   const [stepIndex, setStepIndex] = useState(0);
 
   const { data: org, isLoading } = useQuery<OrgSetup>({
@@ -159,7 +161,11 @@ export default function SetupWizard() {
 
   const saveMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
-      await apiRequest("PATCH", "/api/org/setup", payload);
+      // The commission switch and default rate are admin only (Q16). A manager
+      // running setup does not send them, rather than being refused over them.
+      const body = { ...payload };
+      if (!canEditPay) for (const key of PAY_SETTING_KEYS) delete body[key];
+      await apiRequest("PATCH", "/api/org/setup", body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/setup"] });
@@ -489,6 +495,7 @@ export default function SetupWizard() {
                     </p>
                   </div>
                   <Switch
+                    disabled={!canEditPay}
                     checked={form.cashierCommissionEnabled}
                     onCheckedChange={(v) => setForm({ ...form, cashierCommissionEnabled: v })}
                     data-testid="wizard-cashier-commission-enabled"
@@ -501,6 +508,7 @@ export default function SetupWizard() {
                       <div className="space-y-2">
                         <Label>Default commission rate</Label>
                         <Select
+                          disabled={!canEditPay}
                           value={form.defaultCashierCommissionRate}
                           onValueChange={(v) => setForm({ ...form, defaultCashierCommissionRate: v })}
                         >

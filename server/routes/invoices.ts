@@ -1,5 +1,8 @@
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
+import { requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 import {
   buildCompanyInfo,
   loadCompanyInfo,
@@ -134,7 +137,11 @@ async function loadInvoiceForPdf(orgId: string | undefined, id: string): Promise
 }
 
 export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): void {
-  app.get("/api/invoices", ...scoped, async (req: any, res) => {
+  // Invoices carry the customer's name, email, phone and address and what they
+  // owe: manager and above, like the Credit List (owner decision Q11).
+  const invoiceRoles = requireRole(...rolesAtLeast(CREDIT_MIN_ROLE));
+
+  app.get("/api/invoices", ...scoped, invoiceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const invoices = await storage.getInvoicesWithDetails(ctx.orgId);
@@ -147,7 +154,7 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
 
   // Generates the invoice PDF on demand and streams it back — no external
   // storage involved, Neon already has everything the PDF needs.
-  app.get("/api/invoices/:id/pdf", ...scoped, async (req: any, res) => {
+  app.get("/api/invoices/:id/pdf", ...scoped, invoiceRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
       const data = await loadInvoiceForPdf(ctx?.orgId, req.params.id);

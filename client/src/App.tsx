@@ -265,7 +265,9 @@ function Router() {
           <Route path="/expense-reports">
             <RequireRole href="/expense-reports"><ExpenseReportsPage /></RequireRole>
           </Route>
-          <Route path="/invoices" component={Invoices} />
+          <Route path="/invoices">
+            <RequireRole href="/invoices"><Invoices /></RequireRole>
+          </Route>
           <Route path="/settings" component={Settings} />
           <Route path="/settings/receipts">
             <RequireRole href="/settings/receipts"><ReceiptSettingsPage /></RequireRole>
@@ -278,7 +280,9 @@ function Router() {
           </Route>
           <Route path="/settings/wm-supplies-website" component={WmSuppliesWebsiteSettingsPage} />
           <Route path="/admin/wm-supplies/website" component={WmSuppliesWebsiteSettingsPage} />
-          <Route path="/tick-list" component={TickList} />
+          <Route path="/tick-list">
+            <RequireRole href="/tick-list"><TickList /></RequireRole>
+          </Route>
           <Route path="/user-access">
             <RequireRole href="/user-access"><UserAccess /></RequireRole>
           </Route>

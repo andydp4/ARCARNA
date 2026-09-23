@@ -32,6 +32,14 @@ const state = vi.hoisted(() => ({
   org: {} as Record<string, unknown>,
   /** What the last `update().set(...)` was handed, before the merge. */
   lastSet: null as Record<string, unknown> | null,
+  /** Admin-audit rows the routes wrote. */
+  audits: [] as Array<{ action: string; metadata?: Record<string, unknown> | null }>,
+}));
+
+vi.mock("../adminAudit", () => ({
+  recordAdminAudit: async (_req: unknown, params: { action: string; metadata?: Record<string, unknown> | null }) => {
+    state.audits.push(params);
+  },
 }));
 
 vi.mock("../db", () => {
@@ -138,7 +146,11 @@ beforeEach(() => {
     opsKeepScreenAwake: true,
   };
   state.lastSet = null;
+  state.audits = [];
 });
+
+const ADMIN = { user: { id: "admin-1", role: "ADMIN" }, orgContext: { orgId: ORG_ID, role: "ADMIN" } };
+const MANAGER = { user: { id: "manager-1", role: "MANAGER" }, orgContext: { orgId: ORG_ID, role: "MANAGER" } };
 
 describe("operations settings round-trip", () => {
   it("saves every ops key and reads it back from /api/settings", async () => {
@@ -153,7 +165,7 @@ describe("operations settings round-trip", () => {
       opsKeepScreenAwake: false,
     };
 
-    const patched = await runChain([patchOrgSetup()], { body: patch });
+    const patched = await runChain([patchOrgSetup()], { ...ADMIN, body: patch });
     expect(patched.status).toBe(200);
 
     // The allow-list check: every key reached the UPDATE. A key missing from
@@ -203,6 +215,69 @@ describe("operations settings round-trip", () => {
     });
     expect(alsoRejected.status).toBe(400);
     expect(state.lastSet).toBeNull();
+  });
+});
+
+describe("the on-time minutes are admin only, and every change is logged (Q16)", () => {
+  it("refuses a manager who would change an on-time minute, and saves nothing", async () => {
+    const res = await runChain([patchOrgSetup()], { ...MANAGER, body: { opsLateGraceMinutes: 15 } });
+    expect(res.status).toBe(403);
+    expect(res.body.keys).toEqual(["opsLateGraceMinutes"]);
+    expect(state.lastSet).toBeNull();
+  });
+
+  it("lets a manager change the board's switches, and echo the minutes unchanged", async () => {
+    const res = await runChain([patchOrgSetup()], {
+      ...MANAGER,
+      body: { opsKeepScreenAwake: false, opsPrepSlaMinutes: 20, opsLateGraceMinutes: 5 },
+    });
+    expect(res.status).toBe(200);
+    expect(state.org.opsKeepScreenAwake).toBe(false);
+    expect(state.audits).toEqual([]);
+  });
+
+  it("logs an admin's change with the old and new value", async () => {
+    const res = await runChain([patchOrgSetup()], { ...ADMIN, body: { opsPrepSlaMinutes: 25 } });
+    expect(res.status).toBe(200);
+    expect(state.audits).toEqual([
+      expect.objectContaining({
+        action: "org.timing_setting.changed",
+        metadata: { setting: "opsPrepSlaMinutes", from: 20, to: 25 },
+      }),
+    ]);
+  });
+
+  it("refuses a manager the commission switch, default rate and overhead mode", async () => {
+    state.org.cashierCommissionEnabled = false;
+    state.org.defaultCashierCommissionRate = "10.00";
+    state.org.globalExpenseAllocationMode = "daily_percentage";
+    for (const body of [
+      { cashierCommissionEnabled: true },
+      { defaultCashierCommissionRate: "12" },
+      { globalExpenseAllocationMode: "none" },
+    ]) {
+      const res = await runChain([patchOrgSetup()], { ...MANAGER, body });
+      expect(res.status, JSON.stringify(body)).toBe(403);
+    }
+    // "10" is the rate already stored as "10.00": not a change.
+    const same = await runChain([patchOrgSetup()], { ...MANAGER, body: { defaultCashierCommissionRate: "10" } });
+    expect(same.status).toBe(200);
+  });
+
+  it("logs an admin's commission change as a pay setting, and hides the rate from a manager's read", async () => {
+    state.org.defaultCashierCommissionRate = "10.00";
+    const res = await runChain([patchOrgSetup()], { ...ADMIN, body: { defaultCashierCommissionRate: 12.5 } });
+    expect(res.status).toBe(200);
+    expect(state.audits.map((a) => a.action)).toEqual(["org.pay_setting.changed"]);
+    expect(res.body.defaultCashierCommissionRate).toBeDefined();
+
+    const managerRead = await runChain(setupRoutes["GET /api/org/setup"].slice(-1), MANAGER);
+    expect(managerRead.status).toBe(200);
+    expect(managerRead.body).not.toHaveProperty("defaultCashierCommissionRate");
+    const settingsRead = await runChain(settingsRoutes["GET /api/settings"], MANAGER);
+    expect(settingsRead.body).not.toHaveProperty("defaultCashierCommissionRate");
+    const adminRead = await runChain(settingsRoutes["GET /api/settings"], ADMIN);
+    expect(adminRead.body.defaultCashierCommissionRate).toBe(12.5);
   });
 });
 

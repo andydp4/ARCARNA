@@ -45,6 +45,8 @@ import { getJobQueueStats } from "../eventBus";
 import { orgTimeZone } from "./tradingDayShift";
 import { getOpsBoard } from "./opsBoard";
 import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
+import { isAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
 export type NextMoveSeverity = "info" | "warning" | "error";
 
@@ -112,6 +114,24 @@ export type ControlCentreSnapshot = {
 
   nextMoves: NextMove[];
 };
+
+/**
+ * The snapshot as a viewer may see it. The Credit List is manager and above
+ * (owner decision Q11), so below that the credit totals and the Next Move
+ * that links to it are left out rather than pointing at a page that refuses.
+ */
+export function controlCentreForRole(
+  snapshot: ControlCentreSnapshot,
+  role: string | null | undefined,
+): ControlCentreSnapshot {
+  if (isAtLeast(role, CREDIT_MIN_ROLE)) return snapshot;
+  return {
+    ...snapshot,
+    creditOutstandingTotal: 0,
+    creditCustomersCount: 0,
+    nextMoves: snapshot.nextMoves.filter((m) => m.id !== "credit-outstanding"),
+  };
+}
 
 const SETTLED_STATUS = "completed";
 const TREND_DAYS = 7;

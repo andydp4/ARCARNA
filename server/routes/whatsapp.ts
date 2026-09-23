@@ -21,6 +21,7 @@ import { verifyWebhookChallenge, verifyWebhookSignature } from "../whatsapp/veri
 import { ingestWebhook, isWithinServiceWindow } from "../whatsapp/service";
 import { sendTextMessage, sendTemplateMessage, fetchTemplates } from "../whatsapp/client";
 import * as store from "../whatsapp/store";
+import { checkTemplateConsent } from "@shared/marketingConsent";
 
 const OUTSIDE_WINDOW_MESSAGE =
   "This conversation is outside WhatsApp's customer service window. Use an approved template.";
@@ -530,6 +531,13 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
           return res
             .status(422)
             .json({ message: `Template "${templateName}" is not approved (status: ${template.status})` });
+        }
+
+        // Marketing templates need the customer's recorded consent (PRV-14).
+        // Nothing records marketing consent yet, so there is none to pass.
+        const consent = checkTemplateConsent(template, null);
+        if (!consent.ok) {
+          return res.status(422).json({ message: consent.message, code: consent.code });
         }
 
         const result = await sendTemplateMessage(conversation.waId, templateName, language, bodyParams, cfg);

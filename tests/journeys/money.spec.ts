@@ -287,7 +287,7 @@ test.describe("money: gift cards", () => {
   test("2.5 a gift card is issued with a balance and looked up by code", async ({ api }) => {
     // Contract: POST /api/gift-cards takes `amount` (see issueSchema in
     // server/routes/giftCards.ts), not `initialBalance`.
-    const issued = await api.post("/api/gift-cards", { data: { amount: 25 } });
+    const issued = await api.post("/api/gift-cards", { data: { amount: 25, reason: "Journey test" } });
     expect(
       issued.status(),
       `issuing a gift card should succeed. Body: ${await issued.text()}`,
@@ -304,13 +304,13 @@ test.describe("money: gift cards", () => {
     expect(Array.isArray(looked.movements)).toBeTruthy();
   });
 
-  test("2.5 POST /:code/redeem validates only — it does not move the balance", async ({ api }) => {
+  test("2.5 POST /:code/validate validates only — it does not move the balance", async ({ api }) => {
     // Pins current behaviour. The handler parses the amount, looks the card up
     // and returns it; the balance is only ever decremented by
     // redeemGiftCardInTx on the order path. Anything treating a 200 here as
     // "redeemed" would be wrong. If this endpoint is ever made to actually
     // redeem, this test should fail and be rewritten deliberately.
-    const issued = await api.post("/api/gift-cards", { data: { amount: 30 } });
+    const issued = await api.post("/api/gift-cards", { data: { amount: 30, reason: "Journey test" } });
     expect(issued.status()).toBe(201);
     const { code } = await issued.json();
 
@@ -318,7 +318,7 @@ test.describe("money: gift cards", () => {
     // rather than expecting an empty ledger.
     const before = await okJson<any>(await api.get(`/api/gift-cards/${code}`));
 
-    const res = await api.post(`/api/gift-cards/${code}/redeem`, { data: { amount: 10 } });
+    const res = await api.post(`/api/gift-cards/${code}/validate`, { data: { amount: 10 } });
     expect(res.status(), "validation call should succeed").toBe(200);
 
     const after = await okJson<any>(await api.get(`/api/gift-cards/${code}`));
@@ -337,10 +337,10 @@ test.describe("money: gift cards", () => {
   });
 
   test("2.5 redeeming a non-positive amount is rejected", async ({ api }) => {
-    const issued = await api.post("/api/gift-cards", { data: { amount: 15 } });
+    const issued = await api.post("/api/gift-cards", { data: { amount: 15, reason: "Journey test" } });
     const { code } = await issued.json();
     for (const amount of [0, -5]) {
-      const res = await api.post(`/api/gift-cards/${code}/redeem`, { data: { amount } });
+      const res = await api.post(`/api/gift-cards/${code}/validate`, { data: { amount } });
       expect(res.ok(), `amount ${amount} must be rejected`).toBeFalsy();
       expect(res.status(), "should be a 400, never a 500").toBe(400);
     }

@@ -18,6 +18,8 @@ import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
 import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
+import { maySeeShiftSheet } from "@shared/staffPolicy";
+import { loadStaffRoles } from "../services/staffRoles";
 
 /** Default window for the shifts list, and the ceiling a caller may ask for. */
 const DEFAULT_WINDOW_HOURS = 48;
@@ -213,7 +215,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
 
   app.get("/api/shifts", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role?: string };
       const status = (req.query.status as string) || undefined;
 
       /**
@@ -241,6 +243,10 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
       if (ctx.locationId) {
         conditions.push(eq(shifts.locationId, ctx.locationId));
       }
+      // Cashiers read only their own shift sheets (STF-FN4); in the query, so
+      // the row cap is theirs rather than the team's.
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role ?? req.user?.role ?? null };
+      if (viewer.role === "CASHIER") conditions.push(eq(shifts.userId, viewer.userId ?? ""));
 
       const rows = await db
         .select({
@@ -266,9 +272,14 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
       // The page's whole question is "who was on". Sending only the user id
       // meant it could never answer that, which is what it did.
       const names = await resolveUserNames(rows.map((row) => row.userId));
+      // Managers: cashiers' shifts and their own, not other managers' or admins'.
+      const roles = await loadStaffRoles(ctx.orgId, rows.map((row) => row.userId));
+      const visible = rows.filter((row) =>
+        maySeeShiftSheet(viewer, { userId: row.userId, role: roles.get(row.userId) ?? null }),
+      );
 
       res.json(
-        rows.map((row) => ({
+        visible.map((row) => ({
           ...row,
           userName: names.get(row.userId) ?? row.userId,
         })),
@@ -481,9 +492,14 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
 
   app.get("/api/shifts/:id/report", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role?: string };
       const loaded = await loadShiftReportData(req.params.id, ctx.orgId);
       if (!loaded) return res.status(404).json({ message: "Shift not found" });
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role ?? req.user?.role ?? null };
+      const ownerRole = (await loadStaffRoles(ctx.orgId, [loaded.shift.userId])).get(loaded.shift.userId) ?? null;
+      if (!maySeeShiftSheet(viewer, { userId: loaded.shift.userId, role: ownerRole })) {
+        return res.status(403).json({ message: "You can only see your own shift sheet." });
+      }
       res.json({ shift: loaded.shift, report: loaded.report });
     } catch (error) {
       console.error("[Shifts] report:", error);

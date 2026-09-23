@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/dialog";
 import { apiRequest, getJson } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { canSeeCommissionRates } from "@shared/staffPolicy";
 import {
   COMMISSION_RATE_PRESETS,
   SHIFT_INACTIVITY_OPTIONS,
@@ -42,8 +44,10 @@ type CashierProfile = {
   id: string;
   cashierCode: string;
   displayName: string;
-  pinCode: string | null;
-  defaultCommissionRate: string | null;
+  /** The PIN itself never leaves the server; only whether one is set. */
+  hasPin?: boolean;
+  /** Admin only: absent for everyone else. */
+  defaultCommissionRate?: string | null;
   isActive: boolean;
 };
 
@@ -63,6 +67,10 @@ export function CashierCommissionSettings() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
+  const { user } = useAuth();
+  // The commission switch, default rate and per-cashier rates are admin only,
+  // and so are adding or editing cashiers (Q16). Managers see the list.
+  const isAdmin = canSeeCommissionRates(user?.role);
 
   const { data: org, isLoading: orgLoading } = useQuery<OrgSetup>({
     queryKey: ["/api/org/setup"],
@@ -178,6 +186,7 @@ export function CashierCommissionSettings() {
               <p className="text-xs text-muted-foreground">Track cashier shifts and shift profit.</p>
             </div>
             <Switch
+              disabled={!isAdmin}
               checked={commissionEnabled}
               onCheckedChange={(v) => {
                 setCommissionEnabled(v);
@@ -193,6 +202,12 @@ export function CashierCommissionSettings() {
                   agreed per cashier and land on 12 or 25 as readily as 10, so a
                   fixed list of three could not express what was agreed. */}
               <Label htmlFor="default-commission-rate">Default commission rate</Label>
+              {!isAdmin ? (
+                <p className="text-sm text-muted-foreground" data-testid="settings-commission-rate-admin-only">
+                  Set by an admin.
+                </p>
+              ) : (
+              <>
               <div className="flex items-center gap-2">
                 <Input
                   id="default-commission-rate"
@@ -232,6 +247,8 @@ export function CashierCommissionSettings() {
                   </Button>
                 ))}
               </div>
+              </>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Auto-close inactive shift after</Label>
@@ -277,9 +294,11 @@ export function CashierCommissionSettings() {
             <CardTitle>Cashier profiles</CardTitle>
             <CardDescription>Business-owned cashier codes used to start shifts and earn commission.</CardDescription>
           </div>
-          <Button onClick={openAdd} className="min-h-[44px]" data-testid="button-add-cashier">
-            <Plus className="mr-1 h-4 w-4" /> Add cashier
-          </Button>
+          {isAdmin && (
+            <Button onClick={openAdd} className="min-h-[44px]" data-testid="button-add-cashier">
+              <Plus className="mr-1 h-4 w-4" /> Add cashier
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {/* Cashier codes are only offered at the till when commission tracking
@@ -312,9 +331,9 @@ export function CashierCommissionSettings() {
                 <TableRow>
                   <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Commission override</TableHead>
+                  {isAdmin && <TableHead>Commission override</TableHead>}
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {isAdmin && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -322,14 +341,17 @@ export function CashierCommissionSettings() {
                   <TableRow key={cashier.id} data-testid={`row-cashier-${cashier.cashierCode}`}>
                     <TableCell className="font-mono">{cashier.cashierCode}</TableCell>
                     <TableCell>{cashier.displayName}</TableCell>
-                    <TableCell>
-                      {cashier.defaultCommissionRate != null ? `${cashier.defaultCommissionRate}%` : "Default"}
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        {cashier.defaultCommissionRate != null ? `${cashier.defaultCommissionRate}%` : "Default"}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Badge variant={cashier.isActive ? "secondary" : "outline"}>
                         {cashier.isActive ? "Active" : "Deactivated"}
                       </Badge>
                     </TableCell>
+                    {isAdmin && (
                     <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"
@@ -350,6 +372,7 @@ export function CashierCommissionSettings() {
                         {cashier.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                       </Button>
                     </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

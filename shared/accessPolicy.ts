@@ -118,6 +118,10 @@ const EXPORT = "Exports are admin only and every one is logged (Q12).";
 const PROFIT = "Profit and expense Evidence is whole-business money: admin only (FIX-03).";
 const CUSTOMER_INTEL = "Customer lifetime value and order history are manager and above (PRV-02).";
 const PAY = "Staff pay is manager and above; a manager sees cashiers' rows only (Q12, Q13a).";
+const STAFF_LIST = "The staff list is manager and above; PINs never leave the server, rates are admin only (STF-FN4).";
+const SCHEDULED = "Scheduled Evidence is Evidence: manager and above (STF-FN4, Q12).";
+const CREDIT = "The Credit List and Invoices are manager and above, menu and server (Q11).";
+const GIFT_ISSUE = "Issuing a gift card hands out money: managers only, with a reason (FIX-13).";
 
 export const ACCESS_POLICY: readonly RouteRule[] = [
   // Products: writes are manager and above.
@@ -180,6 +184,30 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
 
   // Payroll (the per-person table; rows are filtered by role in the handler).
   { method: "GET", path: "/api/cashier-analytics", minRole: "MANAGER", reason: PAY },
+
+  // Staff and pay. Commission rows and payments are filtered per row in the
+  // handler (canSeePayRow); shift sheets per sheet (maySeeShiftSheet).
+  { method: "GET", path: "/api/cashiers", minRole: "MANAGER", reason: STAFF_LIST },
+  { method: "GET", path: "/api/cashier-commission", minRole: "MANAGER", reason: PAY },
+  { method: "GET", path: "/api/cashier-commission/payments", minRole: "MANAGER", reason: PAY },
+  { method: "POST", path: "/api/cashier-commission/payments", minRole: "MANAGER", reason: PAY },
+  { method: "GET", path: "/api/scheduled-reports", minRole: "MANAGER", reason: SCHEDULED },
+  { method: "GET", path: "/api/scheduled-reports/:id/runs", minRole: "MANAGER", reason: SCHEDULED },
+
+  // Credit (tick) and invoices.
+  { method: "GET", path: "/api/tick-customers", minRole: "MANAGER", reason: CREDIT },
+  { method: "DELETE", path: "/api/tick-customers/:id", minRole: "MANAGER", reason: CREDIT },
+  { method: "POST", path: "/api/tick-customers/:id/payments", minRole: "MANAGER", reason: CREDIT },
+  { method: "POST", path: "/api/tick-customers/:id/mark-paid", minRole: "MANAGER", reason: CREDIT },
+  { method: "GET", path: "/api/credit/outstanding", minRole: "MANAGER", reason: CREDIT },
+  { method: "POST", path: "/api/credit/:orderId/payments", minRole: "MANAGER", reason: CREDIT },
+  { method: "POST", path: "/api/credit/:orderId/write-off", minRole: "MANAGER", reason: CREDIT },
+  { method: "POST", path: "/api/credit/:orderId/void", minRole: "MANAGER", reason: CREDIT },
+  { method: "GET", path: "/api/invoices", minRole: "MANAGER", reason: CREDIT },
+  { method: "GET", path: "/api/invoices/:id/pdf", minRole: "MANAGER", reason: CREDIT },
+
+  // Gift cards.
+  { method: "POST", path: "/api/gift-cards", minRole: "MANAGER", reason: GIFT_ISSUE },
 ];
 
 // ---------------------------------------------------------------------------

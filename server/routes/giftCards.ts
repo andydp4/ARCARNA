@@ -11,11 +11,22 @@ import {
   listGiftCardsByCustomer, listGiftCardMovements, serializeGiftCard,
 } from "../lib/giftCardService";
 import { roundMoney } from "@shared/giftCards/balance";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { GIFT_CARD_ISSUE_MIN_ROLE, GIFT_CARD_REASON_MAX, GIFT_CARD_REASON_MIN } from "@shared/creditPolicy";
 
+/**
+ * Issuing a gift card hands out money, so it is manager and above and needs
+ * a reason, which goes on the audit log beside who issued it (FIX-13).
+ */
 const issueSchema = z.object({
   amount: z.coerce.number().positive().finite().max(1_000_000),
   customerId: z.string().uuid().optional(),
   expiresAt: z.coerce.date().optional(),
+  reason: z
+    .string({ required_error: "Give a reason for issuing this gift card" })
+    .trim()
+    .min(GIFT_CARD_REASON_MIN, "Give a reason for issuing this gift card")
+    .max(GIFT_CARD_REASON_MAX),
 });
 
 export function registerGiftCardRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -57,7 +68,7 @@ export function registerGiftCardRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.post("/api/gift-cards", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"), async (req: any, res) => {
+  app.post("/api/gift-cards", ...scoped, requireRole(...rolesAtLeast(GIFT_CARD_ISSUE_MIN_ROLE)), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const userId = req.user?.id ?? "unknown";
@@ -67,9 +78,9 @@ export function registerGiftCardRoutes(app: Express, scoped: RequestHandler[]): 
         issuedByUserId: userId, actorUserId: userId,
       }));
       await recordAdminAudit(req, {
-        actorUserId: userId, actorRole: req.orgContext?.role ?? "CASHIER", action: "gift_card.issued",
+        actorUserId: userId, actorRole: req.orgContext?.role ?? "MANAGER", action: "gift_card.issued",
         targetType: "gift_card", targetId: result.card.id, orgId: ctx.orgId,
-        metadata: { amount: body.amount, customerId: body.customerId ?? null, codeLast4: result.code.slice(-4) },
+        metadata: { amount: body.amount, customerId: body.customerId ?? null, codeLast4: result.code.slice(-4), reason: body.reason },
       });
       res.status(201).json({ giftCard: result.serialized, code: result.code });
     } catch (e) {
@@ -79,7 +90,10 @@ export function registerGiftCardRoutes(app: Express, scoped: RequestHandler[]): 
     }
   });
 
-  app.post("/api/gift-cards/:code/redeem", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"), async (req: any, res) => {
+  // Checks a card can cover an amount; it moves no money (redemption happens
+  // inside order completion). Named /validate for what it does — it was
+  // /redeem, which read as if calling it spent the balance.
+  app.post("/api/gift-cards/:code/validate", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"), async (req: any, res) => {
     try {
       const code = decodeURIComponent(req.params.code);
       z.object({ amount: z.coerce.number().positive() }).parse(req.body ?? {});

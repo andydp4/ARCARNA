@@ -6,6 +6,7 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role, Organization } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { orgSettingsForRole } from "@shared/staffPolicy";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -76,8 +77,8 @@ function mapOrgToSettings(org: Organization) {
     // Operations Centre timing policy (migration 065). Projected HERE, not
     // only on /api/org/setup, because that route is MANAGER+ and the board
     // is a cashier's screen: the people whose cards these minutes colour
-    // must be able to read them. Written from the Settings card, which is
-    // MANAGER+ like every other org setting.
+    // must be able to read them. Written from the Settings card; the four
+    // "on time" minutes are admin only (Q16, shared/staffPolicy.ts).
     opsPrepSlaMinutes: org.opsPrepSlaMinutes ?? 20,
     opsDueSoonLeadMinutes: org.opsDueSoonLeadMinutes ?? 10,
     opsLateGraceMinutes: org.opsLateGraceMinutes ?? 5,
@@ -113,7 +114,9 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
       if (!org) {
         return res.status(404).json({ message: "Organization not found" });
       }
-      res.json(mapOrgToSettings(org));
+      // Every role reads this (the board needs its timings); the commission
+      // rate is admin only (Q16).
+      res.json(orgSettingsForRole(mapOrgToSettings(org), req.orgContext?.role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });

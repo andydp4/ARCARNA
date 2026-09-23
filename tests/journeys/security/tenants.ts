@@ -359,7 +359,7 @@ export async function provisionOrgRecords(
   created.expenses.push(expense.id);
 
   const giftCard = await jsonOrThrow(
-    await api.post("/api/gift-cards", { data: { amount: 25 } }),
+    await api.post("/api/gift-cards", { data: { amount: 25, reason: "Journey test" } }),
     "POST /api/gift-cards",
   );
   created.giftCards.push(giftCard.giftCard.id);

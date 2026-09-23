@@ -130,14 +130,18 @@ export const navGroups: NavGroup[] = [
         label: 'Invoices',
         href: '/invoices',
         icon: FileText,
-        testId: 'nav-invoices'
+        testId: 'nav-invoices',
+        // Owner decision Q11: invoices and the Credit List are manager and
+        // above, here and on the server. Cashiers lose both.
+        roles: MANAGER_ROLES
       },
       {
         key: 'tick-list',
         label: 'Credit List',
         href: '/tick-list',
         icon: CreditCard,
-        testId: 'nav-tick-list'
+        testId: 'nav-tick-list',
+        roles: MANAGER_ROLES
       }
     ]
   },

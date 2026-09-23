@@ -137,7 +137,7 @@ function crossTenantWrites(): Write[] {
     { method: "delete", path: `/api/locations/${b.locationId}`, what: "delete B's location" },
     { method: "post", path: `/api/locations/${b.locationId}/set-default`, what: "make B's location A's default" },
     { method: "post", path: `/api/gift-cards/${b.giftCardCode}/void`, what: "void B's gift card" },
-    { method: "post", path: `/api/gift-cards/${b.giftCardCode}/redeem`, body: { amount: 5 }, what: "redeem B's gift card" },
+    { method: "post", path: `/api/gift-cards/${b.giftCardCode}/validate`, body: { amount: 5 }, what: "validate B's gift card" },
     { method: "patch", path: `/api/orgs/${orgBId}`, body: { name: "OWNED BY A" }, what: "rename org B itself" },
   ];
 }

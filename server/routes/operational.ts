@@ -6,7 +6,7 @@ import {
   getNotifications,
   getBusinessHealth,
 } from "../services/operationalIntelligence";
-import { getControlCentreSnapshot } from "../services/controlCentre";
+import { controlCentreForRole, getControlCentreSnapshot } from "../services/controlCentre";
 import { markSignals } from "../services/signals";
 
 const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
@@ -83,7 +83,7 @@ export function registerOperationalRoutes(app: Express, scoped: RequestHandler[]
     try {
       const ctx = req.orgContext as { orgId: string };
       const data = await getControlCentreSnapshot(ctx.orgId);
-      res.json(data);
+      res.json(controlCentreForRole(data, (ctx as { role?: string }).role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching Control Centre snapshot:", error);
       res.status(500).json({ message: "Failed to fetch Control Centre snapshot" });

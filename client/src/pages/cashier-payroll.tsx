@@ -52,6 +52,7 @@ type CashierAnalytics = {
 type CashierCommissionRow = {
   shiftId: string;
   cashierId: string;
+  userId?: string | null;
   cashierCode: string;
   cashierName: string;
   closedAt: string;
@@ -80,6 +81,8 @@ export default function CashierPayrollPage() {
   const { user } = useAuth();
   // Exports are admin only and logged (Q12).
   const canExport = isAtLeast(user?.role, EXPORT_MIN_ROLE);
+  // Nobody confirms their own commission payment; the server refuses it too.
+  const canConfirm = (row: CashierCommissionRow) => row.amountUnpaid > 0 && (!row.userId || row.userId !== user?.id);
 
   const params = useMemo(() => {
     const qs = new URLSearchParams();
@@ -314,7 +317,7 @@ export default function CashierPayrollPage() {
                       <ResponsiveCardRow label="Net profit">{money(row.netSalesProfit)}</ResponsiveCardRow>
                       <ResponsiveCardRow label="Commission">{money(row.commissionAmount)}</ResponsiveCardRow>
                     </div>
-                    {row.amountUnpaid > 0 && (
+                    {canConfirm(row) && (
                       <Button
                         size="sm"
                         className="mt-3 min-h-[44px] w-full"
@@ -341,7 +344,7 @@ export default function CashierPayrollPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {row.amountUnpaid > 0 && (
+                    {canConfirm(row) && (
                       <Button
                         size="sm"
                         className="min-h-[44px]"

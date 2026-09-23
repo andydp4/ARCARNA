@@ -13,6 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Search, Plus, Ban } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
+import { isAtLeast } from "@shared/accessPolicy";
+import { GIFT_CARD_ISSUE_MIN_ROLE, GIFT_CARD_REASON_MIN } from "@shared/creditPolicy";
 
 export default function GiftCardsPage() {
   const { toast } = useToast();
@@ -21,6 +25,11 @@ export default function GiftCardsPage() {
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueAmount, setIssueAmount] = useState("");
   const [issueCustomerId, setIssueCustomerId] = useState("");
+  // A gift card is money out of the business: managers issue them, with a
+  // reason that goes on the audit log (FIX-13). The server enforces both.
+  const [issueReason, setIssueReason] = useState("");
+  const { user } = useAuth();
+  const canIssue = isAtLeast(user?.role, GIFT_CARD_ISSUE_MIN_ROLE);
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
 
   const { data: listData, isLoading } = useQuery({
@@ -46,14 +55,20 @@ export default function GiftCardsPage() {
   });
 
   const issueMutation = useMutation({
-    mutationFn: (body: { amount: number; customerId?: string }) => apiRequest("POST", "/api/gift-cards", body),
+    mutationFn: (body: { amount: number; customerId?: string; reason: string }) => apiRequest("POST", "/api/gift-cards", body),
     onSuccess: async (res) => {
       const data = await res.json();
       setIssuedCode(data.code);
+      setIssueReason("");
       queryClient.invalidateQueries({ queryKey: ["/api/gift-cards"] });
       toast({ title: "Gift card issued", description: `Code ending ${data.code.slice(-4)}` });
     },
-    onError: () => toast({ title: "Failed to issue gift card", variant: "destructive" }),
+    onError: (error: unknown) =>
+      toast({
+        title: "Failed to issue gift card",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
   });
 
   const voidMutation = useMutation({
@@ -65,7 +80,7 @@ export default function GiftCardsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Gift Cards" question="What stored value is outstanding?" explanation="Issue, search, void, and review gift card movements"
-        action={<Button onClick={() => { setIssueOpen(true); setIssuedCode(null); }} className="min-h-[44px] lm-btn-metal"><Plus className="mr-2 h-4 w-4" />Issue gift card</Button>} />
+        action={canIssue ? <Button onClick={() => { setIssueOpen(true); setIssuedCode(null); }} className="min-h-[44px] lm-btn-metal"><Plus className="mr-2 h-4 w-4" />Issue gift card</Button> : undefined} />
       <Card><CardHeader><CardTitle className="text-base">Search</CardTitle></CardHeader>
         <CardContent><div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-10 min-h-[44px] font-mono uppercase" placeholder="Full code or last 4 digits" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
@@ -101,11 +116,16 @@ export default function GiftCardsPage() {
           <div className="grid gap-4 py-4"><div className="grid gap-2"><Label>Amount</Label><Input type="number" min="0.01" step="0.01" value={issueAmount} onChange={(e) => setIssueAmount(e.target.value)} className="min-h-[44px]" /></div>
             <div className="grid gap-2"><Label>Customer (optional)</Label><Select value={issueCustomerId || "none"} onValueChange={(v) => setIssueCustomerId(v === "none" ? "" : v)}>
               <SelectTrigger className="min-h-[44px]"><SelectValue placeholder="Walk-in" /></SelectTrigger>
-              <SelectContent><SelectItem value="none">Walk-in</SelectItem>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div></div>}
+              <SelectContent><SelectItem value="none">Walk-in</SelectItem>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label htmlFor="gift-card-reason">Reason</Label>
+              <Textarea id="gift-card-reason" value={issueReason} onChange={(e) => setIssueReason(e.target.value)} placeholder="For example: bought as a present, paid £25 cash; or goodwill after a late order" maxLength={500} data-testid="input-gift-card-reason" />
+              <p className="text-xs text-muted-foreground">Kept on the audit log beside your name.</p></div></div>}
         <DialogFooter>{issuedCode ? <Button onClick={() => { setIssueOpen(false); setIssuedCode(null); }}>Done</Button> :
           <><Button variant="outline" onClick={() => setIssueOpen(false)}>Cancel</Button>
           <Button onClick={() => { const amount = parseFloat(issueAmount); if (!amount) return toast({ title: "Enter amount", variant: "destructive" });
-            issueMutation.mutate({ amount, customerId: issueCustomerId || undefined }); }} disabled={issueMutation.isPending}>Issue</Button></>}</DialogFooter>
+            const reason = issueReason.trim();
+            if (reason.length < GIFT_CARD_REASON_MIN) return toast({ title: "Give a reason for issuing this gift card", variant: "destructive" });
+            issueMutation.mutate({ amount, customerId: issueCustomerId || undefined, reason }); }} disabled={issueMutation.isPending}>Issue</Button></>}</DialogFooter>
       </DialogContent></Dialog>
     </div>
   );

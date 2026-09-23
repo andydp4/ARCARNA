@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { csvRow } from '@shared/csv'
+import { BACKDATE_LIMIT_DAYS, localIsoDate } from '@shared/orders/orderDate'
+import { shiftIsoDate } from '@shared/time/tradingDay'
 import { PageHeader } from '@/components/PageHeader'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
@@ -85,6 +87,9 @@ export default function TickList() {
   const [payingCustomer, setPayingCustomer] = useState<TickCustomer | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // Blank, or today, is today. A manager may backdate within the same window
+  // an order can be backdated; the server holds the line (FIX-12).
+  const [paymentDate, setPaymentDate] = useState('')
   const [customerToDelete, setCustomerToDelete] = useState<TickCustomer | null>(null)
 
   // Fetch tick customers from API
@@ -118,8 +123,10 @@ export default function TickList() {
 
   // Mark as paid mutation
   const markPaidMutation = useMutation({
-    mutationFn: async (customerId: string) => {
-      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`)
+    // Clearing a whole tab sends the balance the person was looking at: if
+    // more went on the tab since, the server refuses rather than clear it.
+    mutationFn: async ({ customerId, expectedBalance }: { customerId: string; expectedBalance: number }) => {
+      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance })
       return response.json()
     },
     onSuccess: () => {
@@ -157,8 +164,8 @@ export default function TickList() {
   // one hit, and the amount decides how much commission is released, so it has
   // to be the real figure rather than "all of it".
   const recordPaymentMutation = useMutation({
-    mutationFn: async ({ customerId, amount, method }: { customerId: string; amount: number; method: string }) => {
-      const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method })
+    mutationFn: async ({ customerId, amount, method, paidOn }: { customerId: string; amount: number; method: string; paidOn?: string }) => {
+      const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method, paidOn })
       const body = await response.json()
       if (!response.ok) throw new Error(body?.message ?? 'Failed to record the payment')
       return body as { amountApplied: number; remainingOwed: number }
@@ -184,6 +191,7 @@ export default function TickList() {
     setPayingCustomer(customer)
     setPaymentAmount((customer.totalDebt || 0).toFixed(2))
     setPaymentMethod('cash')
+    setPaymentDate('')
   }
 
   const handleDeleteClick = (customer: TickCustomer) => {
@@ -519,6 +527,22 @@ export default function TickList() {
                   Only cash payments go into the till drawer.
                 </p>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="tick-payment-date">Paid on</Label>
+                <Input
+                  id="tick-payment-date"
+                  type="date"
+                  value={paymentDate || localIsoDate()}
+                  min={shiftIsoDate(localIsoDate(), -BACKDATE_LIMIT_DAYS)}
+                  max={localIsoDate()}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="min-h-[44px]"
+                  data-testid="input-tick-payment-date"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Today unless the money arrived earlier — up to {BACKDATE_LIMIT_DAYS} days back.
+                </p>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" className="min-h-[44px]" onClick={() => setPayingCustomer(null)}>
@@ -533,6 +557,8 @@ export default function TickList() {
                     customerId: payingCustomer.id,
                     amount: Number(paymentAmount),
                     method: paymentMethod,
+                    // Only a real backdate is sent; today is left to the server's own trading day.
+                    paidOn: paymentDate && paymentDate !== localIsoDate() ? paymentDate : undefined,
                   })
                 }
                 data-testid="button-tick-record-payment"

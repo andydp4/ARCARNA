@@ -48,7 +48,7 @@ export class CreditError extends Error {
   }
 }
 
-async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
+export async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
   const [org] = await client
     .select({ timezone: organizations.timezone })
     .from(organizations)

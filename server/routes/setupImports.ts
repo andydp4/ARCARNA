@@ -18,6 +18,14 @@ import { readBase64FromBody, readVcardTextFromBody } from "../import/importBody"
 import { products } from "@shared/schema";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
+import { recordAdminAudit } from "../adminAudit";
+import {
+  PAY_SETTING_KEYS,
+  PAY_SETTINGS_MIN_ROLE,
+  adminOnlySettingChanges,
+  orgSettingsForRole,
+} from "@shared/staffPolicy";
+import { isAtLeast } from "@shared/accessPolicy";
 
 const setupScoped = [
   isAuthenticated,
@@ -50,7 +58,7 @@ export function registerSetupAndImportRoutes(app: Express) {
       const ctx = req.orgContext as { orgId: string };
       const org = await storage.getOrgProfile(ctx.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
-      res.json(org);
+      res.json(orgSettingsForRole(org as unknown as Record<string, unknown>, req.orgContext?.role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching org setup:", error);
       res.status(500).json({ message: "Failed to fetch organization setup" });
@@ -64,8 +72,39 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid profile data", errors: parsed.error.errors });
       }
-      const org = await storage.updateOrgProfile(ctx.orgId, parsed.data as Record<string, unknown>);
-      res.json(org);
+      const patch = parsed.data as Record<string, unknown>;
+      const role = req.orgContext?.role ?? req.user?.role;
+
+      // The commission switch, the default rate, the overhead mode and the
+      // "on time" timing settings are admin only (Q16). Only a real change is
+      // refused: the wizard and the cards send the whole form back.
+      const current = await storage.getOrgProfile(ctx.orgId);
+      if (!current) return res.status(404).json({ message: "Organization not found" });
+      const changes = adminOnlySettingChanges(current as unknown as Record<string, unknown>, patch);
+      if (changes.length > 0 && !isAtLeast(role, PAY_SETTINGS_MIN_ROLE)) {
+        return res.status(403).json({
+          message: "Only an admin can change commission, overhead or on-time settings.",
+          code: "ADMIN_ONLY_SETTING",
+          keys: changes.map((c) => c.key),
+        });
+      }
+
+      const org = await storage.updateOrgProfile(ctx.orgId, patch);
+
+      // Every change to them is logged, old value beside new.
+      for (const change of changes) {
+        const isPay = (PAY_SETTING_KEYS as readonly string[]).includes(change.key);
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.id ?? "unknown",
+          actorRole: role ?? "ADMIN",
+          action: isPay ? "org.pay_setting.changed" : "org.timing_setting.changed",
+          targetType: "organization",
+          targetId: ctx.orgId,
+          orgId: ctx.orgId,
+          metadata: { setting: change.key, from: change.from, to: change.to },
+        });
+      }
+      res.json(orgSettingsForRole(org as unknown as Record<string, unknown>, role));
     } catch (error: any) {
       console.error("Error updating org setup:", error);
       res.status(400).json({ message: error.message || "Failed to update setup" });
