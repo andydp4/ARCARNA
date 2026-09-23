@@ -147,6 +147,12 @@ export function customerEditForRole<T extends Record<string, unknown>>(body: T, 
 }
 
 // ---------------------------------------------------------------------------
+// The "Problem?" inbox (v1.2 Phase 8A; owner: SUPER_ADMIN and ADMIN may see it).
+// ---------------------------------------------------------------------------
+
+export const PROBLEM_INBOX_MIN_ROLE: Role = "ADMIN";
+
+// ---------------------------------------------------------------------------
 // Route table.
 // ---------------------------------------------------------------------------
 
@@ -207,6 +213,8 @@ const NEEDS_A_LOOK =
   "Needs a look and Price overrides Evidence are manager and above, and each viewer gets only exceptions about people they outrank; the rules are admin only and logged (v1.2 Phase 4, CMP-02, CMP-04, PRC-09).";
 const BULK_MIN =
   "Bulk \"Set minimum price\" is managers and admins, previewed first and written to price history; a manager's change tells the owner (v1.2 Phase 4, PRC-05).";
+const PROBLEM_REPORT =
+  "Every member of staff can press Problem?; the inbox, and marking a report fixed or closed, is admins and the owner only. The inbox shows the reporter's role, never their name (v1.2 Phase 8A, Q18).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -242,6 +250,11 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PUT", path: "/api/settings/review-rules", minRole: "ADMIN", reason: NEEDS_A_LOOK },
   { method: "POST", path: "/api/products/min-price/preview", minRole: "MANAGER", reason: BULK_MIN },
   { method: "POST", path: "/api/products/min-price/apply", minRole: "MANAGER", reason: BULK_MIN },
+
+  // The "Problem?" button (v1.2 Phase 8A, UXA-09).
+  { method: "POST", path: "/api/problem-reports", minRole: "CASHIER", reason: PROBLEM_REPORT },
+  { method: "GET", path: "/api/problem-reports", minRole: "ADMIN", reason: PROBLEM_REPORT },
+  { method: "POST", path: "/api/problem-reports/:id/resolve", minRole: "ADMIN", reason: PROBLEM_REPORT },
 
   // Stock Centre › Stock levels: open to all staff, never a cost.
   { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },

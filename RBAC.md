@@ -22,6 +22,8 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Rules: below-minimum Signals now or twice daily; refund thresholds (v1.2 Phase 4) | No | Read | Change, logged | Change, logged |
 | Bulk "Set minimum price", with preview and price history (v1.2 Phase 4) | No | Yes (tells you) | Yes | Yes |
 | Refund exceptions (cash over £X, another cashier's sale, after N days, reason Other); refunds never blocked (v1.2 Phase 4) | No | Cashiers' | Cashiers' and managers' | All |
+| Press "Problem?" (header and till): a chip, optional note, screen, role, device, version, online and queue counts (v1.2 Phase 8A) | Yes | Yes | Yes | Yes |
+| Problem? inbox: read, mark fixed (the reporter is thanked with the version) or closed, logged; shows the reporter's role, never their name (v1.2 Phase 8A) | No | No | Yes | Yes |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |

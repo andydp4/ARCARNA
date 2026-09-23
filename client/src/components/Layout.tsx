@@ -12,10 +12,12 @@ import { OrgSwitcher } from './OrgSwitcher'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
+import { ProblemButton, ProblemSheet } from '@/components/problem/ProblemSheet'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 import { BrandLogo } from '@/components/BrandLogo'
 import { BRAND_PRODUCT_NAME } from '@shared/brand'
+import { isAtLeast } from '@shared/accessPolicy'
 import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
 import { ArcarnaAssistantBar } from '@/components/assistant/ArcarnaAssistantBar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -212,6 +214,8 @@ export function Layout({ children }: LayoutProps) {
   const mode = sidebarMode({ isPhone, canHover })
   const reducedMotion = usePrefersReducedMotion()
   const { user, devAuthBypass } = useAuth()
+  // Staff only: a shop account (CUSTOMER) never reaches the Layout, but be sure.
+  const isStaff = isAtLeast(user?.role, 'CASHIER')
   const role = user?.role
   const centres = useMemo(() => visibleCentres(role), [role])
   const routeCentre = centreForPath(location)
@@ -450,6 +454,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-3">
             <OrgSwitcher />
             <PreviewRoleMenu />
+            {isStaff && <ProblemButton />}
             <NotificationCenter />
             {devAuthBypass && (
               <Badge variant="secondary" className="hidden border-metal-edge bg-metal-charcoal text-xs text-metal-muted sm:inline-flex" data-testid="dev-auth-badge">Dev bypass</Badge>
@@ -538,6 +543,7 @@ export function Layout({ children }: LayoutProps) {
       </div>
       <WhatsAppPanel />
       <ArcarnaAssistantBar />
+      {isStaff && <ProblemSheet />}
       {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
     </div>
   )

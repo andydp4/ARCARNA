@@ -59,6 +59,7 @@ const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
 const NeedsAttention = lazy(() => import("@/pages/needs-attention"));
 const NeedsALook = lazy(() => import("@/pages/needs-a-look"));
+const ProblemInbox = lazy(() => import("@/pages/problem-inbox"));
 const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
@@ -331,6 +332,9 @@ function Router() {
           </Route>
           <Route path="/needs-a-look">
             <RequireRole href="/needs-a-look"><NeedsALook /></RequireRole>
+          </Route>
+          <Route path="/problems">
+            <RequireRole href="/problems"><ProblemInbox /></RequireRole>
           </Route>
           <Route path="/user-access">
             <RequireRole href="/user-access"><UserAccess /></RequireRole>

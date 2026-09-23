@@ -76,6 +76,7 @@ import { buildConfirmation, choiceProblem, flaggedCartLines } from "@/lib/priceG
 import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote";
 import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
 import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
+import { ProblemButton } from "@/components/problem/ProblemSheet";
 
 /** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
 function confirmVerb(paymentMethod: string): string {
@@ -1233,7 +1234,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             {embedded ? (
               (sellingLocation || noLocationWillResolve) && (
                 <div className="shrink-0 px-4 pb-2 pt-3">
-                  <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
+                    <ProblemButton compact />
+                  </div>
                   {sellingLocation ? (
                     <p className="mt-1 text-xs text-metal-muted" data-testid="pos-selling-location">
                       Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
@@ -1255,6 +1259,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   title="Create Order"
                   question={narrow ? undefined : "What is this customer buying?"}
                   explanation={narrow ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
+                  action={<ProblemButton compact />}
                 />
                 {sellingLocation ? (
                   <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">

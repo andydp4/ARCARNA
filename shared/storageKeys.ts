@@ -68,3 +68,8 @@ export const STORAGE_SIDEBAR_PINNED = "arcarna.sidebar.pinned";
  * connection; and each person's last reason, offered again next time.
  */
 export const STORAGE_PRICE_GUARD = "arcarna.priceGuard";
+
+/** This device's name from the fixed list (v1.2 Phase 8A): Till 1–6, Counter tablet, Phone 1–6. */
+export const STORAGE_DEVICE_NAME = "arcarna.device.name";
+/** "Problem?" reports kept on this device until it is back online (v1.2 Phase 8A). */
+export const STORAGE_PROBLEM_QUEUE = "arcarna.problem.queue";
