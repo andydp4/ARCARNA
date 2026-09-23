@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { ownExceptionCount } from "../services/exceptionReviews";
 import { z } from "zod";
 import { db } from "../db";
 import {
@@ -368,9 +369,15 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         return res.status(403).json({ message: NOT_YOUR_SHIFT });
       }
 
+      // Price overrides on this shift (v1.2 Phase 4, PRC-09): a count only —
+      // the one figure a cashier sees about their own flagged sales.
+      const priceOverrideCount = shift.userId
+        ? await ownExceptionCount(ctx.orgId, shift.userId, shift.openedAt, shift.closedAt ?? null)
+        : 0;
+
       if (shift.status === "open") {
         const { sheet } = await computeCashierShiftBalanceSheet(ctx.orgId, shift);
-        return res.json({ shift, summary: shiftSheetForRole(sheet, viewerOf(req).role), live: true });
+        return res.json({ shift, summary: shiftSheetForRole(sheet, viewerOf(req).role), live: true, priceOverrideCount });
       }
 
       const [summary] = await db
@@ -378,7 +385,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .from(cashierShiftSummaries)
         .where(eq(cashierShiftSummaries.shiftId, shift.id))
         .limit(1);
-      res.json({ shift, summary: summary ? shiftSheetForRole(summary, viewerOf(req).role) : null, live: false });
+      res.json({ shift, summary: summary ? shiftSheetForRole(summary, viewerOf(req).role) : null, live: false, priceOverrideCount });
     } catch (error) {
       if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
       console.error("[CashierShifts] summary:", error);

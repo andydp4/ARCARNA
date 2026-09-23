@@ -77,6 +77,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { BulkActionBar } from '@/components/BulkActionBar'
+import { BulkMinPriceDialog } from '@/components/products/BulkMinPriceDialog'
+import { marginPercentLabel, minPriceLabel } from '@/lib/productPriceColumns'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useAuth } from '@/hooks/useAuth'
@@ -633,6 +635,7 @@ export default function ProductManagement() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [bulkMinOpen, setBulkMinOpen] = useState(false)
 
   const runBulk = async (action: BulkActionId) => {
     setBulkBusy(true)
@@ -1385,7 +1388,9 @@ export default function ProductManagement() {
                         <TableHead>Name</TableHead>
                         <TableHead>Barcode</TableHead>
                         <TableHead>Price</TableHead>
+                        {showMinPrice && <TableHead>Min</TableHead>}
                         {showCost && <TableHead>Cost</TableHead>}
+                        {showCost && <TableHead>Margin %</TableHead>}
                         <TableHead>Stock</TableHead>
                         <TableHead>Website</TableHead>
                         <TableHead>Status</TableHead>
@@ -1408,9 +1413,19 @@ export default function ProductManagement() {
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
                         <TableCell>£{(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
+                        {showMinPrice && (
+                          <TableCell className={product.minPrice == null || product.minPrice === '' ? 'text-muted-foreground' : undefined} data-testid={`text-min-${product.id}`}>
+                            {minPriceLabel(product.minPrice)}
+                          </TableCell>
+                        )}
                         {showCost && (
                           <TableCell className={usableCost(product.costPrice) == null ? 'text-muted-foreground' : undefined}>
                             {costLabel(product.costPrice)}
+                          </TableCell>
+                        )}
+                        {showCost && (
+                          <TableCell className={usableCost(product.costPrice) == null ? 'text-muted-foreground' : undefined} data-testid={`text-margin-${product.id}`}>
+                            {marginPercentLabel(product.price || product.defaultSalePrice, product.costPrice)}
                           </TableCell>
                         )}
                         <TableCell>
@@ -1717,7 +1732,26 @@ export default function ProductManagement() {
           onAction={handleBulkAction}
           onClear={bulk.clear}
           busy={bulkBusy}
+          extra={
+            showMinPrice ? (
+              <Button size="sm" variant="secondary" disabled={bulkBusy} onClick={() => setBulkMinOpen(true)} data-testid="button-bulk-set-min-price">
+                Set minimum price
+              </Button>
+            ) : null
+          }
         />
+        {showMinPrice && (
+          <BulkMinPriceDialog
+            open={bulkMinOpen}
+            productIds={[...bulk.selectedIds]}
+            onClose={() => setBulkMinOpen(false)}
+            onApplied={async () => {
+              setBulkMinOpen(false)
+              bulk.clear()
+              await invalidateAfterCatalogMutation(queryClient)
+            }}
+          />
+        )}
         <ConfirmDestructive
           open={confirmDeleteOpen}
           title="Delete selected products"

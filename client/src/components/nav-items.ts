@@ -184,6 +184,17 @@ export const centres: Centre[] = [
         icon: AlertTriangle,
         testId: 'nav-needs-attention',
         roles: MANAGER_ROLES
+      },
+      {
+        // Exceptions to review (v1.2 Phase 4, CMP-02): flagged sales and
+        // refunds. Each person gets only the queues below their own role;
+        // the server cuts the rows the same way.
+        key: 'needs-a-look',
+        label: 'Needs a look',
+        href: '/needs-a-look',
+        icon: ClipboardList,
+        testId: 'nav-needs-a-look',
+        roles: MANAGER_ROLES
       }
     ]
   },
@@ -320,6 +331,16 @@ export const centres: Centre[] = [
         icon: AlertTriangle,
         testId: 'nav-would-have-flagged',
         roles: ADMIN_ROLES
+      },
+      {
+        // Price overrides (v1.2 Phase 4, PRC-09): by cashier, product and
+        // reason. Managers see cashiers', admins managers' too (server-cut).
+        key: 'price-overrides',
+        label: 'Price overrides',
+        href: '/reports/price-overrides',
+        icon: AlertTriangle,
+        testId: 'nav-price-overrides',
+        roles: MANAGER_ROLES
       },
       {
         key: 'scheduled-reports',

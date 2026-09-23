@@ -114,6 +114,24 @@ export const organizations = pgTable("organizations", {
    * name on it is the case the rule exists to remove.
    */
   opsAutoClaimOnCreate: boolean("ops_auto_claim_on_create").default(true).notNull(),
+  /**
+   * "Price guard at the till" (v1.2 Phase 4, migration 110): admin only, off by
+   * default, every change logged. Off: the till shows nothing and the server
+   * records silently (Phase 2). On: the amber line, the reason at Pay, Signals.
+   */
+  priceGuardEnabled: boolean("price_guard_enabled").default(false).notNull(),
+  /**
+   * When below-minimum Signals go out (v1.2 Phase 4, migration 111):
+   * "immediate" or "twice_daily" (a round-up at 12:00 and 18:00). Admin set.
+   * Below cost always goes immediately.
+   */
+  priceGuardMinSignal: varchar("price_guard_min_signal", { length: 12 }).default("immediate").notNull(),
+  /** Refunds rule (CMP-04, admin set): a cash refund over this raises an exception. */
+  refundCashOver: numeric("refund_cash_over", { precision: 10, scale: 2 }).default("50").notNull(),
+  /** Refunds rule: a refund this many days or more after the sale raises an exception. */
+  refundAfterDays: integer("refund_after_days").default(14).notNull(),
+  /** Price overrides Evidence: refunds by the same cashier within this many hours of a flagged sale. */
+  refundSameCashierHours: integer("refund_same_cashier_hours").default(24).notNull(),
   /** Reconciliation poll interval; the board is otherwise fed by server push. */
   opsReconcilePollSeconds: integer("ops_reconcile_poll_seconds").default(60).notNull(),
   /**
@@ -1914,6 +1932,92 @@ export const priceExceptions = pgTable("price_exceptions", {
 ]);
 
 export type PriceException = typeof priceExceptions.$inferSelect;
+
+/**
+ * The price guard's verdict on one order (v1.2 Phase 4, PRC-02, CMP-05,
+ * migration 110): the cashier's reason, whether every flagged line was
+ * confirmed, the order-level below-cost check and the "Manager agreed"
+ * question. One row per order; the lines stay in price_exceptions.
+ */
+export const priceGuardOrders = pgTable("price_guard_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  /** Who rang the sale. */
+  userId: varchar("user_id", { length: 255 }),
+  reason: varchar("reason", { length: 24 }),
+  reasonNote: text("reason_note"),
+  /** Null when no line needed the cashier's confirmation. */
+  confirmed: boolean("confirmed"),
+  offline: boolean("offline").default(false).notNull(),
+  confirmedAt: varchar("confirmed_at", { length: 40 }),
+  /** "error" for an unconfirmed arrival or below cost; otherwise "warning". */
+  severity: varchar("severity", { length: 8 }).notNull(),
+  flaggedLines: integer("flagged_lines").default(0).notNull(),
+  unconfirmedLines: integer("unconfirmed_lines").default(0).notNull(),
+  underMinimum: numeric("under_minimum", { precision: 12, scale: 2 }).default("0").notNull(),
+  linesBelowCost: integer("lines_below_cost").default(0).notNull(),
+  orderBelowCost: boolean("order_below_cost").default(false).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).default("0").notNull(),
+  managerUserId: varchar("manager_user_id", { length: 255 }),
+  managerAnswer: varchar("manager_answer", { length: 8 }),
+  managerAnsweredAt: timestamp("manager_answered_at"),
+  signalId: uuid("signal_id"),
+  /** Held for the next twice-daily round-up (migration 111). */
+  signalPending: boolean("signal_pending").default(false).notNull(),
+  /**
+   * "sale": the till's sale (one per order). "edit": a manager's later edit
+   * that made a new breach, `userId` being the manager (migration 112).
+   */
+  source: varchar("source", { length: 8 }).default("sale").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_guard_orders_severity_check", sql`${table.severity} IN ('warning', 'error')`),
+  check("price_guard_orders_answer_check", sql`${table.managerAnswer} IS NULL OR ${table.managerAnswer} IN ('yes', 'no')`),
+  check("price_guard_orders_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  uniqueIndex("price_guard_orders_sale_uq").on(table.orderId).where(sql`${table.source} = 'sale'`),
+  index("price_guard_orders_order_idx").on(table.orderId),
+  index("price_guard_orders_org_created_idx").on(table.orgId, table.createdAt),
+  index("price_guard_orders_pending_idx").on(table.orgId, table.createdAt).where(sql`${table.signalPending}`),
+]);
+
+export type PriceGuardOrder = typeof priceGuardOrders.$inferSelect;
+
+/**
+ * The Needs a look inbox (v1.2 Phase 4, CMP-02, CMP-04, migration 111): one
+ * row per exception — a flagged sale or a refund the refunds rule picks out —
+ * with its review state, reviewer and note. `subjectRole` (the role of the
+ * person it is about, when raised) picks the queue.
+ */
+export const exceptionReviews = pgTable("exception_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  /** "price" (source: price_guard_orders.id) or "refund" (source: refunds.id). */
+  kind: varchar("kind", { length: 12 }).notNull(),
+  sourceId: uuid("source_id").notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+  subjectUserId: varchar("subject_user_id", { length: 255 }),
+  subjectRole: varchar("subject_role", { length: 16 }),
+  severity: varchar("severity", { length: 8 }).notNull(),
+  summary: text("summary").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }),
+  /** Refunds: which rules picked it out. */
+  rules: jsonb("rules"),
+  state: varchar("state", { length: 12 }).default("open").notNull(),
+  reviewerId: varchar("reviewer_id", { length: 255 }),
+  note: text("note"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("exception_reviews_kind_check", sql`${table.kind} IN ('price', 'refund')`),
+  check("exception_reviews_state_check", sql`${table.state} IN ('open', 'acknowledged', 'explained', 'escalated')`),
+  check("exception_reviews_severity_check", sql`${table.severity} IN ('warning', 'error')`),
+  uniqueIndex("exception_reviews_source_uq").on(table.kind, table.sourceId),
+  index("exception_reviews_org_state_idx").on(table.orgId, table.state, table.createdAt),
+  index("exception_reviews_subject_idx").on(table.orgId, table.subjectUserId, table.createdAt),
+]);
+
+export type ExceptionReview = typeof exceptionReviews.$inferSelect;
 
 // Refunds (F3)
 export const REFUND_REASONS = [

@@ -21,24 +21,38 @@ interface Row {
   grossMargin: number | null;
   marginPct: number | null;
   totalMargin: number;
+  /** Sale lines below the minimum / below cost this week (the price policy). */
+  belowMinimumLines?: number;
+  belowCostLines?: number;
+  policyFlag?: "below_cost" | "below_minimum" | "ok";
 }
 
 const NO_COST = "No cost set";
 
-function marginFlag(pctVal: number | null): FlagLevel {
-  if (pctVal == null) return "gold";
-  if (pctVal >= 45) return "green";
-  if (pctVal >= 30) return "blue";
-  if (pctVal >= 20) return "amber";
-  return "red";
+/**
+ * The flag follows the price policy (v1.2 Phase 4, owner Q3): a product sold
+ * below cost or below its minimum this week is flagged, whatever its margin.
+ * The old hard-coded "margin under 20%" rule is gone; margin % is shown, not judged.
+ */
+function policyFlag(r: Row): FlagLevel {
+  if (r.policyFlag === "below_cost") return "red";
+  if (r.policyFlag === "below_minimum") return "amber";
+  if (r.costPrice == null) return "gold";
+  return "green";
 }
-const marginAction: Record<FlagLevel, string> = {
-  green: "Healthy",
-  blue: "Monitor",
-  amber: "Review Pricing",
-  red: "Reprice Now",
+const flagAction: Record<FlagLevel, string> = {
+  green: "Within policy",
+  blue: "Within policy",
+  amber: "Sold below minimum",
+  red: "Sold below cost",
   gold: "Set a cost",
 };
+function flagText(r: Row): string {
+  const level = policyFlag(r);
+  if (level === "red") return `${flagAction.red} (${r.belowCostLines ?? 0})`;
+  if (level === "amber") return `${flagAction.amber} (${r.belowMinimumLines ?? 0})`;
+  return flagAction[level];
+}
 
 export default function WeeklyMarginReport() {
   const [anchor, setAnchor] = useState(() => isoDate(new Date()));
@@ -55,12 +69,12 @@ export default function WeeklyMarginReport() {
         tableHeading: "Margin by Product (highest contribution first)",
         emptyText: "No sales this week — no margin to report.",
         flagLegend: [
-          { level: "green", meaning: "≥ 45% margin" },
-          { level: "blue", meaning: "30–44%" },
-          { level: "amber", meaning: "20–29% — review" },
-          { level: "red", meaning: "< 20% — reprice" },
+          { level: "green", meaning: "Within your price policy" },
+          { level: "amber", meaning: "Sold below the minimum price this week" },
+          { level: "red", meaning: "Sold below cost this week" },
+          { level: "gold", meaning: "No cost set" },
         ],
-        rowFlag: (r) => (r.marginPct != null && r.marginPct < 20 ? "red" : undefined),
+        rowFlag: (r) => (policyFlag(r) === "red" ? "red" : policyFlag(r) === "amber" ? "amber" : undefined),
         controls: (
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-muted-foreground">Week of</label>
@@ -97,7 +111,7 @@ export default function WeeklyMarginReport() {
           { header: "Total Margin", cell: (r) => money(r.totalMargin), keyInfo: true, align: "right" },
           {
             header: "Flag",
-            cell: (r) => <FlagBadge level={marginFlag(r.marginPct)}>{marginAction[marginFlag(r.marginPct)]}</FlagBadge>,
+            cell: (r) => <FlagBadge level={policyFlag(r)}>{flagText(r)}</FlagBadge>,
             align: "center",
           },
         ],
@@ -112,6 +126,8 @@ export default function WeeklyMarginReport() {
           { header: "Gross Margin Per Unit GBP", value: (r) => (r.grossMargin == null ? "" : r.grossMargin.toFixed(2)) },
           { header: "Margin Pct", value: (r) => (r.marginPct == null ? "" : r.marginPct.toFixed(1)) },
           { header: "Total Margin GBP", value: (r) => r.totalMargin.toFixed(2) },
+          { header: "Lines Below Minimum", value: (r) => r.belowMinimumLines ?? 0 },
+          { header: "Lines Below Cost", value: (r) => r.belowCostLines ?? 0 },
         ],
       }}
     />

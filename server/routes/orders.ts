@@ -661,6 +661,23 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
         const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
 
+        // Price guard (v1.2 Phase 4): the cashier's reason, unconfirmed
+        // arrivals and the below-cost check after all discounts. Never blocks:
+        // it runs under its own savepoint and a problem only logs.
+        {
+          const { recordPriceGuardInTx } = await import("../services/priceGuard");
+          await recordPriceGuardInTx(tx, {
+            orgId: ctx.orgId!,
+            orderId: result.orderId,
+            actorUserId: inputUserId,
+            items,
+            pricing,
+            rawConfirmation: body.priceGuard,
+            isPersonalUse,
+            offline: body._offlineOrderReplay === true || !!req.offlineQueuedAt,
+          });
+        }
+
         // `received` — the first order_events row for this order, mirroring
         // the milestone `shared/orders/opsState.ts` calls `receivedAt`
         // (brief, "Order lifecycle & timing model" table). `userId` is NULL
@@ -1396,6 +1413,23 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           // The manager making the edit is who set any new price (PRC-03).
           { actorUserId: actorId, orgId },
         );
+        // Price guard (v1.2 Phase 4): a line this edit put below the minimum
+        // or below cost is the editor's own exception, told to the people
+        // above them. Never blocks the edit.
+        {
+          const { recordPriceGuardEditInTx, orderDiscountsOf } = await import('../services/priceGuard');
+          const afterItems = await tx.select().from(order_items).where(eq(order_items.order_id, existing.id));
+          const [afterOrder] = await tx.select().from(orders).where(eq(orders.id, existing.id));
+          await recordPriceGuardEditInTx(tx, {
+            orgId,
+            orderId: existing.id,
+            actorUserId: actorId,
+            beforeItems,
+            afterItems,
+            beforePricing: orderDiscountsOf(existing),
+            pricing: afterOrder ? orderDiscountsOf(afterOrder) : null,
+          });
+        }
         const legsAfter = await rewritePaymentRecordTx(tx, state.legs, pricing.total);
         // An invoice already issued for this order (on request) follows it.
         const { refreshInvoiceForOrderTx } = await import('../services/invoices');

@@ -71,6 +71,16 @@ import type { LocationPickerOption } from "@shared/schema";
 import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import { cn } from "@/lib/utils";
+import { usePriceGuard } from "@/hooks/usePriceGuard";
+import { buildConfirmation, choiceProblem, flaggedCartLines } from "@/lib/priceGuard";
+import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote";
+import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
+import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
+
+/** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
+function confirmVerb(paymentMethod: string): string {
+  return paymentMethod === "tick" ? "place order" : "take payment";
+}
 
 type Product = PosProduct;
 type Customer = PosCustomer;
@@ -128,6 +138,7 @@ function MyShiftSummary() {
   const { data: summaryData } = useQuery<{
     shift: { openedAt: string };
     summary: { grossSales: string | number; commissionAmount: string | number } | null;
+    priceOverrideCount?: number;
   }>({
     queryKey: ["/api/cashier-shifts", shiftId, "summary"],
     queryFn: async () => {
@@ -151,6 +162,7 @@ function MyShiftSummary() {
       <span className="font-medium text-foreground">£{grossSales.toFixed(2)}</span>
       {" · commission "}
       <span className="font-medium text-foreground">£{commission.toFixed(2)}</span>
+      <ShiftPriceOverrideCount count={summaryData.priceOverrideCount} />
     </p>
   );
 }
@@ -377,9 +389,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
   // total and charged another.
-  const { data: orgSettings } = useQuery<{ vatEnabled?: boolean; vatRate?: number }>({
+  const { data: orgSettings } = useQuery<{ vatEnabled?: boolean; vatRate?: number; priceGuardEnabled?: boolean }>({
     queryKey: ["/api/settings"],
   });
+  // Price guard at the till (v1.2 Phase 4): off, the till shows nothing.
+  const priceGuard = usePriceGuard(orgSettings?.priceGuardEnabled);
 
   const { data: loyaltyTiers = [] } = useQuery<Array<PricingTier & { color?: string | null }>>({
     queryKey: ["/api/loyalty-tiers"],
@@ -826,6 +840,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     return verdict.ok && verdict.dating.kind === "preorder";
   }, [orderDate]);
 
+  // The lines the Pay panel asks about. Personal use keeps its own Signal.
+  const guardLines = useMemo(
+    () => (priceGuard.enabled && paymentMethod !== "personal_use" ? flaggedCartLines(cart) : []),
+    [priceGuard.enabled, paymentMethod, cart],
+  );
+
   // Handle checkout: move to the payment step.
   const handleCheckout = useCallback(() => {
     if (placeOrderMutation.isPending) return;
@@ -1058,6 +1078,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     }
     orderData.sendEmailReceipt = emailReceipt && customerHasEmail(selectedCustomer);
 
+    // Price guard: one reason for the sale. Kept in the sale itself, so a
+    // sale that has to queue offline carries its confirmation with it.
+    if (guardLines.length > 0) {
+      const problem = choiceProblem(priceGuard.choice);
+      if (problem) {
+        toast({ title: "Give a reason for the price", description: problem, variant: "destructive" });
+        return;
+      }
+      orderData.priceGuard = buildConfirmation(priceGuard.choice, guardLines);
+      if (priceGuard.choice.reason) priceGuard.afterSale(priceGuard.choice.reason);
+    }
+
     placeOrderMutation.mutate(orderData);
   };
 
@@ -1182,6 +1214,16 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             submitting={submitting}
             onBack={() => setView("build")}
             onConfirm={processPayment}
+            priceGuardPanel={
+              <PriceGuardPayPanel
+                lines={guardLines}
+                choice={priceGuard.choice}
+                onChange={priceGuard.setChoice}
+                managers={priceGuard.managers}
+                disabled={submitting}
+              />
+            }
+            confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
           />
         </div>
       ) : (
@@ -1271,6 +1313,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   onChange={setCart}
                   disabled={submitting}
                   aboveLines={<PosTopSellers products={products} onAdd={addToCart} disabled={submitting} />}
+                  renderLineNote={
+                    priceGuard.enabled
+                      ? (line, index, setPrice) => <PriceGuardLineNote line={line} index={index} onUsePrice={setPrice} />
+                      : undefined
+                  }
                 />
               )}
 

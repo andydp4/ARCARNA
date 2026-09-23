@@ -58,6 +58,7 @@ const WmSuppliesWebsiteSettingsPage = lazy(() => import("@/pages/settings/wm-sup
 const DeveloperSettingsPage = lazy(() => import("@/pages/settings/developer"));
 const TickList = lazy(() => import("@/pages/tick-list"));
 const NeedsAttention = lazy(() => import("@/pages/needs-attention"));
+const NeedsALook = lazy(() => import("@/pages/needs-a-look"));
 const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
@@ -70,6 +71,7 @@ const CurrentStockReport = lazy(() => import("@/pages/reports/current-stock"));
 const WeeklySalesReport = lazy(() => import("@/pages/reports/weekly-sales"));
 const WeeklyMarginReport = lazy(() => import("@/pages/reports/weekly-margin"));
 const WouldHaveFlaggedReport = lazy(() => import("@/pages/reports/would-have-flagged"));
+const PriceOverridesReport = lazy(() => import("@/pages/reports/price-overrides"));
 const LapseRetentionReport = lazy(() => import("@/pages/reports/lapse-retention"));
 const ClvReport = lazy(() => import("@/pages/reports/clv"));
 const StockRunwayReport = lazy(() => import("@/pages/reports/stock-runway"));
@@ -232,6 +234,9 @@ function Router() {
           <Route path="/reports/would-have-flagged">
             <RequireRole href="/reports/would-have-flagged"><WouldHaveFlaggedReport /></RequireRole>
           </Route>
+          <Route path="/reports/price-overrides">
+            <RequireRole href="/reports/price-overrides"><PriceOverridesReport /></RequireRole>
+          </Route>
           <Route path="/reports/lapse-retention">
             <RequireRole href="/reports"><LapseRetentionReport /></RequireRole>
           </Route>
@@ -323,6 +328,9 @@ function Router() {
           </Route>
           <Route path="/needs-attention">
             <RequireRole href="/needs-attention"><NeedsAttention /></RequireRole>
+          </Route>
+          <Route path="/needs-a-look">
+            <RequireRole href="/needs-a-look"><NeedsALook /></RequireRole>
           </Route>
           <Route path="/user-access">
             <RequireRole href="/user-access"><UserAccess /></RequireRole>

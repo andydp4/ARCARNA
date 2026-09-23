@@ -95,6 +95,9 @@ export function canSeeWouldHaveFlagged(role: string | null | undefined): boolean
   return isAtLeast(role, WOULD_HAVE_FLAGGED_MIN_ROLE);
 }
 
+/** "Price guard at the till" is switched on and off by admins only (v1.2 Phase 4, owner decision). */
+export const PRICE_GUARD_SWITCH_MIN_ROLE: Role = "ADMIN";
+
 // ---------------------------------------------------------------------------
 // Customer contact details (owner decision Q13a: admin and above). Staff below
 // that still find and serve customers: they get a flag saying whether there is
@@ -198,6 +201,12 @@ const STOCK_LEVELS =
   "Stock levels is every staff member's read-only count, built from an allow-list with no cost field (v1.2 Phase 3); the Canary check proves no cost reaches a cashier.";
 const TRUTHS_LAYOUT =
   "Truths at a glance is Truths: manager and above read it, with widgets above their role removed; only admins change the org's one layout, and every save is logged (v1.2 Phase 3).";
+const PRICE_GUARD =
+  "The price guard switch is admin only and logged; the till lists managers by name only for \"Manager agreed\"; only the manager named answers it (v1.2 Phase 4).";
+const NEEDS_A_LOOK =
+  "Needs a look and Price overrides Evidence are manager and above, and each viewer gets only exceptions about people they outrank; the rules are admin only and logged (v1.2 Phase 4, CMP-02, CMP-04, PRC-09).";
+const BULK_MIN =
+  "Bulk \"Set minimum price\" is managers and admins, previewed first and written to price history; a manager's change tells the owner (v1.2 Phase 4, PRC-05).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -221,6 +230,18 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
     minRole: "ADMIN",
     reason: "Would have flagged is admins and the owner only: managers do not review flags about themselves (PRC-03, CMP-03).",
   },
+
+  // Price guard at the till (v1.2 Phase 4, PRC-02, CMP-05).
+  { method: "PUT", path: "/api/settings/price-guard", minRole: "ADMIN", reason: PRICE_GUARD },
+  { method: "GET", path: "/api/price-guard/managers", minRole: "CASHIER", reason: PRICE_GUARD },
+  { method: "POST", path: "/api/price-guard/checks/:id/answer", minRole: "MANAGER", reason: PRICE_GUARD },
+  { method: "GET", path: "/api/needs-a-look", minRole: "MANAGER", reason: NEEDS_A_LOOK },
+  { method: "POST", path: "/api/needs-a-look/:id/review", minRole: "MANAGER", reason: NEEDS_A_LOOK },
+  { method: "GET", path: "/api/evidence/price-overrides", minRole: "MANAGER", reason: NEEDS_A_LOOK },
+  { method: "GET", path: "/api/settings/review-rules", minRole: "MANAGER", reason: NEEDS_A_LOOK },
+  { method: "PUT", path: "/api/settings/review-rules", minRole: "ADMIN", reason: NEEDS_A_LOOK },
+  { method: "POST", path: "/api/products/min-price/preview", minRole: "MANAGER", reason: BULK_MIN },
+  { method: "POST", path: "/api/products/min-price/apply", minRole: "MANAGER", reason: BULK_MIN },
 
   // Stock Centre › Stock levels: open to all staff, never a cost.
   { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },

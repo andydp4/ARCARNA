@@ -250,14 +250,15 @@ export default function OrderRefundPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Label htmlFor="refund-notes">{reason === "other" ? "Notes (say what the reason is)" : "Notes"}</Label>
+              <Textarea id="refund-notes" value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="input-refund-notes" />
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(0)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(2)}>Review</Button>
+              {/* "Other" needs a word on what it was; the server checks too. */}
+              <Button onClick={() => setStep(2)} disabled={reason === "other" && !notes.trim()}>Review</Button>
             </div>
           </CardContent>
         </Card>
