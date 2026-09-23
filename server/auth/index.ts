@@ -24,5 +24,5 @@ export async function setupAuth(app: Express) {
 
 export const isAuthenticated = selectIsAuthenticated();
 
-export { isOwner, requireRole, requireOrgContext, requireOrgScope } from "./commonAuth";
+export { isOwner, requireRole, requireOrgContext, requireOrgScope, requireCustomerOrgScope } from "./commonAuth";
 export { requireSuperAdminMfa } from "./superAdminMfa";

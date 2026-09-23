@@ -205,16 +205,43 @@ export const requireOrgContext: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const requireOrgScope: RequestHandler = async (req, res, next) => {
+function checkOrgScope(req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1]): boolean {
   const ctx = (req as { orgContext?: { orgId: string | null; role: string } }).orgContext;
-  if (!ctx) return res.status(403).json({ message: "Organization context required." });
+  if (!ctx) {
+    res.status(403).json({ message: "Organization context required." });
+    return false;
+  }
   if (!ctx.orgId) {
-    return res.status(403).json({
+    res.status(403).json({
       message:
         ctx.role === "SUPER_ADMIN"
           ? "Organization required. Pass X-Org-Id or ?orgId= to scope."
           : "No organization assigned. Contact an administrator.",
     });
+    return false;
   }
+  return true;
+}
+
+/**
+ * The org-scope check every STAFF route sits behind. A CUSTOMER (an approved
+ * shop account) belongs to an org too, so it used to pass this and, with most
+ * staff routes checking nothing further, could read the customer list, the
+ * credit list, invoices and the board by calling the API directly — only a
+ * browser redirect kept it on the shop pages. Shop accounts are now refused
+ * here; the shop's own routes use requireCustomerOrgScope instead.
+ */
+export const requireOrgScope: RequestHandler = async (req, res, next) => {
+  if (!checkOrgScope(req, res)) return;
+  const ctx = (req as { orgContext?: { role: string } }).orgContext;
+  if (ctx?.role === "CUSTOMER") {
+    return res.status(403).json({ code: "STAFF_ONLY", message: "This area is for staff only." });
+  }
+  return next();
+};
+
+/** Org scope for the shop's own routes (/api/public/*), which shop accounts are meant to use. */
+export const requireCustomerOrgScope: RequestHandler = async (req, res, next) => {
+  if (!checkOrgScope(req, res)) return;
   return next();
 };
