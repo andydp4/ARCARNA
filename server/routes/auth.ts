@@ -81,6 +81,10 @@ export function registerAuthRoutes(app: Express): void {
 
       res.json({
         ...user,
+        // The signed-in identity, even when no users row exists yet (a first
+        // sign-in, or an impersonated test user): screens key on user.id —
+        // My run found nothing to load without it.
+        id: user?.id ?? replitUserId,
         role,
         orgId,
         orgName,
