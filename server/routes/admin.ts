@@ -19,6 +19,7 @@ import {
   users,
   locations,
   opsStaff,
+  allowedUsers,
 } from "@shared/schema";
 
 /**
@@ -130,12 +131,32 @@ export function registerAdminRoutes(app: Express): void {
       if (owner && owner.replitUserId === replitUserId) {
         return res.status(400).json({ message: "Cannot remove owner from allowed users" });
       }
-      
-      await storage.removeAllowedUser(replitUserId);
+
       const actorId = req.user.claims?.sub ?? req.user.id;
       const rob = await storage.getUserRoleAndOrg(actorId);
-      const actorRole =
-        req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      const actorRole = (req.user.role ??
+        rob?.role ??
+        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
+      // The same line PATCH draws (canManageUser): an org admin removes people
+      // of their own business only. Removing someone else's staff, or a
+      // platform super admin (no org), was a way round every role rule.
+      const [target] = await db
+        .select({ role: allowedUsers.role, orgId: allowedUsers.orgId, isOwner: allowedUsers.isOwner })
+        .from(allowedUsers)
+        .where(eq(allowedUsers.replitUserId, replitUserId))
+        .limit(1);
+      if (!target) return res.status(404).json({ message: "User not found" });
+      if (actorRole !== "SUPER_ADMIN" && (target.isOwner === 1 || target.role === "SUPER_ADMIN")) {
+        return res.status(403).json({ message: "Only the platform owner can remove a super admin" });
+      }
+      if (!canManageUser(actorRole, rob?.orgId ?? null, target.orgId ?? null)) {
+        return res.status(403).json({ message: "You can only remove people from your own organization" });
+      }
+      if (actorId === replitUserId) {
+        return res.status(400).json({ message: "You cannot remove your own access" });
+      }
+
+      await storage.removeAllowedUser(replitUserId);
       await recordAdminAudit(req, {
         actorUserId: actorId,
         actorRole,
@@ -143,6 +164,7 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: rob?.orgId ?? null,
+        metadata: { previousRole: target.role ?? null, targetOrgId: target.orgId ?? null },
       });
       res.json({ message: "User removed from allowed list" });
     } catch (error) {
@@ -154,6 +176,14 @@ export function registerAdminRoutes(app: Express): void {
   // Get pending approval requests (owner only)
   app.get("/api/admin/pending-approvals", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
+      // A sign-up has no business yet, so the list is platform-wide: every
+      // stranger's name and email. Only the platform owner (SUPER_ADMIN) reads
+      // it; an org admin sees an empty list rather than another business's
+      // hires. Owner decision noted in the v1.2.1 e2e hand-off.
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const rob = await storage.getUserRoleAndOrg(actorId);
+      const actorRole = req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      if (actorRole !== "SUPER_ADMIN") return res.json([]);
       const requests = await storage.getPendingApprovals();
       res.json(requests);
     } catch (error) {
@@ -256,7 +286,16 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: roleAndOrg?.orgId ?? null,
-        metadata: { role, orgId, commissionRate: parsedCommissionRate, defaultLocationId: parsedDefaultLocationId },
+        // What it was, not just what it is now: a demotion and a promotion to
+        // the same role must read differently in the log.
+        metadata: {
+          role,
+          previousRole: targetUser.role ?? null,
+          orgId,
+          previousOrgId: orgId !== undefined ? targetUser.orgId ?? null : undefined,
+          commissionRate: parsedCommissionRate,
+          defaultLocationId: parsedDefaultLocationId,
+        },
       });
       const [refreshedWithLocation] = await attachDefaultLocationIds([updated]);
       res.json(refreshedWithLocation);

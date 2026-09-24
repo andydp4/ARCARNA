@@ -1,4 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/appPaths";
 import { clearPreviewRole } from "@/lib/previewRole";
 
@@ -123,4 +125,46 @@ export function useAuth() {
     setupComplete: user?.setupComplete !== false,
     devAuthBypass: !!user?.runtime?.devAuthBypass,
   };
+}
+
+/**
+ * Keeps the signed-in role fresh in a tab that stays open (v1.2.1, UA-06).
+ *
+ * `/api/auth/user` is cached for the life of the tab, so someone demoted from
+ * manager to cashier kept seeing manager screens until they reloaded. The
+ * server already refuses their manager-only calls; this makes the screens
+ * follow: the role is asked for again on every move to another screen and
+ * whenever the tab comes back into focus. Invalidation keeps the current
+ * answer on screen while it refetches, so nothing flickers.
+ */
+export function AuthFreshness(): null {
+  const queryClient = useQueryClient();
+  const [location] = useLocation();
+  const first = useRef(true);
+
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    // Offline (a till mid-sale with no signal): keep the role it has.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+  }, [location, queryClient]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [queryClient]);
+
+  return null;
 }

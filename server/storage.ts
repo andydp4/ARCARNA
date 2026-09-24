@@ -2330,21 +2330,36 @@ export class DatabaseStorage implements IStorage {
     approvedBy: string,
     options?: { role?: string; orgId?: string | null },
   ): Promise<void> {
-    await db
+    // Only a sign-up still waiting can be approved. The row stays behind,
+    // marked approved, once someone is let in; approving it again was a way
+    // to move an existing member of another business (their org and role) into
+    // the approver's own.
+    if ((options?.role ?? "CUSTOMER") === "SUPER_ADMIN") {
+      throw new Error("Cannot approve new users as SUPER_ADMIN");
+    }
+    const [alreadyIn] = await db
+      .select({ replitUserId: allowedUsers.replitUserId })
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId))
+      .limit(1);
+    if (alreadyIn) {
+      throw new Error("This person already has access; change their role in User Access instead");
+    }
+    // Claimed in one statement, so two approvals of one sign-up cannot both apply.
+    const [request] = await db
       .update(userApprovalRequests)
       .set({
         status: "approved",
         reviewedAt: new Date(),
         reviewedBy: approvedBy,
       })
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")))
+      .returning();
+    if (!request) {
+      throw new Error("There is no pending sign-up for this person");
+    }
 
-    const [request] = await db
-      .select()
-      .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
-
-    if (request) {
+    {
       const [approver] = await db
         .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
         .from(allowedUsers)
@@ -2383,7 +2398,8 @@ export class DatabaseStorage implements IStorage {
         reviewedAt: new Date(),
         reviewedBy: rejectedBy,
       })
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+      // Only a sign-up still waiting: an approved row is history, not a switch.
+      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")));
   }
 
   async insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void> {
