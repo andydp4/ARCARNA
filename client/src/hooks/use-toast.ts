@@ -4,6 +4,7 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { recordMessage } from "@/lib/usage"
 
 const TOAST_LIMIT = 1
 /** Delay before removing a dismissed toast from the DOM (ms). */
@@ -144,6 +145,9 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  // Our own usage record (v1.2 Phase 8B): every message staff see, by its
+  // title only (never the description, which can carry names and amounts).
+  recordMessage(props.title, props.variant)
   const duration = props.duration ?? TOAST_DEFAULT_DURATION
 
   const update = (props: ToasterToast) =>

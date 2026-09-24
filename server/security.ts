@@ -53,10 +53,22 @@ export function isImportApiPath(path: string): boolean {
  * same 800-per-15-minutes budget. Kept to exactly these two paths, named
  * literally rather than by prefix, so nothing else can join the skip list by
  * accident (brief, "Security" row: "the limiter skip list contains only the
- * board").
+ * board"). The one later addition, the usage batches (isUsageEventsPath),
+ * is also named literally and has its own per-device and per-shop limits.
  */
 export function isOpsBoardOrStreamPath(path: string): boolean {
   return path === "/api/orders/board" || path === "/api/orders/board/stream";
+}
+
+/**
+ * The usage record's batches (v1.2 Phase 8B). Every till shares the shop's
+ * one address, so this shared-IP budget would be one bucket for all of them;
+ * the route has its own limits instead: per device (DEVICE_EVENTS_PER_HOUR)
+ * and, because the device key is the till's own word, per shop
+ * (ORG_EVENTS_PER_HOUR). Named literally, like the board.
+ */
+export function isUsageEventsPath(path: string): boolean {
+  return path === "/api/usage/events";
 }
 
 export function createApiRateLimiters(isProduction: boolean) {
@@ -68,7 +80,8 @@ export function createApiRateLimiters(isProduction: boolean) {
     skip: (req) =>
       req.path === "/api/health" ||
       req.path === "/api/auth/runtime" ||
-      isOpsBoardOrStreamPath(req.path),
+      isOpsBoardOrStreamPath(req.path) ||
+      isUsageEventsPath(req.path),
     message: rateLimitMessage,
   });
 

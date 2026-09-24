@@ -68,3 +68,14 @@ export const STORAGE_SIDEBAR_PINNED = "arcarna.sidebar.pinned";
  * connection; and each person's last reason, offered again next time.
  */
 export const STORAGE_PRICE_GUARD = "arcarna.priceGuard";
+
+/** This device's name from the fixed list (v1.2 Phase 8A): Till 1–6, Counter tablet, Phone 1–6. */
+export const STORAGE_DEVICE_NAME = "arcarna.device.name";
+/** "Problem?" reports kept on this device until it is back online (v1.2 Phase 8A). */
+export const STORAGE_PROBLEM_QUEUE = "arcarna.problem.queue";
+/** Usage events waiting to be sent from this device (v1.2 Phase 8B); never names anyone. */
+export const STORAGE_USAGE_QUEUE = "arcarna.usage.queue";
+/** A random id this browser made for itself, for the per-device usage limit (v1.2 Phase 8B). */
+export const STORAGE_USAGE_DEVICE_KEY = "arcarna.usage.deviceKey";
+/** When this device went offline, so a reload while offline still counts the gap (v1.2 Phase 8B). */
+export const STORAGE_USAGE_OFFLINE_SINCE = "arcarna.usage.offlineSince";

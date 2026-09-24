@@ -9,6 +9,12 @@ initProductAnalytics();
 import { APP_BASE } from "./lib/appPaths";
 import { syncService } from "./lib/sync-service";
 import { reloadOnceInBrowser } from "./lib/crashReporting";
+import { installUsageObservers } from "./lib/usage";
+
+// Our own usage record (v1.2 Phase 8B): every API call is timed at fetch
+// itself, so slow and failed calls are caught wherever they come from,
+// including the sale. Nothing is kept until a member of staff is signed in.
+installUsageObservers();
 
 // Vite fires this when a lazy route's chunk (or its CSS) fails to load — after
 // a deploy the old hashed files are gone. Reload once to pick up the new build;

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
 import { isChunkLoadError, makeReferenceCode, reloadOnceInBrowser } from '@/lib/crashReporting';
+import { recordCrash } from '@/lib/usage';
 
 interface Props {
   children: ReactNode;
@@ -40,6 +41,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: { componentStack?: string | null }) {
+    // Our own usage record (v1.2 Phase 8B): the kind of crash and the screen, nothing from the error.
+    recordCrash(isChunkLoadError(error) ? 'chunk' : 'boundary');
     // A stale chunk after a deploy is not a bug: fetch the new build once.
     if (isChunkLoadError(error) && reloadOnceInBrowser()) {
       this.setState({ reloading: true });

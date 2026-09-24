@@ -35,6 +35,7 @@ import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
 import { LabelPrinterSettings } from '@/components/settings/LabelPrinterSettings'
 import { getSelectedOrgId } from '@/lib/orgScope'
 import { APP_VERSION } from '@shared/version'
+import { DeviceNameSettings } from '@/components/settings/DeviceNameSettings'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
 import { SETTINGS_TABS } from '@/components/nav-items'
@@ -565,6 +566,7 @@ export default function Settings() {
           {/* System Settings */}
           <TabsContent value="system" className="space-y-6">
               <LabelPrinterSettings />
+              <DeviceNameSettings />
               <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

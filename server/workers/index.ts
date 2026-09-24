@@ -323,6 +323,15 @@ async function runHousekeeping(): Promise<void> {
       (await import("../services/priceGuardDigest")).runDuePriceGuardDigests()],
     ["needs-a-look-weekly", async () =>
       (await import("../services/exceptionReviews")).runWeeklyNeedsALook()],
+    // Friction Truths (v1.2 Phase 8B/8C): count new usage into the daily
+    // summaries, send the owner's Monday top five (exactly once per week),
+    // then drop raw events after 90 days and summaries after 24 months.
+    ["usage-rollup", async () =>
+      (await import("../services/usage")).rollupUsage()],
+    ["friction-weekly", async () =>
+      (await import("../services/usage")).runWeeklyFrictionTopFive()],
+    ["usage-purge", async () =>
+      (await import("../services/usage")).purgeUsage()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {
