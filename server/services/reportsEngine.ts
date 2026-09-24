@@ -653,8 +653,12 @@ export async function weeklyMarginSummary(
   const refundedAmount = sql`COALESCE((SELECT SUM(rl.amount) FROM refund_lines rl WHERE rl.order_line_id = ${orderItems.id}), 0)`;
   const netQty = sql`(CAST(${orderItems.quantity} AS DECIMAL) - ${refundedQty})`;
   const orderLineValue = sql`(SELECT SUM(CAST(oi2.total_price AS DECIMAL)) FROM order_items oi2 WHERE oi2.order_id = ${orders.id})`;
+  // The delivery fee (as charged, VAT included) is not any product's money:
+  // it comes off before the settled total is shared across the lines.
+  const feeCharged = sql`ROUND(COALESCE(${orders.deliveryFee}, 0) * (1 + COALESCE(${orders.vatRate}, 0) / 100), 2)`;
+  const goodsSettled = sql`GREATEST(CAST(COALESCE(${orders.settledTotal}, ${orders.total}) AS DECIMAL) - ${feeCharged}, 0)`;
   const paidForLine = sql`(CASE WHEN ${orderLineValue} > 0
-    THEN CAST(${orderItems.totalPrice} AS DECIMAL) * CAST(COALESCE(${orders.settledTotal}, ${orders.total}) AS DECIMAL) / ${orderLineValue}
+    THEN CAST(${orderItems.totalPrice} AS DECIMAL) * ${goodsSettled} / ${orderLineValue}
     ELSE 0 END)`;
   const netRevenue = sql`(${paidForLine} - ${refundedAmount})`;
   const grp = await db

@@ -396,6 +396,14 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
 
     const hub = await storage.getReportData(from, to, orgId);
     expect(hub.revenue.deliveryFees).toBe(5.5);
+
+    // Weekly Margin shares each sale's settled total across its lines; the fee
+    // is taken off first, so no product is credited with fee money.
+    const { weeklyMarginSummary } = await import("../services/reportsEngine");
+    const week = await weeklyMarginSummary(orgId, new Date(), new Date());
+    const rows = (week as any).rows as Array<{ avgSellPrice: number | null; unitsSold: number }>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.avgSellPrice ?? 0).toBeLessThanOrEqual(25 + 1e-6);
   });
 
   it("the fee can be refunded once, with or without the goods, and fee takings net it off", async () => {
