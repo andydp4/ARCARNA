@@ -190,6 +190,12 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
     .limit(1);
   if (!order) throw new InvoiceError("Order not found", 404, "ORDER_NOT_FOUND");
 
+  // NO KEY UPDATE, not UPDATE (v1.2.1): the counter is a non-key column, and
+  // NO KEY UPDATE still queues one invoice number behind another. FOR UPDATE
+  // also conflicts with the KEY SHARE every foreign-key check on org_id takes,
+  // and the completion that calls this has just inserted `order_credit`
+  // (org_id FK) — so two tick sales completing at once in one org each held
+  // KEY SHARE and each waited to upgrade past the other's: deadlock 40P01.
   const [org] = await tx
     .select({
       prefix: organizations.invoicePrefix,
@@ -201,7 +207,7 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
     })
     .from(organizations)
     .where(eq(organizations.id, orgId))
-    .for("update")
+    .for("no key update")
     .limit(1);
   if (!org) throw new InvoiceError("Organization not found", 404, "ORG_NOT_FOUND");
 
