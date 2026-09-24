@@ -675,7 +675,7 @@ export async function sendCardLinkByWhatsapp(orgId: string, orderId: string): Pr
     throw new CardLinkError(422, "CARD_LINK_NO_CUSTOMER", "Pick the customer on the sale to send them the link.");
   }
   const [customer] = await db
-    .select({ id: customers.id, name: customers.name, phone: customers.phone })
+    .select({ id: customers.id, name: customers.name })
     .from(customers)
     .where(and(eq(customers.id, order.customerId), eq(customers.orgId, orgId)))
     .limit(1);
@@ -685,7 +685,11 @@ export async function sendCardLinkByWhatsapp(orgId: string, orderId: string): Pr
     .where(and(eq(whatsappConversations.orgId, orgId), eq(whatsappConversations.customerId, order.customerId)))
     .orderBy(desc(whatsappConversations.lastMessageAt))
     .limit(1);
-  const waId = conversation?.waId ?? (customer?.phone ? toWhatsappNumber(customer.phone, cfg.defaultCountryCode) : "");
+  // The number is read through the customer view's one named phone read and
+  // only ever goes to WhatsApp — it is never returned to the till (PRV-03).
+  const { readCustomerPhone } = await import("./customerView");
+  const phone = conversation?.waId || !customer ? null : await readCustomerPhone(orgId, customer.id);
+  const waId = conversation?.waId ?? (phone ? toWhatsappNumber(phone, cfg.defaultCountryCode) : "");
   if (!waId) {
     throw new CardLinkError(422, "CARD_LINK_NO_PHONE", "This customer has no phone number for WhatsApp.");
   }
