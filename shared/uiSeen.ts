@@ -30,3 +30,33 @@ export const CENTRE_TOUR_CENTRES = ["control", "stock", "truths", "customer", "f
  */
 export const centreTourLocalKey = (centre: string, version: string = CENTRE_TOUR_VERSION) =>
   `arcarna.${centreTourAccountKey(centre, version)}`;
+
+/**
+ * One short tour per new v1.2 feature page (v1.2 Phase 9), shown once per
+ * account the first time someone reaches the feature, e.g.
+ * "featureTour:myRun-1.2.0". The steps live beside the client
+ * (client/src/components/tour/featureTours.ts); the names live here so the
+ * test harnesses can seed every flag without importing client code.
+ */
+export const FEATURE_TOUR_VERSION = "1.2.0";
+
+export const FEATURE_TOURS = [
+  "needsALook",
+  "myRun",
+  "cardLink",
+  "labelPrinter",
+  "orderTiming",
+  "staffPerformance",
+  "customerContact",
+  "contactAccessLog",
+  // "ask": add the Ask arcarna tour here once that feature merges (see featureTours.ts).
+] as const;
+
+export type FeatureTourName = (typeof FEATURE_TOURS)[number];
+
+export const featureTourAccountKey = (feature: string, version: string = FEATURE_TOUR_VERSION) =>
+  `featureTour:${feature}-${version}`;
+
+/** The per-device flag for a feature tour; the Playwright harnesses seed it like the Centre tours'. */
+export const featureTourLocalKey = (feature: string, version: string = FEATURE_TOUR_VERSION) =>
+  `arcarna.${featureTourAccountKey(feature, version)}`;

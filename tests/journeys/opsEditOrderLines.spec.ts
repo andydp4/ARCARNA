@@ -14,6 +14,7 @@ import { db } from "../../server/db";
 import { orderItems as orderItemsTable } from "@shared/schema";
 import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
+import { FEATURE_TOURS, featureTourLocalKey } from "../../shared/uiSeen";
 import { firstLocationId, okJson, uniqueSuffix } from "./fixtures";
 import { opsTest as test, orderInState } from "./opsFixtures";
 
@@ -24,6 +25,10 @@ async function markOverlaysSeen(page: Page): Promise<void> {
   await page.addInitScript((key) => {
     window.localStorage.setItem(key, "1");
   }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
+  // The v1.2 feature tours (Phase 9): Card (link) at checkout lives on the board.
+  await page.addInitScript((keys) => {
+    for (const key of keys) window.localStorage.setItem(key, "1");
+  }, FEATURE_TOURS.map((feature) => featureTourLocalKey(feature)));
 }
 
 async function gotoBoard(page: Page): Promise<void> {

@@ -5,6 +5,8 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
 import { useSeenOnce } from "@/hooks/useSeenOnce";
 import { clearPendingReplay, hasPendingReplay } from "@/components/tour/tourReplay";
+import { claimTourScreen, releaseTourScreen, tourScreenFree } from "@/components/tour/tourScreen";
+import { findTourTarget, type TourTarget } from "@/components/tour/tourTarget";
 
 /**
  * The shared spotlight tour (v1.2 Phase 3). Started life as the Operations
@@ -17,10 +19,12 @@ import { clearPendingReplay, hasPendingReplay } from "@/components/tour/tourRepl
  * tour opens; a step whose target is not rendered (a phone has no pinned
  * sidebar, a cashier has no Suppliers link) is dropped rather than shown
  * pointing at nothing.
+ *
+ * Only one tour holds the screen at a time (tourScreen.ts): a page's Centre
+ * tour and its feature tour take turns rather than opening together.
  */
 
-export interface TourStep {
-  testId: string;
+export interface TourStep extends TourTarget {
   title: string;
   body: string;
   /** Which side of the target the callout prefers; falls back to whichever side actually fits. */
@@ -44,6 +48,12 @@ export interface SpotlightTourProps {
    * a lazily loaded page paints its header a beat after the route changes.
    */
   minStepsToStart?: number;
+  /**
+   * Auto-start only once this is on screen, however long that takes: a
+   * feature tour waits for the feature itself (the Card (link) button appears
+   * only at checkout, a run's stops only once there are some).
+   */
+  anchor?: TourTarget;
 }
 
 /** Retries before starting with whatever steps have rendered. */
@@ -74,6 +84,7 @@ export function SpotlightTour({
   startEvent,
   idPrefix,
   minStepsToStart = 1,
+  anchor,
 }: SpotlightTourProps) {
   const { isAuthenticated, user } = useAuth();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -88,19 +99,20 @@ export function SpotlightTour({
   const { seen, markSeen } = useSeenOnce(seenKey, legacyLocalKey);
 
   const findSteps = useCallback(
-    () => allSteps.filter((step) => document.querySelector(`[data-testid="${step.testId}"]`)),
+    () => allSteps.filter((step) => findTourTarget(step)),
     [allSteps],
   );
 
   const openWithSteps = useCallback(
     (found: TourStep[] = findSteps()) => {
       if (found.length === 0) return;
+      if (!claimTourScreen(idPrefix)) return;
       focusedForStep.current = null;
       setSteps(found);
       setStepIndex(0);
       setOpen(true);
     },
-    [findSteps],
+    [findSteps, idPrefix],
   );
 
   // Auto-start once, after the board has real content and nothing else (the
@@ -114,11 +126,17 @@ export function SpotlightTour({
     let attempts = 0;
     const tryStart = () => {
       if (cancelled) return;
-      attempts += 1;
-      if (document.querySelector('[role="dialog"]')) {
+      // Neither waiting for the feature nor for another overlay uses up the
+      // attempts: those only bound the wait for a page's own steps to render.
+      if (document.querySelector('[role="dialog"]') || !tourScreenFree(idPrefix)) {
         timer = window.setTimeout(tryStart, START_RETRY_MS);
         return;
       }
+      if (anchor && !findTourTarget(anchor)) {
+        timer = window.setTimeout(tryStart, START_RETRY_MS);
+        return;
+      }
+      attempts += 1;
       const found = findSteps();
       if (found.length < Math.min(minStepsToStart, allSteps.length) && attempts < START_ATTEMPTS) {
         timer = window.setTimeout(tryStart, START_RETRY_MS);
@@ -131,7 +149,7 @@ export function SpotlightTour({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [eligible, ready, open, openWithSteps, findSteps, seen, minStepsToStart, allSteps.length]);
+  }, [eligible, ready, open, openWithSteps, findSteps, seen, minStepsToStart, allSteps.length, idPrefix, anchor]);
 
   // "Replay tour" replays it on demand regardless of the seen flag. The page
   // may still be arriving (Replay tour from another page of the Centre), so
@@ -144,6 +162,11 @@ export function SpotlightTour({
     window.clearTimeout(replayTimer.current);
     let attempts = 0;
     const attempt = () => {
+      // Another tour is showing: wait for it, without spending attempts.
+      if (!tourScreenFree(idPrefix)) {
+        replayTimer.current = window.setTimeout(attempt, START_RETRY_MS);
+        return;
+      }
       attempts += 1;
       const found = findSteps();
       const enough = readyRef.current && found.length >= Math.min(minStepsToStart, allSteps.length);
@@ -155,7 +178,7 @@ export function SpotlightTour({
       openWithSteps(found);
     };
     attempt();
-  }, [findSteps, openWithSteps, minStepsToStart, allSteps.length, startEvent]);
+  }, [findSteps, openWithSteps, minStepsToStart, allSteps.length, startEvent, idPrefix]);
 
   useEffect(() => {
     window.addEventListener(startEvent, replay);
@@ -170,13 +193,17 @@ export function SpotlightTour({
   const finish = useCallback(() => {
     markSeen();
     setOpen(false);
-  }, [markSeen]);
+    releaseTourScreen(idPrefix);
+  }, [markSeen, idPrefix]);
+
+  // Leaving the page mid-tour must not keep the screen from the next tour.
+  useEffect(() => () => releaseTourScreen(idPrefix), [idPrefix]);
 
   const step = steps[stepIndex] as TourStep | undefined;
 
   const reposition = useCallback(() => {
     if (!step) return;
-    const el = document.querySelector(`[data-testid="${step.testId}"]`);
+    const el = findTourTarget(step);
     if (!el) {
       finish();
       return;

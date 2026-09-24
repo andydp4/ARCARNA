@@ -24,6 +24,7 @@ import { ArcarnaAssistantBar } from '@/components/assistant/ArcarnaAssistantBar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PreviewRoleBanner, PreviewRoleMenu } from '@/components/PreviewRole'
 import { CentreTour, startCentreTour } from '@/components/tour/CentreTour'
+import { FeatureTours, replayFeatureTourHere } from '@/components/tour/FeatureTour'
 import { startOpsTour } from '@/components/operations/OpsTour'
 import {
   HOVER_QUERY,
@@ -339,6 +340,9 @@ export function Layout({ children }: LayoutProps) {
 
   const onReplayTour = useCallback(() => {
     if (mode !== 'hover') setSidebarOpen(false)
+    // A v1.2 feature on screen (Card (link) at checkout, My run's stops…):
+    // its own tour is the one worth replaying here.
+    if (replayFeatureTourHere(location, role)) return
     if (routeCentreKey === 'operations') {
       if (location === '/operations') {
         startOpsTour()
@@ -351,7 +355,7 @@ export function Layout({ children }: LayoutProps) {
       return
     }
     startCentreTour()
-  }, [mode, routeCentreKey, location, navigate, setSidebarOpen])
+  }, [mode, routeCentreKey, location, role, navigate, setSidebarOpen])
 
   const togglePinned = () => {
     const next = !pinned
@@ -550,6 +554,7 @@ export function Layout({ children }: LayoutProps) {
       {isStaff && <ProblemSheet />}
       {isStaff && <UsageRecorder />}
       {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
+      {user && user.role !== 'CUSTOMER' && <FeatureTours path={location} role={user.role} />}
     </div>
   )
 }

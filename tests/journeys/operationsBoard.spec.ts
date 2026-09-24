@@ -16,6 +16,7 @@ import { db } from "../../server/db";
 import { opsAlerts, orders as ordersTable, satisfactionScores } from "@shared/schema";
 import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
+import { FEATURE_TOURS, featureTourLocalKey } from "../../shared/uiSeen";
 import {
   authHeaders,
   ensureOpenShift,
@@ -37,6 +38,10 @@ async function markWhatsNewSeen(context: BrowserContext): Promise<void> {
   await context.addInitScript((key) => {
     window.localStorage.setItem(key, "1");
   }, opsTourSeenKey(LATEST_OPS_TOUR_VERSION));
+  // The v1.2 feature tours (Phase 9): Card (link) at checkout lives on the board.
+  await context.addInitScript((keys) => {
+    for (const key of keys) window.localStorage.setItem(key, "1");
+  }, FEATURE_TOURS.map((feature) => featureTourLocalKey(feature)));
 }
 
 /** ADMIN, at a specific viewport — `adminPage` (fixtures.ts) does not take one. */

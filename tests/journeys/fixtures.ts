@@ -21,7 +21,7 @@ import {
 } from "@playwright/test";
 import { LATEST_WHATS_NEW_VERSION } from "../../shared/whatsNew";
 import { LATEST_OPS_TOUR_VERSION, opsTourSeenKey } from "../../shared/opsTour";
-import { CENTRE_TOUR_CENTRES, centreTourLocalKey } from "../../shared/uiSeen";
+import { CENTRE_TOUR_CENTRES, FEATURE_TOURS, centreTourLocalKey, featureTourLocalKey } from "../../shared/uiSeen";
 
 export const ROLE_USERS = {
   SUPER_ADMIN: "seed-super-admin",
@@ -103,7 +103,13 @@ export async function pageAs(browser: Browser, role: Role, orgId: string): Promi
   // the journey's first click (or the a11y scan) on those pages.
   await context.addInitScript((keys) => {
     for (const key of keys) localStorage.setItem(key, "1");
-  }, CENTRE_TOUR_CENTRES.map((centre) => centreTourLocalKey(centre)));
+  }, [
+    ...CENTRE_TOUR_CENTRES.map((centre) => centreTourLocalKey(centre)),
+    // And each v1.2 feature tour (Phase 9): it starts on its own the moment
+    // its feature is on screen (Card (link) at checkout, My run's stops…),
+    // mid-journey, not just on arrival.
+    ...FEATURE_TOURS.map((feature) => featureTourLocalKey(feature)),
+  ]);
   return context.newPage();
 }
 
