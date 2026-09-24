@@ -178,8 +178,10 @@ test.describe("refunding a delivery fee, on a phone", () => {
       await expect(fee).toContainText("Van charge");
       await page.getByRole("checkbox").first().tap();
       await page.getByTestId("checkbox-refund-delivery-fee").tap();
-      // The widget at its price, and the fee as the customer paid it.
-      const expectedRefund = Math.round((12 + before.deliveryFeeRefundable) * 100) / 100;
+      // The widget at what the customer paid for it (its share of the goods,
+      // VAT included), and the fee as charged: the whole sale comes back, so
+      // exactly what was paid.
+      const expectedRefund = total;
       await expect(page.getByText(`Refund total: £${expectedRefund.toFixed(2)}`)).toBeVisible();
       // Nothing on the page is wider than the phone.
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
