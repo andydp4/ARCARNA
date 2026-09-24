@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 5. Deliveries and My run</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="deliveries-my-run">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">05</div>
+    <div class="chapter-title">Deliveries and My run</div>
+    <p class="chapter-lead">How a delivery is taken at the till, how it reaches the right driver, and how the driver works it from <span class="ui">My run</span> on a phone: putting the stops in order, starting the run, and saying what happened at each door, even with no signal.</p>
+  </div>
+
+  <p class="eyebrow">Who this is for</p>
+  <h2>Drivers are staff with deliveries</h2>
+  <p>There is no separate driver role in arcarna. Whoever a delivery is assigned to is its driver, and they work it from <span class="ui">My run</span> in the Operations Centre. A cashier account is all a driver needs. Everyone on the staff has a My run page, and each person only ever sees their own deliveries on it.
+     <span class="role role-cashier">CASHIER</span> <span class="role role-cashier">DRIVER</span> <span class="role role-manager">MANAGER</span></p>
+  <table>
+    <tr><th>Who</th><th>What they do with deliveries</th></tr>
+    <tr><td><span class="role role-cashier">CASHIER</span></td>
+        <td>Takes the delivery at the till with an address, and chooses who looks after it.</td></tr>
+    <tr><td><span class="role role-cashier">DRIVER</span></td>
+        <td>Opens <span class="ui">My run</span> on their phone, puts the stops in order, starts the run, and marks each stop <span class="ui">Delivered</span> or <span class="ui">Couldn't deliver</span>.</td></tr>
+    <tr class="ed-manager"><td><span class="role role-manager">MANAGER</span></td>
+        <td>Can look at any driver's run (read-only), hand deliveries to another person on the board, and hears about every failed delivery through a Signal.</td></tr>
+  </table>
+
+  <p class="eyebrow">Deliveries · at the till</p>
+  <h2>A delivery needs an address</h2>
+  <p>A delivery carries its own address on the order. The driver reads it from the order, not from the customer's record, so an order can go to a different door from the customer's usual one. arcarna will not take payment for a delivery until the address and postcode are filled in.</p>
+  <ol class="steps">
+    <li>Build the order as usual (Section 3), then select <span class="ui">Continue to payment</span>.</li>
+    <li>Under <span class="ui">Fulfilment</span>, choose <span class="ui">Delivery</span>. It starts on <span class="ui">Collection</span> every time, because most till sales are collected.</li>
+    <li>A <span class="ui">Delivery address</span> box opens. Fill in <span class="ui">Address</span> and <span class="ui">Postcode</span>.</li>
+    <li>If there is anything the driver should know, add it under <span class="ui">Notes for the driver (optional)</span>, for example "Side door, ring twice".</li>
+    <li>If a customer is attached to the order, you can select <span class="ui">Use saved address</span> to fill in the address they have on file. You can still change it for this order. If they have none, you see <span class="ui">No saved address for this customer.</span></li>
+    <li>To keep this address on the customer's record for next time, tick <span class="ui">Save as their address</span>. It always starts unticked.</li>
+    <li>Check <span class="ui">Looked after by</span> (see below), then take payment as usual.</li>
+  </ol>
+  <p>If you try to pay without an address or postcode, arcarna stops and shows <span class="ui">Add the delivery address</span>: <em>A delivery needs the address and postcode before payment.</em> Fill them in and pay again. Choosing Delivery also suggests a due time 45 minutes from now, unless you have picked one yourself.</p>
+
+  <figure>
+    <img src="../images/v12-05-delivery-address.png" alt="The payment step with Delivery chosen under Fulfilment and the Delivery address box showing Address, Postcode, Notes for the driver, Use saved address and Save as their address" />
+    <figcaption>Choosing Delivery at the till opens the Delivery address box. Payment waits until the address and postcode are in.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the payment step ("Step 2 of 2 · Take payment") scrolled to the Fulfilment section with "Delivery" selected, the "Delivery address" box beneath it with the "Use saved address" button, Address filled (e.g. "14 Elm Road, Flat 2"), Postcode filled (e.g. "AB1 2CD"), "Notes for the driver (optional)" filled with "Side door, ring twice", the unticked "Save as their address" box, and below it the "When is this due?" section with +45 selected and the "Looked after by" box ; state=a shift is open for seed-cashier; a fictional customer (e.g. Priya Shah) attached; 2 items on the order; Continue to payment pressed; addresses fictional -->
+  </figure>
+
+  <div class="callout">
+    <strong>Using a saved address is recorded</strong>
+    Each time <span class="ui">Use saved address</span> reads a customer's address, arcarna logs it. Only use it for the customer on this order.
+  </div>
+
+  <h3>Who the delivery goes to</h3>
+  <p><span class="ui">Looked after by</span>, on the same payment step, decides whose run the delivery lands on.</p>
+  <table>
+    <tr><th>Choice</th><th>What happens</th></tr>
+    <tr><td><span class="ui">Auto-assign (recommended)</span></td>
+        <td>arcarna picks for you: you, if you work that station, otherwise the least busy person who is on it. If nobody fits, or your shop has switched automatic owners off, the order waits on the board for someone to select <span class="ui">Take it</span>.</td></tr>
+    <tr><td><strong>A person's name</strong></td>
+        <td>The delivery is theirs straight away. Pick the driver here when you already know who is taking it. <span class="ui">(you)</span> marks your own name, and <span class="ui">· away</span> marks someone who is not on right now.</td></tr>
+  </table>
+  <p>If nobody is looking after a delivery, the person who taps <span class="ui">Ready</span> or <span class="ui">Out for delivery</span> on the board becomes its driver.</p>
+
+  <p class="eyebrow">Deliveries · on the board</p>
+  <h2>Deliveries on the Operations board</h2>
+  <p>A delivery sits on the Operations board like any other order (Section 4), with a few differences:</p>
+  <table>
+    <tr><th>On the board</th><th>What it means</th></tr>
+    <tr><td><strong>The address line</strong></td>
+        <td>Every member of staff sees the address and postcode on the card while the delivery is live. Once it is completed, the card leaves the board.</td></tr>
+    <tr><td><span class="ui">Out for delivery</span></td>
+        <td>The main button once a delivery is ready. It marks the order as on the road. A driver usually does this from My run instead, with <span class="ui">Start run</span>.</td></tr>
+    <tr><td><span class="ui">Delivered</span></td>
+        <td>On a delivery, the finishing button reads Delivered rather than Handed over.</td></tr>
+    <tr><td><span class="ui">Pass to…</span></td>
+        <td>Hands the order to someone else, so it moves onto their run. The person looking after it can pass it on, and so can managers.</td></tr>
+    <tr><td><strong>An amber note</strong></td>
+        <td>A driver could not deliver it last time. The note says why and when, for example <em>Couldn't deliver: No answer (14:32)</em>.</td></tr>
+  </table>
+  <h3>Putting an address right</h3>
+  <p>A mistyped house number sends the driver to the wrong door. Open the order's details on the board and select <span class="ui">Change address</span> (or <span class="ui">Add address</span> if there is none). Correct the <span class="ui">Address</span>, <span class="ui">Postcode</span> or <span class="ui">Notes</span>, then <span class="ui">Save address</span>. The change is logged, and the driver's My run shows it the next time it refreshes, within about half a minute.</p>
+  <p>The customer's phone number is not on the board. The driver can call the customer from My run once the delivery is out; see <em>Calling the customer</em> below.</p>
+
+  <p class="eyebrow">My run · on your phone</p>
+  <h2>My run</h2>
+  <p><span class="ui">My run</span> is the driver's page, in the Operations Centre. It answers one question: <em>Where am I going next?</em> It lists your own deliveries that are ready or already on the road, in the order you choose, with everything you need at each stop. It was built for a phone: one column, big buttons, nothing that pops up over the page.</p>
+  <ol class="steps">
+    <li>On your phone, open arcarna (from your home screen if you added it, Section 1).</li>
+    <li>Open the menu, choose <span class="ui">Operations Centre</span>, then <span class="ui">My run</span>.</li>
+    <li>The page refreshes itself every 30 seconds, so a delivery someone has just handed to you appears without you doing anything.</li>
+  </ol>
+  <p>The first time you open it, a short tour points out the stops, <span class="ui">Navigate</span>, <span class="ui">Start run</span>, <span class="ui">Delivered</span> and <span class="ui">Couldn't deliver</span>. If you have no deliveries, the page reads <span class="ui">No deliveries ready or on the road for you.</span></p>
+
+  <figure>
+    <img src="../images/v12-05-my-run.png" alt="My run on a phone, showing three stops waiting to go, each with a tick box, Navigate and up and down arrows, and the Select all and Start run buttons at the bottom" />
+    <figcaption>My run on a phone: your stops in your order. Tick the ones you are taking, then Start run.</figcaption>
+    <!-- SHOT: route=/my-run ; role=cashier ; viewport=phone ; show=the page header ("My run", "Where am I going next?"), then three stop cards all marked "Ready": each with "1. #xxxxxxxx", "Ready", "Due 14:45", the customer name, the address and postcode with the map pin, a driver's note on one of them, "2 items", and on one card "Unpaid, on tick: £18.50"; the tick box on the right of each card with the first two ticked; the Navigate button and the up and down arrows under each; the bar fixed at the bottom with "Select all" and "Start run (2)" ; state=three delivery orders assigned to seed-cashier and marked Ready on the board (not yet out for delivery), fictional names and addresses, one sold on tick; the My run tour marked seen -->
+  </figure>
+
+  <h3>Reading a stop</h3>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>1. #2f8a91c0</strong></td>
+        <td>The stop's place in your run, and the order's code (the first eight characters of the order, the same as on the board and the label).</td></tr>
+    <tr><td><span class="ui">Ready</span> or <span class="ui">Out for delivery</span></td>
+        <td>Waiting to go, or on the road with you now.</td></tr>
+    <tr><td><strong>Due</strong></td>
+        <td>When the customer was told to expect it.</td></tr>
+    <tr><td><strong>Name and address</strong></td>
+        <td>Who it is for and where it goes, with the driver's notes beneath. <span class="ui">No address on the order</span> means someone needs to add one on the board before you set off.</td></tr>
+    <tr><td><strong>Items</strong></td>
+        <td>How many items are on the order, as a quick check before you leave.</td></tr>
+    <tr><td><span class="ui">Unpaid, on tick: £…</span></td>
+        <td>Part or all of this order was sold on tick (credit), so the customer still owes that amount. Your manager will tell you whether to collect it.</td></tr>
+    <tr><td><strong>An amber line</strong></td>
+        <td>The last attempt failed, and why, for example <em>Couldn't deliver: No answer (13:10)</em>.</td></tr>
+  </table>
+
+  <h3>Putting your stops in order</h3>
+  <p>Stops start in due-time order. To change it, use the up and down arrows under a stop. On a tablet or computer you can also drag a stop by its handle. Your order is saved for today, so it is still there if you close the page and come back. A new delivery that arrives later joins the list by its due time, after the stops you have placed.</p>
+
+  <h3>Starting the run</h3>
+  <ol class="steps">
+    <li>Tick the box on the right of each stop you are taking now, or select <span class="ui">Select all</span> at the bottom.</li>
+    <li>Select <span class="ui">Start run</span>. It shows how many stops you ticked, for example <span class="ui">Start run (3)</span>.</li>
+    <li>You see <span class="ui">3 stops are out for delivery.</span> Those stops now read <span class="ui">Out for delivery</span>, and the board shows them on the road.</li>
+  </ol>
+  <p>If one stop could not be started, the message says which one and why. The others still go.</p>
+
+  <h3>Getting there</h3>
+  <p><span class="ui">Navigate</span> opens directions to the stop's address: Apple Maps on an iPhone or iPad, Google Maps on anything else. It only appears when the order has an address.</p>
+
+  <h3>Calling the customer</h3>
+  <p>Once a stop is out for delivery, a <span class="ui">Call</span> button appears on it, as long as there is a customer on the order. Select <span class="ui">Call</span> to show the number, then tap the number to ring it.</p>
+  <ul>
+    <li>Only the driver the delivery is assigned to gets the number, and only while it is out for delivery.</li>
+    <li>Every time the number is shown, arcarna records who asked and when.</li>
+    <li>The number is never kept on your phone. It disappears when you leave the page.</li>
+  </ul>
+
+  <p class="eyebrow">My run · at the door</p>
+  <h2>Delivered, or couldn't deliver</h2>
+  <p>Each stop that is out for delivery has two large buttons. Tap one at the door, before you drive off.</p>
+
+  <h3>Delivered</h3>
+  <p>Select <span class="ui">Delivered</span>. You see <span class="ui">#2f8a91c0 delivered.</span> The order is completed and leaves your run and the board.</p>
+
+  <h3>Couldn't deliver</h3>
+  <ol class="steps">
+    <li>Select <span class="ui">Couldn't deliver</span>. The stop asks <span class="ui">Why not?</span></li>
+    <li>Pick a reason: <span class="ui">No answer</span>, <span class="ui">Wrong address</span>, <span class="ui">Refused</span> or <span class="ui">Other</span>.</li>
+    <li>Add a line under <span class="ui">Note (optional)</span> if it helps the next attempt. For <span class="ui">Other</span> the box reads <span class="ui">What happened (needed)</span>: a bare "other" tells the next driver nothing.</li>
+    <li>Select <span class="ui">Back to ready</span>. Or <span class="ui">Cancel</span> if you tapped it by mistake.</li>
+  </ol>
+  <p>You see <span class="ui">#2f8a91c0 is back to ready. The managers have been told.</span> Three things happen together:</p>
+  <ul>
+    <li>The delivery goes back to <span class="ui">Ready</span> and stays on your run for the next attempt.</li>
+    <li>The reason, and the time, show in amber on the stop and on the board card.</li>
+    <li>The managers get a Signal saying who could not deliver which order, and why.</li>
+  </ul>
+  <p>To try again later, tick the stop and <span class="ui">Start run</span> as before.</p>
+
+  <figure>
+    <img src="../images/v12-05-couldnt-deliver.png" alt="A stop that is out for delivery on My run, with Navigate and Call, and the Why not? panel open with No answer selected, the optional note and the Back to ready button" />
+    <figcaption>Couldn't deliver: pick a reason, add a note if it helps, and the stop goes back to ready.</figcaption>
+    <!-- SHOT: route=/my-run ; role=cashier ; viewport=phone ; show=the first stop card marked "Out for delivery" with its Navigate and Call buttons, and the Couldn't deliver panel open beneath it: "Why not?", the four reason buttons (No answer, Wrong address, Refused, Other) with "No answer" selected, "Note (optional)" filled with "Rang twice, no lights on", and the "Back to ready" and "Cancel" buttons; a second stop below also "Out for delivery" showing the "Delivered" and "Couldn't deliver" buttons ; state=two delivery orders assigned to seed-cashier and started with Start run so they are out for delivery; fictional customers with phone numbers in the 07700 900xxx range attached (the number must NOT be revealed in the shot); My run tour marked seen -->
+  </figure>
+
+  <div class="callout warn">
+    <strong>Keep notes about the delivery, not the customer</strong>
+    The note is shown on the board and in the managers' Signal. Write what happened ("gate locked, no buzzer"), never a customer's phone number or other personal details.
+  </div>
+
+  <p class="eyebrow">My run · no signal</p>
+  <h2>When the phone loses signal</h2>
+  <p>Drivers lose signal all the time, so My run keeps working without it. An amber box at the top says so: <span class="ui">You are offline.</span>, or <span class="ui">Showing your run as last loaded at 14:05.</span> if you opened the page with no connection.</p>
+  <table>
+    <tr><th>Button</th><th>With no signal</th></tr>
+    <tr><td><span class="ui">Delivered</span> and <span class="ui">Couldn't deliver</span></td>
+        <td>Work as normal. The tap is kept on the phone, with the time you made it, and you see <span class="ui">Saved on this phone: #2f8a91c0 will be sent when you are back online.</span> The stop already shows the result.</td></tr>
+    <tr><td><span class="ui">Navigate</span></td>
+        <td>Opens your maps app as usual. Whether it can plan a route depends on the maps app.</td></tr>
+    <tr><td>Moving stops</td>
+        <td>Works on this phone. You see a note that the new order stays on this phone until you are back online and move a stop again.</td></tr>
+    <tr><td><span class="ui">Start run</span> and <span class="ui">Call</span></td>
+        <td>Need a connection. They tell you so and do nothing until you are back online.</td></tr>
+  </table>
+  <h3>Taps waiting to send</h3>
+  <p>While taps are waiting, a box reads, for example, <span class="ui">2 taps waiting to send · #2f8a91c0 · #7b01d4e2</span>. When the signal returns, open My run and they go by themselves, or select <span class="ui">Send now</span>. arcarna keeps trying in the background while the page is open.</p>
+  <ul>
+    <li>A stop whose <span class="ui">Couldn't deliver</span> is still waiting shows <span class="ui">Waiting to send</span> instead of a tick box. You cannot start it again until that tap has gone.</li>
+    <li>If the server turns a tap down, for example because a manager cancelled the order meanwhile, it shows in red as <span class="ui">#2f8a91c0 was not accepted:</span> with the reason. Tell your manager, then select <span class="ui">Dismiss</span>.</li>
+  </ul>
+  <div class="callout">
+    <strong>Back at the shop, check My run before you sign out</strong>
+    Waiting taps are only sent while My run is open. Open My run once you have signal again and make sure nothing is waiting to send before you sign out; signing out does not warn you about them, as it does for till sales. Then the board, the takings and the customer's record all agree.
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">For managers · watching the runs</p>
+    <h2>Viewing a driver's run <span class="role role-manager">MANAGER</span></h2>
+    <p>Managers see a <span class="ui">Whose run</span> box at the top of My run. It lists you, marked <span class="ui">(me)</span>, and everyone who has a delivery ready or on the road.</p>
+    <ol class="steps">
+      <li>Open <span class="ui">Operations Centre › My run</span>.</li>
+      <li>Under <span class="ui">Whose run</span>, choose the driver.</li>
+      <li>You see their stops, in their order, with each stop's state, due time, address, tick amount and any Couldn't deliver note. If they have none, it reads, for example, <span class="ui">Priya Shah has no deliveries ready or on the road.</span></li>
+    </ol>
+    <p>Someone else's run is read-only. You can use <span class="ui">Navigate</span>, but you cannot reorder their stops, start their run or mark a stop. Nothing about their run is saved on your device. To give a delivery to another driver, use <span class="ui">Pass to…</span> on its card on the Operations board.</p>
+
+    <figure>
+      <img src="../images/v12-05-manager-whose-run.png" alt="My run as a manager, with the Whose run box set to a driver and that driver's stops shown read-only, one of them with an amber Couldn't deliver note" />
+      <figcaption>A manager looking at a driver's run: the same stops, read-only.</figcaption>
+      <!-- SHOT: route=/my-run ; role=manager ; viewport=desktop ; show=the page header ("My run", "Where am I going next?"), the "Whose run" box set to seed-cashier's display name, and that person's stops beneath: one "Out for delivery", one "Ready" with the amber line "Couldn't deliver: No answer — Rang twice, no lights on (14:32)"; no tick boxes, no arrows, no Delivered buttons and no Start run bar ; state=the same deliveries as the previous shots, assigned to seed-cashier: one out for delivery, one sent back to ready with Couldn't deliver; My run tour marked seen for seed-manager -->
+    </figure>
+
+    <h3>When a delivery fails</h3>
+    <p>Every <span class="ui">Couldn't deliver</span> sends managers a Signal titled, for example, <span class="ui">Couldn't deliver #2f8a91c0</span>, saying who, where (the postcode), the reason and the note, and that <em>It is back to ready.</em> Decide the next step: send it out again later, pass it to another driver, change the address on the board, or contact the customer (Section 7).</p>
+    <p>Managers also keep seeing a delivery's address after it is completed, for example to deal with a complaint. Cashiers only see it while the delivery is live.</p>
+  </div>
+
+  <div class="callout ed-admin">
+    <strong>Admin — the customer's number</strong>
+    Admins see customers' contact details in full, so on an order's details they get <span class="ui">Show number to call</span> on any order with a customer on it, collection or delivery, not just ones they are driving. Each reveal is logged, the same as a driver's.
+  </div>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 10. Ask arcarna</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="ask-arcarna">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">10</div>
+    <div class="chapter-title">Ask arcarna</div>
+    <p class="chapter-lead">Ask arcarna answers questions about the shop's own figures in plain English. This section explains what it can and cannot do, how to ask a good question, how to check an answer, and what to keep out of your questions.</p>
+  </div>
+
+  <p class="eyebrow">What it is</p>
+  <h2>A question box for the shop's figures</h2>
+  <p>Sometimes the quickest way to a figure is to ask for it. Ask arcarna lets you type a question such as "How am I doing this week?" and get a short answer, written from the shop's own records. It is for everyone: <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <p>Three things hold for every answer:</p>
+  <table>
+    <tr><th>Rule</th><th>What it means for you</th></tr>
+    <tr><td><strong>Inside your role</strong></td>
+        <td>It only answers from figures your role can already see on screen. A cashier cannot use it to see cost prices or other people's figures, however the question is put.</td></tr>
+    <tr><td><strong>Read-only</strong></td>
+        <td>It never changes anything. It cannot take an order, change a price or mark a flag reviewed. Ask it to, and it tells you where in arcarna to do it yourself.</td></tr>
+    <tr><td><strong>It shows its Evidence</strong></td>
+        <td>Under each answer it links to the pages it read, so you can check the figures.</td></tr>
+  </table>
+  <p>The answers are written by an AI model (Anthropic's Claude), working from what arcarna gives it. That is why checking important figures matters, as explained below.</p>
+  <div class="callout">
+    <strong>Can't see it?</strong>
+    Ask arcarna is hidden until it has been set up for the shop. If there is no speech-bubble icon in your header, it is not set up yet. Nothing is wrong with your account.
+  </div>
+
+  <p class="eyebrow">Opening it</p>
+  <h2>Where Ask arcarna opens</h2>
+  <ol class="steps">
+    <li>Select the speech-bubble icon in the header, labelled <span class="ui">Ask arcarna</span> on wide screens. It is there on every page.</li>
+    <li>The Ask arcarna panel slides in from the right, over the page you are on, so you keep your place.</li>
+    <li>To close it, select the cross at its top right or tap outside it.</li>
+  </ol>
+  <p class="ed-manager">Managers and above can also open it with the <span class="ui">Ask arcarna</span> button at the top of <span class="ui">Truths at a glance</span> (Section 9).</p>
+  <p>The first time you visit My performance<span class="ed-manager"> or Truths at a glance</span> with Ask arcarna set up, a short tour points it out.</p>
+
+  <figure>
+    <img src="../images/v12-10-ask-panel.png" alt="The Ask arcarna panel open on the right of My performance, showing the note about checking figures, four suggested questions and the question box" />
+    <figcaption>The panel as a cashier first sees it: the note, suggested questions, and the box to type in.</figcaption>
+    <!-- SHOT: route=/my-performance ; role=cashier ; viewport=desktop ; show=the Ask arcarna panel open on the right over My performance: title "Ask arcarna", the note "Answers come from arcarna's Evidence. Check important figures before acting on them.", "Ask about your shop in plain English. Try:" with the four cashier suggestions (How am I doing this week? / What are my targets? / Which products are out of stock? / Which products are running low?), and the question box with the placeholder "e.g. How did we do last Saturday?" and the send button ; state=ANTHROPIC_API_KEY set in the server env so Ask arcarna is on; the Ask feature tour and What's New marked seen; no questions asked yet -->
+  </figure>
+
+  <p class="eyebrow">Asking</p>
+  <h2>Asking a question</h2>
+  <ol class="steps">
+    <li>Pick one of the suggested questions under <span class="ui">Try:</span>, or type your own in the box at the bottom. A question can be up to 1,000 characters.</li>
+    <li>Press Enter, or select the send button (the paper plane). For a new line without sending, press Shift and Enter.</li>
+    <li>While it works, a line shows what it is doing, such as <span class="ui">Thinking…</span> or <span class="ui">Reading My performance…</span>. The answer then appears as it is written.</li>
+    <li>Under the answer, <span class="ui">From</span> lists the Evidence it used. Select one to open that page; the panel closes so you can see it.</li>
+    <li>Ask a follow-up in the same box, such as "And the week before?". It remembers the last ten questions and answers in this conversation.</li>
+  </ol>
+
+  <h3>Stopping an answer</h3>
+  <p>If you asked the wrong thing, or the answer is taking too long, select the square <span class="ui">Stop</span> button where the send button was. The answer ends with <span class="ui">Stopped.</span> Closing the panel also stops an answer that is still being written.</p>
+
+  <h3>Asking good questions</h3>
+  <p>Ask arcarna works best with a clear, single question. A few habits help:</p>
+  <table>
+    <tr><th>Do this</th><th>Why</th></tr>
+    <tr><td><strong>Say the period.</strong> "last Saturday", "this week", "the last 14 days"</td>
+        <td>Figures always belong to a window. Without one, it has to pick one for you. Trading days start at 06:00, so a late sale after midnight counts to the day before.</td></tr>
+    <tr><td><strong>Ask one thing at a time.</strong></td>
+        <td>A short question gets a short, checkable answer. Ask the next thing as a follow-up.</td></tr>
+    <tr><td><strong>Name the product</strong> as it is on the till.</td>
+        <td>"Have we got any oat milk?" finds it faster than "that milk".</td></tr>
+    <tr><td><strong>Compare like with like.</strong> "last Saturday vs the one before"</td>
+        <td>A quiet Tuesday should be judged against other Tuesdays, not against a Saturday.</td></tr>
+    <tr><td><strong>Ask about figures,</strong> not opinions.</td>
+        <td>It answers from records. It does not guess, and says so plainly when the figures are not there.</td></tr>
+  </table>
+
+  <p class="eyebrow">Who can ask what</p>
+  <h2>What your role can ask about</h2>
+  <p>Each time it looks something up, arcarna checks your role again with the same rules as the page it reads. If you ask about something outside your role, it tells you so and who can see it, and does not try to work it out another way.</p>
+  <table>
+    <tr><th>Role</th><th>What it can answer from</th><th>Try asking</th></tr>
+    <tr><td><span class="role role-cashier">CASHIER</span></td>
+        <td>Your own figures from My performance (including your own commission, and the team median when four or more people worked), the staff targets, and stock levels at your location.</td>
+        <td>"How am I doing this week?" "What are my targets?" "Which products are out of stock?"</td></tr>
+    <tr class="ed-manager"><td><span class="role role-manager">MANAGER</span></td>
+        <td>All of that, plus the Evidence pages, Staff Performance (cashiers and yourself), Needs a look and Price overrides, for people you outrank.</td>
+        <td>"How did we do last Saturday vs the one before?" "Which products sold below their minimum price this week?" "Who has the most unreviewed flags in Needs a look?"</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">ADMIN</span></td>
+        <td>All of that, for everyone, plus Would have flagged.</td>
+        <td>"What would the price guard have flagged in the last two weeks?"</td></tr>
+  </table>
+  <p>For every role, it never sees customers' phone numbers, email addresses or home addresses. It never sees cost prices, margins or profit when a cashier is asking.</p>
+
+  <p class="eyebrow">Using an answer</p>
+  <h2>Check the Evidence before you act</h2>
+  <p>Every answer ends with the line <em>Answers come from arcarna's Evidence. Check important figures before acting on them.</em> Take it at its word. Before you act on a figure, for example before you speak to a colleague, reorder stock or tell a customer something, open the Evidence under <span class="ui">From</span> and check the figure there. The Evidence page is the record; the answer is a quick summary of it.</p>
+
+  <h3>When it cannot answer</h3>
+  <table>
+    <tr><th>You see</th><th>What to do</th></tr>
+    <tr><td><em>You've asked a lot of questions in the last few minutes. Wait a little and try again.</em></td>
+        <td>Each person can ask 10 questions in 10 minutes. Wait a few minutes.</td></tr>
+    <tr><td><em>Ask arcarna is busy right now. Try again in a minute.</em></td>
+        <td>Try again shortly.</td></tr>
+    <tr><td><em>Could not reach Ask arcarna. Check the connection and try again.</em></td>
+        <td>Try again in a moment. If it keeps happening, tell an admin with <span class="ui">Problem?</span></td></tr>
+    <tr><td><em>Ask arcarna could not answer just now.</em></td>
+        <td>Often the device has lost its connection. Ask arcarna needs the internet, unlike the till. Check the connection and try again.</td></tr>
+    <tr><td><em>arcarna could not answer that one. Try asking it another way.</em></td>
+        <td>Make the question shorter, or say the period and the thing you want.</td></tr>
+    <tr><td><em>Ask arcarna has reached this month's spending limit.</em></td>
+        <td>The shop's monthly limit is used up. Tell an admin; it resumes next month or when they raise it.</td></tr>
+  </table>
+
+  <p class="eyebrow">Privacy</p>
+  <h2>What to keep out of your questions</h2>
+  <div class="callout warn">
+    <strong>Don't type customer details</strong>
+    Never put a customer's name, phone number, email, address or card number in a question. You never need to: ask about a period, a product or your own work, not about a named person. arcarna removes phone numbers, emails, card numbers and postcodes before a question is kept, but it cannot spot a name.
+  </div>
+  <table>
+    <tr><th>What happens</th><th>Where it goes</th></tr>
+    <tr><td><strong>Your question</strong></td>
+        <td>Sent, with your role (never your name or email), to Anthropic's Claude to write the answer. Kept in arcarna for admins and the owner, with your name, after contact and card details are taken out.</td></tr>
+    <tr><td><strong>The answer</strong></td>
+        <td>Never kept by arcarna.</td></tr>
+    <tr><td><strong>The conversation</strong></td>
+        <td>Kept only on the device you are using, and gone when the page reloads.</td></tr>
+  </table>
+  <p>The staff privacy notice, which your manager can give you, covers Ask arcarna too.</p>
+
+  <div class="ed-admin">
+    <p class="eyebrow">Settings Centre · admins only</p>
+    <h2>Setting up Ask arcarna <span class="role role-manager">ADMIN</span></h2>
+    <p>Ask arcarna is off, and hidden from everyone, until the shop's Anthropic API key is added to the server. Its settings are a card for admins and the owner at <span class="ui">Settings Centre › Settings › Integrations</span>, titled <span class="ui">Ask arcarna</span> with a <span class="ui">Set up</span> or <span class="ui">Not set up</span> badge.</p>
+
+    <h3>Setting it up</h3>
+    <ol class="steps">
+      <li>Before setting it up, read <em>docs/ask-arcarna-privacy.md</em> (what is sent to Anthropic and what is kept) and accept Anthropic's Data Processing Addendum for the business.</li>
+      <li>Create an API key at console.anthropic.com, under API keys.</li>
+      <li>Add the line the card shows, <em>ANTHROPIC_API_KEY=sk-ant-...</em>, to the server's <em>.env</em> file with your key, then restart arcarna. The two optional lines choose the model and how hard it thinks; leave them out unless you have a reason.</li>
+      <li>Reload Settings. The badge reads <span class="ui">Set up</span>, and the speech-bubble icon appears in everyone's header.</li>
+    </ol>
+
+    <h3>The monthly limit</h3>
+    <p>The card shows this month's estimated spend against the limit, and how many questions were asked. The estimate uses Claude's published price, in US dollars, at your exchange rate.</p>
+    <table>
+      <tr><th>Setting</th><th>What it does</th></tr>
+      <tr><td><span class="ui">Monthly limit (£)</span></td>
+          <td>The most the shop spends in a calendar month. Default £25. Once the month's estimate reaches it, new questions are refused until next month or until you raise it. Set it to £0 to pause Ask arcarna.</td></tr>
+      <tr><td><span class="ui">US dollar to pound rate</span></td>
+          <td>The rate used to turn the dollar price into pounds. Default 0.79. Update it now and then so the estimate stays close.</td></tr>
+    </table>
+    <p>Change either and select <span class="ui">Save</span>. Each change is logged in the admin audit log. The per-person limit of 10 questions in 10 minutes is fixed.</p>
+
+    <h3>The question log</h3>
+    <p>Fold out <span class="ui">Recent questions</span> on the card to see the latest questions: when, who and their role, how it ended (answered, refused, cut short, error or stopped), its estimated cost, the question as kept, and the look-ups it <em>Used</em>. Phone numbers, emails, card numbers and postcodes are removed before a question is kept, and answers are never kept. Use the log to see what staff need, not to judge them.</p>
+
+    <figure>
+      <img src="../images/v12-10-ask-settings.png" alt="The Ask arcarna card in Settings, Integrations, showing the Set up badge, this month's spend, the Monthly limit and US dollar to pound rate fields, and Recent questions folded out" />
+      <figcaption>The Ask arcarna card: this month's spend, the limit, and the question log.</figcaption>
+      <!-- SHOT: route=/settings?tab=integrations ; role=admin ; viewport=desktop ; show=the Ask arcarna card at the top of the Integrations tab: the "Set up" badge, the description line, "This month (from …): £… of £25.00 across N questions", the "Monthly limit (£)" and "US dollar to pound rate" fields with Save, the line "A limit of £0 pauses Ask arcarna. Each change is logged.", and "Recent questions" folded out with two or three rows ; state=ANTHROPIC_API_KEY set; a few questions asked by the demo cashier and manager this month so the log has rows; tours marked seen -->
+    </figure>
+  </div>
+
+</main>
+</body>
+</html>

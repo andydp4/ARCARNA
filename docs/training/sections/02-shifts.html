@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 2. Shifts and cashing up</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="shifts">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">02</div>
+    <div class="chapter-title">Shifts and cashing up</div>
+    <p class="chapter-lead">A shift records who was on the till and whether the cash added up. This section covers how a shift starts, how to see where you are up to, how to count the drawer and close, and what the Z-report tells you.</p>
+  </div>
+
+  <p class="eyebrow">The idea · why shifts exist</p>
+  <h2>What a shift is, and why it matters</h2>
+  <p>A shift is a record of one person serving at one location. It answers two plain questions the business asks every day:
+     <em>who was on, and did the till balance?</em></p>
+  <p>At the start of a shift the drawer holds a known amount of cash, the <strong>opening float</strong>. During the shift, cash sales go in and cash refunds come out, so arcarna knows how much cash <em>should</em> be in the drawer. At the end you count the drawer and enter what is actually there. The difference is the <strong>variance</strong>. A shift that balances has a variance of zero.</p>
+  <p>This is a job for both roles: a <span class="role role-cashier">CASHIER</span> counts and closes their own shift; a <span class="role role-manager">MANAGER</span> reviews the team's shifts afterwards and follows up anything that did not balance.</p>
+
+  <table>
+    <tr><th>Term</th><th>What it means</th></tr>
+    <tr><td><strong>Trading day</strong></td><td>6am to 6am, in the shop's own time. A sale at one in the morning belongs to the day before, because that is when the shop was working.</td></tr>
+    <tr><td><strong>Opening float</strong></td><td>The cash in the drawer when your shift starts. arcarna carries it over from the cash counted at the last close at that location, because the drawer is not emptied between shifts. If nothing has been counted there before, it starts at £0.00.</td></tr>
+    <tr><td><strong>Expected cash</strong></td><td>What the drawer should hold now: opening float, plus cash sales, minus cash refunds, plus any cash paid off customers' tabs.</td></tr>
+    <tr><td><strong>Counted cash</strong></td><td>The cash you actually count in the drawer when you close.</td></tr>
+    <tr><td><strong>Variance</strong></td><td>Counted cash minus expected cash. Zero means it balanced. A signed number (for example −£3.50) means the drawer was short or over.</td></tr>
+    <tr><td><strong>Z-report</strong></td><td>The summary of everything in one shift: sales, refunds and the cash drawer. Covered below.</td></tr>
+  </table>
+
+  <p class="eyebrow">At the till · starting</p>
+  <h2>Your shift starts itself <span class="role role-cashier">CASHIER</span></h2>
+  <p>There is nothing to open. Your shift begins with the first order you take, and every sale you make is tied to your name automatically. You do not choose a cashier code, pick a location or press a start button: both come from your own account.</p>
+  <p>A shift belongs to the trading day, not to a sitting at the till. If you sign out for lunch, or go home and come back later the same day, you return to the same shift. Several people can serve at once; each has their own shift, and every order records who took it.</p>
+  <div class="callout">
+    <strong>Check the float before you start</strong>
+    The opening float is taken from the last count at your location. If the drawer has been topped up or emptied since, tell your manager before you serve, so the variance at the end of the day means something.
+  </div>
+
+  <p class="eyebrow">During the shift · where you are up to</p>
+  <h2>My shift so far <span class="role role-cashier">CASHIER</span></h2>
+  <p>You never have to close anything to see how the day is going. On the Operations board, under <span class="ui">Selling at</span> and your location's name, a line reads <span class="ui">My shift so far</span>: how long you have been on, what you have sold and the commission you have earned. If you have changed any prices at the till, it also shows your count of price overrides. The line links to <span class="ui">My performance</span>, described at the end of this section.</p>
+  <p>The line only appears once you have a shift running, and only in shops that track cashier commission.</p>
+
+  <figure>
+    <img src="../images/v12-02-ops-shift-strip.png" alt="The top of the Operations board with the Z-report so far and Close shift buttons, and the My shift so far line above the order form" />
+    <figcaption>The shift buttons above the board, and your own running totals above the order.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the strip at the top of the Operations board with "Z-report so far" and "Close shift" buttons, and in the New order pane the lines "Step 1 of 2 · Build the order", "Selling at <location>" and "My shift so far: 3h 10m · sold £… · commission £… · My performance" ; state=seed-cashier has taken at least two sales today so a till shift and a cashier shift are open; commission tracking on; tours marked seen -->
+  </figure>
+
+  <h3>Z-report so far</h3>
+  <p>For the full picture, select <span class="ui">Z-report so far</span> at the top of the Operations board. A panel opens headed <span class="ui">Your shift so far</span>, showing everything you have taken since the shift began. It says plainly that the shift is still running and gives the time the figures were worked out. Counted cash reads <span class="ui">Not counted yet</span> and the variance reads <span class="ui">Pending the count</span>, because nobody has counted the drawer. Nothing is closed by looking. Select <span class="ui">Close</span> to put it away.</p>
+
+  <p class="eyebrow">At the till · cashing up</p>
+  <h2>Counting the drawer and closing your shift <span class="role role-cashier">CASHIER</span></h2>
+  <p>Closing a shift is how the till is balanced. Do it when you cash up, before you hand the drawer over or go home.</p>
+  <ol class="steps">
+    <li>On the Operations board, select <span class="ui">Close shift</span>. The button only appears once your shift has started.</li>
+    <li>A panel headed <span class="ui">Close shift</span> asks you to count the cash in the drawer. Enter how many of each note and coin you have, from £50 down to 20p; arcarna adds them up for you.</li>
+    <li>Or type the whole amount under <span class="ui">Or total counted (£)</span>. Use this if you have 10p, 5p, 2p or 1p coins to include. A total typed here replaces the count by notes and coins.</li>
+    <li>Check the line <span class="ui">Counted: £…</span> matches what you counted. Add anything worth knowing under <span class="ui">Notes</span>, for example "£20 taken out for change at 4pm".</li>
+    <li>Select <span class="ui">Confirm close</span>. arcarna works out the expected cash and the variance, and shows the shift's final Z-report.</li>
+    <li>Read it, then select <span class="ui">Done</span>. The shift is finished and recorded.</li>
+  </ol>
+  <p>If you serve again after closing, the next sale starts a new shift, with the cash you just counted as its opening float.</p>
+
+  <figure>
+    <img src="../images/v12-02-close-shift-count.png" alt="The Close shift panel with note and coin counts entered, the total counted line and the Confirm close button" />
+    <figcaption>Closing a shift: count by notes and coins, or type the total.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the Close shift panel expanded under the shift buttons: "Close shift", "Count cash in the drawer (denominations or enter a total).", the £50 to 20p boxes with a few filled in (for example 3 × £20, 4 × £10, 6 × £1), "Or total counted (£)" empty, "Counted: £106.00", the Notes box, and Cancel / Confirm close ; state=seed-cashier has an open till shift with some cash sales today; do NOT press Confirm close -->
+  </figure>
+
+  <div class="callout">
+    <strong>What if nobody closes the drawer?</strong>
+    At 6am arcarna closes the trading day by itself: it totals the day and ends everyone's shift for commission and pay. It does <em>not</em> close a cash drawer for you, because a drawer closed without a count can never be reconciled. An uncounted drawer stays open, and managers are told about it the next morning. Always count before you leave.
+  </div>
+
+  <p class="eyebrow">Evidence · the Z-report</p>
+  <h2>The Z-report</h2>
+  <p>Every shift has a <strong>Z-report</strong>: the single page that says what happened in that shift. It is the evidence behind the takings: sales totalled, refunds taken off, and the cash drawer reconciled from opening float to variance. Check it whenever a till does not balance.</p>
+
+  <figure>
+    <img src="../images/v12-02-z-report.png" alt="A Z-report showing sales totals, payment methods, categories, the cash drawer reconciliation and the credit lines" />
+    <figcaption>A Z-report for one closed shift: sales, refunds, the cash drawer and credit.</figcaption>
+    <!-- SHOT: route=/shifts ; role=cashier ; viewport=desktop ; show=the Z-Report window opened from the "Z-report" button on one of seed-cashier's own closed shift rows: header with location, cashier name and opened–closed times; Orders, Gross sales, Refunds, Net sales; Sales by payment method; Sales by category; Top SKUs; the Cash drawer block (Opening float, Cash sales, Cash refunds, Expected cash, Counted cash, Variance); and the Credit block if present ; state=a closed shift for seed-cashier with a mix of cash, card and one tick (credit) sale, counted a little short so the variance is non-zero -->
+  </figure>
+
+  <h3>What it shows</h3>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>Header</strong></td><td>The location, the person who was on, and when the shift opened and closed.</td></tr>
+    <tr><td><strong>Orders · Gross sales · Refunds · Net sales</strong></td><td>How many orders were taken, the sales total, refunds given, and net sales (gross minus refunds). <strong>Discounts given</strong> shows how much was knocked off list prices; it is already included in the sales above.</td></tr>
+    <tr><td><strong>Sales by payment method</strong></td><td>Takings split by how customers paid (cash, card, Card (link), credit and so on), with a count of orders for each. A split sale counts each part under its own method.</td></tr>
+    <tr><td><strong>Sales by category</strong></td><td>Which kinds of product sold, by value.</td></tr>
+    <tr><td><strong>Top SKUs</strong></td><td>The best-selling individual products in the shift, with quantity and revenue.</td></tr>
+    <tr><td><strong>Cash drawer</strong></td><td>The reconciliation: opening float, cash sales, cash refunds, cash tab repayments (when there are any), expected cash, counted cash and the variance. A variance that is not zero is shown in red so it stands out.</td></tr>
+    <tr><td><strong>Awaiting card payment (link)</strong></td><td>Card (link) sales the customer has not yet paid on their phone. They are in no takings figure until Stripe confirms the payment.</td></tr>
+    <tr><td><strong>Credit given out today</strong></td><td>Sales made on credit (tick) during this shift. The goods have gone and the sale is counted, but no money came in, which is usually why the drawer holds less than the day's sales suggest.</td></tr>
+    <tr><td><strong>Credit resolved from dd/mm/yy</strong></td><td>Money that came in during this shift against a credit sale made on an earlier day, one line per day being settled. It does not add to the day's sales, because that sale was counted when it was made.</td></tr>
+    <tr><td><strong>Notes</strong></td><td>Anything written when the shift was closed.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Why the credit lines never change net sales</strong>
+    A credit sale is counted once, on the day the goods leave. When the customer pays later, the money arrives but the sale is not counted again, otherwise one sale would be counted twice. The credit lines show you the difference between what you sold and what you took.
+  </div>
+  <p>Select <span class="ui">Print</span> at the top of any Z-report to print it or keep a copy for the day's paperwork.</p>
+
+  <p class="eyebrow">Finance Centre · Shifts</p>
+  <h2>The Shifts page</h2>
+  <p>The <span class="ui">Shifts</span> page (Finance Centre) answers the same two questions: who was on, and did each till balance? A <span class="role role-cashier">CASHIER</span> sees only their own shifts here. <span class="ed-manager">A <span class="role role-manager">MANAGER</span> sees their cashiers' shifts and their own.</span> <span class="ed-admin">Admins and the owner see everyone's.</span></p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Finance Centre</span>, then <span class="ui">Shifts</span>.</li>
+    <li><span class="ui">On now</span> at the top lists every shift still open, with who, where and how long they have been on. If nobody is serving it reads <span class="ui">Nobody is on. No till is open.</span></li>
+    <li>Below it is the list of recent shifts. It shows the last 48 hours to start with; use the box at the top right to choose <span class="ui">Last 24 hours</span>, <span class="ui">Last 48 hours</span> or <span class="ui">Last 7 days</span>.</li>
+    <li>Select <span class="ui">Z-report</span> on any row to open that shift's Z-report.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-02-shifts-page.png" alt="The Shifts page with the On now card and a table of recent shifts showing float, counted cash and variance" />
+    <figcaption>The Shifts page as a cashier sees it: your own shifts, and how each till counted.</figcaption>
+    <!-- SHOT: route=/shifts ; role=cashier ; viewport=desktop ; show=the page header (FINANCE CENTRE eyebrow, "Shifts", "Who was on, and did the till balance?") with the "Last 48 hours" window box, the "On now" card with one open shift, and the "Last 48 hours" table with columns Who, Location, Opened, Closed, On for, Float, Counted, Variance, Status and the Z-report button; rows should include one "Balanced", one "£… short" and one open shift ("—"); no ⋮ menu (that is manager only) ; state=several of seed-cashier's own till shifts over the last two days (closed and counted, one balanced and one short), plus one still open -->
+  </figure>
+
+  <table>
+    <tr><th>Column</th><th>What it tells you</th></tr>
+    <tr><td><span class="ui">Who</span> and <span class="ui">Location</span></td><td>The person on the shift and where.</td></tr>
+    <tr><td><span class="ui">Opened</span>, <span class="ui">Closed</span> and <span class="ui">On for</span></td><td>When the shift started and ended, and how long it ran. An open shift has no closing time yet.</td></tr>
+    <tr><td><span class="ui">Float</span></td><td>The opening float the drawer started with.</td></tr>
+    <tr><td><span class="ui">Counted</span></td><td>The cash counted at close.</td></tr>
+    <tr><td><span class="ui">Variance</span></td><td><span class="ui">Balanced</span>, or how much the drawer was <span class="ui">short</span> or <span class="ui">over</span>. A dash (—) means the shift has not been counted yet.</td></tr>
+    <tr><td><span class="ui">Status</span></td><td><span class="ui">open</span>, <span class="ui">closed</span>, or <span class="ui">reopened</span> if a manager reopened it.</td></tr>
+  </table>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Back office · managing shifts</p>
+    <h2>Closing or reopening someone else's shift <span class="role role-manager">MANAGER</span></h2>
+    <p>Sometimes a cashier goes home without counting, or closes with the wrong figure. Managers can put that right from the Shifts page. The <span class="ui">⋮</span> button at the end of a row holds the actions that fit that shift. You can act on your cashiers' shifts and your own; admins can act on anyone's.</p>
+    <h3>Closing a shift on someone's behalf</h3>
+    <ol class="steps">
+      <li>Count the drawer yourself.</li>
+      <li>On the open shift's row, select <span class="ui">⋮</span>, then <span class="ui">Close shift…</span></li>
+      <li>Enter the amount under <span class="ui">Counted cash</span>.</li>
+      <li>Under <span class="ui">Notes (optional)</span>, say why you are closing it for them.</li>
+      <li>Select <span class="ui">Close shift</span>. The variance is worked out exactly as if the cashier had closed it.</li>
+    </ol>
+    <h3>Reopening a closed shift</h3>
+    <ol class="steps">
+      <li>On the closed shift's row, select <span class="ui">⋮</span>, then <span class="ui">Reopen shift…</span></li>
+      <li>Give a <span class="ui">Reason</span>. It is required, and it is kept, because a Z-report for that shift may already have been printed.</li>
+      <li>Select <span class="ui">Reopen shift</span>. The count and variance are cleared and the status reads <span class="ui">reopened</span>. Close it again with the right count.</li>
+    </ol>
+
+    <h3>The 6am close and its Signals</h3>
+    <p>Each morning, shortly after 6am, arcarna closes the previous trading day. It totals the day, ends everyone's shift for commission and pay, and sends managers a Signal headed <span class="ui">Trading day closed</span> with the date: orders and takings, cash and card, credit given out and resolved, personal use, commission earned, and any orders still open from that day.</p>
+    <p>If any drawer was left open, a second Signal says how many, for example <span class="ui">1 drawer not counted</span>. arcarna never closes a drawer for you. Go to the Shifts page, count the drawer, and close it with <span class="ui">Close shift…</span>.</p>
+
+    <div class="callout warn">
+      <strong>Manager — a variance is a question, not an accusation</strong>
+      A drawer a few pence out is normal. A large or repeated variance is worth a quiet word: it usually means miscounted change, a float that was topped up without being recorded, or a sale rung up with the wrong payment. Start with the Cash drawer part of the Z-report; the answer is almost always there.
+    </div>
+    <div class="callout">
+      <strong>A daily habit worth keeping</strong>
+      Open the Shifts page at the start of each day. Check <span class="ui">On now</span> for anyone still showing from last night, and open the Z-report for any variance that is not <span class="ui">Balanced</span>. Commission earned on each shift is confirmed and paid from <span class="ui">Cashier Payroll</span> (Section 8).
+    </div>
+  </div>
+
+  <p class="eyebrow">Operations Centre · My performance</p>
+  <h2>My performance</h2>
+  <p><span class="ui">My performance</span> (Operations Centre) shows how your own work is going, for any dates you choose. It is yours alone: nobody else's figures are shown and there is no ranking. The figures are a guide; no pay decision is made from them alone. Everyone has this page, whatever their role.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Operations Centre</span>, then <span class="ui">My performance</span>. You can also use the <span class="ui">My performance</span> link on the <span class="ui">My shift so far</span> line.</li>
+    <li>Under <span class="ui">Dates</span>, choose <span class="ui">Today</span>, <span class="ui">Yesterday</span>, <span class="ui">This week</span>, <span class="ui">Last week</span>, <span class="ui">Last 4 weeks</span> or <span class="ui">This month</span>.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-02-my-performance.png" alt="The My performance page showing completed orders, value brought in, commission and price overrides, with the targets and Badges cards" />
+    <figcaption>My performance: your own figures, against the targets an admin set.</figcaption>
+    <!-- SHOT: route=/my-performance ; role=cashier ; viewport=desktop ; show=the page header ("My performance", "How is my work going?"), the Dates box set to "This week", the figures card (Completed, Value brought in, Commission, Price overrides, Loaded · Prepared · Dispatched, Jobs per active hour, Customer named, Collections on time) and the top of the targets card (headed KPIs) and the Badges card ; state=seed-cashier has completed a good number of orders this week; staff targets set; the Ask arcarna feature tour marked seen -->
+  </figure>
+
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>The figures</strong></td><td>Orders you completed, the value you brought in, your commission, your price overrides, how many orders you loaded (keyed in), prepared and dispatched, jobs per active hour, how often a customer was named on your sales, and how often your collections were ready on time. When four or more people worked in the dates you chose, a team median sits under each figure for comparison.</td></tr>
+    <tr><td><strong>Provisional</strong></td><td>Shown when your dates include today. Today has not closed yet, so today's figures will still move.</td></tr>
+    <tr><td><strong>Targets</strong> (the card headed <span class="ui">KPIs</span>)</td><td>How you are doing against the targets an admin set. Grey means there is too little data yet.</td></tr>
+    <tr><td><strong>Badges</strong></td><td>Earned against fixed bars. Anyone can earn any of them.</td></tr>
+    <tr><td><strong>Speed</strong> and <strong>Fairness</strong></td><td>How quickly your orders moved, and your figures per active hour, so part-time and full-time staff compare fairly.</td></tr>
+    <tr><td><strong>Last week's digest</strong></td><td>A short summary of last week: orders completed, value brought in, targets met and badges, with your commission. <span class="ed-manager">Managers also see a line for each of their cashiers; admins see managers and cashiers.</span></td></tr>
+  </table>
+
+</main>
+</body>
+</html>

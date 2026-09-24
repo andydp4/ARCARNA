@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 7. Customers, loyalty and gift cards</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="customers">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">07</div>
+    <div class="chapter-title">Customers, loyalty and gift cards</div>
+    <p class="chapter-lead">How arcarna keeps customers' details private, what each role can see, how loyalty points are earned and spent, and how managers look after customer records, promotions and gift cards.</p>
+  </div>
+
+  <p class="eyebrow">Privacy · who sees what</p>
+  <h2>Customer details are private by default</h2>
+  <p>A customer trusts the shop with their phone number and email. arcarna protects them by showing each role only what it needs. Everyone can find and serve a customer, but only admins can read a phone number or an email in full. Everyone else sees them <strong>masked</strong>: enough to tell two customers with the same name apart, not enough to contact them.
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <table>
+    <tr><th>Role</th><th>What they see of a customer</th></tr>
+    <tr><td><span class="role role-cashier">CASHIER</span></td>
+        <td>Name, loyalty tier and points. The phone and email are masked, for example <span class="ui">••4821</span> and <span class="ui">p•••@example.invalid</span>. A cashier can type in a new customer's details at the till but cannot read them back.</td></tr>
+    <tr><td><span class="role role-manager">MANAGER</span></td>
+        <td>Everything a cashier sees, plus what the customer has spent and their order history, in the Customer Centre. The phone and email are still masked. A manager who genuinely needs a customer's details asks for them, and an admin decides.</td></tr>
+    <tr><td><span class="role role-manager">ADMIN</span></td>
+        <td>Everything, including the full phone, email and saved address, and each customer's Access history.</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">OWNER</span></td>
+        <td>As an admin, plus <span class="ui">Customer data access</span>: the whole shop's record of who looked at customers' contact details.</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>Never copy a customer's details anywhere else</strong>
+    Do not write a customer's number or email on paper, in a message to a colleague, in a <span class="ui">Problem?</span> report or in Ask arcarna. If a customer needs contacting, a manager can send them a message through arcarna without anyone seeing the number (below).
+  </div>
+
+  <p class="eyebrow">At the till · finding a customer</p>
+  <h2>Finding and adding customers at the till <span class="role role-cashier">CASHIER</span></h2>
+  <p>You find and attach customers from the order on the Operations board. Section 3 walks through it step by step. The points that matter for privacy are these:</p>
+  <table>
+    <tr><th>You want to…</th><th>What to do</th></tr>
+    <tr><td><strong>Find someone by name</strong></td>
+        <td>Type part of their name into <span class="ui">Search customers...</span>. Each match shows their name, category, points and masked phone, such as <span class="ui">Gold • 240 pts • ••0123</span>.</td></tr>
+    <tr><td><strong>Find someone by phone</strong></td>
+        <td>Type their <strong>whole</strong> number. arcarna checks it and lists the match as <span class="ui">Found by phone · ••0123</span>. Part of a number finds nobody; that is deliberate, so nobody can work through the list guessing digits. If no one has the number, you see <span class="ui">Nobody on the system has that number.</span></td></tr>
+    <tr><td><strong>Add someone new</strong></td>
+        <td>Choose <span class="ui">Add a new customer</span>. Only the name is needed. Type the phone and email carefully while the customer is in front of you: once saved, you will only see them masked.</td></tr>
+    <tr><td><strong>Avoid a duplicate</strong></td>
+        <td>If the number or email is already on the system, arcarna offers the existing customer, for example <em>Priya S. (••4821)</em>. Use them, or choose <span class="ui">No, add new</span> if it really is someone else, such as two people sharing a family phone.</td></tr>
+  </table>
+
+  <figure>
+    <img src="../images/v12-07-till-phone-lookup.png" alt="The till's customer picker on a phone, with a full phone number typed and one customer listed as Found by phone with a masked number" />
+    <figcaption>Finding a customer by their whole phone number. The match shows only the last digits.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=phone ; show=the New order pane with the customer picker open, the search box holding a whole fictional number (07700 900123), and one row beneath "Walk-in Customer" and "Add a new customer" reading "Priya Shah" with "Found by phone · ••0123" ; state=an open shift for seed-cashier; a demo customer Priya Shah with phone 07700 900123 exists; tours and What's New marked seen -->
+  </figure>
+
+  <p class="eyebrow">Loyalty · points and tiers</p>
+  <h2>How loyalty points work</h2>
+  <p>A named customer earns loyalty points on every sale and can spend them as money off a later one. Points only ever come from sales and redemptions. Nobody types them in, so a customer's balance is always the true one.</p>
+  <table>
+    <tr><th>Part</th><th>What it means</th></tr>
+    <tr><td><strong>Earning</strong></td>
+        <td>One point for every £1 the customer actually pays, after every discount and after any points they spent. The order summary shows <span class="ui">Earn … loyalty points</span> before you take payment.</td></tr>
+    <tr><td><strong>Spending</strong></td>
+        <td><span class="ui">Redeem points</span> on the customer's card at the till. Points are money off what the customer pays, after VAT: £5 of points is £5 off. Unless the shop has changed it, 100 points are worth £1, so 500 points take £5 off.</td></tr>
+    <tr><td><strong>Minimum</strong></td>
+        <td>A customer needs the shop's minimum number of points (100 unless changed) before they can redeem. Until then the button is greyed out and says how many are needed.</td></tr>
+    <tr><td><strong>Tiers</strong></td>
+        <td>Customers move up tiers, such as Bronze, Silver and Gold, as their points grow. The till shows the tier (for example <span class="ui">Gold Member</span>), its discount, and how many points to the next tier. The tier discount applies by itself. The word in the customer picker, such as Gold, is something else: the customer's category, which a manager sets by hand.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Gift cards at the till</strong>
+    A customer can pay with a gift card using the <span class="ui">Gift card</span> payment: type the 16-character code, select <span class="ui">Check</span> to see the balance, and enter the amount to apply. Section 3 has the steps. Issuing a new gift card is a manager's job (below).
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Customer Centre · Customers</p>
+    <h2>The Customers page <span class="role role-manager">MANAGER</span></h2>
+    <p>The <span class="ui">Customer Centre</span> is for managers and above. Its first page, <span class="ui">Customers</span>, answers <em>Who buys from you, and what are they worth?</em> It lists every customer record, with their tier, points, what they have spent and any store credit.</p>
+    <ol class="steps">
+      <li>Open the menu, choose <span class="ui">Customer Centre</span>, then <span class="ui">Customers</span>.</li>
+      <li>The cards at the top count <span class="ui">Total Customers</span> and how many are <span class="ui">Gold</span>, <span class="ui">Silver</span> and <span class="ui">Bronze</span>.</li>
+      <li>Type a name into <span class="ui">Search customers...</span> to narrow the list. A whole phone number also works: arcarna looks it up and shows the match, as at the till.</li>
+      <li>Save a search you use often with the saved views control above the search box, and set one as your default if you like.</li>
+    </ol>
+
+    <figure>
+      <img src="../images/v12-07-customers-list.png" alt="The Customers page as a manager sees it, with masked phone numbers and emails in the Contact column" />
+      <figcaption>The Customers page for a manager. Contact details are masked; the Address column is left blank below admin.</figcaption>
+      <!-- SHOT: route=/customers ; role=manager ; viewport=desktop ; show=the page header ("CUSTOMER CENTRE", "Customers", "Who buys from you, and what are they worth?") with "Import from Contacts" and "Add customer", the four count cards, the search box, and the Customer List table with columns Name, Contact (masked ••0123 and p•••@example.invalid), Address (blank), Category, Intelligence, Loyalty Points, Total Spent, Store credit and Actions (Contact, Edit, Delete) ; state=about eight fictional customers with phones 07700 900xxx and @example.invalid emails, a mix of categories and points, some orders and one gift card with a balance; Customer Centre tour marked seen -->
+    </figure>
+
+    <table>
+      <tr><th>Column</th><th>What it tells you</th></tr>
+      <tr><td><span class="ui">Contact</span></td><td>The masked phone and email. Admins see them in full.</td></tr>
+      <tr><td><span class="ui">Address</span></td><td>The customer's saved address. Shown to admins only; blank for managers.</td></tr>
+      <tr><td><span class="ui">Category</span></td><td>A label you set by hand: Bronze, Silver, Gold or Platinum. It is not the same as their loyalty tier, which follows their points (see Loyalty tiers below). The count cards at the top count categories.</td></tr>
+      <tr><td><span class="ui">Intelligence</span></td><td>A short read of the customer: their segment, how likely they are to stop coming (<em>low</em>, <em>medium</em> or <em>high risk</em>), lifetime value (LTV), average order value (AOV), number of orders and their last order date.</td></tr>
+      <tr><td><span class="ui">Loyalty Points</span> and <span class="ui">Total Spent</span></td><td>Their points balance, and what they have spent with the shop.</td></tr>
+      <tr><td><span class="ui">Store credit</span></td><td>The balance left on gift cards linked to them, and how many active cards they hold.</td></tr>
+    </table>
+
+    <h3>Adding a customer</h3>
+    <ol class="steps">
+      <li>Select <span class="ui">Add customer</span>. The <span class="ui">Add new customer</span> window opens.</li>
+      <li>Enter the <span class="ui">Name</span> (required), and if you have them the <span class="ui">Phone</span>, <span class="ui">Email</span> and <span class="ui">Billing Address</span>. Choose a <span class="ui">Category</span>; new customers start as Bronze.</li>
+      <li>On a phone that supports it, <span class="ui">Pick from device</span> fills the form from the phone's contacts.</li>
+      <li>Select <span class="ui">Create Customer</span>. If the phone or email is already on file, arcarna offers the existing record (<span class="ui">Open Priya S. (••4821)</span>) or <span class="ui">No, add new</span>.</li>
+    </ol>
+    <p>To bring in many customers at once, select <span class="ui">Import from Contacts</span> and upload a .vcf file exported from a phone's contacts, or a CSV. You see a preview before anything is saved.</p>
+
+    <h3>Editing a customer without reading their details</h3>
+    <p>Select <span class="ui">Edit</span> on a customer. You can change their name, email, address and category. The phone box is labelled <span class="ui">Replace number</span> and shows only the masked number:</p>
+    <ul>
+      <li>Leave it empty to keep the number on file.</li>
+      <li>Type a whole new number to replace it. The change is logged.</li>
+      <li>The email and address boxes start empty for the same reason. Leaving them empty keeps what is on file; typing a new one replaces it.</li>
+    </ul>
+    <p>Select <span class="ui">Update Customer</span> to save. Points and total spent cannot be edited by anyone.</p>
+
+    <h3>Deleting customers</h3>
+    <p><span class="ui">Delete</span> on a row removes that customer after you confirm. Their contact details, order history link and loyalty balance go; past orders stay, but no longer show a customer. It cannot be undone.</p>
+    <p>On a computer, tick several customers to act on them together: <span class="ui">Set category</span> or <span class="ui">Delete</span>. <span class="ed-admin">Admins also get <span class="ui">Export CSV</span>. Every export is logged.</span></p>
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Customer Centre · contacting a customer</p>
+    <h2>Contacting a customer <span class="role role-manager">MANAGER</span></h2>
+    <p>Sometimes you need to reach a customer: their order is ready, a delivery went wrong, or they owe money. Select <span class="ui">Contact</span> on their row. The window offers two ways, in this order, and the first is nearly always the right one.</p>
+
+    <h3>1. Message the customer instead</h3>
+    <p>arcarna sends an approved WhatsApp message to the number on file. You never see the number.</p>
+    <ol class="steps">
+      <li>Under <span class="ui">Message</span>, pick one: <span class="ui">Order ready</span>, <span class="ui">Delivery update</span>, <span class="ui">Payment reminder</span> or <span class="ui">Please call us on the shop number</span>.</li>
+      <li><span class="ui">Order ready</span> and <span class="ui">Delivery update</span> are about one order: choose it under <span class="ui">Order</span>.</li>
+      <li>Select <span class="ui">Send message</span>. You see <span class="ui">Message sent</span>.</li>
+    </ol>
+    <p>A message marked <span class="ui">(not available)</span> says why underneath, for example when WhatsApp is not set up yet or the customer has no number. Each message costs the shop about £0.016 from 1 October 2026.</p>
+
+    <h3>2. Still need their details? Ask an admin</h3>
+    <p>If a message will not do, for example a complaint that needs a phone call, ask for the details themselves. An admin or the owner approves or declines. There is no way to approve your own request.</p>
+    <ol class="steps">
+      <li>Under <span class="ui">Still need their details?</span>, choose a <span class="ui">Reason</span>: <span class="ui">Complaint</span>, <span class="ui">Refund or return</span>, <span class="ui">Delivery problem</span>, <span class="ui">Lost property</span>, <span class="ui">Debt chase</span> or <span class="ui">Other</span>.</li>
+      <li>Under <span class="ui">Why do you need them?</span>, write at least 15 characters, such as "Customer rang about a damaged delivery, needs a call back".</li>
+      <li>Under <span class="ui">Details wanted</span>, tick only what you need: <span class="ui">Phone</span>, <span class="ui">Email</span> or <span class="ui">Saved address</span>.</li>
+      <li>If it is about one order, choose it under <span class="ui">About an order (optional)</span>.</li>
+      <li>Select <span class="ui">Ask an admin</span>. You see <span class="ui">Request sent</span>, and the window shows when you asked and when it lapses.</li>
+    </ol>
+
+    <figure>
+      <img src="../images/v12-07-contact-dialog.png" alt="The Contact window for a customer, with Message the customer instead at the top and the request form below it" />
+      <figcaption>Contact: send a message first; ask an admin for the details only if you must.</figcaption>
+      <!-- SHOT: route=/customers ; role=manager ; viewport=desktop ; show=the "Contact Priya Shah" window open over the Customers page: the "Message the customer instead" box with the Message select showing "Payment reminder" and the "Send message" button, and below it "Still need their details?" with Reason set to "Delivery problem", a filled note, "Phone" ticked under Details wanted, and the "Ask an admin" button ; state=Contact selected on the demo customer Priya Shah; no pending request for her; WhatsApp may be unset (a "(not available)" note is acceptable) -->
+    </figure>
+
+    <h3>When it is approved: 24 hours, one tap at a time</h3>
+    <p>You get a Signal, <span class="ui">Contact details approved</span> or <span class="ui">Contact details declined</span>. A request nobody answers lapses after 48 hours.</p>
+    <ol class="steps">
+      <li>Open <span class="ui">Contact</span> on the same customer. It reads <span class="ui">Approved until</span> with the date and time.</li>
+      <li>Select <span class="ui">Show phone</span> (or <span class="ui">Show email</span>, <span class="ui">Show saved address</span>). The detail appears. Every tap is logged before the detail is shown.</li>
+      <li>When you have finished, select <span class="ui">End access now</span>.</li>
+    </ol>
+    <p>Access lasts 24 hours from approval, for that one customer and only the details you asked for. What you revealed disappears when you close the window, when access ends, or if an admin revokes it. It is never stored on the device.</p>
+    <div class="callout warn">
+      <strong>Manager — every look is recorded</strong>
+      The owner can see every reveal, message, replaced number and request, and gets a weekly summary. Ask only when you need to, tick only the details you need, and end access when you are done.
+    </div>
+  </div>
+
+  <div class="ed-admin">
+    <p class="eyebrow">Admin · contact requests and the access record</p>
+    <h2>Approving requests and checking who looked</h2>
+    <p>When a manager asks for a customer's details, admins and the owner get a Signal headed <span class="ui">Contact details requested</span>, and the request appears at the top of <span class="ui">Needs a look</span> (Operations Centre) under <span class="ui">Contact details requests</span>.</p>
+    <ol class="steps">
+      <li>Read the card: who asked, for which customer, which details, the reason, any order, and their note in quotes.</li>
+      <li>If you like, add a <span class="ui">Note to the manager (optional)</span>. It goes with a decline in their Signal.</li>
+      <li>Select <span class="ui">Approve for 24 hours</span> or <span class="ui">Decline</span>. Nobody can approve their own request.</li>
+      <li>An approved request stays on the list as <span class="ui">Access granted</span>, with when it ends. Select <span class="ui">Revoke access</span> to end it early; the manager is told.</li>
+    </ol>
+
+    <figure>
+      <img src="../images/v12-07-contact-approve.png" alt="A contact details request card in Needs a look, with the manager's note and the Approve for 24 hours and Decline buttons" />
+      <figcaption>A manager's request in Needs a look, waiting for an admin to decide.</figcaption>
+      <!-- SHOT: route=/needs-a-look ; role=admin ; viewport=desktop ; show=the Needs a look page header and, above the list, the "Contact details requests" section with one card: badge "Contact details request", the manager's name and time, the line "… asks for Priya Shah's phone — Delivery problem", the quoted note, "Lapses … if nobody decides. Approval gives 24 hours.", the "Note to the manager (optional)" box and the "Approve for 24 hours" and "Decline" buttons ; state=seed-manager has sent a pending request for Priya Shah's phone with reason Delivery problem and a note; tours marked seen -->
+    </figure>
+
+    <h3>Access history, one customer at a time</h3>
+    <p>As an admin, <span class="ui">Contact</span> on a customer has a second tab, <span class="ui">Access history</span>. It lists everyone who has looked at or changed that customer's contact details, newest first: <span class="ui">Revealed</span>, <span class="ui">Driver's call</span>, <span class="ui">Used saved address</span>, <span class="ui">Replaced number</span>, <span class="ui">Exported</span>, requests and decisions, <span class="ui">Messaged (number not shown)</span>, <span class="ui">Emailed an invoice</span> and <span class="ui">API read contact details</span>. The Contact tab itself notes that you already see their details on the customer.</p>
+
+    <h3>Customer data access (owner only)</h3>
+    <p>The owner has the whole shop's record in <span class="ui">Settings Centre › Customer data access</span>. It answers <em>Who has looked at customers' contact details?</em> Filter by <span class="ui">What</span> (for example only <span class="ui">Revealed</span>) and by <span class="ui">Period</span>, from the last 7 days to the last year. Each row shows when, who and their role, what they did, and which customer. The owner also receives a weekly Signal summing up the week.</p>
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Customer Centre · Loyalty</p>
+    <h2>Loyalty tiers <span class="role role-manager">MANAGER</span></h2>
+    <p>The <span class="ui">Loyalty</span> page answers <em>Are your best customers rewarded?</em> It has two tabs.</p>
+    <table>
+      <tr><th>Tab</th><th>What it shows</th></tr>
+      <tr><td><span class="ui">Loyalty Tiers</span></td><td>Counts of <span class="ui">Total Tiers</span>, <span class="ui">Active Members</span> (customers with any points), <span class="ui">Total Points</span> and <span class="ui">Avg Points</span>, then one card per tier with the points required, its discount and how many members it has.</td></tr>
+      <tr><td><span class="ui">Customer Status</span></td><td>Each customer with their tier, points, total spent and how far they are from the next tier.</td></tr>
+    </table>
+    <ol class="steps">
+      <li>Select <span class="ui">Add tier</span>, or the edit button on a tier's card.</li>
+      <li>Fill in <span class="ui">Tier Name</span>, <span class="ui">Points Required</span> (the balance that reaches it) and <span class="ui">Discount %</span> (taken off the subtotal at the till, automatically). <span class="ui">Color</span> and <span class="ui">Benefits (Optional)</span> are for display.</li>
+      <li>Save. The till uses the new tier on the next sale.</li>
+    </ol>
+    <div class="callout">
+      <strong>The points multiplier is not in use</strong>
+      The tier form has a <span class="ui">Points Multiplier</span> box, but sales earn one point per £1 paid whatever the tier. The till does not show a multiplier, because no sale earns by it.
+    </div>
+
+    <h3>What a point is worth</h3>
+    <p>The value of a point and the minimum a customer can redeem are set in <span class="ui">Settings › Payment</span>, on the <span class="ui">Loyalty redemption</span> card: select <span class="ui">Open loyalty redemption settings</span>.</p>
+    <table>
+      <tr><th>Setting</th><th>What it means</th></tr>
+      <tr><td><span class="ui">Redemption rate (£ per point)</span></td><td>0.01 means 100 points take £1.00 off. This is the shop's starting value.</td></tr>
+      <tr><td><span class="ui">Minimum points to redeem</span></td><td>The smallest balance a customer can spend. 100 to start.</td></tr>
+    </table>
+    <p>Select <span class="ui">Save settings</span>. Changing the rate changes what every customer's existing points are worth, so agree it with the owner first.</p>
+
+    <figure>
+      <img src="../images/v12-07-loyalty-tiers.png" alt="The Loyalty page on the Loyalty Tiers tab, with the four count cards and a card for each tier" />
+      <figcaption>Loyalty: the tiers, their thresholds and discounts, and how many customers are in each.</figcaption>
+      <!-- SHOT: route=/loyalty ; role=manager ; viewport=desktop ; show=the page header ("CUSTOMER CENTRE", "Loyalty", "Are your best customers rewarded?") with "Add tier", the "Loyalty Tiers" and "Customer Status" tabs with Loyalty Tiers selected, the four cards (Total Tiers, Active Members, Total Points, Avg Points) and three tier cards (Bronze, Silver, Gold) showing Points Required, Discount and Members ; state=Bronze 0 pts 0%, Silver 250 pts 5%, Gold 500 pts 10%; demo customers with a spread of points -->
+    </figure>
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Customer Centre · Promotions</p>
+    <h2>Promotions <span class="role role-manager">MANAGER</span></h2>
+    <p>The <span class="ui">Promotions</span> page answers <em>What's on offer, and is it working?</em> A promotion is a code a cashier types at the till for money off a named customer's order.</p>
+    <ol class="steps">
+      <li>Select <span class="ui">New campaign</span>.</li>
+      <li>Enter a <span class="ui">Campaign Name</span> and the <span class="ui">Promo Code</span> customers will quote.</li>
+      <li>Choose the <span class="ui">Discount Type</span> and its <span class="ui">Value</span>: <span class="ui">Percentage Off</span> (for example 10) or <span class="ui">Fixed Amount Off</span> (for example £5).</li>
+      <li>Set the <span class="ui">Start Date</span> and <span class="ui">End Date</span>. If you like, add a <span class="ui">Minimum Purchase</span>, a <span class="ui">Max Discount</span> and a <span class="ui">Usage Limit</span>.</li>
+      <li>Leave <span class="ui">Active</span> on, and save.</li>
+    </ol>
+    <div class="callout warn">
+      <strong>Manager — only money-off promotions work at the till</strong>
+      The form also offers <span class="ui">Buy One Get One</span> and <span class="ui">Bonus Points</span>, but the till cannot price them yet. If a cashier enters one of those codes, the till refuses it with <em>… cannot be applied at the till yet.</em> Use Percentage Off or Fixed Amount Off.
+    </div>
+    <p>Each campaign card shows its status: <span class="ui">Active</span>, <span class="ui">Scheduled</span> (not started), <span class="ui">Expired</span>, <span class="ui">Exhausted</span> (usage limit reached) or <span class="ui">Inactive</span> (switched off). The filters show <span class="ui">All</span>, <span class="ui">Active</span> or <span class="ui">Expired</span>. Select <span class="ui">Lift</span> on a campaign to see whether it paid: sales during the promotion compared with the period before it. <span class="ui">Edit</span> and <span class="ui">Delete</span> sit beside it.</p>
+    <p>At the till, a code only applies when its conditions are met. If not, the cashier sees why, for example that the minimum spend has not been reached or the promotion has expired.</p>
+  </div>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Customer Centre · Gift Cards</p>
+    <h2>Gift cards <span class="role role-manager">MANAGER</span></h2>
+    <p>A gift card is money the shop owes a customer, so issuing one is for managers and above, and always needs a reason. The <span class="ui">Gift Cards</span> page answers <em>What stored value is outstanding?</em></p>
+    <h3>Issuing a gift card</h3>
+    <ol class="steps">
+      <li>Select <span class="ui">Issue gift card</span>.</li>
+      <li>Enter the <span class="ui">Amount</span>.</li>
+      <li>Under <span class="ui">Customer (optional)</span>, link it to a customer, or leave it as <span class="ui">Walk-in</span>. A linked card shows in that customer's Store credit.</li>
+      <li>Under <span class="ui">Reason</span>, say why, for example "bought as a present, paid £25 cash" or "goodwill after a late order". It is kept on the audit log beside your name.</li>
+      <li>Select <span class="ui">Issue</span>. The 16-character code appears once. Give it to the customer, then select <span class="ui">Done</span>.</li>
+    </ol>
+    <div class="callout warn">
+      <strong>Manager — a gift card is not a sale</strong>
+      Issuing a card does not take payment. If the customer is buying the card, take their money at the till as usual and note it in the reason.
+    </div>
+    <h3>Finding and voiding a card</h3>
+    <p>The <span class="ui">Gift cards</span> list shows each card's masked code, <span class="ui">Balance</span>, <span class="ui">Original</span> amount and status. Type the last four characters into the search box to narrow it. To see a card's history, type its full 16-character code and select <span class="ui">Details</span>: you see its balance and every movement. <span class="ui">Void</span> cancels an active card, for example one reported lost.</p>
+  </div>
+
+</main>
+</body>
+</html>
