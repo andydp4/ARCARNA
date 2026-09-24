@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  contactAccessRecheckMs,
   contactRequestSchema,
+  GRANT_RECHECK_MS,
   decideVerdict,
   effectiveStatus,
   grantExpiryFrom,
@@ -112,5 +114,18 @@ describe("the owner's weekly line", () => {
     expect(weeklyAccessLine({ request: 2, request_approved: 1, request_declined: 1, reveal: 3, driver_call: 1, export: 40, message_sent: 1 })).toBe(
       "Customer data last week: 2 requests (1 approved, 1 declined), 4 reveals, 40 customers exported, 1 message sent.",
     );
+  });
+});
+
+// A revoked grant must leave the manager's screen soon, not at the original
+// 24-hour expiry (Phase 6 review).
+describe("contactAccessRecheckMs", () => {
+  it("re-checks while a grant is showing", () => {
+    expect(contactAccessRecheckMs({ grant: { id: "g" } })).toBe(GRANT_RECHECK_MS);
+    expect(GRANT_RECHECK_MS).toBeLessThanOrEqual(60_000);
+  });
+  it("does not poll without a grant", () => {
+    expect(contactAccessRecheckMs({ grant: null })).toBe(false);
+    expect(contactAccessRecheckMs(undefined)).toBe(false);
   });
 });

@@ -394,6 +394,18 @@ describe.skipIf(!hasDb)("contact-details requests and the access log (database)"
     const rows = await logRows("api_contact_read", ids.jane);
     expect(rows.length).toBe(before + 1);
     expect(rows[0].actorUserId).toMatch(/^api-key:/);
+    // An empty PUT returns the full record, so it is logged too.
+    const writer = await storage.createApiKeyForOrg(orgId, "contact-writer", ["customers:write", "customers:read_contact"]);
+    const put = await request(app).put(`/v1/orgs/${orgId}/customers/${ids.jane}`).set("authorization", `Bearer ${writer.plainKey}`).send({});
+    expect(put.body.phone).toBe("07700 904821");
+    const afterPut = await logRows("api_contact_read", ids.jane);
+    expect(afterPut.length).toBe(before + 2);
+    expect(afterPut.some((r: any) => r.metadata?.via === "customer_update")).toBe(true);
+    const plainPut = await request(app).put(`/v1/orgs/${orgId}/customers/${ids.jane}`).set("authorization", `Bearer ${plain.plainKey}`).send({});
+    expect(plainPut.status).toBe(403);
+    const created = await request(app).post(`/v1/orgs/${orgId}/customers`).set("authorization", `Bearer ${writer.plainKey}`).send({ name: "Api Made", phone: "07700 900777" });
+    expect(created.status).toBe(201);
+    expect(await logRows("api_contact_read", created.body.id)).toHaveLength(1);
     const { eq } = await import("drizzle-orm");
     await db.delete(s.apiKeys).where(eq(s.apiKeys.orgId, orgId));
   });

@@ -447,7 +447,10 @@ export function registerV1Routes(app: Express): void {
           return res.status(400).json({ error: "invalid_request", message: "name is required" });
         }
         const created = await engine.createCustomer({ ...fields, orgId });
-        res.status(201).json(await getCustomerForRole(orgId, created.id, apiCustomerRole(req)));
+        const customer = await getCustomerForRole(orgId, created.id, apiCustomerRole(req));
+        // The response carries contact details too, so it is logged like a read.
+        await logApiContactRead(req, orgId, [String(created.id)], "customer_create");
+        res.status(201).json(customer);
       } catch (e: any) {
         console.error("[v1] customer create:", e);
         sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
@@ -468,6 +471,9 @@ export function registerV1Routes(app: Express): void {
         if (Object.keys(fields).length > 0) await engine.updateCustomer(req.params.customerId, fields, orgId);
         const customer = await getCustomerForRole(orgId, req.params.customerId, apiCustomerRole(req));
         if (!customer) return res.status(404).json({ error: "not_found" });
+        // An update (even an empty one) returns contact details: log it as a
+        // read, or PUT becomes an unlogged way round PRV-10.
+        await logApiContactRead(req, orgId, [req.params.customerId], "customer_update");
         res.json(customer);
       } catch (e: any) {
         if (e?.message === "Customer not found") return res.status(404).json({ error: "not_found" });

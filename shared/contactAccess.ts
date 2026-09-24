@@ -51,6 +51,16 @@ export const CONTACT_NOTE_MAX = 1000;
 export const PENDING_EXPIRY_HOURS = 48;
 export const GRANT_HOURS = 24;
 
+/**
+ * How often a device showing an active grant re-checks it (ms). A revoke is
+ * not pushed to the manager's device, so this bounds how long revealed values
+ * can stay on screen after an admin ends access. No grant, no polling.
+ */
+export const GRANT_RECHECK_MS = 30_000;
+export function contactAccessRecheckMs(access: { grant: unknown } | undefined | null): number | false {
+  return access?.grant ? GRANT_RECHECK_MS : false;
+}
+
 export const CONTACT_REQUEST_STATUSES = ["pending", "approved", "declined", "expired", "revoked", "ended"] as const;
 export type ContactRequestStatus = (typeof CONTACT_REQUEST_STATUSES)[number];
 

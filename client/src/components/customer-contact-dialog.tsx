@@ -40,6 +40,7 @@ import {
   CONTACT_REASON_LABELS,
   GRANT_HOURS,
   PENDING_EXPIRY_HOURS,
+  contactAccessRecheckMs,
   type AccessAction,
   type ContactField,
   type ContactReason,
@@ -378,6 +379,10 @@ export function CustomerContactDialog({
     enabled: open && !!customerId,
     staleTime: 0,
     gcTime: 0,
+    // A revoke is not pushed to this device: while a grant is showing, re-check
+    // so revealed values and the reveal buttons go soon after, not at expiry.
+    refetchInterval: (query) => contactAccessRecheckMs(query.state.data),
+    refetchOnWindowFocus: true,
   });
   const wasOpen = useRef(open);
   useEffect(() => {
