@@ -8,6 +8,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
@@ -185,35 +186,24 @@ export default function Invoices() {
     [fetchInvoicePdfBlob, toast]
   );
 
+  // Invoices are emailed from the server through Resend (v1.2 Phase 6,
+  // PRV-11): nobody on the till needs the customer's address. When email is
+  // not set up the menu item is off and says why.
+  const { data: messaging } = useQuery<{ email: boolean; emailReason: string | null }>({
+    queryKey: ["/api/messaging/status"],
+    staleTime: 60_000,
+  });
   const emailInvoice = useCallback(
-    async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
+    async (invoiceId: string, _customerEmail: string, invoiceNumber: string) => {
       try {
-        const blob = await fetchInvoicePdfBlob(invoiceId);
-        if (!blob) {
-          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${invoiceNumber}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        const subject = encodeURIComponent(`Invoice ${invoiceNumber}`);
-        const body = encodeURIComponent(
-          `Dear Customer,\n\nPlease find your invoice attached (downloaded to your device — attach it to this email).\n\nThank you for your business.`
-        );
-        window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
-        toast({
-          title: "PDF downloaded",
-          description: "Attach the downloaded file to the email that just opened.",
-        });
-      } catch {
-        toast({ title: "Error", description: "Failed to prepare email", variant: "destructive" });
+        const res = await apiRequest("POST", `/api/invoices/${invoiceId}/email`);
+        const out = (await res.json()) as { to?: string | null };
+        toast({ title: "Invoice emailed", description: `${invoiceNumber} sent${out.to ? ` to ${out.to}` : ""}.` });
+      } catch (e) {
+        toast({ title: "Not sent", description: e instanceof Error ? e.message : "Failed to email the invoice", variant: "destructive" });
       }
     },
-    [fetchInvoicePdfBlob, toast]
+    [toast]
   );
 
   if (invoicesInitialLoad) {
@@ -394,6 +384,7 @@ export default function Invoices() {
                       onPrint={printInvoice}
                       onDownload={downloadInvoicePdf}
                       onEmail={emailInvoice}
+                      emailDisabledReason={messaging && !messaging.email ? messaging.emailReason : null}
                     />
                   )}
                 >
@@ -406,6 +397,7 @@ export default function Invoices() {
                       onPrint={printInvoice}
                       onDownload={downloadInvoicePdf}
                       onEmail={emailInvoice}
+                      emailDisabledReason={messaging && !messaging.email ? messaging.emailReason : null}
                     />
                   ))}
                 </ResponsiveTable>

@@ -87,6 +87,11 @@ const PRIVATE_API_SEGMENTS = [
   "whatsapp",
   "api-keys",
   "webhooks",
+  // v1.2 Phase 6: contact-details requests and the customer data access log.
+  // (Reveals live under /customers/ and are no-store as well.)
+  "contact-requests",
+  "customer-access-log",
+  "messaging",
 ];
 
 function apiSubpath(pathname) {

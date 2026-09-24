@@ -34,7 +34,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp, Users } from 'lucide-react'
+import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp, Users, MessageCircle } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ContactsImport } from '@/components/import/ContactsImport'
@@ -48,6 +48,7 @@ import { BulkActionBar } from '@/components/BulkActionBar'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useAuth } from '@/hooks/useAuth'
+import { CustomerContactDialog } from '@/components/customer-contact-dialog'
 import { canSeeContactDetails, canSeeCustomerOrderSummary } from '@shared/accessPolicy'
 import { hasContactDetails, withoutContactDetails, type CustomerMatch } from '@shared/customerView'
 import { usePhoneLookup } from '@/hooks/usePhoneLookup'
@@ -411,6 +412,9 @@ export default function Customers() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [customerToDelete, setCustomerToDelete] = useState<{ id: string; name: string } | null>(null)
+  // "Message the customer instead", contact-details requests and, for admins,
+  // the Access history (v1.2 Phase 6).
+  const [contactCustomer, setContactCustomer] = useState<{ id: string; name: string } | null>(null)
 
   const runBulk = async (action: BulkActionId, payload?: Record<string, unknown>) => {
     setBulkBusy(true)
@@ -869,6 +873,16 @@ export default function Customers() {
 
                           {canMutate && (
                           <div className="flex gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setContactCustomer({ id: customer.id, name: customer.name })}
+                              className="flex-1 min-h-[44px]"
+                              data-testid={`button-contact-${customer.id}`}
+                            >
+                              <MessageCircle className="h-4 w-4 mr-2" />
+                              Contact
+                            </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button
@@ -1073,6 +1087,17 @@ export default function Customers() {
                           <TableCell>
                             {canMutate && (
                             <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1"
+                                aria-label={`Contact ${customer.name}`}
+                                onClick={() => setContactCustomer({ id: customer.id, name: customer.name })}
+                                data-testid={`button-contact-${customer.id}`}
+                              >
+                                <MessageCircle className="h-4 w-4" aria-hidden />
+                                Contact
+                              </Button>
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button
@@ -1209,6 +1234,11 @@ export default function Customers() {
             setCustomerToDelete(null)
           }}
           onCancel={() => setCustomerToDelete(null)}
+        />
+        <CustomerContactDialog
+          customer={contactCustomer}
+          open={contactCustomer !== null}
+          onOpenChange={(open) => { if (!open) setContactCustomer(null) }}
         />
       </div>
     </div>

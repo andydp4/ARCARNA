@@ -306,3 +306,26 @@ export async function readCustomerPhone(orgId: string, customerId: string): Prom
     .limit(1);
   return row?.phone?.trim() ? row.phone.trim() : null;
 }
+
+/**
+ * One contact field, for a reveal inside a 24-hour grant, a message sent
+ * without showing the number, or an emailed invoice (v1.2 Phase 6). The
+ * caller logs first and only then reads: a reveal whose log cannot be written
+ * never reaches here.
+ */
+export async function readContactField(
+  orgId: string,
+  customerId: string,
+  field: "phone" | "email" | "address",
+): Promise<{ found: boolean; value: string | null }> {
+  const db = await mainDb();
+  const column = field === "phone" ? customers.phone : field === "email" ? customers.email : customers.address;
+  const [row] = await db
+    .select({ value: column })
+    .from(customers)
+    .where(and(eq(customers.id, customerId), eq(customers.orgId, orgId)))
+    .limit(1);
+  if (!row) return { found: false, value: null };
+  const value = typeof row.value === "string" && row.value.trim() ? row.value.trim() : null;
+  return { found: true, value };
+}

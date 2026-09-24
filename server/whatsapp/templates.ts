@@ -45,6 +45,14 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
     body: "Hi {{1}}, an update on your delivery: {{2}}. Estimated time: {{3}}.",
   },
   {
+    // "Message the customer instead" (v1.2 Phase 6, PRV-11): asks them to ring
+    // the shop, so a manager can reach them without ever seeing their number.
+    templateName: "please_call_us",
+    category: "UTILITY",
+    language: "en_GB",
+    body: "Hi {{1}}, could you please call us on {{2}}? Thank you, {{3}}.",
+  },
+  {
     templateName: "thanks_follow_up",
     category: "MARKETING",
     language: "en_GB",

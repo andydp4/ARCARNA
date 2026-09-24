@@ -97,6 +97,7 @@ const SetupBlocked = lazy(() => import("@/pages/setup-blocked"));
 const WorkerLogs = lazy(() => import("@/pages/worker-logs"));
 const RulesPage = lazy(() => import("@/pages/rules"));
 const AuditLogsPage = lazy(() => import("@/pages/audit-logs"));
+const CustomerAccessLogPage = lazy(() => import("@/pages/customer-access-log"));
 const ScheduledReportsPage = lazy(() => import("@/pages/scheduled-reports"));
 const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
 const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
@@ -340,6 +341,9 @@ function Router() {
           </Route>
           <Route path="/audit-logs">
             <RequireRole href="/audit-logs"><AuditLogsPage /></RequireRole>
+          </Route>
+          <Route path="/customer-access-log">
+            <RequireRole href="/customer-access-log"><CustomerAccessLogPage /></RequireRole>
           </Route>
           <Route path="/rules">
             <RequireRole href="/rules"><RulesPage /></RequireRole>

@@ -18,6 +18,7 @@ type InvoicePdfData = {
   paymentTerms: string | null;
   paymentMethod: string | null;
   company: InvoiceCompany;
+  customerId: string | null;
   customerName?: string;
   customerAddress?: string;
   items: Array<{ name: string; quantity: number; unitPrice: number; total: number }>;
@@ -87,12 +88,35 @@ async function loadInvoiceForPdf(
     paymentTerms: doc.paymentTerms,
     paymentMethod: doc.paymentMethod,
     company: await loadCompanyInfo(orgId),
+    customerId: doc.customerId ?? null,
     // Made out to the name the invoice was issued to, not whatever the
     // customer record says today.
     customerName: doc.billingName || customer?.name || undefined,
     customerAddress: customer?.address || undefined,
     items,
   };
+}
+
+async function renderInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
+  const { generateInvoicePdf } = await import("../services/pdfGenerator");
+  return generateInvoicePdf({
+    invoiceNumber: data.invoiceNumber,
+    createdAt: data.createdAt.toISOString(),
+    dueDate: data.dueDate,
+    company: data.company,
+    customerName: data.customerName,
+    customerAddress: data.customerAddress,
+    items: data.items,
+    subtotal: data.subtotal,
+    discount: data.discount,
+    tax: data.tax,
+    pointsDiscount: data.pointsDiscount,
+    vatRate: data.vatRate,
+    total: data.total,
+    status: data.status,
+    paymentTerms: data.paymentTerms || undefined,
+    paymentMethod: data.paymentMethod || undefined,
+  });
 }
 
 export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -147,25 +171,7 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
         });
       }
 
-      const { generateInvoicePdf } = await import("../services/pdfGenerator");
-      const pdfBuffer = await generateInvoicePdf({
-        invoiceNumber: data.invoiceNumber,
-        createdAt: data.createdAt.toISOString(),
-        dueDate: data.dueDate,
-        company: data.company,
-        customerName: data.customerName,
-        customerAddress: data.customerAddress,
-        items: data.items,
-        subtotal: data.subtotal,
-        discount: data.discount,
-        tax: data.tax,
-        pointsDiscount: data.pointsDiscount,
-        vatRate: data.vatRate,
-        total: data.total,
-        status: data.status,
-        paymentTerms: data.paymentTerms || undefined,
-        paymentMethod: data.paymentMethod || undefined,
-      });
+      const pdfBuffer = await renderInvoicePdf(data);
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `inline; filename="${data.invoiceNumber}.pdf"`);
@@ -174,6 +180,67 @@ export function registerInvoiceRoutes(app: Express, scoped: RequestHandler[]): v
       console.error("Error generating invoice PDF:", error);
       const message = error instanceof Error ? error.message : "Failed to generate invoice PDF";
       res.status(500).json({ message });
+    }
+  });
+
+  /**
+   * Email the invoice to the customer from the server, through Resend (v1.2
+   * Phase 6, PRV-11). Nobody on the till needs the address: the server reads
+   * it, sends, logs the send in the customer data access log, and answers
+   * with the mask. When email is not set up the app shows the button off with
+   * the reason; this answers 409 with the same reason.
+   */
+  app.post("/api/invoices/:id/email", ...scoped, invoiceRoles, async (req: any, res) => {
+    res.setHeader("Cache-Control", "no-store, private");
+    try {
+      const ctx = req.orgContext as { orgId: string; role: string };
+      if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
+      const { EMAIL_NOT_SET_UP } = await import("@shared/contactAccess");
+      const apiKey = process.env.RESEND_API_KEY?.trim();
+      if (!apiKey) return res.status(409).json({ message: EMAIL_NOT_SET_UP, code: "EMAIL_NOT_SET_UP" });
+      const data = await loadInvoiceForPdf(ctx.orgId, req.params.id);
+      if (!data) return res.status(404).json({ message: "Invoice not found" });
+      if ("receiptOnly" in data) {
+        return res.status(404).json({ message: "This sale has a receipt, not an invoice.", code: "INVOICE_NOT_ISSUED" });
+      }
+      if (!data.customerId) return res.status(409).json({ message: "This invoice has no customer to send it to.", code: "NO_CUSTOMER" });
+      const { readContactField } = await import("../services/customerView");
+      const email = await readContactField(ctx.orgId, data.customerId, "email");
+      if (!email.value) return res.status(409).json({ message: "There is no email on file for this customer.", code: "NO_EMAIL" });
+      const { maskEmail } = await import("@shared/customerView");
+      const { recordAccessFromRequest } = await import("../services/customerAccessLog");
+      // Logged before it goes: no log, no email.
+      try {
+        await recordAccessFromRequest(req, {
+          orgId: ctx.orgId,
+          customerId: data.customerId,
+          action: "invoice_emailed",
+          metadata: { invoiceNumber: data.invoiceNumber, channel: "email" },
+        });
+      } catch (error) {
+        console.error("[Invoices] email log failed; not sending:", error);
+        return res.status(503).json({ message: "This could not be logged, so it was not sent. Try again in a moment.", code: "LOG_FAILED" });
+      }
+      const pdf = await renderInvoicePdf(data);
+      const { Resend } = await import("resend");
+      const from =
+        process.env.INVOICE_FROM_EMAIL?.trim() ||
+        process.env.RECEIPT_FROM_EMAIL?.trim() ||
+        process.env.RESEND_FROM_EMAIL?.trim() ||
+        "invoices@arcarna.local";
+      const shop = data.company?.name || "us";
+      const sent = await new Resend(apiKey).emails.send({
+        from,
+        to: email.value,
+        subject: `Invoice ${data.invoiceNumber} from ${shop}`,
+        html: `<p>Hello${data.customerName ? ` ${data.customerName.split(/\s+/)[0]}` : ""},</p><p>Your invoice ${data.invoiceNumber} is attached. Total £${data.total.toFixed(2)}, due ${data.dueDate}.</p><p>Thank you,<br/>${shop}</p>`,
+        attachments: [{ filename: `${data.invoiceNumber}.pdf`, content: pdf }],
+      });
+      if (sent.error) return res.status(502).json({ message: "The email service did not accept it. Try again later.", code: "SEND_FAILED" });
+      res.json({ sent: true, to: maskEmail(email.value) });
+    } catch (error) {
+      console.error("Error emailing invoice:", error);
+      res.status(500).json({ message: "Failed to email the invoice" });
     }
   });
 }

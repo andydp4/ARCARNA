@@ -290,7 +290,7 @@ export interface IStorage {
   ): Promise<{ id: string; name: string; keyLookup: string; plainKey: string; createdAt: Date | null }>;
   listApiKeysForOrg(orgId: string): Promise<ApiKey[]>;
   revokeApiKey(id: string, orgId: string): Promise<void>;
-  verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null>;
+  verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[]; keyId?: string } | null>;
   getProductsForOrgPublic(orgId: string): Promise<Product[]>;
 
   createOutboundWebhook(
@@ -2466,7 +2466,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(apiKeys.id, id), eq(apiKeys.orgId, orgId)));
   }
 
-  async verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null> {
+  async verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[]; keyId?: string } | null> {
     const m = plainToken.match(/^mk_live_([a-f0-9]{24})_([a-f0-9]{48})$/i);
     if (!m) return null;
     const lookup = m[1].toLowerCase();
@@ -2476,7 +2476,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(apiKeys.keyLookup, lookup), isNull(apiKeys.revokedAt)));
     for (const row of rows) {
       if (await bcrypt.compare(plainToken, row.secretHash)) {
-        return { orgId: row.orgId, scopes: (row.scopes as string[]) ?? [] };
+        // keyId: who read what, for the customer data access log (v1.2 Phase 6).
+        return { orgId: row.orgId, scopes: (row.scopes as string[]) ?? [], keyId: row.id };
       }
     }
     return null;

@@ -22,6 +22,7 @@ import {
   readSavedAddress,
 } from "../services/customerView";
 import { perPersonRateLimit } from "../lib/perPersonRateLimit";
+import { recordAccessFromRequest } from "../services/customerAccessLog";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -296,17 +297,22 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
         const existing = await getCustomerForRole(ctx.orgId, req.params.id, "CASHIER");
         if (!existing) return res.status(404).json({ message: "Customer not found" });
         const { engine } = await import('../../apps/server/src/engine.wiring');
+        // Logged first, in the customer data access log (v1.2 Phase 6,
+        // PRV-10): a replaced number that cannot be logged is not replaced.
+        // The old number was never read; the new one is logged masked.
+        try {
+          await recordAccessFromRequest(req, {
+            orgId: ctx.orgId,
+            customerId: req.params.id,
+            action: "phone_replaced",
+            field: "phone",
+            metadata: { phoneMasked: maskPhone(raw) },
+          });
+        } catch (error) {
+          console.error("Replace number log failed; not replacing:", error);
+          return res.status(503).json({ message: "This could not be logged, so the number was not changed. Try again.", code: "LOG_FAILED" });
+        }
         await engine.updateCustomer(req.params.id, { phone: raw }, ctx.orgId);
-        await recordAdminAudit(req, {
-          actorUserId: req.user?.id ?? "unknown",
-          actorRole: ctx.role,
-          action: "customer.phone_replaced",
-          targetType: "customer",
-          targetId: req.params.id,
-          orgId: ctx.orgId,
-          // The old number was never read; the new one is logged masked.
-          metadata: { phoneMasked: maskPhone(raw) },
-        });
         res.json(await getCustomerForRole(ctx.orgId, req.params.id, ctx.role));
       } catch (error) {
         console.error("Error replacing a customer's phone:", error);
@@ -331,16 +337,13 @@ export function registerCustomerRoutes(app: Express, scoped: RequestHandler[]): 
         noStore(res);
         const saved = await readSavedAddress(ctx.orgId, req.params.id);
         if (!saved.found) return res.status(404).json({ message: "Customer not found" });
-        await storage.insertAdminAuditLog({
+        // In the customer data access log (v1.2 Phase 6); no log, no address.
+        await recordAccessFromRequest(req, {
           orgId: ctx.orgId,
-          actorUserId: req.user?.id ?? "unknown",
-          actorRole: ctx.role,
-          action: "customer.saved_address_used",
-          targetType: "customer",
-          targetId: req.params.id,
+          customerId: req.params.id,
+          action: "saved_address",
+          field: "address",
           metadata: { found: saved.address != null },
-          ipAddress: (req.ip ?? "").replace(/^::ffff:/, "") || undefined,
-          userAgent: req.get("user-agent") ?? undefined,
         });
         res.json({ address: saved.address });
       } catch (error) {

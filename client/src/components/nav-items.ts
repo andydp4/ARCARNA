@@ -30,6 +30,7 @@ import {
   Workflow,
   AlertTriangle,
   Truck,
+  Eye,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -508,6 +509,16 @@ export const centres: Centre[] = [
         href: '/audit-logs',
         icon: ScrollText,
         testId: 'nav-audit-logs',
+        roles: SUPER_ADMIN_ONLY
+      },
+      {
+        // The org-wide customer data access log (v1.2 Phase 6, PRV-10): the
+        // owner's page only (Q13a); admins see each customer's Access history.
+        key: 'customer-access-log',
+        label: 'Customer data access',
+        href: '/customer-access-log',
+        icon: Eye,
+        testId: 'nav-customer-access-log',
         roles: SUPER_ADMIN_ONLY
       },
       {

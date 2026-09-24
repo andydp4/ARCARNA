@@ -65,6 +65,13 @@ async function handleCustomerBulk(
       orgId: ctx.orgId,
       metadata: { count: rows.length, ids },
     });
+    // And one row per customer in the customer data access log (v1.2 Phase 6,
+    // PRV-10), so each one's Access history shows the export. No log, no file.
+    const { recordAccessFromRequest } = await import("../services/customerAccessLog");
+    await recordAccessFromRequest(
+      req,
+      rows.map((row) => ({ orgId: ctx.orgId, customerId: row.id, action: "export" as const, metadata: { kind: "customer_list" } })),
+    );
     return { ok: true as const, result: { rows, format: "csv" } };
   }
 

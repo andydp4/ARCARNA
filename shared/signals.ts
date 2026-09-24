@@ -62,6 +62,12 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   needs_a_look_weekly: { minRole: "MANAGER" },
   // A manager's bulk "Set minimum price" (PRC-05) is the owner's to know.
   bulk_min_price: { roles: ["SUPER_ADMIN"] },
+  // Contact-details requests (v1.2 Phase 6, PRV-09, Q13a). A request names
+  // the manager who asked, so it reaches admins and the owner only; the
+  // decision is addressed to that manager. The weekly access line is the owner's.
+  contact_request: { minRole: "ADMIN" },
+  contact_request_decided: { userIds: [] },
+  customer_access_weekly: { roles: ["SUPER_ADMIN"] },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

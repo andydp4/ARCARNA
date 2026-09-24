@@ -132,7 +132,7 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
   afterAll(async () => {
     if (!db) return;
     const { eq } = await import("drizzle-orm");
-    for (const table of [s.adminAuditLogs, s.apiKeys, s.orderEvents, s.orders, s.customers] as any[]) {
+    for (const table of [s.customerAccessLog, s.adminAuditLogs, s.apiKeys, s.orderEvents, s.orders, s.customers] as any[]) {
       try {
         await db.delete(table).where(eq(table.orgId, orgId));
       } catch (e) {
@@ -286,10 +286,11 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect(res.body).not.toHaveProperty("phone");
     const [row] = await db.select().from(s.customers).where(eq(s.customers.id, ids.jane));
     expect(row.phoneE164).toBe("+447700904822");
+    // In the customer data access log since v1.2 Phase 6 (PRV-10).
     const logs = await db
       .select()
-      .from(s.adminAuditLogs)
-      .where(and(eq(s.adminAuditLogs.orgId, orgId), eq(s.adminAuditLogs.action, "customer.phone_replaced")));
+      .from(s.customerAccessLog)
+      .where(and(eq(s.customerAccessLog.orgId, orgId), eq(s.customerAccessLog.action, "phone_replaced")));
     expect(logs).toHaveLength(1);
     expect(JSON.stringify(logs[0].metadata)).not.toContain("904822\"");
     expect((await as("CASHIER").post(`/api/customers/${ids.jane}/replace-phone`, { phone: "07700 904823" })).status).toBe(403);
@@ -305,8 +306,8 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect(res.headers["cache-control"]).toContain("no-store");
     const logs = await db
       .select()
-      .from(s.adminAuditLogs)
-      .where(and(eq(s.adminAuditLogs.orgId, orgId), eq(s.adminAuditLogs.action, "customer.saved_address_used")));
+      .from(s.customerAccessLog)
+      .where(and(eq(s.customerAccessLog.orgId, orgId), eq(s.customerAccessLog.action, "saved_address")));
     expect(logs.length).toBeGreaterThan(0);
   });
 
@@ -378,8 +379,8 @@ describe.skipIf(!hasDb)("customer view, phone lookup, delivery (database)", () =
     expect((await as("ADMIN").post(`/api/orders/${ids.doneDelivery}/customer-phone`)).status).toBe(200);
     const logs = await db
       .select()
-      .from(s.adminAuditLogs)
-      .where(and(eq(s.adminAuditLogs.orgId, orgId), eq(s.adminAuditLogs.action, "order.customer_phone_revealed")));
+      .from(s.customerAccessLog)
+      .where(and(eq(s.customerAccessLog.orgId, orgId), eq(s.customerAccessLog.action, "driver_call")));
     expect(logs).toHaveLength(2);
   });
 
