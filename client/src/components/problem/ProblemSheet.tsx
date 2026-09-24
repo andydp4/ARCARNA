@@ -69,9 +69,13 @@ export function ProblemButton({ className, compact = false }: { className?: stri
       onClick={openProblemSheet}
       className={cn("min-h-[44px] gap-1.5", className)}
       data-testid={compact ? "button-problem-till" : "button-problem"}
+      aria-label="Problem?"
+      title="Problem?"
     >
       <LifeBuoy className="h-4 w-4" aria-hidden />
-      <span>Problem?</span>
+      {/* The phone header has no room for the word: at 412px it pushed the
+          page to 530px wide. The till's own button keeps it everywhere. */}
+      <span className={compact ? undefined : "hidden sm:inline"}>Problem?</span>
     </Button>
   );
 }

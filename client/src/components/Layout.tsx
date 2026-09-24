@@ -387,8 +387,10 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="liquid-metal min-h-screen bg-background">
       <header className="lm-shell-header sticky top-0 z-50 border-b border-border">
-        <div className="flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
+        <div className="flex h-16 items-center justify-between gap-2 px-4">
+          {/* Shrinks first on a phone, so the buttons on the right never push
+              the page wider than the screen (the a11y phone check). */}
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
             {mode === 'phone' ? (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
@@ -449,10 +451,10 @@ export function Layout({ children }: LayoutProps) {
             )}
             <Link href="/" className="flex min-w-0 items-center gap-2">
               <BrandLogo variant="mark" size="sm" alt="" className="rounded-md" />
-              <span className="truncate text-xl font-semibold tracking-tight text-metal-warm-white">{BRAND_PRODUCT_NAME}</span>
+              <span className="hidden truncate text-xl font-semibold tracking-tight text-metal-warm-white sm:inline">{BRAND_PRODUCT_NAME}</span>
             </Link>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <OrgSwitcher />
             <PreviewRoleMenu />
             {isStaff && <ProblemButton />}
