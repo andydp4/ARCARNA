@@ -78,6 +78,8 @@ import {
 } from '@/components/ui/select'
 import { BulkActionBar } from '@/components/BulkActionBar'
 import { BulkMinPriceDialog } from '@/components/products/BulkMinPriceDialog'
+import { PrintLabelButton } from '@/components/labels/PrintLabelButton'
+import { productLabelInput } from '@/lib/labels/labelRequests'
 import { marginPercentLabel, minPriceLabel } from '@/lib/productPriceColumns'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
@@ -1334,6 +1336,12 @@ export default function ProductManagement() {
                                 <Globe className="h-4 w-4 mr-1" />
                                 <span>Website</span>
                               </Button>
+                              <PrintLabelButton
+                                request={{ kind: 'product', input: productLabelInput(product) }}
+                                title={product.name}
+                                className="flex-1 min-h-[44px]"
+                                testId={`button-label-${product.id}`}
+                              />
                               {/* Trigger only. The Edit dialog is declared once, in
                                   the desktop table below. Radix portals dialog
                                   content to document.body, which escapes this
@@ -1455,6 +1463,12 @@ export default function ProductManagement() {
                             >
                               <Globe className="h-4 w-4" />
                             </Button>
+                            <PrintLabelButton
+                              request={{ kind: 'product', input: productLabelInput(product) }}
+                              title={product.name}
+                              compact
+                              testId={`button-label-${product.id}`}
+                            />
                             <Dialog open={editingProduct?.id === product.id} onOpenChange={(open) => !open && setEditingProduct(null)}>
                               <DialogTrigger asChild>
                                 <Button

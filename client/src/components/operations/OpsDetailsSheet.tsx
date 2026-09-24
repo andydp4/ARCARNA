@@ -26,6 +26,9 @@ import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsTimeline } from "./OpsTimeline";
 import { OpsRateChips } from "./OpsRateChips";
 import { OpsCustomerCall } from "./OpsCustomerCall";
+import { InlinePrintLabel } from "@/components/labels/PrintLabelButton";
+import { orderDueText, orderLabelInput } from "@/lib/labels/labelRequests";
+import { deriveCardState } from "@shared/orders/opsState";
 import { isAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
@@ -423,6 +426,18 @@ function OpsDetailsBody({
           </>
         )}
       </div>
+
+      {/* Name only on the label, never the phone the board carries (Niimbot brief). */}
+      <InlinePrintLabel
+        request={{
+          kind: "order",
+          input: orderLabelInput(
+            order,
+            orderDueText(deriveCardState(order, new Date(), settings).dueEffective, new Date(), settings.timezone),
+          ),
+        }}
+        testId="button-print-order-label"
+      />
     </div>
   );
 }
