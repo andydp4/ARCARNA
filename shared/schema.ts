@@ -164,7 +164,9 @@ export const organizations = pgTable("organizations", {
   deliveryFeeCommissionable: boolean("delivery_fee_commissionable").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  check("organizations_delivery_fee_price_check", sql`${table.deliveryFeePrice} >= 0`),
+]);
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = typeof organizations.$inferInsert;
@@ -1752,6 +1754,7 @@ export const orders = pgTable("orders", {
     ),
   /** The board's "Done today" tray reads the last 120 minutes of settlements. */
   index("orders_settled_recent_idx").on(table.orgId, table.settledAt),
+  check("orders_delivery_fee_check", sql`${table.deliveryFee} IS NULL OR ${table.deliveryFee} >= 0`),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -2306,6 +2309,7 @@ export const refunds = pgTable(
     index("refunds_order_id_idx").on(table.orderId),
     index("refunds_org_id_idx").on(table.orgId),
     index("refunds_shift_id_idx").on(table.shiftId),
+    check("refunds_delivery_fee_check", sql`${table.deliveryFee} IS NULL OR ${table.deliveryFee} >= 0`),
     check(
       "refunds_refund_method_check",
       sql`${table.refundMethod} IN ('original', 'cash', 'card', 'store_credit', 'credit')`,
