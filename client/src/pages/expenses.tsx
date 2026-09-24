@@ -20,6 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { ExpenseRow } from "@/components/expense-row";
 import { ExpensesPageSkeleton } from "@/components/reporting-skeletons";
 import { useAuth } from "@/hooks/useAuth";
+import { Link } from "wouter";
 
 type ExpenseFormData = {
   name: string;
@@ -265,12 +266,15 @@ export function ExpensesPage() {
           )}
         </div>
         <div className="flex w-full gap-2 sm:w-auto">
-          <a href="/expense-reports" className="flex-1 sm:flex-initial">
-            <Button variant="outline" className="min-h-[44px] w-full" data-testid="button-view-reports">
-              <FileText className="mr-2 h-4 w-4" />
+          {/* One link, named (UI-13): it was a button inside a bare <a>, with
+              no name on a phone where the label is hidden, and an href that
+              skipped the app's base path. */}
+          <Button asChild variant="outline" className="min-h-[44px] flex-1 sm:flex-initial">
+            <Link href="/expense-reports" aria-label="View reports" data-testid="button-view-reports">
+              <FileText className="mr-2 h-4 w-4" aria-hidden />
               <span className="hidden sm:inline">View reports</span>
-            </Button>
-          </a>
+            </Link>
+          </Button>
           {canMutate && (
           <Button onClick={openCreateDialog} className="min-h-[44px] flex-1 sm:flex-initial" data-testid="button-add-expense">
             <Plus className="mr-2 h-4 w-4" />
@@ -401,7 +405,7 @@ export function ExpensesPage() {
                     <FormLabel>Category</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-expense-category">
+                        <SelectTrigger aria-label="Select category" data-testid="select-expense-category">
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                       </FormControl>
@@ -448,7 +452,7 @@ export function ExpensesPage() {
                     <FormLabel>Frequency</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-expense-frequency">
+                        <SelectTrigger aria-label="Select frequency" data-testid="select-expense-frequency">
                           <SelectValue placeholder="Select frequency" />
                         </SelectTrigger>
                       </FormControl>

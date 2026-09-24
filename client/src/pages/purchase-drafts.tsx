@@ -765,7 +765,7 @@ export default function PurchaseDraftsPage() {
                         {receiving.receipts.map((r) => (
                           <li key={r.id} className="flex justify-between gap-2">
                             <span>
-                              {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                              {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString("en-GB") : ""}
                             </span>
                             <Link href={receiptLink(r.id)} className="text-primary underline text-xs">
                               Receipt {r.id.slice(0, 8)}…
@@ -972,7 +972,7 @@ export default function PurchaseDraftsPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label>Qty received</Label>
-                      <Input
+                      <Input aria-label="Qty received"
                         type="number"
                         inputMode="decimal"
                         step="any"
@@ -991,7 +991,7 @@ export default function PurchaseDraftsPage() {
                     </div>
                     <div>
                       <Label>Damaged</Label>
-                      <Input
+                      <Input aria-label="Damaged"
                         type="number"
                         inputMode="decimal"
                         step="any"

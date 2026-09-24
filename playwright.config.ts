@@ -98,5 +98,9 @@ export default defineConfig({
     // Generous timeout: the dev server compiles the SPA on first navigation,
     // which alone takes ~25s here, and browser journeys then do real work.
     { name: "journeys", testDir: "tests/journeys", timeout: 120_000 },
+    // v1.2.1: crawls every Centre, menu entry and in-app link as every role on
+    // a desktop and a phone; fails on horizontal scroll, console errors,
+    // failed requests and dead links. UI_CRAWL_DEEP=1 adds layout and axe.
+    { name: "ui-crawl", testDir: "tests/ui-crawl", timeout: 900_000 },
   ],
 });

@@ -10,7 +10,7 @@ import { OrgProvider } from "@/contexts/OrgContext";
 import { AccessGate } from "@/components/AccessGate";
 import { Layout } from "@/components/Layout";
 import { RequireRole } from "@/components/RequireRole";
-import NotFound from "@/pages/not-found";
+import NotFound, { InAppNotFound } from "@/pages/not-found";
 import { AuthFreshness, useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -169,13 +169,13 @@ function Router() {
       <Route path="/setup-wizard" component={SetupWizard} />
       <Route path="/setup-blocked" component={SetupBlocked} />
       {/* Arcarna's own front door. #131 replaced this with the WM Supplies
-          storefront, so a signed-out visitor to the Arcarna domain was met by
-          the shop's padlock gate instead of the Arcarna sign-in. The customer
+          storefront, so a signed-out visitor to the arcarna domain was met by
+          the shop's padlock gate instead of the arcarna sign-in. The customer
           site serves that page from its own branch above, on its own domain
           and its own process — it does not belong here.
 
           A signed-in CUSTOMER is the one exception: they are a website
-          customer with nothing to do in Arcarna, so the shop is the right
+          customer with nothing to do in arcarna, so the shop is the right
           place to put them. */}
       {isCustomerOnly ? (
         <Route path="/" component={WmSuppliesHomePage} />
@@ -184,6 +184,11 @@ function Router() {
       ) : (
         <AccessGate>
         <Layout>
+          {/* A Switch of its own (v1.2.1 UI-08): this block has no path, so it
+              matches every URL, and the outer NotFound below is never reached
+              for signed-in staff. Without the inner Switch and its catch-all,
+              an unknown in-app URL rendered the Layout with an empty page. */}
+          <Switch>
           <Route path="/" component={Home} />
           {/* The Operations Centre replaces Open Orders outright — no feature
               flag, and the old paths redirect from the day the board lands
@@ -396,6 +401,8 @@ function Router() {
           <Route path="/stock-levels">
             <RequireRole href="/stock-levels"><StockLevelsPage /></RequireRole>
           </Route>
+          <Route component={InAppNotFound} />
+          </Switch>
         </Layout>
         </AccessGate>
       )}

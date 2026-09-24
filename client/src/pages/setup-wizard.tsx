@@ -296,7 +296,7 @@ export default function SetupWizard() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Trading / business name</Label>
-                  <Input
+                  <Input aria-label="Trading / business name"
                     value={form.tradingName}
                     onChange={(e) => setForm({ ...form, tradingName: e.target.value, name: e.target.value })}
                     className="min-h-[44px]"
@@ -306,25 +306,25 @@ export default function SetupWizard() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Email</Label>
-                    <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Phone</Label>
-                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="min-h-[44px]" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Address</Label>
-                  <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                  <Textarea aria-label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>VAT number</Label>
-                    <Input value={form.vatNumber} onChange={(e) => setForm({ ...form, vatNumber: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="VAT number" value={form.vatNumber} onChange={(e) => setForm({ ...form, vatNumber: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Company number</Label>
-                    <Input value={form.companyNumber} onChange={(e) => setForm({ ...form, companyNumber: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Company number" value={form.companyNumber} onChange={(e) => setForm({ ...form, companyNumber: e.target.value })} className="min-h-[44px]" />
                   </div>
                 </div>
               </div>
@@ -338,7 +338,7 @@ export default function SetupWizard() {
                     value={form.businessType}
                     onValueChange={(v) => setForm({ ...form, businessType: v as BusinessType })}
                   >
-                    <SelectTrigger className="min-h-[44px]" data-testid="wizard-business-type">
+                    <SelectTrigger aria-label="Business type" className="min-h-[44px]" data-testid="wizard-business-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -351,11 +351,11 @@ export default function SetupWizard() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Currency</Label>
-                    <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Timezone</Label>
-                    <Input value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className="min-h-[44px]" />
                   </div>
                 </div>
               </div>
@@ -401,46 +401,46 @@ export default function SetupWizard() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Logo URL</Label>
-                  <Input value={form.logoUrl} onChange={(e) => setForm({ ...form, logoUrl: e.target.value })} placeholder="https://..." className="min-h-[44px]" />
+                  <Input aria-label="Logo URL" value={form.logoUrl} onChange={(e) => setForm({ ...form, logoUrl: e.target.value })} placeholder="https://..." className="min-h-[44px]" />
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Invoice prefix</Label>
-                    <Input value={form.invoicePrefix} onChange={(e) => setForm({ ...form, invoicePrefix: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Invoice prefix" value={form.invoicePrefix} onChange={(e) => setForm({ ...form, invoicePrefix: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Start number</Label>
-                    <Input type="number" value={form.invoiceStartNumber} onChange={(e) => setForm({ ...form, invoiceStartNumber: Number(e.target.value) })} className="min-h-[44px]" />
+                    <Input aria-label="Start number" type="number" value={form.invoiceStartNumber} onChange={(e) => setForm({ ...form, invoiceStartNumber: Number(e.target.value) })} className="min-h-[44px]" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Payment terms</Label>
-                  <Input value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} className="min-h-[44px]" />
+                  <Input aria-label="Payment terms" value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} className="min-h-[44px]" />
                 </div>
                 <div className="space-y-2">
                   <Label>Default tax rate (%)</Label>
-                  <Input value={form.defaultTaxRate} onChange={(e) => setForm({ ...form, defaultTaxRate: e.target.value })} className="min-h-[44px]" />
+                  <Input aria-label="Default tax rate (%)" value={form.defaultTaxRate} onChange={(e) => setForm({ ...form, defaultTaxRate: e.target.value })} className="min-h-[44px]" />
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Receipt style</Label>
-                    <Input value={form.receiptStyle} onChange={(e) => setForm({ ...form, receiptStyle: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Receipt style" value={form.receiptStyle} onChange={(e) => setForm({ ...form, receiptStyle: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Accent style</Label>
-                    <Input value={form.accentStyle} onChange={(e) => setForm({ ...form, accentStyle: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Accent style" value={form.accentStyle} onChange={(e) => setForm({ ...form, accentStyle: e.target.value })} className="min-h-[44px]" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Receipt footer</Label>
-                  <Textarea value={form.receiptFooter} onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })} />
+                  <Textarea aria-label="Receipt footer" value={form.receiptFooter} onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })} />
                 </div>
                 <div className="flex items-center justify-between rounded-md border p-3">
                   <div>
                     <p className="text-sm font-medium">Show logo on receipts</p>
                     <p className="text-xs text-muted-foreground">Print your logo at the top of printed/emailed receipts.</p>
                   </div>
-                  <Switch
+                  <Switch aria-label="Show logo on receipts"
                     checked={form.receiptLogoEnabled}
                     onCheckedChange={(v) => setForm({ ...form, receiptLogoEnabled: v })}
                     data-testid="wizard-receipt-logo-enabled"
@@ -451,7 +451,7 @@ export default function SetupWizard() {
                     <p className="text-sm font-medium">Show logo on invoices</p>
                     <p className="text-xs text-muted-foreground">Include your logo on generated invoices.</p>
                   </div>
-                  <Switch
+                  <Switch aria-label="Show logo on invoices"
                     checked={form.invoiceLogoEnabled}
                     onCheckedChange={(v) => setForm({ ...form, invoiceLogoEnabled: v })}
                     data-testid="wizard-invoice-logo-enabled"
@@ -466,21 +466,21 @@ export default function SetupWizard() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Bank name</Label>
-                    <Input value={form.invoiceBankName} onChange={(e) => setForm({ ...form, invoiceBankName: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Bank name" value={form.invoiceBankName} onChange={(e) => setForm({ ...form, invoiceBankName: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Sort code</Label>
-                    <Input value={form.invoiceBankSortCode} onChange={(e) => setForm({ ...form, invoiceBankSortCode: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Sort code" value={form.invoiceBankSortCode} onChange={(e) => setForm({ ...form, invoiceBankSortCode: e.target.value })} className="min-h-[44px]" />
                   </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Account number</Label>
-                    <Input value={form.invoiceBankAccountNumber} onChange={(e) => setForm({ ...form, invoiceBankAccountNumber: e.target.value })} className="min-h-[44px]" />
+                    <Input aria-label="Account number" value={form.invoiceBankAccountNumber} onChange={(e) => setForm({ ...form, invoiceBankAccountNumber: e.target.value })} className="min-h-[44px]" />
                   </div>
                   <div className="space-y-2">
                     <Label>Online payment link</Label>
-                    <Input value={form.invoicePaymentLink} onChange={(e) => setForm({ ...form, invoicePaymentLink: e.target.value })} placeholder="https://..." className="min-h-[44px]" />
+                    <Input aria-label="Online payment link" value={form.invoicePaymentLink} onChange={(e) => setForm({ ...form, invoicePaymentLink: e.target.value })} placeholder="https://..." className="min-h-[44px]" />
                   </div>
                 </div>
               </div>
@@ -495,7 +495,7 @@ export default function SetupWizard() {
                       Track cashier shifts and pay commission on shift profit.
                     </p>
                   </div>
-                  <Switch
+                  <Switch aria-label="Enable cashier commission"
                     disabled={!canEditPay}
                     checked={form.cashierCommissionEnabled}
                     onCheckedChange={(v) => setForm({ ...form, cashierCommissionEnabled: v })}
@@ -513,7 +513,7 @@ export default function SetupWizard() {
                           value={form.defaultCashierCommissionRate}
                           onValueChange={(v) => setForm({ ...form, defaultCashierCommissionRate: v })}
                         >
-                          <SelectTrigger className="min-h-[44px]" data-testid="wizard-commission-rate">
+                          <SelectTrigger aria-label="Default commission rate" className="min-h-[44px]" data-testid="wizard-commission-rate">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -531,7 +531,7 @@ export default function SetupWizard() {
                             setForm({ ...form, shiftInactivityCloseAfter: v as (typeof SHIFT_INACTIVITY_OPTIONS)[number] })
                           }
                         >
-                          <SelectTrigger className="min-h-[44px]" data-testid="wizard-shift-auto-close">
+                          <SelectTrigger aria-label="Auto-close inactive shift after" className="min-h-[44px]" data-testid="wizard-shift-auto-close">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -550,7 +550,7 @@ export default function SetupWizard() {
                           Block checkout until a cashier starts a shift.
                         </p>
                       </div>
-                      <Switch
+                      <Switch aria-label="Require active cashier shift before sale"
                         checked={form.requireCashierForSale}
                         onCheckedChange={(v) => setForm({ ...form, requireCashierForSale: v })}
                         data-testid="wizard-require-cashier-for-sale"
@@ -575,7 +575,7 @@ export default function SetupWizard() {
                         <div key={idx} className="grid sm:grid-cols-[1fr_2fr_1fr_auto] gap-2 items-end rounded-md border p-3">
                           <div className="space-y-1">
                             <Label className="text-xs">Cashier code</Label>
-                            <Input
+                            <Input aria-label="Cashier code"
                               value={draft.cashierCode}
                               placeholder="001"
                               className="min-h-[44px]"
@@ -589,7 +589,7 @@ export default function SetupWizard() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Display name</Label>
-                            <Input
+                            <Input aria-label="Display name"
                               value={draft.displayName}
                               placeholder="Jordan"
                               className="min-h-[44px]"
@@ -603,7 +603,7 @@ export default function SetupWizard() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Commission override</Label>
-                            <Input
+                            <Input aria-label="Commission override"
                               value={draft.defaultCommissionRate ?? ""}
                               placeholder="Default"
                               className="min-h-[44px]"

@@ -71,7 +71,7 @@ export function ReportScopeFilter({
         value={value.locationId ?? ALL}
         onValueChange={(v) => onChange({ ...value, locationId: v === ALL ? undefined : v })}
       >
-        <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-location">
+        <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-location" aria-label="Location">
           <SelectValue placeholder="All locations" />
         </SelectTrigger>
         <SelectContent>
@@ -89,7 +89,7 @@ export function ReportScopeFilter({
           value={value.staffId ?? ALL}
           onValueChange={(v) => onChange({ ...value, staffId: v === ALL ? undefined : v })}
         >
-          <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-staff">
+          <SelectTrigger className="h-9 w-[160px]" data-testid="select-report-staff" aria-label="Staff">
             <SelectValue placeholder="All staff" />
           </SelectTrigger>
           <SelectContent>

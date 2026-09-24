@@ -182,7 +182,7 @@ export function SpreadsheetImport({
                   value={mapping[field.key] ?? ""}
                   onValueChange={(v) => setMapping((m) => ({ ...m, [field.key]: v }))}
                 >
-                  <SelectTrigger className="min-h-[44px]">
+                  <SelectTrigger aria-label="Column" className="min-h-[44px]">
                     <SelectValue placeholder="Column" />
                   </SelectTrigger>
                   <SelectContent>
@@ -199,7 +199,7 @@ export function SpreadsheetImport({
         <div className="space-y-2 max-w-xs">
           <Label>Duplicate handling</Label>
           <Select value={duplicateMode} onValueChange={setDuplicateMode}>
-            <SelectTrigger data-testid={`duplicate-mode-${kind}`}>
+            <SelectTrigger aria-label="Duplicate handling" data-testid={`duplicate-mode-${kind}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

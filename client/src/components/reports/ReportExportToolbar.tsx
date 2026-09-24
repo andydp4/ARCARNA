@@ -81,7 +81,7 @@ export function ReportExportToolbar<T>({ targetRef, reportRef, csv }: ReportExpo
     <div data-export-exclude="true" className="flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={busy !== null} data-testid={`export-${reportRef}`}>
+          <Button variant="outline" size="sm" className="text-foreground" disabled={busy !== null} data-testid={`export-${reportRef}`}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             <span className="ml-2">{busy ? "Exporting…" : "Export"}</span>
           </Button>

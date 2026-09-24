@@ -93,7 +93,7 @@ export default function DailyRevenueChart() {
                   borderRadius: "8px",
                   color: "var(--popover-foreground)",
                 }}
-                formatter={(value: any) => [`£${value.toLocaleString()}`, "Revenue"]}
+                formatter={(value: any) => [`£${value.toLocaleString("en-GB")}`, "Revenue"]}
               />
               <Line
                 type="monotone"

@@ -78,7 +78,7 @@ export default function WeeklyMarginReport() {
         controls: (
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs text-muted-foreground">Week of</label>
-            <Input
+            <Input aria-label="Week of"
               type="date"
               value={anchor}
               max={isoDate(new Date())}

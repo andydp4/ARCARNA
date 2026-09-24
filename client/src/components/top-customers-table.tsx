@@ -127,7 +127,7 @@ export default function TopCustomersTable() {
                           </TableCell>
                           <TableCell>
                             <p className="text-sm font-semibold tabular-nums text-foreground" data-testid={`text-totalspent-${customer.id}`}>
-                              £{parseFloat(customer.totalSpent).toLocaleString()}
+                              £{parseFloat(customer.totalSpent).toLocaleString("en-GB")}
                             </p>
                           </TableCell>
                           <TableCell>
@@ -149,7 +149,7 @@ export default function TopCustomersTable() {
                           </TableCell>
                           <TableCell>
                             <p className="text-sm font-bold tabular-nums text-accent" data-testid={`text-clv-${customer.id}`}>
-                              £{parseFloat(customer.clv).toLocaleString()}
+                              £{parseFloat(customer.clv).toLocaleString("en-GB")}
                             </p>
                           </TableCell>
                           <TableCell>

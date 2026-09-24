@@ -597,7 +597,7 @@ export default function Locations() {
                                 <Badge variant="outline">Not default</Badge>
                               )}
                               {location.isActive ? (
-                                <Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
+                                <Badge variant="outline" className="border-green-600/40 text-green-400">
                                   <CheckCircle className="mr-1 h-3 w-3" />
                                   Active
                                 </Badge>
@@ -764,7 +764,7 @@ export default function Locations() {
                         <TableCell>{location.stats?.totalOrders || 0}</TableCell>
                         <TableCell>
                           {location.isActive ? (
-                            <Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
+                            <Badge variant="outline" className="border-green-600/40 text-green-400">
                               <CheckCircle className="mr-1 h-3 w-3" />
                               Active
                             </Badge>
@@ -935,19 +935,19 @@ export default function Locations() {
                 <Card className="border-yellow-200 bg-yellow-50/50 dark:bg-yellow-900/10">
                   <CardContent className="pt-4 pb-3">
                     <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                      <AlertTriangle className="h-3 w-3 text-yellow-400" />
                       Low Stock
                     </div>
-                    <div className="text-xl font-bold text-yellow-600">{stockData.summary.lowStock}</div>
+                    <div className="text-xl font-bold text-yellow-400">{stockData.summary.lowStock}</div>
                   </CardContent>
                 </Card>
                 <Card className="border-orange-200 bg-orange-50/50 dark:bg-orange-900/10">
                   <CardContent className="pt-4 pb-3">
                     <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3 text-orange-600" />
+                      <AlertTriangle className="h-3 w-3 text-orange-400" />
                       Critical
                     </div>
-                    <div className="text-xl font-bold text-orange-600">{stockData.summary.criticalStock}</div>
+                    <div className="text-xl font-bold text-orange-400">{stockData.summary.criticalStock}</div>
                   </CardContent>
                 </Card>
                 <Card className="border-red-200 bg-red-50/50 dark:bg-red-900/10">

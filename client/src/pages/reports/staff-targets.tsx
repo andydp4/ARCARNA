@@ -125,15 +125,15 @@ export default function StaffTargetsPage() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Green {def.better === "higher" ? "at least" : "at most"}</Label>
-                    <Input className="w-24" inputMode="decimal" value={draft[k].green} disabled={!draft[k].on} onChange={(e) => set(k, { green: e.target.value })} data-testid={`input-target-green-${k}`} />
+                    <Input aria-label={`${def.label}: green ${def.better === "higher" ? "at least" : "at most"}`} className="w-24" inputMode="decimal" value={draft[k].green} disabled={!draft[k].on} onChange={(e) => set(k, { green: e.target.value })} data-testid={`input-target-green-${k}`} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Amber {def.better === "higher" ? "at least" : "at most"}</Label>
-                    <Input className="w-24" inputMode="decimal" value={draft[k].amber} disabled={!draft[k].on} onChange={(e) => set(k, { amber: e.target.value })} data-testid={`input-target-amber-${k}`} />
+                    <Input aria-label={`${def.label}: amber ${def.better === "higher" ? "at least" : "at most"}`} className="w-24" inputMode="decimal" value={draft[k].amber} disabled={!draft[k].on} onChange={(e) => set(k, { amber: e.target.value })} data-testid={`input-target-amber-${k}`} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Data needed (default {def.defaultMinData})</Label>
-                    <Input className="w-24" inputMode="numeric" value={draft[k].minData} disabled={!draft[k].on} onChange={(e) => set(k, { minData: e.target.value })} />
+                    <Input aria-label={`${def.label}: data needed`} className="w-24" inputMode="numeric" value={draft[k].minData} disabled={!draft[k].on} onChange={(e) => set(k, { minData: e.target.value })} />
                   </div>
                   <span className="pb-2 text-xs text-muted-foreground">{def.unit}</span>
                 </div>

@@ -185,7 +185,7 @@ export function CashierCommissionSettings() {
               <p className="text-sm font-medium">Enable cashier commission</p>
               <p className="text-xs text-muted-foreground">Track cashier shifts and shift profit.</p>
             </div>
-            <Switch
+            <Switch aria-label="Enable cashier commission"
               disabled={!isAdmin}
               checked={commissionEnabled}
               onCheckedChange={(v) => {
@@ -259,7 +259,7 @@ export function CashierCommissionSettings() {
                   saveSettings.mutate({ shiftInactivityCloseAfter: v });
                 }}
               >
-                <SelectTrigger className="min-h-[44px]" data-testid="settings-shift-auto-close">
+                <SelectTrigger className="min-h-[44px]" data-testid="settings-shift-auto-close" aria-label="Close an inactive shift after">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -276,7 +276,7 @@ export function CashierCommissionSettings() {
               <p className="text-sm font-medium">Require active cashier shift before sale</p>
               <p className="text-xs text-muted-foreground">Block checkout until a cashier starts a shift.</p>
             </div>
-            <Switch
+            <Switch aria-label="Require active cashier shift before sale"
               checked={requireShift}
               onCheckedChange={(v) => {
                 setRequireShift(v);
@@ -392,7 +392,7 @@ export function CashierCommissionSettings() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Cashier code</Label>
-              <Input
+              <Input aria-label="Cashier code"
                 value={form.cashierCode}
                 onChange={(e) => setForm({ ...form, cashierCode: e.target.value })}
                 disabled={!!form.id}
@@ -402,7 +402,7 @@ export function CashierCommissionSettings() {
             </div>
             <div className="space-y-2">
               <Label>Display name</Label>
-              <Input
+              <Input aria-label="Display name"
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
                 className="min-h-[44px]"
@@ -411,7 +411,7 @@ export function CashierCommissionSettings() {
             </div>
             <div className="space-y-2">
               <Label>Commission override (optional)</Label>
-              <Input
+              <Input aria-label="Commission override (optional)"
                 value={form.defaultCommissionRate}
                 placeholder="Uses default rate"
                 onChange={(e) => setForm({ ...form, defaultCommissionRate: e.target.value })}

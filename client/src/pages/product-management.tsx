@@ -933,7 +933,7 @@ export default function ProductManagement() {
               <>
                 <div className="space-y-2">
                   <Label>CSV Content Preview</Label>
-                  <Textarea
+                  <Textarea aria-label="CSV Content Preview"
                     value={csvContent}
                     onChange={(e) => {
                       setCsvContent(e.target.value)

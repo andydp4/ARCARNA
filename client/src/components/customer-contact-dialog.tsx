@@ -91,7 +91,7 @@ function OrderPicker({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="min-h-[44px]" data-testid={testId}>
+      <SelectTrigger className="min-h-[44px]" data-testid={testId} aria-label={optional ? "Order (optional)" : "Order"}>
         <SelectValue placeholder={optional ? "No order (optional)" : "Pick the order"} />
       </SelectTrigger>
       <SelectContent>
@@ -135,7 +135,7 @@ function MessageInstead({ customerId, access }: { customerId: string; access: Co
       <div className="space-y-2">
         <Label className="text-xs">Message</Label>
         <Select value={message} onValueChange={(v) => setMessage(v as CustomerMessage)}>
-          <SelectTrigger className="min-h-[44px]" data-testid="select-customer-message">
+          <SelectTrigger aria-label="Message" className="min-h-[44px]" data-testid="select-customer-message">
             <SelectValue placeholder="Pick a message" />
           </SelectTrigger>
           <SelectContent>
@@ -201,7 +201,7 @@ function RequestForm({ customerId, access }: { customerId: string; access: Conta
       <div className="space-y-2">
         <Label className="text-xs">Reason</Label>
         <Select value={reason} onValueChange={(v) => setReason(v as ContactReason)}>
-          <SelectTrigger className="min-h-[44px]" data-testid="select-contact-reason">
+          <SelectTrigger aria-label="Reason" className="min-h-[44px]" data-testid="select-contact-reason">
             <SelectValue placeholder="Pick a reason" />
           </SelectTrigger>
           <SelectContent>

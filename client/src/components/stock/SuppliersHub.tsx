@@ -427,6 +427,7 @@ export function SuppliersHub() {
                   <TableCell>{m.packSize}</TableCell>
                   <TableCell>
                     <Switch
+                      aria-label={`${m.supplierName}: preferred supplier for ${m.productName}`}
                       checked={m.isPreferred === 1}
                       disabled={!canMutate}
                       onCheckedChange={() => togglePreferred.mutate(m)}
@@ -461,7 +462,7 @@ export function SuppliersHub() {
           <div className="grid gap-3">
             <div>
               <Label>Name *</Label>
-              <Input
+              <Input aria-label="Name"
                 value={supplierForm.name}
                 onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
               />
@@ -469,7 +470,7 @@ export function SuppliersHub() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Lead time (days)</Label>
-                <Input
+                <Input aria-label="Lead time (days)"
                   type="number"
                   min={0}
                   value={supplierForm.leadTimeDays}
@@ -480,7 +481,7 @@ export function SuppliersHub() {
               </div>
               <div>
                 <Label>Min order value (£)</Label>
-                <Input
+                <Input aria-label="Min order value (£)"
                   type="number"
                   min={0}
                   step="0.01"
@@ -512,7 +513,7 @@ export function SuppliersHub() {
                 value={mappingForm.productId}
                 onValueChange={(v) => setMappingForm({ ...mappingForm, productId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Product">
                   <SelectValue placeholder="Select product" />
                 </SelectTrigger>
                 <SelectContent>
@@ -530,7 +531,7 @@ export function SuppliersHub() {
                 value={mappingForm.supplierId}
                 onValueChange={(v) => setMappingForm({ ...mappingForm, supplierId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Supplier">
                   <SelectValue placeholder="Select supplier" />
                 </SelectTrigger>
                 <SelectContent>
@@ -566,6 +567,7 @@ export function SuppliersHub() {
             </div>
             <div className="flex items-center gap-2">
               <Switch
+                aria-label="Preferred supplier"
                 checked={mappingForm.isPreferred}
                 onCheckedChange={(c) => setMappingForm({ ...mappingForm, isPreferred: c })}
               />

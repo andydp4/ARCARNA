@@ -68,14 +68,14 @@ export default function AnalyticsDashboard() {
               type="truth"
               icon={DollarSign}
               title="Total Revenue"
-              value={`£${totalRevenue.toLocaleString()}`}
+              value={`£${totalRevenue.toLocaleString("en-GB")}`}
               footer="Last 30 days"
             />
             <InsightCard
               type="truth"
               icon={ShoppingBag}
               title="Total Orders"
-              value={totalOrders.toLocaleString()}
+              value={totalOrders.toLocaleString("en-GB")}
               footer="Last 30 days"
             />
             <InsightCard

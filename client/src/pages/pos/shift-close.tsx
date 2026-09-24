@@ -128,7 +128,7 @@ export function ShiftCloseWizard({
           </div>
           <div className="space-y-2">
             <Label>Or total counted (£)</Label>
-            <Input
+            <Input aria-label="Or total counted (£)"
               type="number"
               min={0}
               step="0.01"
@@ -142,7 +142,7 @@ export function ShiftCloseWizard({
           </div>
           <div className="space-y-2">
             <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+            <Textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" onClick={onCancel} data-testid="button-shift-close-cancel">

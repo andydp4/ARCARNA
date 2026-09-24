@@ -291,7 +291,7 @@ export default function Invoices() {
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: "all" | InvoiceStatus) => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-[140px]">
+              <SelectTrigger aria-label="Status" className="min-h-[44px] w-full sm:w-[140px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -304,7 +304,7 @@ export default function Invoices() {
               </SelectContent>
             </Select>
             <Select value={selectedPeriod} onValueChange={(value: "all" | "today" | "week" | "month") => setSelectedPeriod(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-[160px]">
+              <SelectTrigger aria-label="Date window" className="min-h-[44px] w-full sm:w-[160px]">
                 <SelectValue placeholder="Date window" />
               </SelectTrigger>
               <SelectContent>

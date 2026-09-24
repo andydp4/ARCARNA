@@ -7,6 +7,12 @@ export interface TourTarget {
   testId: string;
   /** "prefix" matches the first element whose test id starts with `testId`. */
   match?: "exact" | "prefix";
+  /**
+   * Where to point instead when the target is not laid out (v1.2.1 UI-17):
+   * a page that shows a table on a desktop and cards on a phone names both,
+   * so the step is not dropped on one of them.
+   */
+  alt?: readonly TourTarget[];
 }
 
 export function tourTargetSelector(target: TourTarget): string {
@@ -22,6 +28,10 @@ export function tourTargetSelector(target: TourTarget): string {
 export function findTourTarget(target: TourTarget, root: ParentNode = document): Element | null {
   for (const el of Array.from(root.querySelectorAll(tourTargetSelector(target)))) {
     if (el.getClientRects().length > 0) return el;
+  }
+  for (const alt of target.alt ?? []) {
+    const el = findTourTarget(alt, root);
+    if (el) return el;
   }
   return null;
 }

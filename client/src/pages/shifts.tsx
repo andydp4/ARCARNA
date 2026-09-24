@@ -100,7 +100,7 @@ function when(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   return Number.isFinite(date.getTime())
-    ? date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    ? date.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
     : "—";
 }
 

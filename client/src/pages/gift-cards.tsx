@@ -107,7 +107,7 @@ export default function GiftCardsPage() {
           {detailData.movements?.length > 0 && <Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Balance after</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
             <TableBody>{detailData.movements.map((m: any) => (
               <TableRow key={m.id}><TableCell>{m.type}</TableCell><TableCell>£{m.amount.toFixed(2)}</TableCell>
-                <TableCell>£{m.balanceAfter.toFixed(2)}</TableCell><TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell></TableRow>
+                <TableCell>£{m.balanceAfter.toFixed(2)}</TableCell><TableCell>{new Date(m.createdAt).toLocaleString("en-GB")}</TableCell></TableRow>
             ))}</TableBody></Table>}
         </CardContent></Card>
       )}
@@ -115,7 +115,7 @@ export default function GiftCardsPage() {
         {issuedCode ? <p className="rounded-md border bg-muted p-3 font-mono text-lg tracking-wider">{issuedCode}</p> :
           <div className="grid gap-4 py-4"><div className="grid gap-2"><Label>Amount</Label><Input type="number" min="0.01" step="0.01" value={issueAmount} onChange={(e) => setIssueAmount(e.target.value)} className="min-h-[44px]" /></div>
             <div className="grid gap-2"><Label>Customer (optional)</Label><Select value={issueCustomerId || "none"} onValueChange={(v) => setIssueCustomerId(v === "none" ? "" : v)}>
-              <SelectTrigger className="min-h-[44px]"><SelectValue placeholder="Walk-in" /></SelectTrigger>
+              <SelectTrigger aria-label="Customer (optional)" className="min-h-[44px]"><SelectValue placeholder="Walk-in" /></SelectTrigger>
               <SelectContent><SelectItem value="none">Walk-in</SelectItem>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="grid gap-2"><Label htmlFor="gift-card-reason">Reason</Label>
               <Textarea id="gift-card-reason" value={issueReason} onChange={(e) => setIssueReason(e.target.value)} placeholder="For example: bought as a present, paid £25 cash; or goodwill after a late order" maxLength={500} data-testid="input-gift-card-reason" />

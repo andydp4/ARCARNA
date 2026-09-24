@@ -525,7 +525,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             <div className="space-y-3 px-4 pb-4">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Select value={p.expenseCategory} onValueChange={p.setExpenseCategory}>
-                  <SelectTrigger className="min-h-[44px] w-full sm:w-[130px]" data-testid="select-expense-category">
+                  <SelectTrigger className="min-h-[44px] w-full sm:w-[130px]" data-testid="select-expense-category" aria-label="Expense category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

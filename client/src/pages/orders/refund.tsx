@@ -182,6 +182,7 @@ export default function OrderRefundPage() {
               >
                 <div className="flex items-start gap-3">
                   <Checkbox
+                    aria-label={`Refund ${line.productName}`}
                     checked={(selected[line.id] ?? 0) > 0}
                     disabled={line.remaining <= 0}
                     onCheckedChange={(checked) => {
@@ -200,6 +201,7 @@ export default function OrderRefundPage() {
                   </div>
                 </div>
                 <Input
+                  aria-label={`Quantity of ${line.productName} to refund`}
                   type="number"
                   min={0}
                   step="any"
@@ -240,7 +242,7 @@ export default function OrderRefundPage() {
             <div className="space-y-2">
               <Label>Reason</Label>
               <Select value={reason} onValueChange={setReason}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Reason">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -255,7 +257,7 @@ export default function OrderRefundPage() {
             <div className="space-y-2">
               <Label>Refund method</Label>
               <Select value={refundMethod} onValueChange={setRefundMethod}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Refund method">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

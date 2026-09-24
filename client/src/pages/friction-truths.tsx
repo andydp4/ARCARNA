@@ -237,7 +237,7 @@ export default function FrictionTruthsPage() {
         <div className="space-y-1">
           <Label className="text-xs">Window</Label>
           <Select value={weeks} onValueChange={setWeeks}>
-            <SelectTrigger className="min-h-[44px] w-[180px]" data-testid="select-friction-window">
+            <SelectTrigger aria-label="Window" className="min-h-[44px] w-[180px]" data-testid="select-friction-window">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -82,7 +82,7 @@ export function BrandingSettings() {
           <>
             <div className="space-y-2">
               <Label>Logo URL</Label>
-              <Input
+              <Input aria-label="Logo URL"
                 value={form.logoUrl}
                 onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
                 placeholder="https://..."
@@ -94,7 +94,7 @@ export function BrandingSettings() {
               <div>
                 <p className="text-sm font-medium">Show logo on receipts</p>
               </div>
-              <Switch
+              <Switch aria-label="Show logo on receipts"
                 checked={form.receiptLogoEnabled}
                 onCheckedChange={(v) => setForm({ ...form, receiptLogoEnabled: v })}
                 data-testid="branding-receipt-logo-enabled"
@@ -104,7 +104,7 @@ export function BrandingSettings() {
               <div>
                 <p className="text-sm font-medium">Show logo on invoices</p>
               </div>
-              <Switch
+              <Switch aria-label="Show logo on invoices"
                 checked={form.invoiceLogoEnabled}
                 onCheckedChange={(v) => setForm({ ...form, invoiceLogoEnabled: v })}
                 data-testid="branding-invoice-logo-enabled"
@@ -112,7 +112,7 @@ export function BrandingSettings() {
             </div>
             <div className="space-y-2">
               <Label>Accent style</Label>
-              <Input
+              <Input aria-label="Accent style"
                 value={form.accentStyle}
                 onChange={(e) => setForm({ ...form, accentStyle: e.target.value })}
                 className="min-h-[44px]"
@@ -121,7 +121,7 @@ export function BrandingSettings() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Invoice prefix</Label>
-                <Input
+                <Input aria-label="Invoice prefix"
                   value={form.invoicePrefix}
                   onChange={(e) => setForm({ ...form, invoicePrefix: e.target.value })}
                   className="min-h-[44px]"
@@ -129,7 +129,7 @@ export function BrandingSettings() {
               </div>
               <div className="space-y-2">
                 <Label>Invoice start number</Label>
-                <Input
+                <Input aria-label="Invoice start number"
                   type="number"
                   value={form.invoiceStartNumber}
                   onChange={(e) => setForm({ ...form, invoiceStartNumber: Number(e.target.value) })}
@@ -142,7 +142,7 @@ export function BrandingSettings() {
             </div>
             <div className="space-y-2">
               <Label>Payment terms</Label>
-              <Input
+              <Input aria-label="Payment terms"
                 value={form.paymentTerms}
                 onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
                 className="min-h-[44px]"
@@ -154,7 +154,7 @@ export function BrandingSettings() {
             </div>
             <div className="space-y-2">
               <Label>Default tax rate (%)</Label>
-              <Input
+              <Input aria-label="Default tax rate (%)"
                 value={form.defaultTaxRate}
                 onChange={(e) => setForm({ ...form, defaultTaxRate: e.target.value })}
                 className="min-h-[44px]"
@@ -162,7 +162,7 @@ export function BrandingSettings() {
             </div>
             <div className="space-y-2">
               <Label>Receipt footer</Label>
-              <Textarea
+              <Textarea aria-label="Receipt footer"
                 value={form.receiptFooter}
                 onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })}
               />
@@ -177,7 +177,7 @@ export function BrandingSettings() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Bank name</Label>
-                <Input
+                <Input aria-label="Bank name"
                   value={form.invoiceBankName}
                   onChange={(e) => setForm({ ...form, invoiceBankName: e.target.value })}
                   className="min-h-[44px]"
@@ -186,7 +186,7 @@ export function BrandingSettings() {
               </div>
               <div className="space-y-2">
                 <Label>Sort code</Label>
-                <Input
+                <Input aria-label="Sort code"
                   value={form.invoiceBankSortCode}
                   onChange={(e) => setForm({ ...form, invoiceBankSortCode: e.target.value })}
                   className="min-h-[44px]"
@@ -197,7 +197,7 @@ export function BrandingSettings() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Account number</Label>
-                <Input
+                <Input aria-label="Account number"
                   value={form.invoiceBankAccountNumber}
                   onChange={(e) => setForm({ ...form, invoiceBankAccountNumber: e.target.value })}
                   className="min-h-[44px]"
@@ -206,7 +206,7 @@ export function BrandingSettings() {
               </div>
               <div className="space-y-2">
                 <Label>Online payment link</Label>
-                <Input
+                <Input aria-label="Online payment link"
                   value={form.invoicePaymentLink}
                   onChange={(e) => setForm({ ...form, invoicePaymentLink: e.target.value })}
                   placeholder="https://..."

@@ -5,6 +5,13 @@ export default {
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+      // Red text reads on the dark page (UI-13); red fills keep --destructive.
+      textColor: {
+        destructive: {
+          DEFAULT: "var(--danger-text)",
+          foreground: "var(--destructive-foreground)",
+        },
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

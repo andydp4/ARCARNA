@@ -245,7 +245,7 @@ export default function OnboardingWizard() {
                 <div className="space-y-2">
                   <Label>Shop currency</Label>
                   <Select value={currency} onValueChange={setCurrency}>
-                    <SelectTrigger className="min-h-[44px]">
+                    <SelectTrigger aria-label="Shop currency" className="min-h-[44px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

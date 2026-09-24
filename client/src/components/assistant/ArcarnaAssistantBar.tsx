@@ -130,12 +130,15 @@ export function ArcarnaAssistantBar() {
       <Button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-24 right-5 z-40 h-12 gap-2 rounded-full px-4 shadow-lg"
+        // Icon-only on a phone (UI-01): the labelled pill covered the till's
+        // Customer select; a 48px circle stacked over the WhatsApp launcher
+        // covers as little as it can.
+        className="fixed bottom-20 right-5 z-40 h-12 w-12 gap-2 rounded-full p-0 shadow-lg sm:bottom-24 sm:w-auto sm:px-4"
         data-testid="arcarna-voice-launcher"
-        aria-label="Arcarna Voice"
+        aria-label="arcarna Voice"
       >
         <Mic className="h-5 w-5" aria-hidden />
-        Voice
+        <span className="hidden sm:inline">Voice</span>
       </Button>
 
       {open && (
@@ -143,17 +146,17 @@ export function ArcarnaAssistantBar() {
           className="fixed bottom-40 right-5 z-40 flex w-full max-w-sm flex-col rounded-lg border border-border bg-background shadow-xl"
           data-testid="arcarna-voice-panel"
           role="dialog"
-          aria-label="Arcarna Voice"
+          aria-label="arcarna Voice"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <span className="font-semibold">Arcarna Voice</span>
+            <span className="font-semibold">arcarna Voice</span>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={toggleVoice}
-                aria-label={voiceOn ? "Mute Arcarna's voice" : "Enable Arcarna's voice"}
+                aria-label={voiceOn ? "Mute arcarna's voice" : "Enable arcarna's voice"}
                 data-testid="arcarna-voice-toggle"
               >
                 {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
@@ -163,7 +166,7 @@ export function ArcarnaAssistantBar() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => setOpen(false)}
-                aria-label="Close Arcarna Voice"
+                aria-label="Close arcarna Voice"
                 data-testid="arcarna-voice-close"
               >
                 <X className="h-4 w-4" />

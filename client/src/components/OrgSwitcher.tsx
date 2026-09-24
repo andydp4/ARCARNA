@@ -42,7 +42,7 @@ export function OrgSwitcher() {
       value={selectedOrgId ?? ""}
       onValueChange={(v) => setSelectedOrgId(v || null)}
     >
-      <SelectTrigger className="h-9 w-[200px] max-w-[30vw] sm:max-w-[45vw]" data-testid="org-switcher">
+      <SelectTrigger aria-label="Select organization" className="h-9 w-[200px] max-w-[30vw] sm:max-w-[45vw]" data-testid="org-switcher">
         <Building2 className="mr-2 h-4 w-4 shrink-0 opacity-70" />
         <SelectValue placeholder="Select organization" />
       </SelectTrigger>

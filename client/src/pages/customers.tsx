@@ -586,7 +586,7 @@ export default function Customers() {
                       setFormData(updated)
                       autoSaveFormData(updated)
                     }}>
-                      <SelectTrigger className="min-h-[44px]">
+                      <SelectTrigger aria-label="Category" className="min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -943,7 +943,7 @@ export default function Customers() {
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-category-mobile">Category</Label>
                                     <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                      <SelectTrigger className="min-h-[44px]">
+                                      <SelectTrigger aria-label="Category" className="min-h-[44px]">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1002,7 +1002,11 @@ export default function Customers() {
                         <TableHead>Loyalty Points</TableHead>
                         {seesOrderSummary && <TableHead>Total Spent</TableHead>}
                         <TableHead>Store credit</TableHead>
-                        <TableHead>Actions</TableHead>
+                        {/* Pinned to the right edge of the table's scroller (v1.2.1
+                            UI-09): a long name or address made the table wider
+                            than its card, and each row's Edit and Delete sat
+                            past the edge, reachable only by scrolling sideways. */}
+                        <TableHead className="sticky right-0 z-10 bg-card">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1015,7 +1019,7 @@ export default function Customers() {
                               aria-label={`Select ${customer.name}`}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{customer.name}</TableCell>
+                          <TableCell className="max-w-[14rem] break-words font-medium">{customer.name}</TableCell>
                           <TableCell>
                             <div className="space-y-1">
                               {(customer.phone || customer.phoneMasked) && (
@@ -1034,8 +1038,8 @@ export default function Customers() {
                           </TableCell>
                           <TableCell>
                             {customer.address && (
-                              <div className="flex items-start gap-1 text-sm">
-                                <MapPin className="h-3 w-3" />
+                              <div className="flex max-w-[16rem] items-start gap-1 break-words text-sm">
+                                <MapPin className="h-3 w-3 shrink-0" />
                                 {customer.address}
                               </div>
                             )}
@@ -1074,7 +1078,7 @@ export default function Customers() {
                                   </p>
                                   {intel.lastOrderAt && (
                                     <p className="text-muted-foreground">
-                                      Last: {new Date(intel.lastOrderAt).toLocaleDateString()}
+                                      Last: {new Date(intel.lastOrderAt).toLocaleDateString("en-GB")}
                                     </p>
                                   )}
                                 </div>
@@ -1084,9 +1088,9 @@ export default function Customers() {
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
                           {seesOrderSummary && <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>}
                           <TableCell><CustomerStoreCredit customerId={customer.id} /></TableCell>
-                          <TableCell>
+                          <TableCell className="sticky right-0 z-10 bg-card" data-testid={`cell-actions-${customer.id}`}>
                             {canMutate && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col items-stretch gap-1 xl:flex-row xl:items-center xl:gap-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1159,7 +1163,7 @@ export default function Customers() {
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-category">Category</Label>
                                       <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                        <SelectTrigger className="min-h-[44px]">
+                                        <SelectTrigger aria-label="Category" className="min-h-[44px]">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>

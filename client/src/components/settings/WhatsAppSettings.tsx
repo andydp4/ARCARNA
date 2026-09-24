@@ -133,7 +133,7 @@ export function WhatsAppSettings() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Webhook URL</label>
             <div className="flex gap-2">
-              <Input readOnly value={status?.webhookUrl ?? ""} className="font-mono text-xs" />
+              <Input aria-label="Webhook URL" readOnly value={status?.webhookUrl ?? ""} className="font-mono text-xs" />
               <Button variant="outline" size="icon" onClick={copyWebhook} aria-label="Copy webhook URL">
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>

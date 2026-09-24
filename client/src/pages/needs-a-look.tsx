@@ -236,7 +236,7 @@ export default function NeedsALookPage() {
         <div className="space-y-1">
           <Label className="text-xs">Queue</Label>
           <Select value={queue} onValueChange={setQueue}>
-            <SelectTrigger className="w-[200px] min-h-[44px]" data-testid="select-needs-a-look-queue">
+            <SelectTrigger aria-label="Queue" className="w-[200px] min-h-[44px]" data-testid="select-needs-a-look-queue">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -252,7 +252,7 @@ export default function NeedsALookPage() {
         <div className="space-y-1">
           <Label className="text-xs">State</Label>
           <Select value={state} onValueChange={(v) => setState(v as ExceptionState | "all")}>
-            <SelectTrigger className="w-[180px] min-h-[44px]" data-testid="select-needs-a-look-state">
+            <SelectTrigger aria-label="State" className="w-[180px] min-h-[44px]" data-testid="select-needs-a-look-state">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -268,7 +268,7 @@ export default function NeedsALookPage() {
         <div className="space-y-1">
           <Label className="text-xs">Kind</Label>
           <Select value={kind} onValueChange={setKind}>
-            <SelectTrigger className="w-[160px] min-h-[44px]">
+            <SelectTrigger aria-label="Kind" className="w-[160px] min-h-[44px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

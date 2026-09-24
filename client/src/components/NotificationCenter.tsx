@@ -115,7 +115,7 @@ export function NotificationCenter() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative min-h-[40px] min-w-[40px]"
+          className="relative min-h-11 min-w-11"
           data-testid="notification-bell"
           aria-label="Signals"
         >

@@ -93,7 +93,7 @@ describe("feature tour registry", () => {
   it("points only at test ids the client renders", () => {
     const missing: string[] = [];
     for (const def of FEATURE_TOUR_DEFS) {
-      for (const target of [def.anchor, ...def.steps]) {
+      for (const target of [def.anchor, ...def.steps, ...def.steps.flatMap((s) => s.alt ?? [])]) {
         if (!rendered(target)) missing.push(`${def.feature}: ${target.testId}${target.match === "prefix" ? "*" : ""}`);
       }
     }
@@ -187,6 +187,17 @@ describe("tour targets", () => {
     const found = findTourTarget({ testId: "button-contact-", match: "prefix" }, root) as unknown as { id: string };
     expect(found.id).toBe("button-contact-b");
     expect(findTourTarget({ testId: "button-contact-a" }, root)).toBeNull();
+  });
+
+  it("falls back to an alternative target when the first is not laid out (UI-17)", () => {
+    // A phone: the desktop table is hidden, the people cards are shown.
+    const root = fakeRoot([
+      { id: "table-performance-volume", visible: false },
+      { id: "cards-performance-volume", visible: true },
+    ]);
+    const step = FEATURE_TOUR_DEFS.find((d) => d.feature === "staffPerformance")!.steps.find((s) => s.title === "One row per person")!;
+    const found = findTourTarget(step, root) as unknown as { id: string } | null;
+    expect(found?.id).toBe("cards-performance-volume");
   });
 });
 

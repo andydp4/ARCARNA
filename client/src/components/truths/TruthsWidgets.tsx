@@ -237,10 +237,12 @@ function RevenueByCategory({ window, isPhone }: Ctx) {
   if (rows.length === 0) return <Empty>No sales in this window.</Empty>;
   return (
     <div className="space-y-3">
-      <div className="h-[200px] w-full">
+      {/* Hidden from screen readers (UI-13 svg-img-alt): the pie's sectors
+          are unnamed images, and the list below carries every figure. */}
+      <div className="h-[200px] w-full" aria-hidden>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={rows} cx="50%" cy="50%" outerRadius={isPhone ? 65 : 80} dataKey="revenue" nameKey="category" label={false}>
+            <Pie data={rows} cx="50%" cy="50%" outerRadius={isPhone ? 65 : 80} dataKey="revenue" nameKey="category" label={false} rootTabIndex={-1}>
               {rows.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}

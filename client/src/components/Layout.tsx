@@ -222,6 +222,7 @@ export function Layout({ children }: LayoutProps) {
   const role = user?.role
   const centres = useMemo(() => visibleCentres(role), [role])
   const routeCentre = centreForPath(location)
+  const fillsScreen = location === '/operations'
   const routeCentreKey = routeCentre?.key
   // Only a Centre this viewer may open, on a page they may open.
   const tourCentreKey = centreTourKeyForPath(location, role)
@@ -454,7 +455,10 @@ export function Layout({ children }: LayoutProps) {
                 {expanded ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </Button>
             )}
-            <Link href="/" className="flex min-w-0 items-center gap-2">
+            {/* Named for a screen reader (v1.2.1 UI-12): on a phone the logo is
+                decorative (alt="") and the product name is hidden below sm, so
+                the link had no accessible name at all. */}
+            <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={`${BRAND_PRODUCT_NAME} home`} data-testid="header-home-link">
               <BrandLogo variant="mark" size="sm" alt="" className="rounded-md" />
               <span className="hidden truncate text-xl font-semibold tracking-tight text-metal-warm-white sm:inline">{BRAND_PRODUCT_NAME}</span>
             </Link>
@@ -549,6 +553,13 @@ export function Layout({ children }: LayoutProps) {
               app (till included); navigating away clears it. */}
           <StudyBanner />
           <ErrorBoundary scope="page" resetKey={location}>{children}</ErrorBoundary>
+          {/* Room to scroll the last row clear of the Voice and WhatsApp
+              launchers (v1.2.1 UI-01): they float over the bottom-right
+              corner, and without this the last row's Edit, Delete or More
+              actions stayed under them however far down you scrolled. The
+              Operations Centre fills the screen and scrolls inside itself, so
+              it keeps that room in its own scrollers instead. */}
+          {!fillsScreen && <div aria-hidden className="h-40 shrink-0" data-testid="fab-clearance" />}
         </main>
       </div>
       <WhatsAppPanel />
@@ -556,7 +567,7 @@ export function Layout({ children }: LayoutProps) {
       {isStaff && <ProblemSheet />}
       {isStaff && <AskPanel />}
       {isStaff && <UsageRecorder />}
-      {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
+      {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} phone={mode === 'phone'} centreCount={centres.length} />}
       {user && user.role !== 'CUSTOMER' && <FeatureTours path={location} role={user.role} />}
     </div>
   )

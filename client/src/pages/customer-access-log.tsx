@@ -56,7 +56,7 @@ export default function CustomerAccessLogPage() {
         <div className="space-y-1">
           <Label className="text-xs">What</Label>
           <Select value={action} onValueChange={setAction}>
-            <SelectTrigger className="w-[240px] min-h-[44px]" data-testid="select-access-action">
+            <SelectTrigger className="w-[240px] min-h-[44px]" data-testid="select-access-action" aria-label="What">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -72,7 +72,7 @@ export default function CustomerAccessLogPage() {
         <div className="space-y-1">
           <Label className="text-xs">Period</Label>
           <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-[160px] min-h-[44px]">
+            <SelectTrigger className="w-[160px] min-h-[44px]" aria-label="Period">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

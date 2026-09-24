@@ -375,7 +375,7 @@ export default function DeveloperSettingsPage() {
     <div className="space-y-6 p-4 md:p-6 max-w-4xl">
       <PageHeader
         title="Developer"
-        question="How do systems connect to Arcarna?"
+        question="How do systems connect to arcarna?"
         explanation="API keys, audit trail, background jobs and automation rules"
         icon={Code2}
       />
@@ -438,9 +438,9 @@ export default function DeveloperSettingsPage() {
             {/* ARC-053: these are long unbroken strings (no spaces) — without
                 break-all they overflow the card and the whole page scrolls
                 sideways instead of just this block. */}
-            <p className="break-all"><span className="text-blue-500">URL:</span> {baseUrl}/orgs/7f8c5189.../products</p>
-            <p className="break-all"><span className="text-blue-500">Method:</span> GET</p>
-            <p className="break-all"><span className="text-blue-500">Header:</span> Authorization: Bearer mk_live_…</p>
+            <p className="break-all"><span className="text-blue-400">URL:</span> {baseUrl}/orgs/7f8c5189.../products</p>
+            <p className="break-all"><span className="text-blue-400">Method:</span> GET</p>
+            <p className="break-all"><span className="text-blue-400">Header:</span> Authorization: Bearer mk_live_…</p>
           </div>
         </CardContent>
       </Card>
@@ -497,7 +497,7 @@ export default function DeveloperSettingsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : "—"}
+                      {key.createdAt ? new Date(key.createdAt).toLocaleDateString("en-GB") : "—"}
                     </TableCell>
                     <TableCell>
                       <RevokeButton id={key.id} />
@@ -524,7 +524,7 @@ export default function DeveloperSettingsPage() {
                         mk_live_{key.keyLookup}…
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        Revoked {key.revokedAt ? new Date(key.revokedAt).toLocaleDateString() : ""}
+                        Revoked {key.revokedAt ? new Date(key.revokedAt).toLocaleDateString("en-GB") : ""}
                       </TableCell>
                     </TableRow>
                   ))}

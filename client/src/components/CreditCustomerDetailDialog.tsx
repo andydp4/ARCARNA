@@ -95,7 +95,7 @@ export function CreditCustomerDetailDialog({ customer, open, onOpenChange }: Cre
                         <span className="min-w-0">
                           <span className="block font-medium text-foreground">Order #{order.shortCode}</span>
                           <span className="block text-sm text-muted-foreground">
-                            {order.date ? new Date(order.date).toLocaleDateString() : "Unknown date"}
+                            {order.date ? new Date(order.date).toLocaleDateString("en-GB") : "Unknown date"}
                           </span>
                         </span>
                       </span>

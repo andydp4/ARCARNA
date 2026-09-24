@@ -241,7 +241,7 @@ export default function TickList() {
     const rows = filteredCustomers.map(customer => [
       customer.name,
       `£${(customer.totalDebt || 0).toFixed(2)}`,
-      customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A',
+      customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString("en-GB") : 'N/A',
       customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
 
@@ -343,7 +343,7 @@ export default function TickList() {
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-32" data-testid="select-filter-status">
+              <SelectTrigger className="min-h-[44px] w-full sm:w-32" data-testid="select-filter-status" aria-label="Status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -411,7 +411,7 @@ export default function TickList() {
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A'}
+                              {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString("en-GB") : 'N/A'}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -422,7 +422,7 @@ export default function TickList() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -478,23 +478,26 @@ export default function TickList() {
                             )}
                           </div>
                         </div>
-                        <div className="flex gap-2 mt-3">
+                        {/* Wraps (v1.2.1 UI-02): three buttons side by side were
+                            530px wide on a 412px phone, and Remove sat off-screen
+                            where it could not be scrolled to. */}
+                        <div className="mt-3 flex flex-wrap gap-2" data-testid={`card-actions-${customer.id}`}>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="flex-1 min-h-[44px]"
+                            className="min-h-[44px] flex-1 basis-[7rem]"
                             onClick={() => handleRecordPayment(customer)}
                             disabled={customer.totalDebt === 0}
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
                             Payment
                           </Button>
-                          <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} className="flex-1 min-h-[44px]" />
+                          <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} className="min-h-[44px] flex-1 basis-[12rem]" />
                           {canWriteOff && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="min-h-[44px] text-destructive hover:text-destructive"
+                            className="min-h-[44px] flex-1 basis-[7rem] text-destructive hover:text-destructive"
                             onClick={() => handleDeleteClick(customer)}
                           >
                             <Trash2 className="h-4 w-4 mr-1" aria-hidden />
