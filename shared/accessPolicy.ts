@@ -392,6 +392,8 @@ const PAY = "Staff pay is manager and above; a manager sees cashiers' rows only 
 const STAFF_LIST = "The staff list is manager and above; PINs never leave the server, rates are admin only (STF-FN4).";
 const SCHEDULED = "Scheduled Evidence is Evidence: manager and above (STF-FN4, Q12).";
 const CREDIT = "The Credit List and Invoices are manager and above, menu and server (Q11).";
+const CREDIT_AT_TILL =
+  "Anyone who starts an order sees what that one customer already owes (total, tabs, oldest date) and can take a cash or card payment against it at the till; the Credit List itself stays manager and above (v1.2.1).";
 const GIFT_ISSUE = "Issuing a gift card hands out money: managers only, with a reason (FIX-13).";
 const STOCK_LEVELS =
   "Stock levels is every staff member's read-only count, built from an allow-list with no cost field (v1.2 Phase 3); the Canary check proves no cost reaches a cashier.";
@@ -604,6 +606,10 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/credit/:orderId/write-off", minRole: "MANAGER", reason: CREDIT },
   { method: "POST", path: "/api/credit/:orderId/void", minRole: "MANAGER", reason: CREDIT },
   { method: "GET", path: "/api/invoices", minRole: "MANAGER", reason: CREDIT },
+  // "Already owes" at order start and Take a payment (v1.2.1 credit): one
+  // customer's total, tab count and oldest date, and a cash or card payment.
+  { method: "GET", path: "/api/customers/:id/credit-summary", minRole: "CASHIER", reason: CREDIT_AT_TILL },
+  { method: "POST", path: "/api/customers/:id/credit-payments", minRole: "CASHIER", reason: CREDIT_AT_TILL },
   { method: "GET", path: "/api/invoices/:id/pdf", minRole: "MANAGER", reason: CREDIT },
 
   // Gift cards.

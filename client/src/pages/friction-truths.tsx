@@ -67,6 +67,7 @@ type Truths = {
   messages: Array<{ title: string; count: number; errors: number; screens: number; topScreen: string }> | null;
   roles: Array<{ role: string; activeHours: number; openHours: number; views: number }> | null;
   funnel: Array<{ role: string; steps: Record<string, number> }> | null;
+  creditNotices?: Array<{ role: string; shown: number; paid: number }> | null;
   slowCalls: Array<{ call: string; slow: number; failed: number; avgMs: number; topScreen: string }> | null;
   devices: Device[];
   problemsOpen: number;
@@ -377,6 +378,33 @@ export default function FrictionTruthsPage() {
               </TableBody>
             </Table>
           )}
+        </Section>
+      )}
+
+      {data?.creditNotices && data.creditNotices.length > 0 && (
+        <Section
+          title="Already owes, at order start"
+          hint="How often the till told staff a customer already owed on credit, and how often a payment was taken from it."
+          testId="friction-credit-notices"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Role</TableHead>
+                <TableHead className="text-right">Shown</TableHead>
+                <TableHead className="text-right">Payment taken</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.creditNotices.map((c) => (
+                <TableRow key={c.role}>
+                  <TableCell className="capitalize">{roleLabel(c.role)}</TableCell>
+                  <TableCell className="text-right">{c.shown}</TableCell>
+                  <TableCell className="text-right">{c.paid}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </Section>
       )}
 

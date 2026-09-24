@@ -79,7 +79,15 @@ const FUNNEL_KEYS = FUNNEL_STEPS.map((s) => s.key) as [FunnelStep, ...FunnelStep
 export const CRASH_KINDS = ["boundary", "script", "chunk"] as const;
 export type CrashKind = (typeof CRASH_KINDS)[number];
 
-export const USAGE_KINDS = ["screen", "message", "call", "crash", "offline", "funnel"] as const;
+/**
+ * "Already owes" at order start (v1.2.1 credit): the till notes that it showed
+ * the notice, and that a payment was taken from it. A count by role and
+ * device, never the customer or the amount.
+ */
+export const CREDIT_NOTICE_STEPS = ["shown", "paid"] as const;
+export type CreditNoticeStep = (typeof CREDIT_NOTICE_STEPS)[number];
+
+export const USAGE_KINDS = ["screen", "message", "call", "crash", "offline", "funnel", "credit"] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -191,6 +199,7 @@ export const usageEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("crash"), at, screen: screenIn, crash: z.enum(CRASH_KINDS) }).strict(),
   z.object({ kind: z.literal("offline"), at, screen: screenIn, ms: ms(7 * 24 * HOUR) }).strict(),
   z.object({ kind: z.literal("funnel"), at, screen: screenIn, step: z.enum(FUNNEL_KEYS) }).strict(),
+  z.object({ kind: z.literal("credit"), at, screen: screenIn, step: z.enum(CREDIT_NOTICE_STEPS) }).strict(),
 ]);
 export type UsageEventInput = z.infer<typeof usageEventSchema>;
 
@@ -268,6 +277,8 @@ export function normaliseUsageEvent(e: UsageEventInput, now: Date): UsageRow | n
       return { ...base, kind: "offline", screen: "", durationMs: e.ms };
     case "funnel":
       return { ...base, kind: "funnel", label: e.step };
+    case "credit":
+      return { ...base, kind: "credit", label: e.step };
   }
 }
 
