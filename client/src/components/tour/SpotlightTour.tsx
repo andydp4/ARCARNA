@@ -50,8 +50,8 @@ export interface SpotlightTourProps {
   minStepsToStart?: number;
   /**
    * Auto-start only once this is on screen, however long that takes: a
-   * feature tour waits for the feature itself (the Card (link) button appears
-   * only at checkout, a run's stops only once there are some).
+   * feature tour waits for the feature itself (the label printer card appears
+   * only on the System tab, a run's stops only once there are some).
    */
   anchor?: TourTarget;
 }

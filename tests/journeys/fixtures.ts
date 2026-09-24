@@ -106,7 +106,7 @@ export async function pageAs(browser: Browser, role: Role, orgId: string): Promi
   }, [
     ...CENTRE_TOUR_CENTRES.map((centre) => centreTourLocalKey(centre)),
     // And each v1.2 feature tour (Phase 9): it starts on its own the moment
-    // its feature is on screen (Card (link) at checkout, My run's stops…),
+    // its feature is on screen (My run's stops, the label printer card…),
     // mid-journey, not just on arrival.
     ...FEATURE_TOURS.map((feature) => featureTourLocalKey(feature)),
   ]);

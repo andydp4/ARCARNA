@@ -7,8 +7,7 @@ import type { FeatureTourName } from "@shared/uiSeen";
  * One short tour per new v1.2 feature (v1.2 Phase 9), keyed by the route the
  * feature lives on. Each is shown once per account (featureTour:<name>-1.2.0)
  * the first time the viewer actually reaches the feature, which is why every
- * tour waits for an `anchor`: the Card (link) button appears only at
- * checkout, My run's stops only when there are some, the label printer card
+ * tour waits for an `anchor`: My run's stops only when there are some, the label printer card
  * only on the System tab.
  *
  * Steps whose target is not on screen are dropped by the engine, so one list
@@ -121,25 +120,6 @@ export const FEATURE_TOUR_DEFS: readonly FeatureTourDef[] = [
         title: "Whose run",
         body: "Managers can look at anyone's run from here.",
         preferredSide: "bottom",
-      },
-    ],
-  },
-  {
-    feature: "cardLink",
-    paths: ["/operations"],
-    anchor: { testId: "payment-method-card_link" },
-    steps: [
-      {
-        testId: "payment-method-card_link",
-        title: "Card (link)",
-        body: "The customer pays by card on their own phone: arcarna shows a QR code for exactly the amount due, and a link you can copy (or send by WhatsApp, when it is set up).",
-        preferredSide: "bottom",
-      },
-      {
-        testId: "button-confirm-payment",
-        title: "The sale marks itself paid",
-        body: "The sale is recorded, then waits for Stripe to confirm. Until then the board shows \"Awaiting card payment\". Cancel the link to take another payment instead.",
-        preferredSide: "top",
       },
     ],
   },

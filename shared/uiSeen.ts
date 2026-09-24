@@ -43,7 +43,6 @@ export const FEATURE_TOUR_VERSION = "1.2.0";
 export const FEATURE_TOURS = [
   "needsALook",
   "myRun",
-  "cardLink",
   "labelPrinter",
   "orderTiming",
   "staffPerformance",
@@ -51,6 +50,7 @@ export const FEATURE_TOURS = [
   "contactAccessLog",
   // "ask": add the Ask arcarna tour here once that feature merges (see featureTours.ts).
 ] as const;
+// No Card (link) tour: it would open mid-sale with a customer waiting. What's New and the release notes cover it.
 
 export type FeatureTourName = (typeof FEATURE_TOURS)[number];
 

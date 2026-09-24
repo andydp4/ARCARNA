@@ -67,7 +67,7 @@ describe("feature tour registry", () => {
   });
 
   it("covers the v1.2 features the brief names", () => {
-    for (const feature of ["needsALook", "myRun", "cardLink", "labelPrinter", "orderTiming", "staffPerformance", "customerContact", "contactAccessLog"]) {
+    for (const feature of ["needsALook", "myRun", "labelPrinter", "orderTiming", "staffPerformance", "customerContact", "contactAccessLog"]) {
       expect(FEATURE_TOURS).toContain(feature);
     }
   });
@@ -122,7 +122,7 @@ describe("featureToursFor", () => {
     expect(names("/my-run", "CASHIER")).toEqual(["myRun"]);
     expect(names("/my-run/", "CASHIER")).toEqual(["myRun"]);
     expect(names("/settings?tab=system", "CASHIER")).toEqual(["labelPrinter"]);
-    expect(names("/operations?pane=order", "CASHIER")).toEqual(["cardLink"]);
+    expect(names("/operations?pane=order", "CASHIER"), "no tour opens over a sale").toEqual([]);
     expect(names("/", "SUPER_ADMIN")).toEqual([]);
   });
 
