@@ -1574,6 +1574,11 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         ? and(eq(orders.id, orderId), eq(orders.orgId, ctx.orgId))
         : eq(orders.id, orderId);
 
+      // A card link already sent to the customer stays payable at Stripe
+      // after its row cascades away: kill it there first, or refuse.
+      const { retireOrderCardLinks } = await import("../services/cardLinks");
+      await retireOrderCardLinks(ctx?.orgId ?? null, orderId);
+
       await db.transaction(async (tx) => {
         const [order] = await tx.select().from(orders).where(orderCond);
         if (!order) throw new Error('Order not found');
@@ -1693,6 +1698,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
 
       res.json({ message: "Order deleted successfully" });
     } catch (error: any) {
+      if (error?.name === "CardLinkError") {
+        return res.status(error.statusCode).json({ message: error.message, code: error.code });
+      }
       console.error("Error deleting order:", error);
       const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';
       const status = error.message === 'Order not found' ? 404 : 500;

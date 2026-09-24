@@ -16,7 +16,7 @@
  *    link the till has walked away from; then the till can take another tender.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../db";
 import {
   cardPaymentLinks,
@@ -24,6 +24,7 @@ import {
   orderPayments,
   orders,
   organizations,
+  shifts,
   stripeWebhookEvents,
   whatsappConversations,
   type CardPaymentLink,
@@ -189,7 +190,8 @@ export async function getCardLinkState(
     const got = await retrieveCheckoutSession(link.sessionId);
     if (got.ok) {
       if (got.value.status === "complete" && got.value.payment_status === "paid") {
-        await db.transaction((tx: Executor) => settleSessionTx(tx, got.value, "poll"));
+        const settled = await db.transaction((tx: Executor) => settleSessionTx(tx, got.value, "poll"));
+        await retireSessions(settled.retireSessionIds);
       } else if (got.value.status === "expired") {
         await markLinkClosed(link.id, "expired", "Stripe expired it");
       }
@@ -199,6 +201,38 @@ export async function getCardLinkState(
   link = await closeIfTimedOut(link, now);
   const leg = await loadCardLeg(orgId, orderId);
   return viewOf(orderId, leg, link);
+}
+
+type RetireOutcome =
+  | { kind: "retired" }
+  | { kind: "paid"; session: StripeCheckoutSession }
+  | { kind: "unreachable" };
+
+/**
+ * Makes a session unpayable at Stripe. Stripe refuses to expire a session that
+ * is already complete (or being paid), and expireCheckoutSession reports that
+ * as a result rather than throwing, so ask Stripe what happened instead of
+ * assuming the link is dead.
+ */
+async function retireSessionAtStripe(sessionId: string): Promise<RetireOutcome> {
+  const expired = await expireCheckoutSession(sessionId).catch(() => null);
+  if (expired?.ok) return { kind: "retired" };
+  const got = await retrieveCheckoutSession(sessionId).catch(() => null);
+  if (got?.ok) {
+    if (got.value.status === "expired") return { kind: "retired" };
+    if (got.value.status === "complete" && got.value.payment_status === "paid") return { kind: "paid", session: got.value };
+  }
+  return { kind: "unreachable" };
+}
+
+/** Best effort, after a commit: other links left open on a leg that is now paid. */
+async function retireSessions(sessionIds: string[] | undefined): Promise<void> {
+  if (!sessionIds?.length || !isStripeConfigured()) return;
+  for (const id of sessionIds) {
+    // A refusal here means the customer is paying the spare link right now;
+    // if they finish, the webhook raises "Paid twice" for a person to refund.
+    await expireCheckoutSession(id).catch(() => null);
+  }
 }
 
 async function markLinkClosed(linkId: string, status: "expired" | "cancelled", reason: string, client: Executor = db) {
@@ -232,8 +266,24 @@ export async function createCardLink(params: {
   const existing = await closeIfTimedOut(await latestLink(orgId, orderId), now);
   if (existing?.status === "open" && existing.paymentId === leg.id) {
     if (existing.expiresAt.getTime() - now.getTime() > 60_000) return viewOf(orderId, leg, existing);
-    // About to lapse: retire it at Stripe before making a fresh one.
-    if (existing.sessionId) await expireCheckoutSession(existing.sessionId).catch(() => null);
+    // About to lapse: retire it at Stripe before making a fresh one. If Stripe
+    // will not (the customer is paying it now), a second link would let them
+    // pay twice, so none is made.
+    if (existing.sessionId) {
+      const retired = await retireSessionAtStripe(existing.sessionId);
+      if (retired.kind === "paid") {
+        const settled = await db.transaction((tx: Executor) => settleSessionTx(tx, retired.session, "poll"));
+        await retireSessions(settled.retireSessionIds);
+        return getCardLinkState(orgId, orderId);
+      }
+      if (retired.kind === "unreachable") {
+        throw new CardLinkError(
+          409,
+          "CARD_LINK_STILL_PAYABLE",
+          "The customer may be paying the current link. Wait a moment, then try again.",
+        );
+      }
+    }
     await markLinkClosed(existing.id, "expired", "Replaced by a new link");
   }
 
@@ -299,25 +349,53 @@ export async function cancelCardLink(orgId: string, orderId: string): Promise<Ca
   const link = await closeIfTimedOut(await latestLink(orgId, orderId), new Date());
   if (link?.status === "open") {
     if (link.sessionId) {
-      const expired = await expireCheckoutSession(link.sessionId);
-      if (!expired.ok) {
-        // Stripe will not expire a session that is already complete: find out
-        // whether the customer paid before saying anything.
-        const got = await retrieveCheckoutSession(link.sessionId);
-        if (got.ok && got.value.status === "complete") {
-          if (got.value.payment_status === "paid") {
-            await db.transaction((tx: Executor) => settleSessionTx(tx, got.value, "poll"));
-          }
-          throw new CardLinkError(409, "CARD_LINK_ALREADY_PAID", "The customer has already paid this link.");
-        }
-        if (!(got.ok && got.value.status === "expired")) {
-          throw new CardLinkError(502, "CARD_LINK_STRIPE_UNREACHABLE", "Could not cancel the link at Stripe. Try again.");
-        }
+      const retired = await retireSessionAtStripe(link.sessionId);
+      if (retired.kind === "paid") {
+        const settled = await db.transaction((tx: Executor) => settleSessionTx(tx, retired.session, "poll"));
+        await retireSessions(settled.retireSessionIds);
+        throw new CardLinkError(409, "CARD_LINK_ALREADY_PAID", "The customer has already paid this link.");
+      }
+      if (retired.kind === "unreachable") {
+        throw new CardLinkError(502, "CARD_LINK_STRIPE_UNREACHABLE", "Could not cancel the link at Stripe. Try again.");
       }
     }
     await markLinkClosed(link.id, "cancelled", "Cancelled at the till");
   }
   return getCardLinkState(orgId, orderId);
+}
+
+/**
+ * Before an order is deleted: every link still open on it is made unpayable at
+ * Stripe, so a customer cannot pay for a sale that no longer exists. Refused
+ * (nothing deleted) if the customer has already paid, or Stripe cannot be
+ * reached to confirm the link is dead.
+ */
+export async function retireOrderCardLinks(orgId: string | null, orderId: string): Promise<void> {
+  const conds = [eq(cardPaymentLinks.orderId, orderId), eq(cardPaymentLinks.status, "open")];
+  if (orgId) conds.push(eq(cardPaymentLinks.orgId, orgId));
+  const open: CardPaymentLink[] = await db.select().from(cardPaymentLinks).where(and(...conds));
+  for (const link of open) {
+    if (link.sessionId && isStripeConfigured()) {
+      const retired = await retireSessionAtStripe(link.sessionId);
+      if (retired.kind === "paid") {
+        const settled = await db.transaction((tx: Executor) => settleSessionTx(tx, retired.session, "poll"));
+        await retireSessions(settled.retireSessionIds);
+        throw new CardLinkError(
+          409,
+          "CARD_LINK_ALREADY_PAID",
+          "The customer has already paid this order's card link, so it cannot be deleted.",
+        );
+      }
+      if (retired.kind === "unreachable") {
+        throw new CardLinkError(
+          502,
+          "CARD_LINK_STRIPE_UNREACHABLE",
+          "Could not cancel this order's card link at Stripe, so it was not deleted. Try again.",
+        );
+      }
+    }
+    await markLinkClosed(link.id, "cancelled", "Order deleted");
+  }
 }
 
 /**
@@ -336,6 +414,25 @@ export async function retenderCardLink(
     const leg = await loadCardLeg(orgId, orderId, tx, true);
     if (!leg || leg.status !== PAYMENT_STATUS_AWAITING) {
       throw new CardLinkError(409, "CARD_LINK_NOTHING_AWAITING", "Nothing on this order is waiting for a card link.");
+    }
+    // The re-tendered money lands in the sale's own shift. Once that shift is
+    // closed and counted, it would change a Z-report already reconciled and
+    // miss the drawer that actually took it.
+    const [order] = await tx
+      .select({ shiftId: orders.shiftId })
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.orgId, orgId)))
+      .limit(1);
+    if (order?.shiftId) {
+      const [shift] = await tx.select({ status: shifts.status }).from(shifts).where(eq(shifts.id, order.shiftId)).limit(1);
+      // A reopened shift is being recounted, so the payment still lands before its count.
+      if (shift && shift.status !== "open" && shift.status !== "reopened") {
+        throw new CardLinkError(
+          409,
+          "CARD_LINK_SHIFT_CLOSED",
+          "The shift this sale was taken on is closed and counted. A manager can reopen that shift to record how it was paid.",
+        );
+      }
     }
     const [open] = await tx
       .select({ id: cardPaymentLinks.id })
@@ -377,6 +474,8 @@ export interface StripeEventResult {
   outcome: StripeEventOutcome;
   orgId: string | null;
   orderId: string | null;
+  /** Other sessions still payable for a leg now paid: expire them at Stripe once committed. */
+  retireSessionIds?: string[];
 }
 
 /**
@@ -467,7 +566,21 @@ export async function settleSessionTx(
     .update(orderPayments)
     .set({ status: PAYMENT_STATUS_PAID, provider: "stripe", providerRef: pi ?? session.id, paidAt: now })
     .where(eq(orderPayments.id, leg.id));
-  return { outcome: "paid", orgId: link.orgId, orderId: link.orderId };
+  // An older link was paid while a newer one is still open for the same leg:
+  // close the newer one, so paying it too is flagged rather than recorded.
+  const spare: Array<{ sessionId: string | null }> = await tx
+    .update(cardPaymentLinks)
+    .set({ status: "cancelled", closedReason: "Paid by another link", updatedAt: now })
+    .where(
+      and(
+        eq(cardPaymentLinks.paymentId, leg.id),
+        eq(cardPaymentLinks.status, "open"),
+        ne(cardPaymentLinks.id, link.id),
+      ),
+    )
+    .returning({ sessionId: cardPaymentLinks.sessionId });
+  const retireSessionIds = spare.map((r) => r.sessionId).filter((id): id is string => !!id);
+  return { outcome: "paid", orgId: link.orgId, orderId: link.orderId, retireSessionIds };
 }
 
 function formatMinor(amount: number | null | undefined, currency: string | null | undefined): string {
@@ -488,6 +601,12 @@ export interface StripeEvent {
  * part way leaves nothing recorded for Stripe's retry to trip over.
  */
 export async function applyStripeEvent(event: StripeEvent): Promise<StripeEventResult> {
+  const result = await applyStripeEventTx(event);
+  await retireSessions(result.retireSessionIds);
+  return result;
+}
+
+async function applyStripeEventTx(event: StripeEvent): Promise<StripeEventResult> {
   return db.transaction(async (tx: Executor) => {
     const inserted = await tx
       .insert(stripeWebhookEvents)

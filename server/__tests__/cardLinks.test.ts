@@ -21,11 +21,14 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   cardPaymentLinks,
+  invoices,
+  locations,
   orderEvents,
   orderPayments,
   orders,
   organizations,
   orgNotifications,
+  shifts,
   stripeWebhookEvents,
 } from "@shared/schema";
 import { signStripePayload } from "../stripe/verify";
@@ -36,7 +39,9 @@ import {
   cancelCardLink,
   createCardLink,
   retenderCardLink,
+  retireOrderCardLinks,
 } from "../services/cardLinks";
+import { issueInvoiceOnRequest, loadInvoiceDocument } from "../services/invoices";
 import { runOrderTransition } from "../services/orderTransitions";
 import { getOpsBoardOrder } from "../services/opsBoard";
 
@@ -137,7 +142,10 @@ afterAll(async () => {
   await db.delete(cardPaymentLinks).where(eq(cardPaymentLinks.orgId, orgId));
   await db.delete(orderPayments).where(eq(orderPayments.orgId, orgId));
   await db.delete(orderEvents).where(eq(orderEvents.orgId, orgId));
+  await db.delete(invoices).where(eq(invoices.orgId, orgId));
   await db.delete(orders).where(eq(orders.orgId, orgId));
+  await db.delete(shifts).where(eq(shifts.orgId, orgId));
+  await db.delete(locations).where(eq(locations.orgId, orgId));
   await db.delete(organizations).where(eq(organizations.id, orgId));
 });
 
@@ -317,5 +325,153 @@ describe("making a link", () => {
     expect(again.link?.id).toBe(view.link?.id);
     expect(calls).toHaveLength(1);
     vi.unstubAllGlobals();
+  });
+});
+
+/** Stripe stubbed by path: what expire, retrieve and create answer. */
+function stubStripe(answers: {
+  expire?: (sessionId: string) => { status: number; body: Record<string, unknown> };
+  retrieve?: (sessionId: string) => Record<string, unknown>;
+  create?: () => Record<string, unknown>;
+}) {
+  const calls: Array<{ method: string; url: string }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init: RequestInit) => {
+      const method = String(init.method ?? "GET");
+      calls.push({ method, url });
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      const m = /\/checkout\/sessions\/([^/]+)(\/expire)?$/.exec(url);
+      if (m && m[2]) {
+        const a = answers.expire?.(decodeURIComponent(m[1])) ?? { status: 200, body: { id: m[1], status: "expired" } };
+        return json(a.status, a.body);
+      }
+      if (m && method === "GET") return json(200, answers.retrieve?.(decodeURIComponent(m[1])) ?? { id: m[1], status: "open" });
+      return json(200, answers.create?.() ?? {});
+    }),
+  );
+  return calls;
+}
+
+function sessionBody(sessionId: string, orderId: string, amountMinor: number, status: string, paymentStatus: string) {
+  return { ...paidEvent(sessionId, orderId, amountMinor).data.object, status, payment_status: paymentStatus };
+}
+
+describe("review fixes", () => {
+  it("an invoice for a sale still awaiting card payment shows it owed, not paid", async () => {
+    const sale = await makeSale("80.00");
+    const invoice = await issueInvoiceOnRequest(orgId, sale.orderId);
+    const before = await loadInvoiceDocument(orgId, invoice.id);
+    expect((before as any).document.status).not.toBe("paid");
+
+    await post(paidEvent(sale.link!.sessionId!, sale.orderId, 8000));
+    const after = await loadInvoiceDocument(orgId, invoice.id);
+    expect((after as any).document.status).toBe("paid");
+  });
+
+  it("re-tendering is refused once the sale's shift is closed and counted", async () => {
+    const [loc] = await db
+      .insert(locations)
+      .values({ orgId, name: "Shop", address: "1 St", city: "Town", state: "-", zipCode: "AB1", phone: "0", email: "a@b.c" })
+      .returning();
+    const [shift] = await db
+      .insert(shifts)
+      .values({ orgId, locationId: loc.id, userId: "sam", status: "closed", closedAt: new Date() })
+      .returning();
+    const sale = await makeSale("40.00", { withLink: false });
+    await db.update(orders).set({ shiftId: shift.id }).where(eq(orders.id, sale.orderId));
+
+    await expect(retenderCardLink(orgId, sale.orderId, "cash")).rejects.toMatchObject({ code: "CARD_LINK_SHIFT_CLOSED" });
+    expect((await leg(sale.legId)).status).toBe("awaiting");
+
+    await db.update(shifts).set({ status: "reopened" }).where(eq(shifts.id, shift.id));
+    await retenderCardLink(orgId, sale.orderId, "cash");
+    expect((await leg(sale.legId)).method).toBe("cash");
+  });
+
+  it("deleting an order expires its open link at Stripe first", async () => {
+    const sale = await makeSale("30.00");
+    const calls = stubStripe({});
+    await retireOrderCardLinks(orgId, sale.orderId);
+    vi.unstubAllGlobals();
+    expect(calls.some((c) => c.url.endsWith(`/checkout/sessions/${sale.link!.sessionId}/expire`))).toBe(true);
+    const [link] = await db.select().from(cardPaymentLinks).where(eq(cardPaymentLinks.id, sale.link!.id));
+    expect(link.status).toBe("cancelled");
+  });
+
+  it("deleting an order whose link the customer already paid is refused, and the payment recorded", async () => {
+    const sale = await makeSale("30.00");
+    stubStripe({
+      expire: () => ({ status: 400, body: { error: { message: "Session is complete" } } }),
+      retrieve: (id) => sessionBody(id, sale.orderId, 3000, "complete", "paid"),
+    });
+    await expect(retireOrderCardLinks(orgId, sale.orderId)).rejects.toMatchObject({ code: "CARD_LINK_ALREADY_PAID" });
+    vi.unstubAllGlobals();
+    expect((await leg(sale.legId)).status).toBe("paid");
+  });
+
+  it("deleting is refused when Stripe cannot confirm the link is dead", async () => {
+    const sale = await makeSale("30.00");
+    stubStripe({
+      expire: () => ({ status: 500, body: { error: { message: "down" } } }),
+      retrieve: (id) => sessionBody(id, sale.orderId, 3000, "open", "unpaid"),
+    });
+    await expect(retireOrderCardLinks(orgId, sale.orderId)).rejects.toMatchObject({ code: "CARD_LINK_STRIPE_UNREACHABLE" });
+    vi.unstubAllGlobals();
+    const [link] = await db.select().from(cardPaymentLinks).where(eq(cardPaymentLinks.id, sale.link!.id));
+    expect(link.status).toBe("open");
+  });
+
+  it("an older link paid closes the newer open one and expires it at Stripe", async () => {
+    const sale = await makeSale("25.00");
+    await db.update(cardPaymentLinks).set({ status: "expired" }).where(eq(cardPaymentLinks.id, sale.link!.id));
+    const newerSession = `cs_test_${SUFFIX}_newer_${Math.random().toString(36).slice(2)}`;
+    const [newer] = await db
+      .insert(cardPaymentLinks)
+      .values({
+        orgId,
+        orderId: sale.orderId,
+        paymentId: sale.legId,
+        sessionId: newerSession,
+        url: "https://checkout.stripe.com/c/pay/newer",
+        amount: "25.00",
+        currency: "GBP",
+        status: "open",
+        expiresAt: new Date(Date.now() + 30 * 60_000),
+      })
+      .returning();
+    const calls = stubStripe({});
+    const res = await post(paidEvent(sale.link!.sessionId!, sale.orderId, 2500));
+    vi.unstubAllGlobals();
+    expect(res.body.outcome).toBe("paid");
+    expect((await leg(sale.legId)).status).toBe("paid");
+    const [row] = await db.select().from(cardPaymentLinks).where(eq(cardPaymentLinks.id, newer.id));
+    expect(row.status).toBe("cancelled");
+    expect(calls.some((c) => c.url.endsWith(`/checkout/sessions/${newerSession}/expire`))).toBe(true);
+
+    // The customer pays the newer one anyway: flagged, not recorded twice.
+    const again = await post(paidEvent(newerSession, sale.orderId, 2500));
+    expect(again.body.outcome).toBe("paid_after_retender");
+  });
+
+  it("a link about to lapse is not replaced while Stripe will not expire it", async () => {
+    const sale = await makeSale("14.00");
+    await db
+      .update(cardPaymentLinks)
+      .set({ expiresAt: new Date(Date.now() + 30_000) })
+      .where(eq(cardPaymentLinks.id, sale.link!.id));
+    const calls = stubStripe({
+      expire: () => ({ status: 400, body: { error: { message: "Session is being paid" } } }),
+      retrieve: (id) => sessionBody(id, sale.orderId, 1400, "open", "unpaid"),
+    });
+    await expect(
+      createCardLink({ orgId, orderId: sale.orderId, userId: "sam", successUrl: "https://shop.example/paid" }),
+    ).rejects.toMatchObject({ code: "CARD_LINK_STILL_PAYABLE" });
+    vi.unstubAllGlobals();
+    expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/checkout/sessions"))).toBe(false);
+    const links = await db.select().from(cardPaymentLinks).where(eq(cardPaymentLinks.orderId, sale.orderId));
+    expect(links).toHaveLength(1);
+    expect(links[0].status).toBe("open");
   });
 });
