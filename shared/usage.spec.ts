@@ -44,7 +44,8 @@ describe("what may be stored", () => {
   it("turns a call's URL into a route shape", () => {
     expect(apiRouteShape("/arcarna/api/orders/3f2a9c1e-1111-4222-8333-444455556666/refund?q=jane")).toBe("/api/orders/:id/refund");
     expect(apiRouteShape("https://shop.example/arcarna/api/products/by-barcode/5012345678900")).toBe("/api/products/by-barcode/:id");
-    expect(apiRouteShape("/api/customers/search/jane%20smith")).toBe("/api/customers/:value/:value");
+    // "search" is a real route word (/api/orders/search); the typed name is not.
+    expect(apiRouteShape("/api/customers/search/jane%20smith")).toBe("/api/customers/search/:value");
     expect(apiRouteShape("/sw.js")).toBe("/other");
   });
 

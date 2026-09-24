@@ -38,4 +38,6 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "transition", "truths", "turn", "unsubscribe", "uploads", "usage", "user", "validate", "void",
   "webhook", "webhooks", "website", "whatsapp", "wm-supplies", "worker-logs", "worker-stats",
   "would-have-flagged", "write-off",
+  // Stripe links and Phase 5 routes, merged after Phase 8 was built.
+  "stripe", "card-links", "paid", "till", "cancel", "retender", "lookup-phone", "possible-duplicates", "replace-phone", "saved-address", "phone-search", "search", "customer-phone", "delivery",
 ]);
