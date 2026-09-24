@@ -25,7 +25,7 @@ import {
   uniqueSuffix,
 } from "./fixtures";
 
-const BASE = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000";
+const BASE = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`;
 const SECRET = process.env.PHASE2D_TEST_SECRET ?? "journey-suite-local-secret";
 
 async function ownProduct(api: APIRequestContext, locationId: string, stock: number, price = 10, name?: string) {

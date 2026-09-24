@@ -229,7 +229,7 @@ test.describe("5.6 forged org scope", () => {
     const noSecret = await (
       await import("@playwright/test")
     ).request.newContext({
-      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000",
+      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`,
       extraHTTPHeaders: {
         "x-test-replit-user-id": "seed-super-admin",
         "x-org-id": orgBId,
@@ -246,7 +246,7 @@ test.describe("5.6 forged org scope", () => {
     const wrongSecret = await (
       await import("@playwright/test")
     ).request.newContext({
-      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000",
+      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`,
       extraHTTPHeaders: {
         "x-test-replit-user-id": "seed-super-admin",
         "x-test-secret": "wrong-secret",

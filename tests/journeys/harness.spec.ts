@@ -37,7 +37,7 @@ test.describe("harness", () => {
     const forged = await (
       await import("@playwright/test")
     ).request.newContext({
-      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000",
+      baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`,
       extraHTTPHeaders: {
         "x-test-replit-user-id": "seed-super-admin",
         "x-org-id": orgId,

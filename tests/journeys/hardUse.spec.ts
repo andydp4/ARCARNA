@@ -78,7 +78,7 @@ async function freshStaff(role: "CASHIER" | "MANAGER", orgId: string): Promise<A
   });
   freshIds.push(id);
   return playwrightRequest.newContext({
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`,
     extraHTTPHeaders: {
       "x-test-replit-user-id": id,
       "x-test-secret": process.env.PHASE2D_TEST_SECRET ?? "journey-suite-local-secret",

@@ -117,7 +117,7 @@ export function headersFor(userId: string, orgId?: string): Record<string, strin
 /** An API context acting as an arbitrary user id — `apiAs` for non-seeded staff. */
 export async function apiForUser(userId: string, orgId?: string): Promise<APIRequestContext> {
   return playwrightRequest.newContext({
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`,
     extraHTTPHeaders: headersFor(userId, orgId),
   });
 }
