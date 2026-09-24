@@ -80,7 +80,9 @@ const ChurnRiskReport = lazy(() => import("@/pages/reports/churn-risk"));
 const AffinityReport = lazy(() => import("@/pages/reports/affinity"));
 const OrderStatusReport = lazy(() => import("@/pages/reports/order-status"));
 const DelayLogReport = lazy(() => import("@/pages/reports/delay-log"));
-const StaffKpiReport = lazy(() => import("@/pages/reports/staff-kpi"));
+const StaffPerformanceReport = lazy(() => import("@/pages/reports/staff-performance"));
+const StaffPerformancePerson = lazy(() => import("@/pages/reports/staff-performance-person"));
+const OrderTimingReport = lazy(() => import("@/pages/reports/order-timing"));
 const SatisfactionReport = lazy(() => import("@/pages/reports/satisfaction"));
 const ResellerCreditReport = lazy(() => import("@/pages/reports/reseller-credit"));
 const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
@@ -261,8 +263,16 @@ function Router() {
           <Route path="/reports/delay-log">
             <RequireRole href="/reports"><DelayLogReport /></RequireRole>
           </Route>
-          <Route path="/reports/staff-kpi">
-            <RequireRole href="/reports"><StaffKpiReport /></RequireRole>
+          {/* Staff KPI was replaced by Staff Performance (v1.2 Phase 7B); old links land on it. */}
+          <Route path="/reports/staff-kpi"><Redirect to="/reports/staff-performance" /></Route>
+          <Route path="/reports/staff-performance">
+            <RequireRole href="/reports"><StaffPerformanceReport /></RequireRole>
+          </Route>
+          <Route path="/reports/staff-performance/:userId">
+            <RequireRole href="/reports"><StaffPerformancePerson /></RequireRole>
+          </Route>
+          <Route path="/reports/order-timing">
+            <RequireRole href="/reports"><OrderTimingReport /></RequireRole>
           </Route>
           <Route path="/reports/satisfaction">
             <RequireRole href="/reports"><SatisfactionReport /></RequireRole>

@@ -466,3 +466,21 @@ export function orderTimingRedFlags(summary: OrderTimingSummary): string[] {
 }
 
 export type { DateKind, FulfilmentMethod, OpsTimingSettings };
+
+// ------------------------------------------------------------- the page (7A)
+
+/**
+ * The groupings the Order Timing page offers (v1.2 Phase 7A). Station is not
+ * offered yet: until migration 170 only the CURRENT station was known, so a
+ * comparison would re-label past work with today's rota. It returns once
+ * enough recorded stations exist.
+ */
+export const ORDER_TIMING_PAGE_GROUPS = ["fulfilment", "assignee", "completer", "loader", "hour", "day", "channel"] as const;
+export type OrderTimingPageGroup = (typeof ORDER_TIMING_PAGE_GROUPS)[number];
+
+/** Groupings whose rows are people, so the viewer rule (Q14) and "provisional" apply. */
+export const PERSON_TIMING_GROUPS: readonly OrderTimingPageGroup[] = ["assignee", "completer", "loader"];
+
+export function engineGroupKey(group: OrderTimingPageGroup): TimingGroupKey {
+  return group === "hour" ? "hourOfTradingDay" : group;
+}

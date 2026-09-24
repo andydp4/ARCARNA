@@ -15,12 +15,20 @@ describe("Evidence lock-down, client side", () => {
     expect(navItems.map((i) => i.label)).not.toContain("Reports");
   });
 
-  it("the Staff KPI Evidence is hidden while it is rebuilt (STF-FN1)", () => {
-    const kpi = reportByRef("ARC-T2-002")!;
-    expect(kpi.status).toBe("planned");
-    expect(kpi.statusLabel).toBe("Being rebuilt");
-    // Nothing else was switched off along with it.
-    expect(REPORT_CATALOG.filter((r) => r.ref !== "ARC-T2-002" && r.statusLabel === "Being rebuilt")).toEqual([]);
+  it("Staff Performance replaces Staff KPI at the same reference, and nothing is left \"Being rebuilt\" (v1.2 Phase 7B)", () => {
+    const perf = reportByRef("ARC-T2-002")!;
+    expect(perf.title).toBe("Staff Performance");
+    expect(perf.status).toBe("available");
+    expect(perf.route).toBe("/reports/staff-performance");
+    expect(REPORT_CATALOG.filter((r) => r.statusLabel === "Being rebuilt")).toEqual([]);
+    // Never a bonus: Q16 removed the £50/£100/£150 tiers.
+    expect(perf.purpose).not.toMatch(/bonus/i);
+  });
+
+  it("Staff Performance sits in the Truths Centre and the Finance Centre, manager and above", () => {
+    const hits = navItems.filter((i) => i.href === "/reports/staff-performance");
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+    for (const h of hits) expect(h.roles).not.toContain("CASHIER");
   });
 
   it("the command palette shows a customer's tier and points, never contact details (PRV-02)", () => {

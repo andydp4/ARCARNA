@@ -34,7 +34,7 @@ describe("Centres (v1.2 Phase 3)", () => {
 
   it("puts the Credit List under Operations and Invoices under Finance, for managers only (Q11)", () => {
     expect(pageKeys("MANAGER", "operations")).toContain("tick-list");
-    expect(pageKeys("MANAGER", "finance")).toEqual(["shifts", "expenses", "reseller-partners", "cashier-payroll", "invoices"]);
+    expect(pageKeys("MANAGER", "finance")).toEqual(["shifts", "expenses", "reseller-partners", "cashier-payroll", "staff-performance-finance", "invoices"]);
   });
 
   it("opens the Truths Centre on Truths at a glance for managers and above", () => {

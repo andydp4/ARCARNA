@@ -30,6 +30,7 @@ import {
   Workflow,
   AlertTriangle,
   Truck,
+  UserCheck,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -279,6 +280,25 @@ export const centres: Centre[] = [
         roles: MANAGER_ROLES
       },
       {
+        // Staff Performance (v1.2 Phase 7B) replaces Staff KPI here. The
+        // server cuts the rows: a manager sees cashiers and themselves.
+        key: 'staff-performance',
+        label: 'Staff Performance',
+        href: '/reports/staff-performance',
+        icon: UserCheck,
+        testId: 'nav-staff-performance',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Order Timing (v1.2 Phase 7A): the timing engine's page.
+        key: 'order-timing',
+        label: 'Order Timing',
+        href: '/reports/order-timing',
+        icon: Clock,
+        testId: 'nav-order-timing',
+        roles: MANAGER_ROLES
+      },
+      {
         key: 'rfm',
         label: VOCAB.customerTruths,
         href: '/analytics/rfm',
@@ -436,6 +456,15 @@ export const centres: Centre[] = [
         href: '/cashier-payroll',
         icon: Wallet,
         testId: 'nav-cashier-payroll',
+        roles: MANAGER_ROLES
+      },
+      {
+        // The same page as the Truths Centre entry, where Staff KPI used to be.
+        key: 'staff-performance-finance',
+        label: 'Staff Performance',
+        href: '/reports/staff-performance',
+        icon: UserCheck,
+        testId: 'nav-staff-performance-finance',
         roles: MANAGER_ROLES
       },
       {

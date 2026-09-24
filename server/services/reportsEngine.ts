@@ -46,6 +46,7 @@ import {
   orderTimingRedFlags,
   type TimingOrderInput,
   type OrderTimingSummary,
+  type DerivedOrderTiming,
 } from "@shared/reports/orderTiming";
 import { wasProactiveDelayComms } from "@shared/reports/delayLog";
 import { hasEnoughDataForChurnScore } from "@shared/analytics/churnThreshold";
@@ -1419,6 +1420,68 @@ function flattenTimingSummary(summary: OrderTimingSummary): Record<string, numbe
  * of these against a real reopen + re-complete.
  */
 export async function orderTimingReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
+  const { facts } = await loadOrderTimingFacts(orgId, from, to);
+  if (facts.length === 0) {
+    return {
+      ref: "ARC-T2-005",
+      title: "Order Timing & Service Levels",
+      generatedAt: new Date().toISOString(),
+      period: { from: from.toISOString(), to: to.toISOString() },
+      summary: flattenTimingSummary(summarizeOrderTiming([])),
+      rows: [],
+      redFlags: [],
+    };
+  }
+  const summary = summarizeOrderTiming(facts);
+  const redFlags = orderTimingRedFlags(summary);
+
+  const rows = facts.map((f) => ({
+    orderId: f.id.slice(0, 8),
+    fulfilmentMethod: f.fulfilmentMethod,
+    channel: f.channel,
+    tradingDay: f.tradingDay,
+    excluded: f.excluded === false ? null : f.excluded,
+    hasPromise: f.hasPromise,
+    onTime: f.onTime,
+    promiseKept: f.promiseKept,
+    latenessMinutes: f.latenessMinutes,
+    receivedToClaimedMinutes: f.receivedToClaimedMinutes,
+    receivedToReadyMinutes: f.receivedToReadyMinutes,
+    readyToHandoverMinutes: f.readyToHandoverMinutes,
+    arrivedToHandoverMinutes: f.arrivedToHandoverMinutes,
+    dispatchToDeliveredMinutes: f.dispatchToDeliveredMinutes,
+    receivedToCompletedMinutes: f.receivedToCompletedMinutes,
+    wasDelayed: f.wasDelayed,
+    revisedPromiseKept: f.revisedPromiseKept,
+    customerWaitingIncident: f.customerWaitingIncident,
+    heldMinutes: Math.round((f.heldSeconds / 60) * 10) / 10,
+    assignedUserId: f.assignedUserId,
+    completedUserId: f.completedUserId,
+    inputUserId: f.inputUserId,
+    station: f.station,
+  }));
+
+  return {
+    ref: "ARC-T2-005",
+    title: "Order Timing & Service Levels",
+    generatedAt: new Date().toISOString(),
+    period: { from: from.toISOString(), to: to.toISOString() },
+    summary: flattenTimingSummary(summary),
+    rows,
+    redFlags,
+  };
+}
+
+/**
+ * The timing report's per-order facts and the settings they were judged
+ * against — shared by the Evidence payload above and the Order Timing page
+ * (v1.2 Phase 7A), so both read the same orders by the same rule.
+ */
+export async function loadOrderTimingFacts(
+  orgId: string,
+  from: Date,
+  to: Date,
+): Promise<{ facts: DerivedOrderTiming[]; settings: OpsTimingSettings }> {
   const timezone = await orgTimeZone(orgId);
   const [org] = await db
     .select({
@@ -1437,16 +1500,6 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
     dueSoonLeadMinutes: org?.dueSoonLeadMinutes ?? 10,
     lateGraceMinutes: org?.lateGraceMinutes ?? 5,
   };
-
-  const emptyPayload = (): ReportPayload => ({
-    ref: "ARC-T2-005",
-    title: "Order Timing & Service Levels",
-    generatedAt: new Date().toISOString(),
-    period: { from: from.toISOString(), to: to.toISOString() },
-    summary: flattenTimingSummary(summarizeOrderTiming([])),
-    rows: [],
-    redFlags: [],
-  });
 
   const orderRows = await db
     .select({
@@ -1480,7 +1533,7 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
       ),
     );
 
-  if (orderRows.length === 0) return emptyPayload();
+  if (orderRows.length === 0) return { facts: [], settings };
 
   const orderIds = orderRows.map((r) => r.id);
   const events = await db
@@ -1578,44 +1631,7 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
   }));
 
   const facts = timingInputs.map((input) => deriveOrderTiming(input, settings));
-  const summary = summarizeOrderTiming(facts);
-  const redFlags = orderTimingRedFlags(summary);
-
-  const rows = facts.map((f) => ({
-    orderId: f.id.slice(0, 8),
-    fulfilmentMethod: f.fulfilmentMethod,
-    channel: f.channel,
-    tradingDay: f.tradingDay,
-    excluded: f.excluded === false ? null : f.excluded,
-    hasPromise: f.hasPromise,
-    onTime: f.onTime,
-    promiseKept: f.promiseKept,
-    latenessMinutes: f.latenessMinutes,
-    receivedToClaimedMinutes: f.receivedToClaimedMinutes,
-    receivedToReadyMinutes: f.receivedToReadyMinutes,
-    readyToHandoverMinutes: f.readyToHandoverMinutes,
-    arrivedToHandoverMinutes: f.arrivedToHandoverMinutes,
-    dispatchToDeliveredMinutes: f.dispatchToDeliveredMinutes,
-    receivedToCompletedMinutes: f.receivedToCompletedMinutes,
-    wasDelayed: f.wasDelayed,
-    revisedPromiseKept: f.revisedPromiseKept,
-    customerWaitingIncident: f.customerWaitingIncident,
-    heldMinutes: Math.round((f.heldSeconds / 60) * 10) / 10,
-    assignedUserId: f.assignedUserId,
-    completedUserId: f.completedUserId,
-    inputUserId: f.inputUserId,
-    station: f.station,
-  }));
-
-  return {
-    ref: "ARC-T2-005",
-    title: "Order Timing & Service Levels",
-    generatedAt: new Date().toISOString(),
-    period: { from: from.toISOString(), to: to.toISOString() },
-    summary: flattenTimingSummary(summary),
-    rows,
-    redFlags,
-  };
+  return { facts, settings };
 }
 
 /**
@@ -1784,133 +1800,59 @@ export async function resellerCredit(orgId: string): Promise<ReportPayload> {
 }
 
 /**
- * The bonus scheme (ARC-RPT-SPEC-001) has {@link TOTAL_KPI_COMPONENTS} KPI
- * components. Today only two have real, measurable data — order accuracy (no
- * refund) and average satisfaction score — and a tier plus a payable £ figure
- * is a claim about someone's pay, not a display nicety. Extrapolating "no
- * refunds on my one order this week" into a 7-component PLATINUM score (a
- * live bug: one refund-free order scored 30 points from a "≤2 orders"
- * shortcut, plus a 20-point base, projected to a full PLATINUM tier and a
- * payable £150) states a specific, false number. Until every component is
- * actually measured for that person, this reports "INSUFFICIENT DATA" and no
- * £ figure — never a tier extrapolated from a subset (ARC-024).
+ * ARC-T2-002 Staff Performance (v1.2 Phase 7B) — replaces Staff KPI, which
+ * counted cashier codes and paid £50/£100/£150 bonus tiers from them. Keyed by
+ * login; no bonus figures (Q16: no pay link). This JSON is everyone,
+ * unscoped, so it stays ADMIN and above (EVIDENCE_REF_MIN_ROLE); the page
+ * uses `/api/evidence/staff-performance`, which cuts rows per viewer.
  */
-const TOTAL_KPI_COMPONENTS = 7;
-
-export type StaffBonusTier = "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD" | "INSUFFICIENT DATA";
-
-/** ARC-T2-002 Staff KPI Performance Report — weekly KPIs from available signals. */
-export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const timezone = await orgTimeZone(orgId);
-  const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
-  const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
-
-  const staff = await db
-    .select({ id: cashierProfiles.id, name: cashierProfiles.displayName })
-    .from(cashierProfiles)
-    .where(and(eq(cashierProfiles.orgId, orgId), eq(cashierProfiles.isActive, true)));
-
-  const redFlags: string[] = [];
-  const rows: Record<string, unknown>[] = [];
-  for (const st of staff) {
-    // Orders SETTLED this week and attributed to this cashier as the one who
-    // completed them — `completedCashierId`, not the legacy `cashierId`
-    // column, which is overwritten to whoever last touched the order and is
-    // not necessarily who did the commission-earning work (migration 051).
-    const ord = await db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.orgId, orgId),
-          eq(orders.status, "completed"),
-          eq(orders.completedCashierId, st.id),
-          gte(orders.settledAt, start),
-          lt(orders.settledAt, end),
-        ),
-      );
-    const orderIds = ord.map((o) => o.id);
-    const ordersHandled = orderIds.length;
-
-    // Order accuracy: orders without a refund / total.
-    let refunded = 0;
-    if (orderIds.length) {
-      const rf = await db
-        .select({ n: sql<number>`COUNT(DISTINCT ${refunds.orderId})` })
-        .from(refunds)
-        .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)));
-      refunded = num(rf[0]?.n);
-    }
-    const accuracy = ordersHandled ? ((ordersHandled - refunded) / ordersHandled) * 100 : null;
-
-    // Satisfaction average attributed to this staff member.
-    const sat = await db
-      .select({ avg: sql<number>`AVG(${satisfactionScores.score})`, n: sql<number>`COUNT(*)` })
-      .from(satisfactionScores)
-      .where(and(eq(satisfactionScores.orgId, orgId), eq(satisfactionScores.staffId, st.id), gte(satisfactionScores.scoreDate, start), lt(satisfactionScores.scoreDate, end)));
-    const satisfaction = num(sat[0]?.n) ? num(sat[0]?.avg) : null;
-
-    // KPIs at target from what we can actually measure (accuracy ≥98, satisfaction ≥4.8).
-    let atTarget = 0;
-    let measured = 0;
-    if (accuracy !== null) {
-      measured++;
-      if (accuracy >= 98) atTarget++;
-    }
-    if (satisfaction !== null) {
-      measured++;
-      if (satisfaction >= 4.8) atTarget++;
-    }
-
-    let bonusTier: StaffBonusTier;
-    let bonusPayable: number | null;
-    if (measured < TOTAL_KPI_COMPONENTS) {
-      // Never extrapolate a full-scheme tier from a subset of KPIs.
-      bonusTier = "INSUFFICIENT DATA";
-      bonusPayable = null;
-    } else if (atTarget === TOTAL_KPI_COMPONENTS) {
-      bonusTier = "PLATINUM";
-      bonusPayable = 150;
-    } else if (atTarget >= 5) {
-      bonusTier = "GOLD";
-      bonusPayable = 100;
-    } else if (atTarget >= 3) {
-      bonusTier = "SILVER";
-      bonusPayable = 50;
-    } else {
-      bonusTier = "BELOW STANDARD";
-      bonusPayable = 0;
-    }
-    if (bonusTier === "BELOW STANDARD" && ordersHandled > 0) redFlags.push(`${st.name} is BELOW STANDARD this week — review.`);
-
-    rows.push({
-      staff: st.name,
-      ordersHandled,
-      orderAccuracyRate: accuracy,
-      satisfactionScore: satisfaction,
-      kpisAtTarget: atTarget,
-      kpisMeasured: measured,
-      kpisTotal: TOTAL_KPI_COMPONENTS,
-      bonusTier,
-      bonusPayable,
-    });
-  }
-  rows.sort((a, b) => num(b.bonusPayable) - num(a.bonusPayable));
-
+export async function staffPerformanceReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
+  const { staffPerformance } = await import("./staffPerformance");
+  const report = await staffPerformance(
+    orgId,
+    { fromIso: isoDateOnly(from), toIso: isoDateOnly(to), adminCover: true },
+    { userId: null, role: "SUPER_ADMIN" },
+  );
+  const line = (staff: string, role: string, f: (typeof report.team)["unattributed"]) => ({
+    staff,
+    role,
+    loaded: f.loaded,
+    prepared: f.prepared,
+    completed: f.completed,
+    collected: f.collected,
+    delivered: f.delivered,
+    dispatched: f.dispatched,
+    solo: f.solo,
+    stillOpen: f.stillOpen,
+    salesCompleted: f.salesCompleted,
+    valueBroughtIn: f.valueBroughtIn,
+    averageOrderValue: f.averageOrderValue,
+    wrongItemRatePercent: f.wrongItemRatePercent,
+    reopens: f.reopens,
+    unreadyTaps: f.unreadyTaps,
+    refundsProcessed: f.refundsProcessed,
+    deletes: f.deletes,
+    completedOthers: f.completedOthers,
+  });
+  const rows = [
+    ...report.rows.map((r) => line(r.name, r.role, r)),
+    ...(report.team.adminCover ? [line("Admin cover", "TEAM", report.team.adminCover)] : []),
+    line("Unattributed", "TEAM", report.team.unattributed),
+    line("Total", "TEAM", report.team.total),
+  ];
   return {
     ref: "ARC-T2-002",
-    title: "Staff KPI Performance Report",
+    title: "Staff Performance",
     generatedAt: new Date().toISOString(),
-    period: { from: start.toISOString(), to: end.toISOString() },
+    period: { from: report.period.from, to: report.period.to },
     summary: {
-      staff: rows.length,
-      platinum: rows.filter((r) => r.bonusTier === "PLATINUM").length,
-      belowStandard: rows.filter((r) => r.bonusTier === "BELOW STANDARD").length,
-      insufficientData: rows.filter((r) => r.bonusTier === "INSUFFICIENT DATA").length,
-      totalBonus: rows.reduce((s, r) => s + num(r.bonusPayable), 0),
+      staff: report.rows.length,
+      grossSettledSales: report.grossSettledSales,
+      salesCompleted: report.team.total.salesCompleted,
+      provisional: report.provisional ? "yes" : "no",
     },
     rows,
-    redFlags,
+    redFlags: [],
   };
 }
 
@@ -1953,7 +1895,7 @@ export async function runReport(
     case "ARC-T2-002": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
-      return staffKpiPerformance(orgId, from, to);
+      return staffPerformanceReport(orgId, from, to);
     }
     case "ARC-T2-003": {
       const to = opts.to ?? new Date();

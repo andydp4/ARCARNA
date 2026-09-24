@@ -1,20 +1,18 @@
 /**
- * STF-FN1: the Staff KPI Evidence (ARC-T2-002) is hidden while it is rebuilt.
+ * STF-01 (v1.2 Phase 7B): ARC-T2-002 is Staff Performance now, replacing the
+ * Staff KPI report that STF-FN1 hid.
  *
- * Why it is hidden, pinned against today's data shape: since the lazy-shift
- * change, orders carry the person on `completed_user_id` and no cashier code
- * at all (`completed_cashier_id` NULL). The report still builds its staff list
- * from cashier codes, so someone who sold all week does not appear, and the
- * old code profiles sit on zero. Orders from before 27 Aug 2026 carry both
- * (migration 057 filled `completed_user_id` from the shift opener), so both
- * shapes are seeded.
+ * Pinned against both data shapes: since the lazy-shift change, orders carry
+ * the person on `completed_user_id` and no cashier code at all
+ * (`completed_cashier_id` NULL); orders from before 27 Aug 2026 carry both
+ * (migration 057 filled `completed_user_id` from the shift opener). The old
+ * report counted codes, so the first person was missing and the second sat on
+ * zero. Keyed by login, both appear with their own orders, and there is no
+ * bonus tier or £ bonus anywhere (Q16).
  *
- * The `it.fails` case is the rebuild's (STF-01) first test: it describes what
- * the report must do and fails today. When STF-01 lands, it starts passing,
- * vitest reports it, and it becomes a plain `it`.
- *
- * Also here: the server keeps ARC-T2-002 to admins (it rates managers too:
- * Q12), while the rest of Evidence stays open to managers.
+ * Also here: the unscoped ARC-T2-002 JSON stays admin only (it rates managers
+ * too: Q12), while the rest of Evidence stays open to managers. The page
+ * itself uses /api/evidence/staff-performance, cut per viewer.
  *
  * In CI's unit-db job by explicit file name (.github/workflows/ci.yml).
  */
@@ -70,33 +68,17 @@ describe.skipIf(!hasDb)("Staff KPI (ARC-T2-002) on today's data shape", () => {
     await db.delete(organizations).where(eq(organizations.id, orgId));
   });
 
-  it("is why the page is hidden: a person who sold this week is missing; only the old code shows", async () => {
-    const { staffKpiPerformance } = await import("../services/reportsEngine");
-    const report = await staffKpiPerformance(orgId, WEEK.from, WEEK.to);
-    const names = report.rows.map((r) => r.staff);
-    expect(names).toEqual(["Olly Old"]);
-    expect(names).not.toContain("Nina Now");
-    // Pin the payload shape the rebuild replaces, so a change to it is seen.
-    expect(Object.keys(report.rows[0]).sort()).toEqual(
-      [
-        "bonusPayable",
-        "bonusTier",
-        "kpisAtTarget",
-        "kpisMeasured",
-        "kpisTotal",
-        "orderAccuracyRate",
-        "ordersHandled",
-        "satisfactionScore",
-        "staff",
-      ].sort(),
-    );
-  });
-
-  it.fails("STF-01: every person appears, keyed by login, with the orders they completed", async () => {
-    const { staffKpiPerformance } = await import("../services/reportsEngine");
-    const report = await staffKpiPerformance(orgId, WEEK.from, WEEK.to);
-    const nina = report.rows.find((r) => r.staff === "Nina Now") as { ordersHandled: number } | undefined;
-    expect(nina?.ordersHandled).toBe(2);
+  it("STF-01: every person appears, keyed by login, with the orders they completed — never a bonus", async () => {
+    const { staffPerformanceReport } = await import("../services/reportsEngine");
+    const report = await staffPerformanceReport(orgId, WEEK.from, WEEK.to);
+    const person = (name: string) => report.rows.find((r) => r.staff === name) as { completed: number; salesCompleted: number } | undefined;
+    expect(person("Nina Now")?.completed).toBe(2);
+    expect(person("Nina Now")?.salesCompleted).toBe(50);
+    expect(person("Olly Old")?.completed).toBe(1);
+    expect(person("Total")?.salesCompleted).toBe(60);
+    const keys = Object.keys(report.rows[0]);
+    expect(keys.some((k) => /bonus|tier/i.test(k))).toBe(false);
+    expect(Object.keys(report.summary).some((k) => /bonus/i.test(k))).toBe(false);
   });
 
   it("the server keeps ARC-T2-002 to admins; other Evidence stays open to managers", async () => {

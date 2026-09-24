@@ -109,7 +109,8 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
       "How fast orders actually move — on-time and promise-kept rates, stage-by-stage timings, and where delays and customer waits happen.",
     route: "/reports/order-timing",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    status: "planned",
+    // Built in v1.2 Phase 7A: grouped by fulfilment, person, hour, day or channel.
+    status: "available",
   },
   {
     ref: "ARC-T2-001",
@@ -124,17 +125,16 @@ export const REPORT_CATALOG: ReportCatalogEntry[] = [
   },
   {
     ref: "ARC-T2-002",
-    title: "Staff KPI Performance Report",
+    title: "Staff Performance",
     tier: 2,
     frequency: "WEEKLY",
     purpose:
-      "Measures each staff member's performance against the 7 core KPIs every week — for bonus calculation and weekly check-ins.",
-    route: "/reports/staff-kpi",
+      "What each person did over any dates — orders loaded, prepared, completed and dispatched, the value they brought in, and quality — adding up to the sales you took.",
+    route: "/reports/staff-performance",
     formats: ["PNG", "JPEG", "PDF", "CSV"],
-    // Hidden while it is rebuilt (STF-FN1): it counted cashier codes, which
-    // no shift carries any more, so it showed every member of staff on zero.
-    status: "planned",
-    statusLabel: "Being rebuilt",
+    // Rebuilt in v1.2 Phase 7B, keyed by login. It replaces Staff KPI, which
+    // counted cashier codes no shift carries any more (STF-FN1).
+    status: "available",
   },
   {
     ref: "ARC-T2-003",

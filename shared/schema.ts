@@ -121,6 +121,12 @@ export const organizations = pgTable("organizations", {
    */
   priceGuardEnabled: boolean("price_guard_enabled").default(false).notNull(),
   /**
+   * When per-person figures started (v1.2 Phase 7, migration 170). Order
+   * Timing by person and Staff Performance say "provisional" for the first
+   * two weeks after it, while the owner checks the team figures.
+   */
+  staffPerformanceSince: timestamp("staff_performance_since").defaultNow().notNull(),
+  /**
    * When below-minimum Signals go out (v1.2 Phase 4, migration 111):
    * "immediate" or "twice_daily" (a round-up at 12:00 and 18:00). Admin set.
    * Below cost always goes immediately.
@@ -1740,7 +1746,17 @@ export const orderEvents = pgTable("order_events", {
   userId: varchar("user_id", { length: 255 }),
   /** Per-kind shape — see the brief's `meta` shapes line. */
   meta: jsonb("meta"),
+  /**
+   * The actor's station at the moment they acted (v1.2 Phase 7A, migration
+   * 170): 'collection', 'delivery', 'both', or 'all' when they had none set.
+   * Stamped by a trigger from `ops_staff`, so every writer gets it.
+   */
+  station: varchar("station", { length: 16 }),
 }, (table) => [
+  check(
+    "order_events_station_check",
+    sql`${table.station} IS NULL OR ${table.station} IN ('collection', 'delivery', 'both', 'all')`,
+  ),
   check(
     "order_events_kind_check",
     sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted', 'edited')`,

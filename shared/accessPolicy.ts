@@ -390,6 +390,8 @@ const DELIVERY =
   "The delivery address is on the order; the driver's call reveals the phone to the assigned driver only while out for delivery, admins always, every reveal logged (Q8a, PRV-04/05).";
 const ORDER_HISTORY =
   "A cashier's order history is today plus their own last seven days; the palette searches on the server inside that bound (Q10a, CMP-06).";
+const STAFF_PERFORMANCE =
+  "Order Timing and Staff Performance are Evidence: manager and above; a manager sees cashiers and themselves, admins and the owner everyone, and a manager is refused another manager's drill-down (v1.2 Phase 7, Q14).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -425,6 +427,9 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PUT", path: "/api/settings/review-rules", minRole: "ADMIN", reason: NEEDS_A_LOOK },
   { method: "POST", path: "/api/products/min-price/preview", minRole: "MANAGER", reason: BULK_MIN },
   { method: "POST", path: "/api/products/min-price/apply", minRole: "MANAGER", reason: BULK_MIN },
+  { method: "GET", path: "/api/evidence/order-timing", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/evidence/staff-performance", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/evidence/staff-performance/:userId", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
 
   // Stock Centre › Stock levels: open to all staff, never a cost.
   { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },
