@@ -98,6 +98,12 @@ export function canSeeWouldHaveFlagged(role: string | null | undefined): boolean
 /** "Price guard at the till" is switched on and off by admins only (v1.2 Phase 4, owner decision). */
 export const PRICE_GUARD_SWITCH_MIN_ROLE: Role = "ADMIN";
 
+/** Card (link): a cashier takes a sale's card payment by Stripe link (v1.2 Stripe links). */
+export const CARD_LINK_MIN_ROLE: Role = "CASHIER";
+
+/** Whether Stripe is connected, the webhook URL and the .env lines: managers and above. */
+export const STRIPE_SETTINGS_MIN_ROLE: Role = "MANAGER";
+
 // ---------------------------------------------------------------------------
 // Customer contact details (owner decision Q13a: admin and above). Staff below
 // that still find and serve customers: they get a flag saying whether there is
@@ -207,6 +213,8 @@ const NEEDS_A_LOOK =
   "Needs a look and Price overrides Evidence are manager and above, and each viewer gets only exceptions about people they outrank; the rules are admin only and logged (v1.2 Phase 4, CMP-02, CMP-04, PRC-09).";
 const BULK_MIN =
   "Bulk \"Set minimum price\" is managers and admins, previewed first and written to price history; a manager's change tells the owner (v1.2 Phase 4, PRC-05).";
+const CARD_LINK =
+  "Card (link): any staff member can make, cancel or send a Stripe link for a sale and switch it to another tender; the customer's number never reaches the till. Stripe settings are manager and above and never show a key (v1.2 Stripe links).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -327,6 +335,16 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
 
   // Gift cards.
   { method: "POST", path: "/api/gift-cards", minRole: "MANAGER", reason: GIFT_ISSUE },
+
+  // Card (link) at the till (v1.2 Stripe links). The webhook itself is public
+  // and signed by Stripe, so it has no role row.
+  { method: "GET", path: "/api/card-links/till", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "POST", path: "/api/card-links/:orderId", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "GET", path: "/api/card-links/:orderId", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "POST", path: "/api/card-links/:orderId/cancel", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "POST", path: "/api/card-links/:orderId/retender", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "POST", path: "/api/card-links/:orderId/whatsapp", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
+  { method: "GET", path: "/api/settings/stripe", minRole: STRIPE_SETTINGS_MIN_ROLE, reason: CARD_LINK },
 
   // Needs attention: refused till sales.
   { method: "GET", path: "/api/sale-issues", minRole: "MANAGER", reason: NEEDS_ATTENTION },

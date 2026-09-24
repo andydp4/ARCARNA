@@ -28,6 +28,7 @@ import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { PriceGuardSettings } from '@/components/settings/PriceGuardSettings'
+import { StripeSettings } from '@/components/settings/StripeSettings'
 import { ReviewRulesSettings } from '@/components/settings/ReviewRulesSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
 import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
@@ -379,6 +380,8 @@ export default function Settings() {
 
           {/* Payment Settings */}
           <TabsContent value="payment" className="space-y-6">
+              {/* Managers and above; the server refuses anyone else. */}
+              {canViewCashiers && <StripeSettings />}
               <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

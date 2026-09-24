@@ -22,6 +22,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  QrCode,
   Receipt,
   ShoppingBag,
   Smartphone,
@@ -75,6 +76,9 @@ export const PAYMENT_OPTIONS = [
   { value: "gift_card", label: "Gift card", Icon: Ticket },
   { value: "personal_use", label: "Personal use", Icon: UserRound },
 ] as const;
+
+/** Card (link): a Stripe link the customer pays on their own phone. Offered only once Stripe is set up. */
+const CARD_LINK_OPTION = { value: "card_link", label: "Card (link)", Icon: QrCode } as const;
 
 /**
  * What this step's final action actually does, by payment method — cash,
@@ -160,6 +164,8 @@ export type PosCheckoutStepProps = {
   priceGuardPanel?: React.ReactNode;
   /** Replaces the confirm button's label ("Confirm and take payment"). */
   confirmLabel?: string;
+  /** Stripe is set up, so "Card (link)" is offered (v1.2 Stripe links). */
+  cardLinkEnabled?: boolean;
 };
 
 export function PosCheckoutStep(p: PosCheckoutStepProps) {
@@ -236,6 +242,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
                         <SelectItem value="card">Card</SelectItem>
+                        {p.cardLinkEnabled && <SelectItem value="card_link">Card (link)</SelectItem>}
                         <SelectItem value="transfer">Transfer</SelectItem>
                         <SelectItem value="tick">On credit</SelectItem>
                       </SelectContent>
@@ -293,7 +300,10 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="payment-method-label" data-testid="select-payment">
-                {PAYMENT_OPTIONS.map(({ value, label, Icon }) => (
+                {(p.cardLinkEnabled
+                  ? [PAYMENT_OPTIONS[0], PAYMENT_OPTIONS[1], CARD_LINK_OPTION, ...PAYMENT_OPTIONS.slice(2)]
+                  : PAYMENT_OPTIONS
+                ).map(({ value, label, Icon }) => (
                   <button
                     key={value}
                     type="button"

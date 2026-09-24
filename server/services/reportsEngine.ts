@@ -11,6 +11,7 @@
  * operational order fields (Order Status, Delay Log) and net-new tables
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
+import { PAYMENT_STATUS_PAID, isCardLinkMethod } from "@shared/payments/cardLink";
 import { db } from "../db";
 import { storage } from "../storage";
 import {
@@ -207,8 +208,12 @@ async function channelBreakdown(
   start: Date,
   end: Date,
   filter?: ReportScopeFilter,
-): Promise<Record<ChannelBucket, number>> {
+): Promise<Record<ChannelBucket, number> & { cardLink: number }> {
   const totals: Record<ChannelBucket, number> = { Cash: 0, Card: 0, Tick: 0, GiftCard: 0, Website: 0, Other: 0 };
+  // The part of Card that came by Stripe link rather than the terminal (v1.2
+  // Stripe links): already inside Card, shown separately so each reconciles
+  // against its own statement.
+  let cardLink = 0;
 
   const scopeConds = [];
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
@@ -218,14 +223,21 @@ async function channelBreakdown(
     .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
     .from(orders)
     .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds));
-  if (orderRows.length === 0) return totals;
+  if (orderRows.length === 0) return { ...totals, cardLink };
 
   const orderIds = orderRows.map((r) => r.id);
   const [legRows, refundRows] = await Promise.all([
     db
       .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
       .from(orderPayments)
-      .where(and(eq(orderPayments.orgId, orgId), inArray(orderPayments.orderId, orderIds))),
+      // A card-link leg Stripe has not confirmed is not takings.
+      .where(
+        and(
+          eq(orderPayments.orgId, orgId),
+          inArray(orderPayments.orderId, orderIds),
+          eq(orderPayments.status, PAYMENT_STATUS_PAID),
+        ),
+      ),
     db
       .select({ orderId: refunds.orderId, refunded: sql<string>`COALESCE(SUM(${refunds.total}::numeric), 0)` })
       .from(refunds)
@@ -253,13 +265,14 @@ async function channelBreakdown(
       for (const leg of legs) {
         const share = gross > 0 ? leg.amount / gross : 0;
         totals[bucketForMethod(leg.method)] += net * share;
+        if (isCardLinkMethod(leg.method)) cardLink += net * share;
       }
     } else {
       totals[bucketForMethod(o.paymentMethod)] += net;
     }
   }
   for (const b of CHANNEL_BUCKETS) totals[b] = round(totals[b]);
-  return totals;
+  return { ...totals, cardLink: round(cardLink) };
 }
 
 /**
@@ -318,6 +331,8 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
       ordersProcessed,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      // Of which by Stripe card link (provider: Stripe).
+      cardLinkRevenue: byChannel.cardLink,
       tickRevenue: byChannel.Tick,
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
@@ -328,7 +343,10 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
       fourWeekDailyAvg,
     },
     rows: CHANNEL_BUCKETS.map((c) => ({
-      channel: CHANNEL_LABELS[c],
+      channel:
+        c === "Card" && byChannel.cardLink > 0
+          ? `${CHANNEL_LABELS[c]} (incl. ${byChannel.cardLink.toFixed(2)} by card link, Stripe)`
+          : CHANNEL_LABELS[c],
       revenue: byChannel[c],
       share: totalRevenue ? (byChannel[c] / totalRevenue) * 100 : 0,
     })),
@@ -427,6 +445,8 @@ export async function weeklySalesSummary(
       avgOrderValue,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      // Of which by Stripe card link (provider: Stripe).
+      cardLinkRevenue: byChannel.cardLink,
       tickRevenue: byChannel.Tick,
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,

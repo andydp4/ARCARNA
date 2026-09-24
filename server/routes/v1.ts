@@ -214,10 +214,12 @@ export function registerV1Routes(app: Express): void {
         const input = parsed.data;
         // Split and gift-card tenders need legs and a card to redeem, which
         // this API does not take: recording one would be money nobody holds.
-        if (input.paymentMethod === "split" || input.paymentMethod === "gift_card") {
+        // Card (link) needs a till to show the customer the link, and its leg
+        // must start unpaid; this API writes every leg as money taken.
+        if (input.paymentMethod === "split" || input.paymentMethod === "gift_card" || input.paymentMethod === "card_link") {
           return res.status(400).json({
             error: "validation_error",
-            message: "paymentMethod: split and gift_card are not supported through the API.",
+            message: "paymentMethod: split, gift_card and card_link are not supported through the API.",
           });
         }
         if (input.paymentMethod === "tick" && !input.customerId) {

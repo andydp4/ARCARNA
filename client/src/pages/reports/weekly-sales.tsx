@@ -108,7 +108,11 @@ export default function WeeklySalesReport() {
 
                 <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <ReportKpi label="Cash" value={money(Number(s.cashRevenue) || 0)} />
-                  <ReportKpi label="Card" value={money(Number(s.cardRevenue) || 0)} />
+                  <ReportKpi
+                    label="Card"
+                    value={money(Number(s.cardRevenue) || 0)}
+                    sub={Number(s.cardLinkRevenue) > 0 ? `incl. ${money(Number(s.cardLinkRevenue))} by card link (Stripe)` : undefined}
+                  />
                   <ReportKpi label="Credit (Tick)" value={money(Number(s.tickRevenue) || 0)} />
                   <ReportKpi label="Gift Card" value={money(Number(s.giftCardRevenue) || 0)} />
                   <ReportKpi label="Website" value={money(Number(s.websiteRevenue) || 0)} />

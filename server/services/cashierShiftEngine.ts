@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { isPaidLeg } from "@shared/payments/cardLink";
 import {
   cashierProfiles,
   cashierShifts,
@@ -231,23 +232,28 @@ function paidSalesReceivedFor(
 /** The tender legs for each order — which bucket its money actually fell into. */
 async function loadTenderLegs(
   orderIds: string[],
-): Promise<Map<string, Array<{ method: string; amount: number }>>> {
-  const byOrder = new Map<string, Array<{ method: string; amount: number }>>();
+): Promise<Map<string, Array<{ method: string; amount: number; status: string }>>> {
+  const byOrder = new Map<string, Array<{ method: string; amount: number; status: string }>>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db
     .select({
       orderId: orderPayments.orderId,
       method: orderPayments.method,
       amount: orderPayments.amount,
+      status: orderPayments.status,
     })
     .from(orderPayments)
     .where(inArray(orderPayments.orderId, orderIds));
   for (const row of rows) {
     const list = byOrder.get(row.orderId) ?? [];
-    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)), status: row.status });
     byOrder.set(row.orderId, list);
   }
   return byOrder;
+}
+
+function awaitingOnOrder(legs: Array<{ amount: number; status: string }> | undefined): number {
+  return (legs ?? []).filter((leg) => !isPaidLeg(leg)).reduce((sum, leg) => sum + leg.amount, 0);
 }
 
 /** The credit leg and remaining balance on each of these orders. */
@@ -428,7 +434,8 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     );
     return {
       orderId: row.id,
-      paidContribution: Math.max(0, total - deferredCredit) * basis.knownShare,
+      // A card link Stripe has not confirmed is not money in (v1.2 Stripe links).
+      paidContribution: Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * basis.knownShare,
       stockCost: basis.stockCost,
       costMissingLines: basis.costMissingLines,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,
@@ -482,6 +489,7 @@ function cashierShiftSummaryValues(
     grossSales: String(sheet.grossSales),
     cashSales: String(sheet.cashSales),
     cardSales: String(sheet.cardSales),
+    cardLinkSales: String(sheet.cardLinkSales),
     creditSales: String(sheet.creditSales),
     unpaidCreditSales: String(sheet.unpaidCreditSales),
     stockCost: String(sheet.stockCost),
@@ -600,6 +608,7 @@ export async function refreshClosedCashierShiftSummary(
         grossSales: values.grossSales,
         cashSales: values.cashSales,
         cardSales: values.cardSales,
+        cardLinkSales: values.cardLinkSales,
         creditSales: values.creditSales,
         unpaidCreditSales: values.unpaidCreditSales,
         stockCost: values.stockCost,

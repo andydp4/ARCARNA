@@ -41,6 +41,7 @@ import { isValidClientOrderId } from "@shared/orders/saleReference";
 import { recordAdminAudit } from "../adminAudit";
 import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
 import { PlaceOrderInput } from "../../packages/domain/src/schemas";
+import { isCardLinkMethod, PAYMENT_STATUS_AWAITING, PAYMENT_STATUS_PAID } from "@shared/payments/cardLink";
 
 /**
  * A repeat of a sale that already landed gets the original order back and
@@ -493,6 +494,30 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         });
       }
 
+      // Card (link) (v1.2 Stripe links): the customer pays on their own phone
+      // while the sale is live, so it needs Stripe set up, a connection and a
+      // customer standing there (or on the phone) — not a queued offline sale,
+      // a resent refused one, or a day keyed in afterwards.
+      {
+        const { cardLinkSaleRefusal } = await import("@shared/payments/cardLink");
+        const { isStripeConfigured } = await import("../stripe/config");
+        const offline = body._offlineOrderReplay === true || !!req.offlineQueuedAt || !!saleIssue;
+        const refusal = cardLinkSaleRefusal({
+          paymentMethod: body.paymentMethod,
+          legs: Array.isArray(body.payments) ? body.payments : null,
+          configured: isStripeConfigured(),
+          offline,
+          backdated: isBackdated,
+          usesGiftCard,
+          remainderPaymentMethod: body.remainderPaymentMethod ?? null,
+          isPersonalUse,
+        });
+        if (refusal) {
+          // 422 for a sale that arrived late: the till hands it to a manager.
+          return res.status(offline ? 422 : 400).json({ message: refusal, code: "CARD_LINK_REFUSED" });
+        }
+      }
+
       // A backdated sale belongs to the shift of the day it was sold on, the
       // way an offline order replayed after its shift closed already does. The
       // middleware resolved today's shift, which is the wrong day for this
@@ -788,6 +813,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               orderId: result.orderId,
               method: leg.method,
               amount: String(roundMoney(leg.amount)),
+              // A card-link leg is money Stripe has not confirmed yet.
+              status: isCardLinkMethod(leg.method) ? PAYMENT_STATUS_AWAITING : PAYMENT_STATUS_PAID,
             })),
           );
         } else if (createdOrder) {
@@ -799,6 +826,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             orderId: result.orderId,
             method: String(createdOrder.payment_method),
             amount: String(roundMoney(parseFloat(String(createdOrder.total)))),
+            status: isCardLinkMethod(createdOrder.payment_method) ? PAYMENT_STATUS_AWAITING : PAYMENT_STATUS_PAID,
           });
         }
 

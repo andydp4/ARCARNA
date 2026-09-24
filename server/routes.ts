@@ -57,11 +57,14 @@ import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/w
 import { registerAssistantRoutes } from "./routes/assistant";
 import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./routes/website";
 import { registerPrivacyNoticeRoutes } from "./routes/privacyNotice";
+import { registerCardLinkPublicRoutes, registerCardLinkRoutes } from "./routes/cardLinks";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
+  // Stripe signs its webhook; the customer lands on the paid page signed out.
+  registerCardLinkPublicRoutes(app);
   // Readable signed out: shop customers see it before signing in / ordering.
   registerPrivacyNoticeRoutes(app);
 
@@ -81,6 +84,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerProductRoutes(app, scoped);
   registerPriceExceptionRoutes(app, scoped);
   registerPriceGuardRoutes(app, scoped);
+  registerCardLinkRoutes(app, scoped);
   registerNeedsALookRoutes(app, scoped);
 
   registerSetupAndImportRoutes(app);

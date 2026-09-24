@@ -122,6 +122,19 @@ export async function completeOrderTx(
     .limit(1);
   const resettled = Boolean(priorCompleted);
 
+  // Card (link) (v1.2 Stripe links): money Stripe has not confirmed is not
+  // money taken, and completing is what settles the order. Handing the goods
+  // over waits for the payment, or for the till to take another tender.
+  const { orderPayments } = await import("@shared/schema");
+  const awaiting = await tx
+    .select({ id: orderPayments.id })
+    .from(orderPayments)
+    .where(and(eq(orderPayments.orderId, orderId), eq(orderPayments.status, "awaiting")))
+    .limit(1);
+  if (awaiting.length > 0) {
+    throw new AwaitingCardPaymentError();
+  }
+
   const paymentMethod = String(lockedRow.payment_method ?? "");
   const orderTotal = parseFloat(String(lockedRow.total ?? "0"));
   const creditAmountToOpen = await creditLegTotal(orderId, paymentMethod, orderTotal, tx);
@@ -231,6 +244,16 @@ export async function completeOrderTx(
 export type ReopenRefusalCode = "ORDER_REOPEN_REFUSED" | "ORDER_REOPEN_CLOSED_DAY";
 
 /** Thrown by `reopenOrderTx` for every business-rule refusal — the route maps it to 409. */
+/** Completing an order whose card link Stripe has not yet confirmed. */
+export class AwaitingCardPaymentError extends Error {
+  readonly statusCode = 409;
+  readonly code = "ORDER_AWAITING_CARD_PAYMENT";
+  constructor() {
+    super("This order is awaiting card payment. Complete it once the customer has paid, or take another payment at the till.");
+    this.name = "AwaitingCardPaymentError";
+  }
+}
+
 export class OrderReopenRefusedError extends Error {
   readonly code: ReopenRefusalCode;
   constructor(message: string, code: ReopenRefusalCode = "ORDER_REOPEN_REFUSED") {

@@ -76,6 +76,8 @@ import { buildConfirmation, choiceProblem, flaggedCartLines } from "@/lib/priceG
 import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote";
 import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
 import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
+import { CardLinkDialog } from "@/components/card-link/CardLinkDialog";
+import { cardLinkAmountOf, type CardLinkSale } from "@/lib/cardLinkSale";
 
 /** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
 function confirmVerb(paymentMethod: string): string {
@@ -252,6 +254,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // payment" rather than after, from a 400. No new endpoint: this is the same
   // /api/auth/user and /api/locations data other pages already fetch.
   const { user: authUser } = useAuth();
+  // Card (link) (v1.2 Stripe links): offered only when Stripe is set up; the
+  // sale waiting on one is shown over the till until paid or re-tendered.
+  const { data: cardLinkStatus } = useQuery<{ enabled: boolean; whatsapp: boolean }>({
+    queryKey: ["/api/card-links/till"],
+    staleTime: 5 * 60_000,
+  });
+  const [cardLinkSale, setCardLinkSale] = useState<CardLinkSale | null>(null);
   const { data: posLocations = [] } = useQuery<LocationPickerOption[]>({
     queryKey: ["/api/locations"],
   });
@@ -498,6 +507,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         if (editingIssue) {
           throw new Error("No connection, so the edit was not sent. The sale is still on Needs attention — try again when you are back online.");
         }
+        // A card link is paid while the customer is here; it cannot wait in a queue.
+        if (cardLinkAmountOf(payload) !== null) {
+          throw new Error("Card (link) needs a connection. Choose another way to pay.");
+        }
         await offlineStorage.queueMutation({
           type: 'ORDER_CREATE',
           method: 'POST',
@@ -529,8 +542,17 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       }
       throw new Error(outcome.message);
     },
-    onSuccess: async (data: any) => {
+    onSuccess: async (data: any, variables: any) => {
       const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
+      const cardLinkAmount = cardLinkAmountOf(variables);
+      if (createdOrderId && !data?.offline && cardLinkAmount !== null) {
+        setCardLinkSale({
+          orderId: createdOrderId,
+          amount: cardLinkAmount,
+          longLived: channel === "phone" || channel === "whatsapp",
+          hasCustomer: !!selectedCustomer?.id,
+        });
+      }
       const hadNoDueTime = dueMinutes == null && !dueTime;
 
       if (data?.offline) {
@@ -567,6 +589,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           variant: "destructive",
           duration: 8000,
         });
+      } else if (cardLinkAmount !== null) {
+        toast({ title: "Order recorded", description: "Waiting for the card payment by link." });
       } else {
         toast({
           title: "Order Placed",
@@ -1090,6 +1114,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       if (priceGuard.choice.reason) priceGuard.afterSale(priceGuard.choice.reason);
     }
 
+    if (cardLinkAmountOf(orderData) !== null && !navigator.onLine) {
+      toast({ title: "No connection", description: "Card (link) needs a connection. Choose another way to pay.", variant: "destructive" });
+      return;
+    }
+
     placeOrderMutation.mutate(orderData);
   };
 
@@ -1164,6 +1193,23 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         embedded ? "h-full" : "pos-viewport",
       )}
     >
+      {cardLinkSale && (
+        <CardLinkDialog
+          key={cardLinkSale.orderId}
+          orderId={cardLinkSale.orderId}
+          amount={cardLinkSale.amount}
+          longLived={cardLinkSale.longLived}
+          hasCustomer={cardLinkSale.hasCustomer}
+          whatsappAvailable={cardLinkStatus?.whatsapp === true}
+          onFinished={(how) => {
+            setCardLinkSale(null);
+            if (how === "left_waiting") {
+              toast({ title: "Still awaiting card payment", description: "The order shows on the Ops board until it is paid." });
+            }
+            void invalidateAfterPosCheckout(queryClient);
+          }}
+        />
+      )}
       {view === "pay" ? (
         <div className="min-h-0 flex-1">
           <PosCheckoutStep
@@ -1224,6 +1270,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
               />
             }
             confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
+            cardLinkEnabled={cardLinkStatus?.enabled === true}
           />
         </div>
       ) : (

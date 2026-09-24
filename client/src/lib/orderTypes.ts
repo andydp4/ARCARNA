@@ -99,6 +99,8 @@ export interface BoardOrder {
   /** First few order lines, formatted "<qty>× <name>" — see opsBoard.ts. */
   itemsPreview: string[];
   updatedAt: string | null;
+  /** A card link Stripe has not confirmed yet — "Awaiting card payment" (v1.2 Stripe links). */
+  awaitingCardPayment?: boolean;
 }
 
 /** Which lane a card belongs in. The board has exactly two. */

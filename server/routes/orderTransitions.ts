@@ -13,7 +13,7 @@ import type { Express, RequestHandler } from "express";
 import { transitionOrderSchema } from "@shared/orders/opsTransitions";
 import { attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { CreditError } from "../services/creditLedger";
-import { OrderReopenRefusedError } from "../services/orderCompletion";
+import { AwaitingCardPaymentError, OrderReopenRefusedError } from "../services/orderCompletion";
 import {
   OpsTransitionError,
   OrderAlreadyAssignedError,
@@ -67,6 +67,9 @@ export function registerOrderTransitionRoutes(app: Express, scoped: RequestHandl
         });
       }
       if (error instanceof OrderReopenRefusedError) {
+        return res.status(409).json({ message: error.message, code: error.code });
+      }
+      if (error instanceof AwaitingCardPaymentError) {
         return res.status(409).json({ message: error.message, code: error.code });
       }
       if (error instanceof OpsTransitionError) {
