@@ -12,8 +12,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowDown, ArrowUp, Download, LayoutGrid, Pencil, Plus, Save, Trash2, TrendingUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, LayoutGrid, MessageCircleQuestion, Pencil, Plus, Save, Trash2, TrendingUp, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { useAskStatus } from "@/components/ask/AskPanel";
+import { openAskPanel } from "@/lib/ask";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/Skeleton";
 import { ErrorState } from "@/components/ErrorState";
@@ -81,6 +83,7 @@ export default function TruthsAtAGlance() {
   });
 
   const shown = draft ?? data?.widgets ?? [];
+  const askEnabled = useAskStatus().data?.enabled === true;
 
   const header = (
     <PageHeader
@@ -93,17 +96,27 @@ export default function TruthsAtAGlance() {
           : "Your admin chose these widgets. Each one says which window it covers."
       }
       action={
-        canEdit && !editing ? (
-          <Button
-            variant="outline"
-            className="min-h-[44px] gap-2"
-            onClick={() => setDraft(data?.widgets ?? [])}
-            disabled={!data}
-            data-testid="button-edit-truths-layout"
-          >
-            <Pencil className="h-4 w-4" aria-hidden />
-            Edit layout
-          </Button>
+        askEnabled || (canEdit && !editing) ? (
+          <div className="flex flex-wrap gap-2">
+            {askEnabled && (
+              <Button variant="outline" className="min-h-[44px] gap-2" onClick={() => openAskPanel()} data-testid="button-truths-ask">
+                <MessageCircleQuestion className="h-4 w-4" aria-hidden />
+                Ask arcarna
+              </Button>
+            )}
+            {canEdit && !editing && (
+              <Button
+                variant="outline"
+                className="min-h-[44px] gap-2"
+                onClick={() => setDraft(data?.widgets ?? [])}
+                disabled={!data}
+                data-testid="button-edit-truths-layout"
+              >
+                <Pencil className="h-4 w-4" aria-hidden />
+                Edit layout
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     />

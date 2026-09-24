@@ -435,6 +435,8 @@ const STAFF_TARGETS =
   "Everyone reads the targets behind their colours; only admins set them, each change a new logged version with no pay attached (v1.2 Phase 7C, Q16).";
 const MY_RUN =
   "My run shows a person their own deliveries only (managers may view anyone's); the order is saved per person per day; \"Couldn't deliver\" is the assignee's or a manager's, and tells the managers (v1.2 My run).";
+const ASK =
+  "Ask arcarna: every member of staff may ask; each read-only tool checks the asker's role again with the page's own rules, never returns customer contact details, and never cost to a cashier. The spend cap and the question log are admins and the owner only; settings changes are logged (v1.2 Ask arcarna).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -616,6 +618,13 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/card-links/:orderId/retender", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
   { method: "POST", path: "/api/card-links/:orderId/whatsapp", minRole: CARD_LINK_MIN_ROLE, reason: CARD_LINK },
   { method: "GET", path: "/api/settings/stripe", minRole: STRIPE_SETTINGS_MIN_ROLE, reason: CARD_LINK },
+
+  // Ask arcarna (v1.2).
+  { method: "GET", path: "/api/ask/status", minRole: "CASHIER", reason: ASK },
+  { method: "POST", path: "/api/ask", minRole: "CASHIER", reason: ASK },
+  { method: "GET", path: "/api/ask/settings", minRole: "ADMIN", reason: ASK },
+  { method: "PUT", path: "/api/ask/settings", minRole: "ADMIN", reason: ASK },
+  { method: "GET", path: "/api/ask/log", minRole: "ADMIN", reason: ASK },
 
   // Needs attention: refused till sales.
   { method: "GET", path: "/api/sale-issues", minRole: "MANAGER", reason: NEEDS_ATTENTION },

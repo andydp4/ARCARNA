@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { scrubContactDetails } from "./scrubContact";
 
 /**
  * The "Problem?" button (v1.2 Phase 8A: UXA-09, UXA-06, UXA-14).
@@ -109,15 +110,7 @@ export function screenFor(path: string, search = ""): string {
  * bug report, a miss puts personal data in an admin inbox.
  */
 export function scrubProblemNote(note: string): string {
-  return note
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[removed]")
-    // Card numbers: 13–19 digits, allowing spaces or dashes between groups.
-    .replace(/\b(?:\d[ -]?){12,18}\d\b/g, "[removed]")
-    // UK phone numbers: +44 or 0, then 9–10 more digits with optional spaces.
-    .replace(/(?:\+44\s?|\b0)(?:\d[\s-]?){9,10}\b/g, "[removed]")
-    // Postcodes (e.g. "SW1A 1AA", "M1 1AE").
-    .replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, "[removed]")
-    .slice(0, PROBLEM_NOTE_MAX);
+  return scrubContactDetails(note).slice(0, PROBLEM_NOTE_MAX);
 }
 
 const queueSchema = z

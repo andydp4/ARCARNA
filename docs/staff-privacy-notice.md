@@ -48,6 +48,17 @@ Pressing Problem?, or a crash, may also send the last minute or so of the
 screen to our error service, Sentry, with all text hidden. Sentry is tagged
 with role, screen and device, never your name.
 
+## Ask arcarna
+
+When you use **Ask arcarna**, your question (and the last few questions and
+answers in the same conversation) is sent to Anthropic's Claude API, together
+with the figures arcarna looks up to answer it, which are only ever figures
+your own role can already see. arcarna keeps a record of who asked, your
+role, when, which Evidence was looked at and how much it cost; admins and the
+owner can read the question itself, with phone numbers, emails, card numbers
+and postcodes removed first. The answer is not kept. Please do not type
+customer details into a question. More detail: docs/ask-arcarna-privacy.md.
+
 ## Who sees it
 
 - **Friction Truths** (the usage record) is seen by the owner only.
