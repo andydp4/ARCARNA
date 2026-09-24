@@ -132,16 +132,26 @@ Only shown once the owner has set up Stripe (see "What the owner must set up").
 
 ## Ask arcarna (the AI assistant)
 
-Ask arcarna is being built separately and arrives in a later update to 1.2. It is **not** in this build. What follows is what it is designed to do, not a description of something you can use today.
+Ask arcarna is in this build, but it stays **off and hidden** until the owner adds an Anthropic API key (see below).
 
-- Ask questions in plain English, such as "how did we do last Saturday against the one before?" or "which products sold below minimum this week?". It answers from the shop's own Evidence.
-- It is read-only and answers only within your role. A cashier never gets cost, other people's figures or customer contact details through it. It says so when the data is missing or outside your role, rather than guessing.
-- Answers show which Evidence they used, with links, and a note to check important figures.
-- It opens from the header and from the Truths Centre.
-- Questions are sent to Anthropic's API to be answered. Anthropic does not train on API data by default.
-- Each question is recorded for admins (who asked, when, what it looked at and its size), but not the answer. Customer details are scrubbed from the stored question.
-- There is a limit per person, and admins set a monthly spending cap.
-- It is **off and hidden** until the owner adds the key (below).
+- Open it from the **speech-bubble ? icon in the header** (labelled "Ask arcarna" on wide screens) or **Ask arcarna** in the Truths Centre. Ask in plain English, e.g. "How am I doing this week?" or "Which products sold below minimum this week?". Suggested questions for your role are shown to get you started.
+- It answers from the shop's own Evidence and reports, and **only what your role can already see**:
+  - Cashiers get their own performance, their targets and stock levels. They never get cost, margin or other people's figures.
+  - Managers get Needs a look (only for people they outrank), staff performance and the Evidence they can open.
+  - No role gets a customer's phone, email or address through it.
+  - Ask about something outside your role and it says so instead of guessing.
+- It is **read-only**: it cannot change a sale, a price or anything else.
+- Each answer lists the Evidence it used, with links. Check important figures there.
+- Answers stream in as they are written. **Stop** ends one early. The conversation is cleared when the page reloads.
+- Questions are sent to Anthropic's API to be answered. Anthropic does not train on API data by default. If Claude declines a question, it is retried once on another Claude model.
+- For admins, **Settings › Integrations › Ask arcarna** shows:
+  - whether it is set up;
+  - this month's spend against the monthly cap (default **£25**; £0 pauses it);
+  - the dollar-to-pound rate used for estimates;
+  - recent questions: who asked, when, what it looked at and the estimated cost. The answer is not stored, and phone numbers, emails, card numbers and postcodes are removed from the stored question.
+- Each person can ask 10 questions in any 10 minutes.
+- Please don't type customer details into a question.
+- Privacy details: `docs/ask-arcarna-privacy.md`.
 
 ---
 
@@ -150,7 +160,7 @@ Ask arcarna is being built separately and arrives in a later update to 1.2. It i
 | For | What to do |
 |---|---|
 | **Card (link)** | Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to the server's `.env` and restart arcarna. **Settings › Payment › Card (link) with Stripe** shows the exact lines, the webhook address to register in Stripe (`…/api/stripe/webhook`) and the events to send (`checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`). Until both are set, Card (link) is hidden at the till. |
-| **Ask arcarna** (when it arrives) | Add `ANTHROPIC_API_KEY` to the server's `.env` (optionally `ARCARNA_AI_MODEL`) and restart. Set the monthly spending cap. It stays hidden until the key is set. |
+| **Ask arcarna** | Add `ANTHROPIC_API_KEY` to the server's `.env` (optionally `ARCARNA_AI_MODEL`, default `claude-opus-5`, and `ARCARNA_AI_EFFORT`, default `medium`) and restart. Accept Anthropic's Data Processing Addendum and list Anthropic as a processor in the privacy notice (see `docs/ask-arcarna-privacy.md`). Check the £25 monthly cap in Settings › Integrations. It stays hidden until the key is set. |
 | **Niimbot label printer** | On each till that prints: open arcarna in Chrome (computer) or Bluefy (iPhone), go to **Settings › System**, **Pair a printer** and print a test label. Pairing is remembered on that device only. |
 | **WhatsApp messages** | Message the customer instead, Send payment reminder and Send by WhatsApp use approved WhatsApp templates only. In **Settings › Integrations › WhatsApp Business**, **Sync templates**, then submit them for approval in Meta's WhatsApp Manager. This includes the new `please_call_us` template. Unapproved templates are refused. Fill in the shop's phone number in **Settings › General** so "please call us" can name it. From 1 October 2026, each message costs about £0.016. |
 | **Email invoices** | Set `RESEND_API_KEY` (and the sending address) on the server. Until then, Email invoice is turned off and says why. |

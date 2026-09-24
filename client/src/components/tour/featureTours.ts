@@ -291,13 +291,28 @@ export const FEATURE_TOUR_DEFS: readonly FeatureTourDef[] = [
       },
     ],
   },
-  // ---------------------------------------------------------------------------
-  // "ask" (Ask arcarna): add its tour here once that feature merges. Add "ask"
-  // to FEATURE_TOURS in shared/uiSeen.ts first (the harnesses seed from it),
-  // then an entry like:
-  //   { feature: "ask", paths: [...], anchor: { testId: "<its panel>" }, steps: [...] }
-  // using only test ids that exist in its components.
-  // ---------------------------------------------------------------------------
+  {
+    // The header button exists only when ANTHROPIC_API_KEY is set, so with the
+    // feature off this tour never starts. Not on the till: never over a sale.
+    feature: "ask",
+    paths: ["/truths", "/my-performance"],
+    anchor: { testId: "button-ask-arcarna" },
+    steps: [
+      {
+        testId: "button-ask-arcarna",
+        title: "Ask arcarna",
+        body: "Ask a question in plain English, like \"How am I doing this week?\". It answers from the shop's own figures, only the ones your role can already see, and links to the Evidence it used.",
+        preferredSide: "bottom",
+      },
+      {
+        testId: "button-truths-ask",
+        roles: MANAGERS,
+        title: "Ask from the Truths Centre",
+        body: "The same assistant opens from here. It reads figures; it never changes anything. Check important figures on the Evidence it links to.",
+        preferredSide: "bottom",
+      },
+    ],
+  },
 ];
 
 function cleanPath(path: string): string {

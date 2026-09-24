@@ -67,7 +67,7 @@ describe("feature tour registry", () => {
   });
 
   it("covers the v1.2 features the brief names", () => {
-    for (const feature of ["needsALook", "myRun", "labelPrinter", "orderTiming", "staffPerformance", "customerContact", "contactAccessLog"]) {
+    for (const feature of ["needsALook", "myRun", "labelPrinter", "orderTiming", "staffPerformance", "customerContact", "contactAccessLog", "ask"]) {
       expect(FEATURE_TOURS).toContain(feature);
     }
   });

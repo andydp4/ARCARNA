@@ -208,7 +208,7 @@ export const WHATS_NEW: Record<string, WhatsNewItem[]> = {
       area: "Settings",
       title: "Things to set up",
       detail:
-        "Card (link) needs Stripe keys on the server (Settings › Payment shows the lines). WhatsApp messages need their templates approved by Meta. Staff targets are set by admins.",
+        "Card (link) needs Stripe keys on the server (Settings › Payment shows the lines). WhatsApp messages need their templates approved by Meta. Staff targets are set by admins. Ask arcarna, the AI assistant, needs ANTHROPIC_API_KEY on the server (Settings › Integrations shows it).",
     },
     {
       roles: ["ADMIN", "SUPER_ADMIN"],

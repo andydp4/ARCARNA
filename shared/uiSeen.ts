@@ -48,7 +48,7 @@ export const FEATURE_TOURS = [
   "staffPerformance",
   "customerContact",
   "contactAccessLog",
-  // "ask": add the Ask arcarna tour here once that feature merges (see featureTours.ts).
+  "ask",
 ] as const;
 // No Card (link) tour: it would open mid-sale with a customer waiting. What's New and the release notes cover it.
 
