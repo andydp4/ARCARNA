@@ -30,6 +30,13 @@ import {
 import { currentTradingDay, shiftIsoDate, tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
 import { orgTimeZone } from "./tradingDayShift";
 import { mayFilterEvidenceBy, type EvidenceViewer } from "./evidenceStaff";
+import { emptyBenefit, sumBenefit, type BenefitFigures } from "@shared/reports/staffBenefit";
+import { emptySpeed, type SpeedFigures } from "@shared/reports/staffSpeed";
+import type { FairnessRates } from "@shared/reports/staffFairness";
+import { evaluateKpis, isAmberOnly, type KpiSummary, type StaffTarget } from "@shared/reports/staffTargets";
+import { computeBadges, type Badge } from "@shared/reports/staffBadges";
+import { kpiSourceFor, loadPeopleExtras, type PeopleExtras, type SettingsInForce } from "./staffPeople";
+import { currentTargets } from "./staffTargets";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const SETTLED = "completed";
@@ -129,13 +136,13 @@ export async function loadPeople(orgId: string): Promise<Map<string, Performance
   return people;
 }
 
-interface LoadedOrder extends PerformanceOrder {
+export interface LoadedOrder extends PerformanceOrder {
   settledAt: Date;
   customerId: string | null;
 }
 
 /** Counted orders: completed, settled in [start, end), not personal use. */
-async function loadCountedOrders(orgId: string, start: Date, end: Date, filters: PerformanceFilters): Promise<LoadedOrder[]> {
+export async function loadCountedOrders(orgId: string, start: Date, end: Date, filters: PerformanceFilters): Promise<LoadedOrder[]> {
   const rows = await db
     .select({
       id: orders.id,
@@ -329,10 +336,53 @@ function changes(current: PerformanceFigures, previous: Headline): Record<keyof 
   return out;
 }
 
-export type PerformanceRowOut = PerformanceRow & {
-  previous: Headline;
-  change: Record<keyof Headline, number | null>;
-};
+/** 7C per person: benefit (£), speed, fairness rates, KPIs against targets, badges. */
+export interface PeopleFigures {
+  benefit: BenefitFigures;
+  speed: SpeedFigures;
+  fairness: FairnessRates;
+  kpis: KpiSummary;
+  badges: Badge[];
+  /** Information only: never targeted, never a badge. */
+  satisfaction: { average: number; count: number } | null;
+}
+
+export type PerformanceRowOut = PerformanceRow &
+  PeopleFigures & {
+    previous: Headline;
+    change: Record<keyof Headline, number | null>;
+  };
+
+export interface TargetsInForce {
+  version: number;
+  setAt: string;
+  targets: StaffTarget[];
+  amberOnly: boolean;
+}
+
+/** The targets and whether the first four weeks' amber-only rule applies. Null when none are set. */
+export async function targetsInForce(orgId: string, now = new Date()): Promise<TargetsInForce | null> {
+  const t = await currentTargets(orgId);
+  if (!t.current) return null;
+  return {
+    version: t.current.version,
+    setAt: t.current.setAt,
+    targets: t.current.targets,
+    amberOnly: isAmberOnly(t.firstSetAt ? new Date(t.firstSetAt) : null, now),
+  };
+}
+
+export function peopleFiguresFor(userId: string, figures: PerformanceFigures, extras: PeopleExtras, targets: TargetsInForce | null): PeopleFigures {
+  const source = kpiSourceFor(userId, figures, extras);
+  return {
+    benefit: extras.benefit.get(userId) ?? emptyBenefit(),
+    speed: source.speed,
+    fairness: source.rates,
+    kpis: evaluateKpis(source, targets?.targets ?? [], targets?.amberOnly ?? true),
+    badges: computeBadges(source),
+    satisfaction: extras.satisfaction.get(userId) ?? null,
+  };
+}
 
 export interface StaffPerformanceResponse {
   period: { from: string; to: string };
@@ -347,12 +397,17 @@ export interface StaffPerformanceResponse {
     total: PerformanceFigures & { previous: Headline; change: Record<keyof Headline, number | null> };
     adminCover: PerformanceFigures | null;
     unattributed: PerformanceFigures;
+    /** Everyone's benefit, listed or not. Never "profit". */
+    benefit: BenefitFigures;
+    speed: SpeedFigures;
   };
   grossSettledSales: number;
   channels: string[];
+  targets: TargetsInForce | null;
+  settingsInForce: SettingsInForce;
 }
 
-async function computeFor(orgId: string, timeZone: string, fromIso: string, toIso: string, filters: PerformanceFilters, people: Map<string, PerformancePerson>) {
+export async function computeFor(orgId: string, timeZone: string, fromIso: string, toIso: string, filters: PerformanceFilters, people: Map<string, PerformancePerson>) {
   const start = tradingDayBounds(fromIso, timeZone).start;
   const end = tradingDayBounds(toIso, timeZone).end;
   const [counted, activity] = await Promise.all([loadCountedOrders(orgId, start, end, filters), loadActivity(orgId, start, end, filters)]);
@@ -367,12 +422,14 @@ export async function staffPerformance(
   const timeZone = await orgTimeZone(orgId);
   const people = await loadPeople(orgId);
   const prev = previousPeriod(query.fromIso, query.toIso);
-  const [current, previous, prov, channelRows] = await Promise.all([
+  const [current, previous, prov, channelRows, targets] = await Promise.all([
     computeFor(orgId, timeZone, query.fromIso, query.toIso, query, people),
     computeFor(orgId, timeZone, prev.from, prev.to, query, people),
     performanceProvisional(orgId),
     db.selectDistinct({ channel: orders.channel }).from(orders).where(eq(orders.orgId, orgId)),
+    targetsInForce(orgId),
   ]);
+  const extras = await loadPeopleExtras(orgId, timeZone, query.fromIso, query.toIso, current.counted, query);
 
   const prevByUser = new Map(previous.result.rows.map((r) => [r.userId, r]));
   let hiddenPeople = 0;
@@ -384,7 +441,7 @@ export async function staffPerformance(
     }
     if (query.role && row.role !== query.role) continue;
     const p = headline(prevByUser.get(row.userId));
-    rows.push({ ...row, previous: p, change: changes(row, p) });
+    rows.push({ ...row, ...peopleFiguresFor(row.userId, row, extras, targets), previous: p, change: changes(row, p) });
   }
 
   const prevTotal = headline(previous.result.total);
@@ -400,9 +457,13 @@ export async function staffPerformance(
       total: { ...current.result.total, previous: prevTotal, change: changes(current.result.total, prevTotal) },
       adminCover: query.adminCover === false ? null : current.result.adminCover,
       unattributed: current.result.unattributed,
+      benefit: sumBenefit([...extras.benefit.values()]),
+      speed: extras.teamSpeed ?? emptySpeed(),
     },
     grossSettledSales: current.result.grossSettledSales,
     channels: channelRows.map((c) => c.channel).filter((c): c is string => Boolean(c)).sort(),
+    targets,
+    settingsInForce: extras.settingsInForce,
   };
 }
 
@@ -427,6 +488,8 @@ export interface PerformanceDetailResponse {
   provisional: boolean;
   provisionalUntil: string;
   figures: PerformanceFigures;
+  people: PeopleFigures;
+  targets: TargetsInForce | null;
   trend: Array<{ weekStart: string; weekEnd: string; completed: number; salesCompleted: number; valueBroughtIn: number; loaded: number; prepared: number }>;
   orders: PerformanceDetailOrder[];
   ordersTruncated: boolean;
@@ -458,12 +521,14 @@ export async function staffPerformanceDetail(
   asListed.set(userId, { ...person, role: "CASHIER" });
 
   const timeZone = await orgTimeZone(orgId);
-  const [{ counted, result }, prov] = await Promise.all([
+  const [{ counted, result }, prov, targets] = await Promise.all([
     computeFor(orgId, timeZone, query.fromIso, query.toIso, query, asListed),
     performanceProvisional(orgId),
+    targetsInForce(orgId),
   ]);
   const figures: PerformanceFigures =
     result.rows.find((r) => r.userId === userId) ?? computeStaffPerformance([], people).total;
+  const extras = await loadPeopleExtras(orgId, timeZone, query.fromIso, query.toIso, counted, query);
 
   // 8-week trend: the eight Monday-to-Sunday weeks ending with the one `to` falls in.
   const lastMonday = mondayOf(query.toIso);
@@ -511,6 +576,8 @@ export async function staffPerformanceDetail(
     provisional: prov.provisional,
     provisionalUntil: prov.until,
     figures,
+    people: peopleFiguresFor(userId, figures, extras, targets),
+    targets,
     trend,
     orders: shown.map((o) => {
       const jobs: PerformanceDetailOrder["jobs"] = [];

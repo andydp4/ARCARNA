@@ -2031,7 +2031,11 @@ export type PriceGuardOrder = typeof priceGuardOrders.$inferSelect;
 export const exceptionReviews = pgTable("exception_reviews", {
   id: uuid("id").primaryKey().defaultRandom(),
   orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-  /** "price" (source: price_guard_orders.id) or "refund" (source: refunds.id). */
+  /**
+   * "price" (source: price_guard_orders.id), "refund" (source: refunds.id) or
+   * "pattern" (a loss-prevention flag, v1.2 Phase 7C; source derived from
+   * org, person, measure and week).
+   */
   kind: varchar("kind", { length: 12 }).notNull(),
   sourceId: uuid("source_id").notNull(),
   orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
@@ -2048,7 +2052,7 @@ export const exceptionReviews = pgTable("exception_reviews", {
   reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
-  check("exception_reviews_kind_check", sql`${table.kind} IN ('price', 'refund')`),
+  check("exception_reviews_kind_check", sql`${table.kind} IN ('price', 'refund', 'pattern')`),
   check("exception_reviews_state_check", sql`${table.state} IN ('open', 'acknowledged', 'explained', 'escalated')`),
   check("exception_reviews_severity_check", sql`${table.severity} IN ('warning', 'error')`),
   uniqueIndex("exception_reviews_source_uq").on(table.kind, table.sourceId),
@@ -2057,6 +2061,42 @@ export const exceptionReviews = pgTable("exception_reviews", {
 ]);
 
 export type ExceptionReview = typeof exceptionReviews.$inferSelect;
+
+/**
+ * Staff targets (v1.2 Phase 7C, STF-07): set by admins only, logged and
+ * versioned. Each change is a new row with the next version and is never
+ * edited (a trigger refuses UPDATE, migration 171). `targets` is a list of
+ * shared/reports/staffTargets.ts StaffTarget. No money is attached to any.
+ */
+export const staffTargets = pgTable("staff_targets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  version: integer("version").notNull(),
+  targets: jsonb("targets").notNull(),
+  note: text("note"),
+  setByUserId: varchar("set_by_user_id", { length: 255 }).notNull(),
+  setAt: timestamp("set_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("staff_targets_org_version_uq").on(table.orgId, table.version),
+]);
+
+export type StaffTargetsRow = typeof staffTargets.$inferSelect;
+
+/**
+ * The weekly staff job (v1.2 Phase 7C): loss-prevention flags and the digest,
+ * once per org per week after Monday's close. Counts only — the digest is
+ * built per recipient at send time and never stored (migration 171).
+ */
+export const staffWeeklyRuns = pgTable("staff_weekly_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  weekStart: date("week_start").notNull(),
+  ranAt: timestamp("ran_at").defaultNow().notNull(),
+  flagsRaised: integer("flags_raised").notNull().default(0),
+  digestsSent: integer("digests_sent").notNull().default(0),
+}, (table) => [
+  uniqueIndex("staff_weekly_runs_org_week_uq").on(table.orgId, table.weekStart),
+]);
 
 // Refunds (F3)
 export const REFUND_REASONS = [
@@ -2218,10 +2258,17 @@ export const satisfactionScores = pgTable(
     scoreDate: timestamp("score_date").defaultNow().notNull(),
     followedUpAt: timestamp("followed_up_at"),
     createdAt: timestamp("created_at").defaultNow(),
+    /** Who tapped the stars (v1.2 Phase 7C, migration 171). NULL on older rows. */
+    ratedByUserId: varchar("rated_by_user_id", { length: 255 }),
+    /** Where the rating came from: board | capture | customer; 'unknown' on older rows. */
+    source: varchar("source", { length: 16 }).notNull().default("unknown"),
   },
   (table) => [
     index("satisfaction_scores_org_date_idx").on(table.orgId, table.scoreDate),
     index("satisfaction_scores_customer_idx").on(table.customerId),
+    // One rating per order (migration 171 cleaned the duplicates first).
+    uniqueIndex("satisfaction_scores_order_uq").on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
+    check("satisfaction_scores_source_check", sql`${table.source} IN ('board', 'capture', 'customer', 'unknown')`),
   ],
 );
 export type SatisfactionScore = typeof satisfactionScores.$inferSelect;

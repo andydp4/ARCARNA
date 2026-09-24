@@ -24,7 +24,7 @@ import { EXCEPTION_STATE_LABELS, EXCEPTION_STATES, type ExceptionState } from "@
 
 type Item = {
   id: string;
-  kind: "price" | "refund";
+  kind: "price" | "refund" | "pattern";
   orderId: string | null;
   orderRef: string | null;
   subjectName: string;
@@ -46,7 +46,7 @@ type Inbox = {
   items: Item[];
 };
 
-const KIND_LABEL = { price: "Price", refund: "Refund" } as const;
+const KIND_LABEL = { price: "Price", refund: "Refund", pattern: "Pattern" } as const;
 
 function when(iso: string | null): string {
   if (!iso) return "—";
@@ -136,8 +136,8 @@ export default function NeedsALookPage() {
       <PageHeader
         icon={ClipboardList}
         title="Needs a look"
-        question="Which flagged sales and refunds has nobody reviewed yet?"
-        explanation="Sales below the minimum or below cost, and refunds the refund rules pick out. Nothing here was blocked. Mark each one acknowledged, explained or escalated; escalating tells the people above you."
+        question="Which flagged sales, refunds and patterns has nobody reviewed yet?"
+        explanation="Sales below the minimum or below cost, refunds the refund rules pick out, and weekly patterns (3 or more events and at least twice the person's usual, or among the team's highest weeks). Nothing here was blocked, and a pattern is a question, not a finding. Mark each one acknowledged, explained or escalated; escalating tells the people above you."
       />
 
       {data && (
@@ -186,9 +186,10 @@ export default function NeedsALookPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Sales and refunds</SelectItem>
+              <SelectItem value="all">Everything</SelectItem>
               <SelectItem value="price">Sales</SelectItem>
               <SelectItem value="refund">Refunds</SelectItem>
+              <SelectItem value="pattern">Patterns</SelectItem>
             </SelectContent>
           </Select>
         </div>

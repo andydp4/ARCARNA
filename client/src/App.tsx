@@ -83,6 +83,8 @@ const DelayLogReport = lazy(() => import("@/pages/reports/delay-log"));
 const StaffPerformanceReport = lazy(() => import("@/pages/reports/staff-performance"));
 const StaffPerformancePerson = lazy(() => import("@/pages/reports/staff-performance-person"));
 const OrderTimingReport = lazy(() => import("@/pages/reports/order-timing"));
+const StaffTargetsPage = lazy(() => import("@/pages/reports/staff-targets"));
+const MyPerformancePage = lazy(() => import("@/pages/my-performance"));
 const SatisfactionReport = lazy(() => import("@/pages/reports/satisfaction"));
 const ResellerCreditReport = lazy(() => import("@/pages/reports/reseller-credit"));
 const RfmAnalyticsPage = lazy(() => import("@/pages/analytics/rfm"));
@@ -268,6 +270,9 @@ function Router() {
           <Route path="/reports/staff-performance">
             <RequireRole href="/reports"><StaffPerformanceReport /></RequireRole>
           </Route>
+          <Route path="/reports/staff-targets">
+            <RequireRole href="/reports/staff-targets"><StaffTargetsPage /></RequireRole>
+          </Route>
           <Route path="/reports/staff-performance/:userId">
             <RequireRole href="/reports"><StaffPerformancePerson /></RequireRole>
           </Route>
@@ -367,6 +372,10 @@ function Router() {
               Settings tabs; Stock levels is the cashier's cost-free view. */}
           <Route path="/suppliers">
             <RequireRole href="/suppliers"><SuppliersPage /></RequireRole>
+          </Route>
+          {/* My performance (v1.2 Phase 7C): every role, own figures only. */}
+          <Route path="/my-performance">
+            <RequireRole href="/my-performance"><MyPerformancePage /></RequireRole>
           </Route>
           <Route path="/stock-levels">
             <RequireRole href="/stock-levels"><StockLevelsPage /></RequireRole>

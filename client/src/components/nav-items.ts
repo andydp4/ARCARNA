@@ -31,6 +31,8 @@ import {
   AlertTriangle,
   Truck,
   UserCheck,
+  Gauge,
+  Target,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -196,6 +198,15 @@ export const centres: Centre[] = [
         icon: ClipboardList,
         testId: 'nav-needs-a-look',
         roles: MANAGER_ROLES
+      },
+      {
+        // My performance (v1.2 Phase 7C): every role sees their own figures.
+        // For a cashier this is the only performance page (Q14).
+        key: 'my-performance',
+        label: 'My performance',
+        href: '/my-performance',
+        icon: Gauge,
+        testId: 'nav-my-performance'
       }
     ]
   },
@@ -287,6 +298,16 @@ export const centres: Centre[] = [
         href: '/reports/staff-performance',
         icon: UserCheck,
         testId: 'nav-staff-performance',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Staff targets (v1.2 Phase 7C): everyone reads them on My
+        // performance; managers see this page; only admins can save.
+        key: 'staff-targets',
+        label: 'Staff targets',
+        href: '/reports/staff-targets',
+        icon: Target,
+        testId: 'nav-staff-targets',
         roles: MANAGER_ROLES
       },
       {

@@ -345,6 +345,7 @@ jobs:
             server/__tests__/whatsappMarketingConsent.test.ts \
             server/__tests__/staffKpiReplaced.test.ts \
             server/__tests__/staffPerformance.test.ts \
+            server/__tests__/staffPerformance7c.test.ts \
             server/__tests__/reportScopeFilter.test.ts \
             server/__tests__/cashierAnalyticsRoutes.test.ts \
             server/__tests__/staffPayLockdown.test.ts \

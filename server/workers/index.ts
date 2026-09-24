@@ -323,6 +323,10 @@ async function runHousekeeping(): Promise<void> {
       (await import("../services/priceGuardDigest")).runDuePriceGuardDigests()],
     ["needs-a-look-weekly", async () =>
       (await import("../services/exceptionReviews")).runWeeklyNeedsALook()],
+    // Staff performance (v1.2 Phase 7C): after Monday's close, last week's
+    // loss-prevention flags and the weekly digest. Exactly once per org per week.
+    ["staff-weekly", async () =>
+      (await import("../services/staffWeekly")).runDueStaffWeeks()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

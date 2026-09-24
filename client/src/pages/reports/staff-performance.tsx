@@ -8,6 +8,10 @@
  * cuts the rows (Q14: a manager sees cashiers and themselves); this page only
  * lays them out: a table on a desktop, cards with tabs on a phone. There is no
  * bonus and no pay figure anywhere (Q16).
+ *
+ * 7C adds Benefit (£, headline Net benefit — never "profit"), Speed and
+ * Fairness tabs. Only rates carry a colour, from the admin-set targets; KPIs
+ * met is greens over targets with enough data. There is no ranking column.
  */
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -26,10 +30,32 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getJson } from "@/lib/queryClient";
 import { PERFORMANCE_PRESETS, presetRange, type PerformanceFigures, type PerformancePreset } from "@shared/reports/staffPerformance";
 import { PRESET_LABEL, todayIso } from "./order-timing";
+import {
+  KpiChip,
+  KpisMet,
+  SettingsInForceNote,
+  mins,
+  pct,
+  type BenefitFigures,
+  type EarnedBadge,
+  type FairnessRates,
+  type KpiSummary,
+  type SettingsInForce,
+  type SpeedFigures,
+} from "@/components/performance/PeopleFigures";
+import type { KpiColour, TargetMetric } from "@shared/reports/staffTargets";
 
 type Headline = { completed: number; salesCompleted: number; valueBroughtIn: number; loaded: number; prepared: number };
 type Change = Record<keyof Headline, number | null>;
-type Row = PerformanceFigures & { userId: string; name: string; role: string; previous: Headline; change: Change };
+type People = {
+  benefit: BenefitFigures;
+  speed: SpeedFigures;
+  fairness: FairnessRates;
+  kpis: KpiSummary;
+  badges: EarnedBadge[];
+  satisfaction: { average: number; count: number } | null;
+};
+type Row = PerformanceFigures & People & { userId: string; name: string; role: string; previous: Headline; change: Change };
 
 export type StaffPerformanceResponse = {
   period: { from: string; to: string };
@@ -42,19 +68,25 @@ export type StaffPerformanceResponse = {
     total: PerformanceFigures & { previous: Headline; change: Change };
     adminCover: PerformanceFigures | null;
     unattributed: PerformanceFigures;
+    benefit: BenefitFigures;
+    speed: SpeedFigures;
   };
   grossSettledSales: number;
   channels: string[];
+  targets: { version: number; setAt: string; amberOnly: boolean } | null;
+  settingsInForce: SettingsInForce;
 };
 
 type LocationOption = { id: string; name: string };
-type Section = "volume" | "value" | "quality";
+type Section = "volume" | "value" | "quality" | "benefit" | "speed" | "fairness";
+type FigureSection = "volume" | "value" | "quality";
+type PeopleSection = "benefit" | "speed" | "fairness";
+const PEOPLE_SECTIONS: readonly Section[] = ["benefit", "speed", "fairness"];
 
 export function money(n: number | null | undefined): string {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n ?? 0);
 }
 const num1 = (v: number | null) => (v == null ? "—" : v.toFixed(1));
-const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)}%`);
 
 function ChangeBadge({ value }: { value: number | null | undefined }) {
   if (value == null) return <span className="text-xs text-muted-foreground">new</span>;
@@ -66,7 +98,7 @@ function ChangeBadge({ value }: { value: number | null | undefined }) {
 
 type Column = { key: string; label: string; render: (f: PerformanceFigures, change?: Change) => ReactNode };
 
-const COLUMNS: Record<Section, Column[]> = {
+const COLUMNS: Record<FigureSection, Column[]> = {
   volume: [
     { key: "loaded", label: "Loaded", render: (f, c) => <>{f.loaded} {c && <ChangeBadge value={c.loaded} />}</> },
     { key: "prepared", label: "Prepared", render: (f, c) => <>{f.prepared} {c && <ChangeBadge value={c.prepared} />}</> },
@@ -94,6 +126,109 @@ const COLUMNS: Record<Section, Column[]> = {
   ],
 };
 
+/** A rate, coloured by its target when one is set; plain otherwise. Totals are never coloured. */
+function Rated({ row, metric, children }: { row: Row; metric: TargetMetric; children: ReactNode }) {
+  const colour: KpiColour | undefined = row.kpis.results.find((r) => r.metric === metric)?.colour;
+  if (!colour) return <>{children}</>;
+  return <KpiChip colour={colour}>{children}</KpiChip>;
+}
+
+type PeopleColumn = { key: string; label: string; render: (r: Row) => ReactNode; total?: (d: StaffPerformanceResponse) => ReactNode };
+
+const PEOPLE_COLUMNS: Record<PeopleSection, PeopleColumn[]> = {
+  benefit: [
+    { key: "net", label: "Net benefit", render: (r) => <span className="font-semibold">{money(r.benefit.netBenefit)}</span>, total: (d) => money(d.team.benefit.netBenefit) },
+    { key: "margin", label: "Margin", render: (r) => money(r.benefit.marginContributed), total: (d) => money(d.team.benefit.marginContributed) },
+    { key: "discount", label: "Discount", render: (r) => money(r.benefit.discountGiven), total: (d) => money(d.team.benefit.discountGiven) },
+    { key: "exceptions", label: "Exception cost", render: (r) => money(r.benefit.priceExceptionCost), total: (d) => money(d.team.benefit.priceExceptionCost) },
+    { key: "personal", label: "Personal use", render: (r) => money(r.benefit.personalUseCost), total: (d) => money(d.team.benefit.personalUseCost) },
+    { key: "named", label: "Customer named", render: (r) => <Rated row={r} metric="namedCustomerCapturePercent">{pct(r.benefit.namedCustomerCapturePercent)}</Rated>, total: (d) => pct(d.team.benefit.namedCustomerCapturePercent) },
+    { key: "newCustomers", label: "New customers", render: (r) => r.benefit.newCustomers, total: (d) => d.team.benefit.newCustomers },
+    { key: "recovered", label: "Credit recovered", render: (r) => money(r.benefit.creditRecovered), total: (d) => money(d.team.benefit.creditRecovered) },
+    { key: "badDebt", label: "Bad debt", render: (r) => money(r.benefit.badDebtOriginated), total: (d) => money(d.team.benefit.badDebtOriginated) },
+    { key: "refundCost", label: "Refund cost", render: (r) => money(r.benefit.refundCost), total: (d) => money(d.team.benefit.refundCost) },
+  ],
+  speed: [
+    { key: "collection", label: "Collection on time", render: (r) => <Rated row={r} metric="collectionOnTimePercent">{pct(r.speed.collectionOnTimePercent)}</Rated>, total: (d) => pct(d.team.speed.collectionOnTimePercent) },
+    { key: "delivery", label: "Delivery on time", render: (r) => <Rated row={r} metric="deliveryOnTimePercent">{pct(r.speed.deliveryOnTimePercent)}</Rated>, total: (d) => pct(d.team.speed.deliveryOnTimePercent) },
+    { key: "firstPromise", label: "First promise kept", render: (r) => <Rated row={r} metric="firstPromiseKeptPercent">{pct(r.speed.firstPromiseKeptPercent)}</Rated>, total: (d) => pct(d.team.speed.firstPromiseKeptPercent) },
+    { key: "toReady", label: "Received → ready", render: (r) => <Rated row={r} metric="receivedToReadyMedianMinutes">{`${mins(r.speed.receivedToReady.medianMinutes)} / ${mins(r.speed.receivedToReady.slowest10Minutes)}`}</Rated>, total: (d) => `${mins(d.team.speed.receivedToReady.medianMinutes)} / ${mins(d.team.speed.receivedToReady.slowest10Minutes)}` },
+    { key: "handover", label: "Ready → handed over", render: (r) => `${mins(r.speed.readyToHandover.medianMinutes)} / ${mins(r.speed.readyToHandover.slowest10Minutes)}`, total: (d) => `${mins(d.team.speed.readyToHandover.medianMinutes)} / ${mins(d.team.speed.readyToHandover.slowest10Minutes)}` },
+    { key: "waiting", label: "Customer waiting", render: (r) => r.speed.customerWaitingIncidents, total: (d) => d.team.speed.customerWaitingIncidents },
+    { key: "promise", label: "Promise within target", render: (r) => pct(r.speed.promiseWithinTargetPercent), total: (d) => pct(d.team.speed.promiseWithinTargetPercent) },
+    { key: "told", label: "Delays told early", render: (r) => `${r.speed.delaysToldInAdvance}/${r.speed.delaysDeclared}`, total: (d) => `${d.team.speed.delaysToldInAdvance}/${d.team.speed.delaysDeclared}` },
+    { key: "ack", label: "Alert → ack", render: (r) => <Rated row={r} metric="alertToAckMedianMinutes">{mins(r.speed.alertToAckMedianMinutes)}</Rated>, total: (d) => mins(d.team.speed.alertToAckMedianMinutes) },
+    { key: "instant", label: "Counter sales", render: (r) => r.speed.instantCounterSales, total: (d) => d.team.speed.instantCounterSales },
+  ],
+  fairness: [
+    { key: "hours", label: "Active hours", render: (r) => num1(r.fairness.activeHours) },
+    { key: "days", label: "Days", render: (r) => r.fairness.daysWorked },
+    { key: "jobsHour", label: "Jobs / hour", render: (r) => <Rated row={r} metric="jobsPerActiveHour">{num1(r.fairness.jobsPerActiveHour)}</Rated> },
+    { key: "valueHour", label: "Value / hour", render: (r) => <Rated row={r} metric="valuePerActiveHour">{r.fairness.valuePerActiveHour == null ? "—" : money(r.fairness.valuePerActiveHour)}</Rated> },
+    { key: "valueDay", label: "Value / day", render: (r) => (r.fairness.valuePerDay == null ? "—" : money(r.fairness.valuePerDay)) },
+    { key: "refunds10", label: "Refunds / 10 orders", render: (r) => <Rated row={r} metric="refundsPer10Orders">{num1(r.fairness.refundsPer10Orders)}</Rated> },
+    { key: "wrong10", label: "Wrong items / 10", render: (r) => <Rated row={r} metric="wrongItemRatePercent">{num1(r.fairness.wrongItemsPer10Orders)}</Rated> },
+    { key: "kpis", label: "KPIs met", render: (r) => <KpisMet kpis={r.kpis} /> },
+    { key: "badges", label: "Badges", render: (r) => (r.badges.length ? r.badges.map((b) => b.label).join(", ") : "—") },
+  ],
+};
+
+function PeopleTable({ data, section, onOpen }: { data: StaffPerformanceResponse; section: PeopleSection; onOpen: (id: string) => void }) {
+  const cols = PEOPLE_COLUMNS[section];
+  return (
+    <div className="overflow-x-auto">
+      <Table data-testid={`table-performance-${section}`}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Person</TableHead>
+            {cols.map((c) => <TableHead key={c.key} className="text-right">{c.label}</TableHead>)}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.rows.map((r) => (
+            <TableRow key={r.userId} className="cursor-pointer" onClick={() => onOpen(r.userId)} data-testid={`row-${section}-${r.userId}`}>
+              <TableCell>
+                <span className="font-medium underline-offset-2 hover:underline">{r.name}</span>
+                <span className="block text-xs text-muted-foreground">{r.role === "MANAGER" ? "Manager" : "Cashier"}</span>
+              </TableCell>
+              {cols.map((c) => <TableCell key={c.key} className="text-right whitespace-nowrap">{c.render(r)}</TableCell>)}
+            </TableRow>
+          ))}
+          {cols.some((c) => c.total) && (
+            <TableRow className="font-semibold" data-testid={`row-${section}-total`}>
+              <TableCell><TeamLabel name="Total" note="Everyone, including admin cover and unattributed." /></TableCell>
+              {cols.map((c) => <TableCell key={c.key} className="text-right whitespace-nowrap">{c.total ? c.total(data) : ""}</TableCell>)}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function PeopleCards({ data, section, onOpen }: { data: StaffPerformanceResponse; section: PeopleSection; onOpen: (id: string) => void }) {
+  const cols = PEOPLE_COLUMNS[section];
+  return (
+    <div className="space-y-3">
+      {data.rows.map((r) => (
+        <Card key={r.userId} className="lm-card border-0 shadow-none cursor-pointer" onClick={() => onOpen(r.userId)} data-testid={`card-${section}-${r.userId}`}>
+          <CardContent className="pt-4">
+            <div className="mb-2 font-medium">{r.name}</div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              {cols.map((c) => (
+                <div key={c.key} className="contents">
+                  <dt className="text-muted-foreground">{c.label}</dt>
+                  <dd className="text-right">{c.render(r)}</dd>
+                </div>
+              ))}
+            </dl>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 const SECTION_HELP: Record<Section, string> = {
   volume:
     "Each job is counted on its own: loading, preparing, completing and dispatching. Taking over a card at handover adds one Completed and nothing else. Solo is an order the same person loaded and completed. Still open is what they loaded in these dates that is not completed yet.",
@@ -101,6 +236,12 @@ const SECTION_HELP: Record<Section, string> = {
     "Sales completed is the value of the orders they completed. Value brought in is split like commission: all of it when solo, otherwise 90% to whoever completed it and 10% to whoever loaded it.",
   quality:
     "Wrong item is wrong-item refunds against orders they picked. Reopens are their completions someone reopened. Refunds processed, deletes and unready taps are things they did. Completed others' is completing an order claimed by someone else.",
+  benefit:
+    "Net benefit is margin contributed less discount given, price-exception cost and personal use. It is not profit: wages, overheads and refunds are not in it. Margin is split like commission (100% solo, else 90/10) and each order's margin counts from zero, so a sale below cost shows as exception cost instead.",
+  speed:
+    "Collection on time is credited to whoever marked it ready; delivery on time to whoever sent it out. First promise kept is against the first time promised, so declaring a delay does not move it. Stage times show the median and the slowest 10%. Counter sales are counted but left out of the medians.",
+  fairness:
+    "Rates put part-timers on the same footing: active hours are first to last action each day plus 10 minutes, at most 12 hours. Only rates are coloured, against the targets an admin set. KPIs met is greens over targets with enough data. Badges are earned against fixed bars; there is no ranking.",
 };
 
 function TeamLabel({ name, note }: { name: string; note: string }) {
@@ -112,7 +253,7 @@ function TeamLabel({ name, note }: { name: string; note: string }) {
   );
 }
 
-function PerformanceTable({ data, section, onOpen }: { data: StaffPerformanceResponse; section: Section; onOpen: (id: string) => void }) {
+function PerformanceTable({ data, section, onOpen }: { data: StaffPerformanceResponse; section: FigureSection; onOpen: (id: string) => void }) {
   const cols = COLUMNS[section];
   return (
     <div className="overflow-x-auto">
@@ -161,7 +302,7 @@ function PerformanceTable({ data, section, onOpen }: { data: StaffPerformanceRes
   );
 }
 
-function PerformanceCards({ data, section, onOpen }: { data: StaffPerformanceResponse; section: Section; onOpen: (id: string) => void }) {
+function PerformanceCards({ data, section, onOpen }: { data: StaffPerformanceResponse; section: FigureSection; onOpen: (id: string) => void }) {
   const cols = COLUMNS[section];
   const card = (key: string, title: ReactNode, f: PerformanceFigures, change?: Change, open?: () => void) => (
     <Card key={key} className={`lm-card border-0 shadow-none ${open ? "cursor-pointer" : ""}`} onClick={open} data-testid={`card-performance-${key}`}>
@@ -345,18 +486,38 @@ export default function StaffPerformanceReport() {
               <TabsTrigger value="volume" data-testid="tab-performance-volume">Volume</TabsTrigger>
               <TabsTrigger value="value" data-testid="tab-performance-value">Value</TabsTrigger>
               <TabsTrigger value="quality" data-testid="tab-performance-quality">Quality</TabsTrigger>
+              <TabsTrigger value="benefit" data-testid="tab-performance-benefit">Benefit</TabsTrigger>
+              <TabsTrigger value="speed" data-testid="tab-performance-speed">Speed</TabsTrigger>
+              <TabsTrigger value="fairness" data-testid="tab-performance-fairness">Fairness</TabsTrigger>
             </TabsList>
-            {(["volume", "value", "quality"] as const).map((s) => (
+            {(["volume", "value", "quality", "benefit", "speed", "fairness"] as const).map((s) => (
               <TabsContent key={s} value={s}>
                 {isLoading || !data ? (
                   <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : PEOPLE_SECTIONS.includes(s) ? (
+                  isMobile ? (
+                    <PeopleCards data={data} section={s as PeopleSection} onOpen={open} />
+                  ) : (
+                    <PeopleTable data={data} section={s as PeopleSection} onOpen={open} />
+                  )
                 ) : isMobile ? (
-                  <PerformanceCards data={data} section={s} onOpen={open} />
+                  <PerformanceCards data={data} section={s as FigureSection} onOpen={open} />
                 ) : (
-                  <PerformanceTable data={data} section={s} onOpen={open} />
+                  <PerformanceTable data={data} section={s as FigureSection} onOpen={open} />
                 )}
               </TabsContent>
             ))}
+            {data && (section === "speed" || section === "fairness") && (
+              <div className="mt-4 space-y-1">
+                <SettingsInForceNote settings={data.settingsInForce} />
+                <p className="text-xs text-muted-foreground">
+                  {data.targets
+                    ? `Targets version ${data.targets.version}, set ${new Date(data.targets.setAt).toLocaleDateString("en-GB")}${data.targets.amberOnly ? " — first four weeks, nothing shows red" : ""}. `
+                    : "No targets set yet. "}
+                  <Link href="/reports/staff-targets" className="underline">Staff targets</Link>
+                </p>
+              </div>
+            )}
           </Tabs>
         </CardContent>
       </Card>

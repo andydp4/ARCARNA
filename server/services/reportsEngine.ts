@@ -1482,6 +1482,33 @@ export async function loadOrderTimingFacts(
   from: Date,
   to: Date,
 ): Promise<{ facts: DerivedOrderTiming[]; settings: OpsTimingSettings }> {
+  const { inputs, settings } = await loadOrderTimingInputs(orgId, from, to);
+  return { facts: inputs.map((input) => deriveOrderTiming(input, settings)), settings };
+}
+
+/**
+ * Who did what on an order, beside its timing input — what Staff Performance's
+ * Speed (v1.2 Phase 7C) needs to credit a verdict to a person. Read from the
+ * same events in the same pass, so a person's figure and the team's can never
+ * be computed from different orders.
+ */
+export interface TimingOrderPeople {
+  /** Whoever marked it ready last (the `ready` event). */
+  preparerId: string | null;
+  /** Whoever sent it out (the `out_for_delivery` event). */
+  dispatcherId: string | null;
+  /** `original_eta ?? eta_given`: the first promise. */
+  firstPromiseAt: Date | null;
+  delays: Array<{ userId: string | null; at: Date; customerTold: boolean }>;
+  delayNotifiedAt: Date | null;
+  locationId: string | null;
+}
+
+export async function loadOrderTimingInputs(
+  orgId: string,
+  from: Date,
+  to: Date,
+): Promise<{ inputs: TimingOrderInput[]; settings: OpsTimingSettings; people: Map<string, TimingOrderPeople> }> {
   const timezone = await orgTimeZone(orgId);
   const [org] = await db
     .select({
@@ -1521,6 +1548,9 @@ export async function loadOrderTimingFacts(
       assignedUserId: orders.assignedUserId,
       completedUserId: orders.completedUserId,
       inputUserId: orders.inputUserId,
+      originalEta: orders.originalEta,
+      delayNotificationSentAt: orders.delayNotificationSentAt,
+      locationId: orders.locationId,
     })
     .from(orders)
     .where(
@@ -1533,20 +1563,31 @@ export async function loadOrderTimingFacts(
       ),
     );
 
-  if (orderRows.length === 0) return { facts: [], settings };
+  const people = new Map<string, TimingOrderPeople>();
+  if (orderRows.length === 0) return { inputs: [], settings, people };
 
   const orderIds = orderRows.map((r) => r.id);
   const events = await db
-    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta })
+    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta, userId: orderEvents.userId })
     .from(orderEvents)
     .where(
       and(
         eq(orderEvents.orgId, orgId),
         inArray(orderEvents.orderId, orderIds),
-        inArray(orderEvents.kind, ["assigned", "delayed", "unheld", "ready", "completed"]),
+        inArray(orderEvents.kind, ["assigned", "delayed", "unheld", "ready", "completed", "out_for_delivery"]),
       ),
     )
     .orderBy(orderEvents.orderId, orderEvents.at);
+  for (const r of orderRows) {
+    people.set(r.id, {
+      preparerId: null,
+      dispatcherId: null,
+      firstPromiseAt: r.originalEta ?? r.etaGiven ?? null,
+      delays: [],
+      delayNotifiedAt: r.delayNotificationSentAt ?? null,
+      locationId: r.locationId ?? null,
+    });
+  }
 
   const claimedAtByOrder = new Map<string, Date>();
   const wasDelayedByOrder = new Set<string>();
@@ -1564,6 +1605,14 @@ export async function loadOrderTimingFacts(
 
   for (const e of events) {
     const meta = (e.meta ?? {}) as Record<string, unknown>;
+    const who = people.get(e.orderId);
+    if (who) {
+      if (e.kind === "ready") who.preparerId = e.userId ?? null;
+      else if (e.kind === "out_for_delivery") who.dispatcherId = e.userId ?? null;
+      else if (e.kind === "delayed") {
+        who.delays.push({ userId: e.userId ?? null, at: new Date(e.at as unknown as string), customerTold: meta.customerTold === true });
+      }
+    }
     switch (e.kind) {
       case "assigned":
         if (!claimedAtByOrder.has(e.orderId)) claimedAtByOrder.set(e.orderId, new Date(e.at as unknown as string));
@@ -1630,8 +1679,7 @@ export async function loadOrderTimingFacts(
     readyAssumed: readyAssumedByOrder.get(r.id) ?? false,
   }));
 
-  const facts = timingInputs.map((input) => deriveOrderTiming(input, settings));
-  return { facts, settings };
+  return { inputs: timingInputs, settings, people };
 }
 
 /**

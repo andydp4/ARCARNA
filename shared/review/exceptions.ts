@@ -23,7 +23,8 @@ export const EXCEPTION_STATE_LABELS: Record<ExceptionState, string> = {
   escalated: "Escalated",
 };
 
-export type ExceptionKind = "price" | "refund";
+/** "pattern" is a loss-prevention flag (v1.2 Phase 7C, shared/reports/lossPrevention.ts). */
+export type ExceptionKind = "price" | "refund" | "pattern";
 
 /** The weekly line: "N unreviewed for over 7 days". */
 export const STALE_AFTER_DAYS = 7;

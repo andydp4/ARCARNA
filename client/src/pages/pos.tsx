@@ -32,6 +32,7 @@
  * viewport.
  */
 import { deliveryOrderFields, EMPTY_POS_DELIVERY, type PosDeliveryState } from "@/components/pos-delivery-details";
+import { Link } from "wouter";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
@@ -164,6 +165,11 @@ function MyShiftSummary() {
       {" · commission "}
       <span className="font-medium text-foreground">£{commission.toFixed(2)}</span>
       <ShiftPriceOverrideCount count={summaryData.priceOverrideCount} />
+      {" · "}
+      {/* v1.2 Phase 7C: the full picture of their own work, for every role. */}
+      <Link href="/my-performance" className="underline underline-offset-2" data-testid="link-my-performance">
+        My performance
+      </Link>
     </p>
   );
 }

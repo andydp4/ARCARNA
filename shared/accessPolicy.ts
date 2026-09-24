@@ -392,6 +392,10 @@ const ORDER_HISTORY =
   "A cashier's order history is today plus their own last seven days; the palette searches on the server inside that bound (Q10a, CMP-06).";
 const STAFF_PERFORMANCE =
   "Order Timing and Staff Performance are Evidence: manager and above; a manager sees cashiers and themselves, admins and the owner everyone, and a manager is refused another manager's drill-down (v1.2 Phase 7, Q14).";
+const MY_PERFORMANCE =
+  "My performance and the weekly digest are for every role and answer with the caller's own figures only; a team median only when 4+ people worked; never cached (v1.2 Phase 7C, Q14).";
+const STAFF_TARGETS =
+  "Everyone reads the targets behind their colours; only admins set them, each change a new logged version with no pay attached (v1.2 Phase 7C, Q16).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -430,6 +434,10 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "GET", path: "/api/evidence/order-timing", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
   { method: "GET", path: "/api/evidence/staff-performance", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
   { method: "GET", path: "/api/evidence/staff-performance/:userId", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/my-performance", minRole: "CASHIER", reason: MY_PERFORMANCE },
+  { method: "GET", path: "/api/my-performance/digest", minRole: "CASHIER", reason: MY_PERFORMANCE },
+  { method: "GET", path: "/api/staff-targets", minRole: "CASHIER", reason: STAFF_TARGETS },
+  { method: "PUT", path: "/api/staff-targets", minRole: "ADMIN", reason: STAFF_TARGETS },
 
   // Stock Centre › Stock levels: open to all staff, never a cost.
   { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },

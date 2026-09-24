@@ -17,6 +17,18 @@ import { getJson } from "@/lib/queryClient";
 import { CHART_PRIMARY } from "@/lib/chartColors";
 import type { PerformanceFigures } from "@shared/reports/staffPerformance";
 import { money, ProvisionalNote } from "./staff-performance";
+import {
+  BadgeList,
+  BenefitList,
+  FairnessList,
+  KpiList,
+  SpeedList,
+  type BenefitFigures,
+  type EarnedBadge,
+  type FairnessRates,
+  type KpiSummary,
+  type SpeedFigures,
+} from "@/components/performance/PeopleFigures";
 
 type Detail = {
   person: { userId: string; name: string; role: string };
@@ -24,6 +36,14 @@ type Detail = {
   provisional: boolean;
   provisionalUntil: string;
   figures: PerformanceFigures;
+  people: {
+    benefit: BenefitFigures;
+    speed: SpeedFigures;
+    fairness: FairnessRates;
+    kpis: KpiSummary;
+    badges: EarnedBadge[];
+    satisfaction: { average: number; count: number } | null;
+  };
   trend: Array<{ weekStart: string; weekEnd: string; completed: number; salesCompleted: number; valueBroughtIn: number; loaded: number; prepared: number }>;
   orders: Array<{
     orderId: string;
@@ -155,6 +175,46 @@ export default function StaffPerformancePerson() {
     </Card>
   );
 
+  const people = data?.people && (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card className="lm-card border-0 shadow-none">
+        <CardHeader>
+          <CardTitle>Benefit</CardTitle>
+          <CardDescription>What their work was worth, less what it gave away. Not profit.</CardDescription>
+        </CardHeader>
+        <CardContent><BenefitList benefit={data.people.benefit} /></CardContent>
+      </Card>
+      <Card className="lm-card border-0 shadow-none">
+        <CardHeader>
+          <CardTitle>Speed</CardTitle>
+          <CardDescription>Each verdict goes to whoever could change it.</CardDescription>
+        </CardHeader>
+        <CardContent><SpeedList speed={data.people.speed} /></CardContent>
+      </Card>
+      <Card className="lm-card border-0 shadow-none">
+        <CardHeader>
+          <CardTitle>Fairness</CardTitle>
+          <CardDescription>Rates per active hour, per day and per 10 orders.</CardDescription>
+        </CardHeader>
+        <CardContent><FairnessList rates={data.people.fairness} /></CardContent>
+      </Card>
+      <Card className="lm-card border-0 shadow-none">
+        <CardHeader>
+          <CardTitle>Targets and badges</CardTitle>
+          <CardDescription>
+            {data.people.satisfaction
+              ? `Customer stars on their completions: ${data.people.satisfaction.average.toFixed(1)} from ${data.people.satisfaction.count} (information only).`
+              : "No customer stars in these dates."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <KpiList kpis={data.people.kpis} />
+          <BadgeList badges={data.people.badges} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <Link href={`/reports/staff-performance`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -190,11 +250,13 @@ export default function StaffPerformancePerson() {
         <Tabs defaultValue="trend">
           <TabsList>
             <TabsTrigger value="trend" data-testid="tab-person-trend">Trend</TabsTrigger>
+            <TabsTrigger value="people" data-testid="tab-person-people">Benefit, speed, fairness</TabsTrigger>
             <TabsTrigger value="orders" data-testid="tab-person-orders">
               Orders <Badge variant="secondary" className="ml-2">{data.orders.length}</Badge>
             </TabsTrigger>
           </TabsList>
           <TabsContent value="trend">{trend}</TabsContent>
+          <TabsContent value="people">{people}</TabsContent>
           <TabsContent value="orders">{orders}</TabsContent>
         </Tabs>
       )}
