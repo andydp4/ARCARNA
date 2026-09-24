@@ -1301,6 +1301,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         customerId: order.customer_id,
         customerName: customer?.name || 'Walk-in',
         total: order.total,
+        // What the sale was settled at: a refund gives back its share of this.
+        settledTotal: order.settled_total ?? null,
         paymentMethod: order.payment_method,
         channel: order.channel,
         status: order.status,
@@ -1894,14 +1896,36 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         ? and(eq(orders.id, orderId), eq(orders.orgId, ctx.orgId))
         : eq(orders.id, orderId);
 
+      // A settled sale on a day the 06:00 close has already run is frozen:
+      // that day's takings, drawers, shift sheets and commission were all
+      // worked out from it, and deleting it would rewrite them. Same rule as
+      // reopening; a refund or a new order corrects it instead. Checked
+      // before anything is touched, and again under the row lock below.
+      const refuseIfClosedDay = async (client: any, order: any) => {
+        if (order?.status !== 'completed' || !order.orgId) return;
+        const { settlementDayClosed } = await import('../services/orderCompletion');
+        const settledAt = order.settledAt ?? order.updatedAt ?? order.createdAt ?? new Date();
+        const { tradingDay, closed } = await settlementDayClosed(client, order.orgId, new Date(settledAt));
+        if (closed) {
+          throw Object.assign(
+            new Error(`The trading day of ${tradingDay} has already closed, so this sale can no longer be deleted. Refund it instead.`),
+            { statusCode: 409, code: 'ORDER_DELETE_CLOSED_DAY' },
+          );
+        }
+      };
+      const [before] = await db.select().from(orders).where(orderCond);
+      await refuseIfClosedDay(db, before);
+
       // A card link already sent to the customer stays payable at Stripe
       // after its row cascades away: kill it there first, or refuse.
       const { retireOrderCardLinks } = await import("../services/cardLinks");
       await retireOrderCardLinks(ctx?.orgId ?? null, orderId);
 
       await db.transaction(async (tx) => {
-        const [order] = await tx.select().from(orders).where(orderCond);
+        const [order] = await tx.select().from(orders).where(orderCond).for('update');
         if (!order) throw new Error('Order not found');
+
+        await refuseIfClosedDay(tx, order);
 
         // Written FIRST — an `order_events` row for a deleted order carries no
         // foreign key to `orders` on purpose (its whole point is to outlive
@@ -2020,6 +2044,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
     } catch (error: any) {
       if (error?.name === "CardLinkError") {
         return res.status(error.statusCode).json({ message: error.message, code: error.code });
+      }
+      if (error?.code === 'ORDER_DELETE_CLOSED_DAY') {
+        return res.status(409).json({ message: error.message, code: error.code });
       }
       console.error("Error deleting order:", error);
       const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';

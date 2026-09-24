@@ -102,11 +102,11 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
   async function firstLine(orderId: string): Promise<string> {
     return (await client.query(`SELECT id FROM order_items WHERE order_id = $1 LIMIT 1`, [orderId])).rows[0].id;
   }
-  async function refund(orderId: string, total: number, method: string, when: Date) {
+  async function refund(orderId: string, total: number, method: string, when: Date, offTab = 0) {
     const id = randomUUID();
     await client.query(
-      `INSERT INTO refunds (id, order_id, org_id, cashier_id, reason, refund_method, total, created_at) VALUES ($1,$2,$3,'u','damaged',$4,$5,$6)`,
-      [id, orderId, orgId, method, total.toFixed(2), when],
+      `INSERT INTO refunds (id, order_id, org_id, cashier_id, reason, refund_method, total, created_at, credit_amount) VALUES ($1,$2,$3,'u','damaged',$4,$5,$6,$7)`,
+      [id, orderId, orgId, method, total.toFixed(2), when, offTab.toFixed(2)],
     );
     await client.query(`INSERT INTO refund_lines (refund_id, order_line_id, qty, amount) VALUES ($1,$2,1,$3)`, [id, await firstLine(orderId), total.toFixed(2)]);
   }
@@ -182,11 +182,10 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     expect(r.problems[0].message).toContain("is dated Fri 12 Jun but takings count it on Mon 15 Jun");
   });
 
-  it("names personal use still carrying line value", async () => {
+  it("raises nothing for personal use recorded at £0, whose lines every product figure now leaves out", async () => {
     await order({ total: 0, method: "personal_use", createdAt: at("09:00"), lines: [[2, 10]], legs: [["personal_use", 0]], subtotal: 0 });
     const r = await run();
-    expect(r.problems.map((p) => p.check)).toContain("personalUse");
-    expect(r.problems.find((p) => p.check === "personalUse")!.message).toContain("still carries £20.00 of line value");
+    expect(r.problems.map((p) => p.check)).not.toContain("personalUse");
   });
 
   it("names a close that reports personal use at sale price rather than cost", async () => {
@@ -214,7 +213,22 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     const hit = checksHit(r);
     expect(hit.has("refundedTabs")).toBe(true);
     expect(hit.has("refundTender")).toBe(true);
-    expect(r.problems.find((p) => p.check === "refundedTabs")!.message).toContain("£25.00 of the sale was refunded, but the customer is still shown owing £25.00");
+    expect(r.problems.find((p) => p.check === "refundedTabs")!.message).toContain("£25.00 of the sale was refunded and paid out, but the customer is still shown owing £25.00");
+  });
+
+  it("is clean when a tab sale's refund came off the tab (v1.2.1 fix)", async () => {
+    const tick = await order({ total: 25, method: "tick", createdAt: at("09:00") });
+    // £10 repaid, then the whole sale refunded: £15 off the tab, £10 handed back.
+    await client.query(
+      `INSERT INTO order_credit (order_id, org_id, amount_given, amount_outstanding, status, given_on) VALUES ($1,$2,25,0,'settled',$3)`,
+      [tick, orgId, DAY],
+    );
+    await client.query(`INSERT INTO credit_payments (org_id, order_id, amount, method, paid_on) VALUES ($1,$2,10,'cash',$3)`, [orgId, tick, DAY]);
+    await refund(tick, 25, "original", at("10:00"), 15);
+    const hit = checksHit(await run());
+    expect(hit.has("refundedTabs")).toBe(false);
+    expect(hit.has("credit")).toBe(false);
+    expect(hit.has("refundTender")).toBe(false);
   });
 
   it("names a refund on a discounted sale that gives back more than was paid", async () => {
@@ -234,20 +248,11 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     expect(r.problems.find((p) => p.check === "refunds")!.message).toContain("which was never settled");
   });
 
-  it("names a small-hours sale that the Truths overview puts on a different day from Daily Sales", async () => {
-    // 02:00 BST on the 15th = 01:00 UTC on the 15th: trading day the 14th, UTC day the 15th.
+  it("raises nothing for a small-hours sale, which every figure now counts on its trading day", async () => {
+    // 02:00 BST on the 15th = 01:00 UTC on the 15th: trading day the 14th.
     await order({ total: 40, method: "cash", createdAt: new Date("2026-06-15T01:00:00.000Z") });
     const r = await run();
-    expect([...checksHit(r)]).toEqual(["lateNight"]);
-    expect(r.problems[0].message).toContain("count them on Sun 14 Jun");
-    expect(r.problems[0].message).toContain("show them on Mon 15 Jun");
-  });
-
-  it("does not flag a sale just after midnight BST, which every figure puts on the same day", async () => {
-    // 00:30 BST on the 15th = 23:30 UTC on the 14th: trading day and UTC day are both the 14th.
-    await order({ total: 40, method: "cash", createdAt: new Date("2026-06-14T23:30:00.000Z") });
-    const r = await run();
-    expect([...checksHit(r)]).not.toContain("lateNight");
+    expect(r.problems).toEqual([]);
   });
 
   it("names commission earned on a tab payment that no payroll row carries", async () => {

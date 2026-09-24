@@ -8,6 +8,9 @@ import {
   refunds,
   refundLines,
   loyaltyLedger,
+  orderPayments,
+  orderCredit,
+  creditPayments,
   REFUND_REASONS,
   REFUND_METHODS,
 } from "../../shared/schema";
@@ -20,9 +23,12 @@ import { publishEventTx } from "../eventBus";
 import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
 import { recordRefundExceptionInTx } from "../services/refundExceptions";
+import { refundLineAmounts, resolveRefundTender } from "@shared/refunds/refundRules";
 
 /** Raised when the in-transaction ceiling re-check rejects a concurrent refund. */
 class RefundCeilingExceeded extends Error {}
+/** Raised when the tab changed between the tender check and the write. */
+class RefundTenderRefused extends Error {}
 
 const refundLineSchema = z.object({
   orderLineId: z.string().uuid(),
@@ -67,16 +73,6 @@ async function pointsEarnedOnOrder(orderId: string): Promise<number> {
       and(eq(loyaltyLedger.orderId, orderId), eq(loyaltyLedger.reason, "earn")),
     );
   return rows.reduce((sum, r) => sum + Math.max(0, r.pointsDelta ?? 0), 0);
-}
-
-function resolveRefundMethod(
-  requested: (typeof REFUND_METHODS)[number],
-  originalPayment: string,
-): (typeof REFUND_METHODS)[number] {
-  if (requested !== "original") return requested;
-  const pm = originalPayment.toLowerCase();
-  if (pm === "cash" || pm.includes("cash")) return "original";
-  return "cash";
 }
 
 export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): void {
@@ -142,6 +138,18 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           .where(and(eq(orders.id, req.params.id), eq(orders.orgId, ctx.orgId)))
           .limit(1);
         if (!order) return res.status(404).json({ message: "Order not found" });
+        // Only a settled sale can be refunded: an order that was never
+        // completed was never counted in, so a refund would pay money out
+        // and take it off takings for a sale that did not happen (v1.2.1
+        // money, M3). Complete it first, or a manager deletes it when the
+        // sale did not happen.
+        if (order.status !== "completed") {
+          return res.status(409).json({
+            message:
+              "This order has not been completed, so there is nothing to refund yet. Complete it first, or a manager can delete it if the sale did not happen.",
+            code: "REFUND_ORDER_NOT_SETTLED",
+          });
+        }
 
         const lineIds = body.lines.map((l) => l.orderLineId);
         const orderLines = await db
@@ -169,21 +177,30 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         const refundedByLine = await sumRefundedQtyByLine(order.id);
         const lineMap = new Map(orderLines.map((l) => [l.id, l]));
 
-        let refundTotal = 0;
-        const resolvedLines: Array<{
+        // Every line of the sale, to share its settled total across them.
+        const allLines = await db
+          .select({ id: orderItems.id, quantity: orderItems.quantity, unitPrice: orderItems.unitPrice })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, order.id));
+        const lineValue = allLines.reduce(
+          (s, l) => s + parseFloat(String(l.unitPrice)) * Number(l.quantity),
+          0,
+        );
+
+        const requestedLines: Array<{
           orderLineId: string;
           qty: number;
-          amount: number;
+          unitPrice: number;
           productId: string;
           sku?: string;
         }> = [];
-
+        const requestedQty = new Map<string, number>();
         for (const input of body.lines) {
           const line = lineMap.get(input.orderLineId);
           if (!line) {
             return res.status(400).json({ message: "Invalid order line" });
           }
-          const already = refundedByLine.get(line.id) ?? 0;
+          const already = (refundedByLine.get(line.id) ?? 0) + (requestedQty.get(line.id) ?? 0);
           const remaining = line.quantity - already;
           if (input.qty > remaining) {
             return res.status(400).json({
@@ -191,27 +208,24 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
               remaining,
             });
           }
-          const unit = parseFloat(String(line.unitPrice));
-          const amount = Math.round(unit * input.qty * 100) / 100;
-          refundTotal += amount;
-          resolvedLines.push({
+          requestedQty.set(line.id, (requestedQty.get(line.id) ?? 0) + input.qty);
+          requestedLines.push({
             orderLineId: line.id,
             qty: input.qty,
-            amount,
+            unitPrice: parseFloat(String(line.unitPrice)),
             productId: line.productId ?? "",
             sku: line.sku ?? undefined,
           });
         }
-
-        refundTotal = Math.round(refundTotal * 100) / 100;
-        if (refundTotal <= 0) {
-          return res.status(400).json({ message: "Refund total must be positive" });
-        }
+        const refundsEverything = allLines.every(
+          (l) => (refundedByLine.get(l.id) ?? 0) + (requestedQty.get(l.id) ?? 0) >= Number(l.quantity),
+        );
 
         // SECURITY: cap against the IMMUTABLE settlement snapshot (what was
         // actually collected when the order completed), not `orders.total`,
         // which post-payment line edits could inflate. Falls back to `total`
-        // for orders that never recorded a settlement (pre-migration rows).
+        // for settled orders that never recorded a settlement (pre-migration
+        // rows).
         const settled = (order as any).settledTotal;
         const refundCeiling =
           settled != null && String(settled) !== ""
@@ -225,16 +239,63 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           (s, r) => s + parseFloat(String(r.total)),
           0,
         );
+
+        // What the customer paid for these items: the settled total shared
+        // across the lines by value, so a discount on the sale comes off the
+        // refund too.
+        const priced = refundLineAmounts({
+          lines: requestedLines,
+          lineValue,
+          settled: refundCeiling,
+          priorRefunded: priorTotal,
+          refundsEverything,
+        });
+        const resolvedLines = requestedLines.map((l, i) => ({ ...l, amount: priced.amounts[i] }));
+        const refundTotal = priced.total;
+        if (refundTotal <= 0) {
+          return res.status(400).json({ message: "Refund total must be positive" });
+        }
         if (priorTotal + refundTotal > refundCeiling + 0.01) {
           return res.status(400).json({
             message: "Refund total exceeds the amount collected for this order",
           });
         }
 
-        const refundMethod = resolveRefundMethod(
-          body.refundMethod,
-          order.paymentMethod,
-        );
+        // Which way the money goes back. A tab sale's refund comes off the
+        // tab first; only what was actually paid is handed back.
+        const tenderFor = async (client: Pick<typeof db, "select">) => {
+          const legs = await client
+            .select({ method: orderPayments.method, amount: orderPayments.amount, status: orderPayments.status })
+            .from(orderPayments)
+            .where(eq(orderPayments.orderId, order.id));
+          const [tab] = await client
+            .select({ amountOutstanding: orderCredit.amountOutstanding, status: orderCredit.status })
+            .from(orderCredit)
+            .where(and(eq(orderCredit.orderId, order.id), eq(orderCredit.orgId, ctx.orgId)))
+            .limit(1);
+          const tabOpen = !!tab && (tab.status === "outstanding" || tab.status === "partial");
+          const tabPays = tab
+            ? await client
+                .select({ method: creditPayments.method })
+                .from(creditPayments)
+                .where(eq(creditPayments.orderId, order.id))
+            : [];
+          return resolveRefundTender({
+            requested: body.refundMethod,
+            refundTotal,
+            legs: legs
+              .filter((l) => l.status === "paid")
+              .map((l) => ({ method: l.method, amount: parseFloat(String(l.amount)) })),
+            paymentMethod: order.paymentMethod,
+            tabOutstanding: tabOpen ? parseFloat(String(tab!.amountOutstanding)) : 0,
+            tabPaymentMethods: tabPays.map((p) => p.method),
+          });
+        };
+        const tender = await tenderFor(db);
+        if (!tender.ok) {
+          return res.status(400).json({ message: tender.message, code: "REFUND_METHOD_NEEDED" });
+        }
+        const refundMethod = tender.method;
         // Soft attach (ARC-015): this user's own already-open till shift, if
         // any — never one opened just now for this request.
         const openShift = await findOpenShiftForUser(ctx.orgId, userId);
@@ -276,6 +337,37 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             );
           }
 
+          // Re-read the tab under the order lock: a tab payment recorded in
+          // between would change how much of this refund comes off it.
+          const tenderNow = await tenderFor(tx as unknown as typeof db);
+          if (!tenderNow.ok || tenderNow.method !== tender.method || tenderNow.creditAmount !== tender.creditAmount) {
+            throw new RefundTenderRefused(
+              "The customer's tab changed while this refund was being issued. Check it and try again.",
+            );
+          }
+          if (tender.creditAmount > 0) {
+            // Off the tab: outstanding comes down by the refunded share. A tab
+            // refunded to nothing is closed: settled when some of it had been
+            // paid, voided when none had.
+            const [tab] = await tx
+              .select()
+              .from(orderCredit)
+              .where(eq(orderCredit.orderId, order.id))
+              .for("update")
+              .limit(1);
+            const left = Math.round((parseFloat(String(tab.amountOutstanding)) - tender.creditAmount) * 100) / 100;
+            const given = parseFloat(String(tab.amountGiven));
+            const everPaid = Math.round((given - parseFloat(String(tab.amountOutstanding))) * 100) / 100 > 0;
+            await tx
+              .update(orderCredit)
+              .set({
+                amountOutstanding: String(Math.max(0, left)),
+                status: left > 0 ? tab.status : everPaid ? "settled" : "voided",
+                updatedAt: new Date(),
+              })
+              .where(eq(orderCredit.orderId, order.id));
+          }
+
           const [refund] = await tx
             .insert(refunds)
             .values({
@@ -287,6 +379,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
               notes: body.notes,
               refundMethod,
               total: String(refundTotal),
+              creditAmount: String(tender.creditAmount),
             })
             .returning();
 
@@ -319,7 +412,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           if (refundMethod === "store_credit") {
             if (!order.customerId) throw new Error("Store credit refund requires a customer on the order");
             storeCreditGiftCard = await issueGiftCardInTx(tx, {
-              orgId: ctx.orgId, amount: refundTotal, customerId: order.customerId,
+              orgId: ctx.orgId, amount: tender.paidOut, customerId: order.customerId,
               issuedByUserId: userId, refundId: refund.id, movementType: "refund_credit", actorUserId: userId,
             });
           }
@@ -352,12 +445,13 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           storeCredit: result.storeCreditGiftCard ? {
             giftCardId: result.storeCreditGiftCard.card.id,
             code: result.storeCreditGiftCard.code,
-            amount: refundTotal,
+            amount: tender.paidOut,
           } : null,
         });
       } catch (error) {
         if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
         if (error instanceof RefundCeilingExceeded) return res.status(400).json({ message: error.message });
+        if (error instanceof RefundTenderRefused) return res.status(409).json({ message: error.message });
         const message = error instanceof Error ? error.message : "Failed to issue refund";
         console.error("[Refunds] create:", error);
         res.status(/store credit|customer/i.test(message) ? 400 : 500).json({ message });

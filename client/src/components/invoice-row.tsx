@@ -41,6 +41,8 @@ export interface InvoiceListItem {
   /** Still to pay, under the same rule as the status. */
   amountDue: number;
   status: InvoiceStatus;
+  /** Refunded against the sale since; 0 when nothing was. */
+  refunded?: number;
   paymentMethod: string;
 }
 
@@ -80,6 +82,9 @@ function InvoiceAmount({ invoice }: { invoice: InvoiceListItem }) {
       <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
       {showsDue && (
         <span className="text-xs text-muted-foreground">£{invoice.amountDue.toFixed(2)} to pay</span>
+      )}
+      {(invoice.refunded ?? 0) > 0 && (
+        <span className="text-xs text-muted-foreground">£{(invoice.refunded ?? 0).toFixed(2)} refunded</span>
       )}
     </span>
   );

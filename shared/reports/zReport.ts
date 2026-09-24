@@ -2,6 +2,7 @@
  * Pure Z-report aggregator for a closed shift.
  */
 import { isPaidLeg } from "../payments/cardLink";
+import { refundCashOut } from "../refunds/refundRules";
 
 export type ZReportOrder = {
   id: string;
@@ -31,6 +32,8 @@ export type ZReportRefund = {
   id: string;
   total: number;
   refundMethod: string;
+  /** The part taken off the customer's tab, not paid out of the drawer. */
+  creditAmount?: number;
   createdAt: string;
 };
 
@@ -234,6 +237,8 @@ export function buildZReport(
   >();
 
   for (const order of orders) {
+    // Personal use is not a sale: its goods are not the shift's top items.
+    if (String(order.paymentMethod ?? "").toLowerCase() === "personal_use") continue;
     for (const item of order.items) {
       const category = item.category?.trim() || "General";
       categoryMap.set(category, (categoryMap.get(category) ?? 0) + item.lineTotal);
@@ -264,9 +269,7 @@ export function buildZReport(
   // in the till, and expecting £100 would show a £50 variance every time.
   const cashSales = roundMoney(cashTakenFrom(orders));
   const cashRefunds = roundMoney(
-    refunds
-      .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
-      .reduce((sum, r) => sum + r.total, 0),
+    refunds.reduce((sum, r) => sum + refundCashOut(r), 0),
   );
   const openingFloat = shift.openingFloat;
   const cashTabRepayments = cashTabRepaymentsFrom(creditPaid);
@@ -337,8 +340,6 @@ export function computeExpectedCash(
   cashTabRepayments = 0,
 ): number {
   const cashSales = cashTakenFrom(orders);
-  const cashRefunds = refunds
-    .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
-    .reduce((sum, r) => sum + r.total, 0);
+  const cashRefunds = refunds.reduce((sum, r) => sum + refundCashOut(r), 0);
   return roundMoney(openingFloat + cashSales - cashRefunds + cashTabRepayments);
 }

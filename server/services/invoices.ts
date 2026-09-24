@@ -23,6 +23,7 @@ import {
   orders,
   organizations,
   products,
+  refunds,
   type Invoice,
 } from "@shared/schema";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -133,6 +134,22 @@ async function paidAtTillByOrder(orderIds: string[]): Promise<Map<string, number
     paid.set(leg.orderId, Math.round(((paid.get(leg.orderId) ?? 0) + taken) * 100) / 100);
   }
   return paid;
+}
+
+/**
+ * What has been refunded per order (v1.2.1 money, M15). An invoice keeps the
+ * sale as it was billed, and shows the refunds under it, so an invoice for a
+ * part-refunded sale no longer reads as fully paid with nothing given back.
+ */
+async function refundedByOrder(orderIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (orderIds.length === 0) return out;
+  const rows = await db
+    .select({ orderId: refunds.orderId, total: refunds.total })
+    .from(refunds)
+    .where(inArray(refunds.orderId, orderIds));
+  for (const r of rows) out.set(r.orderId, Math.round(((out.get(r.orderId) ?? 0) + num(r.total)) * 100) / 100);
+  return out;
 }
 
 async function numberedInvoiceFor(orderId: string, client: Pick<typeof db, "select">) {
@@ -324,6 +341,8 @@ export type InvoiceListRow = {
   pointsDiscount: number;
   amountDue: number;
   status: InvoiceStatus;
+  /** Refunded against the sale since; 0 when nothing was (v1.2.1). */
+  refunded: number;
   paymentTerms: string | null;
   paymentMethod: string;
   /** False for a tab sale from before numbering that has no invoice record yet. */
@@ -405,6 +424,7 @@ export async function listInvoices(orgId: string, role: string | null | undefine
   }
 
   const paidAtTill = await paidAtTillByOrder(orderRows.map(({ order }) => order.id));
+  const refundedMap = await refundedByOrder(orderRows.map(({ order }) => order.id));
 
   return orderRows.map(({ order, customer }) => {
     const invoice = numberedByOrder.get(order.id) ?? legacyByOrder.get(order.id) ?? null;
@@ -441,6 +461,7 @@ export async function listInvoices(orgId: string, role: string | null | undefine
       pointsDiscount: shown.pointsDiscount,
       amountDue: invoiceAmountDue(statusInput),
       status: invoiceStatus(statusInput),
+      refunded: refundedMap.get(order.id) ?? 0,
       paymentTerms: invoice?.paymentTerms ?? null,
       paymentMethod: order.paymentMethod,
       hasGeneratedInvoice: !!invoice,
@@ -460,6 +481,8 @@ export type InvoiceDocument = {
   pointsDiscount: number;
   total: number;
   status: InvoiceStatus;
+  /** Refunded against the sale since; 0 when nothing was (v1.2.1). */
+  refunded: number;
   paymentTerms: string | null;
   paymentMethod: string | null;
   orgId: string;
@@ -543,6 +566,7 @@ export async function loadInvoiceDocument(
       pointsDiscount: shown.pointsDiscount,
       total,
       status: invoiceStatus({ orderStatus: order.status, orderTotal: total, credit, paidAtTill, dueDate, today }),
+      refunded: (await refundedByOrder([order.id])).get(order.id) ?? 0,
       paymentTerms: invoice?.paymentTerms ?? null,
       paymentMethod: order.paymentMethod,
       orgId,

@@ -46,7 +46,6 @@ export const CHECKS = {
   backdated: "Backdated sales are counted on the day they are dated",
   personalUse: "Personal use is not counted as sales",
   refunds: "Refunds never exceed what was paid",
-  lateNight: "Small-hours sales land on the same day in every figure",
 } as const;
 export type CheckId = keyof typeof CHECKS;
 
@@ -122,7 +121,7 @@ export async function reconcileOrg(
   // --- source rows
   const orders = (
     await db.query(
-      `SELECT id, status, total, settled_total, settled_at, created_at, payment_method, date_kind,
+      `SELECT id, status, total, settled_total, settled_at, created_at, entered_at, payment_method, date_kind,
               shift_id, cashier_shift_id, completed_cashier_shift_id,
               subtotal, tier_discount, promo_discount, points_discount, vat_amount
          FROM orders
@@ -158,7 +157,14 @@ export async function reconcileOrg(
   ).rows;
   const refundIds = refunds.map((r) => r.id);
   const refundLines = refundIds.length
-    ? (await db.query(`SELECT refund_id, order_line_id, qty, amount FROM refund_lines WHERE refund_id = ANY($1::uuid[])`, [refundIds])).rows
+    ? (
+        await db.query(
+          `SELECT rl.refund_id, rl.order_line_id, rl.qty, rl.amount, oi.unit_price
+             FROM refund_lines rl LEFT JOIN order_items oi ON oi.id = rl.order_line_id
+            WHERE rl.refund_id = ANY($1::uuid[])`,
+          [refundIds],
+        )
+      ).rows
     : [];
 
   // --- the day summary: takings as arcarna defines them (settled that day,
@@ -246,7 +252,32 @@ export async function reconcileOrg(
     const d = dayIndex.get(run.day);
     if (!d) continue;
     const label = dayName(run.day);
-    if (p(run.gross_sales) !== d.gross || Number(run.order_count) !== d.sales) {
+    // A backdated sale keyed in after its day closed is counted on its dated
+    // day (the CHANGELOG promise), but the frozen close could not include it.
+    // Named on its own, and left out of the comparison below.
+    const lateBackdated = orders.filter(
+      (o) =>
+        o.date_kind === "backdated" &&
+        o.status === "completed" &&
+        o.settled_at &&
+        o.entered_at &&
+        !isPersonal(o.payment_method) &&
+        tradingDayFor(new Date(o.settled_at), tz) === run.day &&
+        new Date(o.entered_at) > new Date(run.ran_at),
+    );
+    const lateGross = lateBackdated.reduce((s, o) => s + p(o.settled_total ?? o.total), 0);
+    const lateLegs = lateBackdated.flatMap((o) => (legsBy.get(o.id) ?? []).filter((l) => l.status === "paid"));
+    const lateCash = lateLegs.filter((l) => String(l.method).toLowerCase() === "cash").reduce((s, l) => s + p(l.amount), 0);
+    const lateCard = lateLegs.filter((l) => String(l.method).toLowerCase() === "card").reduce((s, l) => s + p(l.amount), 0);
+    if (lateBackdated.length > 0) {
+      say(
+        "backdated",
+        `${label}: ${lateBackdated.length} backdated sale(s) worth ${gbp(lateGross)} were keyed in after the day closed. ` +
+          `The day's takings include them; the 06:00 close, which had already run, does not.`,
+        run.day,
+      );
+    }
+    if (p(run.gross_sales) !== d.gross - lateGross || Number(run.order_count) !== d.sales - lateBackdated.length) {
       say(
         "close",
         `${label}: the 06:00 close recorded ${gbp(p(run.gross_sales))} over ${run.order_count} sale(s); ` +
@@ -255,19 +286,20 @@ export async function reconcileOrg(
         run.day,
       );
     }
-    if (p(run.cash_sales) !== d.cash) {
+    if (p(run.cash_sales) !== d.cash - lateCash) {
       say("close", `${label}: the close recorded cash ${gbp(p(run.cash_sales))}; the day's cash payments now come to ${gbp(d.cash)}.`, run.day);
     }
     const storedCard = p(run.card_sales);
-    if (storedCard !== d.card) {
-      const extra = storedCard - d.card;
+    const dayCard = d.card - lateCard;
+    if (storedCard !== dayCard) {
+      const extra = storedCard - dayCard;
       const explained = extra === d.giftCard + d.cardLink || extra === d.giftCard || extra === d.cardLink;
       say(
         explained ? "closeCard" : "close",
         explained
-          ? `${label}: the close counted ${gbp(storedCard)} as card, but only ${gbp(d.card)} was taken on the card terminal — ` +
+          ? `${label}: the close counted ${gbp(storedCard)} as card, but only ${gbp(dayCard)} was taken on the card terminal — ` +
               `the rest is ${d.giftCard ? `${gbp(d.giftCard)} of gift card` : ""}${d.giftCard && d.cardLink ? " and " : ""}${d.cardLink ? `${gbp(d.cardLink)} of card link` : ""} money.`
-          : `${label}: the close recorded card ${gbp(storedCard)}; the day's card payments now come to ${gbp(d.card)}.`,
+          : `${label}: the close recorded card ${gbp(storedCard)}; the day's card payments now come to ${gbp(dayCard)}.`,
         run.day,
       );
     }
@@ -352,10 +384,11 @@ export async function reconcileOrg(
       ? (await db.query(`SELECT method, amount, status FROM order_payments WHERE order_id = ANY($1::uuid[])`, [tIds])).rows
       : [];
     const cashIn = tLegs.filter((l: any) => isCash(l.method) && l.status === "paid").reduce((s: number, l: any) => s + p(l.amount), 0);
-    const tRefunds = (await db.query(`SELECT refund_method, total FROM refunds WHERE shift_id = $1`, [t.id])).rows;
+    const tRefunds = (await db.query(`SELECT refund_method, total, credit_amount FROM refunds WHERE shift_id = $1`, [t.id])).rows;
+    // Only what was paid out leaves the drawer; a part taken off a tab never did.
     const cashOut = tRefunds
       .filter((r: any) => r.refund_method === "cash" || r.refund_method === "original")
-      .reduce((s: number, r: any) => s + p(r.total), 0);
+      .reduce((s: number, r: any) => s + p(r.total) - p(r.credit_amount), 0);
     const repaid = t.tab_cash_in_expected
       ? (
           await db.query(`SELECT COALESCE(SUM(amount),0) AS a FROM credit_payments WHERE shift_id = $1 AND lower(method) = 'cash'`, [t.id])
@@ -461,6 +494,7 @@ export async function reconcileOrg(
       `SELECT c.order_id, c.amount_given, c.amount_outstanding, c.status,
               COALESCE((SELECT SUM(cp.amount) FROM credit_payments cp WHERE cp.order_id = c.order_id), 0) AS paid,
               COALESCE((SELECT SUM(r.total) FROM refunds r WHERE r.order_id = c.order_id), 0) AS refunded,
+              COALESCE((SELECT SUM(r.credit_amount) FROM refunds r WHERE r.order_id = c.order_id), 0) AS off_tab,
               o.status AS order_status
          FROM order_credit c JOIN orders o ON o.id = c.order_id
         WHERE c.org_id = $1`,
@@ -469,14 +503,21 @@ export async function reconcileOrg(
   ).rows;
   for (const t of tabs) {
     if (t.status === "written_off" || t.status === "voided") continue;
-    const expected = Math.max(0, p(t.amount_given) - p(t.paid));
+    const expected = Math.max(0, p(t.amount_given) - p(t.paid) - p(t.off_tab));
     if (p(t.amount_outstanding) !== expected) {
-      say("credit", `Tab on sale ${short(t.order_id)}: ${gbp(p(t.amount_given))} given, ${gbp(p(t.paid))} paid, but the Credit List says ${gbp(p(t.amount_outstanding))} is outstanding (expected ${gbp(expected)}).`);
+      say(
+        "credit",
+        `Tab on sale ${short(t.order_id)}: ${gbp(p(t.amount_given))} given, ${gbp(p(t.paid))} paid` +
+          (p(t.off_tab) ? `, ${gbp(p(t.off_tab))} refunded off the tab` : "") +
+          `, but the Credit List says ${gbp(p(t.amount_outstanding))} is outstanding (expected ${gbp(expected)}).`,
+      );
     }
-    if (p(t.refunded) > 0 && p(t.amount_outstanding) > 0) {
+    // A refund paid out while the tab is still owed: it should have come off the tab.
+    const paidOutRefund = p(t.refunded) - p(t.off_tab);
+    if (paidOutRefund > 0 && p(t.amount_outstanding) > 0) {
       say(
         "refundedTabs",
-        `Tab on sale ${short(t.order_id)}: ${gbp(p(t.refunded))} of the sale was refunded, but the customer is still shown owing ${gbp(p(t.amount_outstanding))} for it.`,
+        `Tab on sale ${short(t.order_id)}: ${gbp(paidOutRefund)} of the sale was refunded and paid out, but the customer is still shown owing ${gbp(p(t.amount_outstanding))} for it.`,
       );
     }
     if (t.order_status !== "completed" && ["outstanding", "partial"].includes(t.status)) {
@@ -501,17 +542,11 @@ export async function reconcileOrg(
   // --- 9. personal use
   for (const o of orders) {
     if (!isPersonal(o.payment_method) || o.status !== "completed") continue;
-    const lineValue = (itemsBy.get(o.id) ?? []).reduce((s, it) => s + p(it.total_price), 0);
+    // (Its lines keep their value at sale price, as a record of what was
+    // taken; since v1.2.1 every product figure leaves personal use out.)
     const day = o.settled_at ? tradingDayFor(new Date(o.settled_at), tz) : undefined;
     if (p(o.total) !== 0) {
       say("personalUse", `Personal use ${short(o.id)} has a total of ${gbp(p(o.total))}; it should be £0.00.`, day);
-    }
-    if (lineValue !== 0) {
-      say(
-        "personalUse",
-        `${day ? `${dayName(day)}: ` : ""}personal use ${short(o.id)} still carries ${gbp(lineValue)} of line value at sale price, which the product sales figures (Weekly Sales top products, Weekly Margin, the Z report's top items) count as sold.`,
-        day,
-      );
     }
   }
 
@@ -531,16 +566,20 @@ export async function reconcileOrg(
     }
     // Paid for those lines: the settled total shared across lines by their
     // value, so a discount on the sale is honoured on the way back too.
+    // The refunded items at their list price, shared the same way; a penny
+    // a line either way is rounding (the last refund of a sale takes it up).
     const orderLineValue = p(r.subtotal);
-    if (orderLineValue > 0) {
+    const rLines = linesByRefund.get(r.id) ?? [];
+    const listValue = rLines.reduce((s, l) => s + Math.round(Number(l.qty) * p(l.unit_price)), 0);
+    if (orderLineValue > 0 && listValue > 0) {
       const settled = p(r.settled_total ?? r.order_total);
-      const paidForLines = Math.round((lineSum * settled) / orderLineValue);
-      if (Math.abs(lineSum - paidForLines) > 1) {
+      const paidForLines = Math.round((listValue * settled) / orderLineValue);
+      // Only giving back MORE than was paid is a leak; a smaller refund (a
+      // goodwill part-refund) is the refunder's call.
+      if (lineSum - paidForLines > rLines.length + 1) {
         say(
           "refunds",
-          lineSum > paidForLines
-            ? `${dayName(day)}: refund on sale ${short(r.order_id)} gave back ${gbp(lineSum)} for items the customer paid ${gbp(paidForLines)} for (the sale's discount was not taken off the refund).`
-            : `${dayName(day)}: refund on sale ${short(r.order_id)} gave back ${gbp(lineSum)} for items the customer paid ${gbp(paidForLines)} for (the VAT charged on them was not refunded).`,
+          `${dayName(day)}: refund on sale ${short(r.order_id)} gave back ${gbp(lineSum)} for items the customer paid ${gbp(paidForLines)} for (the sale's discount was not taken off the refund).`,
           day,
         );
       }
@@ -554,32 +593,9 @@ export async function reconcileOrg(
     }
   }
 
-  // --- 11. late night: the Truths overview and the revenue charts bucket by
-  // UTC calendar date (`date(settled_at)`), while Daily Sales, the Control
-  // Centre and the close use the 06:00 trading day. A sale settled between
-  // midnight and 06:00 local time can land on a different day in each.
-  const lateByDay = new Map<string, { n: number; v: number; utcDay: string }>();
-  for (const o of orders) {
-    if (o.status !== "completed" || !o.settled_at || isPersonal(o.payment_method)) continue;
-    const at = new Date(o.settled_at);
-    const utcDay = at.toISOString().slice(0, 10);
-    const tradingDay = tradingDayFor(at, tz);
-    if (utcDay !== tradingDay) {
-      const key = `${tradingDay}|${utcDay}`;
-      const e = lateByDay.get(key) ?? { n: 0, v: 0, utcDay };
-      e.n += 1;
-      e.v += p(o.settled_total ?? o.total);
-      lateByDay.set(key, e);
-    }
-  }
-  for (const [key, e] of lateByDay) {
-    const day = key.split("|")[0];
-    say(
-      "lateNight",
-      `${dayName(day)}: ${e.n} sale(s) worth ${gbp(e.v)} were settled in the small hours; Daily Sales and the Control Centre count them on ${dayName(day)}, but the Truths overview and the daily and monthly revenue charts, which count UTC days, show them on ${dayName(e.utcDay)}.`,
-      day,
-    );
-  }
+  // (Small-hours sales used to be checked here: the Truths overview and the
+  // revenue charts bucketed by UTC date. Since v1.2.1 every figure uses the
+  // 06:00 trading day, so there is nothing left to disagree.)
 
   return { orgId, orgName: org.name, timeZone: tz, from, to, days, problems };
 }

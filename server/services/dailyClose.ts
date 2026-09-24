@@ -5,6 +5,7 @@ import {
   creditPayments,
   dailyCloseRuns,
   orderCredit,
+  orderExpenses,
   orderPayments,
   orders,
   organizations,
@@ -240,11 +241,17 @@ async function totalsForDay(
       ),
     );
 
-  const personalUseCost = round(
-    legs
-      .filter((l) => isPersonalUse(l.method))
-      .reduce((sum, l) => sum + parseFloat(String(l.amount)), 0),
-  );
+  // Personal use at what the goods COST, as the till books it (the order's
+  // personal_use expense), not the sale price its payment leg carries (v1.2.1
+  // money, M12).
+  const personalIds = dayOrders.filter((o) => isPersonalUse(o.paymentMethod)).map((o) => o.id);
+  const personalRows = personalIds.length
+    ? await client
+        .select({ amount: orderExpenses.amount })
+        .from(orderExpenses)
+        .where(and(inArray(orderExpenses.orderId, personalIds), eq(orderExpenses.category, "personal_use")))
+    : [];
+  const personalUseCost = round(personalRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0));
 
   const total = (rows: Array<{ amount: string }>) =>
     round(rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0));
@@ -270,7 +277,10 @@ async function totalsForDay(
     orderCount: sales.length,
     grossSales,
     cashSales: sumLegs((m) => m === "cash" || m.includes("cash")),
-    cardSales: sumLegs((m) => m === "card" || m.includes("card")),
+    // Card terminal money only: gift card and Card (link) money are not in
+    // the terminal's batch, so counting them here would never reconcile
+    // (v1.2.1 money, M12).
+    cardSales: sumLegs((m) => m === "card"),
     creditGiven: total(creditGivenRows),
     creditResolved: total(creditPaidRows),
     personalUseCost,
