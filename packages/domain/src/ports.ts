@@ -9,6 +9,13 @@ export type StockContext = {
   locationId?: string | null
   orderId?: string | null
   userId?: string | null
+  /**
+   * Checking stock for a new sale (v1.2.1, E2E-07). The stock row is locked
+   * for the rest of the sale's transaction and sales not yet taken off stock
+   * are counted as gone, so two tills selling the last unit at once see it
+   * the way they would one after the other.
+   */
+  forSale?: boolean
 }
 
 export interface ProductsRepo { 

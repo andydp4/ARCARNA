@@ -189,9 +189,16 @@ test.describe("hard use: refunds", () => {
     const locationId = await firstLocationId(admin);
     const shiftId = await ensureOpenShift(cashier, locationId);
     const product = await ownProduct(admin, locationId, 20);
-    const customer = await okJson<{ id: string }>(
-      await admin.post("/api/customers", { data: { name: `Tab Refund ${uniqueSuffix()}`, phone: "07700900456" } }),
-    );
+    // A free 07700 900xxx number: the duplicate check refuses one already on
+    // file, so a fixed number fails the second run against the same database.
+    let customer: { id: string } | null = null;
+    for (let attempt = 0; attempt < 20 && !customer; attempt++) {
+      const phone = `07700900${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
+      const res = await admin.post("/api/customers", { data: { name: `Tab Refund ${uniqueSuffix()}`, phone } });
+      if (res.status() === 409) continue;
+      customer = await okJson<{ id: string }>(res);
+    }
+    if (!customer) throw new Error("no free 07700 900xxx number after 20 tries");
     const placed = await okJson<any>(
       await placeOrder(cashier, locationId, [{ productId: product.id, quantity: 1, unitPrice: 10 }], "tick", {
         customerId: customer.id,

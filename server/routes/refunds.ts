@@ -10,7 +10,10 @@ import {
   loyaltyLedger,
   REFUND_REASONS,
   REFUND_METHODS,
+  orderPayments,
+  creditPayments,
 } from "../../shared/schema";
+import { isPaidLeg } from "@shared/payments/cardLink";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
@@ -24,9 +27,29 @@ import { recordRefundExceptionInTx } from "../services/refundExceptions";
 /** Raised when the in-transaction ceiling re-check rejects a concurrent refund. */
 class RefundCeilingExceeded extends Error {}
 
+/** Raised when the in-transaction per-line check rejects a concurrent refund. */
+class RefundLineExceeded extends Error {
+  constructor(message: string, readonly remaining: number) {
+    super(message);
+  }
+}
+
+/** Raised when a refund would give back money this sale never took. */
+class RefundNotPaid extends Error {}
+
+/** Quantities are kept to three places, like `order_items.quantity` (weighed lines). */
+const roundQty = (n: number) => Math.round(n * 1000) / 1000;
+
 const refundLineSchema = z.object({
   orderLineId: z.string().uuid(),
-  qty: z.coerce.number().int().positive(),
+  // A line sold by weight (0.5 kg) is refunded by weight too (E2E-05):
+  // whole units only meant it could never be refunded at all.
+  qty: z.coerce
+    .number()
+    .positive()
+    .refine((n) => Number.isFinite(n) && Math.abs(roundQty(n) - n) < 1e-9, {
+      message: "Quantity can have at most three decimal places",
+    }),
 });
 
 const createRefundSchema = z
@@ -42,8 +65,10 @@ const createRefundSchema = z
     path: ["notes"],
   });
 
-async function sumRefundedQtyByLine(orderId: string): Promise<Map<string, number>> {
-  const rows = await db
+type DbReader = Pick<typeof db, "select">;
+
+async function sumRefundedQtyByLine(orderId: string, client: DbReader = db): Promise<Map<string, number>> {
+  const rows = await client
     .select({
       orderLineId: refundLines.orderLineId,
       qty: refundLines.qty,
@@ -54,7 +79,7 @@ async function sumRefundedQtyByLine(orderId: string): Promise<Map<string, number
 
   const map = new Map<string, number>();
   for (const row of rows) {
-    map.set(row.orderLineId, (map.get(row.orderLineId) ?? 0) + row.qty);
+    map.set(row.orderLineId, roundQty((map.get(row.orderLineId) ?? 0) + Number(row.qty)));
   }
   return map;
 }
@@ -67,6 +92,42 @@ async function pointsEarnedOnOrder(orderId: string): Promise<number> {
       and(eq(loyaltyLedger.orderId, orderId), eq(loyaltyLedger.reason, "earn")),
     );
   return rows.reduce((sum, r) => sum + Math.max(0, r.pointsDelta ?? 0), 0);
+}
+
+/**
+ * What this sale has actually taken so far (E2E-02, E2E-03): paid tender legs
+ * (a Card (link) leg the customer has not paid is 'awaiting', and a tick leg
+ * is a debt, not money), plus any repayments made against its tab since.
+ * `null` for a sale recorded before tender legs existed, which falls back to
+ * the settled total as before.
+ */
+async function moneyTakenOnOrder(orderId: string, client: DbReader): Promise<number | null> {
+  const legs = await client
+    .select({ method: orderPayments.method, amount: orderPayments.amount, status: orderPayments.status })
+    .from(orderPayments)
+    .where(eq(orderPayments.orderId, orderId));
+  if (legs.length === 0) return null;
+  const paidLegs = legs
+    .filter((l) => isPaidLeg(l))
+    .filter((l) => {
+      const m = String(l.method ?? "").toLowerCase();
+      return m !== "tick" && m !== "personal_use";
+    })
+    .reduce((sum, l) => sum + parseFloat(String(l.amount)), 0);
+  const repaid = await client
+    .select({ amount: creditPayments.amount })
+    .from(creditPayments)
+    .where(eq(creditPayments.orderId, orderId));
+  const repaidTotal = repaid.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
+  return Math.round((paidLegs + repaidTotal) * 100) / 100;
+}
+
+function notPaidMessage(taken: number, prior: number): string {
+  const left = Math.max(0, Math.round((taken - prior) * 100) / 100);
+  if (taken <= 0) {
+    return "Nothing has been paid for this sale yet, so there is nothing to refund. Cancel the sale, or take it off the customer's credit, instead.";
+  }
+  return `Only £${left.toFixed(2)} of this sale has been paid and not yet refunded, so a refund cannot be more than that.`;
 }
 
 function resolveRefundMethod(
@@ -184,8 +245,8 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             return res.status(400).json({ message: "Invalid order line" });
           }
           const already = refundedByLine.get(line.id) ?? 0;
-          const remaining = line.quantity - already;
-          if (input.qty > remaining) {
+          const remaining = roundQty(Number(line.quantity) - already);
+          if (roundQty(input.qty) > remaining) {
             return res.status(400).json({
               message: `Cannot refund more than remaining qty for line ${line.id}`,
               remaining,
@@ -231,6 +292,13 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           });
         }
 
+        {
+          const taken = await moneyTakenOnOrder(order.id, db);
+          if (taken !== null && priorTotal + refundTotal > taken + 0.01) {
+            return res.status(400).json({ message: notPaidMessage(taken, priorTotal), code: "REFUND_NOT_PAID" });
+          }
+        }
+
         const refundMethod = resolveRefundMethod(
           body.refundMethod,
           order.paymentMethod,
@@ -274,6 +342,26 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
             throw new RefundCeilingExceeded(
               "Refund total exceeds the amount collected for this order",
             );
+          }
+          // Only money actually taken can be given back, read under the same
+          // lock (a Card (link) payment or tab repayment landing now is seen).
+          const takenInTx = await moneyTakenOnOrder(order.id, tx);
+          if (takenInTx !== null && priorTotalInTx + refundTotal > takenInTx + 0.01) {
+            throw new RefundNotPaid(notPaidMessage(takenInTx, priorTotalInTx));
+          }
+          // The per-line check again, under the lock (E2E-04): two refunds of
+          // the same single unit pressed together both passed the check above,
+          // which reads before either had written.
+          const refundedInTx = await sumRefundedQtyByLine(order.id, tx);
+          for (const line of resolvedLines) {
+            const sold = Number(lineMap.get(line.orderLineId)?.quantity ?? 0);
+            const remainingInTx = roundQty(sold - (refundedInTx.get(line.orderLineId) ?? 0));
+            if (roundQty(line.qty) > remainingInTx) {
+              throw new RefundLineExceeded(
+                `Cannot refund more than remaining qty for line ${line.orderLineId}`,
+                remainingInTx,
+              );
+            }
           }
 
           const [refund] = await tx
@@ -358,6 +446,10 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
       } catch (error) {
         if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
         if (error instanceof RefundCeilingExceeded) return res.status(400).json({ message: error.message });
+        if (error instanceof RefundLineExceeded) {
+          return res.status(400).json({ message: error.message, remaining: error.remaining });
+        }
+        if (error instanceof RefundNotPaid) return res.status(400).json({ message: error.message, code: "REFUND_NOT_PAID" });
         const message = error instanceof Error ? error.message : "Failed to issue refund";
         console.error("[Refunds] create:", error);
         res.status(/store credit|customer/i.test(message) ? 400 : 500).json({ message });

@@ -216,6 +216,53 @@ async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgI
   return { orgId, locationId }
 }
 
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  const r = result as { rows?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>
+  return Array.isArray(r) ? r : r?.rows ?? []
+}
+
+/**
+ * Stock a new sale can take (v1.2.1, E2E-07), read inside the sale's own
+ * transaction.
+ *
+ * Stock comes off in the InventoryWorker after the sale commits, so two tills
+ * selling the last unit at once both read 1 and both sold it; the worker then
+ * refused the second movement ("Insufficient stock at location") and stock sat
+ * at 0 with two sales. Here the stock row is locked until this sale commits,
+ * which queues the second till behind the first, and sales already recorded
+ * but not yet taken off stock (no sale movement yet, in the last day) are
+ * counted as gone. The second till then sees 0 and its sale is held, exactly
+ * as it is when the two are rung one after the other.
+ */
+async function availableForSale(orgId: string, productId: string, locationId: string): Promise<number> {
+  const tx = getDb()
+  const locked = rowsOf(
+    await tx.execute(sql`
+      SELECT stock FROM product_location_stock
+      WHERE org_id = ${orgId} AND product_id = ${productId} AND location_id = ${locationId}
+      FOR UPDATE
+    `),
+  )[0]
+  const stock = Number(locked?.stock ?? 0)
+  const pending = rowsOf(
+    await tx.execute(sql`
+      SELECT COALESCE(SUM(oi.quantity), 0) AS qty
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      WHERE oi.product_id = ${productId}
+        AND o.org_id = ${orgId}
+        AND (o.location_id = ${locationId} OR o.location_id IS NULL)
+        AND o.status NOT IN ('on-hold', 'cancelled', 'voided', 'refunded')
+        AND COALESCE(o.entered_at, o.created_at) > now() - interval '1 day'
+        AND NOT EXISTS (
+          SELECT 1 FROM inventory_movements m
+          WHERE m.correlation_id = o.id::text AND m.product_id = ${productId}
+        )
+    `),
+  )[0]
+  return Math.round((stock - Number(pending?.qty ?? 0)) * 1000) / 1000
+}
+
 export const ProductsRepoDrizzle: ProductsRepo = {
   async checkStock(p: ProductId, ctx?: StockContext): Promise<number> {
     const { getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
@@ -226,6 +273,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     }
     if (!orgId) return 0
     const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
+    if (ctx?.forSale) return availableForSale(orgId, p as string, locationId)
     const row = await getProductLocationStock(orgId, p as string, locationId)
     return row?.stock ?? 0
   },

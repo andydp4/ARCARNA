@@ -161,6 +161,8 @@ vi.mock("../db", () => ({ db: {}, pool: {} }));
 
 vi.mock("../middleware/requireOpenShift", () => ({
   requireOpenShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+  // The drawer the request picked is still open in these tests.
+  drawerForSaleInTx: async (_tx: unknown, shift: { id: string }) => shift.id,
 }));
 vi.mock("../middleware/requireActiveCashierShift", () => ({
   requireActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
