@@ -561,10 +561,13 @@ export function registerWhatsappRoutes(app: Express, scoped: RequestHandler[]): 
         if (!conversation) return res.status(404).json({ message: "Conversation not found" });
 
         const template = await store.getTemplate(ctx.orgId, templateName, language);
-        if (template && template.status !== "APPROVED" && template.status !== "LOCAL") {
-          return res
-            .status(422)
-            .json({ message: `Template "${templateName}" is not approved (status: ${template.status})` });
+        // Only templates Meta has approved are sent (v1.2 Phase 6, PRV-11): a
+        // local starting point, or a name we have no record of, is refused.
+        if (!template || template.status !== "APPROVED") {
+          return res.status(422).json({
+            message: `Template "${templateName}" is not approved${template ? ` (status: ${template.status})` : ""}. Sync templates once Meta approves it.`,
+            code: "TEMPLATE_NOT_APPROVED",
+          });
         }
 
         // Marketing templates need the customer's recorded consent (PRV-14).

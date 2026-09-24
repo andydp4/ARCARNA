@@ -41,6 +41,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { CreditCustomerDetailDialog } from '@/components/CreditCustomerDetailDialog'
+import { PaymentReminderButton, PaymentReminderNote } from '@/components/payment-reminder-button'
 import { apiRequest, queryClient } from '@/lib/queryClient'
 import {
   CreditCard,
@@ -281,6 +282,9 @@ export default function TickList() {
           question="Who's buying on credit, and what's outstanding?"
           explanation="Manage customer credit and outstanding payments."
         />
+        <div className="mb-4">
+          <PaymentReminderNote />
+        </div>
 
         {/* Summary Cards */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 mb-6">
@@ -429,6 +433,7 @@ export default function TickList() {
                                 <CheckCircle className="h-4 w-4 mr-1" />
                                 Payment
                               </Button>
+                              <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} />
                               {canWriteOff && (
                               <Button
                                 size="sm"
@@ -484,6 +489,7 @@ export default function TickList() {
                             <CheckCircle className="h-4 w-4 mr-1" />
                             Payment
                           </Button>
+                          <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} className="flex-1 min-h-[44px]" />
                           {canWriteOff && (
                           <Button
                             size="sm"

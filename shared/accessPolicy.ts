@@ -114,8 +114,9 @@ export const STRIPE_SETTINGS_MIN_ROLE: Role = "MANAGER";
 //
 // One customer view, three versions (v1.2 Phase 5, PRV-03):
 //   Cashier  name, tier, points, the hints and masks.
-//   Manager  the cashier's view plus the past-order summary. Full contact only
-//            inside a 24-hour grant (Phase 6), so for now masks only.
+//   Manager  the cashier's view plus the past-order summary, with masks. Inside
+//            a 24-hour grant for one customer (Phase 6, shared/contactAccess.ts)
+//            each requested field can be revealed by a tap, logged first.
 //   Admin    everything.
 // The server's queries select only the columns the version needs
 // (server/services/customerView.ts); customerForRole is the last line, applied
@@ -290,7 +291,8 @@ export function seesFullOrderHistory(role: string | null | undefined): boolean {
 // live, managers and above afterwards too. The phone is revealed only to the
 // person the order is assigned to, once it is out for delivery and until it is
 // completed; admins always. Every reveal is logged and never cached.
-// Managers get the phone inside a Phase 6 grant, not before.
+// Managers get the phone only inside a Phase 6 grant, revealed by a tap
+// (POST /api/customers/:id/reveal), never through the driver's call.
 // ---------------------------------------------------------------------------
 
 export const DELIVERY_ADDRESS_AFTER_MIN_ROLE: Role = "MANAGER";
@@ -419,6 +421,12 @@ const FRICTION_TRUTHS =
   "Friction Truths and the improvement-study setting are the owner's alone: usage data is by role only and never used in staff reviews (v1.2 Phase 8B, Q18).";
 const STUDY_WINDOW_READ =
   "Staff devices read the improvement-study setting so the banner shows on the chosen screens (v1.2 Phase 8, on demand).";
+const CONTACT_REQUEST =
+  "Contact-details requests: managers ask with a reason; admins and the owner approve, decline and revoke; the grant is 24 hours, each field revealed by a tap and logged first; no self-grant (PRV-09, Q9, Q13a).";
+const MESSAGE_CUSTOMER =
+  "\"Message the customer instead\" and invoice email: managers and above; the server sends approved templates to the number on file and never shows it; every send logged (PRV-11, Q11).";
+const ACCESS_LOG =
+  "The customer data access log: each customer's Access history is admin and above; the org-wide page is the owner's alone (PRV-10, Q13a).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -531,6 +539,21 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
   { method: "GET", path: "/api/whatsapp/conversations", minRole: "CASHIER", reason: CUSTOMER_VIEW },
   { method: "GET", path: "/api/whatsapp/conversations/:id", minRole: "CASHIER", reason: CUSTOMER_VIEW },
+
+  // Contact-details requests and 24-hour access (v1.2 Phase 6).
+  { method: "GET", path: "/api/customers/:id/contact-access", minRole: "MANAGER", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/customers/:id/contact-requests", minRole: "MANAGER", reason: CONTACT_REQUEST },
+  { method: "GET", path: "/api/contact-requests", minRole: "MANAGER", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/contact-requests/:id/approve", minRole: "ADMIN", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/contact-requests/:id/decline", minRole: "ADMIN", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/contact-requests/:id/revoke", minRole: "ADMIN", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/contact-requests/:id/end", minRole: "MANAGER", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/customers/:id/reveal", minRole: "MANAGER", reason: CONTACT_REQUEST },
+  { method: "POST", path: "/api/customers/:id/message", minRole: "MANAGER", reason: MESSAGE_CUSTOMER },
+  { method: "GET", path: "/api/messaging/status", minRole: "MANAGER", reason: MESSAGE_CUSTOMER },
+  { method: "POST", path: "/api/invoices/:id/email", minRole: "MANAGER", reason: MESSAGE_CUSTOMER },
+  { method: "GET", path: "/api/customers/:id/access-history", minRole: "ADMIN", reason: ACCESS_LOG },
+  { method: "GET", path: "/api/customer-access-log", minRole: "SUPER_ADMIN", reason: ACCESS_LOG },
 
   // Customer intelligence.
   { method: "GET", path: "/api/customers/intelligence", minRole: "MANAGER", reason: CUSTOMER_INTEL },

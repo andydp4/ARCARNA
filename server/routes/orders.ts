@@ -1472,17 +1472,16 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { readCustomerPhone } = await import("../services/customerView");
       const phone = await readCustomerPhone(ctx.orgId, order.customerId);
       if (!phone) return res.status(404).json({ message: "There is no number on file.", code: "NO_PHONE" });
-      const { storage } = await import("../storage");
-      await storage.insertAdminAuditLog({
+      // The customer data access log (v1.2 Phase 6, PRV-10) takes the
+      // driver's call too; if the row cannot be written the number is not sent.
+      const { recordAccessFromRequest } = await import("../services/customerAccessLog");
+      await recordAccessFromRequest(req, {
         orgId: ctx.orgId,
-        actorUserId: req.user?.id ?? "unknown",
-        actorRole: ctx.role,
-        action: "order.customer_phone_revealed",
-        targetType: "order",
-        targetId: order.id,
-        metadata: { customerId: order.customerId, via: verdict.via },
-        ipAddress: (req.ip ?? "").replace(/^::ffff:/, "") || undefined,
-        userAgent: req.get("user-agent") ?? undefined,
+        customerId: order.customerId,
+        action: "driver_call",
+        field: "phone",
+        orderId: order.id,
+        metadata: { via: verdict.via },
       });
       res.json({ phone });
     } catch (error) {

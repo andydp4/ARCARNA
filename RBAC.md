@@ -42,7 +42,14 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Customer: past-order summary and total spent (v1.2 Phase 5) | No | Yes | Yes | Yes |
 | Customer: edit (points and total spent never typed; masked values never saved) | Create only | Name, email, address, tier, receipt switch; "Replace number" (logged) | All but points | All but points |
 | Delivery address on the order: live / after completion (Q8a) | Yes / No | Yes / Yes | Yes / Yes | Yes / Yes |
-| Driver's call: the customer's phone (Q8a, every reveal logged) | Assigned driver, out for delivery, until completed | Same as cashier (Phase 6 grant to come) | Always | Always |
+| Driver's call: the customer's phone (Q8a, every reveal logged) | Assigned driver, out for delivery, until completed | Same as cashier | Always | Always |
+| Ask for one customer's contact details (reason, 15+ character note, fields; v1.2 Phase 6) | No | Yes; one pending per customer; lapses after 48 h | Not needed | Not needed |
+| Approve, decline or revoke a request (never your own; no emergency self-grant, Q9) | No | No | Yes | Yes |
+| Inside a grant: reveal each field asked for by a tap, for 24 h from approval (every tap logged first) | No | The manager who asked; can end it early | — | — |
+| "Message the customer instead" (approved WhatsApp templates, number never shown) and Credit List "Send payment reminder" | No | Yes, logged | Yes, logged | Yes, logged |
+| Email an invoice (Resend; off with the reason when not set up) | No | Yes, logged | Yes, logged | Yes, logged |
+| Customer data access log: one customer's Access history | No | No | Yes | Yes |
+| Customer data access log: the org-wide page and the weekly line | No | No | No | Yes |
 | Order history (Q10a) | Today, plus own last 7 days | All | All | All |
 | Find a customer by phone: whole number, up to three, rate-limited per person | Yes | Yes | Yes | Yes |
 | Shift sheets | Own only | Cashiers' and own | All | All |
@@ -111,11 +118,35 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   database. `scripts/audit-contact-fields.mjs` fails CI when a contact column
   is read anywhere else not on its allow-list. The Operations board and its
   live stream carry no phone for anyone; the driver asks for it
-  (`POST /api/orders/:id/customer-phone`, logged as
-  `order.customer_phone_revealed`, `Cache-Control: no-store`). "Use saved
-  address" is logged (`customer.saved_address_used`), as is a manager's
-  "Replace number" (`customer.phone_replaced`). The public API returns contact
+  (`POST /api/orders/:id/customer-phone`, logged in the customer data access
+  log as `driver_call` since Phase 6, `Cache-Control: no-store`). "Use saved
+  address" is logged (`saved_address`), as is a manager's "Replace number"
+  (`phone_replaced`, written before the number is changed). The public API returns contact
   details only to a key with the `customers:read_contact` permission.
+- **Contact-details requests and the access log (v1.2 Phase 6, PRV-09/10/11).**
+  A MANAGER asks for one customer's details (`POST
+  /api/customers/:id/contact-requests`): reason code, a note of at least 15
+  characters, the fields wanted, optionally the order. One pending request per
+  customer per manager (a partial unique index); it lapses after 48 hours. It
+  arrives as a Signal to admins and the owner and in Needs a look, where an
+  ADMIN or SUPER_ADMIN approves, declines or revokes; nobody decides their own
+  request, and nothing else opens a grant (no emergency self-grant, Q9). The
+  grant is 24 hours from approval, for the fields asked for, for the manager
+  who asked; they can end it early. Each field is revealed by a tap (`POST
+  /api/customers/:id/reveal`, no-store): the log row is written first and the
+  reveal fails if it cannot be. The app keeps revealed values in the open
+  dialog only and clears them at expiry. "Message the customer instead" is
+  offered first: the server sends an approved WhatsApp template (order ready,
+  delivery update, payment reminder, "please call us on <shop number>") to the
+  number on file and never returns it; unapproved local templates are
+  refused, here and in the WhatsApp inbox. Invoices are emailed by the server
+  through Resend. Everything that touches contact details goes in
+  `customer_access_log` (`server/services/customerAccessLog.ts`): reveals, the
+  driver's call, "Use saved address", replaced numbers, exports (one row per
+  customer), requests and decisions, messages and emailed invoices, and API
+  keys reading contact details. Admins see a customer's rows on the Contact
+  dialog's Access history tab; the owner sees the org-wide page
+  (`/customer-access-log`) and gets a Monday Signal with the week's line.
 - **Device copies, exports and webhooks (v1.2 Phase 5, PRV-07, FIX-14,
   CMP-14).** The till's offline store keeps the cashier view only
   (`deviceCustomerRow`), whoever was signed in, and cuts rows left by older

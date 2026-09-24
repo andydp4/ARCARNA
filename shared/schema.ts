@@ -2120,6 +2120,68 @@ export const exceptionReviews = pgTable("exception_reviews", {
 
 export type ExceptionReview = typeof exceptionReviews.$inferSelect;
 
+// Contact-details requests and 24-hour access (v1.2 Phase 6, PRV-09). See
+// migrations/160_contact_requests.sql and shared/contactAccess.ts.
+export const contactRequests = pgTable("contact_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  requesterUserId: varchar("requester_user_id", { length: 255 }).notNull(),
+  requesterRole: varchar("requester_role", { length: 16 }).notNull(),
+  reasonCode: varchar("reason_code", { length: 24 }).notNull(),
+  note: text("note").notNull(),
+  /** The contact fields asked for: any of "phone", "email", "address". */
+  fields: jsonb("fields").$type<string[]>().notNull(),
+  status: varchar("status", { length: 12 }).default("pending").notNull(),
+  /** A pending request lapses at this time (48 hours after it was made). */
+  expiresAt: timestamp("expires_at").notNull(),
+  decidedByUserId: varchar("decided_by_user_id", { length: 255 }),
+  decidedAt: timestamp("decided_at"),
+  decisionNote: text("decision_note"),
+  /** Set on approval: the grant runs 24 hours from then. */
+  grantExpiresAt: timestamp("grant_expires_at"),
+  endedByUserId: varchar("ended_by_user_id", { length: 255 }),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("contact_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'declined', 'expired', 'revoked', 'ended')`),
+  check("contact_requests_reason_check", sql`${table.reasonCode} IN ('complaint', 'refund_return', 'delivery_problem', 'lost_property', 'debt_chase', 'other')`),
+  check("contact_requests_note_check", sql`char_length(btrim(${table.note})) >= 15`),
+  uniqueIndex("contact_requests_one_pending_uq")
+    .on(table.orgId, table.customerId, table.requesterUserId)
+    .where(sql`${table.status} = 'pending'`),
+  index("contact_requests_org_status_idx").on(table.orgId, table.status, table.createdAt),
+  index("contact_requests_customer_idx").on(table.orgId, table.customerId, table.createdAt),
+]);
+
+export type ContactRequest = typeof contactRequests.$inferSelect;
+
+// The customer data access log (v1.2 Phase 6, PRV-10): every look at, or
+// change to, a customer's contact details. See server/services/customerAccessLog.ts.
+export const customerAccessLog = pgTable("customer_access_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 16 }).notNull(),
+  action: varchar("action", { length: 32 }).notNull(),
+  field: varchar("field", { length: 16 }),
+  requestId: uuid("request_id").references(() => contactRequests.id, { onDelete: "set null" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata"),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("customer_access_log_customer_idx").on(table.orgId, table.customerId, table.createdAt),
+  index("customer_access_log_org_idx").on(table.orgId, table.createdAt),
+  index("customer_access_log_actor_idx").on(table.orgId, table.actorUserId, table.createdAt),
+]);
+
+export type CustomerAccessLogRow = typeof customerAccessLog.$inferSelect;
+export type InsertCustomerAccessLog = typeof customerAccessLog.$inferInsert;
+
 // Refunds (F3)
 export const REFUND_REASONS = [
   "damaged",

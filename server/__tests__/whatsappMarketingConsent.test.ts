@@ -11,7 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sent = vi.hoisted(() => ({ templates: [] as string[] }));
 const templates = vi.hoisted(() => ({
-  order_ready: { templateName: "order_ready", category: "UTILITY", status: "LOCAL", body: "Ready", language: "en_GB" },
+  order_ready: { templateName: "order_ready", category: "UTILITY", status: "APPROVED", body: "Ready", language: "en_GB" },
+  opening_hours: { templateName: "opening_hours", category: "UTILITY", status: "LOCAL", body: "Hours", language: "en_GB" },
   thanks_follow_up: { templateName: "thanks_follow_up", category: "MARKETING", status: "APPROVED", body: "Thanks", language: "en_GB" },
   mystery: { templateName: "mystery", category: null, status: "APPROVED", body: "?", language: "en_GB" },
 }));
@@ -70,7 +71,13 @@ describe("WhatsApp marketing templates need recorded consent", () => {
     expect(sent.templates).toEqual([]);
   });
 
-  it("still sends a utility template", async () => {
+  it("refuses a local template Meta has not approved (v1.2 Phase 6, PRV-11)", async () => {
+    const res = await send("opening_hours").expect(422);
+    expect(res.body.code).toBe("TEMPLATE_NOT_APPROVED");
+    expect(sent.templates).toEqual([]);
+  });
+
+  it("still sends an approved utility template", async () => {
     await send("order_ready").expect(201);
     expect(sent.templates).toEqual(["order_ready"]);
   });

@@ -332,6 +332,10 @@ async function runHousekeeping(): Promise<void> {
       (await import("../services/usage")).runWeeklyFrictionTopFive()],
     ["usage-purge", async () =>
       (await import("../services/usage")).purgeUsage()],
+    // The owner's weekly customer data line (v1.2 Phase 6, PRV-10), Mondays,
+    // exactly once per org per week.
+    ["customer-access-weekly", async () =>
+      (await import("../services/customerAccessLog")).runWeeklyCustomerAccessLine()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

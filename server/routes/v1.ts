@@ -33,6 +33,28 @@ function apiCustomerRole(req: any): "ADMIN" | "MANAGER" {
   return apiKeyCanReadContact(req.apiKeyContext?.scopes) ? "ADMIN" : "MANAGER";
 }
 
+/**
+ * An API key reading contact details goes in the customer data access log
+ * (v1.2 Phase 6, PRV-10), one row per customer, before the response is sent:
+ * no log, no details.
+ */
+async function logApiContactRead(req: any, orgId: string, customerIds: string[], via: string): Promise<void> {
+  if (apiCustomerRole(req) !== "ADMIN" || customerIds.length === 0) return;
+  const { recordCustomerAccess } = await import("../services/customerAccessLog");
+  const keyId = req.apiKeyContext?.keyId;
+  await recordCustomerAccess(
+    customerIds.map((customerId) => ({
+      orgId,
+      customerId,
+      actorUserId: keyId ? `api-key:${keyId}` : "api-key",
+      actorRole: "API_KEY",
+      action: "api_contact_read" as const,
+      metadata: { via },
+    })),
+    { ipAddress: (req.ip ?? "").replace(/^::ffff:/, "") || undefined, userAgent: req.get?.("user-agent") ?? undefined },
+  );
+}
+
 export function registerV1Routes(app: Express): void {
   /* ------------------------------------------------------------------ */
   /*  Products                                                            */
@@ -175,6 +197,7 @@ export function registerV1Routes(app: Express): void {
           if (customer) {
             const c = customer as Record<string, unknown>;
             customer = { id: c.id, name: c.name, ...("email" in c ? { email: c.email } : { emailMasked: c.emailMasked }) } as any;
+            if ("email" in c) await logApiContactRead(req, orgId, [String(c.id)], "order");
           }
         }
 
@@ -380,8 +403,9 @@ export function registerV1Routes(app: Express): void {
         const limit = Math.min(parseInt(String(req.query.limit ?? "100"), 10), 500);
         // Contact details need the customers:read_contact permission (PRV-03);
         // without it a key gets the masked view, selected without them.
-        const list = await listCustomersForRole(orgId, apiCustomerRole(req));
-        res.json(list.slice(0, limit));
+        const list = (await listCustomersForRole(orgId, apiCustomerRole(req))).slice(0, limit);
+        await logApiContactRead(req, orgId, list.map((c: any) => String(c.id)), "customers_list");
+        res.json(list);
       } catch (e) {
         console.error("[v1] customers list:", e);
         res.status(500).json({ error: "internal_error" });
@@ -399,6 +423,7 @@ export function registerV1Routes(app: Express): void {
       try {
         const customer = await getCustomerForRole(orgId, req.params.customerId, apiCustomerRole(req));
         if (!customer) return res.status(404).json({ error: "not_found" });
+        await logApiContactRead(req, orgId, [req.params.customerId], "customer");
         res.json(customer);
       } catch (e) {
         if ((e as any)?.code === '22P02' || (e as any)?.cause?.code === '22P02') return res.status(404).json({ error: "not_found" }); // uuid-guard-customer
@@ -424,7 +449,10 @@ export function registerV1Routes(app: Express): void {
           return res.status(400).json({ error: "invalid_request", message: "name is required" });
         }
         const created = await engine.createCustomer({ ...fields, orgId });
-        res.status(201).json(await getCustomerForRole(orgId, created.id, apiCustomerRole(req)));
+        const customer = await getCustomerForRole(orgId, created.id, apiCustomerRole(req));
+        // The response carries contact details too, so it is logged like a read.
+        await logApiContactRead(req, orgId, [String(created.id)], "customer_create");
+        res.status(201).json(customer);
       } catch (e: any) {
         console.error("[v1] customer create:", e);
         sendServerError(res, e, "Internal error", { extra: { error: "internal_error" } });
@@ -445,6 +473,9 @@ export function registerV1Routes(app: Express): void {
         if (Object.keys(fields).length > 0) await engine.updateCustomer(req.params.customerId, fields, orgId);
         const customer = await getCustomerForRole(orgId, req.params.customerId, apiCustomerRole(req));
         if (!customer) return res.status(404).json({ error: "not_found" });
+        // An update (even an empty one) returns contact details: log it as a
+        // read, or PUT becomes an unlogged way round PRV-10.
+        await logApiContactRead(req, orgId, [req.params.customerId], "customer_update");
         res.json(customer);
       } catch (e: any) {
         if (e?.message === "Customer not found") return res.status(404).json({ error: "not_found" });

@@ -92,6 +92,8 @@ export type InvoiceRowProps = {
   onPrint: (invoiceId: string, invoiceNumber: string) => void;
   onDownload: (invoiceId: string, invoiceNumber: string) => void;
   onEmail: (invoiceId: string, customerEmail: string, invoiceNumber: string) => void;
+  /** Set when email is not set up: the item is off and this says why (v1.2 Phase 6). */
+  emailDisabledReason?: string | null;
 };
 
 /** The PDF actions menu, shared between the desktop row and the mobile card. */
@@ -101,8 +103,9 @@ function InvoicePdfMenu({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
   className,
-}: Pick<InvoiceRowProps, "invoice" | "onViewPdf" | "onPrint" | "onDownload" | "onEmail"> & {
+}: Pick<InvoiceRowProps, "invoice" | "onViewPdf" | "onPrint" | "onDownload" | "onEmail" | "emailDisabledReason"> & {
   className?: string;
 }) {
   return (
@@ -146,12 +149,18 @@ function InvoicePdfMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={!!emailDisabledReason}
           onClick={() => onEmail(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
           data-testid={`button-email-${invoice.id}`}
         >
           <Mail className="mr-2 h-4 w-4" />
-          Download & email invoice
+          Email invoice to customer
         </DropdownMenuItem>
+        {emailDisabledReason && (
+          <p className="px-2 pb-2 text-xs text-muted-foreground" data-testid={`text-email-disabled-${invoice.id}`}>
+            {emailDisabledReason}
+          </p>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -164,6 +173,7 @@ function InvoiceRowInner({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
 }: InvoiceRowProps) {
   return (
     <TableRow className="group align-middle">
@@ -224,6 +234,7 @@ function InvoiceRowInner({
           onPrint={onPrint}
           onDownload={onDownload}
           onEmail={onEmail}
+          emailDisabledReason={emailDisabledReason}
         />
       </TableCell>
     </TableRow>
@@ -238,7 +249,8 @@ export const InvoiceRow = memo(
     prev.onViewPdf === next.onViewPdf &&
     prev.onPrint === next.onPrint &&
     prev.onDownload === next.onDownload &&
-    prev.onEmail === next.onEmail
+    prev.onEmail === next.onEmail &&
+    prev.emailDisabledReason === next.emailDisabledReason
 );
 
 /**
@@ -254,6 +266,7 @@ function InvoiceCardInner({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
 }: InvoiceRowProps) {
   return (
     <Card className="border-border/60 shadow-sm" data-testid={`card-invoice-${invoice.id}`}>
@@ -315,6 +328,7 @@ function InvoiceCardInner({
           onPrint={onPrint}
           onDownload={onDownload}
           onEmail={onEmail}
+          emailDisabledReason={emailDisabledReason}
           className="mt-3 min-h-[44px] w-full justify-center"
         />
       </CardContent>
@@ -330,5 +344,6 @@ export const InvoiceCard = memo(
     prev.onViewPdf === next.onViewPdf &&
     prev.onPrint === next.onPrint &&
     prev.onDownload === next.onDownload &&
-    prev.onEmail === next.onEmail
+    prev.onEmail === next.onEmail &&
+    prev.emailDisabledReason === next.emailDisabledReason
 );

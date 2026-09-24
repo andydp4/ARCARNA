@@ -15,6 +15,8 @@ import { wouldHaveFlaggedRange } from "../services/priceExceptions";
 import { orgTimeZone } from "../services/tradingDayShift";
 import { orgReviewRules } from "../services/refundExceptions";
 import { applyBulkMin, previewBulkMin } from "../services/bulkMinPrice";
+import { canApproveContact } from "@shared/contactAccess";
+import { listContactRequests } from "../services/contactRequests";
 
 /**
  * Review of exceptions and the price guard's admin settings (v1.2 Phase 4):
@@ -38,7 +40,15 @@ export function registerNeedsALookRoutes(app: Express, scoped: RequestHandler[])
       const state = typeof q.state === "string" && (q.state === "all" || (EXCEPTION_STATES as readonly string[]).includes(q.state)) ? q.state : "open";
       const queue = typeof q.queue === "string" ? (q.queue as Role) : null;
       const kind = q.kind === "price" || q.kind === "refund" ? q.kind : null;
-      res.json(await listNeedsALook(req.orgContext.orgId, viewerOf(req), { state, queue, kind }));
+      const viewer = viewerOf(req);
+      const inbox = await listNeedsALook(req.orgContext.orgId, viewer, { state, queue, kind });
+      // Contact-details requests (v1.2 Phase 6) are a request type in this
+      // inbox, not a second one: admins and the owner see the waiting
+      // requests and live grants here, and approve, decline or revoke them.
+      const contactRequests = canApproveContact(viewer.role)
+        ? await listContactRequests(req.orgContext.orgId, viewer)
+        : [];
+      res.json({ ...inbox, contactRequests });
     } catch (error) {
       console.error("[NeedsALook] list:", error);
       res.status(500).json({ message: "Failed to load Needs a look" });

@@ -125,6 +125,12 @@ export function registerAnalyticsRoutes(app: Express, scoped: RequestHandler[]):
         orgId: ctx.orgId,
         metadata: { segment, count: rows.length },
       });
+      // One row per customer in the customer data access log (v1.2 Phase 6). No log, no file.
+      const { recordAccessFromRequest } = await import("../services/customerAccessLog");
+      await recordAccessFromRequest(
+        req,
+        rows.map((row) => ({ orgId: ctx.orgId, customerId: row.customerId, action: "export" as const, metadata: { kind: "rfm", segment } })),
+      );
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="rfm-${segment.toLowerCase()}.csv"`);
       res.setHeader("Cache-Control", "no-store, private");

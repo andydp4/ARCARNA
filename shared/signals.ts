@@ -73,6 +73,12 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   // Friction Truths' Monday top five (v1.2 Phase 8C): usage data is the
   // owner's alone (Q18), so the owner alone gets it.
   friction_weekly: { roles: ["SUPER_ADMIN"] },
+  // Contact-details requests (v1.2 Phase 6, PRV-09, Q13a). A request names
+  // the manager who asked, so it reaches admins and the owner only; the
+  // decision is addressed to that manager. The weekly access line is the owner's.
+  contact_request: { minRole: "ADMIN" },
+  contact_request_decided: { userIds: [] },
+  customer_access_weekly: { roles: ["SUPER_ADMIN"] },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };
