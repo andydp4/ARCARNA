@@ -98,6 +98,8 @@ export function canSeeWouldHaveFlagged(role: string | null | undefined): boolean
 
 /** "Price guard at the till" is switched on and off by admins only (v1.2 Phase 4, owner decision). */
 export const PRICE_GUARD_SWITCH_MIN_ROLE: Role = "ADMIN";
+/** The delivery fee's name, price and "counts in commission" switch (v1.2.1): admin only, logged. */
+export const DELIVERY_FEE_SETTINGS_MIN_ROLE: Role = "ADMIN";
 
 /** Card (link): a cashier takes a sale's card payment by Stripe link (v1.2 Stripe links). */
 export const CARD_LINK_MIN_ROLE: Role = "CASHIER";
@@ -401,6 +403,8 @@ const TRUTHS_LAYOUT =
   "Truths at a glance is Truths: manager and above read it, with widgets above their role removed; only admins change the org's one layout, and every save is logged (v1.2 Phase 3).";
 const PRICE_GUARD =
   "The price guard switch is admin only and logged; the till lists managers by name only for \"Manager agreed\"; only the manager named answers it (v1.2 Phase 4).";
+const DELIVERY_FEE_SETTINGS =
+  "The delivery fee's name, price and whether it counts in commission and margin are admin only, and every change is logged (v1.2.1); every role reads them from Settings, because the till adds the fee.";
 const NEEDS_A_LOOK =
   "Needs a look and Price overrides Evidence are manager and above, and each viewer gets only exceptions about people they outrank; the rules are admin only and logged (v1.2 Phase 4, CMP-02, CMP-04, PRC-09).";
 const BULK_MIN =
@@ -473,6 +477,7 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
 
   // Price guard at the till (v1.2 Phase 4, PRC-02, CMP-05).
   { method: "PUT", path: "/api/settings/price-guard", minRole: "ADMIN", reason: PRICE_GUARD },
+  { method: "PUT", path: "/api/settings/delivery-fee", minRole: "ADMIN", reason: DELIVERY_FEE_SETTINGS },
   { method: "GET", path: "/api/price-guard/managers", minRole: "CASHIER", reason: PRICE_GUARD },
   { method: "POST", path: "/api/price-guard/checks/:id/answer", minRole: "MANAGER", reason: PRICE_GUARD },
   { method: "GET", path: "/api/needs-a-look", minRole: "MANAGER", reason: NEEDS_A_LOOK },

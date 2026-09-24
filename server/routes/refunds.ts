@@ -25,6 +25,7 @@ import { proportionalPointsToReverse } from "@shared/refunds/points";
 import { issueGiftCardInTx } from "../lib/giftCardService";
 import { recordRefundExceptionInTx } from "../services/refundExceptions";
 import { refundLineAmounts, resolveRefundTender } from "@shared/refunds/refundRules";
+import { deliveryFeeCharged, storedDeliveryFee } from "@shared/orders/deliveryFee";
 
 /** Raised when the in-transaction ceiling re-check rejects a concurrent refund. */
 class RefundCeilingExceeded extends Error {}
@@ -61,7 +62,13 @@ const createRefundSchema = z
     reason: z.enum(REFUND_REASONS),
     notes: z.string().max(2000).optional(),
     refundMethod: z.enum(REFUND_METHODS),
-    lines: z.array(refundLineSchema).min(1),
+    lines: z.array(refundLineSchema).default([]),
+    /** Give the order's delivery fee back too (v1.2.1), once per order. */
+    deliveryFee: z.boolean().optional(),
+  })
+  .refine((b) => b.lines.length > 0 || b.deliveryFee === true, {
+    message: "Choose at least one line, or the delivery fee, to refund.",
+    path: ["lines"],
   })
   // "Other" is a reason only with a word on what it was (v1.2 Phase 4, CMP-04).
   .refine((b) => b.reason !== "other" || !!b.notes?.trim(), {
@@ -86,6 +93,15 @@ async function sumRefundedQtyByLine(orderId: string, client: DbReader = db): Pro
     map.set(row.orderLineId, roundQty((map.get(row.orderLineId) ?? 0) + Number(row.qty)));
   }
   return map;
+}
+
+/** The delivery fee already given back on an order (v1.2.1); 0 when none. */
+async function deliveryFeeRefundedOn(orderId: string, client: Pick<typeof db, "select"> = db): Promise<number> {
+  const [row] = await client
+    .select({ fee: sql<string>`COALESCE(SUM(${refunds.deliveryFee}), 0)` })
+    .from(refunds)
+    .where(eq(refunds.orderId, orderId));
+  return Number(row?.fee) || 0;
 }
 
 async function pointsEarnedOnOrder(orderId: string): Promise<number> {
@@ -227,7 +243,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         }
 
         const lineIds = body.lines.map((l) => l.orderLineId);
-        const orderLines = await db
+        const orderLines = lineIds.length === 0 ? [] : await db
           .select({
             id: orderItems.id,
             productId: orderItems.productId,
@@ -296,6 +312,23 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           (l) => (refundedByLine.get(l.id) ?? 0) + (requestedQty.get(l.id) ?? 0) >= Number(l.quantity),
         );
 
+        // The delivery fee (v1.2.1): given back as the customer paid it, VAT
+        // included, and only once. It has no line, no stock and no points.
+        const storedFee = storedDeliveryFee(order);
+        const feeCharged =
+          storedFee > 0 ? deliveryFeeCharged(storedFee, order.vatRate == null ? 0 : parseFloat(String(order.vatRate))) : 0;
+        const feeAlreadyRefunded = storedFee > 0 ? await deliveryFeeRefundedOn(order.id) : 0;
+        let feeRefund = 0;
+        if (body.deliveryFee) {
+          if (storedFee <= 0) {
+            return res.status(400).json({ message: "This order has no delivery fee to refund." });
+          }
+          if (feeAlreadyRefunded > 0) {
+            return res.status(400).json({ message: "The delivery fee on this order has already been refunded." });
+          }
+          feeRefund = feeCharged;
+        }
+
         // SECURITY: cap against the IMMUTABLE settlement snapshot (what was
         // actually collected when the order completed), not `orders.total`,
         // which post-payment line edits could inflate. Falls back to `total`
@@ -318,15 +351,17 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
         // What the customer paid for these items: the settled total shared
         // across the lines by value, so a discount on the sale comes off the
         // refund too.
+        // The goods' share leaves the delivery fee out: the fee is refunded
+        // as charged, on its own, never spread across the lines.
         const priced = refundLineAmounts({
           lines: requestedLines,
           lineValue,
-          settled: refundCeiling,
-          priorRefunded: priorTotal,
+          settled: Math.max(0, refundCeiling - feeCharged),
+          priorRefunded: Math.max(0, priorTotal - feeAlreadyRefunded),
           refundsEverything,
         });
         const resolvedLines = requestedLines.map((l, i) => ({ ...l, amount: priced.amounts[i] }));
-        const refundTotal = priced.total;
+        const refundTotal = Math.round((priced.total + feeRefund) * 100) / 100;
         if (refundTotal <= 0) {
           return res.status(400).json({ message: "Refund total must be positive" });
         }
@@ -473,6 +508,11 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
               .where(eq(orderCredit.orderId, order.id));
           }
 
+          // Same race for the fee: two simultaneous fee refunds both read none.
+          if (feeRefund > 0 && (await deliveryFeeRefundedOn(order.id, tx)) > 0) {
+            throw new RefundCeilingExceeded("The delivery fee on this order has already been refunded.");
+          }
+
           const [refund] = await tx
             .insert(refunds)
             .values({
@@ -485,6 +525,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
               refundMethod,
               total: String(refundTotal),
               creditAmount: String(tender.creditAmount),
+              deliveryFee: feeRefund > 0 ? feeRefund.toFixed(2) : null,
             })
             .returning();
 
@@ -541,6 +582,7 @@ export function registerRefundRoutes(app: Express, scoped: RequestHandler[]): vo
           targetType: "order", targetId: order.id, orgId: ctx.orgId,
           metadata: {
             refundId: result.refund.id, total: refundTotal, reason: body.reason, method: refundMethod,
+            deliveryFee: feeRefund > 0 ? feeRefund : null,
             storeCreditGiftCardId: result.storeCreditGiftCard?.card.id ?? null,
           },
         });

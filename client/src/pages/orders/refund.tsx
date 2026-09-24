@@ -37,6 +37,11 @@ interface OrderDetail {
   settledTotal?: string | null;
   paymentMethod: string;
   refundedTotal?: number;
+  /** The delivery fee (v1.2.1), and what refunding it gives back (0 once it has been). */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
+  deliveryFeeRefundable?: number;
+  deliveryFeeRefunded?: number;
   items: OrderLine[];
   refunds?: Array<{ lines: Array<{ orderLineId: string; qty: number }> }>;
 }
@@ -66,6 +71,7 @@ export default function OrderRefundPage() {
   const [reason, setReason] = useState<string>(REFUND_REASONS[0]);
   const [refundMethod, setRefundMethod] = useState<string>("original");
   const [notes, setNotes] = useState("");
+  const [refundFee, setRefundFee] = useState(false);
 
   const { data: order, isLoading } = useQuery<OrderDetail>({
     queryKey: ["/api/orders", orderId],
@@ -100,18 +106,22 @@ export default function OrderRefundPage() {
   }, [order, alreadyRefunded]);
 
   // A refund gives back what the customer paid for the items: the sale's
-  // settled total shared across its lines, so a discount comes off it too.
+  // settled total (less its delivery fee) shared across its lines, so a
+  // discount comes off it too. The fee goes back on its own, as charged.
   // The server works out the final figure the same way.
+  const feeRefundable = order?.deliveryFeeRefundable ?? 0;
+  const feeCharged = feeRefundable + (order?.deliveryFeeRefunded ?? 0);
   const refundTotal = useMemo(() => {
     const lineValue = lines.reduce((sum, line) => sum + line.quantity * parseFloat(line.unitPrice), 0);
-    const settled = parseFloat(String(order?.settledTotal ?? order?.total ?? lineValue));
-    const ratio = lineValue > 0 && Number.isFinite(settled) ? settled / lineValue : 1;
+    const settled = parseFloat(String(order?.settledTotal ?? order?.total ?? lineValue)) - feeCharged;
+    const ratio = lineValue > 0 && Number.isFinite(settled) ? Math.max(0, settled) / lineValue : 1;
     const listValue = lines.reduce((sum, line) => {
       const qty = selected[line.id] ?? 0;
       return sum + qty * parseFloat(line.unitPrice);
     }, 0);
-    return Math.round(listValue * ratio * 100) / 100;
-  }, [lines, selected, order?.settledTotal, order?.total]);
+    const goods = Math.round(listValue * ratio * 100) / 100;
+    return Math.round((goods + (refundFee ? feeRefundable : 0)) * 100) / 100;
+  }, [lines, selected, order?.settledTotal, order?.total, refundFee, feeRefundable, feeCharged]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -123,6 +133,7 @@ export default function OrderRefundPage() {
         refundMethod,
         notes: notes.trim() || undefined,
         lines: refundLines,
+        ...(refundFee && feeRefundable > 0 ? { deliveryFee: true } : {}),
       });
       return res.json();
     },
@@ -224,6 +235,23 @@ export default function OrderRefundPage() {
                 />
               </div>
             ))}
+            {(order.deliveryFee ?? 0) > 0 && (
+              <div className="flex items-start gap-3 border-b pb-3" data-testid="refund-delivery-fee">
+                <Checkbox
+                  id="refund-delivery-fee"
+                  checked={refundFee}
+                  disabled={feeRefundable <= 0}
+                  onCheckedChange={(checked) => setRefundFee(checked === true)}
+                  data-testid="checkbox-refund-delivery-fee"
+                />
+                <Label htmlFor="refund-delivery-fee" className="font-normal">
+                  <span className="block font-medium">{order.deliveryFeeName ?? "Delivery fee"}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {feeRefundable > 0 ? `£${feeRefundable.toFixed(2)} · no stock to return` : "Already refunded"}
+                  </span>
+                </Label>
+              </div>
+            )}
             <p className="text-sm font-medium">Refund total: £{refundTotal.toFixed(2)}</p>
             <Button
               className="w-full"

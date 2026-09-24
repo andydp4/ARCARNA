@@ -111,7 +111,7 @@ describe("invoice numbers", () => {
 describe("invoice amounts and the VAT line", () => {
   it("at 0% there is no VAT and no VAT line", () => {
     const amounts = invoiceAmounts({ total: 45, orgVatRate: 0 });
-    expect(amounts).toEqual({ subtotal: 45, discount: 0, tax: 0, vatRate: 0, pointsDiscount: 0 });
+    expect(amounts).toEqual({ subtotal: 45, discount: 0, tax: 0, vatRate: 0, pointsDiscount: 0, deliveryFee: 0 });
     expect(showsVatLine(amounts.tax, amounts.vatRate)).toBe(false);
   });
 
@@ -122,12 +122,13 @@ describe("invoice amounts and the VAT line", () => {
       tax: 10,
       vatRate: 20,
       pointsDiscount: 0,
+      deliveryFee: 0,
     });
   });
 
   it("splits an older sale at the org's rate", () => {
     const amounts = invoiceAmounts({ total: 60, orgVatRate: 20 });
-    expect(amounts).toEqual({ subtotal: 50, discount: 0, tax: 10, vatRate: 20, pointsDiscount: 0 });
+    expect(amounts).toEqual({ subtotal: 50, discount: 0, tax: 10, vatRate: 20, pointsDiscount: 0, deliveryFee: 0 });
     expect(showsVatLine(amounts.tax, amounts.vatRate)).toBe(true);
   });
 
@@ -139,11 +140,12 @@ describe("invoice amounts and the VAT line", () => {
       tax: 0,
       vatRate: 0,
       pointsDiscount: 0,
+      deliveryFee: 0,
     });
     // 20% VAT and £5 of points after VAT: VAT is 20% of the net, not of total − VAT.
     expect(
       invoiceAmounts({ total: 115, subtotal: 100, pointsDiscount: 5, vatAmount: 20, vatRate: 20, orgVatRate: 20 }),
-    ).toEqual({ subtotal: 100, discount: 0, tax: 20, vatRate: 20, pointsDiscount: 5 });
+    ).toEqual({ subtotal: 100, discount: 0, tax: 20, vatRate: 20, pointsDiscount: 5, deliveryFee: 0 });
   });
 
   it("falls back to total − VAT when a recorded breakdown does not reach the total", () => {
@@ -153,6 +155,7 @@ describe("invoice amounts and the VAT line", () => {
       tax: 0,
       vatRate: 0,
       pointsDiscount: 0,
+      deliveryFee: 0,
     });
   });
 });

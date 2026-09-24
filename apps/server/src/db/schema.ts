@@ -159,6 +159,8 @@ export const orders = pgTable('orders', {
   points_discount: numeric('points_discount',{precision:10,scale:2}),
   vat_rate: numeric('vat_rate',{precision:5,scale:2}),
   vat_amount: numeric('vat_amount',{precision:10,scale:2}),
+  // The delivery fee on top of the goods — see shared/schema.ts and migration 225.
+  delivery_fee: numeric('delivery_fee',{precision:10,scale:2}),
   // Delivery address on the order — see shared/schema.ts and migration 120.
   delivery_address: varchar('delivery_address', { length: 1024 }),
   delivery_postcode: varchar('delivery_postcode', { length: 16 }),

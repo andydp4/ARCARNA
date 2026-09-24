@@ -151,7 +151,18 @@ export type InvoiceAmounts = {
   vatRate: number;
   /** Points, taken off what the customer pays after VAT (owner decision Q2). */
   pointsDiscount: number;
+  /** The delivery fee (v1.2.1): its own line, after discounts, before VAT. 0 when none. */
+  deliveryFee: number;
 };
+
+/**
+ * The subtotal an invoice ROW stores: goods and delivery fee together, so the
+ * stored row adds up on its own (subtotal − discount + VAT − points = total)
+ * with no fee column. The page and PDF show the two apart.
+ */
+export function storedInvoiceSubtotal(amounts: Pick<InvoiceAmounts, "subtotal" | "deliveryFee">): number {
+  return round(amounts.subtotal + (amounts.deliveryFee ?? 0));
+}
 
 /**
  * An invoice's breakdown, so its figures add up on the page:
@@ -169,8 +180,10 @@ export function invoiceAmounts(input: {
   tierDiscount?: number | null;
   promoDiscount?: number | null;
   pointsDiscount?: number | null;
+  deliveryFee?: number | null;
 }): InvoiceAmounts {
   const total = round(input.total);
+  const fee = round(Math.max(0, input.deliveryFee ?? 0));
   const has = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
   if (has(input.vatAmount)) {
     const tax = round(input.vatAmount);
@@ -181,16 +194,16 @@ export function invoiceAmounts(input: {
       const pointsDiscount = round(input.pointsDiscount ?? 0);
       // Only a breakdown that reaches the total is shown; anything else (an
       // order edited by hand in the database) falls back to total − VAT.
-      if (Math.abs(round(subtotal - discount + tax - pointsDiscount) - total) <= 0.005) {
-        return { subtotal, discount, tax, vatRate: rate, pointsDiscount };
+      if (Math.abs(round(subtotal - discount + fee + tax - pointsDiscount) - total) <= 0.005) {
+        return { subtotal, discount, tax, vatRate: rate, pointsDiscount, deliveryFee: fee };
       }
     }
-    return { subtotal: round(total - tax), discount: 0, tax, vatRate: rate, pointsDiscount: 0 };
+    return { subtotal: round(total - tax), discount: 0, tax, vatRate: rate, pointsDiscount: 0, deliveryFee: 0 };
   }
   const rate = Number.isFinite(input.orgVatRate) ? input.orgVatRate : 0;
-  if (rate <= 0) return { subtotal: total, discount: 0, tax: 0, vatRate: 0, pointsDiscount: 0 };
+  if (rate <= 0) return { subtotal: total, discount: 0, tax: 0, vatRate: 0, pointsDiscount: 0, deliveryFee: 0 };
   const tax = round((total * rate) / (100 + rate));
-  return { subtotal: round(total - tax), discount: 0, tax, vatRate: rate, pointsDiscount: 0 };
+  return { subtotal: round(total - tax), discount: 0, tax, vatRate: rate, pointsDiscount: 0, deliveryFee: 0 };
 }
 
 /** A VAT line is shown only when VAT was charged. */

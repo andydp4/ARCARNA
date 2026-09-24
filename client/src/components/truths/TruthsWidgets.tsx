@@ -66,6 +66,8 @@ function toNum(v: unknown): number {
 interface HubData {
   revenue: {
     total: number;
+    /** Of which delivery fees (v1.2.1), VAT included, less fees refunded. */
+    deliveryFees?: number;
     byDay: Array<{ date: string; revenue: number; orders: number }>;
     byCategory: Array<{ category: string; revenue: number; percentage: number }>;
     byPaymentMethod: Array<{ method: string; count: number; revenue: number }>;
@@ -192,6 +194,9 @@ function SalesSummary({ window }: Ctx) {
       <Kpi label="Orders" value={data.orders?.total ?? 0} />
       <Kpi label="Active customers" value={data.customers?.total ?? 0} />
       <Kpi label="Avg order value" value={money(toNum(data.orders?.average))} />
+      {toNum(data.revenue?.deliveryFees) > 0 && (
+        <Kpi label="Of which delivery fees" value={money(toNum(data.revenue?.deliveryFees))} />
+      )}
     </div>
   );
 }
@@ -526,6 +531,9 @@ function ProfitTruths({ window }: Ctx) {
       <Kpi label="Cost of goods" value={money(toNum(s.cogs))} />
       <Kpi label="Gross profit" value={money(toNum(s.grossProfit))} />
       <Kpi label="Net profit" value={money(toNum(s.netProfit))} tone={toNum(s.netProfit) < 0 ? "bad" : undefined} />
+      {toNum(s.deliveryFees) > 0 && (
+        <Kpi label={s.deliveryFeesInMargin ? "Delivery fees (in margin)" : "Delivery fees (not in margin)"} value={money(toNum(s.deliveryFees))} />
+      )}
     </div>
   );
 }

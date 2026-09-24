@@ -49,6 +49,14 @@ export type CashierShiftOrder = {
     /** Unit cost price; null when the product has no recorded cost. */
     costPrice: number | null;
   }>;
+  /**
+   * The share of this order's money that earns commission, 0–1 (v1.2.1): a
+   * delivery fee is left out unless the admin counts it. It stays in net
+   * profit; only the commission on it is left out. Absent: 1.
+   */
+  commissionShare?: number;
+  /** Refunded money on this order that earned no commission (a refunded delivery fee). Absent: 0. */
+  refundedOutsideCommission?: number;
 };
 
 export type CashierShiftRefund = {
@@ -219,7 +227,20 @@ export function buildCashierShiftBalanceSheet(
       refundsTotal,
   );
 
-  const commissionAmount = roundMoney(Math.max(0, netSalesProfit) * (commissionRate / 100));
+  // Money received that earns no commission (a delivery fee, v1.2.1): the
+  // same share of each order the commission ledger leaves out, so the live
+  // "commission so far" agrees with what the shift accrues when it closes.
+  const outsideCommission = roundMoney(
+    salesOrders.reduce((sum, o) => {
+      const share = o.commissionShare === undefined ? 1 : Math.min(1, Math.max(0, o.commissionShare));
+      if (share >= 1) return sum;
+      const received = Math.max(0, Math.max(0, o.total) - outstandingCreditOn(o) - awaitingOn(o));
+      return sum + received * (1 - share);
+    }, 0) -
+      // …and a fee given back took no commission, so it gives none back.
+      salesOrders.reduce((sum, o) => sum + Math.max(0, o.refundedOutsideCommission ?? 0), 0),
+  );
+  const commissionAmount = roundMoney(Math.max(0, netSalesProfit - outsideCommission) * (commissionRate / 100));
   const businessRetainedProfit = roundMoney(netSalesProfit - commissionAmount);
 
   // What the goods taken for personal use cost, shown so it is visible rather

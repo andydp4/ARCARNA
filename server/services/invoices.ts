@@ -11,6 +11,7 @@
  * shared/invoices/invoiceRules.ts from the credit record, so the Invoices
  * page, the PDF and the Credit List cannot drift apart.
  */
+import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
 import { canSeeContactDetails } from "@shared/accessPolicy";
 import { maskEmail } from "@shared/customerView";
 import { db } from "../db";
@@ -35,6 +36,7 @@ import {
   formatInvoiceNumber,
   invoiceAmountDue,
   invoiceAmounts,
+  storedInvoiceSubtotal,
   invoiceStatus,
   isMoneyTakenMethod,
   nextInvoiceSequence,
@@ -69,6 +71,7 @@ type OrderMoneyColumns = {
   tierDiscount?: string | null;
   promoDiscount?: string | null;
   pointsDiscount?: string | null;
+  deliveryFee?: string | null;
 };
 
 function amountsForOrder(order: OrderMoneyColumns, orgVatRate: unknown): InvoiceAmounts {
@@ -81,6 +84,7 @@ function amountsForOrder(order: OrderMoneyColumns, orgVatRate: unknown): Invoice
     tierDiscount: numOrNull(order.tierDiscount),
     promoDiscount: numOrNull(order.promoDiscount),
     pointsDiscount: numOrNull(order.pointsDiscount),
+    deliveryFee: numOrNull(order.deliveryFee),
   });
 }
 
@@ -92,6 +96,7 @@ const orderMoneySelection = {
   tierDiscount: orders.tierDiscount,
   promoDiscount: orders.promoDiscount,
   pointsDiscount: orders.pointsDiscount,
+  deliveryFee: orders.deliveryFee,
 };
 
 /**
@@ -108,6 +113,7 @@ function shownAmounts(invoice: Invoice | null | undefined, live: InvoiceAmounts,
     tax: num(invoice.tax),
     vatRate: invoiceVatRate(invoice),
     pointsDiscount: 0,
+    deliveryFee: 0,
     total: num(invoice.total),
   };
 }
@@ -224,7 +230,7 @@ export async function issueInvoiceForOrder(tx: InvoiceTx, orgId: string, orderId
       customerId: order.customerId,
       invoiceNumber: formatInvoiceNumber(org.prefix, sequence),
       sequenceNumber: sequence,
-      subtotal: String(amounts.subtotal),
+      subtotal: String(storedInvoiceSubtotal(amounts)),
       tax: String(amounts.tax),
       total: String(num(order.total)),
       vatRate: String(amounts.vatRate),
@@ -247,14 +253,14 @@ async function followOrder(
   if (
     num(existing.total) === num(orderTotal) &&
     num(existing.tax) === amounts.tax &&
-    num(existing.subtotal) === amounts.subtotal
+    num(existing.subtotal) === storedInvoiceSubtotal(amounts)
   ) {
     return existing;
   }
   const [updated] = await tx
     .update(invoices)
     .set({
-      subtotal: String(amounts.subtotal),
+      subtotal: String(storedInvoiceSubtotal(amounts)),
       tax: String(amounts.tax),
       total: String(num(orderTotal)),
       vatRate: String(amounts.vatRate),
@@ -290,6 +296,16 @@ export async function refreshInvoiceForOrderTx(tx: InvoiceTx, orgId: string, ord
 /** A customer asked for an invoice: issue one (or return the one they have). */
 export async function issueInvoiceOnRequest(orgId: string, orderId: string): Promise<Invoice> {
   return db.transaction((tx) => issueInvoiceForOrder(tx, orgId, orderId));
+}
+
+/** The org's name for the delivery fee line (v1.2.1). */
+async function deliveryFeeNameFor(orgId: string): Promise<string> {
+  const [row] = await db
+    .select({ deliveryFeeName: organizations.deliveryFeeName })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return deliveryFeeSettingsFrom(row).name;
 }
 
 async function orgToday(orgId: string): Promise<{ today: string; vatRate: number }> {
@@ -339,6 +355,9 @@ export type InvoiceListRow = {
   vatRate: number;
   /** Points, after VAT. */
   pointsDiscount: number;
+  /** The delivery fee line (v1.2.1), before VAT; 0 when none. */
+  deliveryFee: number;
+  deliveryFeeName: string;
   amountDue: number;
   status: InvoiceStatus;
   /** Refunded against the sale since; 0 when nothing was (v1.2.1). */
@@ -425,6 +444,7 @@ export async function listInvoices(orgId: string, role: string | null | undefine
 
   const paidAtTill = await paidAtTillByOrder(orderRows.map(({ order }) => order.id));
   const refundedMap = await refundedByOrder(orderRows.map(({ order }) => order.id));
+  const feeName = await deliveryFeeNameFor(orgId);
 
   return orderRows.map(({ order, customer }) => {
     const invoice = numberedByOrder.get(order.id) ?? legacyByOrder.get(order.id) ?? null;
@@ -459,6 +479,8 @@ export async function listInvoices(orgId: string, role: string | null | undefine
       vat: shown.tax,
       vatRate: shown.vatRate,
       pointsDiscount: shown.pointsDiscount,
+      deliveryFee: shown.deliveryFee,
+      deliveryFeeName: feeName,
       amountDue: invoiceAmountDue(statusInput),
       status: invoiceStatus(statusInput),
       refunded: refundedMap.get(order.id) ?? 0,
@@ -479,6 +501,9 @@ export type InvoiceDocument = {
   tax: number;
   vatRate: number;
   pointsDiscount: number;
+  /** The delivery fee line (v1.2.1), before VAT; 0 when none. */
+  deliveryFee: number;
+  deliveryFeeName: string;
   total: number;
   status: InvoiceStatus;
   /** Refunded against the sale since; 0 when nothing was (v1.2.1). */
@@ -564,6 +589,8 @@ export async function loadInvoiceDocument(
       tax: shown.tax,
       vatRate: shown.vatRate,
       pointsDiscount: shown.pointsDiscount,
+      deliveryFee: shown.deliveryFee,
+      deliveryFeeName: await deliveryFeeNameFor(orgId),
       total,
       status: invoiceStatus({ orderStatus: order.status, orderTotal: total, credit, paidAtTill, dueDate, today }),
       refunded: (await refundedByOrder([order.id])).get(order.id) ?? 0,

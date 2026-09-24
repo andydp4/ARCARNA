@@ -50,6 +50,7 @@ import {
   readDeliveryDetails,
   savedAddressLine,
 } from "@shared/orders/delivery";
+import { deliveryFeeCharged, deliveryFeeSettingsFrom, readDeliveryFee, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   canSeeDeliveryAddress,
   CASHIER_ORDER_HISTORY_DAYS,
@@ -572,6 +573,17 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           code: "PERSONAL_USE_NO_DISCOUNTS",
         });
       }
+      // The delivery fee (v1.2.1): on top of the goods, on a delivery only.
+      // A sale from an older till (or queued offline before the fee existed)
+      // sends none and is priced exactly as before.
+      const deliveryFeeCheck = readDeliveryFee(body.deliveryFee, {
+        fulfilmentMethod: body.fulfilmentMethod,
+        isPersonalUse,
+      });
+      if (!deliveryFeeCheck.ok) {
+        return res.status(400).json({ message: deliveryFeeCheck.message, code: deliveryFeeCheck.code });
+      }
+      const deliveryFee = deliveryFeeCheck.fee;
       const usesGiftCard = body.paymentMethod === "gift_card" || !!body.giftCardCode;
       if (usesGiftCard) {
         if (!body.giftCardCode || !validateGiftCardCode(body.giftCardCode)) {
@@ -742,6 +754,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           taxRatePercent: orgTaxRate,
           promoCode,
           redeemPoints,
+          deliveryFee,
           // An offline sale is priced as at when it was rung, not when it synced.
           now: receivedAt,
         });
@@ -1305,11 +1318,26 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             refundMethod: refund.refundMethod,
             notes: refund.notes,
             createdAt: refund.createdAt,
+            // The delivery fee given back, when this refund did (v1.2.1).
+            deliveryFee: refund.deliveryFee == null ? 0 : parseFloat(String(refund.deliveryFee)),
             cashierName,
             lines,
           };
         }),
       );
+
+      // The org's own name for the fee, as on the receipt (v1.2.1).
+      const orderFee = storedDeliveryFee({ deliveryFee: order.delivery_fee });
+      let deliveryFeeName: string | undefined;
+      if (orderFee > 0) {
+        const { organizations: orgTable } = await import("@shared/schema");
+        const [feeOrg] = await mainDb
+          .select({ deliveryFeeName: orgTable.deliveryFeeName })
+          .from(orgTable)
+          .where(eq(orgTable.id, order.org_id!))
+          .limit(1);
+        deliveryFeeName = deliveryFeeSettingsFrom(feeOrg).name;
+      }
 
       const refundedTotal = refundsWithMeta.reduce(
         (sum, r) => sum + parseFloat(String(r.total)),
@@ -1328,6 +1356,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         status: order.status,
         createdAt: order.created_at,
         fulfilmentMethod: order.fulfilment_method,
+        // On top of the lines (v1.2.1); 0 when none.
+        deliveryFee: orderFee,
+        ...(deliveryFeeName ? { deliveryFeeName } : {}),
         // Where it goes (Q8a): every member of staff while the delivery is
         // live, managers and above after it is completed.
         ...(order.fulfilment_method === 'delivery' &&
@@ -1339,6 +1370,14 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             }
           : {}),
         refundedTotal,
+        deliveryFeeRefunded: Math.round(refundsWithMeta.reduce((sum, r) => sum + r.deliveryFee, 0) * 100) / 100,
+        // What refunding the fee gives back (as paid, VAT included); 0 once it has been.
+        deliveryFeeRefundable: refundsWithMeta.some((r) => r.deliveryFee > 0)
+          ? 0
+          : deliveryFeeCharged(
+              storedDeliveryFee({ deliveryFee: order.delivery_fee }),
+              order.vat_rate == null ? 0 : parseFloat(String(order.vat_rate)),
+            ),
         refunds: refundsWithMeta,
         items: items.map(item => ({
           id: item.id,
@@ -1398,6 +1437,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             total: parseFloat(String(row.totalPrice ?? "0")),
           }))
         : [{ name: "Order total", quantity: 1, unitPrice: total, total }];
+      // The delivery fee is its own line on the receipt (v1.2.1).
+      const receiptFee = storedDeliveryFee(order);
 
       // The receipt names the customer; it never needed the rest of the row.
       const [customer] = order.customerId
@@ -1416,15 +1457,27 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           privacyNoticeText: organizations.privacyNoticeText,
           complaintsContactName: organizations.complaintsContactName,
           complaintsContactEmail: organizations.complaintsContactEmail,
+          deliveryFeeName: organizations.deliveryFeeName,
         })
         .from(organizations)
         .where(eq(organizations.id, ctx.orgId))
         .limit(1);
+      if (receiptFee > 0 && itemRows.length) {
+        const feeName = deliveryFeeSettingsFrom(org).name;
+        items.push({ name: feeName, quantity: 1, unitPrice: receiptFee, total: receiptFee });
+      }
 
-      // Order totals are gross; derive the tax component from the org's rate so
-      // the receipt reconciles with the invoice for the same order.
+      // The VAT the sale was charged when it was recorded (migration 082);
+      // older orders derive it from the org's rate, as before, so the receipt
+      // reconciles with the invoice for the same order.
       const taxRate = parseFloat(String(org?.defaultTaxRate ?? "0")) || 0;
-      const subtotal = taxRate > 0 ? total / (1 + taxRate / 100) : total;
+      const storedVat = order.vatAmount == null ? null : parseFloat(String(order.vatAmount));
+      const subtotal =
+        storedVat != null && Number.isFinite(storedVat)
+          ? total - storedVat
+          : taxRate > 0
+            ? total / (1 + taxRate / 100)
+            : total;
       const tax = Math.round((total - subtotal) * 100) / 100;
 
       const { loadCompanyInfo } = await import("../services/companyBranding");
@@ -1668,7 +1721,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const { orders, order_items } = await import('../../apps/server/src/db/schema');
       const { eq, and } = await import('drizzle-orm');
       const { UpdateOrderInput } = await import('../../packages/domain/src/schemas');
-      const { loadOrderEditState, keptDiscountsFor, priceEditOrRefuse, OrderEditRefusedError } = await import('../services/orderEdit');
+      const { loadOrderEditState, keptDiscountsFor, priceEditOrRefuse, editedDeliveryFee, OrderEditRefusedError } = await import('../services/orderEdit');
       const { requireOrgTaxRatePercent } = await import('../services/orgTaxRate');
 
       const [row] = await db.select().from(orders).where(and(eq(orders.id, req.params.id), eq(orders.org_id, ctx.orgId)));
@@ -1697,6 +1750,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           lines: parsed.data.lines,
           taxRatePercent,
           kept: await keptDiscountsFor(db, row as any),
+          deliveryFee: editedDeliveryFee(row as any, req.body),
         });
         return res.json({ editable: true, pricing });
       } catch (error) {
@@ -1737,6 +1791,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         loadOrderEditState,
         keptDiscountsFor,
         priceEditOrRefuse,
+        editedDeliveryFee,
         rewritePaymentRecordTx,
         snapshotOrderMoney,
       } = await import('../services/orderEdit');
@@ -1780,7 +1835,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               .where(eq(orders.id, existing.id));
           }
         }
-        const pricing = priceEditOrRefuse({ lines, taxRatePercent, kept: await keptDiscountsFor(tx, existing) });
+        const pricing = priceEditOrRefuse({
+          lines,
+          taxRatePercent,
+          kept: await keptDiscountsFor(tx, existing),
+          // Kept as it was unless the edit sends one (0 removes it).
+          deliveryFee: editedDeliveryFee(existing, req.body),
+        });
         const before = snapshotOrderMoney(existing, beforeItems, state.legs);
 
         // Joins this transaction (withTransaction nests), so the lines, the

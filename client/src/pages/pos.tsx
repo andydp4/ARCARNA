@@ -32,6 +32,8 @@
  * viewport.
  */
 import { deliveryOrderFields, EMPTY_POS_DELIVERY, type PosDeliveryState } from "@/components/pos-delivery-details";
+import { PosDeliveryFee, effectiveDeliveryFee } from "@/components/pos-delivery-fee";
+import { DELIVERY_FEE_NAME_DEFAULT, DELIVERY_FEE_PRICE_DEFAULT, readDeliveryFee } from "@shared/orders/deliveryFee";
 import { Link } from "wouter";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -217,6 +219,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // over at the counter, so the common path stays a single tap.
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">("collection");
   const [delivery, setDelivery] = useState<PosDeliveryState>(EMPTY_POS_DELIVERY);
+  // The delivery fee as typed (v1.2.1); null when none is on the order.
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState<string | null>(null);
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
@@ -399,6 +403,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     }
     setFulfilmentMethod(sale.fulfilmentMethod);
     setDelivery({ ...EMPTY_POS_DELIVERY, ...sale.delivery });
+    setDeliveryFeeInput(sale.deliveryFee != null ? sale.deliveryFee.toFixed(2) : null);
     if (sale.channel === "pos" || sale.channel === "phone" || sale.channel === "whatsapp") setChannel(sale.channel);
     if (sale.personalUseReason) setPersonalUseReason(sale.personalUseReason);
     if (sale.orderDate) setOrderDate(sale.orderDate);
@@ -419,7 +424,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
   // total and charged another.
-  const { data: orgSettings } = useQuery<{ vatEnabled?: boolean; vatRate?: number; priceGuardEnabled?: boolean }>({
+  const { data: orgSettings } = useQuery<{
+    vatEnabled?: boolean;
+    vatRate?: number;
+    priceGuardEnabled?: boolean;
+    deliveryFeeName?: string;
+    deliveryFeePrice?: number;
+  }>({
     queryKey: ["/api/settings"],
   });
   // Price guard at the till (v1.2 Phase 4): off, the till shows nothing.
@@ -659,6 +670,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       // this till as a delivery too.
       setFulfilmentMethod("collection");
       setDelivery(EMPTY_POS_DELIVERY);
+      setDeliveryFeeInput(null);
       // Same reason: one backdated entry must not quietly date every later
       // sale on this till to last week.
       setOrderDate(localIsoDate());
@@ -818,6 +830,14 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const taxRatePercent =
     orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
 
+  // The delivery fee this sale is priced with (v1.2.1): only on a delivery,
+  // never on personal use, and only once the typed amount reads as money.
+  const deliveryFeeName = orgSettings?.deliveryFeeName || DELIVERY_FEE_NAME_DEFAULT;
+  const deliveryFee = effectiveDeliveryFee(deliveryFeeInput, {
+    fulfilmentMethod,
+    isPersonalUse: paymentMethod === "personal_use",
+  });
+
   // One price (v1.2 Phase 1B): the same priceOrder() the server records the
   // sale with, so the total shown here — offline too — is the total charged
   // and every tender is checked against it. A promotion or points the rules
@@ -827,6 +847,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     const base = {
       lines,
       taxRatePercent,
+      deliveryFee,
       customer: selectedCustomer ? { loyaltyPoints: selectedCustomer.loyaltyPoints ?? 0 } : null,
       tiers: loyaltyTiers,
     };
@@ -861,7 +882,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       else pointsProblemMessage = e.message;
       return { pricing: attempt(null, null), promoProblem, pointsProblemMessage };
     }
-  }, [cart, taxRatePercent, selectedCustomer, loyaltyTiers, appliedPromo, redeemPoints, loyaltySettings, pointsRedemptionAmount]);
+  }, [cart, taxRatePercent, deliveryFee, selectedCustomer, loyaltyTiers, appliedPromo, redeemPoints, loyaltySettings, pointsRedemptionAmount]);
   const subtotal = pricing.subtotal;
   const loyaltyDiscountAmount = pricing.tierDiscount;
   const loyaltyDiscount = pricing.tier?.percent ?? 0;
@@ -1026,8 +1047,19 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       return;
     }
 
+    // A fee typed as something that is not money is said here, not dropped.
+    if (fulfilmentMethod === "delivery" && deliveryFeeInput !== null && paymentMethod !== "personal_use") {
+      const feeCheck = readDeliveryFee(deliveryFeeInput, { fulfilmentMethod });
+      if (!feeCheck.ok) {
+        toast({ title: `Check the ${deliveryFeeName.toLowerCase()}`, description: feeCheck.message, variant: "destructive" });
+        return;
+      }
+    }
+
     const orderData: any = {
       ...deliveryOrderFields(fulfilmentMethod, delivery, selectedCustomer?.id ?? null),
+      // On top of the goods (v1.2.1); the server prices it and checks the total.
+      ...(deliveryFee > 0 ? { deliveryFee } : {}),
       lines: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -1203,6 +1235,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     promoDiscountAmount,
     tax,
     taxRatePercent,
+    deliveryFee,
+    deliveryFeeName,
     total,
     pointsEarned,
     tierProgress,
@@ -1273,6 +1307,19 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             setFulfilmentMethod={setFulfilmentMethod}
             delivery={delivery}
             setDelivery={setDelivery}
+            deliveryFeeSlot={
+              paymentMethod === "personal_use" ? null : (
+                <PosDeliveryFee
+                  value={deliveryFeeInput}
+                  onChange={setDeliveryFeeInput}
+                  name={deliveryFeeName}
+                  defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
+                  disabled={submitting}
+                />
+              )
+            }
+            deliveryFee={deliveryFee}
+            deliveryFeeName={deliveryFeeName}
             customerId={selectedCustomer?.id ?? null}
             giftCardPayment={giftCardPayment}
             setGiftCardPayment={setGiftCardPayment}

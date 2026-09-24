@@ -155,6 +155,13 @@ export const organizations = pgTable("organizations", {
   privacyNoticeText: text("privacy_notice_text"),
   complaintsContactName: varchar("complaints_contact_name", { length: 255 }),
   complaintsContactEmail: varchar("complaints_contact_email", { length: 255 }),
+  // The delivery fee (v1.2.1, migration 225, shared/orders/deliveryFee.ts):
+  // a service charge on top of a delivery, not a stock product. Admin set.
+  // Commission leaves it out unless deliveryFeeCommissionable is on (off by
+  // default); margin always leaves it out.
+  deliveryFeeName: varchar("delivery_fee_name", { length: 60 }).default("Delivery fee").notNull(),
+  deliveryFeePrice: numeric("delivery_fee_price", { precision: 10, scale: 2 }).default("3.00").notNull(),
+  deliveryFeeCommissionable: boolean("delivery_fee_commissionable").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1672,6 +1679,10 @@ export const orders = pgTable("orders", {
   pointsDiscount: numeric("points_discount", { precision: 10, scale: 2 }),
   vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
   vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }),
+  // The delivery fee charged on top of the goods (v1.2.1, migration 225). Part
+  // of `total` and of takings; VAT'd with the goods (inside vatAmount); never
+  // discounted, never costed. NULL on orders from before it: no fee.
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }),
   // Where a delivery goes (v1.2 Phase 5, PRV-05, migration 120). The order
   // holds its own address rather than pointing at the customer's saved one:
   // staff see it while the delivery is live, and it never exposes the
@@ -2286,6 +2297,9 @@ export const refunds = pgTable(
      * (migration 200). Only `total - credit_amount` left the till.
      */
     creditAmount: numeric("credit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+    // The part of `total` that gave the order's delivery fee back, as charged
+    // (VAT included); NULL when none (v1.2.1, migration 226). At most once per order.
+    deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

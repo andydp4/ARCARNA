@@ -13,6 +13,8 @@ type InvoicePdfData = {
   tax: number;
   vatRate: number;
   pointsDiscount: number;
+  deliveryFee: number;
+  deliveryFeeName: string;
   total: number;
   refunded: number;
   status: string;
@@ -83,6 +85,8 @@ async function loadInvoiceForPdf(
     discount: doc.discount,
     tax: doc.tax,
     pointsDiscount: doc.pointsDiscount,
+    deliveryFee: doc.deliveryFee,
+    deliveryFeeName: doc.deliveryFeeName,
     vatRate: doc.vatRate,
     total: doc.total,
     refunded: doc.refunded,
@@ -113,6 +117,8 @@ async function renderInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
     discount: data.discount,
     tax: data.tax,
     pointsDiscount: data.pointsDiscount,
+    deliveryFee: data.deliveryFee,
+    deliveryFeeName: data.deliveryFeeName,
     vatRate: data.vatRate,
     total: data.total,
     refunded: data.refunded,

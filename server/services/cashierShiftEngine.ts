@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { isPaidLeg } from "@shared/payments/cardLink";
+import { goodsShareOfTotal, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   cashierProfiles,
   cashierShifts,
@@ -99,6 +100,8 @@ type ShiftOrderRow = {
   tierDiscount: string | null;
   promoDiscount: string | null;
   pointsDiscount: string | null;
+  deliveryFee: string | null;
+  vatRate: string | null;
 };
 
 /**
@@ -127,6 +130,8 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       tierDiscount: orders.tierDiscount,
       promoDiscount: orders.promoDiscount,
       pointsDiscount: orders.pointsDiscount,
+      deliveryFee: orders.deliveryFee,
+      vatRate: orders.vatRate,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -181,16 +186,21 @@ async function loadOrderExpensesByOrder(orderIds: string[]): Promise<Map<string,
   return byOrder;
 }
 
-async function loadRefundsByOrder(orderIds: string[]): Promise<Map<string, number>> {
-  const byOrder = new Map<string, number>();
+async function loadRefundsByOrder(orderIds: string[]): Promise<Map<string, { total: number; fee: number }>> {
+  const byOrder = new Map<string, { total: number; fee: number }>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db
-    .select({ orderId: refunds.orderId, total: refunds.total })
+    .select({ orderId: refunds.orderId, total: refunds.total, fee: refunds.deliveryFee })
     .from(refunds)
     .where(inArray(refunds.orderId, orderIds));
   for (const row of rows) {
     if (!row.orderId) continue;
-    byOrder.set(row.orderId, (byOrder.get(row.orderId) ?? 0) + Math.max(0, parseFloat(String(row.total))));
+    const prev = byOrder.get(row.orderId) ?? { total: 0, fee: 0 };
+    byOrder.set(row.orderId, {
+      total: prev.total + Math.max(0, parseFloat(String(row.total))),
+      // The delivery fee given back (v1.2.1, migration 226), inside `total`.
+      fee: prev.fee + Math.max(0, parseFloat(String(row.fee ?? 0)) || 0),
+    });
   }
   return byOrder;
 }
@@ -354,10 +364,24 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   const creditByOrder = await loadCreditAmounts(orderIds);
   const legsByOrder = await loadTenderLegs(orderIds);
   const orderExpensesTotal = [...expensesByOrder.values()].reduce((sum, v) => sum + v, 0);
-  const refundRows = [...refundsByOrder.values()].map((total) => ({ total }));
+  const refundRows = [...refundsByOrder.values()].map((r) => ({ total: r.total }));
+
+  // The delivery fee earns no commission unless the admin counts it (v1.2.1).
+  const feeCommissionable = org.deliveryFeeCommissionable === true;
+  const commissionShareOf = (o: ShiftOrderRow): number =>
+    goodsShareOfTotal(parseFloat(String(o.total)), storedDeliveryFee(o), {
+      commissionable: feeCommissionable,
+      vatRatePercent: Number(o.vatRate ?? 0) || 0,
+    });
+
+  // A refunded fee earned no commission, so it takes none back either.
+  const feeRefundedOutsideCommission = (orderId: string): number =>
+    feeCommissionable ? 0 : refundsByOrder.get(orderId)?.fee ?? 0;
 
   const shiftOrders: CashierShiftOrder[] = orderRows.map((o) => ({
     id: o.id,
+    commissionShare: commissionShareOf(o),
+    refundedOutsideCommission: feeRefundedOutsideCommission(o.id),
     total: parseFloat(String(o.total)),
     paymentMethod: o.paymentMethod,
     status: o.status ?? "pending",
@@ -432,15 +456,19 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     const basis = commissionCostBasis(
       (costsByOrder.get(row.id) ?? []).map((i) => ({ quantity: i.quantity, lineTotal: i.lineTotal, unitCost: i.costPrice })),
     );
+    // The delivery fee is a service charge, not a sale of goods: left out of
+    // commission (and so its margin) unless the admin counts it (v1.2.1).
+    const goodsShare = commissionShareOf(row);
     return {
       orderId: row.id,
       // A card link Stripe has not confirmed is not money in (v1.2 Stripe links).
-      paidContribution: Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * basis.knownShare,
+      paidContribution:
+        Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * goodsShare * basis.knownShare,
       stockCost: basis.stockCost,
       costMissingLines: basis.costMissingLines,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,
       overheadShare: 0, // filled in by the ledger, which apportions per day
-      refunds: refundsByOrder.get(row.id) ?? 0,
+      refunds: Math.max(0, (refundsByOrder.get(row.id)?.total ?? 0) - feeRefundedOutsideCommission(row.id)),
       completerCashierId: row.completedCashierId,
       inputterCashierId: row.inputCashierId,
       completerUserId: row.completedUserId,

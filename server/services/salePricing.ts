@@ -31,6 +31,8 @@ export type SalePricingInput = {
   taxRatePercent: number;
   promoCode?: string | null;
   redeemPoints?: number;
+  /** Already checked by readDeliveryFee(): 0 on a collection. */
+  deliveryFee?: number;
   now?: Date;
 };
 
@@ -94,6 +96,7 @@ export async function priceSaleInTx(tx: Tx, input: SalePricingInput): Promise<Pr
       tiers,
       promotion,
       points,
+      deliveryFee: input.deliveryFee ?? 0,
       now: input.now,
     });
   } catch (error) {

@@ -51,6 +51,8 @@ export function readSaleIssuePayload(payload: Record<string, unknown>): {
   fulfilmentMethod: "collection" | "delivery";
   /** Where a delivery goes (v1.2 Phase 5): carried back to the till with the sale. */
   delivery: { address: string; postcode: string; notes: string };
+  /** The delivery fee the sale carried (v1.2.1); null when none. */
+  deliveryFee: number | null;
   channel: string | null;
   personalUseReason: string | null;
   orderDate: string | null;
@@ -100,6 +102,8 @@ export function readSaleIssuePayload(payload: Record<string, unknown>): {
       postcode: str(payload.deliveryPostcode) ?? "",
       notes: str(payload.deliveryNotes) ?? "",
     },
+    deliveryFee:
+      payload.fulfilmentMethod === "delivery" && Number(payload.deliveryFee) > 0 ? Number(payload.deliveryFee) : null,
     channel: str(payload.channel),
     personalUseReason: str(payload.personalUseReason),
     orderDate: str(payload.orderDate),

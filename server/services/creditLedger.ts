@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { goodsShareOfTotal, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   cashierCommissionEntries,
   cashierProfiles,
@@ -192,7 +193,10 @@ export async function commissionBasisFor(
   if (!order) return null;
 
   const [org] = await client
-    .select({ defaultRate: organizations.defaultCashierCommissionRate })
+    .select({
+      defaultRate: organizations.defaultCashierCommissionRate,
+      deliveryFeeCommissionable: organizations.deliveryFeeCommissionable,
+    })
     .from(organizations)
     .where(eq(organizations.id, order.orgId))
     .limit(1);
@@ -248,14 +252,28 @@ export async function commissionBasisFor(
   const expenses = expenseRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
 
   const refundRows = await client
-    .select({ total: refunds.total })
+    .select({ total: refunds.total, fee: refunds.deliveryFee })
     .from(refunds)
     .where(eq(refunds.orderId, orderId));
-  const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
+  // A refunded delivery fee earned no commission (unless the admin counts
+  // the fee), so it takes none back (v1.2.1).
+  const feeCounted = org?.deliveryFeeCommissionable === true;
+  const refundTotal = refundRows.reduce(
+    (sum, r) =>
+      sum + Math.max(0, parseFloat(String(r.total)) - (feeCounted ? 0 : Math.max(0, parseFloat(String(r.fee ?? 0)) || 0))),
+    0,
+  );
 
   // Only the known-cost share of what was collected earns commission.
   const settled = parseFloat(String(order.settledTotal ?? order.total));
-  const commissionable = settled * basis.knownShare;
+  // The delivery fee is left out unless the admin counts it (v1.2.1); the
+  // credit part below scales by the same share, so a repayment never pays
+  // commission on the fee either.
+  const goodsShare = goodsShareOfTotal(settled, storedDeliveryFee(order), {
+    commissionable: org?.deliveryFeeCommissionable === true,
+    vatRatePercent: Number(order.vatRate ?? 0) || 0,
+  });
+  const commissionable = settled * goodsShare * basis.knownShare;
   const commissionInput = {
     orderId,
     stockCost,
@@ -277,7 +295,7 @@ export async function commissionBasisFor(
   const upfrontResult = buildOrderCommission(
     {
       ...commissionInput,
-      paidContribution: Math.max(0, commissionable - roundMoney(creditAmountGiven) * basis.knownShare),
+      paidContribution: Math.max(0, commissionable - roundMoney(creditAmountGiven) * goodsShare * basis.knownShare),
     },
     rate,
   );
