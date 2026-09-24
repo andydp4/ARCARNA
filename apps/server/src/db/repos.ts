@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import { getDb } from './index'
 import * as s from './schema'
 import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, OrderLine, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
@@ -376,6 +376,18 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       : eq(s.products.id, id as any)
     const [deleted] = await getDb().delete(s.products).where(whereCond).returning({ id: s.products.id })
     if (orgId && !deleted) throw new Error('Product not found')
+  },
+  async foreignTo(ids: ProductId[], orgId: string): Promise<ProductId[]> {
+    const unique = [...new Set(ids.map(String))]
+    if (unique.length === 0) return []
+    // Only well-formed ids reach Postgres; anything else cannot be a product.
+    const uuids = unique.filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+    if (uuids.length === 0) return []
+    const rows = await getDb()
+      .select({ id: s.products.id })
+      .from(s.products)
+      .where(and(inArray(s.products.id, uuids as any), sql`${s.products.org_id} IS DISTINCT FROM ${orgId}::uuid`))
+    return rows.map((r: { id: string }) => r.id as ProductId)
   },
   async findById(id: ProductId): Promise<Product | null> {
     const [product] = await getDb().select().from(s.products).where(eq(s.products.id, id as any))

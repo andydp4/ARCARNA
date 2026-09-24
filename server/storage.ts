@@ -301,6 +301,17 @@ export interface IStorage {
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
 }
 
+/** An approve/reject on a request that is not a pending, unclaimed sign-up. */
+export class ApprovalStateError extends Error {
+  constructor(
+    public readonly status: 400 | 403 | 404 | 409,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApprovalStateError";
+  }
+}
+
 export class AmbiguousStockLocationError extends Error {
   constructor() {
     super("Choose a location before editing stock for a multi-location organization");
@@ -2232,6 +2243,14 @@ export class DatabaseStorage implements IStorage {
       patch.orgId = targetRole === "SUPER_ADMIN" ? null : updates.orgId;
     }
 
+    // Nothing on the row itself to change (a commission- or location-only
+    // edit): answer with the row as it is instead of the driver's
+    // "No values to set" (v1.2.1 SEC-500-NONUUID, related).
+    if (Object.keys(patch).length === 0) {
+      const [current] = await db.select().from(allowedUsers).where(eq(allowedUsers.replitUserId, replitUserId));
+      return current;
+    }
+
     const [updated] = await db
       .update(allowedUsers)
       .set(patch)
@@ -2285,10 +2304,18 @@ export class DatabaseStorage implements IStorage {
 
   // Approval request operations
   async getPendingApprovals(): Promise<UserApprovalRequest[]> {
+    // Only unclaimed sign-ups: a request whose person already has access (in
+    // any organisation) is not something an admin can act on here, and
+    // listing it would show one organisation's staff to another's admins.
     return db
       .select()
       .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.status, 'pending'))
+      .where(
+        and(
+          eq(userApprovalRequests.status, 'pending'),
+          sql`NOT EXISTS (SELECT 1 FROM allowed_users au WHERE au.replit_user_id = ${userApprovalRequests.replitUserId})`,
+        ),
+      )
       .orderBy(desc(userApprovalRequests.requestedAt));
   }
 
@@ -2325,81 +2352,98 @@ export class DatabaseStorage implements IStorage {
     return request;
   }
 
+  /**
+   * Approve a PENDING sign-up request (v1.2.1 SEC-APPROVE-XORG).
+   *
+   * Only an unclaimed request can be approved: its status must be "pending"
+   * and the person must not already have an allowed_users row. Anything else
+   * (an existing member of any organisation, the owner, an already-approved or
+   * rejected request) throws ApprovalStateError, so an admin cannot re-home or
+   * re-role someone through this path; User Access (PATCH) is the place for
+   * that, and it is organisation-scoped.
+   */
   async approveUser(
     replitUserId: string,
     approvedBy: string,
     options?: { role?: string; orgId?: string | null },
   ): Promise<void> {
-    // Only a sign-up still waiting can be approved. The row stays behind,
-    // marked approved, once someone is let in; approving it again was a way
-    // to move an existing member of another business (their org and role) into
-    // the approver's own.
-    if ((options?.role ?? "CUSTOMER") === "SUPER_ADMIN") {
-      throw new Error("Cannot approve new users as SUPER_ADMIN");
+    const role = options?.role ?? "CUSTOMER";
+    if (role === "SUPER_ADMIN") {
+      throw new ApprovalStateError(403, "Cannot approve new users as SUPER_ADMIN");
     }
-    const [alreadyIn] = await db
-      .select({ replitUserId: allowedUsers.replitUserId })
-      .from(allowedUsers)
-      .where(eq(allowedUsers.replitUserId, replitUserId))
-      .limit(1);
-    if (alreadyIn) {
-      throw new Error("This person already has access; change their role in User Access instead");
-    }
-    // Claimed in one statement, so two approvals of one sign-up cannot both apply.
-    const [request] = await db
-      .update(userApprovalRequests)
-      .set({
-        status: "approved",
-        reviewedAt: new Date(),
-        reviewedBy: approvedBy,
-      })
-      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")))
-      .returning();
-    if (!request) {
-      throw new Error("There is no pending sign-up for this person");
-    }
+    await db.transaction(async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(userApprovalRequests)
+        .where(eq(userApprovalRequests.replitUserId, replitUserId))
+        .for("update");
+      if (!request) throw new ApprovalStateError(404, "Approval request not found");
+      if (request.status !== "pending") {
+        throw new ApprovalStateError(409, "This request is not pending");
+      }
+      const [existing] = await tx
+        .select({ id: allowedUsers.id })
+        .from(allowedUsers)
+        .where(eq(allowedUsers.replitUserId, replitUserId))
+        .limit(1);
+      if (existing) {
+        throw new ApprovalStateError(409, "This person already has access; change it in User Access");
+      }
 
-    {
-      const [approver] = await db
+      const [approver] = await tx
         .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
       const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
-      const role = options?.role ?? "CUSTOMER";
       const orgId =
         options?.orgId !== undefined
           ? options.orgId
           : approverRole === "SUPER_ADMIN"
-            ? options?.orgId ?? null
+            ? null
             : approver?.orgId ?? null;
 
-      if (role === "SUPER_ADMIN") {
-        throw new Error("Cannot approve new users as SUPER_ADMIN");
-      }
+      await tx
+        .update(userApprovalRequests)
+        .set({ status: "approved", reviewedAt: new Date(), reviewedBy: approvedBy })
+        .where(eq(userApprovalRequests.replitUserId, replitUserId));
 
-      await this.addAllowedUser({
+      // Plain insert, never an upsert: an existing row was refused above, and a
+      // concurrent insert fails on the unique key instead of being overwritten.
+      await tx.insert(allowedUsers).values({
         replitUserId: request.replitUserId,
         authUserId: request.authUserId ?? request.replitUserId,
         authProvider: request.authProvider ?? "replit",
         email: request.email,
         name: request.name,
         isOwner: 0,
-        orgId: role === "SUPER_ADMIN" ? null : orgId,
+        orgId,
         role: role as Role,
       });
-    }
+    });
   }
 
+  /** Reject a PENDING, unclaimed sign-up request (v1.2.1 SEC-APPROVE-XORG). */
   async rejectUser(replitUserId: string, rejectedBy: string): Promise<void> {
-    await db
+    const [existing] = await db
+      .select({ id: allowedUsers.id })
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId))
+      .limit(1);
+    if (existing) {
+      throw new ApprovalStateError(409, "This person already has access; change it in User Access");
+    }
+    const updated = await db
       .update(userApprovalRequests)
       .set({
         status: 'rejected',
         reviewedAt: new Date(),
         reviewedBy: rejectedBy,
       })
-      // Only a sign-up still waiting: an approved row is history, not a switch.
-      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")));
+      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")))
+      .returning({ id: userApprovalRequests.id });
+    if (updated.length === 0) {
+      throw new ApprovalStateError(404, "No pending request for this person");
+    }
   }
 
   async insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void> {

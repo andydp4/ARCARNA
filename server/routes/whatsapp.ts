@@ -55,9 +55,10 @@ export function registerWhatsappPublicRoutes(app: Express): void {
       cfg.verifyToken,
     );
     if (challenge === null) {
-      return res.status(403).send("Forbidden");
+      return res.status(403).type("text/plain").send("Forbidden");
     }
-    res.status(200).send(challenge);
+    // Plain text: the challenge is caller-supplied (v1.2.1 SEC-WA-CHALLENGE-HTML).
+    res.status(200).type("text/plain").send(String(challenge));
   });
 
   // POST inbound messages / statuses.

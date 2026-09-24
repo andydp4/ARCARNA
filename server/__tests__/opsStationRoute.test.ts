@@ -7,10 +7,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestHandler } from "express";
 
-const { insertValues, onConflictDoUpdate, dbMock, recordAdminAudit, getOpsBoard } = vi.hoisted(() => {
+const { insertValues, onConflictDoUpdate, dbMock, recordAdminAudit, getOpsBoard, memberRows } = vi.hoisted(() => {
   const insertValues = vi.fn();
   const onConflictDoUpdate = vi.fn();
+  // What the org-membership check (SEC-STATION-XORG) finds for the target.
+  const memberRows: { current: Array<{ id: string }> } = { current: [{ id: "row-1" }] };
   const dbMock = {
+    select: vi.fn(() => ({
+      from: () => ({ where: () => ({ limit: async () => memberRows.current }) }),
+    })),
     insert: vi.fn(() => ({
       values: (...args: unknown[]) => {
         insertValues(...args);
@@ -24,6 +29,7 @@ const { insertValues, onConflictDoUpdate, dbMock, recordAdminAudit, getOpsBoard 
     dbMock,
     recordAdminAudit: vi.fn(async () => {}),
     getOpsBoard: vi.fn(),
+    memberRows,
   };
 });
 vi.mock("../db", () => ({ db: dbMock }));
@@ -56,6 +62,7 @@ function fakeRes() {
 const routes = captureRoutes(registerOperationsRoutes);
 
 beforeEach(() => {
+  memberRows.current = [{ id: "row-1" }];
   insertValues.mockClear();
   onConflictDoUpdate.mockClear().mockResolvedValue(undefined);
   recordAdminAudit.mockClear();
@@ -154,5 +161,21 @@ describe("PATCH /api/operations/station/:userId (MANAGER+)", () => {
       expect.objectContaining({ action: "ops.station_set", targetType: "user", targetId: "ana", orgId: "org-1" }),
     );
     expect(res.json).toHaveBeenCalledWith({ userId: "ana", station: "delivery" });
+  });
+
+  it("404s for someone outside this organisation and writes nothing (v1.2.1 SEC-STATION-XORG)", async () => {
+    memberRows.current = [];
+    const [, handler] = routes["PATCH /api/operations/station/:userId"];
+    const req = {
+      orgContext: { orgId: "org-1" },
+      user: { id: "manager-1", role: "MANAGER" },
+      params: { userId: "org-b-cashier" },
+      body: { station: "delivery" },
+    } as any;
+    const res = fakeRes();
+    await handler(req, res, vi.fn());
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(recordAdminAudit).not.toHaveBeenCalled();
   });
 });

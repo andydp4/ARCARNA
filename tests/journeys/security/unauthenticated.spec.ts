@@ -131,15 +131,12 @@ test.describe("5.4 unauthenticated access", () => {
   });
 
   /**
-   * OPEN FINDING — wrong status and an internal disclosure when Clerk is the
-   * provider but no publishable key is configured.
-   *
-   * `test.fail()` because there is no configuration in which a 500 carrying the
-   * Clerk library's setup instructions is the right answer to "who are you?".
-   * Verified: the same build with `CLERK_PUBLISHABLE_KEY` set answers
-   * `401 {"message":"Unauthorized"}`, so the fix is a guard, not a redesign.
+   * Was an open finding (a 500 carrying the Clerk library's setup instructions
+   * when Clerk is the provider with no publishable key). Fixed: the guard in
+   * server/auth/clerkAuth.ts answers 401. Now a plain regression test (v1.2.1
+   * SEC-STALE-TESTFAIL: as `test.fail()` it went red once the fix landed).
    */
-  test.fail("an anonymous request must not produce a 500 or echo library internals", async () => {
+  test("an anonymous request must not produce a 500 or echo library internals", async () => {
     test.skip(
       mode.devAuthBypass || mode.clerkConfigured,
       "only applies with the bypass off and no Clerk publishable key",
@@ -157,10 +154,8 @@ test.describe("5.4 unauthenticated access", () => {
     }
     await api.dispose();
     console.log(
-      `[5.4 FINDING] ${fiveHundreds.length}/${ROUTES.length} anonymous requests returned 5xx, ` +
-        `${leaks.length} echoed the Clerk library error ` +
-        `(server/auth/clerkAuth.ts:24-29 mounts a no-op when CLERK_PUBLISHABLE_KEY is unset, ` +
-        `then :109 calls getAuth and throws)`,
+      `[5.4] ${fiveHundreds.length}/${ROUTES.length} anonymous requests returned 5xx, ` +
+        `${leaks.length} echoed the Clerk library error`,
     );
     expect(fiveHundreds, "an unauthenticated request must not 500").toEqual([]);
     expect(leaks, "an error body must not echo library setup instructions").toEqual([]);

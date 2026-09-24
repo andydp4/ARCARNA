@@ -1,4 +1,5 @@
 import type { RequestHandler, Request, Response, NextFunction } from "express";
+import { isLoopbackPeer } from "../lib/trustProxy";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { locations, shifts } from "../../shared/schema";
@@ -15,9 +16,8 @@ export async function tryPhase2dTestAuth(
 ): Promise<boolean> {
   const testUserId = (req.headers["x-test-replit-user-id"] as string) || null;
   const isTestMode = process.env.PHASE2D_TEST === "1" && process.env.NODE_ENV !== "production";
-  const clientIp = req.ip || (req as { socket?: { remoteAddress?: string } }).socket?.remoteAddress || "";
-  const isLocalhost =
-    clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
+  // The socket, not req.ip: X-Forwarded-For sets req.ip (SEC-XFF).
+  const isLocalhost = isLoopbackPeer(req);
   const testSecret = process.env.PHASE2D_TEST_SECRET;
   const secretMatch = !!testSecret && req.headers["x-test-secret"] === testSecret;
   const allowImpersonation = isTestMode && testUserId && isLocalhost && secretMatch;

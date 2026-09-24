@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "../db";
-import { storage } from "../storage";
+import { storage, ApprovalStateError } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -125,32 +125,32 @@ export function registerAdminRoutes(app: Express): void {
   app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
-      
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const rob = await storage.getUserRoleAndOrg(actorId);
+      const actorRole = (req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
+
       // Prevent owner from removing themselves
       const owner = await storage.getOwner();
       if (owner && owner.replitUserId === replitUserId) {
         return res.status(400).json({ message: "Cannot remove owner from allowed users" });
       }
 
-      const actorId = req.user.claims?.sub ?? req.user.id;
-      const rob = await storage.getUserRoleAndOrg(actorId);
-      const actorRole = (req.user.role ??
-        rob?.role ??
-        (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
-      // The same line PATCH draws (canManageUser): an org admin removes people
-      // of their own business only. Removing someone else's staff, or a
-      // platform super admin (no org), was a way round every role rule.
+      // v1.2.1 SEC-DELETE-XORG: the target must be someone the actor manages.
+      // An admin reaches only their own organisation's rows, and never a
+      // SUPER_ADMIN or owner row (org NULL), which only the owner may remove.
       const [target] = await db
-        .select({ role: allowedUsers.role, orgId: allowedUsers.orgId, isOwner: allowedUsers.isOwner })
+        .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, replitUserId))
         .limit(1);
       if (!target) return res.status(404).json({ message: "User not found" });
-      if (actorRole !== "SUPER_ADMIN" && (target.isOwner === 1 || target.role === "SUPER_ADMIN")) {
-        return res.status(403).json({ message: "Only the platform owner can remove a super admin" });
-      }
-      if (!canManageUser(actorRole, rob?.orgId ?? null, target.orgId ?? null)) {
-        return res.status(403).json({ message: "You can only remove people from your own organization" });
+      if (actorRole !== "SUPER_ADMIN") {
+        if (target.isOwner === 1 || target.role === "SUPER_ADMIN") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        if (!canManageUser(actorRole, rob?.orgId ?? null, target.orgId ?? null)) {
+          return res.status(404).json({ message: "User not found" });
+        }
       }
       if (actorId === replitUserId) {
         return res.status(400).json({ message: "You cannot remove your own access" });
@@ -338,6 +338,9 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json({ message: "User approved successfully" });
     } catch (error: any) {
+      if (error instanceof ApprovalStateError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Error approving user:", error);
       res.status(400).json({ message: error.message || "Failed to approve user" });
     }
@@ -363,6 +366,9 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json({ message: "User rejected" });
     } catch (error) {
+      if (error instanceof ApprovalStateError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Error rejecting user:", error);
       res.status(500).json({ message: "Failed to reject user" });
     }

@@ -1,4 +1,5 @@
 import { clerkMiddleware, getAuth, clerkClient } from "@clerk/express";
+import { trustProxySetting } from "../lib/trustProxy";
 import type { Express, RequestHandler } from "express";
 import { storage } from "../storage";
 import { getAuthProvider } from "../authRuntime";
@@ -60,7 +61,7 @@ export async function setupClerkAuth(app: Express) {
     return;
   }
 
-  app.set("trust proxy", 1);
+  app.set("trust proxy", trustProxySetting());
 
   app.use((req, res, next) => {
     if (

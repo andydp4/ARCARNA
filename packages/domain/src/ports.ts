@@ -27,6 +27,12 @@ export interface ProductsRepo {
   delete(id: ProductId, orgId?: string | null): Promise<void>
   findById(id: ProductId): Promise<Product|null>
   findAll(): Promise<Product[]>
+  /**
+   * Of `ids`, the ones that exist but belong to an organisation other than
+   * `orgId` (v1.2.1 SEC-ORDER-XPROD). Optional so hand-built repos still
+   * construct; the Drizzle repo implements it and the engine refuses any hit.
+   */
+  foreignTo?(ids: ProductId[], orgId: string): Promise<ProductId[]>
 }
 export interface CustomersRepo { 
   addTickDebt(c: CustomerId, amount: number): Promise<void>
