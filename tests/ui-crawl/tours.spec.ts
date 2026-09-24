@@ -33,10 +33,8 @@ type ViewportName = keyof typeof VIEWPORTS;
  * Remove an entry when its fix lands.
  */
 const KNOWN: { id: string; match: RegExp }[] = [
-  // On a phone the Centre tour's menu steps point into the closed menu sheet.
-  { id: "UI-05", match: /dropped: .*(Back to the main menu|Keep the menu open|See this again|Centres?\b)|tour did not start/ },
-  // The callout is placed by a 160px height estimate; a long body makes it taller.
-  { id: "UI-07", match: /callout ".*" outside the viewport/ },
+  // UI-05 (phone Centre tours dropped their menu steps) and UI-07 (callouts
+  // placed by a height estimate ran off the bottom) are fixed; none open.
 ];
 const tagKnown = (problem: string) => {
   const k = KNOWN.find((x) => x.match.test(problem));
@@ -47,7 +45,9 @@ const OUT_DIR = process.env.UI_CRAWL_OUT ?? join(process.cwd(), "test-results", 
 
 /** One page per Centre tour, and the steps CentreTour.tsx defines for it. */
 const CENTRE_PAGES: { centre: string; path: string; menuTitle: string; roles: Role[] }[] = [
-  { centre: "control", path: "/", menuTitle: "Seven Centres", roles: ["ADMIN", "MANAGER", "CASHIER"] },
+  // The count is the viewer's own (UI-06): a cashier's menu has five Centres.
+  { centre: "control", path: "/", menuTitle: "Seven Centres", roles: ["ADMIN", "MANAGER"] },
+  { centre: "control", path: "/", menuTitle: "Five Centres", roles: ["CASHIER"] },
   { centre: "stock", path: "/inventory", menuTitle: "The Stock Centre", roles: ["ADMIN", "MANAGER"] },
   // A cashier's Stock Centre is Stock levels (counts only); Stock Truths is managers'.
   { centre: "stock", path: "/stock-levels", menuTitle: "The Stock Centre", roles: ["CASHIER"] },
@@ -57,6 +57,9 @@ const CENTRE_PAGES: { centre: string; path: string; menuTitle: string; roles: Ro
   { centre: "settings", path: "/settings", menuTitle: "The Settings Centre", roles: ["ADMIN", "MANAGER"] },
 ];
 const CENTRE_STEP_TITLES = ["Back to the main menu", "Where you are", "Keep the menu open", "See this again"];
+// A phone has no pin and its menu is a closed sheet: its tour points at the
+// menu button instead (UI-05), and must still show all three of these.
+const CENTRE_STEP_TITLES_PHONE = ["Where you are", "See this again"];
 
 type Shown = { title: string; box: { x: number; y: number; w: number; h: number } | null; callout: { x: number; y: number; w: number; h: number } | null };
 
@@ -124,7 +127,8 @@ for (const viewport of Object.keys(VIEWPORTS) as ViewportName[]) {
         }
         const titles = shown.map((s) => s.title);
         // The Control Centre's menu IS the main menu, so it has no way back to it.
-        const expected = [menuTitle, ...CENTRE_STEP_TITLES].filter((t) => !(centre === "control" && t === "Back to the main menu"));
+        const stepTitles = viewport === "phone" ? CENTRE_STEP_TITLES_PHONE : CENTRE_STEP_TITLES;
+        const expected = [menuTitle, ...stepTitles].filter((t) => !(centre === "control" && t === "Back to the main menu"));
         const missing = expected.filter((t) => !titles.some((x) => x.includes(t)));
         if (missing.length) problems.push(`${tag}: ${shown.length} step(s) shown [${titles.join(" | ")}]; dropped: ${missing.join(", ")}`);
         for (const s of shown) {

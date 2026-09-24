@@ -202,7 +202,7 @@ function InvoiceRowInner({
       <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
         <span className="inline-flex items-center gap-1.5 text-sm">
           <Calendar className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-          {new Date(invoice.date).toLocaleDateString(undefined, {
+          {new Date(invoice.date).toLocaleDateString("en-GB", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -210,7 +210,7 @@ function InvoiceRowInner({
         </span>
       </TableCell>
       <TableCell className="whitespace-nowrap tabular-nums text-sm text-muted-foreground">
-        {new Date(invoice.dueDate).toLocaleDateString(undefined, {
+        {new Date(invoice.dueDate).toLocaleDateString("en-GB", {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -298,7 +298,7 @@ function InvoiceCardInner({
           <ResponsiveCardRow label="Issued">
             <span className="inline-flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-              {new Date(invoice.date).toLocaleDateString(undefined, {
+              {new Date(invoice.date).toLocaleDateString("en-GB", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
@@ -306,7 +306,7 @@ function InvoiceCardInner({
             </span>
           </ResponsiveCardRow>
           <ResponsiveCardRow label="Due">
-            {new Date(invoice.dueDate).toLocaleDateString(undefined, {
+            {new Date(invoice.dueDate).toLocaleDateString("en-GB", {
               month: "short",
               day: "numeric",
               year: "numeric",

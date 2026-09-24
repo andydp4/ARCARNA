@@ -82,7 +82,7 @@ export const ReportFrame = forwardRef<HTMLDivElement, ReportFrameProps>(function
                 {tier}
               </span>
             )}
-            <span style={{ color: REPORT_COLORS.smoke }} className="text-[11px] font-medium tracking-wide">
+            <span style={{ color: REPORT_COLORS.smokeOnDark }} className="text-[11px] font-medium tracking-wide">
               {frequency}
             </span>
           </div>
@@ -90,7 +90,7 @@ export const ReportFrame = forwardRef<HTMLDivElement, ReportFrameProps>(function
             {title}
           </h2>
           {periodLabel && (
-            <p style={{ color: REPORT_COLORS.smoke }} className="mt-0.5 text-xs">
+            <p style={{ color: REPORT_COLORS.smokeOnDark }} className="mt-0.5 text-xs">
               {typeof periodLabel === "string" ? periodLabel : screenDate(periodLabel)}
             </p>
           )}
@@ -101,7 +101,7 @@ export const ReportFrame = forwardRef<HTMLDivElement, ReportFrameProps>(function
             <div style={{ color: "#fff" }} className="text-sm font-bold tracking-wide">
               ARCARNA
             </div>
-            <div style={{ color: REPORT_COLORS.smoke }} className="text-[10px] tracking-wider">
+            <div style={{ color: REPORT_COLORS.smokeOnDark }} className="text-[10px] tracking-wider">
               WM SUPPLIES
             </div>
           </div>

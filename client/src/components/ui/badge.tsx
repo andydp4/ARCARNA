@@ -24,12 +24,18 @@ const badgeVariants = cva(
 )
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
+/**
+ * A <span>, not a <div> (v1.2.1 UI-04): badges sit inside running text — a
+ * <p> note, a table cell's sentence — and a <div> there is invalid HTML that
+ * React reports as a validateDOMNesting console error. It is inline-flex
+ * either way, so it looks the same.
+ */
 function Badge({ className, variant, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <span className={cn(badgeVariants({ variant }), className)} {...props} />
   )
 }
 

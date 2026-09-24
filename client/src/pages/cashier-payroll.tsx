@@ -179,17 +179,17 @@ export default function CashierPayrollPage() {
       <Card className="border-0 shadow-none lm-card">
         <CardContent className="pt-6 flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="min-h-[44px]" />
+            <Label htmlFor="payroll-from">From</Label>
+            <Input id="payroll-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="min-h-[44px]" />
           </div>
           <div className="space-y-2">
-            <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-[44px]" />
+            <Label htmlFor="payroll-to">To</Label>
+            <Input id="payroll-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-[44px]" />
           </div>
           <div className="space-y-2">
             <Label>Person</Label>
             <Select value={staffFilter} onValueChange={setStaffFilter}>
-              <SelectTrigger className="min-h-[44px] w-48" data-testid="select-payroll-person">
+              <SelectTrigger className="min-h-[44px] w-48" data-testid="select-payroll-person" aria-label="Person">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -325,7 +325,7 @@ export default function CashierPayrollPage() {
                       <div>
                         <p className="font-medium">{row.cashierCode} · {row.cashierName}</p>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(row.closedAt).toLocaleString()}
+                          {new Date(row.closedAt).toLocaleString("en-GB")}
                         </p>
                       </div>
                       <Badge variant={row.paidStatus === "paid" ? "secondary" : row.paidStatus === "partial" ? "outline" : "destructive"}>
@@ -357,7 +357,7 @@ export default function CashierPayrollPage() {
               {commissionRows.map((row) => (
                 <TableRow key={row.shiftId} data-testid={`row-commission-${row.shiftId}`}>
                   <TableCell>{row.cashierCode} · {row.cashierName}</TableCell>
-                  <TableCell>{new Date(row.closedAt).toLocaleString()}</TableCell>
+                  <TableCell>{new Date(row.closedAt).toLocaleString("en-GB")}</TableCell>
                   <TableCell>{money(row.netSalesProfit)}</TableCell>
                   <TableCell>
                     {money(row.commissionAmount)}

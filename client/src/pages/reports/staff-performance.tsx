@@ -210,7 +210,7 @@ function PeopleTable({ data, section, onOpen }: { data: StaffPerformanceResponse
 function PeopleCards({ data, section, onOpen }: { data: StaffPerformanceResponse; section: PeopleSection; onOpen: (id: string) => void }) {
   const cols = PEOPLE_COLUMNS[section];
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid={`cards-performance-${section}`}>
       {data.rows.map((r) => (
         <Card key={r.userId} className="lm-card border-0 shadow-none cursor-pointer" onClick={() => onOpen(r.userId)} data-testid={`card-${section}-${r.userId}`}>
           <CardContent className="pt-4">
@@ -321,7 +321,7 @@ function PerformanceCards({ data, section, onOpen }: { data: StaffPerformanceRes
     </Card>
   );
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid={`cards-performance-${section}`}>
       {data.rows.map((r) => card(r.userId, <span className="font-medium">{r.name}</span>, r, r.change, () => onOpen(r.userId)))}
       {data.team.adminCover && card("admin-cover", <TeamLabel name="Admin cover" note="Counted, never ranked." />, data.team.adminCover)}
       {card("unattributed", <TeamLabel name="Unattributed" note="Nobody named." />, data.team.unattributed)}
@@ -397,7 +397,7 @@ export default function StaffPerformanceReport() {
           <div className="space-y-2">
             <Label>Dates</Label>
             <Select value={preset} onValueChange={choosePreset}>
-              <SelectTrigger className="min-h-[44px] w-44" data-testid="select-performance-preset"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Dates" className="min-h-[44px] w-44" data-testid="select-performance-preset"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PERFORMANCE_PRESETS.map((p) => <SelectItem key={p} value={p}>{PRESET_LABEL[p]}</SelectItem>)}
                 <SelectItem value="custom">Custom</SelectItem>
@@ -415,7 +415,7 @@ export default function StaffPerformanceReport() {
           <div className="space-y-2">
             <Label>Location</Label>
             <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger className="min-h-[44px] w-44" data-testid="select-performance-location"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Location" className="min-h-[44px] w-44" data-testid="select-performance-location"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All locations</SelectItem>
                 {locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
@@ -425,7 +425,7 @@ export default function StaffPerformanceReport() {
           <div className="space-y-2">
             <Label>Role</Label>
             <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="min-h-[44px] w-36" data-testid="select-performance-role"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Role" className="min-h-[44px] w-36" data-testid="select-performance-role"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Everyone</SelectItem>
                 <SelectItem value="CASHIER">Cashiers</SelectItem>
@@ -436,7 +436,7 @@ export default function StaffPerformanceReport() {
           <div className="space-y-2">
             <Label>Fulfilment</Label>
             <Select value={fulfilment} onValueChange={setFulfilment}>
-              <SelectTrigger className="min-h-[44px] w-36" data-testid="select-performance-fulfilment"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Fulfilment" className="min-h-[44px] w-36" data-testid="select-performance-fulfilment"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Both</SelectItem>
                 <SelectItem value="collection">Collection</SelectItem>
@@ -447,7 +447,7 @@ export default function StaffPerformanceReport() {
           <div className="space-y-2">
             <Label>Channel</Label>
             <Select value={channel} onValueChange={setChannel}>
-              <SelectTrigger className="min-h-[44px] w-36" data-testid="select-performance-channel"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Channel" className="min-h-[44px] w-36" data-testid="select-performance-channel"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All channels</SelectItem>
                 {(data?.channels ?? []).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -483,7 +483,9 @@ export default function StaffPerformanceReport() {
         </CardHeader>
         <CardContent>
           <Tabs value={section} onValueChange={(v) => setSection(v as Section)}>
-            <TabsList className="mb-4">
+            {/* Wraps onto two rows on a phone (v1.2.1 UI-03): six tabs are
+                443px wide, and on a 412px screen Fairness sat off the edge. */}
+            <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start" data-testid="tabs-performance-sections">
               <TabsTrigger value="volume" data-testid="tab-performance-volume">Volume</TabsTrigger>
               <TabsTrigger value="value" data-testid="tab-performance-value">Value</TabsTrigger>
               <TabsTrigger value="quality" data-testid="tab-performance-quality">Quality</TabsTrigger>

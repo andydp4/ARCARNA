@@ -7,6 +7,7 @@ import { useSeenOnce } from "@/hooks/useSeenOnce";
 import { clearPendingReplay, hasPendingReplay } from "@/components/tour/tourReplay";
 import { claimTourScreen, releaseTourScreen, tourScreenFree } from "@/components/tour/tourScreen";
 import { findTourTarget, type TourTarget } from "@/components/tour/tourTarget";
+import { placeCallout, VIEWPORT_MARGIN } from "@/components/tour/tourPlacement";
 
 /**
  * The shared spotlight tour (v1.2 Phase 3). Started life as the Operations
@@ -61,8 +62,6 @@ const START_ATTEMPTS = 12;
 const START_RETRY_MS = 400;
 
 const SPOTLIGHT_PADDING = 8;
-const CALLOUT_GAP = 12;
-const VIEWPORT_MARGIN = 16;
 
 interface Rect {
   top: number;
@@ -92,6 +91,7 @@ export function SpotlightTour({
   const [steps, setSteps] = useState<TourStep[]>([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
+  const [calloutHeight, setCalloutHeight] = useState<number | null>(null);
   const calloutRef = useRef<HTMLDivElement>(null);
   const focusedForStep = useRef<number | null>(null);
 
@@ -229,6 +229,14 @@ export function SpotlightTour({
     };
   }, [open, reposition]);
 
+  // The callout's real height, for placing it (UI-07): measured after each
+  // render of a step, before paint, so a tall callout never shows clipped.
+  useLayoutEffect(() => {
+    if (!open || !rect) return;
+    const h = calloutRef.current?.offsetHeight ?? null;
+    if (h && h !== calloutHeight) setCalloutHeight(h);
+  });
+
   // The callout doesn't exist in the DOM until `rect` is first known (the
   // component renders null until then — see below), so this can't just key
   // off `[open, stepIndex]`: that fires a beat too early, before the ref has
@@ -282,38 +290,14 @@ export function SpotlightTour({
   };
 
   // Prefer the requested side; fall back to whichever axis actually has room,
-  // so a target hard against an edge (the form pane, flush against the right
-  // edge of the viewport) never produces an off-screen callout.
-  const spaceBelow = window.innerHeight - (highlight.top + highlight.height);
-  const spaceAbove = highlight.top;
-  const spaceRight = window.innerWidth - (highlight.left + highlight.width);
-  const spaceLeft = highlight.left;
-  const CALLOUT_WIDTH = 320;
-  const CALLOUT_HEIGHT_ESTIMATE = 160;
-
-  let side = step.preferredSide;
-  if (side === "bottom" && spaceBelow < CALLOUT_HEIGHT_ESTIMATE && spaceAbove > spaceBelow) side = "top";
-  if (side === "top" && spaceAbove < CALLOUT_HEIGHT_ESTIMATE && spaceBelow > spaceAbove) side = "bottom";
-  if (side === "right" && spaceRight < CALLOUT_WIDTH && spaceLeft > spaceRight) side = "left";
-  if (side === "left" && spaceLeft < CALLOUT_WIDTH && spaceRight > spaceLeft) side = "right";
-
-  let calloutTop: number;
-  let calloutLeft: number;
-  if (side === "bottom" || side === "top") {
-    calloutTop = side === "bottom" ? highlight.top + highlight.height + CALLOUT_GAP : highlight.top - CALLOUT_GAP - CALLOUT_HEIGHT_ESTIMATE;
-    calloutLeft = highlight.left + highlight.width / 2 - CALLOUT_WIDTH / 2;
-  } else {
-    calloutLeft = side === "right" ? highlight.left + highlight.width + CALLOUT_GAP : highlight.left - CALLOUT_GAP - CALLOUT_WIDTH;
-    calloutTop = highlight.top + highlight.height / 2 - CALLOUT_HEIGHT_ESTIMATE / 2;
-  }
-  calloutLeft = Math.min(
-    Math.max(calloutLeft, VIEWPORT_MARGIN),
-    window.innerWidth - CALLOUT_WIDTH - VIEWPORT_MARGIN,
-  );
-  calloutTop = Math.min(
-    Math.max(calloutTop, VIEWPORT_MARGIN),
-    window.innerHeight - CALLOUT_HEIGHT_ESTIMATE - VIEWPORT_MARGIN,
-  );
+  // so a target hard against an edge never produces an off-screen callout.
+  // Placed with the callout's measured height once it has rendered (UI-07).
+  const { top: calloutTop, left: calloutLeft } = placeCallout({
+    highlight,
+    preferredSide: step.preferredSide,
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    calloutHeight,
+  });
 
   return (
     <div className="fixed inset-0 z-[70]" role="presentation" data-testid={idPrefix}>
@@ -348,7 +332,13 @@ export function SpotlightTour({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         className="fixed w-80 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg outline-none"
-        style={{ top: calloutTop, left: calloutLeft }}
+        style={{
+          top: calloutTop,
+          left: calloutLeft,
+          maxWidth: `calc(100vw - ${2 * VIEWPORT_MARGIN}px)`,
+          maxHeight: `calc(100vh - ${2 * VIEWPORT_MARGIN}px)`,
+          overflowY: "auto",
+        }}
         data-testid={`${idPrefix}-callout`}
       >
         <div className="flex items-start justify-between gap-2">

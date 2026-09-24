@@ -210,7 +210,7 @@ export default function LoyaltyPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-total-points">
-                  {(customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString()}
+                  {(customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString("en-GB")}
                 </div>
               </CardContent>
             </Card>

@@ -195,7 +195,7 @@ export function OperationsSettings() {
                   cashier on it. Anyone can pass it on or release it afterwards.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Give new orders an owner automatically"
                 checked={autoClaim}
                 onCheckedChange={(v) => {
                   setAutoClaim(v);
@@ -213,7 +213,7 @@ export function OperationsSettings() {
                   prep time above, but nobody is chased about a promise the shop never made.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Alert on orders with no promised time"
                 checked={alertOnSlaDue}
                 onCheckedChange={(v) => {
                   setAlertOnSlaDue(v);
@@ -230,7 +230,7 @@ export function OperationsSettings() {
                   Stops the tablet dimming while the Operations Centre is open.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Keep the screen awake on the board"
                 checked={keepAwake}
                 onCheckedChange={(v) => {
                   setKeepAwake(v);

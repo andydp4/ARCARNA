@@ -54,8 +54,8 @@ export default function DailySalesReport() {
           <ChevronLeft className="h-4 w-4" /> All Evidence
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs text-muted-foreground">Trading day</label>
-          <Input type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
+          <label htmlFor="daily-sales-day" className="text-xs text-muted-foreground">Trading day</label>
+          <Input id="daily-sales-day" type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
           <ReportScopeFilter value={scope} onChange={setScope} />
         </div>
       </div>

@@ -33,7 +33,7 @@ export function ZReportView({ report }: { report: ZReportData }) {
         // the obvious way for this screen to mislead somebody.
         <p className="text-sm text-muted-foreground border-l-2 border-primary pl-3">
           This shift is still running. Figures are as at{" "}
-          {new Date(report.generatedAt).toLocaleTimeString()} and will keep changing until it closes.
+          {new Date(report.generatedAt).toLocaleTimeString("en-GB")} and will keep changing until it closes.
         </p>
       )}
 
@@ -41,9 +41,9 @@ export function ZReportView({ report }: { report: ZReportData }) {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">{report.shift.locationName}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            {report.shift.cashierName} · {new Date(report.shift.openedAt).toLocaleString()}
+            {report.shift.cashierName} · {new Date(report.shift.openedAt).toLocaleString("en-GB")}
             {report.shift.closedAt &&
-              ` – ${new Date(report.shift.closedAt).toLocaleString()}`}
+              ` – ${new Date(report.shift.closedAt).toLocaleString("en-GB")}`}
           </p>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">

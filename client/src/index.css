@@ -88,9 +88,28 @@
     }
   }
 
-  /* Touch-friendly tap targets (minimum 44x44px) */
-  button, a[href], input, textarea, select {
+  /* Tap targets (v1.2.1 UI-10, UI-11). 36px on a desktop and 44px on a
+     phone, where a finger is the pointer. Checkboxes, switches and radios
+     are left to their own size: stretching a 16px checkbox to 36px drew it
+     as a tall bar, and pushed a switch's thumb off-centre. Inline links in
+     running text are unaffected (min-height does not apply to inline boxes).
+     :where() keeps the specificity at zero, so a component's own min-h-*
+     class still wins, as it did when this rule was a bare `button`. */
+  :where(button:not([role="checkbox"]):not([role="switch"]):not([role="radio"]),
+    a[href],
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+    textarea,
+    select) {
     min-height: 36px;
+  }
+  @media (max-width: 768px) {
+    :where(button:not([role="checkbox"]):not([role="switch"]):not([role="radio"]),
+      a[href],
+      input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+      textarea,
+      select) {
+      min-height: 44px;
+    }
   }
   
   /* Better form inputs on mobile */

@@ -60,7 +60,7 @@ export default function WeeklySalesReport() {
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-muted-foreground">Week of</label>
-          <Input type="date" value={anchor} max={isoDate(new Date())} onChange={(e) => setAnchor(e.target.value)} className="h-9 w-[160px]" />
+          <Input aria-label="Week of" type="date" value={anchor} max={isoDate(new Date())} onChange={(e) => setAnchor(e.target.value)} className="h-9 w-[160px]" />
           <ReportScopeFilter value={scope} onChange={setScope} />
         </div>
       </div>

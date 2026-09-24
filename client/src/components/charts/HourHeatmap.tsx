@@ -24,7 +24,14 @@ export function HourHeatmap({ buckets }: Props) {
       <p className="mb-1 text-xs text-muted-foreground sm:hidden" aria-hidden>
         Swipe to see all 24 hours →
       </p>
-      <div className="relative overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-12px),transparent)] sm:[mask-image:none]">
+      {/* Focusable so a keyboard user can scroll it (axe
+          scrollable-region-focusable); each cell is an image with its figure
+          as the label (a bare div may not carry aria-label). v1.2.1 UI-13. */}
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label="Revenue by weekday and hour"
+        className="relative overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-12px),transparent)] sm:[mask-image:none]">
         <div
           className="inline-grid gap-1 text-xs"
           style={{ gridTemplateColumns: `auto repeat(24, minmax(1.75rem, 1fr))` }}
@@ -50,6 +57,7 @@ export function HourHeatmap({ buckets }: Props) {
                     title={formatHourOfDayTooltip(dow, hour, avg, txns)}
                     className="aspect-square rounded-sm border border-border/40 min-h-6 motion-safe:transition-colors"
                     style={{ backgroundColor: cellColor(avg, maxRevenue) }}
+                    role="img"
                     aria-label={formatHourOfDayTooltip(dow, hour, avg, txns)}
                   />
                 );

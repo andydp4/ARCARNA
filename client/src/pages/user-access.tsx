@@ -513,7 +513,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateRoleMutation.isPending}
                               >
-                                <SelectTrigger className="h-9 w-[130px]" data-testid={`role-select-${user.replitUserId}`}>
+                                <SelectTrigger aria-label="Role" className="h-9 w-[130px]" data-testid={`role-select-${user.replitUserId}`}>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -550,7 +550,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateDefaultLocationMutation.isPending}
                               >
-                                <SelectTrigger
+                                <SelectTrigger aria-label="Default location"
                                   className="h-9 w-[160px]"
                                   data-testid={`default-location-select-${user.replitUserId}`}
                                 >
@@ -586,7 +586,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateStationMutation.isPending}
                               >
-                                <SelectTrigger
+                                <SelectTrigger aria-label="Station"
                                   className="h-9 w-[130px] capitalize"
                                   data-testid={`ops-station-select-${user.replitUserId}`}
                                 >
@@ -647,7 +647,7 @@ export default function UserAccess() {
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={approveRole} onValueChange={setApproveRole}>
-                <SelectTrigger data-testid="approve-role-select">
+                <SelectTrigger aria-label="Role" data-testid="approve-role-select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -661,7 +661,7 @@ export default function UserAccess() {
               <div className="space-y-2">
                 <Label>Organization</Label>
                 <Select value={approveOrgId} onValueChange={setApproveOrgId}>
-                  <SelectTrigger data-testid="approve-org-select">
+                  <SelectTrigger aria-label="Organization" data-testid="approve-org-select">
                     <SelectValue placeholder="Select organization" />
                   </SelectTrigger>
                   <SelectContent>

@@ -153,7 +153,7 @@ export default function Settings() {
         <PageHeader
           icon={Settings2}
           title="Settings"
-          question="How is Arcarna set up for your business?"
+          question="How is arcarna set up for your business?"
           explanation="Business name, branding, cashiers and flags save to your account. A few cards below are placeholders for features that aren't wired up to anything yet — each says so plainly."
         />
 
@@ -371,14 +371,14 @@ export default function Settings() {
                     <div>
                       <Label>Interface theme</Label>
                       <p className="text-sm text-muted-foreground">
-                        Arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
+                        arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
                         and shop-floor lighting. There is no light mode — it applies everywhere,
                         including menus, dropdowns and dialogs.
                       </p>
                     </div>
                   </div>
                   <Separator className="my-4" />
-                  <p className="text-xs text-muted-foreground">Arcarna v{APP_VERSION}</p>
+                  <p className="text-xs text-muted-foreground">arcarna v{APP_VERSION}</p>
                 </CardContent>
               </Card>
           </TabsContent>

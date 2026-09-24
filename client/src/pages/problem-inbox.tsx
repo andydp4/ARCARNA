@@ -173,7 +173,7 @@ export default function ProblemInboxPage() {
       <div className="space-y-1">
         <Label className="text-xs">Show</Label>
         <Select value={status} onValueChange={(v) => setStatus(v as ProblemStatus | "all")}>
-          <SelectTrigger className="min-h-[44px] w-[180px]" data-testid="select-problem-status">
+          <SelectTrigger aria-label="Show" className="min-h-[44px] w-[180px]" data-testid="select-problem-status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

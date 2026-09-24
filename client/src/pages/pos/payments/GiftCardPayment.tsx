@@ -57,7 +57,7 @@ export function GiftCardPayment({ orderTotal, value, onChange }: GiftCardPayment
     <div className="space-y-3 rounded-lg border p-3">
       <Label className="text-sm font-medium">Gift card</Label>
       <div className="flex gap-2">
-        <Input placeholder="Enter 16-character code" value={codeInput}
+        <Input aria-label="Gift card" placeholder="Enter 16-character code" value={codeInput}
           onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
           className="min-h-[44px] font-mono uppercase" data-testid="input-gift-card-code" />
         <Button type="button" variant="outline" onClick={lookupBalance} disabled={loading}
@@ -83,7 +83,7 @@ export function GiftCardPayment({ orderTotal, value, onChange }: GiftCardPayment
                 setRemainderMethod(method);
                 onChange({ code: codeInput.trim(), balance, amountToApply: applyAmount, remainderPaymentMethod: method });
               }}>
-                <SelectTrigger className="min-h-[44px]" data-testid="select-gift-card-remainder"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="min-h-[44px]" data-testid="select-gift-card-remainder" aria-label="Pay the rest by"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">Cash</SelectItem>
                   <SelectItem value="card">Card</SelectItem>

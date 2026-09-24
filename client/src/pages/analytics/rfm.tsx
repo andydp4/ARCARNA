@@ -116,7 +116,7 @@ export default function RfmAnalyticsPage() {
           />
           {summary?.computedAt && (
             <p className="text-metal-muted text-xs mt-1">
-              Last run {new Date(summary.computedAt).toLocaleString()}
+              Last run {new Date(summary.computedAt).toLocaleString("en-GB")}
             </p>
           )}
         </div>

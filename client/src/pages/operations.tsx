@@ -186,7 +186,9 @@ export function OpsShell({
       )}
       {isTwoPane ? (
         <div className="flex min-h-0 flex-1 gap-4 p-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto @container">
+          {/* pb-40 in each scroller: room to scroll the last card clear of the
+              floating Voice and WhatsApp launchers (UI-01). */}
+          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
             {alertsSlot}
             {board}
           </div>
@@ -244,7 +246,7 @@ export function OpsShell({
           <TabsContent
             value="board"
             forceMount
-            className="mt-0 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto @container data-[state=inactive]:hidden"
+            className="mt-0 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-40 @container data-[state=inactive]:hidden"
           >
             {alertsSlot}
             {board}

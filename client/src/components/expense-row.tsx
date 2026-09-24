@@ -60,9 +60,9 @@ function ExpenseRowInner({ expense, onEdit, onDelete, canMutate = true }: Expens
         {formatCurrency(expense.amount)}
       </TableCell>
       <TableCell className="capitalize">{expense.frequency}</TableCell>
-      <TableCell>{new Date(expense.startDate).toLocaleDateString()}</TableCell>
+      <TableCell>{new Date(expense.startDate).toLocaleDateString("en-GB")}</TableCell>
       <TableCell>
-        {expense.endDate ? new Date(expense.endDate).toLocaleDateString() : "-"}
+        {expense.endDate ? new Date(expense.endDate).toLocaleDateString("en-GB") : "-"}
       </TableCell>
       <TableCell>
         <span

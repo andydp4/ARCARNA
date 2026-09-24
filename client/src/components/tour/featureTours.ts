@@ -219,6 +219,8 @@ export const FEATURE_TOUR_DEFS: readonly FeatureTourDef[] = [
       {
         testId: "table-performance-",
         match: "prefix",
+        // A phone shows the same people as cards (UI-17).
+        alt: [{ testId: "cards-performance-", match: "prefix" }],
         title: "One row per person",
         body: "Pick a person for their 8-week trend and their orders. Admin cover is counted but never ranked.",
         preferredSide: "top",

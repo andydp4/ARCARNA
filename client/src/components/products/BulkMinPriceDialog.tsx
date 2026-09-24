@@ -104,7 +104,7 @@ export function BulkMinPriceDialog({
                 reset();
               }}
             >
-              <SelectTrigger className="w-[220px] min-h-[44px]" data-testid="select-bulk-min-rule">
+              <SelectTrigger className="w-[220px] min-h-[44px]" data-testid="select-bulk-min-rule" aria-label="Minimum price rule">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

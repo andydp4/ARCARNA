@@ -74,16 +74,7 @@ const SKIP_HREF = [
  * crawl then holds it fixed.
  */
 const KNOWN_FAILURES: { id: string; match: RegExp }[] = [
-  // Credit List row actions (Payment / Send payment reminder / Remove) do not wrap on a phone.
-  { id: "UI-02", match: /^horizontal-scroll \/tick-list / },
-  // Staff Performance's six section tabs are wider than a phone.
-  { id: "UI-03", match: /^horizontal-scroll \/reports\/staff-(performance|kpi)/ },
-  // <Badge> (a div) inside a <p> in ProvisionalNote / ProvisionalToday.
-  { id: "UI-04", match: /^console-error \S+ Warning: validateDOMNesting/ },
-  // A signed-in unknown path renders an empty Layout, not "Page not found".
-  { id: "UI-08", match: /^not-found \/a-page-that-does-not-exist / },
-  // The sw.js probe, cut short by a reload, is logged as console.error.
-  { id: "UI-14", match: /^console-error \S+ \[PWA\] Service Worker registration failed/ },
+  // UI-02, UI-03, UI-04, UI-08 and UI-14 are fixed (v1.2.1 ui); none open.
 ];
 
 /**

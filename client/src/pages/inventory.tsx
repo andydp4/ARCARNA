@@ -223,11 +223,11 @@ export default function Inventory() {
   const getStockStatus = (product: Product) => {
     const stockPercentage = (product.stock / product.stockLimit) * 100;
     if (product.stock === 0) {
-      return { status: "Out of Stock", variant: "destructive" as const, color: "text-red-600" };
+      return { status: "Out of Stock", variant: "destructive" as const, color: "text-red-400" };
     } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
-      return { status: "Low Stock", variant: "destructive" as const, color: "text-orange-600" };
+      return { status: "Low Stock", variant: "destructive" as const, color: "text-orange-400" };
     } else if (stockPercentage <= 50) {
-      return { status: "Medium Stock", variant: "secondary" as const, color: "text-yellow-600" };
+      return { status: "Medium Stock", variant: "secondary" as const, color: "text-yellow-400" };
     }
     return { status: "In Stock", variant: "outline" as const, color: "text-green-600" };
   };
@@ -365,7 +365,7 @@ export default function Inventory() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-orange-600">{lowStockProducts.length}</p>
+              <p className="text-2xl font-bold text-orange-400">{lowStockProducts.length}</p>
             </CardContent>
           </Card>
           <Card className={LM_CARD}>
@@ -373,7 +373,7 @@ export default function Inventory() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Out of Stock</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-red-600">{outOfStockProducts.length}</p>
+              <p className="text-2xl font-bold text-red-400">{outOfStockProducts.length}</p>
             </CardContent>
           </Card>
         </div>
@@ -511,7 +511,7 @@ export default function Inventory() {
                                   {product.stock} / {product.stockLimit}
                                 </span>
                               </div>
-                              <Progress value={stockPercentage} className="h-2" />
+                              <Progress value={stockPercentage} className="h-2" aria-label={`Stock level of ${product.name}`} />
                             </div>
                             
                             <div className="flex gap-2 pt-2">
@@ -589,7 +589,7 @@ export default function Inventory() {
                                     {product.stock} / {product.stockLimit}
                                   </span>
                                 </div>
-                                <Progress value={stockPercentage} className="h-2" />
+                                <Progress value={stockPercentage} className="h-2" aria-label={`Stock level of ${product.name}`} />
                               </div>
                             </TableCell>
                             <TableCell>

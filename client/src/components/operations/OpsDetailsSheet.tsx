@@ -365,7 +365,7 @@ function OpsDetailsBody({
                   </span>
                 </div>
                 <p className="mt-0.5 text-muted-foreground">
-                  {refund.cashierName ?? "Staff"} · {new Date(refund.createdAt).toLocaleString()}
+                  {refund.cashierName ?? "Staff"} · {new Date(refund.createdAt).toLocaleString("en-GB")}
                 </p>
               </li>
             ))}

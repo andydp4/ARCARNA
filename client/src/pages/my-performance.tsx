@@ -181,7 +181,7 @@ export default function MyPerformancePage() {
         <div className="space-y-2">
           <Label>Dates</Label>
           <Select value={preset} onValueChange={(v) => setPreset(v as PerformancePreset)}>
-            <SelectTrigger className="min-h-[44px] w-44" data-testid="select-my-performance-preset"><SelectValue /></SelectTrigger>
+            <SelectTrigger aria-label="Dates" className="min-h-[44px] w-44" data-testid="select-my-performance-preset"><SelectValue /></SelectTrigger>
             <SelectContent>
               {MY_PRESETS.map((p) => <SelectItem key={p} value={p}>{PRESET_LABEL[p]}</SelectItem>)}
             </SelectContent>

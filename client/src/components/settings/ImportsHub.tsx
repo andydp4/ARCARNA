@@ -81,7 +81,7 @@ export function ImportsHub() {
                 {history.map((h) => (
                   <TableRow key={h.id}>
                     <TableCell className="text-sm">
-                      {h.createdAt ? new Date(h.createdAt).toLocaleString() : "—"}
+                      {h.createdAt ? new Date(h.createdAt).toLocaleString("en-GB") : "—"}
                     </TableCell>
                     <TableCell>{h.importType}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{h.fileName || "—"}</TableCell>

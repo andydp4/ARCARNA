@@ -18,7 +18,7 @@ export default function ReportsHub() {
       <PageHeader
         title="Evidence"
         question="Which Evidence do you need right now?"
-        explanation="Every report follows the Arcarna brand on screen and when exported to PNG, JPEG, PDF or CSV."
+        explanation="Every report follows the arcarna brand on screen and when exported to PNG, JPEG, PDF or CSV."
         icon={FileBarChart}
       />
 

@@ -467,7 +467,7 @@ export default function PromotionsPage() {
                       <FormLabel>Discount Type</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-type">
+                          <SelectTrigger aria-label="Select type" data-testid="select-type">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                         </FormControl>

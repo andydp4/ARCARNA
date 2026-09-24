@@ -9,7 +9,10 @@ type TableProps = React.HTMLAttributes<HTMLTableElement> & {
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, scrollContainerClassName, ...props }, ref) => (
-    <div className={cn("relative w-full overflow-auto", scrollContainerClassName)}>
+    // Focusable (v1.2.1 UI-13, axe scrollable-region-focusable): a table
+    // wider than its card scrolls sideways, and a keyboard user can only
+    // scroll a region that can take focus.
+    <div tabIndex={0} className={cn("relative w-full overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", scrollContainerClassName)}>
       <table
         ref={ref}
         className={cn("w-full caption-bottom text-sm", className)}

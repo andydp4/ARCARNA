@@ -348,7 +348,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Location</Label>
             <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Location">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -364,7 +364,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Action</Label>
             <Select value={actionType} onValueChange={setActionType}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Action">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -379,7 +379,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Risk</Label>
             <Select value={risk} onValueChange={setRisk}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Risk">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -392,8 +392,9 @@ export function ReplenishmentTab() {
             </Select>
           </div>
           <div>
-            <Label>Coverage (days)</Label>
+            <Label htmlFor="replenishment-coverage">Coverage (days)</Label>
             <Input
+              id="replenishment-coverage"
               type="number"
               min={1}
               value={targetCoverageDays}
@@ -401,8 +402,8 @@ export function ReplenishmentTab() {
             />
           </div>
           <div>
-            <Label>Search</Label>
-            <Input placeholder="Product or SKU" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Label htmlFor="replenishment-search">Search</Label>
+            <Input id="replenishment-search" placeholder="Product or SKU" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </CardContent>
       </Card>

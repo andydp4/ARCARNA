@@ -30,8 +30,15 @@ export const REPORT_COLORS = {
   red: "#DC2626",
   /** Standard body copy, field values, table cell text. */
   steelGrey: "#374151",
-  /** Secondary text: labels, subtitles, supplementary info, dates. */
-  smoke: "#6B7280",
+  /** Secondary text: labels, subtitles, supplementary info, dates. Gray-600,
+   *  not gray-500 (UI-13): it sits on the pale flag tiles too, where gray-500
+   *  measured about 4:1. */
+  smoke: "#4B5563",
+  /**
+   * Secondary text on the Midnight Black banner (v1.2.1 UI-13): smoke is
+   * 3.9:1 there, under the 4.5:1 small text needs; this is 7.4:1.
+   */
+  smokeOnDark: "#9CA3AF",
   /** Page/card surface behind report content when exported (kept light for print). */
   paper: "#FFFFFF",
 } as const;
@@ -46,10 +53,12 @@ export const FLAG_STYLE: Record<
   FlagLevel,
   { label: string; fg: string; bg: string; border: string }
 > = {
-  green: { label: "OK", fg: REPORT_COLORS.green, bg: "#DCFCE7", border: "#16A34A" },
+  // fg is the dark shade of each flag colour (UI-13): the brand shade on its
+  // own pale background measured under 3:1 (green, amber) and 3.9:1 (red).
+  green: { label: "OK", fg: "#166534", bg: "#DCFCE7", border: "#16A34A" },
   blue: { label: "Info", fg: REPORT_COLORS.truthBlue, bg: REPORT_COLORS.truthBlueLight, border: "#1A56DB" },
-  amber: { label: "Watch", fg: REPORT_COLORS.amber, bg: "#FEF3C7", border: "#D97706" },
-  red: { label: "Critical", fg: REPORT_COLORS.red, bg: "#FEE2E2", border: "#DC2626" },
+  amber: { label: "Watch", fg: "#92400E", bg: "#FEF3C7", border: "#D97706" },
+  red: { label: "Critical", fg: "#991B1B", bg: "#FEE2E2", border: "#DC2626" },
   gold: { label: "Priority", fg: "#7A5C12", bg: "#FBF3D9", border: REPORT_COLORS.gold },
 };
 

@@ -118,7 +118,7 @@ export default function OrderTimingReport() {
           <div className="space-y-2">
             <Label>Dates</Label>
             <Select value={preset} onValueChange={choosePreset}>
-              <SelectTrigger className="min-h-[44px] w-44" data-testid="select-timing-preset">
+              <SelectTrigger aria-label="Dates" className="min-h-[44px] w-44" data-testid="select-timing-preset">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -142,7 +142,7 @@ export default function OrderTimingReport() {
           <div className="space-y-2">
             <Label>Group by</Label>
             <Select value={groupBy} onValueChange={(v) => setGroupBy(v as OrderTimingPageGroup)}>
-              <SelectTrigger className="min-h-[44px] w-56" data-testid="select-timing-group">
+              <SelectTrigger aria-label="Group by" className="min-h-[44px] w-56" data-testid="select-timing-group">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

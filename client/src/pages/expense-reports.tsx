@@ -170,7 +170,7 @@ export function ExpenseReportsPage() {
         />
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="min-h-[44px] w-full sm:w-[200px]" data-testid="select-date-range">
+            <SelectTrigger className="min-h-[44px] w-full sm:w-[200px]" data-testid="select-date-range" aria-label="Period">
               <SelectValue placeholder="Period" />
             </SelectTrigger>
             <SelectContent>
@@ -253,7 +253,7 @@ export function ExpenseReportsPage() {
             <p className="mb-3 text-xs text-muted-foreground">
               Revenue is settled orders only, net of refunds,{" "}
               {profitAnalysis?.summary?.vatTreatment || "incl. VAT"}. Cost of goods is priced at each product's
-              current cost, not a snapshot from the moment it sold — Arcarna does not yet record that.
+              current cost, not a snapshot from the moment it sold — arcarna does not yet record that.
               {Number(profitAnalysis?.summary?.productsMissingCost) > 0 && (
                 <>
                   {" "}

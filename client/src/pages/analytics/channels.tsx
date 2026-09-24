@@ -59,7 +59,7 @@ export default function ChannelAttributionPage() {
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle>Revenue by channel</CardTitle>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v) as (typeof WINDOW_OPTIONS)[number])}>
-            <SelectTrigger className="h-9 w-[140px]" data-testid="select-channels-window">
+            <SelectTrigger className="h-9 w-[140px]" data-testid="select-channels-window" aria-label="Window">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
