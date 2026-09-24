@@ -1170,8 +1170,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         /^(Minimum redemption is|Points must be a positive|Insufficient points balance)/.test(message);
       const status = refused
         ? 422
-        : error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message) ? 400 : 500;
-      res.status(status).json({ message, errors: error.errors });
+        : error.name === "ZodError" || /gift card|remainderPaymentMethod|giftCard/i.test(message)
+          ? 400
+          : typeof error?.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500
+            ? error.statusCode
+            : 500;
+      res.status(status).json({ message, errors: error.errors, code: error?.code });
     }
   });
 
@@ -1659,6 +1663,15 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       const parsed = UpdateOrderInput.safeParse({ lines: req.body?.lines });
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Check the lines", code: "ORDER_LINES_INVALID" });
+      }
+      // v1.2.1 SEC-ORDER-XPROD: only this organisation's products, as the
+      // edit itself (engine.updateOrder) enforces.
+      {
+        const { ProductsRepoDrizzle } = await import('../../apps/server/src/db/repos');
+        const foreign = await ProductsRepoDrizzle.foreignTo!(parsed.data.lines.map((l) => l.productId as any), ctx.orgId);
+        if (foreign.length > 0) {
+          return res.status(400).json({ message: 'A product on this order was not found.', code: 'ORDER_PRODUCT_NOT_FOUND' });
+        }
       }
       const taxRatePercent = await requireOrgTaxRatePercent(ctx.orgId);
       try {

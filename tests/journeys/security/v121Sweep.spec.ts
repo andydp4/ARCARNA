@@ -258,3 +258,127 @@ test("SEC-CSRF-FORM: a cross-site form post cannot create a customer", async () 
   await db.execute(sql`DELETE FROM customers WHERE name = ${name}`);
   expect(rows.length, `a form-encoded cross-origin POST created a customer (status ${res.status()})`).toBe(0);
 });
+
+// ---------------------------------------------------------------------------
+// v1.2.1 fix-pass regressions that go with the findings above.
+// ---------------------------------------------------------------------------
+test.describe("SEC-APPROVE-XORG (fix): approving still works for a genuine pending sign-up", () => {
+  test("an admin approves an unclaimed request into their own org; a second approve is refused", async () => {
+    test.skip(bypassOn, "admin routes are ungated under DEV_AUTH_BYPASS");
+    const newcomer = `${SEC_PREFIX}-newcomer-${randomUUID().slice(0, 8)}`;
+    await db.insert(userApprovalRequests).values({
+      replitUserId: newcomer,
+      authProvider: "replit",
+      email: `${newcomer.toLowerCase()}@example.invalid`,
+      name: `${SEC_PREFIX} Newcomer`,
+      status: "pending",
+    });
+    try {
+      const adminA = await apiAs("ADMIN");
+      const listed = await adminA.get("/api/admin/pending-approvals");
+      const ids = ((await listed.json()) as Array<{ replitUserId: string }>).map((r) => r.replitUserId);
+      expect(ids).toContain(newcomer);
+      const first = await adminA.post(`/api/admin/approve/${newcomer}`, { data: { role: "CASHIER" } });
+      expect(first.status(), await first.text()).toBe(200);
+      const [row] = await db.select().from(allowedUsers).where(eq(allowedUsers.replitUserId, newcomer));
+      expect(row?.orgId).toBe(orgAId);
+      expect(row?.role).toBe("CASHIER");
+      const again = await adminA.post(`/api/admin/approve/${newcomer}`, { data: { role: "MANAGER" } });
+      expect(again.status()).toBe(409);
+      const after = await adminA.get("/api/admin/pending-approvals");
+      const afterIds = ((await after.json()) as Array<{ replitUserId: string }>).map((r) => r.replitUserId);
+      expect(afterIds).not.toContain(newcomer);
+      await adminA.dispose();
+    } finally {
+      await db.delete(userApprovalRequests).where(eq(userApprovalRequests.replitUserId, newcomer)).catch(() => {});
+      await db.delete(allowedUsers).where(eq(allowedUsers.replitUserId, newcomer)).catch(() => {});
+    }
+  });
+
+  test("a pending request for someone who already has access is neither listed nor approvable", async () => {
+    test.skip(bypassOn, "admin routes are ungated under DEV_AUTH_BYPASS");
+    const member = `${SEC_PREFIX}-bpending-${randomUUID().slice(0, 8)}`;
+    await db.insert(allowedUsers).values({
+      replitUserId: member,
+      authProvider: "replit",
+      email: `${member.toLowerCase()}@example.invalid`,
+      name: `${SEC_PREFIX} B Pending`,
+      isOwner: 0,
+      orgId: orgBId,
+      role: "MANAGER",
+    });
+    await db.insert(userApprovalRequests).values({
+      replitUserId: member,
+      authProvider: "replit",
+      email: `${member.toLowerCase()}@example.invalid`,
+      name: `${SEC_PREFIX} B Pending`,
+      status: "pending",
+    });
+    try {
+      const adminA = await apiAs("ADMIN");
+      const listed = await adminA.get("/api/admin/pending-approvals");
+      const ids = ((await listed.json()) as Array<{ replitUserId: string }>).map((r) => r.replitUserId);
+      expect(ids, "org B's member must not show on org A's pending list").not.toContain(member);
+      const res = await adminA.post(`/api/admin/approve/${member}`, { data: { role: "CASHIER" } });
+      await adminA.dispose();
+      expect(res.status()).toBe(409);
+      const [row] = await db.select().from(allowedUsers).where(eq(allowedUsers.replitUserId, member));
+      expect(row?.orgId).toBe(orgBId);
+      expect(row?.role).toBe("MANAGER");
+    } finally {
+      await db.delete(userApprovalRequests).where(eq(userApprovalRequests.replitUserId, member)).catch(() => {});
+      await db.delete(allowedUsers).where(eq(allowedUsers.replitUserId, member)).catch(() => {});
+    }
+  });
+});
+
+test("SEC-DELETE-XORG (fix): an admin cannot remove a SUPER_ADMIN row", async () => {
+  test.skip(bypassOn, "admin routes are ungated under DEV_AUTH_BYPASS");
+  const other = `${SEC_PREFIX}-super-${randomUUID().slice(0, 8)}`;
+  await db.insert(allowedUsers).values({
+    replitUserId: other,
+    authProvider: "replit",
+    email: `${other.toLowerCase()}@example.invalid`,
+    name: `${SEC_PREFIX} Second Super`,
+    isOwner: 0,
+    orgId: null,
+    role: "SUPER_ADMIN",
+  });
+  try {
+    const adminA = await apiAs("ADMIN");
+    const res = await adminA.delete(`/api/admin/allowed-users/${other}`);
+    await adminA.dispose();
+    expect([403, 404]).toContain(res.status());
+    const [row] = await db.select().from(allowedUsers).where(eq(allowedUsers.replitUserId, other));
+    expect(row, "the SUPER_ADMIN row must survive").toBeTruthy();
+  } finally {
+    await db.delete(allowedUsers).where(eq(allowedUsers.replitUserId, other)).catch(() => {});
+  }
+});
+
+test("SEC-500-NONUUID (fix): a malformed id is a 404, not a 500", async () => {
+  const admin = await apiAs("ADMIN");
+  const paths = ["/api/customers/not-a-uuid", "/api/products/not-a-uuid", "/api/orders/not-a-uuid", "/api/suppliers/not-a-uuid"];
+  const statuses: Record<string, number> = {};
+  for (const p of paths) statuses[p] = (await admin.get(p)).status();
+  const patch = await admin.patch("/api/suppliers/not-a-uuid", { data: { name: "x" } });
+  statuses["PATCH /api/suppliers/not-a-uuid"] = patch.status();
+  await admin.dispose();
+  for (const [p, s] of Object.entries(statuses)) expect(s, p).toBeLessThan(500);
+});
+
+test("SEC-XSS-PREVIEW (fix): the preview is JSON for a manager and refused to a cashier", async () => {
+  test.skip(bypassOn, "role gate is open under DEV_AUTH_BYPASS");
+  const manager = await apiAs("MANAGER");
+  const res = await manager.get("/api/receipts/preview", { params: { template: "<p>{{org.name}}</p>" } });
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toMatch(/application\/json/);
+  expect(res.headers()["content-security-policy"]).toMatch(/default-src 'none'/);
+  const body = (await res.json()) as { html: string };
+  expect(body.html).toContain("<p>");
+  await manager.dispose();
+  const cashier = await apiAs("CASHIER");
+  const refused = await cashier.get("/api/receipts/preview");
+  await cashier.dispose();
+  expect(refused.status()).toBe(403);
+});

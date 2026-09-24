@@ -113,7 +113,20 @@ describe("SEC-UNSUBKEY: production must not sign with the built-in receipt secre
     process.env = { ...saved };
   });
 
-  it("validateProductionEnv refuses to start without RECEIPT_SIGNING_SECRET", async () => {
+  // Owner decision taken for safety: rather than refuse to start (an outage on
+  // the next deploy of a box that never set the variable), production derives
+  // a private key from SESSION_SECRET. What matters is that the public key is
+  // never the one in use.
+  it("production without RECEIPT_SIGNING_SECRET never signs with the public key", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.SESSION_SECRET = "s".repeat(40);
+    delete process.env.RECEIPT_SIGNING_SECRET;
+    const { signingSecret, DEV_RECEIPT_SIGNING_KEY } = await import("../services/receiptSigning");
+    expect(signingSecret()).not.toBe(DEV_RECEIPT_SIGNING_KEY);
+    expect(signingSecret().length).toBeGreaterThanOrEqual(32);
+  });
+
+  it("validateProductionEnv still starts, with a warning, without RECEIPT_SIGNING_SECRET", async () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgres://x";
     process.env.SESSION_SECRET = "x".repeat(40);
@@ -123,12 +136,19 @@ describe("SEC-UNSUBKEY: production must not sign with the built-in receipt secre
     process.env.CLERK_PUBLISHABLE_KEY = "pk_test_x";
     process.env.CLERK_ACCOUNTS_URL = "https://accounts.example.invalid";
     delete process.env.RECEIPT_SIGNING_SECRET;
-    const { validateProductionEnv } = await import("../validateProductionEnv");
-    expect(() => validateProductionEnv()).toThrow(/RECEIPT_SIGNING_SECRET/);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { validateProductionEnv } = await import("../validateProductionEnv");
+      expect(() => validateProductionEnv()).not.toThrow();
+      expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/RECEIPT_SIGNING_SECRET/);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("a token signed with the public fallback is not accepted in production", async () => {
     process.env.NODE_ENV = "production";
+    process.env.SESSION_SECRET = "s".repeat(40);
     delete process.env.RECEIPT_SIGNING_SECRET;
     const crypto = await import("node:crypto");
     const payload = "00000000-0000-4000-8000-000000000001|someone@example.invalid";

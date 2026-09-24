@@ -62,8 +62,10 @@ export default function ReceiptSettingsPage() {
       const qs = new URLSearchParams();
       if (template.trim()) qs.set("template", template);
       const res = await apiFetch(`/api/receipts/preview?${qs.toString()}`);
-      const html = await res.text();
-      setPreviewHtml(html);
+      // JSON, not a page: the server never serves the template as HTML on
+      // this origin. It is only ever shown inside the sandboxed frame below.
+      const body = (await res.json()) as { html?: string };
+      setPreviewHtml(typeof body.html === "string" ? body.html : "");
     } catch (e) {
       toast({
         title: "Preview failed",

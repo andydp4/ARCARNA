@@ -24,6 +24,12 @@ export function validateProductionEnv(): void {
     if (process.env.DEV_AUTH_BYPASS === "1") {
       throw new Error("DEV_AUTH_BYPASS=1 is not allowed in production (unset or use 0)");
     }
+    if (!process.env.RECEIPT_SIGNING_SECRET?.trim()) {
+      // Not fatal: receiptSigning derives a private key from SESSION_SECRET.
+      console.warn(
+        "[production] RECEIPT_SIGNING_SECRET is not set — unsubscribe links are signed with a key derived from SESSION_SECRET; set it explicitly",
+      );
+    }
     if (process.env.PHASE2D_TEST === "1") {
       console.warn("[production] PHASE2D_TEST=1 is set — test hooks must remain disabled in production");
     }

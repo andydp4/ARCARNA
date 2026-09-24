@@ -441,6 +441,14 @@ const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
 export const ACCESS_POLICY: readonly RouteRule[] = [
+  // Receipt template preview (v1.2.1 SEC-XSS-PREVIEW): renders caller HTML,
+  // so only the people who may edit the template may ask for it.
+  {
+    method: "GET",
+    path: "/api/receipts/preview",
+    minRole: "MANAGER",
+    reason: "The receipt preview renders a template; only those who can edit it may preview it (v1.2.1).",
+  },
   // Products: writes are manager and above.
   { method: "POST", path: "/api/products", minRole: "MANAGER", reason: PRODUCT_WRITE },
   { method: "PUT", path: "/api/products/:id", minRole: "MANAGER", reason: PRODUCT_WRITE },

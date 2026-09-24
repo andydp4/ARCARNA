@@ -95,6 +95,24 @@ export class DomainEngine {
    * right now (PRC-06). One read per distinct product. A product that cannot
    * be read gets no snapshot rather than a failed sale.
    */
+  /**
+   * Every line's product must belong to the order's own organisation
+   * (v1.2.1 SEC-ORDER-XPROD). Without this a till could ring up another
+   * tenant's product: its name, list price, floor and cost were copied onto the
+   * order and shown back. Refused as "not found" so nothing about the foreign
+   * product is disclosed.
+   */
+  private async assertProductsInOrg(orgId: string | undefined, productIds: string[]): Promise<void> {
+    if (!orgId || !this.products.foreignTo) return
+    const foreign = await this.products.foreignTo(productIds as ProductId[], orgId)
+    if (foreign.length > 0) {
+      const err: any = new Error('A product on this order was not found.')
+      err.statusCode = 400
+      err.code = 'ORDER_PRODUCT_NOT_FOUND'
+      throw err
+    }
+  }
+
   private async snapshotLines(productIds: string[]): Promise<Map<string, LineSnapshot | null>> {
     const out = new Map<string, LineSnapshot | null>()
     for (const id of new Set(productIds)) {
@@ -203,6 +221,7 @@ export class DomainEngine {
     const { subtotal, vatAmount: vat, total } = priced
 
     const result = await this.withTransaction(async () => {
+      await this.assertProductsInOrg((dto as any).orgId, dto.lines.map((l) => l.productId as string))
       // Check stock availability for all line items
       const stockCtx = {
         orgId: (dto as any).orgId as string,
@@ -466,6 +485,10 @@ export class DomainEngine {
       const orderId = id as OrderId
       const existingOrder = await this.orders.findById(orderId)
       if (!existingOrder) throw new Error('Order not found')
+      await this.assertProductsInOrg(
+        ((existingOrder as any).orgId as string | undefined) ?? context.orgId ?? (dto as any).orgId,
+        dto.lines.map((l) => l.productId as string),
+      )
 
       // SECURITY: once an order is settled ("completed"), its financials are
       // frozen. Without this, a client could re-post lines at inflated
