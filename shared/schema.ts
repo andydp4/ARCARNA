@@ -3595,3 +3595,44 @@ export const deliveryRunOrders = pgTable("delivery_run_orders", {
 ]);
 
 export type DeliveryRunOrder = typeof deliveryRunOrders.$inferSelect;
+
+// Ask arcarna (v1.2, migration 190). Settings are admin-only and logged; one
+// audit row per question doubles as the org's usage record for the spend cap.
+// Never the answer; the question is scrubbed and shown to admins only.
+export const askSettings = pgTable("ask_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  monthlyCapGbp: numeric("monthly_cap_gbp", { precision: 10, scale: 2 }).default("25.00").notNull(),
+  usdToGbp: numeric("usd_to_gbp", { precision: 8, scale: 4 }).default("0.7900").notNull(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  check("ask_settings_cap_check", sql`${table.monthlyCapGbp} >= 0`),
+  check("ask_settings_rate_check", sql`${table.usdToGbp} > 0`),
+]);
+
+export const askQuestions = pgTable("ask_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  askedAt: timestamp("asked_at").defaultNow().notNull(),
+  question: varchar("question", { length: 1000 }).default("").notNull(),
+  questionScrubbed: boolean("question_scrubbed").default(false).notNull(),
+  tools: jsonb("tools").$type<string[]>().default([]).notNull(),
+  model: varchar("model", { length: 64 }).notNull(),
+  servedByFallback: boolean("served_by_fallback").default(false).notNull(),
+  inputTokens: integer("input_tokens").default(0).notNull(),
+  outputTokens: integer("output_tokens").default(0).notNull(),
+  cacheReadTokens: integer("cache_read_tokens").default(0).notNull(),
+  cacheWriteTokens: integer("cache_write_tokens").default(0).notNull(),
+  costGbp: numeric("cost_gbp", { precision: 12, scale: 4 }).default("0").notNull(),
+  outcome: varchar("outcome", { length: 16 }).notNull(),
+}, (table) => [
+  check("ask_questions_outcome_check", sql`${table.outcome} IN ('answered', 'refused', 'cut_short', 'error', 'stopped')`),
+  index("ask_questions_org_time_idx").on(table.orgId, table.askedAt),
+  index("ask_questions_user_idx").on(table.userId, table.askedAt),
+]);
+
+export type AskQuestion = typeof askQuestions.$inferSelect;

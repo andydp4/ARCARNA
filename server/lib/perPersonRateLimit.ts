@@ -7,7 +7,7 @@
  */
 import type { RequestHandler } from "express";
 
-export function perPersonRateLimit(options: { windowMs: number; max: number; name: string }): RequestHandler & {
+export function perPersonRateLimit(options: { windowMs: number; max: number; name: string; message?: string }): RequestHandler & {
   reset: () => void;
 } {
   const hits = new Map<string, number[]>();
@@ -22,7 +22,7 @@ export function perPersonRateLimit(options: { windowMs: number; max: number; nam
       const retryAfter = Math.max(1, Math.ceil((options.windowMs - (now - recent[0])) / 1000));
       res.setHeader("Retry-After", String(retryAfter));
       return res.status(429).json({
-        message: "Too many lookups. Wait a minute and try again.",
+        message: options.message ?? "Too many lookups. Wait a minute and try again.",
         code: `${options.name.toUpperCase()}_RATE_LIMITED`,
       });
     }

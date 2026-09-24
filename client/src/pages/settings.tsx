@@ -29,6 +29,7 @@ import { CashierCommissionSettings } from '@/components/settings/CashierCommissi
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { PriceGuardSettings } from '@/components/settings/PriceGuardSettings'
 import { StripeSettings } from '@/components/settings/StripeSettings'
+import { AskSettings } from '@/components/settings/AskSettings'
 import { ReviewRulesSettings } from '@/components/settings/ReviewRulesSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
 import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
@@ -179,6 +180,8 @@ export default function Settings() {
           )}
 
           <TabsContent value="integrations" className="space-y-6">
+            {/* Admins and the owner; the server refuses anyone else. */}
+            {canManageFlags && <AskSettings />}
             <Card className={LM_CARD}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

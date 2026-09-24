@@ -29,6 +29,8 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Problem? inbox: read, mark fixed (the reporter is thanked with the version) or closed, logged; shows the reporter's role, never their name (v1.2 Phase 8A) | No | No | Yes | Yes |
 | Usage record sent from their device: screens and active time, message titles, slow and failed calls, crashes, offline time and sale steps, by role and device, never by name; no screen text, typed values, money or names (v1.2 Phase 8B) | Yes | Yes | Yes | Yes |
 | Friction Truths (pain per active hour, messages, active time and sale funnel by role, slow calls, device health) and the Monday top five (v1.2 Phase 8B/8C, Q18) | No | No | No | Yes |
+| Ask arcarna: plain-English questions answered read-only from the shop's Evidence, only within the asker's role (each tool checks it again); never a customer's phone, email or address, never cost to a cashier; rate-limited per person (v1.2 Ask arcarna) | Yes (own figures, targets, stock) | Yes (plus Evidence, except staff pay and managers' performance) | Yes | Yes |
+| Ask arcarna settings: monthly spend cap and dollar-to-pound rate (logged); the question log (who, role, when, tools, tokens, cost, scrubbed question; never answers) (v1.2 Ask arcarna) | No | No | Yes | Yes |
 | Improvement-study setting (off by default, no recorder connected; staff see a banner on the chosen screens), logged (v1.2 Phase 8) | No | No | No | Change, logged |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |

@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { ProblemButton, ProblemSheet } from '@/components/problem/ProblemSheet'
+import { AskButton, AskPanel } from '@/components/ask/AskPanel'
 import { StudyBanner, UsageRecorder } from '@/components/usage/UsageRecorder'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
@@ -461,6 +462,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <OrgSwitcher />
             <PreviewRoleMenu />
+            {isStaff && <AskButton />}
             {isStaff && <ProblemButton />}
             <NotificationCenter />
             {devAuthBypass && (
@@ -552,6 +554,7 @@ export function Layout({ children }: LayoutProps) {
       <WhatsAppPanel />
       <ArcarnaAssistantBar />
       {isStaff && <ProblemSheet />}
+      {isStaff && <AskPanel />}
       {isStaff && <UsageRecorder />}
       {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
       {user && user.role !== 'CUSTOMER' && <FeatureTours path={location} role={user.role} />}

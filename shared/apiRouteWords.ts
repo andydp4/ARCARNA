@@ -9,7 +9,7 @@
  */
 export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "ack", "ack-all", "activity", "admin", "alerts", "aliases", "allowed-users", "analytics",
-  "answer", "api-keys", "apply", "approval-status", "approve", "assistant", "attach-order",
+  "answer", "api-keys", "apply", "approval-status", "approve", "ask", "assistant", "attach-order",
   "audit-logs", "auth", "blocks", "board", "bootstrap", "bulk", "business-health", "by-barcode",
   "by-reference", "callback", "cashier-analytics", "cashier-commission", "cashier-shifts",
   "cashiers", "channels", "checks", "close", "complete", "complete-first-sale", "config",
@@ -20,7 +20,7 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "export", "exports", "failed", "feature-flags", "for-order", "friction-truths", "gift-cards",
   "goods-receipts", "health", "history", "hour-of-day", "import", "imports", "intelligence",
   "intents", "inventory", "invoices", "items", "job-queue", "layout", "lift", "link-customer",
-  "locations", "login", "logout", "loyalty", "loyalty-tiers", "managers", "mark-paid", "me",
+  "locations", "log", "login", "logout", "loyalty", "loyalty-tiers", "managers", "mark-paid", "me",
   "metadata", "metrics", "min-price", "mine", "monthly-summary", "needs-a-look", "notifications",
   "onboarding", "open", "operations", "order-settings", "orders", "org", "org-notifications",
   "orgs", "outstanding", "overhead-expenses", "payments", "pdf", "pending-approvals", "preview",
