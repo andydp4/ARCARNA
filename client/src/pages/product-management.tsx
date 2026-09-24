@@ -1269,8 +1269,8 @@ export default function ProductManagement() {
                         <CardContent className="p-4">
                           <div className="space-y-3">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="font-semibold text-base">{product.name}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-base [overflow-wrap:anywhere]">{product.name}</div>
                                 {product.productId && (
                                   <div className="text-xs font-mono text-muted-foreground mt-0.5">{product.productId}</div>
                                 )}
