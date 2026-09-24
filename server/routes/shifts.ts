@@ -71,14 +71,15 @@ async function loadShiftReportData(shiftId: string, orgId: string, client: Shift
           orderId: orderPayments.orderId,
           method: orderPayments.method,
           amount: orderPayments.amount,
+          status: orderPayments.status,
         })
         .from(orderPayments)
         .where(inArray(orderPayments.orderId, shiftOrderIds))
     : [];
-  const legsByOrder = new Map<string, Array<{ method: string; amount: number }>>();
+  const legsByOrder = new Map<string, Array<{ method: string; amount: number; status: string }>>();
   for (const row of legRows) {
     const list = legsByOrder.get(row.orderId) ?? [];
-    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)), status: row.status });
     legsByOrder.set(row.orderId, list);
   }
 

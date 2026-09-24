@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import type { ZReportData } from "@shared/reports/zReport";
+import { paymentMethodLabel } from "@shared/payments/cardLink";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export function ZReportView({ report }: { report: ZReportData }) {
                 {report.salesByPaymentMethod.map((row) => (
                   <li key={row.method} className="flex justify-between">
                     <span>
-                      {row.method} ({row.count})
+                      {paymentMethodLabel(row.method)} ({row.count})
                     </span>
                     <span>{money(row.total)}</span>
                   </li>
@@ -171,6 +172,17 @@ export function ZReportView({ report }: { report: ZReportData }) {
               taken against a tab on it is not in the expected figure, so the variance reads over by
               that amount.
             </p>
+          )}
+
+          {(report.awaitingCardPayment ?? 0) > 0 && (
+            <>
+              <Separator />
+              {/* Sold, not yet paid: in no takings figure above until Stripe confirms. */}
+              <div className="grid grid-cols-2 gap-2" data-testid="zreport-awaiting-card">
+                <span>Awaiting card payment (link)</span>
+                <span className="text-right">{money(report.awaitingCardPayment)}</span>
+              </div>
+            </>
           )}
 
           {(report.creditGivenOut > 0 || report.creditResolved.length > 0) && (

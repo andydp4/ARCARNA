@@ -1,6 +1,7 @@
 /**
  * Pure Z-report aggregator for a closed shift.
  */
+import { isPaidLeg } from "../payments/cardLink";
 
 export type ZReportOrder = {
   id: string;
@@ -21,7 +22,7 @@ export type ZReportOrder = {
    * built from the legs rather than from one column. Absent means a
    * single-tender sale, which is what every order was before split tender.
    */
-  payments?: Array<{ method: string; amount: number }>;
+  payments?: Array<{ method: string; amount: number; status?: string | null }>;
   /** Tier, promotion and points taken off this sale (v1.2 Phase 1B). Already out of `total`. */
   discounts?: number;
 };
@@ -110,6 +111,12 @@ export type ZReportData = {
    * by the value of every credit sale.
    */
   creditResolved: Array<{ givenOn: string; amount: number }>;
+  /**
+   * Card (link) payments Stripe has not confirmed yet (v1.2 Stripe links).
+   * The sale is real, the money is not in: like credit given out, it explains
+   * takings that are short of gross sales and is in no takings figure above.
+   */
+  awaitingCardPayment: number;
 };
 
 /** Credit given out during the shift, from the orders' credit records. */
@@ -154,8 +161,19 @@ function isCashPayment(method: string): boolean {
  * payment method for orders taken before split tender existed.
  */
 function tenderLegs(order: ZReportOrder): Array<{ method: string; amount: number }> {
-  if (order.payments && order.payments.length > 0) return order.payments;
+  // Only money actually taken: an awaiting card-link leg is not in any tender.
+  if (order.payments && order.payments.length > 0) return order.payments.filter(isPaidLeg);
   return [{ method: order.paymentMethod, amount: order.total }];
+}
+
+function awaitingFrom(orders: ZReportOrder[]): number {
+  return roundMoney(
+    orders.reduce(
+      (sum, order) =>
+        sum + (order.payments ?? []).filter((leg) => !isPaidLeg(leg)).reduce((s, leg) => s + leg.amount, 0),
+      0,
+    ),
+  );
 }
 
 /** Cash actually taken across a set of orders, counting only the cash legs. */
@@ -289,6 +307,7 @@ export function buildZReport(
       creditGiven.reduce((sum, c) => sum + Math.max(0, c.amountGiven), 0),
     ),
     creditResolved: summariseCreditResolved(creditPaid),
+    awaitingCardPayment: awaitingFrom(orders),
   };
 }
 

@@ -1065,6 +1065,8 @@ export const cashierShiftSummaries = pgTable(
     grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    // Card by Stripe link, apart from the terminal's card_sales (migration 141).
+    cardLinkSales: numeric("card_link_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     creditSales: numeric("credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     unpaidCreditSales: numeric("unpaid_credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     stockCost: numeric("stock_cost", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -1260,19 +1262,94 @@ export const orderPayments = pgTable(
       .notNull(),
     method: varchar("method", { length: 50 }).notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    // 'awaiting' is a card-link leg Stripe has not confirmed yet: the sale is
+    // recorded, the money is not taken, and no takings figure counts it.
+    // Every other leg is 'paid' the moment it is written. (migration 140)
+    status: varchar("status", { length: 16 }).notNull().default("paid"),
+    /** Who confirmed the money, when not the till itself ("stripe"). */
+    provider: varchar("provider", { length: 16 }),
+    /** The provider's payment reference (a Stripe PaymentIntent id). */
+    providerRef: varchar("provider_ref", { length: 255 }),
+    paidAt: timestamp("paid_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("order_payments_order_idx").on(table.orderId),
     index("order_payments_org_method_idx").on(table.orgId, table.method),
+    index("order_payments_awaiting_idx")
+      .on(table.orgId, table.orderId)
+      .where(sql`${table.status} = 'awaiting'`),
     // Zero is allowed — a personal-use order is a real, recorded, zero-value
     // leg. Negative is not: giving money back is a refund.
     check("order_payments_amount_check", sql`${table.amount} >= 0`),
+    check("order_payments_status_check", sql`${table.status} IN ('paid', 'awaiting')`),
   ],
 );
 
 export type OrderPayment = typeof orderPayments.$inferSelect;
 export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * A Stripe Checkout Session made for one awaiting card-link leg (v1.2 Stripe
+ * links). The customer pays on their own phone; Stripe's signed webhook marks
+ * the leg paid. At most one link is open per leg: a double tap returns the
+ * one already made. `mismatch` is a session Stripe says was paid for a
+ * different amount or currency than the leg — the leg is left awaiting and
+ * managers get a Signal. (migration 140)
+ */
+export const cardPaymentLinks = pgTable(
+  "card_payment_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    paymentId: uuid("payment_id")
+      .references(() => orderPayments.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: varchar("provider", { length: 16 }).notNull().default("stripe"),
+    sessionId: varchar("session_id", { length: 255 }),
+    url: text("url"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdByUserId: varchar("created_by_user_id", { length: 255 }),
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    paidAt: timestamp("paid_at"),
+    closedReason: text("closed_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("card_payment_links_session_uq")
+      .on(table.sessionId)
+      .where(sql`${table.sessionId} IS NOT NULL`),
+    uniqueIndex("card_payment_links_open_uq")
+      .on(table.paymentId)
+      .where(sql`${table.status} = 'open'`),
+    index("card_payment_links_order_idx").on(table.orgId, table.orderId),
+    check(
+      "card_payment_links_status_check",
+      sql`${table.status} IN ('open', 'paid', 'expired', 'cancelled', 'mismatch')`,
+    ),
+    check("card_payment_links_amount_check", sql`${table.amount} > 0`),
+  ],
+);
+
+export type CardPaymentLink = typeof cardPaymentLinks.$inferSelect;
+export type InsertCardPaymentLink = typeof cardPaymentLinks.$inferInsert;
+
+/** Stripe event ids already handled, so a redelivery is a no-op. (migration 140) */
+export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
+  eventId: varchar("event_id", { length: 255 }).primaryKey(),
+  type: varchar("type", { length: 100 }).notNull(),
+  outcome: varchar("outcome", { length: 32 }).notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
 
 /**
  * Till sales the server refused (v1.2 Phase 1A, "Needs attention").

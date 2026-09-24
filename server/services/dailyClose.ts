@@ -209,7 +209,8 @@ async function totalsForDay(
     ? await client
         .select({ method: orderPayments.method, amount: orderPayments.amount })
         .from(orderPayments)
-        .where(inArray(orderPayments.orderId, orderIds))
+        // An unconfirmed card link is not takings (v1.2 Stripe links).
+        .where(and(inArray(orderPayments.orderId, orderIds), eq(orderPayments.status, "paid")))
     : [];
   const sumLegs = (matches: (m: string) => boolean) =>
     round(

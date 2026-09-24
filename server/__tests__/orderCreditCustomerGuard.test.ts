@@ -319,8 +319,10 @@ describe("a sale on credit needs a customer", () => {
     appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn(appDbMock.db),
     );
-    const { orderEvents } = await import("@shared/schema");
+    const { orderEvents, orderPayments } = await import("@shared/schema");
     appDbMock.state.rowsByTable.set(orderEvents, []); // no prior `completed` event — first settle, not a resettle
+    // No card link waiting (v1.2 Stripe links), so completion goes ahead.
+    appDbMock.state.rowsByTable.set(orderPayments, []);
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();
@@ -371,8 +373,10 @@ describe("a sale on credit needs a customer", () => {
     appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn(appDbMock.db),
     );
-    const { orderEvents } = await import("@shared/schema");
+    const { orderEvents, orderPayments } = await import("@shared/schema");
     appDbMock.state.rowsByTable.set(orderEvents, []);
+    // No card link waiting (v1.2 Stripe links), so completion goes ahead.
+    appDbMock.state.rowsByTable.set(orderPayments, []);
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();

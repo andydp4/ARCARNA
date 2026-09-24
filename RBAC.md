@@ -17,6 +17,9 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Till price warning: one amber line with the lowest price, never a cost; reason at Pay (v1.2 Phase 4) | Yes | Yes | Yes | Yes |
 | Price guard Signals: below minimum and below cost; a manager's own go to admins and the owner only (v1.2 Phase 4) | No | Yes | Yes | Yes |
 | Answer "Manager agreed": only the manager named (v1.2 Phase 4) | No | Named | Named | Named |
+| Card (link): make, cancel or send a Stripe payment link for a sale, or take another tender instead; the customer's number never reaches the till (v1.2 Stripe links) | Yes | Yes | Yes | Yes |
+| Stripe settings: connected or not set up, webhook URL, the .env lines (never a key) (v1.2 Stripe links) | No | Yes | Yes | Yes |
+| Card (link) Signals: paid for the wrong amount, or paid after another tender (v1.2 Stripe links) | No | Yes | Yes | Yes |
 | Needs a look: review exceptions (open, acknowledged, explained, escalated) (v1.2 Phase 4) | No | About cashiers | About cashiers and managers | All |
 | Price overrides Evidence: by cashier, product and reason (v1.2 Phase 4) | Own count on their shift only | About cashiers | About cashiers and managers | All |
 | Rules: below-minimum Signals now or twice daily; refund thresholds (v1.2 Phase 4) | No | Read | Change, logged | Change, logged |

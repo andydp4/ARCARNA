@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { currentTradingDay, shiftIsoDate } from "@shared/time/tradingDay";
+import { PAYMENT_STATUS_PAID } from "@shared/payments/cardLink";
 import {
   DEFAULT_PAYMENT_DAYS,
   dueDateFromTerms,
@@ -110,16 +111,25 @@ function shownAmounts(invoice: Invoice | null | undefined, live: InvoiceAmounts,
   };
 }
 
-/** Money taken at the till per order, from its payment legs; absent for an order with none. */
+/**
+ * Money taken at the till per order, from its payment legs; absent for an
+ * order with none. A card-link leg Stripe has not confirmed is not money
+ * taken, so an invoice for it still shows the amount due.
+ */
 async function paidAtTillByOrder(orderIds: string[]): Promise<Map<string, number>> {
   const paid = new Map<string, number>();
   if (orderIds.length === 0) return paid;
   const legs = await db
-    .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
+    .select({
+      orderId: orderPayments.orderId,
+      method: orderPayments.method,
+      amount: orderPayments.amount,
+      status: orderPayments.status,
+    })
     .from(orderPayments)
     .where(inArray(orderPayments.orderId, orderIds));
   for (const leg of legs) {
-    const taken = isMoneyTakenMethod(leg.method) ? num(leg.amount) : 0;
+    const taken = isMoneyTakenMethod(leg.method) && leg.status === PAYMENT_STATUS_PAID ? num(leg.amount) : 0;
     paid.set(leg.orderId, Math.round(((paid.get(leg.orderId) ?? 0) + taken) * 100) / 100);
   }
   return paid;

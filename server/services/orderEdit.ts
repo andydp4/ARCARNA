@@ -45,7 +45,8 @@ export type OrderEditRefusalCode =
   | "ORDER_EDIT_ON_CREDIT_LIST"
   | "ORDER_EDIT_LEGACY_DISCOUNT"
   | "ORDER_EDIT_POINTS_EXCEED_TOTAL"
-  | "ORDER_EDIT_SHIFT_CLOSED";
+  | "ORDER_EDIT_SHIFT_CLOSED"
+  | "ORDER_EDIT_CARD_LINK";
 
 /** The route answers 409: the order's state, not the request, is the problem. */
 export class OrderEditRefusedError extends Error {
@@ -164,6 +165,14 @@ export function orderEditRefusal(
     );
   }
   const methods = new Set(legs.map((l) => l.method.toLowerCase()));
+  // A card link was made for an exact amount; Stripe would be paid (or has
+  // been) for the old total. (v1.2 Stripe links)
+  if (method === "card_link" || methods.has("card_link")) {
+    return new OrderEditRefusedError(
+      "This order is paid by card link, which is for a fixed amount. Refund it and ring it up again.",
+      "ORDER_EDIT_CARD_LINK",
+    );
+  }
   if (legs.length > 1 || method === "split" || isGiftCardMethod(method) || [...methods].some(isGiftCardMethod)) {
     return new OrderEditRefusedError(
       "This order was paid in more than one part, so an edit cannot tell which payment should change. Refund it and ring it up again.",

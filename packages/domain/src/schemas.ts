@@ -22,7 +22,9 @@ export const PlaceOrderInput = z.object({
   // personal_use: stock leaving for staff use. The route zeroes the total and
   // books the cost as an expense; it was missing here, so every such sale
   // was refused as an invalid payment method.
-  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split','personal_use']),
+  // card_link: a Stripe Checkout link the customer pays on their own phone
+  // (v1.2 Stripe links). Its leg is written 'awaiting' until Stripe confirms.
+  paymentMethod: z.enum(['cash','card','card_link','transfer','tick','gift_card','split','personal_use']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
   // Must be declared even though nothing in the engine branches on it: this is

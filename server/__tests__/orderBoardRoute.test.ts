@@ -24,7 +24,7 @@ import {
   products as appsProducts,
   customers as appsCustomers,
 } from "../../apps/server/src/db/schema";
-import { organizations, opsStaff, allowedUsers, orderEvents, opsAlerts, users } from "@shared/schema";
+import { organizations, opsStaff, allowedUsers, orderEvents, opsAlerts, users, orderPayments } from "@shared/schema";
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const OTHER_ORG_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -128,6 +128,8 @@ vi.mock("../db", () => ({
         // `listFor`) — empty by default, so the "exact contract shape" test's
         // `alerts: []` holds without every other test having to know it exists.
         if (table === opsAlerts) return chain(state.opsAlertRows);
+        // v1.2 Stripe links: no card-link leg is awaiting on these orders.
+        if (table === orderPayments) return chain([]);
         if (table === users) {
           state.usersSelectCallCount += 1;
           return chain(state.userRows);

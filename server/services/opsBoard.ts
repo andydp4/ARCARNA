@@ -107,6 +107,8 @@ export interface BoardOrderPayload {
   deliveryPostcode: string | null;
   deliveryNotes: string | null;
   updatedAt: string | null;
+  /** A card link Stripe has not confirmed yet (v1.2 Stripe links): "Awaiting card payment". */
+  awaitingCardPayment: boolean;
 }
 
 export interface OpsBoardSummary {
@@ -139,6 +141,13 @@ export interface OpsBoardPayload {
   orders: BoardOrderPayload[];
   alerts: OpsAlertListItem[];
   summary: OpsBoardSummary;
+}
+
+/** Loaded lazily, like every db read in this file, so importing it needs no database. */
+async function awaitingCardOrderIds(orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const { awaitingCardOrderIds: load } = await import("./cardLinks");
+  return load(orderIds);
 }
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -348,6 +357,7 @@ function projectBoardOrder(
   names: Map<string, string>,
   items: ItemAggregate | undefined,
   handoverOverride: Date | undefined,
+  awaitingCardPayment = false,
 ): BoardOrderPayload {
   const fulfilmentMethod: "collection" | "delivery" = row.fulfilmentMethod === "delivery" ? "delivery" : "collection";
   const dateKind: "live" | "backdated" | "preorder" =
@@ -395,6 +405,7 @@ function projectBoardOrder(
     deliveryPostcode: fulfilmentMethod === "delivery" ? (row.deliveryPostcode ?? null) : null,
     deliveryNotes: fulfilmentMethod === "delivery" ? (row.deliveryNotes ?? null) : null,
     updatedAt: iso(row.updatedAt),
+    awaitingCardPayment,
   };
 }
 
@@ -530,9 +541,10 @@ export async function getOpsBoard(
   const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
 
   const completedTodayCount = await countCompletedToday(orgId, bounds);
-  const [items, handoverOverrides] = await Promise.all([
+  const [items, handoverOverrides, awaitingCard] = await Promise.all([
     selectItemAggregates(orderIds),
     selectActualHandoverTimes(orgId, completedIds),
+    awaitingCardOrderIds(rows.filter((r) => r.status !== "completed").map((r) => r.id)),
   ]);
 
   const nameIds = new Set<string>();
@@ -544,7 +556,7 @@ export async function getOpsBoard(
   const names = await resolveUserNames(nameIds);
 
   const orders = rows.map((row) =>
-    projectBoardOrder(row, names, items.get(row.id), handoverOverrides.get(row.id)),
+    projectBoardOrder(row, names, items.get(row.id), handoverOverrides.get(row.id), awaitingCard.has(row.id)),
   );
 
   const openByAssignee = new Map<string, number>();
@@ -679,15 +691,22 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
     .limit(1);
   if (!row) return null;
 
-  const [items, names, handoverOverrides] = await Promise.all([
+  const [items, names, handoverOverrides, awaitingCard] = await Promise.all([
     selectItemAggregates([row.id as string]),
     resolveUserNames(
       [row.inputUserId, row.completedUserId, row.assignedUserId].filter((v): v is string => Boolean(v)),
     ),
     row.status === "completed" ? selectActualHandoverTimes(orgId, [row.id as string]) : Promise.resolve(new Map<string, Date>()),
+    awaitingCardOrderIds([row.id as string]),
   ]);
 
-  return projectBoardOrder(row as unknown as RawOrderRow, names, items.get(row.id as string), handoverOverrides.get(row.id as string));
+  return projectBoardOrder(
+    row as unknown as RawOrderRow,
+    names,
+    items.get(row.id as string),
+    handoverOverrides.get(row.id as string),
+    awaitingCard.has(row.id as string),
+  );
 }
 
 /**

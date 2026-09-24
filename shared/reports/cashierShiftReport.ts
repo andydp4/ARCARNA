@@ -15,6 +15,7 @@
  * Unpaid credit/tick sales are tracked separately and excluded from
  * paidSalesReceived until marked paid.
  */
+import { isCardLinkMethod, isPaidLeg } from "../payments/cardLink";
 
 export const CALCULATION_VERSION = 1;
 
@@ -42,7 +43,7 @@ export type CashierShiftOrder = {
    * Absent means the caller predates split tender; the whole total is then
    * attributed to `paymentMethod`, which is what a single-tender sale is.
    */
-  payments?: Array<{ method: string; amount: number }>;
+  payments?: Array<{ method: string; amount: number; status?: string | null }>;
   items: Array<{
     quantity: number;
     /** Unit cost price; null when the product has no recorded cost. */
@@ -57,7 +58,12 @@ export type CashierShiftRefund = {
 export type CashierShiftBalanceSheet = {
   grossSales: number;
   cashSales: number;
+  /** Card taken on the terminal. */
   cardSales: number;
+  /** Card taken by Stripe link and confirmed (v1.2 Stripe links), apart from the terminal's. */
+  cardLinkSales: number;
+  /** Card links Stripe has not confirmed: sold, not taken, in no figure above. */
+  awaitingCardPayment: number;
   creditSales: number;
   unpaidCreditSales: number;
   paidSalesReceived: number;
@@ -99,8 +105,14 @@ export function isPersonalUse(method: string): boolean {
  * payment method for callers that predate split tender.
  */
 function tenderLegs(order: CashierShiftOrder): Array<{ method: string; amount: number }> {
-  if (order.payments && order.payments.length > 0) return order.payments;
+  // Money taken only: an awaiting card-link leg is in no tender.
+  if (order.payments && order.payments.length > 0) return order.payments.filter(isPaidLeg);
   return [{ method: order.paymentMethod, amount: order.total }];
+}
+
+/** The part of a sale still waiting on a card link. */
+function awaitingOn(order: CashierShiftOrder): number {
+  return (order.payments ?? []).filter((leg) => !isPaidLeg(leg)).reduce((sum, leg) => sum + leg.amount, 0);
 }
 
 /**
@@ -123,8 +135,10 @@ function isCashPayment(method: string): boolean {
   return m === "cash" || m.includes("cash");
 }
 
+/** Terminal card. Card (link) is counted on its own line. */
 function isCardPayment(method: string): boolean {
   const m = method.toLowerCase();
+  if (isCardLinkMethod(m)) return false;
   return m === "card" || m.includes("card");
 }
 
@@ -171,11 +185,13 @@ export function buildCashierShiftBalanceSheet(
     );
   const cashSales = takenBy(isCashPayment);
   const cardSales = takenBy(isCardPayment);
+  const cardLinkSales = takenBy(isCardLinkMethod);
   const creditSales = takenBy(isTickPayment);
   const unpaidCreditSales = roundMoney(
     salesOrders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
   );
-  const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales);
+  const awaitingCardPayment = roundMoney(salesOrders.reduce((sum, o) => sum + awaitingOn(o), 0));
+  const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales - awaitingCardPayment);
 
   let stockCost = 0;
   let hasIncompleteCostData = false;
@@ -224,6 +240,8 @@ export function buildCashierShiftBalanceSheet(
     grossSales,
     cashSales,
     cardSales,
+    cardLinkSales,
+    awaitingCardPayment,
     creditSales,
     unpaidCreditSales,
     paidSalesReceived,
