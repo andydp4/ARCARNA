@@ -160,3 +160,16 @@ kbd,.ui { font-family:var(--font-mono); background:var(--bg100); border-radius:4
   h2 { break-after:avoid; }
   figure,.callout,ol.steps > li,.chapter-open { break-inside:avoid; }
 }
+
+/* ---- Editions (v1.2) ------------------------------------------------------
+   One source, three editions. build-manual.mjs removes these blocks from the
+   editions below them: .ed-manager is in the manager and admin editions only,
+   .ed-admin in the admin edition only; unmarked content is in all three.
+   Opened on screen, a marked block shows a thin rule so writers can see it. */
+@media screen {
+  :not(main).ed-manager { box-shadow:-8px 0 0 -5px var(--truth-blue); }
+  :not(main).ed-admin { box-shadow:-8px 0 0 -5px var(--navy-blue); }
+}
+@media print {
+  .ed-manager, .ed-admin { box-shadow:none; }
+}

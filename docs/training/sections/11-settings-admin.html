@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 11. Settings and admin set-up</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section ed-admin" id="settings-admin">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">11</div>
+    <div class="chapter-title">Settings and admin set-up</div>
+    <p class="chapter-lead">The jobs only admins and the owner do: letting people in and setting their roles, checking what each role sees, locations, the price guard, card payments by link, label printers, WhatsApp, the privacy notice, the Problem? inbox and staff targets.</p>
+  </div>
+
+  <p class="eyebrow">Who this section is for</p>
+  <h2>Admins and the owner</h2>
+  <p>Everything in this section is for <span class="role role-manager">ADMIN</span> and <span class="role role-manager">OWNER</span>. Most of it lives in the <span class="ui">Settings Centre</span>, and a few pages sit in the Truths Centre. Managers can open some of the same Settings tabs, but the switches described here only work for admins: the server refuses anyone else, even if they find the page.</p>
+  <p>Almost every change you make here is logged: who changed it, when, and from what to what. That is deliberate. These settings decide what staff see and how money is handled, so there is always a record.</p>
+  <table>
+    <tr><th>Role</th><th>What they can set up</th></tr>
+    <tr><td><span class="role role-manager">ADMIN</span></td>
+        <td>User Access, Locations, Developer, the Flags tab, business details and tax, the price guard, the Signals and refund rules, the customer privacy notice, Ask arcarna's limit, staff targets, the Truths at a glance layout, the Problem? inbox and Preview as.</td></tr>
+    <tr><td><span class="role role-manager">OWNER</span></td>
+        <td>As an admin, plus the owner-only pages: <span class="ui">Friction Truths</span>, <span class="ui">Customer data access</span>, <span class="ui">Audit Log</span> and <span class="ui">System Activity</span>. In User Access the owner shows as <span class="ui">SUPER_ADMIN</span> with a crown.</td></tr>
+  </table>
+
+  <p class="eyebrow">Settings Centre · the Settings page</p>
+  <h2>The Settings tabs</h2>
+  <p><span class="ui">Settings</span> answers one question: <em>how is arcarna set up for your business?</em> Its tabs are listed under it in the menu, so you can go straight to one. Each tab holds a stack of cards; a few cards are marked as not wired up yet, and they say so plainly.</p>
+  <table>
+    <tr><th>Tab</th><th>What an admin does there</th></tr>
+    <tr><td><span class="ui">General</span></td>
+        <td>The business name, <span class="ui">Business Information</span> (name, phone, address, email), the <span class="ui">Customer privacy notice and complaints contact</span>, <span class="ui">Price guard at the till</span>, <span class="ui">Signals and refund rules</span>, and <span class="ui">Tax Settings</span> (VAT rate and VAT number). Save the business and tax cards with <span class="ui">Save business &amp; tax settings</span>.</td></tr>
+    <tr><td><span class="ui">Imports</span></td>
+        <td>Product and customer spreadsheet imports. Managers and above.</td></tr>
+    <tr><td><span class="ui">Payment</span></td>
+        <td><span class="ui">Card (link) with Stripe</span>, the bank details shown on invoices, and <span class="ui">Loyalty redemption</span> (what a point is worth at checkout).</td></tr>
+    <tr><td><span class="ui">Invoice</span></td>
+        <td><span class="ui">Branding</span> for receipts and invoices, including the bank details, and the email receipt template.</td></tr>
+    <tr><td><span class="ui">System</span></td>
+        <td><span class="ui">Devices · Label printer</span>, <span class="ui">This device</span>, and <span class="ui">Multi-Location</span>. The first two are saved on the device you are holding, not for the whole shop.</td></tr>
+    <tr><td><span class="ui">Integrations</span></td>
+        <td><span class="ui">Ask arcarna</span> (Section 10), the shop website manager, and <span class="ui">WhatsApp Business</span>.</td></tr>
+    <tr><td><span class="ui">Cashiers</span></td>
+        <td>Commission settings and cashier profiles. Managers and above.</td></tr>
+    <tr><td><span class="ui">Operations</span></td>
+        <td>Timing for the Operations board: what counts as on time, when a card warns, and who picks up a new order. Saved for every tablet. Managers and above.</td></tr>
+    <tr><td><span class="ui">Users</span></td>
+        <td>A pointer to User Access, with <span class="ui">Open User Access</span>.</td></tr>
+    <tr><td><span class="ui">Flags</span></td>
+        <td>Feature flags: switches for features still being finished. Admins only. Changes reach open tills within about a minute.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Tax starts at 0% for a new shop</strong>
+    A new shop's VAT rate starts at 0%. If you are VAT registered, set <span class="ui">VAT Rate (%)</span> and <span class="ui">VAT Number</span> under Tax Settings before the first real sale.
+  </div>
+
+  <p class="eyebrow">Settings Centre · User Access</p>
+  <h2>Letting people in and setting their role</h2>
+  <p>Nobody sees business data until an admin lets them in. <span class="ui">User Access</span> answers <em>who can do what in your business?</em> It has two tabs: <span class="ui">Pending approvals</span> (people waiting) and <span class="ui">Allowed Users</span> (everyone already in). The number waiting shows as a badge beside the title.</p>
+
+  <h3>Approving a new person</h3>
+  <ol class="steps">
+    <li>Ask them to sign in once. They see an <span class="ui">Access pending</span> screen, and they appear under <span class="ui">Pending approvals</span> with their name, email and when they asked.</li>
+    <li>Select <span class="ui">Approve access</span>. A window titled <span class="ui">Approve access</span> opens.</li>
+    <li>Choose their <span class="ui">Role</span>. It starts on <span class="ui">CUSTOMER</span>, which is for the private shop website only, so change it to the staff role they need.</li>
+    <li>Select <span class="ui">Approve</span>. Their Access pending screen notices within 30 seconds and lets them in.</li>
+  </ol>
+  <p>If you do not know the person, select <span class="ui">Deny request</span> instead.</p>
+
+  <table>
+    <tr><th>Role in the list</th><th>What it means</th></tr>
+    <tr><td><span class="ui">CUSTOMER</span></td><td>The private shop website only. No staff pages at all.</td></tr>
+    <tr><td><span class="ui">CASHIER</span></td><td>The till, the board, My run, Stock levels, their own shifts and their own performance. Never cost prices; customers' phone and email masked.</td></tr>
+    <tr><td><span class="ui">MANAGER</span></td><td>The back office: products and cost, customers (still masked), Credit List, invoices, Evidence and Truths about the team below them.</td></tr>
+    <tr><td><span class="ui">ADMIN</span></td><td>Everything in this section, and customers' contact details.</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>Give the lowest role that does the job</strong>
+    Roles decide who sees cost prices, customers' contact details and other people's figures. Most people who serve at the till are cashiers, drivers included. The list offers CUSTOMER, CASHIER, MANAGER and ADMIN; the owner's role is never offered.
+  </div>
+
+  <h3>Changing someone later</h3>
+  <p>Open <span class="ui">Allowed Users</span>. Each row can be changed in place and saves as soon as you choose:</p>
+  <table>
+    <tr><th>Column</th><th>What it does</th></tr>
+    <tr><td><span class="ui">Role</span></td><td>Changes their role: CUSTOMER, CASHIER, MANAGER or ADMIN.</td></tr>
+    <tr><td><span class="ui">Commission</span></td><td>Their own commission rate, in percent. Leave it blank to use the shop's default rate from the Cashiers tab; blank is not the same as 0.</td></tr>
+    <tr><td><span class="ui">Default location</span></td><td>The location their sales go to. <span class="ui">No default (org default)</span> means their open shift's location, or the shop's default store.</td></tr>
+    <tr><td><span class="ui">Station</span></td><td>Their place on the Operations board: collection, delivery or both. <span class="ui">None (All)</span> means no station.</td></tr>
+  </table>
+  <p>To take someone's access away, select <span class="ui">Remove…</span> on their row, tick <span class="ui">I understand this user will lose access immediately.</span> and select <span class="ui">Remove access</span>. They cannot sign in again until they are approved again.</p>
+
+  <figure>
+    <img src="../images/v12-11-user-access.png" alt="User Access with the Allowed Users tab open, listing staff with their role, commission, default location and station" />
+    <figcaption>User Access: every person, their role and where they sell, changed in place.</figcaption>
+    <!-- SHOT: route=/user-access ; role=admin ; viewport=desktop ; show=the page header "User access" / "Who can do what in your business?", the two tabs with "Allowed Users" selected, and the table with columns User, Email, Role, Commission, Default location, Station, Added, Actions, showing the seeded staff (seed-cashier, seed-manager, seed-admin) with role dropdowns and the Remove… buttons ; state=Allowed Users tab clicked; no dialog open; tours and What's New marked seen; menu not pinned -->
+  </figure>
+
+  <p class="eyebrow">Checking what staff see</p>
+  <h2>Preview as</h2>
+  <p>Before you change a role, or when someone says "I can't see it", check for yourself. <span class="ui">Preview as</span> in the header shows arcarna exactly as a manager or a cashier would see it, through the same checks the server makes. You do not need a second login.</p>
+  <ol class="steps">
+    <li>On a computer or tablet, select <span class="ui">Preview as</span> in the header. It is not shown on a phone.</li>
+    <li>Under <span class="ui">See the app as another role</span>, choose <span class="ui">Manager</span> or <span class="ui">Cashier</span>. arcarna reloads on the Control Centre.</li>
+    <li>An amber strip stays across the top: <span class="ui">Previewing as Cashier. You see what a cashier sees; nothing can be changed until you exit.</span> Look around: the menu, the Centres, the masks and the missing cost prices are all as that role gets them.</li>
+    <li>Select <span class="ui">Exit preview</span> on the strip (or in the Preview as menu) to go back to your own view.</li>
+  </ol>
+  <p>Nothing can be saved during a preview, so you cannot change data by accident. The preview lasts for that browser tab only, and starting and ending one is logged.</p>
+
+  <figure>
+    <img src="../images/v12-11-preview-as-cashier.png" alt="The Control Centre seen through Preview as Cashier, with the amber Previewing as Cashier strip and the Exit preview button" />
+    <figcaption>Preview as Cashier: the amber strip stays until you exit.</figcaption>
+    <!-- SHOT: route=/ ; role=admin ; viewport=desktop ; show=the header with "Preview as", the amber banner "Previewing as Cashier. You see what a cashier sees; nothing can be changed until you exit." with its "Exit preview" button, and below it the Control Centre as a cashier sees it (no Worth a look / Truths overview) ; state=start the preview with Preview as › Cashier before capturing; tours and What's New marked seen -->
+  </figure>
+
+  <p class="eyebrow">Settings Centre · Locations</p>
+  <h2>Locations</h2>
+  <p>Every shop can run more than one store; there is nothing to switch on, only locations to add. <span class="ui">Locations</span> lists each store with its address, contact, revenue, orders and status, and totals across the top. You can also reach it from <span class="ui">Manage locations</span> on Settings › System.</p>
+  <ol class="steps">
+    <li>Select <span class="ui">Add location</span>. Fill in <span class="ui">Location Name</span>, <span class="ui">Phone</span>, <span class="ui">Street Address</span>, <span class="ui">City</span>, <span class="ui">County</span>, <span class="ui">Postcode</span> and <span class="ui">Email</span>.</li>
+    <li>Leave <span class="ui">Active location</span> ticked. Inactive stores are hidden from normal selection.</li>
+    <li>Select <span class="ui">Create</span>. To change a store later, select <span class="ui">Edit</span> on its row, then <span class="ui">Update</span>.</li>
+    <li>One store is the <span class="ui">Default store</span>: where sales go when nothing else says otherwise. To change it, select <span class="ui">Set default</span> on another store.</li>
+  </ol>
+  <p><span class="ui">Stock</span> on a row shows that store's products, stock and sale prices. The location selector at the top of the page switches which store this device is working in, and reloads the page.</p>
+  <div class="callout warn">
+    <strong>Deleting a location cannot be undone</strong>
+    <span class="ui">Delete…</span> removes the store and the data held for it. You must tick <span class="ui">I understand this location will be permanently deleted.</span> first. The default store cannot be deleted. If a store has closed, untick Active location instead.
+  </div>
+
+  <p class="eyebrow">Settings › General · prices</p>
+  <h2>The price guard and the review rules</h2>
+  <p>Every product has a minimum price (Section 6). What happens when something sells below it is up to you. Both cards are on <span class="ui">Settings › General</span>, and every change to either is logged.</p>
+
+  <h3>Price guard at the till</h3>
+  <p>The switch starts <strong>off</strong>. While it is off, the card reads <span class="ui">Off: recording silently (Would have flagged)</span>: the till shows nothing, but every sale below the minimum or below cost is still recorded, and you can read them in <span class="ui">Would have flagged</span> in the Truths Centre. Use that quiet period to see how often it happens and whether your minimums are right.</p>
+  <p>Turn it on and the till changes: a price below an item's lowest price shows one amber line, the cashier chooses a reason at Pay, and managers get a Signal. Sales are never blocked, and cashiers never see cost.</p>
+  <ol class="steps">
+    <li>Open <span class="ui">Settings › General</span> and find <span class="ui">Price guard at the till</span>.</li>
+    <li>Turn the switch on. You see <span class="ui">Price guard is on</span>.</li>
+    <li>Tell your staff before their next shift what the amber line means and that they will be asked for a reason.</li>
+  </ol>
+
+  <h3>Signals and refund rules</h3>
+  <table>
+    <tr><th>Setting</th><th>What it decides</th></tr>
+    <tr><td><span class="ui">Below-minimum Signals</span></td>
+        <td>When managers hear about sales below the minimum: <span class="ui">Straight away</span>, or <span class="ui">Twice a day (12:00 and 18:00)</span>. A sale below cost always goes straight away.</td></tr>
+    <tr><td><span class="ui">Cash refund over (£)</span></td>
+        <td>A cash refund above this goes to Needs a look. Default £50.00.</td></tr>
+    <tr><td><span class="ui">Refund after (days)</span></td>
+        <td>A refund this many days or more after the sale goes to Needs a look. Default 14.</td></tr>
+    <tr><td><span class="ui">Same-cashier refund window (hours)</span></td>
+        <td>How soon after their own sale a cashier's refund on it is counted in the <span class="ui">Price overrides</span> Evidence. It does not send the refund to Needs a look. Default 24.</td></tr>
+  </table>
+  <p>Refunds on another cashier's sale, and refunds with the reason "Other", always go to Needs a look. Refunds are never blocked. Select <span class="ui">Save rules</span> when you are done.</p>
+
+  <figure>
+    <img src="../images/v12-11-price-guard.png" alt="Settings General tab showing the Price guard at the till card switched off and the Signals and refund rules card with its defaults" />
+    <figcaption>The price guard, off for the silent recording period, and the rules behind Signals and Needs a look.</figcaption>
+    <!-- SHOT: route=/settings?tab=general ; role=admin ; viewport=desktop ; show=the "Price guard at the till" card with the switch off and the label "Off: recording silently (Would have flagged)", and below it the "Signals and refund rules" card with "Straight away" selected, Cash refund over (£) 50.00, Refund after (days) 14, Same-cashier refund window (hours) 24 and the "Save rules" button ; state=price guard left off; scroll so both cards are fully in view; tours and What's New marked seen -->
+  </figure>
+
+  <p class="eyebrow">Settings › Payment · card payments by link</p>
+  <h2>Card (link) with Stripe</h2>
+  <p><strong>Card (link)</strong> lets a customer pay by card on their own phone: the till shows a QR code or sends a link, and the sale marks itself paid when Stripe confirms. Section 3 shows it at the till. It stays hidden at the till until Stripe is set up, and setting it up is done on the server, not in a form: arcarna never shows a Stripe key on screen.</p>
+  <p>The card on <span class="ui">Settings › Payment</span> shows <span class="ui">Not set up</span> or <span class="ui">Stripe connected</span> (with test or live), and, while it is not set up, exactly what to do.</p>
+  <ol class="steps">
+    <li>In your Stripe account, copy your secret key from Stripe › Developers › API keys.</li>
+    <li>Still in Stripe, add a webhook. Use the address shown under <span class="ui">Webhook endpoint for Stripe</span> on the card (it ends <span class="ui">/api/stripe/webhook</span>; the copy button copies it), and send the events the card lists: <span class="ui">checkout.session.completed</span>, <span class="ui">checkout.session.async_payment_succeeded</span>, <span class="ui">checkout.session.async_payment_failed</span> and <span class="ui">checkout.session.expired</span>. Copy the webhook's signing secret.</li>
+    <li>Whoever looks after the server adds the two lines the card shows, <span class="ui">STRIPE_SECRET_KEY</span> and <span class="ui">STRIPE_WEBHOOK_SECRET</span>, to the server's settings file, then restarts arcarna. The card says which of the two is still missing.</li>
+    <li>Reload Settings › Payment. The badge reads <span class="ui">Stripe connected</span>, and Card (link) appears at the till.</li>
+    <li>Take a small test payment with Card (link) before using it with customers.</li>
+  </ol>
+  <div class="callout warn">
+    <strong>Refunds are made in Stripe</strong>
+    A Card (link) payment is refunded from your Stripe account, not from arcarna. Card (link) takings show as card, and on their own line on the shift's Z report.
+  </div>
+
+  <figure>
+    <img src="../images/v12-11-stripe-card-link.png" alt="The Card (link) with Stripe card showing Not set up, the two lines to add to the server, the webhook address and the events to send" />
+    <figcaption>Card (link) with Stripe, before set-up: the lines to add and where Stripe should send its events.</figcaption>
+    <!-- SHOT: route=/settings?tab=payment ; role=admin ; viewport=desktop ; show=the "Card (link) with Stripe" card with the "Not set up" badge, the grey box with the STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET lines, "Missing now: …", the "Webhook endpoint for Stripe" address with its copy button, and the "Events to send" line ; state=no Stripe keys in the capture server's environment (the default); tours and What's New marked seen -->
+  </figure>
+
+  <p class="eyebrow">Settings › System · on each device</p>
+  <h2>Label printers and device names</h2>
+  <p>Two cards on <span class="ui">Settings › System</span> are set once on <strong>each</strong> till, tablet or phone, because they are remembered on that device only. Any member of staff can do them, but it is quickest if you walk round the shop and do every device at once.</p>
+
+  <h3>Pairing a label printer</h3>
+  <p>arcarna prints order and product labels on a <strong>Niimbot B1</strong> over Bluetooth, on 50 × 30 mm labels. Bluetooth printing only works in some browsers: use <strong>Chrome</strong> or <strong>Edge</strong> on a computer, or the free <strong>Bluefy</strong> app on an iPhone or iPad. Safari cannot print labels. If the browser cannot print, the card says so and what to use instead.</p>
+  <ol class="steps">
+    <li>Turn the printer on and bring it near the till.</li>
+    <li>Open <span class="ui">Settings › System</span> and find <span class="ui">Devices · Label printer</span>. The status reads <span class="ui">No printer connected on this device yet</span>.</li>
+    <li>Select <span class="ui">Pair a printer</span> and choose the printer in the list the browser shows.</li>
+    <li>The status changes to <span class="ui">Connected to</span> the printer's name, with its battery level.</li>
+    <li>Under <span class="ui">Test label</span>, select <span class="ui">Print</span>. A test label with a price and barcode should come out.</li>
+  </ol>
+  <p>Next time, the button reads <span class="ui">Connect</span>. <span class="ui">Forget this printer</span> removes the pairing from this device.</p>
+
+  <h3>Naming each device</h3>
+  <p>The <span class="ui">This device</span> card names the device from a fixed list: <span class="ui">Till 1</span> to <span class="ui">Till 6</span>, <span class="ui">Counter tablet</span>, and <span class="ui">Phone 1</span> to <span class="ui">Phone 6</span>. The name goes with every Problem? report and error report, so you know which device had the trouble. There is no free-text name, because a typed name could be a person's. Staff can also set it the first time they use Problem?.</p>
+
+  <p class="eyebrow">Settings › Integrations · WhatsApp</p>
+  <h2>WhatsApp messages</h2>
+  <p>Three things send WhatsApp messages without anyone seeing the customer's number: <span class="ui">Message the customer instead</span> on a customer (managers, Section 7), <span class="ui">Send payment reminder</span> on the Credit List, and <span class="ui">Send by WhatsApp</span> for a Card (link). WhatsApp only allows business messages from <strong>approved templates</strong>, so nothing is sent until Meta has approved them.</p>
+  <p>The <span class="ui">WhatsApp Business</span> card on <span class="ui">Settings › Integrations</span> shows whether it is <span class="ui">Enabled</span>, the <span class="ui">Webhook URL</span> to give Meta, a <span class="ui">Set</span> or <span class="ui">Missing</span> line for each server setting, the connected number, and a <span class="ui">Setup checklist</span>. The secrets themselves live on the server and are never shown.</p>
+  <ol class="steps">
+    <li>Work through the <span class="ui">Setup checklist</span> on the card with whoever looks after the server and your Meta account.</li>
+    <li>Under <span class="ui">Message templates</span>, select <span class="ui">Sync templates</span>. arcarna's templates are listed, marked LOCAL until Meta has seen them.</li>
+    <li>Submit them for approval in Meta's WhatsApp Manager. This includes <span class="ui">please_call_us</span>, the "please call us on the shop number" message.</li>
+    <li>When they show as <span class="ui">APPROVED</span>, the buttons that use them work. An unapproved template is refused.</li>
+    <li>Fill in <span class="ui">Phone</span> under Business Information on Settings › General, so "please call us" can name the shop's number.</li>
+  </ol>
+  <div class="callout">
+    <strong>Each message has a small cost</strong>
+    From 1 October 2026, each WhatsApp message costs about £0.016. Keep that in mind before encouraging staff to message every customer.
+  </div>
+
+  <p class="eyebrow">Settings › General · customers' rights</p>
+  <h2>The customer privacy notice</h2>
+  <p>Customers have a right to know how you use their details and whom to contact with a data protection question or complaint. The card <span class="ui">Customer privacy notice and complaints contact</span> on Settings › General holds both. It starts empty: you write the wording, and nothing is shown to customers until you fill it in.</p>
+  <ol class="steps">
+    <li>If your notice is already on your own website, put its address in <span class="ui">Privacy notice web address (optional)</span>. Otherwise write it in <span class="ui">Privacy notice text (optional)</span> and arcarna shows it on a page of its own.</li>
+    <li>Fill in <span class="ui">Complaints contact name</span> and <span class="ui">Complaints contact email</span>. The contact is only shown once it has an email.</li>
+    <li>Select <span class="ui">Save privacy details</span>. The line under the boxes says what customers now see, with <span class="ui">See what customers see</span> to check it.</li>
+  </ol>
+  <p>Once filled in, links appear on the shop site and on receipts. If Ask arcarna is set up, list Anthropic as a processor in the notice (Section 10).</p>
+  <div class="callout">
+    <strong>Staff have notices too</strong>
+    Give every member of staff the staff privacy notice and the staff performance notice (<span class="ui">docs/staff-privacy-notice.md</span> and <span class="ui">docs/staff-performance-notice.md</span>) before they start. They explain what arcarna records about their work, and that no pay decision is made from the figures alone.
+  </div>
+
+  <p class="eyebrow">Truths Centre · what staff report</p>
+  <h2>The Problem? inbox</h2>
+  <p>When anyone presses <span class="ui">Problem?</span> (Section 1), the report lands in the <span class="ui">Problem? inbox</span> in the Truths Centre. It answers <em>where are staff getting stuck?</em> Each report shows what was picked (such as <span class="ui">Too slow</span>), the note if there is one, and what came with it: the <span class="ui">Screen</span>, the <span class="ui">Role</span>, the <span class="ui">Device</span>, the <span class="ui">Version</span>, the <span class="ui">Connection</span>, and the <span class="ui">Sales</span> waiting, failed or on Needs attention. You see the reporter's role, never their name.</p>
+  <ol class="steps">
+    <li>Open the inbox. <span class="ui">Show</span> starts on <span class="ui">Open</span>; you can also pick <span class="ui">Fixed</span>, <span class="ui">Closed</span> or <span class="ui">All</span>.</li>
+    <li>Read the report and try the same screen on the same kind of device.</li>
+    <li>When it is fixed, check the version under <span class="ui">Fixed in version</span> and select <span class="ui">Mark fixed and thank them</span>. The person who reported it gets a Signal thanking them, with the version.</li>
+    <li>If there is nothing to fix, select <span class="ui">Close without a fix</span>. <span class="ui">Reopen</span> brings a report back.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-11-problem-inbox.png" alt="The Problem? inbox showing an open report with its chip, note, screen, role, device, version, connection and sales, and the Mark fixed and thank them button" />
+    <figcaption>The Problem? inbox: what was reported, from which screen and device, never by whom.</figcaption>
+    <!-- SHOT: route=/problems ; role=admin ; viewport=desktop ; show=the page header "Problem? inbox" / "Where are staff getting stuck?", Show set to Open, and two report cards: one "Too slow" on /operations from Till 1 (role cashier, online, 0 waiting) with the note "The board took a while to load after lunch", one "Can't find it" on /stock-levels from Phone 1; each with Fixed in version, "Mark fixed and thank them" and "Close without a fix" ; state=file the two reports first as seed-cashier via POST /api/problem-reports (no customer details in the notes); tours and What's New marked seen -->
+  </figure>
+
+  <p class="eyebrow">The owner only</p>
+  <h2>Friction Truths and the usage record <span class="role role-manager">OWNER</span></h2>
+  <p>Every staff device quietly keeps a <strong>usage record</strong>: which screens are open, for how long they are actively used, the titles of messages staff see, calls to the server that are slow or fail, crashes and time offline. It is recorded by role and by device, never by person, and it is not recorded during Preview as. Names and numbers are cut out of message titles before they are stored.</p>
+  <p><span class="ui">Friction Truths</span> in the Truths Centre turns that record into one question: <em>where do staff get stuck?</em> Only the owner can open it, and it is not for staff reviews.</p>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><span class="ui">Window</span></td><td>Last 7 days, 2 weeks, 4 weeks or 12 weeks.</td></tr>
+    <tr><td><span class="ui">Not enough data yet</span></td><td>Shown for the first two weeks, with how many days are recorded. The rankings wait until a few bad minutes can no longer make a screen look worse than it is.</td></tr>
+    <tr><td><span class="ui">Pain per active hour</span></td><td>Each screen scored by its trouble (crashes count most, then Problem? reports, then error messages and failed calls, then slow calls) over the hours it was really in use.</td></tr>
+    <tr><td><span class="ui">Messages staff see</span></td><td>Which messages appear most, and how often as an error.</td></tr>
+    <tr><td><span class="ui">Active time by role</span> and <span class="ui">Sale funnel by role</span></td><td>Where each role spends its time, and how many sales started ended up placed.</td></tr>
+    <tr><td><span class="ui">Slow and failed calls</span></td><td>Which calls to the server were slow or failed, including the sale itself.</td></tr>
+    <tr><td><span class="ui">Device health</span></td><td>Each named device: last seen, version, crashes, time offline. Works from day one.</td></tr>
+  </table>
+  <p>The <span class="ui">Problem? inbox</span> button at the top shows how many reports are open. Every Monday, once there are three weeks of data, you get a Signal with the five worst or fastest-rising screens.</p>
+  <p>The <span class="ui">Improvement study (screen recordings)</span> card is off, and no recorder is connected in this release. Turning on <span class="ui">Announce a study window</span> only shows staff a notice on up to five chosen screens, for at most 14 days.</p>
+
+  <div class="callout">
+    <strong>Other owner-only pages</strong>
+    <span class="ui">Customer data access</span> (Settings Centre) lists every look at customers' contact details across the shop, with a weekly Signal summarising it; Section 7 explains the requests behind it. <span class="ui">Audit Log</span> and <span class="ui">System Activity</span> are there for checking changes and background jobs.
+  </div>
+
+  <p class="eyebrow">Truths Centre · targets</p>
+  <h2>Staff targets</h2>
+  <p>Staff see coloured targets on My performance and managers on Staff Performance (Section 9). <span class="ui">Staff targets</span> answers <em>what counts as on track?</em> Managers can read the page; only admins can change it. Targets carry no pay, and there is no money on the page.</p>
+  <p>Green is met, amber is close, red is not close, and grey means too little data. <span class="ui">In force</span> shows the current version and when it was set; if none has been set, every colour is grey.</p>
+  <ol class="steps">
+    <li>Open <span class="ui">Staff targets</span>. Under <span class="ui">Change the targets</span>, tick each measure you want a target for, such as <span class="ui">Collections ready on time</span>, <span class="ui">Deliveries on time</span> or <span class="ui">Received to ready (median)</span>.</li>
+    <li>Fill in <span class="ui">Green at least</span> and <span class="ui">Amber at least</span> (or <span class="ui">at most</span> for measures where lower is better, such as times). <span class="ui">Data needed</span> sets how much a person must have done before a colour shows instead of grey: orders, hours or board flags acknowledged, depending on the measure. Leave it blank for the default shown in its label.</li>
+    <li>Add a line under <span class="ui">Why the change (optional)</span>, so the history explains itself.</li>
+    <li>Select <span class="ui">Save as a new version</span>. You see <span class="ui">Targets saved as version</span> and the number. The old version stays in <span class="ui">History</span> and in the admin log.</li>
+  </ol>
+  <div class="callout">
+    <strong>The first four weeks are amber only</strong>
+    For the first 4 weeks after targets are first set, nothing shows red. Use that time to check the targets are fair before anyone is judged against them.
+  </div>
+
+  <p class="eyebrow">Before you go live</p>
+  <h2>The owner's set-up checklist</h2>
+  <p>These are the jobs to do once, before or soon after the shop starts using v1.2. Some need whoever looks after the server.</p>
+  <table>
+    <tr><th>For</th><th>What to do</th></tr>
+    <tr><td><strong>People</strong></td><td>Approve everyone in User Access with the lowest role that does the job. Check with <span class="ui">Preview as</span>.</td></tr>
+    <tr><td><strong>Business details</strong></td><td>Business Information, Tax Settings and the shop's phone on Settings › General. Branding and bank details on Settings › Invoice.</td></tr>
+    <tr><td><strong>Card (link)</strong></td><td>Stripe keys on the server and the webhook in Stripe, as above. Hidden at the till until both are set.</td></tr>
+    <tr><td><strong>Ask arcarna</strong></td><td>An Anthropic key on the server, then check the monthly limit under Settings › Integrations. Section 10.</td></tr>
+    <tr><td><strong>Label printers</strong></td><td>Pair and print a test label on each till that prints.</td></tr>
+    <tr><td><strong>Device names</strong></td><td>Set <span class="ui">This device</span> on every till, tablet and phone.</td></tr>
+    <tr><td><strong>WhatsApp</strong></td><td>Sync templates and get them approved in Meta's WhatsApp Manager.</td></tr>
+    <tr><td><strong>Email invoices</strong></td><td>The email service key on the server. Until then, <span class="ui">Email invoice to customer</span> is turned off and says why.</td></tr>
+    <tr><td><strong>Price guard</strong></td><td>Leave it off for the silent recording period, read Would have flagged, then turn it on.</td></tr>
+    <tr><td><strong>Staff targets</strong></td><td>Set them. The first 4 weeks are amber only.</td></tr>
+    <tr><td><strong>Privacy</strong></td><td>Fill in the customer privacy notice. Give staff their two notices.</td></tr>
+  </table>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 6. The Stock Centre</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="stock">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">06</div>
+    <div class="chapter-title">The Stock Centre</div>
+    <p class="chapter-lead">What you sell, how much of it is on the shelf, and what it costs to buy. Cashiers use the Stock Centre to check stock levels. Managers also keep the products, prices, minimum prices, suppliers and reorders right here.</p>
+  </div>
+
+  <p class="eyebrow">Who sees what</p>
+  <h2>One Centre, two views</h2>
+  <p>The Stock Centre looks different depending on your role. A cashier sees one read-only page. Managers see the pages where products are priced and stock is bought, and those pages carry cost prices, which cashiers never see.
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <table>
+    <tr><th>Page</th><th>What it is for</th><th>Who</th></tr>
+    <tr><td><span class="ui">Stock levels</span></td><td>How many of each product this location has. Read-only, no cost prices.</td><td><span class="role role-cashier">CASHIER</span></td></tr>
+    <tr><td><span class="ui">Products</span></td><td>The product list: names, barcodes, sale prices, minimum prices, cost prices and price history.</td><td><span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td><span class="ui">Stock Truths</span></td><td>Stock at each location, adjustments, reorder suggestions, goods receiving and transfers.</td><td><span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td><span class="ui">Purchase Drafts</span></td><td>Reorders being prepared for a supplier.</td><td><span class="role role-manager">MANAGER</span></td></tr>
+    <tr><td><span class="ui">Suppliers</span></td><td>Who you buy from, and whether their prices match the cost on your product records.</td><td><span class="role role-manager">MANAGER</span></td></tr>
+  </table>
+  <p>Managers do not see <span class="ui">Stock levels</span> in their menu, because Products and Stock Truths already show the same counts.</p>
+
+  <p class="eyebrow">Stock levels · for everyone</p>
+  <h2>Checking stock levels</h2>
+  <p><span class="ui">Stock levels</span> answers one question: <em>Have we got it on the shelf?</em> It lists every product with how many your location has. It is for checking only. You cannot change anything here, and it shows no cost prices, not even behind the scenes.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Stock Centre</span>, then <span class="ui">Stock levels</span>.</li>
+    <li>Type in <span class="ui">Search by name, code or barcode</span> to find a product. The list narrows as you type.</li>
+    <li>Read the badge and the number on the right of each product.</li>
+  </ol>
+  <table>
+    <tr><th>Badge</th><th>What it means</th></tr>
+    <tr><td><span class="ui">In stock</span></td><td>There is enough on the shelf.</td></tr>
+    <tr><td><span class="ui">Running low</span></td><td>Down to 30% or less of the level the shop normally keeps. Worth telling a manager.</td></tr>
+    <tr><td><span class="ui">Out of stock</span></td><td>None left at this location.</td></tr>
+  </table>
+
+  <figure>
+    <img src="../images/v12-06-stock-levels.png" alt="The Stock levels page for a cashier, with the search box and a list of products each showing a badge (In stock, Running low or Out of stock) and a count" />
+    <figcaption>Stock levels: counts for your location, with no cost prices.</figcaption>
+    <!-- SHOT: route=/stock-levels ; role=cashier ; viewport=desktop ; show=the page header (STOCK CENTRE eyebrow, "Stock levels", "Have we got it on the shelf?", "How many of each product this location has. Read-only: a manager adjusts stock in Stock Truths."), the "Search by name, code or barcode" box empty, and the list of around a dozen demo products each with name, code, a badge and the count, including at least one "Running low" and one "Out of stock" ; state=demo products with location stock set so the three badges all appear; Stock Centre tour marked seen -->
+  </figure>
+
+  <div class="callout">
+    <strong>If a count looks wrong</strong>
+    Tell your manager. They correct it in Stock Truths. Stock goes down by itself as you sell, so a count that is off usually means a delivery was not booked in or something was damaged.
+  </div>
+
+  <h3>Minimum prices and the till</h3>
+  <p>Each product has a <strong>minimum price</strong>: the lowest price it should normally be sold for. Until a manager sets one, it is simply the sale price. You never see cost prices, and the till never stops you selling. If you sell below the minimum, the sale goes through and is recorded quietly so it can be looked at later. If your shop has switched on the price guard, the order also shows an amber line with the lowest price and asks for a reason at payment. Section 3 explains both.</p>
+
+  <div class="ed-manager">
+
+    <p class="eyebrow">Products · for managers</p>
+    <h2>The Products page <span class="role role-manager">MANAGER</span></h2>
+    <p><span class="ui">Products</span> answers: <em>What do you sell, and is it priced right?</em> Across the top, four counts: <strong>Total Products</strong>, <strong>In Stock</strong>, <strong>Low Stock</strong> and <strong>Out of Stock</strong>. Below them is the search box, <span class="ui">Search products by name, ID, or barcode...</span>, and the product list.</p>
+    <table>
+      <tr><th>Column</th><th>What it shows</th></tr>
+      <tr><td><strong>Product ID</strong>, <strong>Name</strong>, <strong>Barcode</strong></td><td>How the product is found at the till and on labels.</td></tr>
+      <tr><td><strong>Price</strong></td><td>The sale price.</td></tr>
+      <tr><td><strong>Min</strong></td><td>The minimum price, or <span class="ui">Follows price</span> when none is set.</td></tr>
+      <tr><td><strong>Cost</strong></td><td>What one unit costs you to buy, or <span class="ui">No cost set</span>.</td></tr>
+      <tr><td><strong>Margin %</strong></td><td>The share of the sale price left after cost. A dash when the cost is not known.</td></tr>
+      <tr><td><strong>Stock</strong></td><td>How many you have at this location, then the <strong>Stock Limit</strong> after the slash.</td></tr>
+      <tr><td><strong>Website</strong></td><td><span class="ui">Online</span> or <span class="ui">Hidden</span> on your web shop.</td></tr>
+      <tr><td><strong>Status</strong></td><td>In Stock, Medium Stock, Low Stock or Out of Stock.</td></tr>
+      <tr><td><strong>Actions</strong></td><td>Edit the website listing (globe), print a product label (name, price and barcode, never cost), edit, and delete.</td></tr>
+    </table>
+    <p>The buttons at the top are <span class="ui">CSV template</span> and <span class="ui">Import CSV</span>, for adding many products from a spreadsheet, and <span class="ui">Add product</span>.</p>
+    <p class="ed-admin">Admins also see a <span class="ui">Would have flagged</span> button at the top of the page. It opens the list of the sales that went below the minimum price or below cost. Every such sale is recorded there quietly, and no sale is stopped (Section 9).</p>
+
+    <figure>
+      <img src="../images/v12-06-products.png" alt="The Products page for a manager, showing the four stock counts, the search box with the No cost set switch, and the product list with Price, Min, Cost, Margin % and Stock columns" />
+      <figcaption>Products as a manager sees it: sale price, minimum and cost side by side.</figcaption>
+      <!-- SHOT: route=/products ; role=manager ; viewport=desktop ; show=the page header (STOCK CENTRE eyebrow, "Products", "What do you sell, and is it priced right?") with the CSV template, Import CSV and Add product buttons; the four count cards (Total Products, In Stock, Low Stock, Out of Stock); the search box and the "No cost set" switch (off); and the Product Catalog table with columns Product ID, Name, Barcode, Price, Min, Cost, Margin %, Stock, Website, Status, Actions. Rows should include at least one product with a set minimum (e.g. £4.50), several showing "Follows price", and one showing "No cost set" with a dash under Margin % ; state=a dozen demo products with sale prices and costs, two or three with minimum prices, one with no cost; menu folded to icons; Stock Centre tour marked seen -->
+    </figure>
+
+    <h3>Adding or editing a product</h3>
+    <ol class="steps">
+      <li>Select <span class="ui">Add product</span>, or the pencil on a product's row.</li>
+      <li>Fill in <span class="ui">Name *</span> and <span class="ui">Sale Price *</span>. They are the only required fields. <span class="ui">Product ID</span> and <span class="ui">Barcode</span> help find it at the till.</li>
+      <li><span class="ui">Aliases (WhatsApp / order matching)</span> takes other names customers use, separated by commas, for example "coke, large coke".</li>
+      <li>Enter <span class="ui">Cost Price</span> if you know it (see <em>When you do not know the cost</em> below), and the <span class="ui">Minimum price</span> if you want one (see the next part).</li>
+      <li><span class="ui">Stock</span> sets the count at this location only. <span class="ui">Stock Limit</span> is the level you normally keep, which decides when the product counts as running low.</li>
+      <li>When editing, the <span class="ui">Supplier</span> box lists who you buy it from, with <span class="ui">Manage suppliers</span> to change that. With no supplier, a reorder cannot be raised for it.</li>
+      <li>Select <span class="ui">Update Product</span> (or <span class="ui">Create Product</span>, when adding).</li>
+    </ol>
+
+    <p class="eyebrow">Products · minimum price</p>
+    <h2>Setting a minimum price</h2>
+    <p>The minimum price is the lowest price a product should normally go for. It exists so that underpriced sales can be spotted, not to stop them: the till never refuses a sale below it. Cashiers see it only as "lowest £…" when the price guard is on.</p>
+    <p>A new product has no minimum of its own. It <strong>follows the sale price</strong>, so if you change the sale price, the minimum moves with it and never goes out of date. Under the box you see <span class="ui">Minimum price: follows sale price (£5.99)</span>.</p>
+    <table>
+      <tr><th>You want to…</th><th>Do this</th></tr>
+      <tr><td>Allow a little room below the sale price</td>
+          <td>Type a figure in <span class="ui">Minimum price</span>, for example £4.50. The line underneath changes to <span class="ui">Minimum price: £4.50.</span></td></tr>
+      <tr><td>Go back to following the sale price</td>
+          <td>Select <span class="ui">Reset to follow the sale price</span>, or clear the box.</td></tr>
+      <tr><td>Allow any price</td>
+          <td>Type 0. A £0 minimum is a real minimum and means any price is acceptable.</td></tr>
+    </table>
+    <ul>
+      <li><strong>Above the sale price is refused.</strong> arcarna says so in red and will not save it. Lower the minimum or clear it.</li>
+      <li><strong>Below the cost gets a warning.</strong> <em>This is below the known cost (£5.00). A sale at the minimum would lose money.</em> You can still save it.</li>
+      <li><strong>Lowering the sale price below the minimum</strong> brings up <span class="ui">Lower the minimum too?</span>, with <span class="ui">Lower it to £…</span>, <span class="ui">Follow the sale price</span> and <span class="ui">Keep editing</span>.</li>
+    </ul>
+
+    <figure>
+      <img src="../images/v12-06-edit-product-min.png" alt="The Edit product window with the Details tab open, showing the Supplier box, Cost Price, Sale Price, the Minimum price box with its line underneath, Stock and Stock Limit" />
+      <figcaption>Editing a product: cost, sale price and minimum price together, with price history one tab away.</figcaption>
+      <!-- SHOT: route=/products ; role=manager ; viewport=desktop ; show=the "Edit product" window open on a demo product, Details tab selected (Details and Price history tabs visible at the top), showing Product ID, Name, Barcode, Aliases, the Supplier box listing one supplier with the "Preferred" badge and "Manage suppliers", Cost Price £5.00, Sale Price £5.99, the "Minimum price" box holding 4.50 with "Minimum price: £4.50. Reset to follow the sale price" underneath, Stock and Stock Limit, and the Cancel and Update Product buttons ; state=a demo product (e.g. "Oat milk 1L") with cost £5.00, sale price £5.99, minimum £4.50 and one supplier mapped as preferred; opened with the pencil on its row -->
+    </figure>
+
+    <h3>Setting the minimum on many products at once</h3>
+    <ol class="steps">
+      <li>Tick the products in the list. A bar appears at the bottom of the screen.</li>
+      <li>Select <span class="ui">Set minimum price</span> in the bar.</li>
+      <li>Choose a <span class="ui">Rule</span>: <span class="ui">Follow the sale price</span>, <span class="ui">Sale price − x%</span>, <span class="ui">Cost + x%</span> or <span class="ui">A fixed £</span>, and type the figure.</li>
+      <li>Select <span class="ui">Preview</span>. Nothing has changed yet. The table shows each product's <strong>Sale price</strong>, <strong>Min now</strong> and <strong>New min</strong>.</li>
+      <li>Rows marked <span class="ui">Skipped: No cost set</span> or <span class="ui">Skipped: Would be above the sale price</span> will be left alone.</li>
+      <li>Select <span class="ui">Apply to … products</span>.</li>
+    </ol>
+    <div class="callout warn">
+      <strong>Cashiers can see the minimum</strong>
+      With the price guard on, the till shows the minimum to cashiers as the lowest price. <span class="ui">Cost + x%</span> needs at least 1% over cost, so the minimum never gives away your cost price. Every bulk change goes into each product's price history, and when a manager makes one, the owner is told with a Signal.
+    </div>
+
+    <p class="eyebrow">Products · cost</p>
+    <h2>When you do not know the cost</h2>
+    <p>The cost price is what one unit costs you to buy. arcarna uses it for margins, profit and the supplier price check. If you do not know it yet, <strong>leave <span class="ui">Cost Price</span> blank</strong>. Do not type 0 to fill the gap.</p>
+    <table>
+      <tr><th>Cost Price</th><th>How arcarna treats it</th></tr>
+      <tr><td><strong>A figure, such as £5.00</strong></td>
+          <td>A known cost. Used for margin, profit and the supplier check.</td></tr>
+      <tr><td><strong>Blank</strong></td>
+          <td>Not known. Shows as <span class="ui">No cost set</span>, with a dash for margin, and the product is left out of margin figures rather than guessed.</td></tr>
+      <tr><td><strong>£0</strong></td>
+          <td>Also treated as not known, and also shown as <span class="ui">No cost set</span>. arcarna never counts a product as costing nothing, because that would make its margin look like 100%.</td></tr>
+    </table>
+    <p>To find the products with no cost, turn on the <span class="ui">No cost set</span> switch beside the search box. The number of products it finds appears next to it. Filling these in makes every margin and profit figure more complete.</p>
+
+    <p class="eyebrow">Products · price history</p>
+    <h2>Price history</h2>
+    <p>Every change to a product's sale price, minimum price or cost is kept. To see them, open the product with the pencil and choose the <span class="ui">Price history</span> tab. The newest change is at the top.</p>
+    <table>
+      <tr><th>Each entry shows</th><th>Example</th></tr>
+      <tr><td>What changed, and when</td><td><strong>Minimum price</strong> · 12 Sept 2026, 10:14</td></tr>
+      <tr><td>The old and new figures</td><td>follows sale price → £4.50. A blank cost reads "no cost set".</td></tr>
+      <tr><td>Who, and how</td><td>The person's name, then <span class="ui">Product form</span>, <span class="ui">Import</span>, <span class="ui">Product created</span> or <span class="ui">Bulk "Set minimum price"</span>.</td></tr>
+    </table>
+    <p>A product with no changes yet reads <span class="ui">No price changes recorded yet.</span></p>
+
+    <figure>
+      <img src="../images/v12-06-price-history.png" alt="The Price history tab on a product, listing changes to the sale price, minimum price and cost, each with the time, old and new figures, the person and how it was changed" />
+      <figcaption>Price history: every change to the sale price, minimum and cost, with who made it.</figcaption>
+      <!-- SHOT: route=/products ; role=manager ; viewport=desktop ; show=the "Edit product" window with the "Price history" tab selected, listing 3–4 entries newest first, for example "Minimum price  follows sale price → £4.50  <manager name> · Bulk "Set minimum price"", "Sale price  £5.49 → £5.99  <manager name> · Product form", "Cost  no cost set → £5.00  <manager name> · Product form" and "Product created" ; state=the same demo product as the previous shot, edited through the app beforehand so its price history holds these changes -->
+    </figure>
+
+    <p class="eyebrow">Stock Truths</p>
+    <h2>Adjusting stock <span class="role role-manager">MANAGER</span></h2>
+    <p><span class="ui">Stock Truths</span> answers <em>What's in stock, and what's running out?</em> Its tabs are <span class="ui">Stock levels</span>, <span class="ui">Smart Stock</span>, <span class="ui">Replenishment</span>, <span class="ui">Receiving</span> and <span class="ui">Transfers</span>.</p>
+    <ol class="steps">
+      <li>On the <span class="ui">Stock levels</span> tab, choose <span class="ui">My location</span> (you cannot adjust while viewing <span class="ui">All locations (total)</span>).</li>
+      <li>On the product's row, select <span class="ui">Add</span> to add to the count (for example a delivery you counted in), or <span class="ui">Set</span> to replace it after a stock count.</li>
+      <li>Type the amount and select <span class="ui">Confirm</span>.</li>
+    </ol>
+    <p><span class="ui">Replenishment</span> suggests what to reorder from how fast each product sells. <span class="ui">Why?</span> on a suggestion explains it. <span class="ui">Purchase draft</span> starts a reorder from a suggestion, and <span class="ui">Transfer draft</span> moves stock from another location. A product with no supplier shows <span class="ui">No supplier mapped — add one</span> instead.</p>
+
+    <p class="eyebrow">Buying stock</p>
+    <h2>Purchase Drafts</h2>
+    <p><span class="ui">Purchase Drafts</span> answers <em>What do you need to reorder?</em> A purchase draft is a reorder you are preparing for one supplier. arcarna never orders or pays for anything by itself: you send the purchase order to the supplier yourself, and stock only goes up when the goods are received.</p>
+    <p>Drafts are created from <span class="ui">Replenishment</span> in Stock Truths, grouped by supplier. Select <span class="ui">View</span> on a draft to open it. The status is shown at the top, with a line explaining what it means.</p>
+    <table>
+      <tr><th>Status</th><th>What it means and what to do</th></tr>
+      <tr><td><span class="ui">draft</span></td><td>Internal only. Check the quantities, then select <span class="ui">Mark reviewed</span>.</td></tr>
+      <tr><td><span class="ui">reviewed</span></td><td>Ready for approval. <span class="ui">Mark approved</span>, or <span class="ui">Back to draft</span> to change the quantities.</td></tr>
+      <tr><td><span class="ui">approved</span></td><td>Select <span class="ui">Export PO</span> for a purchase order to send to the supplier. When the goods arrive, select <span class="ui">Receive goods</span>.</td></tr>
+      <tr><td><span class="ui">partially_received</span></td><td>Some lines have arrived. Receive the rest when they come.</td></tr>
+      <tr><td><span class="ui">fully_received</span></td><td>Everything ordered has arrived. Read-only.</td></tr>
+      <tr><td><span class="ui">cancelled</span></td><td>Nothing can be received against it. <span class="ui">Mark cancelled</span> is available until the goods are all in.</td></tr>
+    </table>
+    <ol class="steps">
+      <li>When the delivery arrives, open the draft and select <span class="ui">Receive goods</span>.</li>
+      <li>Enter <span class="ui">Qty received</span> and any <span class="ui">Damaged</span> for each line, and the <span class="ui">Supplier reference (optional)</span> from their delivery note.</li>
+      <li>Select <span class="ui">Create pending receipt</span>.</li>
+      <li>Complete the receipt on the <span class="ui">Receiving tab</span> in Stock Truths. Only then does the stock go up.</li>
+    </ol>
+    <p><span class="ui">CSV</span> downloads the draft's lines, and <span class="ui">Delete draft</span> removes a draft you no longer need.</p>
+
+    <p class="eyebrow">Buying stock · suppliers</p>
+    <h2>Suppliers</h2>
+    <p><span class="ui">Suppliers</span> answers <em>Who do you buy from, and do their prices match your product cards?</em> It has two parts.</p>
+    <h3>The supplier list</h3>
+    <p>Each supplier's <strong>Name</strong>, <strong>Contact</strong>, <strong>Lead time</strong> (days from order to delivery) and <strong>Min order</strong>. Select <span class="ui">Add supplier</span>, fill in <span class="ui">Name *</span>, <span class="ui">Lead time (days)</span> and <span class="ui">Min order value (£)</span>, then <span class="ui">Save</span>. Deleting a supplier deactivates it, so its history stays.</p>
+
+    <h3>Supplier price and cost price</h3>
+    <p>These are two different figures, and the page puts them side by side:</p>
+    <table>
+      <tr><th>Figure</th><th>What it is</th></tr>
+      <tr><td><strong>Supplier price</strong></td><td>What this supplier charges you for the product. It is what goes on purchase orders.</td></tr>
+      <tr><td><strong>Card cost</strong></td><td>The <span class="ui">Cost Price</span> on the product in Products. It is what every margin and profit figure is worked out from.</td></tr>
+    </table>
+    <p>The <strong>Check</strong> column compares them. It reads <span class="ui">Matches</span>, or is flagged when they differ by more than 2% (for example <span class="ui">+4.5% vs card</span>), or when one is missing (<span class="ui">No supplier price</span>, <span class="ui">No cost on card</span>). A flag means one of the two is out of date. Find out which is right and update the other: select the product's name to open it in Products, or edit the supplier price here.</p>
+    <ol class="steps">
+      <li>To add or change a supplier's price, select <span class="ui">Add supplier price</span>.</li>
+      <li>Choose the <span class="ui">Product</span> and <span class="ui">Supplier</span>, and enter the <span class="ui">Supplier price (£)</span> and, if you have it, the <span class="ui">Supplier's code</span>.</li>
+      <li>Switch on <span class="ui">Preferred supplier</span> if this is who you normally buy it from. Reorders use the preferred supplier.</li>
+      <li>Select <span class="ui">Save</span>.</li>
+    </ol>
+    <p>Turn on <span class="ui">Only flagged</span> to see just the prices that need a look. The number beside it says how many there are.</p>
+
+    <figure>
+      <img src="../images/v12-06-suppliers.png" alt="The Suppliers page with the supplier list at the top and the Supplier prices table below, comparing each supplier price with the card cost, with one row flagged" />
+      <figcaption>Suppliers: each supplier's price beside the cost on the product, with a flag where they disagree.</figcaption>
+      <!-- SHOT: route=/suppliers ; role=manager ; viewport=desktop ; show=the page header (STOCK CENTRE eyebrow, "Suppliers", "Who do you buy from, and do their prices match your product cards?"), the Suppliers card with 2–3 fictional suppliers (Name, Contact, Lead time, Min order) and "Add supplier", then the Supplier prices card with "Add supplier price", the supplier filter, the "Only flagged (1)" switch off, and the table (Product, Supplier, Supplier price, Card cost, Check, Pack, Preferred) with most rows reading "Matches" and one flagged row showing e.g. "+4.5% vs card" ; state=fictional suppliers (e.g. "Northgate Wholesale", "Brightside Foods") with example.invalid emails; supplier prices mapped for most demo products, one differing from its card cost by more than 2% ; scroll so both cards are visible -->
+    </figure>
+
+  </div>
+
+</main>
+</body>
+</html>

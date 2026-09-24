@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 3. The till</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="the-till">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">03</div>
+    <div class="chapter-title">The till</div>
+    <p class="chapter-lead">How to build an order, attach a customer, apply discounts and points, and take payment in every way arcarna allows, including split, on credit and Card (link).</p>
+  </div>
+
+  <p class="eyebrow">What this screen is for</p>
+  <h2>The till lives on the Operations board</h2>
+  <p>The till is where you ring up what a customer is buying and record how they paid.
+     In arcarna 1.2 it is not a page of its own: it is the <span class="ui">New order</span>
+     pane of the <strong>Operations board</strong>, so you can take a sale without losing sight
+     of the orders already waiting. Everyone who serves uses it:
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Operations Centre</span>, then
+        <span class="ui">Operations board</span>. Old links to the till or to
+        <span class="ui">Create Order</span> open the same place.</li>
+    <li>On a computer or tablet, the board fills the left and the order form sits on the right.
+        The arrow button at the top of the form hides it when you only want the board, and
+        brings it back.</li>
+    <li>On a phone, the screen has two tabs: <span class="ui">Board</span> and
+        <span class="ui">New order</span>. While you are on <span class="ui">New order</span>,
+        a small number on the <span class="ui">Board</span> tab counts orders that have arrived
+        since you started, so you know something is waiting without leaving the sale.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-03-till-desktop.png" alt="The Operations board with the new order form on the right, showing order lines, top sellers, the customer picker and the order summary" />
+    <figcaption>The till on a computer: the board on the left, the new order form on the right.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the whole Operations board with the New order pane open on the right: "Step 1 of 2 · Build the order", the "Selling at" line, the product search box, the Top sellers chips, 2–3 order lines with quantity and price boxes, then the Walk-in Customer picker and the Order Summary with Total, and the "Continue to payment" button ; state=a shift is open for the cashier (one earlier sale today, so "My shift so far" shows); 2–3 products added to the order; customer left as Walk-in; note the cart panel still carries the app's old "Step 2 of 4 · Review cart" label, so frame or crop the shot to keep it out if possible -->
+  </figure>
+
+  <h3>What you see above the order</h3>
+  <table>
+    <tr><th>Line</th><th>What it tells you</th></tr>
+    <tr><td><strong>Step 1 of 2 · Build the order</strong></td>
+        <td>Where you are. Step 2 is the payment. The <span class="ui">Problem?</span> button sits beside it if something on the till goes wrong (see Section 1).</td></tr>
+    <tr><td><strong>Selling at …</strong></td>
+        <td>The location this sale will be recorded against, and whose stock it comes from. If it says <em>No selling location is set up</em>, stop and ask an admin before taking payment.</td></tr>
+    <tr><td><strong>My shift so far</strong></td>
+        <td>How long you have been on, what you have sold and the commission so far, with a link to <span class="ui">My performance</span>. It appears once your shift has its first sale, and only in shops that track cashier commission (Section 2).</td></tr>
+  </table>
+  <div class="callout">
+    <strong>No button to open the till</strong>
+    You do not need to open a shift before serving. Your first sale of the trading day opens
+    your shift on its own, with the float carried over from the last count. Counting up and
+    closing a shift are covered in Section 2.
+  </div>
+
+  <p class="eyebrow">Step 1 · Build the order</p>
+  <h2>Adding products</h2>
+  <p>An order is a list of lines: one line per product, with a quantity and a price. You add
+     lines from the search box, the top sellers or a barcode scanner.</p>
+  <ol class="steps">
+    <li>Type into the box that reads <span class="ui">Add a product: code, name or barcode…</span>.
+        Matches appear underneath with their price and how many are in stock. Pick one, or use
+        the arrow keys and press Enter.</li>
+    <li>Or tap one of the <span class="ui">Top sellers</span> chips under the search box.</li>
+    <li>Or scan the barcode. A short beep means it was added. A different tone and an
+        <em>Unknown barcode</em> message mean nothing matched: add the item by name or code instead.</li>
+    <li>Adding the same product again raises its quantity. You can also use the
+        <span class="ui">–</span> and <span class="ui">+</span> buttons on the line, or type a
+        number into the quantity box.</li>
+    <li>To charge a different price on this sale, type over the figure in the line's price box.
+        The line total updates when you leave the box.</li>
+    <li>To take a line off, use the bin button on that line. Reducing its quantity to zero
+        removes it too.</li>
+  </ol>
+  <div class="callout warn">
+    <strong>More than is in stock</strong>
+    If a line asks for more than the location holds, it says
+    <em>Only 3 in stock — this line will be held for review</em>. You can still take the sale.
+    arcarna records it, puts the order <em>on hold</em> and tells you so after payment.
+  </div>
+
+  <p class="eyebrow">Step 1 · Who is buying</p>
+  <h2>Attaching a customer</h2>
+  <p>Every sale is either to a walk-in or to a named customer. Walk-in is the default and needs
+     nothing. Attach a named customer when they collect loyalty points, want an email receipt,
+     are buying on credit, or want a delivery to their saved address.</p>
+  <ol class="steps">
+    <li>Under the order lines, open the picker that reads <span class="ui">Walk-in Customer</span>.</li>
+    <li>Type part of their name into <span class="ui">Search customers...</span> and pick them from
+        the list. Each row shows their name, their category (Bronze, Silver, Gold or Platinum, set by a manager), points and a masked phone number.</li>
+    <li>To find someone by phone, type their <strong>whole</strong> number. Only an exact match is
+        found; part of a number finds nobody. If no one has it, the list says
+        <em>Nobody on the system has that number.</em></li>
+    <li>Not on the system yet? Choose <span class="ui">Add a new customer</span>. Only the
+        <span class="ui">Name</span> is needed; <span class="ui">Phone (optional)</span> and
+        <span class="ui">Email (optional)</span> can be filled in later. Select
+        <span class="ui">Add customer</span> and they are attached to the sale.</li>
+    <li>If arcarna thinks they already exist, it asks, for example
+        <em>Use Priya S. (••4821)</em>. Choose that, or <span class="ui">No, add new</span> if it
+        really is someone else.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-03-customer-picker.png" alt="The customer picker open, listing customers with their category, points and masked phone numbers" />
+    <figcaption>The customer picker. Phone numbers are masked, so you can tell two customers apart without seeing their details.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the New order pane with the Walk-in Customer picker open: the "Search customers..." box, the "Walk-in Customer" and "Add a new customer" rows, then 3–4 fictional customers each showing category, points and a masked phone such as "Gold • 240 pts • ••0123" ; state=one product already on the order; demo customers with phones in the 07700 900xxx range exist -->
+  </figure>
+
+  <div class="callout">
+    <strong>Customer details stay private</strong>
+    At the till you see a customer's name, tier and points. Their phone and email are masked,
+    for example ••4821 and p•••@example.invalid. You can still type in a new customer's details;
+    you just cannot read them back. Please never write a customer's number or email anywhere else.
+  </div>
+  <div class="callout warn ed-manager">
+    <strong>Manager — masked for you too</strong>
+    Phone and email are masked for managers as well. Only admins see contact details. When you
+    genuinely need them, request them from the customer's record (Section 7).
+  </div>
+  <p>If you are offline, a new customer cannot be added. Ring the sale through as a walk-in and
+     add them once the connection is back.</p>
+
+  <p class="eyebrow">Step 1 · Money off</p>
+  <h2>Discounts, promotions and points</h2>
+  <p>Discounts need a named customer. Once one is attached, three kinds of money off can apply,
+     and each shows as its own line in the order summary.</p>
+  <table>
+    <tr><th>Kind</th><th>How it works at the till</th></tr>
+    <tr><td><strong>Loyalty tier</strong></td>
+        <td>A card under the customer shows their tier (for example <em>Gold Member</em>), their points and the tier's discount. The discount applies by itself. A bar shows how many points they need for the next tier.</td></tr>
+    <tr><td><strong>Promo code</strong></td>
+        <td>Type the code into <span class="ui">Enter promo code...</span> and select <span class="ui">Apply</span>. A valid code shows its name with a <span class="ui">Remove</span> button. If it cannot apply to this order, it says <em>Not applied</em> and why.</td></tr>
+    <tr><td><strong>Points</strong></td>
+        <td>Select <span class="ui">Redeem points</span>, type how many to use and select <span class="ui">Apply discount</span>. The button stays greyed out until the customer has the shop's minimum (it says how many are needed). The points' value comes off what the customer pays: £5 of points is £5 off. The shop sets what a point is worth; unless it has changed it, 100 points are worth £1, so 500 points take £5 off.</td></tr>
+  </table>
+
+  <h3>Reading the order summary</h3>
+  <table>
+    <tr><th>Line</th><th>What it means</th></tr>
+    <tr><td><strong>Subtotal</strong></td><td>The lines added up, before money off.</td></tr>
+    <tr><td><strong>Loyalty (10%)</strong></td><td>The tier discount, when there is one.</td></tr>
+    <tr><td><strong>Promo: …</strong></td><td>The promotion's name and what it took off.</td></tr>
+    <tr><td><strong>VAT (20%)</strong></td><td>Shown only when the shop charges VAT. A new shop starts at 0%, so this line may not appear at all.</td></tr>
+    <tr><td><strong>Points redeemed (500)</strong></td><td>Points spent on this sale. They come off after VAT.</td></tr>
+    <tr><td><strong>Total</strong></td><td>In bold. The amount the customer pays.</td></tr>
+    <tr><td><strong>Earn … loyalty points</strong></td><td>For a named customer, the points this sale will add.</td></tr>
+  </table>
+  <p>What the summary shows is exactly what arcarna records: the till and the server work out
+     tier discounts, promotions and points the same way. When the order is right, select
+     <span class="ui">Continue to payment</span>.</p>
+
+  <p class="eyebrow">Step 2 · Take payment</p>
+  <h2>The payment step</h2>
+  <p>The lines slide away and the payment step takes their place. Its heading repeats the total,
+     the number of items and the customer, so you can check them out loud. The arrow at the top
+     left takes you back to the order without losing anything.</p>
+
+  <figure>
+    <img src="../images/v12-03-pay-split.png" alt="The payment step with Split switched on: a cash row and an On credit row, and the words Adds up" />
+    <figcaption>The payment step with a split payment: £30.00 in cash and the rest on credit.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the payment step: "Step 2 of 2 · …" heading (the words after the dot follow the way of paying) with total, items and customer name, "How are they paying?" with the Split switch on, two rows (Cash £30.00, On credit for the rest) and "Adds up", then the Fulfilment, Order date, "How did this order come in?", "When is this due?" and "Looked after by" sections, and the bottom bar with the total and the confirm button ; state=a named fictional customer (e.g. Priya Shah) attached; 3 items; Continue to payment pressed; Split on with amounts that add up -->
+  </figure>
+
+  <h3>What each part of the payment step is for</h3>
+  <table>
+    <tr><th>Part</th><th>What to do</th></tr>
+    <tr><td><strong>How are they paying?</strong></td>
+        <td>Tap one way of paying (see the table below), or switch on <span class="ui">Split</span> to take it in more than one way.</td></tr>
+    <tr><td><strong>Fulfilment</strong></td>
+        <td><span class="ui">Collection</span> (the default) or <span class="ui">Delivery</span>. A delivery needs an <span class="ui">Address</span> and <span class="ui">Postcode</span> on the order before payment, with optional <span class="ui">Notes for the driver</span>. With a customer attached you can <span class="ui">Use saved address</span>, or tick <span class="ui">Save as their address</span>. Deliveries are covered in Section 5.</td></tr>
+    <tr><td><strong>Order date</strong></td>
+        <td>Today, unless you are keying in a missed sale (up to 7 days back, marked as entered late) or taking a pre-order (up to 14 days ahead). A pre-order needs a due time.</td></tr>
+    <tr><td><strong>How did this order come in?</strong></td>
+        <td><span class="ui">Walk-in</span>, <span class="ui">Phone</span> or <span class="ui">WhatsApp</span>.</td></tr>
+    <tr><td><strong>When is this due?</strong></td>
+        <td>The time you promised: tap <span class="ui">+5m</span> to <span class="ui">+60m</span>, or type a time. <span class="ui">Clear</span> removes it. The board counts down to it.</td></tr>
+    <tr><td><strong>Looked after by</strong></td>
+        <td>Who deals with the order on the board. Leave it on <span class="ui">Auto-assign (recommended)</span> unless you are handing it to someone in particular.</td></tr>
+    <tr><td><strong>Order expenses (optional)</strong></td>
+        <td>Costs tied to this sale, such as shipping or packaging, so the profit figure stays honest. Pick a category, add a description and an amount, then <span class="ui">Add</span>.</td></tr>
+    <tr><td><strong>Email receipt</strong></td>
+        <td>Ticked for you when the customer has an email on file and has not opted out. Greyed out for a walk-in or anyone without an email.</td></tr>
+  </table>
+  <p>The button at the bottom changes with the way of paying, so it always says what will happen:
+     <span class="ui">Take payment</span> for money taken now, <span class="ui">Place order</span> for
+     a sale on credit, and <span class="ui">Log personal use</span> for personal use. Select it to
+     finish. The form clears and is ready for the next customer.</p>
+
+  <h3>The ways of paying</h3>
+  <table>
+    <tr><th>Button</th><th>Use it when</th></tr>
+    <tr><td><span class="ui">Cash</span></td><td>Notes and coins into the drawer.</td></tr>
+    <tr><td><span class="ui">Card</span></td><td>The customer pays on the shop's card machine.</td></tr>
+    <tr><td><span class="ui">Card (link)</span></td><td>The customer pays by card on their own phone, from a QR code or link. Only shown once the owner has set it up. See below.</td></tr>
+    <tr><td><span class="ui">Transfer</span></td><td>A bank transfer.</td></tr>
+    <tr><td><span class="ui">On credit</span></td><td>Tick: the customer takes the goods now and pays later. Needs a named customer.</td></tr>
+    <tr><td><span class="ui">Gift card</span></td><td>Paid, in full or in part, from a gift card.</td></tr>
+    <tr><td><span class="ui">Personal use</span></td><td>Not a sale: stock taken for the shop's own use. See below.</td></tr>
+  </table>
+
+  <p class="eyebrow">Payment · more than one way</p>
+  <h2>Split payments</h2>
+  <p>Use a split when a customer pays part one way and part another, for example £30.00 in cash
+     and the rest on card. Each row is one payment, and together they must equal the total.</p>
+  <ol class="steps">
+    <li>Switch on <span class="ui">Split</span> beside <em>How are they paying?</em>. Two rows
+        appear. The first is <span class="ui">Cash</span>; the second starts empty on purpose.</li>
+    <li>For each row, choose how it was paid (<span class="ui">Cash</span>, <span class="ui">Card</span>,
+        <span class="ui">Card (link)</span> when set up, <span class="ui">Transfer</span> or
+        <span class="ui">On credit</span>) and type the amount.</li>
+    <li>Need a third part? Select <span class="ui">Add payment</span>. A row can be taken away
+        with <span class="ui">Remove</span> once there are more than two.</li>
+    <li>Watch the figure under the rows: <em>£12.50 left to take</em>, <em>£2.00 over</em>, or
+        <em>Adds up</em>. Only when it adds up will the sale go through.</li>
+  </ol>
+  <div class="callout warn">
+    <strong>Always choose the method on every row</strong>
+    A row with an amount but no method stops the sale with <em>Say how each part was paid</em>.
+    This protects the shop: a credit part recorded as card would never reach the Credit List,
+    and nobody could chase it. If the rows do not add up you will see
+    <em>The split does not add up</em> with both figures.
+  </div>
+
+  <p class="eyebrow">Payment · tick</p>
+  <h2>On credit (tick)</h2>
+  <p>On credit means the customer takes the goods now and settles later. No money is taken, so
+     the button reads <span class="ui">Place order</span>, not <span class="ui">Take payment</span>.</p>
+  <ul>
+    <li>A sale on credit, or a split with an <span class="ui">On credit</span> row, needs a named
+        customer. Without one you will see <em>Select a customer</em>.</li>
+    <li>What they owe is added to their tab. Cashiers do not see the Credit List; managers
+        take repayments there<span class="ed-manager"> (Section 8)</span>.</li>
+  </ul>
+
+  <p class="eyebrow">Payment · on the customer's phone</p>
+  <h2>Card (link)</h2>
+  <p>Card (link) lets a customer pay by card on their own phone: at the counter by scanning a
+     QR code, or later from a link, which suits phone and WhatsApp orders. It only appears once
+     the owner has connected Stripe. It can be the whole payment or one row of a split.</p>
+  <ol class="steps">
+    <li>Choose <span class="ui">Card (link)</span> and select <span class="ui">Take payment</span>.
+        arcarna records the sale first, then shows a window headed <em>Card (link) · £24.50</em>
+        with a large QR code for exactly the amount due.</li>
+    <li>The customer scans the QR code with their phone camera and pays on their phone. Under the
+        code you will see <em>Waiting for payment</em> and how long the link has left.</li>
+    <li>Not at the counter? Copy the link with the copy button, or select
+        <span class="ui">Send by WhatsApp</span> when WhatsApp is set up and a customer is on the
+        sale. It is sent to the number on file; you never see it.</li>
+    <li>When Stripe confirms, the window says <em>Paid £24.50</em> and the sale marks itself paid.
+        Select <span class="ui">Done</span>.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-03-card-link.png" alt="The Card (link) window showing a QR code, Waiting for payment with minutes left, the payment link with a copy button, and Cancel link" />
+    <figcaption>Card (link): the customer scans the code and pays on their own phone.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the "Card (link) · £…" dialog in its waiting state: the QR code, "Waiting for payment · 30 min left", the read-only link box with the copy button, and "Cancel link" (and "Send by WhatsApp" if WhatsApp is configured) ; state=Stripe test keys set so Card (link) is offered at the till; a walk-in sale taken with Card (link) and the link just created; if Stripe cannot be configured for capture, skip this shot and drop the figure -->
+  </figure>
+
+  <table>
+    <tr><th>If…</th><th>Then</th></tr>
+    <tr><td>The customer cannot pay by link after all</td>
+        <td>Select <span class="ui">Cancel link</span>. The window asks how they will pay instead: <span class="ui">Cash</span>, <span class="ui">Card</span> or <span class="ui">Transfer</span>, or <span class="ui">New card link</span> to try again.</td></tr>
+    <tr><td>The link runs out</td>
+        <td>The same choice appears. A link at the counter lasts 30 minutes; for a phone or WhatsApp order it lasts 24 hours.</td></tr>
+    <tr><td>You close the window before they pay</td>
+        <td>The sale stays recorded and waits. Its card on the board shows <span class="ui">Awaiting card payment</span>; tap that to bring the QR code, the link and the other choices back.</td></tr>
+    <tr><td>You are offline</td>
+        <td>Card (link) needs a connection. Choose another way to pay.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Refunds for Card (link) payments</strong>
+    Card (link) takings count as card, with their own line on the shift's Z report. Money paid
+    this way is refunded in Stripe, not in arcarna.
+  </div>
+  <div class="callout warn ed-admin">
+    <strong>Admin — switching Card (link) on</strong>
+    Card (link) stays hidden at the till until Stripe is connected. The set-up is in
+    <span class="ui">Settings › Payment › Card (link) with Stripe</span> (Section 11).
+  </div>
+
+  <p class="eyebrow">Payment · the rest</p>
+  <h2>Gift cards and personal use</h2>
+  <h3>Gift card</h3>
+  <ol class="steps">
+    <li>Choose <span class="ui">Gift card</span>, type the code into
+        <span class="ui">Enter 16-character code</span> and select <span class="ui">Check</span>.</li>
+    <li>The balance appears. Enter the <span class="ui">Amount to apply</span>.</li>
+    <li>If the card does not cover the total, the <em>Remaining due</em> shows. Choose how the rest
+        is paid: <span class="ui">Cash</span>, <span class="ui">Card</span> or <span class="ui">Transfer</span>.</li>
+  </ol>
+  <h3>Personal use</h3>
+  <p><span class="ui">Personal use</span> is for stock the shop uses itself, such as a staff lunch
+     or damaged stock given to staff. It is not a sale.</p>
+  <ol class="steps">
+    <li>Choose <span class="ui">Personal use</span>.</li>
+    <li>Say what it is for in <span class="ui">What is this for?</span>. A reason is required.</li>
+    <li>Select <span class="ui">Log personal use</span>. The stock comes off, its cost goes on
+        today's expenses, and a manager is told.</li>
+  </ol>
+
+  <p class="eyebrow">Prices · below the lowest price</p>
+  <h2>Selling below an item's lowest price</h2>
+  <p>Each product has a lowest price, its <em>minimum</em>. Until a manager sets one, it is the
+     sale price. You are never stopped from selling below it: the customer in front of you always
+     gets served. What you see depends on a switch an admin controls, the <strong>price guard</strong>.</p>
+  <table>
+    <tr><th>Price guard</th><th>What happens at the till</th></tr>
+    <tr><td><strong>Off</strong> (how every shop starts)</td>
+        <td>Nothing is shown. The sale goes through as normal, and arcarna quietly records that it was below the lowest price.</td></tr>
+    <tr><td><strong>On</strong></td>
+        <td>One amber line appears under the order line, and at payment you pick a reason. The sale still goes through.</td></tr>
+  </table>
+
+  <h3>When the price guard is on</h3>
+  <ol class="steps">
+    <li>After you type a price and leave the box, a price below the minimum shows one amber line:
+        <em>Below the lowest price for this item (£4.50). You can still sell at this price; a manager will see it.</em></li>
+    <li>If you typed a price far above the usual one, arcarna asks <em>Did you mean £4.99?</em>
+        Tap the figure to use it. This catches a slipped decimal point.</li>
+    <li>At payment, a panel at the top lists each line below its lowest price and how much under
+        it is, then asks <em>Why this price?</em> Pick one: <span class="ui">Trade customer</span>,
+        <span class="ui">Price match</span>, <span class="ui">Damaged or short-dated</span>,
+        <span class="ui">Multi-buy or bundle</span>, <span class="ui">Manager agreed</span> or
+        <span class="ui">Other</span>.</li>
+    <li>For <span class="ui">Manager agreed</span>, choose which manager. They are asked to confirm,
+        but the sale goes through either way. For <span class="ui">Other</span>, say what the reason is.</li>
+    <li>Select <span class="ui">Confirm and take payment</span> (or <span class="ui">Confirm and place order</span> for a sale on credit).</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-03-price-guard.png" alt="The payment step with an amber panel: 1 line is below the lowest price, the line's price and lowest price, and the reason chips" />
+    <figcaption>With the price guard on: one reason for the sale, then confirm. Nothing is blocked.</figcaption>
+    <!-- SHOT: route=/operations?pane=order ; role=cashier ; viewport=desktop ; show=the payment step with the amber "1 line is below the lowest price · £… under" panel at the top, the line showing its price, "lowest £…", quantity and £ under, the "Why this price?" reason chips with "Price match" selected, and the bottom button reading "Confirm and take payment" ; state=an admin has switched the price guard on (Settings › General); a product with a minimum price set (e.g. sale £5.99, minimum £4.50) is on the order with its line price typed as £4.00; Continue to payment pressed -->
+  </figure>
+
+  <div class="callout">
+    <strong>You never see cost</strong>
+    The till only ever shows the lowest price, never what an item cost the shop. Your own count of
+    price overrides this shift appears in <em>My shift so far</em>.
+  </div>
+  <div class="callout warn ed-manager">
+    <strong>Manager — where these sales go</strong>
+    Sales below the minimum or below cost, with the cashier's reason, arrive in
+    <span class="ui">Needs a look</span> and in the <span class="ui">Price overrides</span> Evidence.
+    Below-cost sales are worked out after all discounts and go to managers only; the cashier is not
+    told. If a cashier names you under <em>Manager agreed</em>, you are asked to confirm, and your
+    answer is recorded; the sale stands either way. See Section 9.
+  </div>
+  <div class="callout warn ed-admin">
+    <strong>Admin — the price guard switch</strong>
+    The switch is <span class="ui">Price guard at the till</span> in <span class="ui">Settings › General</span>,
+    and it starts off. While it is off, underpriced sales are recorded silently for
+    <span class="ui">Would have flagged</span> in the Truths Centre, so you can see what the guard
+    would have caught before turning it on. Every change to the switch is logged.
+  </div>
+
+  <p class="eyebrow">After the sale</p>
+  <h2>What arcarna records</h2>
+  <p>Confirming saves one order against your shift: the lines and prices, any money off, the total,
+     how it was paid, the customer (or walk-in), points earned or spent, and when it is due. Stock at
+     your location drops. A short message confirms it, and the new order's card flashes on the board.</p>
+  <table>
+    <tr><th>Message</th><th>What it means</th></tr>
+    <tr><td><strong>Order Placed</strong></td>
+        <td>Done. If you gave no due time, the message offers <span class="ui">Set a due time?</span>, which promises 30 minutes (45 for a delivery).</td></tr>
+    <tr><td><strong>Order On Hold</strong></td>
+        <td>Recorded, but a line was short of stock, so the order is on hold for someone to sort out on the board.</td></tr>
+    <tr><td><strong>Order recorded</strong></td>
+        <td>A Card (link) sale: recorded and waiting for the customer to pay.</td></tr>
+    <tr><td><strong>Sale saved on this till</strong></td>
+        <td>No connection, or arcarna did not answer in time. The sale is kept on this device and sent by itself. It will only be recorded once.</td></tr>
+    <tr><td><strong>Order failed</strong></td>
+        <td>Nothing was recorded. Read the reason, put it right and try again.</td></tr>
+  </table>
+
+  <p class="eyebrow">When the connection drops</p>
+  <h2>The till keeps working offline</h2>
+  <p>If the internet goes down mid-shift, keep serving. Each sale carries its own reference, so a
+     sale sent twice after a slow connection is never recorded twice.</p>
+  <ul>
+    <li>A small pill in the bottom corner shows <em>Offline</em>, and how many sales are waiting
+        or failed, for example <em>Offline · 2 waiting</em>.</li>
+    <li>When the connection returns you will see <em>Back online. Sending 2 saved sales.</em></li>
+    <li>Card (link) and adding a new customer need a connection. Everything else works.</li>
+    <li>You cannot sign out while sales are still unsent. arcarna shows <em>Sales not sent yet</em>
+        with <span class="ui">Try sending now</span> and <span class="ui">Stay signed in</span>. If the
+        connection stays down, leave the till signed in; the sales go by themselves once it is back.</li>
+  </ul>
+  <div class="callout warn ed-manager">
+    <strong>Manager — refused sales and signing a till out</strong>
+    A sale the server refuses is never dropped. It goes to <span class="ui">Needs attention</span>
+    (Operations Centre), where you can retry it, edit it on the till, or discard it. The offline pill
+    shows a <span class="ui">Review</span> link when there are any. On the <em>Sales not sent yet</em>
+    screen you also have <em>Manager: sign out anyway</em>: give a reason and select
+    <span class="ui">Hand the sales over and sign out</span>. The sales go to Needs attention first,
+    and the sign-out is logged under your name. It needs a connection.
+  </div>
+
+</main>
+</body>
+</html>
