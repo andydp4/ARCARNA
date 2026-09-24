@@ -431,6 +431,7 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     const alone = await refund(feeOnly.body.orderId, { deliveryFee: true }).expect(201);
     expect(alone.body.refund.total).toBe("2.50");
     const none = await post(deliverySale({ expectedTotal: 50 })).expect(201);
+    await settle(none.body.orderId);
     expect((await refund(none.body.orderId, { deliveryFee: true }).expect(400)).body.message).toMatch(/no delivery fee/);
     // Nothing chosen is still refused.
     await refund(none.body.orderId, {}).expect(400);
@@ -456,6 +457,28 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     const entry = sheet.commissionOrders.find((o) => o.orderId === whole.body.orderId)!;
     expect(entry.paidContribution).toBeCloseTo(50, 6);
     expect(entry.refunds).toBeCloseTo(50, 6);
+  });
+
+  it("a discounted sale with a fee: goods refunds share the discount, the fee is left out of the share", async () => {
+    const { eq } = await import("drizzle-orm");
+    const res = await post(deliverySale({ deliveryFee: 3, expectedTotal: 53 })).expect(201);
+    await settle(res.body.orderId);
+    // As if £5 came off the goods at the till: collected £48, of which £3 is the fee.
+    await db.update(schema.orders).set({ settledTotal: "48.00" }).where(eq(schema.orders.id, res.body.orderId));
+    const [line] = await db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, res.body.orderId));
+    const refund = (body: Record<string, unknown>) =>
+      request(app)
+        .post(`/api/orders/${res.body.orderId}/refunds`)
+        .send({ reason: "customer_changed_mind", refundMethod: "cash", lines: [], ...body });
+    // One of two widgets: (48 - 3) / 50 of its £25, not a share of the fee.
+    const one = await refund({ lines: [{ orderLineId: line.id, qty: 1 }] }).expect(201);
+    expect(one.body.refund.total).toBe("22.50");
+    // The other widget and the fee: what is left of the goods, plus the fee as charged.
+    const rest = await refund({ lines: [{ orderLineId: line.id, qty: 1 }], deliveryFee: true }).expect(201);
+    expect(rest.body.refund.total).toBe("25.50");
+    expect(rest.body.refund.deliveryFee).toBe("3.00");
+    // Everything collected has now gone back, and nothing more can.
+    await refund({ deliveryFee: true }).expect(400);
   });
 
   it("only an admin changes the fee's settings, every change is logged, and every role reads them", async () => {
