@@ -184,6 +184,10 @@ async function seedBoard(request: APIRequestContext, orgId: string): Promise<See
         data: {
           lines: [{ productId: product.id, quantity: 1, unitPrice: UNIT_PRICE }],
           paymentMethod: "cash",
+          // A delivery needs its address on the order (v1.2 Phase 5, PRV-05).
+          ...(extra.fulfilmentMethod === "delivery"
+            ? { deliveryAddress: "1 Fixture Street", deliveryPostcode: "FX1 1FX" }
+            : {}),
           ...extra,
         },
       }),
