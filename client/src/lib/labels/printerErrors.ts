@@ -42,6 +42,19 @@ export const PRINTER_ERROR_CODES = {
   ReceiveDataTimeout: 52,
 } as const;
 
+/**
+ * A lid/paper fault from a heartbeat, as the sentence to show, or null when
+ * the heartbeat is missing or reports nothing wrong (the printer's own error
+ * then covers anything we missed).
+ */
+export function heartbeatFault(
+  heartbeat: { lidClosed?: boolean; paperInserted?: boolean } | null | undefined,
+): string | null {
+  if (heartbeat?.lidClosed === false) return messageForPrinterCode(PRINTER_ERROR_CODES.CoverOpen);
+  if (heartbeat?.paperInserted === false) return messageForPrinterCode(PRINTER_ERROR_CODES.LackPaper);
+  return null;
+}
+
 export function messageForPrinterCode(code: number): string {
   return PRINTER_CODE_MESSAGES[code] ?? `The printer reported a problem (code ${code}). Check the lid and labels, then try again.`;
 }

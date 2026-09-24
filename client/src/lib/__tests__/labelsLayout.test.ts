@@ -125,6 +125,18 @@ describe("order label", () => {
     expect(texts(spec)[1].endsWith(ELLIPSIS)).toBe(true);
   });
 
+  it("leaves the QR a 4-module quiet zone on its left", () => {
+    // A long code and name fill the text column right up to its edge.
+    const spec = buildOrderLabel({ ...base, shortCode: "WWWWWWWWWWWW", customerName: "W".repeat(60) }, url, measure);
+    const qr = spec.items.find((i) => i.kind === "qr");
+    if (qr?.kind !== "qr") throw new Error("no qr");
+    for (const item of spec.items) {
+      if (item.kind === "qr") continue;
+      const b = itemBounds(item, measure);
+      expect(qr.x - (b.x + b.w)).toBeGreaterThanOrEqual(4 * qr.scale);
+    }
+  });
+
   it("walk-in, collection, no due time, one item", () => {
     const spec = buildOrderLabel({ ...base, customerName: null, fulfilmentMethod: "collection", dueText: null, itemCount: 1 }, url, measure);
     expect(texts(spec)).toEqual(["#3F2A9C1E", "Walk-in", "COLLECTION", "No due time", "1 item"]);

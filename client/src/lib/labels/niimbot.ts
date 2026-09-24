@@ -13,7 +13,7 @@
  */
 import type { MonoBitmap } from "./bitmap";
 import { bitmapImageSource } from "./bitmap";
-import { describePrintError } from "./printerErrors";
+import { describePrintError, heartbeatFault } from "./printerErrors";
 import { B1_GEOMETRY, labelGeometry, type LabelGeometry } from "./labelLayout";
 
 type Lib = typeof import("@mmote/niimbluelib");
@@ -213,15 +213,13 @@ export async function printBitmap(bitmap: MonoBitmap, copies = 1): Promise<void>
   const lib = await loadLib();
   const quantity = Math.max(1, Math.min(99, Math.floor(copies)));
 
-  // Refuse up front when the last heartbeat saw the lid open, instead of
-  // sending a page the printer will reject half-way.
-  const heartbeat = c.getHeartbeatData();
-  const precheck =
-    heartbeat?.lidClosed === false
-      ? "The printer lid is open. Close it firmly and try again."
-      : heartbeat?.paperInserted === false
-        ? "The printer is out of labels. Load a new roll and try again."
-        : null;
+  // Refuse up front when the printer says the lid is open or the roll is
+  // empty, instead of sending a page it will reject half-way. Ask afresh
+  // rather than trust the cached heartbeat (up to 2 s old): a cashier who
+  // has just shut the lid and tapped Print again must not be told it is
+  // still open. If the ask fails, skip the check and let the printer's own
+  // error report any fault.
+  const precheck = heartbeatFault(await c.fetchHeartbeatData().catch(() => undefined));
   if (precheck) {
     set({ error: precheck, notice: null });
     throw new Error(precheck);

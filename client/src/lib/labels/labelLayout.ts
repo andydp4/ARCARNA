@@ -222,7 +222,9 @@ export function buildOrderLabel(
     const qrPx = qr.size * qrScale;
     const qrX = W - margin - qrPx;
     items.push({ kind: "qr", x: qrX, y: Math.round((H - qrPx) / 2), scale: qrScale, modules: qr.data, payload: qrPayload });
-    textRight = qrX - d(8);
+    // QR readers want a 4-module quiet zone; the code is encoded with no
+    // border of its own, so keep text at least that far from it.
+    textRight = qrX - Math.max(d(8), 4 * qrScale);
   }
   const colW = textRight - margin;
   let y = margin;

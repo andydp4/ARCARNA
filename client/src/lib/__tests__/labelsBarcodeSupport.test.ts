@@ -12,7 +12,7 @@ import {
   isValidEan13,
 } from "@/lib/labels/barcode";
 import { SUPPORT_MESSAGES, detectPrinterSupport, type SupportEnv } from "@/lib/labels/printerSupport";
-import { describePrintError } from "@/lib/labels/printerErrors";
+import { describePrintError, heartbeatFault } from "@/lib/labels/printerErrors";
 
 const bits = (m: boolean[]) => m.map((b) => (b ? "1" : "0")).join("");
 
@@ -98,13 +98,29 @@ describe("capability detection", () => {
   it("Chrome on a Mac is supported", () => {
     expect(detectPrinterSupport(env({ userAgent: macChrome, hasBluetooth: true }))).toEqual({ supported: true });
   });
-  it("Firefox or a Chrome with Bluetooth turned off: use Chrome or Edge", () => {
+  it("Firefox: use Chrome or Edge", () => {
     expect(detectPrinterSupport(env({ userAgent: macFirefox }))).toMatchObject({ reason: "other" });
-    expect(detectPrinterSupport(env({ userAgent: macChrome }))).toMatchObject({ reason: "other" });
+  });
+  it("Chrome/Brave with Bluetooth turned off or blocked: say so, do not send them to Chrome", () => {
+    const r = detectPrinterSupport(env({ userAgent: macChrome }));
+    expect(r).toMatchObject({ supported: false, reason: "bluetooth-blocked" });
+    expect(SUPPORT_MESSAGES["bluetooth-blocked"]).toMatch(/turned off or blocked in this browser/);
+    const edge = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0";
+    expect(detectPrinterSupport(env({ userAgent: edge }))).toMatchObject({ reason: "bluetooth-blocked" });
   });
   it("plain http hides Bluetooth: say so", () => {
     expect(detectPrinterSupport(env({ userAgent: macChrome, hasBluetooth: true, isSecureContext: false }))).toMatchObject({ reason: "insecure" });
     expect(detectPrinterSupport(env({ userAgent: macChrome, isSecureContext: false }))).toMatchObject({ reason: "insecure" });
+  });
+});
+
+describe("heartbeat pre-check", () => {
+  it("names a lid or paper fault, and stays quiet otherwise", () => {
+    expect(heartbeatFault({ lidClosed: false, paperInserted: true })).toMatch(/lid is open/);
+    expect(heartbeatFault({ lidClosed: true, paperInserted: false })).toMatch(/out of labels/);
+    expect(heartbeatFault({ lidClosed: true, paperInserted: true })).toBeNull();
+    // No fresh heartbeat (the ask failed): let the printer report its own error.
+    expect(heartbeatFault(undefined)).toBeNull();
   });
 });
 

@@ -12,7 +12,7 @@
 
 export type PrinterSupport =
   | { supported: true }
-  | { supported: false; reason: "ios" | "mac-safari" | "insecure" | "other"; message: string };
+  | { supported: false; reason: "ios" | "mac-safari" | "insecure" | "bluetooth-blocked" | "other"; message: string };
 
 export interface SupportEnv {
   /** `"bluetooth" in navigator` */
@@ -28,6 +28,11 @@ export const SUPPORT_MESSAGES = {
   ios: "Label printing needs Bluetooth, which iPhone and iPad browsers do not have. On iPhone, open arcarna in the Bluefy app (free on the App Store) to print labels.",
   "mac-safari": "Safari cannot reach Bluetooth printers. Open arcarna in Chrome on this Mac to print labels.",
   insecure: "Label printing only works when arcarna is opened over a secure (https) address.",
+  // A Chromium browser (Chrome, Edge, Brave…) without navigator.bluetooth:
+  // Brave ships with it off, and managed Chrome can block it by policy.
+  // Telling someone already in Chrome to "open Chrome" leaves them stuck.
+  "bluetooth-blocked":
+    "Bluetooth is turned off or blocked in this browser. Turn on Web Bluetooth in its settings (or ask whoever manages this computer), or open arcarna in Chrome.",
   other: "This browser cannot reach Bluetooth printers. Open arcarna in Chrome or Edge on this computer to print labels.",
 } as const;
 
@@ -52,6 +57,9 @@ export function detectPrinterSupport(env: SupportEnv): PrinterSupport {
   }
   if (!env.isSecureContext) {
     return { supported: false, reason: "insecure", message: SUPPORT_MESSAGES.insecure };
+  }
+  if (/Chrome\/|Chromium\/|Edg\//.test(ua)) {
+    return { supported: false, reason: "bluetooth-blocked", message: SUPPORT_MESSAGES["bluetooth-blocked"] };
   }
   return { supported: false, reason: "other", message: SUPPORT_MESSAGES.other };
 }
