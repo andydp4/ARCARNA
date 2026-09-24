@@ -122,7 +122,7 @@ export default function WeeklySalesReport() {
                   <ReportKpi
                     label="Delivery fees"
                     value={money(Number(s.deliveryFeeRevenue) || 0)}
-                    sub={`On ${int(Number(s.deliveryFeeOrders) || 0)} deliveries, inside total revenue, before refunds`}
+                    sub={`On ${int(Number(s.deliveryFeeOrders) || 0)} deliveries, inside total revenue, less fees refunded`}
                   />
                 </div>
               </>

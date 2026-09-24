@@ -250,10 +250,17 @@ export async function commissionBasisFor(
   const expenses = expenseRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
 
   const refundRows = await client
-    .select({ total: refunds.total })
+    .select({ total: refunds.total, fee: refunds.deliveryFee })
     .from(refunds)
     .where(eq(refunds.orderId, orderId));
-  const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
+  // A refunded delivery fee earned no commission (unless the admin counts
+  // the fee), so it takes none back (v1.2.1).
+  const feeCounted = org?.deliveryFeeCommissionable === true;
+  const refundTotal = refundRows.reduce(
+    (sum, r) =>
+      sum + Math.max(0, parseFloat(String(r.total)) - (feeCounted ? 0 : Math.max(0, parseFloat(String(r.fee ?? 0)) || 0))),
+    0,
+  );
 
   // Only the known-cost share of what was collected earns commission.
   const settled = parseFloat(String(order.settledTotal ?? order.total));

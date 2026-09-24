@@ -79,11 +79,13 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     const { registerOrderRoutes } = await import("../routes/orders");
     const { registerDeliveryFeeRoutes } = await import("../routes/deliveryFee");
     const { registerSettingsOrgRoutes } = await import("../routes/settingsOrg");
+    const { registerRefundRoutes } = await import("../routes/refunds");
     app = express();
     app.use(express.json());
     registerOrderRoutes(app, [scoped]);
     registerDeliveryFeeRoutes(app, [scoped]);
     registerSettingsOrgRoutes(app, [scoped]);
+    registerRefundRoutes(app, [scoped]);
   });
 
   afterAll(async () => {
@@ -103,6 +105,7 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
       "admin_audit_logs",
       "invoices",
       "price_exceptions",
+      "refunds",
       "order_events",
       "order_payments",
       "order_credit",
@@ -255,6 +258,33 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     }
   });
 
+  it("the till's live 'commission so far' leaves the fee out too, as the closed shift does", async () => {
+    const res = await post(deliverySale({ deliveryFee: 4, expectedTotal: 54 })).expect(201);
+    const row = await orderRow(res.body.orderId);
+    const { eq, sql } = await import("drizzle-orm");
+    const [shift] = await db.select().from(schema.cashierShifts).where(eq(schema.cashierShifts.id, row.cashierShiftId!));
+    const [{ fees }] = (
+      await db.execute(sql`
+        SELECT COALESCE(SUM(ROUND(delivery_fee * (1 + COALESCE(vat_rate, 0) / 100), 2)), 0)::float AS fees FROM orders
+        WHERE COALESCE(completed_cashier_shift_id, cashier_shift_id) = ${shift.id}
+          AND payment_method <> 'personal_use'`)
+    ).rows as Array<{ fees: number }>;
+    expect(fees).toBeGreaterThanOrEqual(4);
+    const { computeCashierShiftBalanceSheet } = await import("../services/cashierShiftEngine");
+    const off = await computeCashierShiftBalanceSheet(orgId, shift);
+    await setOrg({ deliveryFeeCommissionable: true });
+    try {
+      const on = await computeCashierShiftBalanceSheet(orgId, shift);
+      const rate = off.sheet.commissionRate / 100;
+      expect(rate).toBeGreaterThan(0);
+      // The fee money is in net profit either way; only its commission differs.
+      expect(on.sheet.netSalesProfit).toBeCloseTo(off.sheet.netSalesProfit, 6);
+      expect(Math.abs(on.sheet.commissionAmount - off.sheet.commissionAmount - fees * rate)).toBeLessThanOrEqual(0.011);
+    } finally {
+      await setOrg({ deliveryFeeCommissionable: false });
+    }
+  });
+
   it("a manager's edit keeps the fee, can change it, and can remove it", async () => {
     const res = await post(deliverySale({ deliveryFee: 3, expectedTotal: 53 })).expect(201);
     const id = res.body.orderId;
@@ -316,6 +346,15 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
 
     const detail = await request(app).get(`/api/orders/${res.body.orderId}`).expect(200);
     expect(detail.body.deliveryFee).toBe(3.5);
+    // Named as the receipt names it: the Ops sheet and the refund page read this.
+    expect(detail.body.deliveryFeeName).toBe("Delivery fee");
+    await setOrg({ deliveryFeeName: "Van charge" });
+    try {
+      const renamed = await request(app).get(`/api/orders/${res.body.orderId}`).expect(200);
+      expect(renamed.body.deliveryFeeName).toBe("Van charge");
+    } finally {
+      await setOrg({ deliveryFeeName: "Delivery fee" });
+    }
     const pdf = await request(app).get(`/api/orders/${res.body.orderId}/receipt.pdf`).expect(200);
     expect(pdf.headers["content-type"]).toMatch(/pdf/);
   });
@@ -357,6 +396,66 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
 
     const hub = await storage.getReportData(from, to, orgId);
     expect(hub.revenue.deliveryFees).toBe(5.5);
+  });
+
+  it("the fee can be refunded once, with or without the goods, and fee takings net it off", async () => {
+    const { eq, sql } = await import("drizzle-orm");
+    const refund = (id: string, body: Record<string, unknown>) =>
+      request(app)
+        .post(`/api/orders/${id}/refunds`)
+        .send({ reason: "customer_changed_mind", refundMethod: "cash", lines: [], ...body });
+    const { deliveryFeeTakingsBetween } = await import("../services/deliveryFeeTakings");
+    const start = new Date(Date.now() - 60 * 60 * 1000);
+    const end = new Date(Date.now() + 60 * 60 * 1000);
+    const before = await deliveryFeeTakingsBetween(orgId, start, end);
+
+    // The whole order back: two widgets and the £3 fee.
+    const whole = await post(deliverySale({ deliveryFee: 3, expectedTotal: 53 })).expect(201);
+    await settle(whole.body.orderId);
+    const [line] = await db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, whole.body.orderId));
+    const full = await refund(whole.body.orderId, { lines: [{ orderLineId: line.id, qty: 2 }], deliveryFee: true }).expect(201);
+    expect(full.body.refund.total).toBe("53.00");
+    expect(full.body.refund.deliveryFee).toBe("3.00");
+    // Once only.
+    const again = await refund(whole.body.orderId, { deliveryFee: true }).expect(400);
+    expect(again.body.message).toMatch(/already been refunded/);
+    const detail = await request(app).get(`/api/orders/${whole.body.orderId}`).expect(200);
+    expect(detail.body.deliveryFeeRefunded).toBe(3);
+    expect(detail.body.deliveryFeeRefundable).toBe(0);
+    expect(detail.body.refundedTotal).toBe(53);
+
+    // The fee alone (the delivery never came), and never on an order without one.
+    const feeOnly = await post(deliverySale({ deliveryFee: 2.5, expectedTotal: 52.5 })).expect(201);
+    await settle(feeOnly.body.orderId);
+    expect((await request(app).get(`/api/orders/${feeOnly.body.orderId}`).expect(200)).body.deliveryFeeRefundable).toBe(2.5);
+    const alone = await refund(feeOnly.body.orderId, { deliveryFee: true }).expect(201);
+    expect(alone.body.refund.total).toBe("2.50");
+    const none = await post(deliverySale({ expectedTotal: 50 })).expect(201);
+    expect((await refund(none.body.orderId, { deliveryFee: true }).expect(400)).body.message).toMatch(/no delivery fee/);
+    // Nothing chosen is still refused.
+    await refund(none.body.orderId, {}).expect(400);
+
+    // Fee takings: the fees charged, less the fees refunded in the window.
+    const after = await deliveryFeeTakingsBetween(orgId, start, end);
+    expect(after.total).toBeCloseTo(before.total + 3 + 2.5 - 3 - 2.5, 6);
+    const [check] = (
+      await db.execute(sql`
+        SELECT
+          (SELECT COALESCE(SUM(ROUND(delivery_fee * (1 + COALESCE(vat_rate, 0) / 100), 2)), 0) FROM orders
+            WHERE org_id = ${orgId} AND status = 'completed' AND settled_at >= ${start} AND settled_at < ${end})
+          - (SELECT COALESCE(SUM(delivery_fee), 0) FROM refunds
+            WHERE org_id = ${orgId} AND created_at >= ${start} AND created_at < ${end}) AS fees`)
+    ).rows as Array<{ fees: string }>;
+    expect(after.total).toBeCloseTo(Number(check.fees), 6);
+
+    // Commission: the fee earned none, so refunding it takes none back.
+    const row = await orderRow(whole.body.orderId);
+    const [shift] = await db.select().from(schema.cashierShifts).where(eq(schema.cashierShifts.id, row.cashierShiftId!));
+    const { computeCashierShiftBalanceSheet } = await import("../services/cashierShiftEngine");
+    const sheet = await computeCashierShiftBalanceSheet(orgId, shift);
+    const entry = sheet.commissionOrders.find((o) => o.orderId === whole.body.orderId)!;
+    expect(entry.paidContribution).toBeCloseTo(50, 6);
+    expect(entry.refunds).toBeCloseTo(50, 6);
   });
 
   it("only an admin changes the fee's settings, every change is logged, and every role reads them", async () => {

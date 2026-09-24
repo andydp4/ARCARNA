@@ -66,7 +66,7 @@ function toNum(v: unknown): number {
 interface HubData {
   revenue: {
     total: number;
-    /** Of which delivery fees (v1.2.1), VAT included, before refunds. */
+    /** Of which delivery fees (v1.2.1), VAT included, less fees refunded. */
     deliveryFees?: number;
     byDay: Array<{ date: string; revenue: number; orders: number }>;
     byCategory: Array<{ category: string; revenue: number; percentage: number }>;

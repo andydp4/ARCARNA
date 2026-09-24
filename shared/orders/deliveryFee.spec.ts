@@ -81,3 +81,14 @@ describe("commission and margin leave the fee out by default", () => {
     expect(goodsShareOfTotal(0, 3.5)).toBe(1);
   });
 });
+
+describe("deliveryFeeCharged (what a fee refund gives back)", () => {
+  it("is the fee plus its VAT at the order's rate, in pence", async () => {
+    const { deliveryFeeCharged } = await import("./deliveryFee");
+    expect(deliveryFeeCharged(3, 0)).toBe(3);
+    expect(deliveryFeeCharged(3.5, 20)).toBe(4.2);
+    expect(deliveryFeeCharged(2.99, 20)).toBe(3.59);
+    expect(deliveryFeeCharged(3, null)).toBe(3);
+    expect(deliveryFeeCharged(-1, 20)).toBe(0);
+  });
+});

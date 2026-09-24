@@ -106,6 +106,17 @@ export function storedDeliveryFee(row: { deliveryFee?: string | number | null } 
 }
 
 /**
+ * The fee as the customer paid it: the fee plus the VAT on it at the order's
+ * rate, in pence then pounds. What a refund of the fee gives back, and what
+ * delivery fee takings count (they are VAT inclusive, like takings).
+ */
+export function deliveryFeeCharged(deliveryFee: number, vatRatePercent: number | null | undefined): number {
+  const feeP = toPence(Math.max(0, deliveryFee));
+  const vatP = Math.round((feeP * Math.max(0, Number(vatRatePercent) || 0)) / 100);
+  return (feeP + vatP) / 100;
+}
+
+/**
  * What commission and margin are worked out on: the order's total less the
  * delivery fee (and the VAT charged on it), unless the org counts the fee.
  * Never below zero.

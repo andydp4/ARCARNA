@@ -146,6 +146,71 @@ test.describe("delivery fee on the order form, on a phone", () => {
   });
 });
 
+test.describe("refunding a delivery fee, on a phone", () => {
+  test.use({ viewport: phone.viewport, hasTouch: true, isMobile: true, userAgent: phone.userAgent });
+
+  test("the refund page gives the fee back with the goods, once, under the org's name for it", async ({
+    browser,
+    api,
+    orgId,
+  }) => {
+    await resetFeeSettings(api);
+    await okJson(await api.put("/api/settings/delivery-fee", { data: { name: "Van charge" } }));
+    try {
+      const locationId = await firstLocationId(api);
+      await ensureOpenShift(api, locationId);
+      const product = await feeProduct(api, locationId);
+      const total = await charged(api, 3);
+      const created = await okJson<{ orderId: string }>(
+        await api.post("/api/orders", {
+          headers: { "x-location-id": locationId },
+          data: deliverySale(product.id, { deliveryFee: 3, expectedTotal: total }),
+        }),
+      );
+      await okJson(await api.patch(`/api/orders/${created.orderId}`, { data: { status: "completed" } }));
+      const before = await okJson<{ deliveryFeeRefundable: number }>(await api.get(`/api/orders/${created.orderId}`));
+      expect(before.deliveryFeeRefundable).toBeGreaterThanOrEqual(3);
+
+      const page = await pageAs(browser, "ADMIN", orgId);
+      await page.goto(`/open-orders/${created.orderId}/refund`);
+      const fee = page.getByTestId("refund-delivery-fee");
+      await expect(fee).toBeVisible({ timeout: 60_000 });
+      await expect(fee).toContainText("Van charge");
+      await page.getByRole("checkbox").first().tap();
+      await page.getByTestId("checkbox-refund-delivery-fee").tap();
+      // The widget at its price, and the fee as the customer paid it.
+      const expectedRefund = Math.round((12 + before.deliveryFeeRefundable) * 100) / 100;
+      await expect(page.getByText(`Refund total: £${expectedRefund.toFixed(2)}`)).toBeVisible();
+      // Nothing on the page is wider than the phone.
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
+      await page.getByRole("button", { name: "Continue" }).tap();
+      await page.getByRole("button", { name: "Review" }).tap();
+      const refunded = page.waitForResponse(
+        (r) => r.url().includes(`/api/orders/${created.orderId}/refunds`) && r.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "Confirm refund" }).tap();
+      const res = await refunded;
+      expect(res.status(), await res.text()).toBe(201);
+
+      const after = await okJson<{ refundedTotal: number; deliveryFeeRefunded: number; deliveryFeeRefundable: number }>(
+        await api.get(`/api/orders/${created.orderId}`),
+      );
+      expect(after.refundedTotal).toBeCloseTo(expectedRefund, 2);
+      expect(after.deliveryFeeRefunded).toBeCloseTo(before.deliveryFeeRefundable, 2);
+      expect(after.deliveryFeeRefundable).toBe(0);
+      // Once only.
+      const again = await api.post(`/api/orders/${created.orderId}/refunds`, {
+        data: { reason: "damaged", refundMethod: "cash", lines: [], deliveryFee: true },
+      });
+      expect(again.status()).toBe(400);
+      await page.context().close();
+    } finally {
+      await resetFeeSettings(api);
+    }
+  });
+});
+
 test.describe("delivery fee on the order form, on a desktop", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 

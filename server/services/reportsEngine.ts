@@ -342,7 +342,7 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
       websiteRevenue: byChannel.Website,
       otherRevenue: byChannel.Other,
       // Delivery fees charged on the day's settled sales, VAT included,
-      // before refunds; already inside totalRevenue (v1.2.1).
+      // less fees refunded that day; already inside totalRevenue (v1.2.1).
       deliveryFeeRevenue: fees.total,
       deliveryFeeOrders: fees.orders,
       avgOrderValue,

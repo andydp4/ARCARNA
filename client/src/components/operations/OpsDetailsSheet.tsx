@@ -63,6 +63,8 @@ interface OrderDetail {
   refundedTotal?: number;
   /** The delivery fee on top of the lines (v1.2.1); 0 when none. */
   deliveryFee?: number;
+  /** The org's name for it, as on the receipt. */
+  deliveryFeeName?: string;
   refunds?: Array<{
     id: string;
     total: string;
@@ -347,7 +349,7 @@ function OpsDetailsBody({
             ))}
             {(detail?.deliveryFee ?? 0) > 0 && (
               <li className="flex items-center justify-between gap-3 px-3 py-2" data-testid="ops-details-delivery-fee">
-                <span className="font-medium text-foreground">Delivery fee</span>
+                <span className="font-medium text-foreground">{detail?.deliveryFeeName ?? "Delivery fee"}</span>
                 <span className="font-semibold tabular-nums text-foreground">
                   £{(detail?.deliveryFee ?? 0).toFixed(2)}
                 </span>

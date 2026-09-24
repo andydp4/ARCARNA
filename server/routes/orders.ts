@@ -49,7 +49,7 @@ import {
   readDeliveryDetails,
   savedAddressLine,
 } from "@shared/orders/delivery";
-import { deliveryFeeSettingsFrom, readDeliveryFee, storedDeliveryFee } from "@shared/orders/deliveryFee";
+import { deliveryFeeCharged, deliveryFeeSettingsFrom, readDeliveryFee, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   canSeeDeliveryAddress,
   CASHIER_ORDER_HISTORY_DAYS,
@@ -1298,11 +1298,26 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             refundMethod: refund.refundMethod,
             notes: refund.notes,
             createdAt: refund.createdAt,
+            // The delivery fee given back, when this refund did (v1.2.1).
+            deliveryFee: refund.deliveryFee == null ? 0 : parseFloat(String(refund.deliveryFee)),
             cashierName,
             lines,
           };
         }),
       );
+
+      // The org's own name for the fee, as on the receipt (v1.2.1).
+      const orderFee = storedDeliveryFee({ deliveryFee: order.delivery_fee });
+      let deliveryFeeName: string | undefined;
+      if (orderFee > 0) {
+        const { organizations: orgTable } = await import("@shared/schema");
+        const [feeOrg] = await mainDb
+          .select({ deliveryFeeName: orgTable.deliveryFeeName })
+          .from(orgTable)
+          .where(eq(orgTable.id, order.org_id!))
+          .limit(1);
+        deliveryFeeName = deliveryFeeSettingsFrom(feeOrg).name;
+      }
 
       const refundedTotal = refundsWithMeta.reduce(
         (sum, r) => sum + parseFloat(String(r.total)),
@@ -1320,7 +1335,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         createdAt: order.created_at,
         fulfilmentMethod: order.fulfilment_method,
         // On top of the lines (v1.2.1); 0 when none.
-        deliveryFee: storedDeliveryFee({ deliveryFee: order.delivery_fee }),
+        deliveryFee: orderFee,
+        ...(deliveryFeeName ? { deliveryFeeName } : {}),
         // Where it goes (Q8a): every member of staff while the delivery is
         // live, managers and above after it is completed.
         ...(order.fulfilment_method === 'delivery' &&
@@ -1332,6 +1348,14 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
             }
           : {}),
         refundedTotal,
+        deliveryFeeRefunded: Math.round(refundsWithMeta.reduce((sum, r) => sum + r.deliveryFee, 0) * 100) / 100,
+        // What refunding the fee gives back (as paid, VAT included); 0 once it has been.
+        deliveryFeeRefundable: refundsWithMeta.some((r) => r.deliveryFee > 0)
+          ? 0
+          : deliveryFeeCharged(
+              storedDeliveryFee({ deliveryFee: order.delivery_fee }),
+              order.vat_rate == null ? 0 : parseFloat(String(order.vat_rate)),
+            ),
         refunds: refundsWithMeta,
         items: items.map(item => ({
           id: item.id,

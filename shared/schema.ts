@@ -2282,6 +2282,9 @@ export const refunds = pgTable(
     notes: text("notes"),
     refundMethod: varchar("refund_method", { length: 16 }).notNull(),
     total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+    // The part of `total` that gave the order's delivery fee back, as charged
+    // (VAT included); NULL when none (v1.2.1, migration 226). At most once per order.
+    deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

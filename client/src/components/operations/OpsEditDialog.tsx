@@ -97,6 +97,13 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
     enabled: open,
   });
 
+  // The org's name for the delivery fee, as on the receipt (v1.2.1).
+  const { data: orgSettings } = useQuery<{ deliveryFeeName?: string }>({
+    queryKey: ["/api/settings"],
+    enabled: open,
+  });
+  const deliveryFeeName = orgSettings?.deliveryFeeName || "Delivery fee";
+
   const addProduct = (product: PosProduct) => {
     setLines((current) => {
       const existing = current.findIndex((line) => line.productId === product.id);
@@ -337,7 +344,7 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
             )}
             {pricing && (pricing.deliveryFee ?? 0) > 0 && (
               <div className="flex items-center justify-between">
-                <dt className="text-muted-foreground">Delivery fee</dt>
+                <dt className="text-muted-foreground">{deliveryFeeName}</dt>
                 <dd className="tabular-nums text-foreground" data-testid="text-edit-delivery-fee">
                   {money(pricing.deliveryFee ?? 0)}
                 </dd>

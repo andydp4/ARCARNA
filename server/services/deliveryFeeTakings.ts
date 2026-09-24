@@ -2,15 +2,14 @@
  * Delivery fee takings (v1.2.1): the part of takings that was delivery fees,
  * shown separately in the Truths and Evidence.
  *
- * Same definition as takings (server/services/revenue.ts): orders SETTLED in
- * the window. Valued as charged, VAT included, because takings are VAT
- * inclusive too. A refund is not split between goods and fee (a refund row
- * records only an amount), so this is the fees charged on the window's
- * settled sales, before refunds, and the Evidence says so.
+ * Same definition as takings (server/services/revenue.ts): the fees on orders
+ * SETTLED in the window, less the fees REFUNDED in it (refunds.delivery_fee,
+ * migration 226). Valued as charged, VAT included, because takings are VAT
+ * inclusive too. `orders` counts the window's settled sales that carried a fee.
  */
 import { and, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { orders } from "@shared/schema";
+import { orders, refunds } from "@shared/schema";
 
 export type DeliveryFeeTakings = { total: number; orders: number };
 
@@ -52,7 +51,22 @@ export async function deliveryFeeTakingsBetween(
         ...scopeConds(filter),
       ),
     );
-  return { total: round2(Number(row?.total) || 0), orders: Number(row?.orders) || 0 };
+  const [back] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${refunds.deliveryFee}), 0)` })
+    .from(refunds)
+    .innerJoin(orders, eq(refunds.orderId, orders.id))
+    .where(
+      and(
+        eq(refunds.orgId, orgId),
+        gte(refunds.createdAt, start),
+        lt(refunds.createdAt, end),
+        ...scopeConds(filter),
+      ),
+    );
+  return {
+    total: round2((Number(row?.total) || 0) - (Number(back?.total) || 0)),
+    orders: Number(row?.orders) || 0,
+  };
 }
 
 /**
@@ -81,6 +95,21 @@ export async function deliveryFeeTakingsByDate(
       ),
     )
     .groupBy(sql`1`);
+  // Fees given back, on the day the refund was issued (as revenue.ts nets refunds).
+  const backRows = await db
+    .select({
+      day: sql<string>`to_char(${refunds.createdAt}, 'YYYY-MM-DD')`,
+      total: sql<string>`COALESCE(SUM(${refunds.deliveryFee}), 0)`,
+    })
+    .from(refunds)
+    .where(
+      and(
+        eq(refunds.orgId, orgId),
+        gte(sql`date(${refunds.createdAt})`, sql`${fromIso}::date`),
+        lte(sql`date(${refunds.createdAt})`, sql`${toIso}::date`),
+      ),
+    )
+    .groupBy(sql`1`);
   const byDate = new Map<string, number>();
   let total = 0;
   let count = 0;
@@ -89,6 +118,13 @@ export async function deliveryFeeTakingsByDate(
     byDate.set(String(r.day), amount);
     total += amount;
     count += Number(r.orders) || 0;
+  }
+  for (const r of backRows) {
+    const amount = round2(Number(r.total) || 0);
+    if (amount === 0) continue;
+    const day = String(r.day);
+    byDate.set(day, round2((byDate.get(day) ?? 0) - amount));
+    total -= amount;
   }
   return { total: round2(total), orders: count, byDate };
 }
