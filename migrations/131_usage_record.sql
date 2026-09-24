@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
 
 CREATE INDEX IF NOT EXISTS usage_events_org_time_idx ON usage_events (org_id, occurred_at);
 CREATE INDEX IF NOT EXISTS usage_events_device_idx ON usage_events (org_id, device_key, received_at);
+CREATE INDEX IF NOT EXISTS usage_events_org_received_idx ON usage_events (org_id, received_at);
 CREATE INDEX IF NOT EXISTS usage_events_rolled_idx ON usage_events (rolled, org_id);
 
 CREATE TABLE IF NOT EXISTS usage_daily (

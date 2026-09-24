@@ -27,6 +27,19 @@ function browserStore(): KeyValueStore | null {
 
 /** Fired on window when the device name changes, so Sentry's tag follows. */
 export const DEVICE_NAME_EVENT = "arcarna:device-name";
+
+/**
+ * The screen a report is filed against: the usage recorder's, which knows
+ * whether the Operations Centre's till (`/operations?pane=order`) or its board
+ * is in front, so the report lands on the same screen as that screen's time
+ * and incidents. The URL's shape is used only when the recorder has not caught
+ * up with a navigation yet (it follows the URL one render later).
+ */
+export function reportScreen(recorderScreen: string, path: string, search = ""): string {
+  const fromUrl = screenFor(path, search);
+  return recorderScreen.split("?")[0] === fromUrl.split("?")[0] ? screenFor(recorderScreen) : fromUrl;
+}
+
 /** Fired on window to open the Problem? sheet from anywhere. */
 export const OPEN_PROBLEM_EVENT = "arcarna:problem-open";
 
@@ -94,7 +107,13 @@ export function buildProblemReport(
   };
 }
 
-type Queued = { orgId: string | null; report: ProblemReportInput };
+/**
+ * A report kept offline, with who made it. The server files a report under
+ * whoever's session sends it, so a report only goes when the person who made
+ * it is signed in again: the next person on the till never becomes its
+ * reporter (their id, their role, their "fixed in" note, their rate limit).
+ */
+type Queued = { orgId: string | null; userId: string; report: ProblemReportInput };
 
 /** At most this many reports wait on one device; the oldest go first. */
 export const PROBLEM_QUEUE_MAX = 20;
@@ -103,7 +122,11 @@ export function queuedProblems(store: KeyValueStore | null = browserStore()): Qu
   try {
     const raw = store?.getItem(STORAGE_PROBLEM_QUEUE);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((q) => q && typeof q === "object" && q.report) : [];
+    // A report with no reporter kept (made before this was recorded) is dropped:
+    // there is no way to tell whose it was.
+    return Array.isArray(parsed)
+      ? parsed.filter((q) => q && typeof q === "object" && q.report && typeof q.userId === "string" && q.userId)
+      : [];
   } catch {
     return [];
   }
@@ -118,8 +141,14 @@ function saveQueue(list: Queued[], store: KeyValueStore | null): void {
   }
 }
 
-export function queueProblem(orgId: string | null, report: ProblemReportInput, store: KeyValueStore | null = browserStore()): void {
-  saveQueue([...queuedProblems(store), { orgId, report }], store);
+export function queueProblem(
+  orgId: string | null,
+  userId: string,
+  report: ProblemReportInput,
+  store: KeyValueStore | null = browserStore(),
+): void {
+  if (!userId) return;
+  saveQueue([...queuedProblems(store), { orgId, userId, report }], store);
 }
 
 /** The server answered, and said no (or not now). */
@@ -144,10 +173,12 @@ export function isRetryable(error: unknown): boolean {
 /**
  * Send what is waiting for this org. Sent reports and ones the server refused
  * outright (a 4xx other than rate limiting) leave the queue; network failures
- * stay for next time. Another org's reports wait until that org is chosen.
+ * stay for next time. Another org's reports wait until that org is chosen,
+ * and another person's until they are signed in on this device again.
  */
 export async function flushProblemQueue(
   orgId: string | null,
+  userId: string | null | undefined,
   send: (report: ProblemReportInput) => Promise<void>,
   store: KeyValueStore | null = browserStore(),
 ): Promise<number> {
@@ -155,7 +186,7 @@ export async function flushProblemQueue(
   const keep: Queued[] = [];
   let sent = 0;
   for (const q of list) {
-    if (q.orgId !== orgId) {
+    if (q.orgId !== orgId || !userId || q.userId !== userId) {
       keep.push(q);
       continue;
     }

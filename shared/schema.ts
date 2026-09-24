@@ -3311,6 +3311,7 @@ export const usageEvents = pgTable("usage_events", {
   check("usage_events_kind_check", sql`${table.kind} IN ('screen', 'message', 'call', 'crash', 'offline', 'funnel')`),
   index("usage_events_org_time_idx").on(table.orgId, table.occurredAt),
   index("usage_events_device_idx").on(table.orgId, table.deviceKey, table.receivedAt),
+  index("usage_events_org_received_idx").on(table.orgId, table.receivedAt),
   index("usage_events_rolled_idx").on(table.rolled, table.orgId),
 ]);
 

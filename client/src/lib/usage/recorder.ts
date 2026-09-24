@@ -15,6 +15,7 @@ import {
   ACTIVE_WINDOW_MS,
   apiRouteShape,
   isFrictionCall,
+  SLOW_CALL_MS,
   USAGE_BATCH_MAX,
   type CrashKind,
   type FunnelStep,
@@ -81,7 +82,13 @@ export class ScreenClock {
   }
 }
 
-type Queued = { orgId: string | null; event: UsageEventInput };
+/**
+ * An event waiting to be sent, with the shop and the role of whoever was
+ * signed in when it happened. The server takes the role from the session that
+ * sends the batch, so an event only goes while that same role is signed in:
+ * a cashier's offline shift is never sent (and counted) as the next manager's.
+ */
+type Queued = { orgId: string | null; role: string | null; event: UsageEventInput };
 type WithoutAt<T> = T extends unknown ? Omit<T, "at"> : never;
 
 export type UsageBatch = {
@@ -107,6 +114,8 @@ export type UsageDeps = {
 
 export class UsageRecorder {
   private enabled = false;
+  /** The signed-in role events are recorded under (set with setEnabled). */
+  private role: string | null = null;
   private path = "/";
   private search = "";
   /** The Operations Centre says which of its panes is in front (undefined: it has not said). */
@@ -130,11 +139,15 @@ export class UsageRecorder {
 
   // -- state ---------------------------------------------------------------
 
-  setEnabled(enabled: boolean): void {
-    if (enabled === this.enabled) return;
+  /** On for a signed-in member of staff, with their role; off for nobody or a role preview. */
+  setEnabled(enabled: boolean, role: string | null = null): void {
+    const nextRole = enabled ? role : null;
+    if (enabled === this.enabled && nextRole === this.role) return;
     const now = this.deps.now();
-    if (!enabled) this.closeView(now);
+    // The view so far belongs to whoever was signed in until now.
+    if (this.enabled) this.closeView(now);
     this.enabled = enabled;
+    this.role = nextRole;
     // Time before being signed in (or during a preview) is nobody's to count.
     this.clock = new ScreenClock(now);
     this.viewStarted = now;
@@ -268,7 +281,7 @@ export class UsageRecorder {
   }
 
   private push(event: UsageEventInput): void {
-    this.queue.push({ orgId: this.deps.orgId(), event });
+    this.queue.push({ orgId: this.deps.orgId(), role: this.role, event });
     if (this.queue.length > USAGE_QUEUE_MAX) this.queue = this.queue.slice(-USAGE_QUEUE_MAX);
     this.save();
   }
@@ -283,7 +296,12 @@ export class UsageRecorder {
     try {
       const raw = this.deps.store?.getItem(this.deps.queueKey);
       const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((q) => q && typeof q === "object" && q.event).slice(-USAGE_QUEUE_MAX) : [];
+      // An event kept without its role (an older build) cannot be placed: dropped.
+      return Array.isArray(parsed)
+        ? parsed
+            .filter((q) => q && typeof q === "object" && q.event && typeof q.role === "string" && q.role)
+            .slice(-USAGE_QUEUE_MAX)
+        : [];
     } catch {
       return [];
     }
@@ -320,13 +338,16 @@ export class UsageRecorder {
   /**
    * Send one batch of this shop's events. Sent and refused (400) events leave
    * the queue; "slow down" (429) waits 15 minutes; no answer or a server
-   * error waits a minute. Another shop's events wait until it is chosen.
+   * error waits a minute. Another shop's events wait until it is chosen, and
+   * another role's until someone with that role is signed in here again.
    */
   async flush(opts: { keepalive?: boolean } = {}): Promise<number> {
     const now = this.deps.now();
     if (this.sending || !this.deps.online() || now < this.retryAt) return 0;
     const orgId = this.deps.orgId();
-    const mine = this.queue.filter((q) => q.orgId === orgId).slice(0, USAGE_BATCH_MAX);
+    const role = this.role;
+    if (!this.enabled || !role) return 0;
+    const mine = this.queue.filter((q) => q.orgId === orgId && q.role === role).slice(0, USAGE_BATCH_MAX);
     if (mine.length === 0) return 0;
     this.sending = true;
     try {
@@ -378,10 +399,14 @@ export function installFetchObserver(
       }
       return res;
     } catch (e) {
-      // A call the page cancelled on purpose is not a failure.
-      if ((e as { name?: string })?.name !== "AbortError") {
+      // A call the page cancelled quickly (the person moved on) is not a
+      // failure. One the page gave up on after waiting past the slow line is:
+      // the sale queue aborts its own POST /api/orders when its timeout fires,
+      // and that is the worst sale friction there is.
+      const taken = clock() - t0;
+      if ((e as { name?: string })?.name !== "AbortError" || taken > SLOW_CALL_MS) {
         try {
-          onCall(method, url, clock() - t0, 0);
+          onCall(method, url, taken, 0);
         } catch {
           /* ignore */
         }

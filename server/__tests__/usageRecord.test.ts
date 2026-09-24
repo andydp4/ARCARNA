@@ -211,6 +211,36 @@ describe.skipIf(!hasDb)("Usage record and Friction Truths", () => {
     await db.execute(d.sql`DELETE FROM usage_events WHERE org_id = ${orgId} AND device_key IN (${busyKey}, ${`dev-${tag}-other`})`);
   });
 
+  it("limits the shop too, so a fresh device key does not buy a fresh allowance", async () => {
+    const { ORG_EVENTS_PER_HOUR } = await import("@shared/usage");
+    const { sql } = await import("drizzle-orm");
+    const now = new Date();
+    // The shop has nearly used its hour, spread over many keys (as a build that
+    // makes a new key on every load would).
+    const existing = await db.execute(
+      sql`SELECT count(*)::int AS n FROM usage_events WHERE org_id = ${orgId} AND received_at >= now() - interval '1 hour'`,
+    );
+    const total = ORG_EVENTS_PER_HOUR - 3 - Number(((existing as any).rows ?? existing)[0].n);
+    for (let i = 0; i < total; i += 2_000) {
+      await seed(
+        orgId,
+        Array.from({ length: Math.min(2_000, total - i) }, (_, j) => ({ deviceKey: `dev-${tag}-k${i + j}`, occurredAt: now, receivedAt: now })),
+      );
+    }
+    as(samId);
+    const batch = (key: string) => ({
+      deviceKey: key,
+      device: "Till 1",
+      events: Array.from({ length: 5 }, () => ({ kind: "funnel", at: iso(new Date()), screen: "/operations?pane=order", step: "start" })),
+    });
+    const first = await request(app).post("/api/usage/events").send(batch(`dev-${tag}-fresh1`));
+    expect(first.body).toEqual({ accepted: 3, dropped: 2, limited: true });
+    const second = await request(app).post("/api/usage/events").send(batch(`dev-${tag}-fresh2`));
+    expect(second.status).toBe(429);
+    expect(second.body.code).toBe("shop_limit");
+    await db.execute(sql`DELETE FROM usage_events WHERE org_id = ${orgId} AND device_key LIKE ${`dev-${tag}-%`}`);
+  });
+
   it("Friction Truths and the study setting are the owner's alone", async () => {
     for (const id of [samId, alexId, adaId]) {
       as(id);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useLocation, useSearch } from "wouter";
 import { LifeBuoy } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -22,16 +22,17 @@ import {
   openProblemSheet,
   ProblemSendError,
   queueProblem,
+  reportScreen,
   setDeviceName,
 } from "@/lib/problemReport";
 import { sendReplayForProblem, setSentryContextTags } from "@/lib/sentryContext";
+import { usageRecorder } from "@/lib/usage";
 import { isAtLeast } from "@shared/accessPolicy";
 import {
   DEVICE_NAMES,
   PROBLEM_CHIPS,
   PROBLEM_NOTE_HINT,
   PROBLEM_NOTE_MAX,
-  screenFor,
   UNNAMED_DEVICE,
   type DeviceName,
   type ProblemChip,
@@ -92,8 +93,18 @@ export function ProblemSheet() {
   const [device, setDevice] = useState<DeviceName | null>(() => deviceName());
   const [sending, setSending] = useState(false);
   const role = user?.role ?? null;
+  const userId = user?.id ?? null;
   const isStaff = isAtLeast(role, "CASHIER");
-  const screen = screenFor(location, search);
+  // The usage recorder's screen, not the URL's: the Operations Centre keeps
+  // its pane in memory, so only the recorder knows whether the till
+  // (/operations?pane=order) or the board is in front. A report and its
+  // Sentry tag must land on the same screen as that screen's time and
+  // incidents, or the pain score counts the report against the wrong one.
+  const recorderScreen = useSyncExternalStore(
+    (cb) => usageRecorder.subscribe(cb),
+    () => usageRecorder.currentScreen(),
+  );
+  const screen = reportScreen(recorderScreen, location, search);
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -111,11 +122,11 @@ export function ProblemSheet() {
   }, [role, screen, device]);
 
   const flush = useCallback(() => {
-    if (!isStaff || !navigator.onLine) return;
-    void flushProblemQueue(getSelectedOrgId(), async (r) => {
+    if (!isStaff || !userId || !navigator.onLine) return;
+    void flushProblemQueue(getSelectedOrgId(), userId, async (r) => {
       await postProblemReport(r);
     });
-  }, [isStaff]);
+  }, [isStaff, userId]);
 
   useEffect(() => {
     flush();
@@ -131,8 +142,8 @@ export function ProblemSheet() {
   const send = async () => {
     if (!chip) return;
     const report = buildProblemReport(chip, note, {
-      path: location,
-      search,
+      path: screen,
+      search: "",
       device,
       appVersion: APP_VERSION,
       online: queue.online,
@@ -146,8 +157,8 @@ export function ProblemSheet() {
       reset();
       setOpen(false);
     } catch (e) {
-      if (isRetryable(e) && !(e instanceof ProblemSendError && e.status === 429)) {
-        queueProblem(getSelectedOrgId(), report);
+      if (userId && isRetryable(e) && !(e instanceof ProblemSendError && e.status === 429)) {
+        queueProblem(getSelectedOrgId(), userId, report);
         toast({ title: "Saved on this device", description: "It will be sent when the till is back online." });
         reset();
         setOpen(false);

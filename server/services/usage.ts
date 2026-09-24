@@ -18,6 +18,7 @@ import { db } from "../db";
 import { orgNotifications, problemReports, usageDaily, usageEvents, usageStudyWindows } from "@shared/schema";
 import {
   DEVICE_EVENTS_PER_HOUR,
+  ORG_EVENTS_PER_HOUR,
   emptyTotals,
   fixCheckLine,
   FUNNEL_STEPS,
@@ -94,14 +95,25 @@ export async function recordUsageBatch(args: {
   const appVersion = usageVersion(input.appVersion);
 
   return db.transaction(async (tx: Executor) => {
-    // Two batches from one device at once must not both squeeze under the limit.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`usage_device:${orgId}:${input.deviceKey}`}))`);
+    // Two batches from one shop at once must not both squeeze under a limit
+    // (the shop's lock covers its devices too; batches are a few a minute).
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`usage_org:${orgId}`}))`);
     const since = new Date(now.getTime() - 3_600_000);
+    // The shop's own cap first: the device key is the till's word, so a fresh
+    // key must not buy a fresh allowance.
+    const [{ n: shopN }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(usageEvents)
+      .where(and(eq(usageEvents.orgId, orgId), gte(usageEvents.receivedAt, since)));
+    const shopRoom = ORG_EVENTS_PER_HOUR - Number(shopN);
+    if (shopRoom <= 0) {
+      throw new UsageError(429, "shop_limit", "This shop has sent its usage for this hour. It will send the rest later.");
+    }
     const [{ n }] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(usageEvents)
       .where(and(eq(usageEvents.orgId, orgId), eq(usageEvents.deviceKey, input.deviceKey), gte(usageEvents.receivedAt, since)));
-    const room = DEVICE_EVENTS_PER_HOUR - Number(n);
+    const room = Math.min(DEVICE_EVENTS_PER_HOUR - Number(n), shopRoom);
     if (room <= 0) {
       throw new UsageError(429, "device_limit", "This device has sent its usage for this hour. It will send the rest later.");
     }

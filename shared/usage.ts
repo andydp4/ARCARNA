@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { API_ROUTE_WORDS } from "./apiRouteWords";
 import { isDeviceName, screenFor, UNNAMED_DEVICE, VERSION_RE } from "./problemReports";
 import { shiftIsoDate } from "./time/tradingDay";
 
@@ -33,6 +34,14 @@ export const SUMMARY_RETENTION_MONTHS = 24;
 /** Most events in one batch, and per device per hour (the tills share one address, so the limit is per device). */
 export const USAGE_BATCH_MAX = 200;
 export const DEVICE_EVENTS_PER_HOUR = 1_500;
+/**
+ * And per shop per hour, whatever the device keys. The device key is the
+ * till's own word (nothing checks it), so a build that makes a new key on
+ * every load, or a session that sends a fresh key each batch, would otherwise
+ * get a fresh device allowance every time. A busy shop's tills send a few
+ * hundred events an hour each; this is several times that.
+ */
+export const ORG_EVENTS_PER_HOUR = 10_000;
 /** A batch kept offline is still accepted up to this old; older events are dropped. */
 export const USAGE_MAX_AGE_DAYS = 30;
 
@@ -94,8 +103,9 @@ const LONG_ID_RE = /^[0-9A-Za-z_-]{16,}$/;
 /**
  * An API call as a route shape: `/api/orders/3f2a…/refund?x=1` is
  * `/api/orders/:id/refund`. Anything before `/api` (the app's base path, a
- * host) and the query string are dropped; a segment that is not a plain
- * route word (a barcode, an encoded search) becomes `:value`.
+ * host) and the query string are dropped; a segment that is not one of the
+ * server's route words (API_ROUTE_WORDS: a barcode, a gift card code, a
+ * search) becomes `:value`.
  */
 export function apiRouteShape(url: string): string {
   let p = String(url ?? "");
@@ -108,9 +118,14 @@ export function apiRouteShape(url: string): string {
     .split("/")
     .filter(Boolean)
     .slice(0, 6)
-    .map((s) => {
+    .map((s, i) => {
+      if (i === 0) return "api";
       if (UUID_RE.test(s) || /^\d+$/.test(s) || (LONG_ID_RE.test(s) && /\d/.test(s))) return ":id";
-      return /^[a-z][a-z0-9-]{0,40}$/i.test(s) ? s.toLowerCase() : ":value";
+      // Only a word from the server's own routes is kept. A word-like segment
+      // that is not one (a gift card code with no digit, a typed SKU such as
+      // "abc-123") is something staff typed, so it is never stored.
+      const word = s.toLowerCase();
+      return API_ROUTE_WORDS.has(word) ? word : ":value";
     });
   return `/${segments.join("/")}`.slice(0, 100);
 }

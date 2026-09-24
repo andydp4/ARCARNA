@@ -76,7 +76,7 @@ describe("what a device records", () => {
 
   it("records a screen view with active and open time when the screen changes", () => {
     const { rec, events, advance } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.setPath("/customers/3f2a9c1e-1111-4222-8333-444455556666", "?q=jane");
     rec.input();
     for (let i = 0; i < 12; i++) {
@@ -91,7 +91,7 @@ describe("what a device records", () => {
 
   it("tells the board from the till on the Operations Centre", () => {
     const { rec } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.setPath("/operations");
     expect(rec.currentScreen()).toBe("/operations");
     rec.setPane("order");
@@ -106,7 +106,7 @@ describe("what a device records", () => {
 
   it("sends a long stay on one screen in parts, marked as the same view", () => {
     const { rec, events, advance } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.setPath("/operations");
     for (let t = 0; t < VIEW_CHUNK_MS; t += 5_000) {
       advance(5_000);
@@ -126,7 +126,7 @@ describe("what a device records", () => {
 
   it("keeps a message's title only, calls only when slow or failed and as a route shape", () => {
     const { rec, events } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.setPath("/operations", "?pane=order");
     rec.message({ not: "a string" }, "info");
     rec.message("Order failed", "error");
@@ -143,7 +143,7 @@ describe("what a device records", () => {
 
   it("counts only a few script errors per page load", () => {
     const { rec, events } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     for (let i = 0; i < 20; i++) rec.crash("script");
     rec.crash("boundary");
     expect(events().filter((e: any) => e.crash === "script")).toHaveLength(5);
@@ -152,7 +152,7 @@ describe("what a device records", () => {
 
   it("every event it makes is one the server accepts", () => {
     const { rec, events } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.setPath("/stock-levels");
     rec.message("Saved", "info");
     rec.call("GET", "/api/x", 5_000, 200);
@@ -166,7 +166,7 @@ describe("what a device records", () => {
 
   it("keeps at most the newest events when it cannot send", () => {
     const { rec, events } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     for (let i = 0; i < USAGE_QUEUE_MAX + 10; i++) rec.funnel("start");
     expect(events()).toHaveLength(USAGE_QUEUE_MAX);
   });
@@ -175,7 +175,7 @@ describe("what a device records", () => {
 describe("sending", () => {
   it("sends this shop's events in a batch with the device name and key, then forgets them", async () => {
     const { rec, sent, events, setOrg } = setup();
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.funnel("start");
     setOrg("org-2");
     rec.funnel("pay");
@@ -192,19 +192,19 @@ describe("sending", () => {
 
   it("keeps events when offline, when there is no answer, and backs off on the device limit", async () => {
     const offline = setup({ online: false });
-    offline.rec.setEnabled(true);
+    offline.rec.setEnabled(true, "CASHIER");
     offline.rec.funnel("start");
     expect(await offline.rec.flush()).toBe(0);
     expect(offline.events()).toHaveLength(1);
 
     const down = setup({ status: new TypeError("Failed to fetch") });
-    down.rec.setEnabled(true);
+    down.rec.setEnabled(true, "CASHIER");
     down.rec.funnel("start");
     expect(await down.rec.flush()).toBe(0);
     expect(down.events()).toHaveLength(1);
 
     const limited = setup({ status: 429 });
-    limited.rec.setEnabled(true);
+    limited.rec.setEnabled(true, "CASHIER");
     limited.rec.funnel("start");
     await limited.rec.flush();
     await limited.rec.flush();
@@ -215,9 +215,47 @@ describe("sending", () => {
     expect(limited.events()).toHaveLength(1);
   });
 
+  it("sends events only while the role they were recorded under is signed in", async () => {
+    const { rec, sent, store, advance } = setup();
+    rec.setEnabled(true, "CASHIER");
+    rec.setPath("/pos");
+    advance(60_000);
+    rec.funnel("start");
+    // The cashier signs out offline; a manager signs in next on the same till.
+    rec.setEnabled(false);
+    rec.setEnabled(true, "MANAGER");
+    expect(await rec.flush()).toBe(0);
+    expect(sent).toHaveLength(0);
+    rec.funnel("pay");
+    expect(await rec.flush()).toBe(1);
+    expect(sent[0].batch.events.map((e) => (e as any).step)).toEqual(["pay"]);
+    // The cashier's events wait for a cashier.
+    rec.setEnabled(true, "CASHIER");
+    expect(await rec.flush()).toBe(2);
+    expect(sent[1].batch.events.map((e) => e.kind)).toEqual(["funnel", "screen"]);
+    // Events kept by an older build, with no role, cannot be placed and are dropped on load.
+    store.setItem("q", JSON.stringify([{ orgId: "org-1", event: { kind: "funnel", step: "start" } }]));
+    const again = new UsageRecorder({
+      now: () => 0, store, queueKey: "q", deviceKeyKey: "k", orgId: () => "org-1", device: () => null,
+      appVersion: "1", online: () => true, send: async () => 200,
+    });
+    expect(again.pending()).toBe(0);
+  });
+
+  it("closes the view under the old role when the role changes without a sign-out", () => {
+    const { rec, store, advance } = setup();
+    rec.setEnabled(true, "CASHIER");
+    rec.setPath("/pos");
+    rec.input();
+    advance(10_000);
+    rec.setEnabled(true, "MANAGER");
+    const q = JSON.parse(store.getItem("q") ?? "[]");
+    expect(q.map((x: any) => [x.role, x.event.kind])).toEqual([["CASHIER", "screen"]]);
+  });
+
   it("drops a batch the server refused as malformed, so it cannot block the queue", async () => {
     const { rec, events } = setup({ status: 400 });
-    rec.setEnabled(true);
+    rec.setEnabled(true, "CASHIER");
     rec.funnel("start");
     await rec.flush();
     expect(events()).toHaveLength(0);
@@ -225,13 +263,13 @@ describe("sending", () => {
 });
 
 describe("timing calls at fetch", () => {
-  it("times API calls, reports failures as status 0, and leaves the usage batches and other URLs alone", async () => {
+  it("times API calls, reports failures and slow give-ups as status 0, and leaves the usage batches and other URLs alone", async () => {
     const calls: Array<[string, string, number, number]> = [];
     let t = 0;
     const target = {
       fetch: (async (input: RequestInfo | URL) => {
-        t += 2_000;
         const url = String(input);
+        t += url.includes("quick") ? 300 : url.includes("timeout") ? 12_000 : 2_000;
         if (url.includes("down")) throw new TypeError("Failed to fetch");
         if (url.includes("abort")) throw Object.assign(new Error("aborted"), { name: "AbortError" });
         return { status: 503 } as Response;
@@ -240,12 +278,16 @@ describe("timing calls at fetch", () => {
     const undo = installFetchObserver(target, (...c) => void calls.push(c), () => t);
     await target.fetch("/arcarna/api/orders", { method: "post" });
     await expect(target.fetch("/arcarna/api/down")).rejects.toThrow();
-    await expect(target.fetch("/arcarna/api/abort")).rejects.toThrow();
+    // Cancelled quickly (the person moved on): not friction.
+    await expect(target.fetch("/arcarna/api/abort-quick")).rejects.toThrow();
+    // The sale queue giving up on POST /api/orders at its 12s timeout: the worst sale friction.
+    await expect(target.fetch("/arcarna/api/orders?abort-timeout", { method: "POST" })).rejects.toThrow();
     await target.fetch("/arcarna/api/usage/events", { method: "POST" });
     await target.fetch("/arcarna/sw.js");
     expect(calls).toEqual([
       ["POST", "/arcarna/api/orders", 2_000, 503],
       ["GET", "/arcarna/api/down", 2_000, 0],
+      ["POST", "/arcarna/api/orders?abort-timeout", 12_000, 0],
     ]);
     undo();
   });

@@ -24,11 +24,13 @@ export function UsageRecorder() {
   const search = useSearch();
   const { user } = useAuth();
   const enabled = isAtLeast(user?.role, "CASHIER") && !getPreviewRole();
+  const role = enabled ? (user?.role ?? null) : null;
 
   useEffect(() => {
-    usageRecorder.setEnabled(enabled);
+    // Events are kept with this role and only sent while it is signed in.
+    usageRecorder.setEnabled(enabled, role);
     if (enabled) countOfflineSpellOnStart();
-  }, [enabled]);
+  }, [enabled, role]);
 
   useEffect(() => {
     usageRecorder.setPath(location, search);

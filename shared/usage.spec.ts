@@ -1,4 +1,7 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
+import { API_ROUTE_WORDS } from "./apiRouteWords";
 import {
   apiRouteShape,
   daysOfData,
@@ -41,8 +44,41 @@ describe("what may be stored", () => {
   it("turns a call's URL into a route shape", () => {
     expect(apiRouteShape("/arcarna/api/orders/3f2a9c1e-1111-4222-8333-444455556666/refund?q=jane")).toBe("/api/orders/:id/refund");
     expect(apiRouteShape("https://shop.example/arcarna/api/products/by-barcode/5012345678900")).toBe("/api/products/by-barcode/:id");
-    expect(apiRouteShape("/api/customers/search/jane%20smith")).toBe("/api/customers/search/:value");
+    expect(apiRouteShape("/api/customers/search/jane%20smith")).toBe("/api/customers/:value/:value");
     expect(apiRouteShape("/sw.js")).toBe("/other");
+  });
+
+  it("never keeps a typed value in a call's route, even one that looks like a word", () => {
+    // A gift card code with no digit, a partial one, a typed SKU.
+    expect(apiRouteShape("/arcarna/api/gift-cards/ABCDEFGHJKLMNPQR")).toBe("/api/gift-cards/:value");
+    expect(apiRouteShape("/api/gift-cards/abcd-efgh")).toBe("/api/gift-cards/:value");
+    expect(apiRouteShape("/api/gift-cards/ABCDEFGHJKLMNPQR/validate")).toBe("/api/gift-cards/:value/validate");
+    expect(apiRouteShape("/api/products/by-barcode/abc-123")).toBe("/api/products/by-barcode/:value");
+    expect(apiRouteShape("/api/Orders/Refund")).toBe("/api/orders/refund");
+    expect(apiRouteShape("/api/jane")).toBe("/api/:value");
+  });
+
+  it("knows every fixed word in the server's /api routes", () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, f.name);
+        if (f.isDirectory()) {
+          if (f.name !== "__tests__" && f.name !== "node_modules") walk(p);
+        } else if (/\.ts$/.test(f.name) && !/\.(test|spec)\.ts$/.test(f.name)) files.push(p);
+      }
+    };
+    walk(path.resolve(__dirname, "../server"));
+    const missing = new Set<string>();
+    for (const file of files) {
+      const src = fs.readFileSync(file, "utf8");
+      for (const m of src.matchAll(/["'`](\/api\/[^"'`\s]*)["'`]/g)) {
+        for (const seg of m[1].split(/[?#]/)[0].split("/").slice(2)) {
+          if (/^[a-z][a-z0-9-]*$/i.test(seg) && !API_ROUTE_WORDS.has(seg.toLowerCase())) missing.add(seg);
+        }
+      }
+    }
+    expect([...missing], "add these to shared/apiRouteWords.ts").toEqual([]);
   });
 
   it("records a call only when it was slow or failed; a signed-out 401 is not friction", () => {
