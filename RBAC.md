@@ -153,6 +153,17 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   keys reading contact details. Admins see a customer's rows on the Contact
   dialog's Access history tab; the owner sees the org-wide page
   (`/customer-access-log`) and gets a Monday Signal with the week's line.
+- **My run (v1.2).** `GET /api/my-run` returns the signed-in person's own
+  ready and out-for-delivery deliveries; a manager may pass `?driver=` to view
+  someone else's (read-only), anyone below gets 403. It carries names and
+  addresses, never a phone (Call is the logged reveal above), and is
+  `Cache-Control: no-store`. `PUT /api/my-run/order` saves only the caller's
+  own stop order for the trading day. `POST /api/orders/:id/couldnt-deliver`
+  is the assignee's or a manager's: it puts the delivery back to ready, leaves
+  a note on the board card, sends a `delivery_failed` Signal to managers and
+  is logged (`order.delivery_failed`). The phone keeps a copy of the last
+  loaded run (no phone numbers) and queued Delivered / Couldn't deliver taps,
+  per person; sign-out clears the copy.
 - **Device copies, exports and webhooks (v1.2 Phase 5, PRV-07, FIX-14,
   CMP-14).** The till's offline store keeps the cashier view only
   (`deviceCustomerRow`), whoever was signed in, and cuts rows left by older

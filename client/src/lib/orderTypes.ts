@@ -105,6 +105,9 @@ export interface BoardOrder {
   deliveryAddress: string | null;
   deliveryPostcode: string | null;
   deliveryNotes: string | null;
+  /** "Couldn't deliver" from My run: why the last attempt failed, and when. */
+  deliveryIssue?: string | null;
+  deliveryIssueAt?: string | null;
   updatedAt: string | null;
   /** A card link Stripe has not confirmed yet — "Awaiting card payment" (v1.2 Stripe links). */
   awaitingCardPayment?: boolean;

@@ -55,6 +55,12 @@ export const transitionOrderSchema = z.object({
   actualAt: z.string().datetime().optional(),
   /** `complete`: "handed_over" (collection) or "delivered" (delivery) — the customer-facing word on the receipt trail, not a new status. */
   label: z.enum(["handed_over", "delivered"]).optional(),
+  /**
+   * `complete`: the phone's id for the tap (My run). Kept on the completed
+   * event; a second complete carrying the same id is refused, so a queued tap
+   * replayed after a reopen cannot complete the order again.
+   */
+  tapId: z.string().min(1).max(64).optional(),
 });
 
 export type TransitionOrderInput = z.infer<typeof transitionOrderSchema>;

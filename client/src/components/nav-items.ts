@@ -171,6 +171,15 @@ export const centres: Centre[] = [
         testId: 'nav-orders'
       },
       {
+        // The driver's phone view (v1.2): every member of staff has their
+        // own run; the server shows each person only theirs.
+        key: 'my-run',
+        label: 'My run',
+        href: '/my-run',
+        icon: Truck,
+        testId: 'nav-my-run'
+      },
+      {
         // Owner decision Q11: invoices and the Credit List are manager and
         // above, here and on the server. Cashiers lose both.
         key: 'tick-list',

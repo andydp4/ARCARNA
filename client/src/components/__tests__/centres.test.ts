@@ -20,8 +20,8 @@ describe("Centres (v1.2 Phase 3)", () => {
 
   it("gives a cashier Control, Operations, Stock (levels only), Finance (Shifts) and Settings", () => {
     expect(keys("CASHIER")).toEqual(["control", "operations", "stock", "finance", "settings"]);
-    // My performance (v1.2 Phase 7C) is every role's; it is the cashier's only performance page.
-    expect(pageKeys("CASHIER", "operations")).toEqual(["orders", "my-performance"]);
+    // My run (drivers) and My performance (v1.2 Phase 7C) are every role's.
+    expect(pageKeys("CASHIER", "operations")).toEqual(["orders", "my-run", "my-performance"]);
     expect(pageKeys("CASHIER", "stock")).toEqual(["stock-levels"]);
     expect(pageKeys("CASHIER", "finance")).toEqual(["shifts"]);
     expect(pageKeys("CASHIER", "settings")).toEqual(["settings"]);

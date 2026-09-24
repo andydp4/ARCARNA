@@ -91,6 +91,16 @@ export class TransitionForbiddenError extends Error {
   }
 }
 
+/** A complete carrying a tapId that already completed this order once (My run replay). */
+export class TapAlreadyAppliedError extends Error {
+  readonly status = 409 as const;
+  readonly code = "TAP_ALREADY_APPLIED" as const;
+  constructor() {
+    super("This tap already completed the order; it has been reopened since.");
+    this.name = "TapAlreadyAppliedError";
+  }
+}
+
 export class TransitionBadRequestError extends Error {
   readonly status = 400 as const;
   readonly code: string;
@@ -529,9 +539,28 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
           cashierShift: actor.cashierShift ?? null,
           role: actor.role,
         };
+        if (input.tapId) {
+          // A queued Delivered replayed after its first send committed and a
+          // manager reopened the order: completing again would undo the
+          // reopen and backdate the settlement to the old tap.
+          const [seen] = await tx
+            .select({ id: orderEvents.id })
+            .from(orderEvents)
+            .where(
+              and(
+                eq(orderEvents.orgId, orgId),
+                eq(orderEvents.orderId, orderId),
+                eq(orderEvents.kind, "completed"),
+                sql`${orderEvents.meta}->>'tapId' = ${input.tapId}`,
+              ),
+            )
+            .limit(1);
+          if (seen) throw new TapAlreadyAppliedError();
+        }
         const result = await completeOrderTx(tx, row, completeActor, {
           label: input.label,
           actualAt: input.actualAt,
+          tapId: input.tapId,
         });
         // `completeOrderTx` already inserted the `order_events` row directly
         // (it needs to compute the resettle meta itself) — this re-selects

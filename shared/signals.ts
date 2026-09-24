@@ -86,6 +86,9 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   // The weekly digest's "ready" line (v1.2 Phase 7C): everyone, and it
   // carries no figures — each person's digest is built when they open it.
   staff_digest: { minRole: "CASHIER" },
+  // My run's "Couldn't deliver": the delivery is back to ready and a manager
+  // decides what next (call the customer, rebook, refund).
+  delivery_failed: { minRole: "MANAGER" },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

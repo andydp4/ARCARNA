@@ -106,6 +106,9 @@ export interface BoardOrderPayload {
   deliveryAddress: string | null;
   deliveryPostcode: string | null;
   deliveryNotes: string | null;
+  /** My run's "Couldn't deliver" note and when it was left (migration 180). Same visibility as the address. */
+  deliveryIssue: string | null;
+  deliveryIssueAt: string | null;
   updatedAt: string | null;
   /** A card link Stripe has not confirmed yet (v1.2 Stripe links): "Awaiting card payment". */
   awaitingCardPayment: boolean;
@@ -188,6 +191,8 @@ type RawOrderRow = {
   deliveryAddress: string | null;
   deliveryPostcode: string | null;
   deliveryNotes: string | null;
+  deliveryIssue: string | null;
+  deliveryIssueAt: Date | null;
   updatedAt: Date | null;
 };
 
@@ -229,6 +234,8 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
       deliveryAddress: orders.delivery_address,
       deliveryPostcode: orders.delivery_postcode,
       deliveryNotes: orders.delivery_notes,
+      deliveryIssue: orders.delivery_issue,
+      deliveryIssueAt: orders.delivery_issue_at,
       updatedAt: orders.updated_at,
     })
     .from(orders)
@@ -404,6 +411,8 @@ function projectBoardOrder(
     deliveryAddress: fulfilmentMethod === "delivery" ? (row.deliveryAddress ?? null) : null,
     deliveryPostcode: fulfilmentMethod === "delivery" ? (row.deliveryPostcode ?? null) : null,
     deliveryNotes: fulfilmentMethod === "delivery" ? (row.deliveryNotes ?? null) : null,
+    deliveryIssue: fulfilmentMethod === "delivery" ? (row.deliveryIssue ?? null) : null,
+    deliveryIssueAt: fulfilmentMethod === "delivery" ? iso(row.deliveryIssueAt) : null,
     updatedAt: iso(row.updatedAt),
     awaitingCardPayment,
   };
@@ -683,6 +692,8 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
       deliveryAddress: orders.delivery_address,
       deliveryPostcode: orders.delivery_postcode,
       deliveryNotes: orders.delivery_notes,
+      deliveryIssue: orders.delivery_issue,
+      deliveryIssueAt: orders.delivery_issue_at,
       updatedAt: orders.updated_at,
     })
     .from(orders)
@@ -740,7 +751,14 @@ function laneCounts(
  */
 export function boardOrderForViewer(order: BoardOrderPayload, role: string | null | undefined): BoardOrderPayload {
   if (canSeeDeliveryAddress(role, order)) return order;
-  return { ...order, deliveryAddress: null, deliveryPostcode: null, deliveryNotes: null };
+  return {
+    ...order,
+    deliveryAddress: null,
+    deliveryPostcode: null,
+    deliveryNotes: null,
+    deliveryIssue: null,
+    deliveryIssueAt: null,
+  };
 }
 
 export function boardPayloadForViewer(payload: OpsBoardPayload, role: string | null | undefined): OpsBoardPayload {

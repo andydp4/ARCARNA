@@ -1674,6 +1674,10 @@ export const orders = pgTable("orders", {
   deliveryAddress: varchar("delivery_address", { length: 1024 }),
   deliveryPostcode: varchar("delivery_postcode", { length: 16 }),
   deliveryNotes: varchar("delivery_notes", { length: 500 }),
+  // My run's "Couldn't deliver" (v1.2, migration 180): why the last attempt
+  // failed and when, shown on the board card. The order went back to ready.
+  deliveryIssue: varchar("delivery_issue", { length: 600 }),
+  deliveryIssueAt: timestamp("delivery_issue_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -3576,3 +3580,18 @@ export const usageStudyWindows = pgTable("usage_study_windows", {
   endsOn: date("ends_on"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+// My run (v1.2, migration 180): the order a driver put their stops in, per
+// person per trading day. Ids only — the stops are always read fresh.
+export const deliveryRunOrders = pgTable("delivery_run_orders", {
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  runDate: date("run_date").notNull(),
+  orderIds: jsonb("order_ids").$type<string[]>().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.orgId, table.userId, table.runDate] }),
+]);
+
+export type DeliveryRunOrder = typeof deliveryRunOrders.$inferSelect;
