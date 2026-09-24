@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/appPaths";
 import { PosCustomerPhoneMatches } from "@/components/pos-customer-phone-matches";
 import { formatUkPhone, type CustomerMatch } from "@shared/customerView";
 import { useToast } from "@/hooks/use-toast";
+import { CustomerCreditNotice } from "@/components/customer-credit-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -561,6 +562,9 @@ export function PosCartPanel({
             onCancel={() => setNewCustomerOpen(false)}
           />
         )}
+
+        {/* Already owes on credit (v1.2.1): information, never a block. */}
+        <CustomerCreditNotice customerId={selectedCustomer?.id ?? null} disabled={orderSubmitting} className="mt-2" />
 
         {selectedCustomer && customerTier && (
           <Card className="lm-card-muted mt-2">

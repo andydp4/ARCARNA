@@ -69,6 +69,8 @@ export async function signalCreditPayment(input: {
   customerName?: string | null;
   orderIds: string[];
   paidOn?: string | null;
+  /** Taken with Take a payment at the till (v1.2.1), not from the Credit List. */
+  atTill?: boolean;
 }): Promise<void> {
   if (!creditPaymentNeedsSignal(input.method, input.recorderRole)) return;
   const who = input.recorderUserId ? await resolveUserName(input.recorderUserId) : "Someone";
@@ -78,7 +80,9 @@ export async function signalCreditPayment(input: {
   await notify({
     orgId: input.orgId,
     title: "Credit payment by " + methodLabel,
-    message: `${who} recorded £${input.amount.toFixed(2)}${forWhom} by ${methodLabel}${dated}. It did not go through the till, so check it arrived.`,
+    message: input.atTill
+      ? `${who} took £${input.amount.toFixed(2)}${forWhom} by ${methodLabel} at the till against their credit. It is not part of a sale, so check it is in the card takings.`
+      : `${who} recorded £${input.amount.toFixed(2)}${forWhom} by ${methodLabel}${dated}. It did not go through the till, so check it arrived.`,
     severity: "info",
     source: "credit_payment",
     subjectUserId: input.recorderUserId ?? null,

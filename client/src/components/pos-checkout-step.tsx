@@ -40,6 +40,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ActionLoader } from "@/components/action-loader";
+import { CustomerCreditNotice } from "@/components/customer-credit-notice";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import {
   BACKDATE_LIMIT_DAYS,
@@ -208,6 +209,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-2xl space-y-5">
+          <CustomerCreditNotice customerId={p.customerId} disabled={p.submitting} />
           {p.priceGuardPanel}
           <section>
             <div className="mb-2 flex items-center justify-between">

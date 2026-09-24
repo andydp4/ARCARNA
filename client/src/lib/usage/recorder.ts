@@ -18,6 +18,7 @@ import {
   SLOW_CALL_MS,
   USAGE_BATCH_MAX,
   type CrashKind,
+  type CreditNoticeStep,
   type FunnelStep,
   type UsageEventInput,
 } from "@shared/usage";
@@ -273,6 +274,11 @@ export class UsageRecorder {
 
   funnel(step: FunnelStep): void {
     this.record({ kind: "funnel", screen: this.screen, step });
+  }
+
+  /** "Already owes" at order start (v1.2.1): shown, or a payment taken from it. No customer, no amount. */
+  creditNotice(step: CreditNoticeStep): void {
+    this.record({ kind: "credit", screen: this.screen, step });
   }
 
   private record(e: WithoutAt<UsageEventInput>): void {

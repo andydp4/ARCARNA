@@ -347,6 +347,8 @@ export type FrictionTruths = {
   messages: Array<{ title: string; count: number; errors: number; screens: number; topScreen: string }> | null;
   roles: Array<{ role: string; activeHours: number; openHours: number; views: number }> | null;
   funnel: Array<{ role: string; steps: Record<string, number> }> | null;
+  /** "Already owes" at order start (v1.2.1): how often it showed, and how often a payment was taken from it, by role. */
+  creditNotices: Array<{ role: string; shown: number; paid: number }> | null;
   slowCalls: Array<{ call: string; slow: number; failed: number; avgMs: number; topScreen: string }> | null;
   devices: DeviceHealth[];
   problemsOpen: number;
@@ -376,7 +378,7 @@ export async function frictionTruths(orgId: string, opts: { weeks?: number; now?
     problemsOpen: Number(problemsOpen) || 0,
   };
   // The first two weeks rank nothing: a handful of hours makes any screen look terrible.
-  if (!enoughData) return { ...base, pain: null, messages: null, roles: null, funnel: null, slowCalls: null };
+  if (!enoughData) return { ...base, pain: null, messages: null, roles: null, funnel: null, creditNotices: null, slowCalls: null };
 
   const agg = await dailyAgg(orgId, from, today);
   const pain = painLeaderboard(screenTotalsFrom(agg, await problemsByScreen(orgId, tz, from, today))).slice(0, 20);
@@ -420,6 +422,15 @@ export async function frictionTruths(orgId: string, opts: { weeks?: number; now?
   }
   const funnel = [...funnelBy.entries()].map(([role, steps]) => ({ role, steps }));
 
+  const creditBy = new Map<string, { shown: number; paid: number }>();
+  for (const r of agg.filter((r) => r.kind === "credit")) {
+    const t = creditBy.get(r.role) ?? { shown: 0, paid: 0 };
+    if (r.label === "shown") t.shown += r.count;
+    else if (r.label === "paid") t.paid += r.count;
+    creditBy.set(r.role, t);
+  }
+  const creditNotices = [...creditBy.entries()].map(([role, t]) => ({ role, ...t }));
+
   const callBy = new Map<string, DailyAgg[]>();
   for (const r of agg.filter((r) => r.kind === "call")) callBy.set(r.label, [...(callBy.get(r.label) ?? []), r]);
   const slowCalls = [...callBy.entries()]
@@ -436,7 +447,7 @@ export async function frictionTruths(orgId: string, opts: { weeks?: number; now?
     .sort((a, b) => b.slow + b.failed - (a.slow + a.failed))
     .slice(0, 20);
 
-  return { ...base, pain, messages, roles, funnel, slowCalls };
+  return { ...base, pain, messages, roles, funnel, creditNotices, slowCalls };
 }
 
 // ---------------------------------------------------------------------------

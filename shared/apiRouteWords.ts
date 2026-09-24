@@ -14,7 +14,7 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "by-reference", "callback", "cashier-analytics", "cashier-commission", "cashier-shifts",
   "cashiers", "channels", "checks", "close", "complete", "complete-first-sale", "config",
   "control-centre", "conversations", "create-customer", "create-draft-order",
-  "create-purchase-draft", "create-purchase-drafts", "create-transfer-draft", "credit", "current",
+  "create-purchase-draft", "create-purchase-drafts", "create-transfer-draft", "credit", "credit-payments", "credit-summary", "current",
   "customers", "daily-revenue", "dead-letters", "discard", "dismiss", "duplicate", "edit-preview",
   "end", "events", "evidence", "executions", "expense-analytics", "expense-report", "expenses",
   "export", "exports", "failed", "feature-flags", "for-order", "friction-truths", "gift-cards",

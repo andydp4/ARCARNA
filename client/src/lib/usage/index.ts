@@ -9,7 +9,7 @@ import {
   STORAGE_USAGE_OFFLINE_SINCE,
   STORAGE_USAGE_QUEUE,
 } from "@shared/storageKeys";
-import type { CrashKind, FunnelStep } from "@shared/usage";
+import type { CrashKind, CreditNoticeStep, FunnelStep } from "@shared/usage";
 import { APP_VERSION } from "@shared/version";
 import { resolveApiUrl } from "../appPaths";
 import { withClerkAuthHeaders } from "../clerkApiAuth";
@@ -61,6 +61,10 @@ export function recordCrash(kind: CrashKind): void {
 
 export function recordFunnel(step: FunnelStep): void {
   usageRecorder.funnel(step);
+}
+
+export function recordCreditNotice(step: CreditNoticeStep): void {
+  usageRecorder.creditNotice(step);
 }
 
 /** The Operations Centre: "order" when the till form is in front, null for the board alone, undefined when leaving. */

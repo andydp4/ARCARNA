@@ -35,6 +35,7 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
+| "This customer already owes" at order start: one customer's total, tab count and oldest date; Take a payment (cash or card, today, up to what is owed) against it (v1.2.1) | Yes | Yes | Yes | Yes |
 | Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |
 | Order Timing by person and Staff Performance, with Benefit (£), Speed and Fairness (v1.2 Phase 7; provisional for the first 2 weeks) | No | Cashiers and own; Admin cover and team totals | Everyone | Everyone |
 | My performance and the weekly digest (v1.2 Phase 7C; own figures, commission, badges, override count; team median only at 4+; never cached) | Own only | Own; digest adds cashiers' rows | Own; digest adds everyone's | Everyone |
@@ -223,7 +224,11 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
   Credit List route (`/api/tick-customers*`, `/api/credit/*`) and every invoice
   route (including `POST /api/invoices/for-order/:orderId`, v1.2 Phase 1C) are
   MANAGER and above, and the Control Centre leaves credit totals
-  out below MANAGER. A credit payment's method must be cash, card or transfer.
+  out below MANAGER. The till's exception (v1.2.1): every staff role reads
+  one customer's total, tab count and oldest date
+  (`GET /api/customers/:id/credit-summary`) and takes a cash or card payment
+  against it, today only (`POST /api/customers/:id/credit-payments`), through
+  the same oldest-tab-first repayment path, recorded whole or not at all. A credit payment's method must be cash, card or transfer.
   It may be dated up to `BACKDATE_LIMIT_DAYS` (7) back, never ahead, and only
   by a manager (`shared/creditPolicy.ts`). Clearing a whole tab
   (`/mark-paid`) needs the exact balance being cleared and a "Paid by" method
