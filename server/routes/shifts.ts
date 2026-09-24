@@ -353,6 +353,10 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
           });
         }
 
+        // The pre-check above and this insert are two steps: a second tap
+        // arriving between them meets the one-open-shift index
+        // (shifts_one_open_per_user_location_idx). It gets the same 409 as a
+        // tap a moment later, not a 500.
         const [created] = await db
           .insert(shifts)
           .values({
@@ -362,7 +366,26 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
             openingFloat: String(body.openingFloat),
             status: "open",
           })
+          .onConflictDoNothing()
           .returning();
+        if (!created) {
+          const [winner] = await db
+            .select()
+            .from(shifts)
+            .where(
+              and(
+                eq(shifts.orgId, ctx.orgId),
+                eq(shifts.locationId, body.locationId),
+                eq(shifts.userId, userId),
+                inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
+              ),
+            )
+            .limit(1);
+          return res.status(409).json({
+            message: "You already have an open shift at this location",
+            shift: winner ?? null,
+          });
+        }
 
         await recordAdminAudit(req, {
           actorUserId: userId,

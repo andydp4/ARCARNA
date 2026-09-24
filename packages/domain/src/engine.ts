@@ -208,9 +208,13 @@ export class DomainEngine {
         orgId: (dto as any).orgId as string,
         locationId: (dto as any).locationId as string | undefined,
         orderId: undefined as string | undefined,
+        forSale: true,
       }
       const stockWarnings: string[] = []
-      for (const line of dto.lines) {
+      // Product order, so two sales locking the same stock rows (forSale)
+      // always take them in the same order and cannot deadlock.
+      const linesByProduct = [...dto.lines].sort((a, b) => String(a.productId).localeCompare(String(b.productId)))
+      for (const line of linesByProduct) {
         const availableStock = await this.products.checkStock(line.productId as any, stockCtx)
         if (availableStock < line.quantity) {
           const product = await this.products.findById(line.productId as any)

@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { db } from "../db";
 import { locations, shifts } from "../../shared/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 const ACTIVE_TILL_SHIFT_STATUSES = ["open", "reopened"];
 
@@ -190,3 +190,60 @@ export const requireOpenShift: RequestHandler = async (req, res, next) => {
     return res.status(500).json({ message: "Failed to verify shift" });
   }
 };
+
+type SqlExecutor = { execute: (query: ReturnType<typeof sql>) => Promise<unknown> };
+
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  const r = result as { rows?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
+  return Array.isArray(r) ? r : r?.rows ?? [];
+}
+
+/**
+ * The drawer a sale is stamped to, decided inside the sale's own transaction
+ * (v1.2.1, E2E-01).
+ *
+ * `requireOpenShift` picks the drawer when the request arrives, but a sale
+ * takes a moment to write, and the cashier can count and close that drawer in
+ * the meantime. Stamping it there anyway put the sale into a Z report after
+ * the count, so the counted sheet changed afterwards. Here the drawer row is
+ * share-locked, which queues this sale behind a close already under way (and
+ * a close behind this sale): if the drawer is still open the sale joins it and
+ * is in its count; if it has just been counted, the sale opens the next drawer
+ * (floated at that count, as `openShiftForUser` does) and is counted there.
+ */
+export async function drawerForSaleInTx(tx: SqlExecutor, shift: OpenShiftContext): Promise<string> {
+  const locked = rowsOf(
+    await tx.execute(sql`SELECT status FROM shifts WHERE id = ${shift.id} FOR SHARE`),
+  )[0];
+  const status = locked?.status as string | undefined;
+  if (status && ACTIVE_TILL_SHIFT_STATUSES.includes(status)) return shift.id;
+
+  const inserted = rowsOf(
+    await tx.execute(sql`
+      INSERT INTO shifts (org_id, location_id, user_id, opening_float, status)
+      SELECT ${shift.orgId}, ${shift.locationId}, ${shift.userId},
+             COALESCE((
+               SELECT closing_count FROM shifts
+               WHERE org_id = ${shift.orgId} AND location_id = ${shift.locationId} AND status = 'closed'
+               ORDER BY closed_at DESC NULLS LAST
+               LIMIT 1
+             ), 0),
+             'open'
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `),
+  )[0];
+  if (inserted?.id) return String(inserted.id);
+
+  const existing = rowsOf(
+    await tx.execute(sql`
+      SELECT id FROM shifts
+      WHERE org_id = ${shift.orgId} AND location_id = ${shift.locationId} AND user_id = ${shift.userId}
+        AND status IN ('open', 'reopened')
+      LIMIT 1
+      FOR SHARE
+    `),
+  )[0];
+  if (!existing?.id) throw new Error("Could not open a till shift for this sale");
+  return String(existing.id);
+}

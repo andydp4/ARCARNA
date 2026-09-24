@@ -11,7 +11,7 @@ import { AccessGate } from "@/components/AccessGate";
 import { Layout } from "@/components/Layout";
 import { RequireRole } from "@/components/RequireRole";
 import NotFound from "@/pages/not-found";
-import { useAuth } from "@/hooks/useAuth";
+import { AuthFreshness, useAuth } from "@/hooks/useAuth";
 import { AuthProviders } from "@/components/AuthProviders";
 import { CommandPalette } from "@/components/CommandPalette";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
@@ -151,6 +151,7 @@ function Router() {
 
   return (
     <WouterRouter base={APP_BASE}>
+    <AuthFreshness />
     <CommandPalette />
     <WhatsNewModal />
     <Suspense fallback={<RouteLoadingFallback />}>

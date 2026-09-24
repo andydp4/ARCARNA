@@ -82,7 +82,7 @@ export default function OrderRefundPage() {
       for (const line of refund.lines ?? []) {
         map.set(
           line.orderLineId,
-          (map.get(line.orderLineId) ?? 0) + line.qty,
+          (map.get(line.orderLineId) ?? 0) + Number(line.qty),
         );
       }
     }
@@ -93,7 +93,7 @@ export default function OrderRefundPage() {
     if (!order) return [];
     return order.items.map((item) => {
       const refunded = alreadyRefunded.get(item.id) ?? 0;
-      const remaining = item.quantity - refunded;
+      const remaining = Math.round((Number(item.quantity) - Number(refunded)) * 1000) / 1000;
       return { ...item, refunded, remaining };
     });
   }, [order, alreadyRefunded]);
@@ -202,6 +202,8 @@ export default function OrderRefundPage() {
                 <Input
                   type="number"
                   min={0}
+                  step="any"
+                  inputMode="decimal"
                   max={line.remaining}
                   className="w-20"
                   disabled={line.remaining <= 0}
@@ -209,7 +211,8 @@ export default function OrderRefundPage() {
                   onChange={(e) => {
                     const qty = Math.min(
                       line.remaining,
-                      Math.max(0, parseInt(e.target.value, 10) || 0),
+                      // Weighed lines refund by weight (0.5): three places, like the sale.
+                      Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000) / 1000),
                     );
                     setSelected((s) => ({ ...s, [line.id]: qty }));
                   }}

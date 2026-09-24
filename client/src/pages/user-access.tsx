@@ -385,7 +385,13 @@ export default function UserAccess() {
                   <div className="text-center py-12 text-muted-foreground">
                     <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-30" />
                     <p>No pending approval requests</p>
-                    <p className="text-sm">New customer and staff sign-ups will appear here</p>
+                    {/* The server lists sign-ups to the platform owner only: a
+                        sign-up has no business yet, so the list is everyone's. */}
+                    <p className="text-sm">
+                      {currentUser?.role === "SUPER_ADMIN"
+                        ? "New customer and staff sign-ups will appear here"
+                        : "New sign-ups are approved by the platform owner. Once someone joins your business, they appear under Allowed users."}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">

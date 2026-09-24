@@ -1,6 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { requireRole } from "../auth";
-import { requireOpenShift } from "../middleware/requireOpenShift";
+import { drawerForSaleInTx, requireOpenShift } from "../middleware/requireOpenShift";
 import { requireActiveCashierShift, attachActiveCashierShift } from "../middleware/requireActiveCashierShift";
 import { refreshClosedCashierShiftSummary } from "../services/cashierShiftEngine";
 import {
@@ -38,6 +38,7 @@ import {
 } from "../services/saleReference";
 import { attachSaleIssueResubmission, markSaleIssueResolved, unlessSaleIssue } from "../services/saleIssues";
 import { isValidClientOrderId } from "@shared/orders/saleReference";
+import { plainValidationMessage, saleTooLargeMessage } from "@shared/orders/saleLimits";
 import { recordAdminAudit } from "../adminAudit";
 import { assertChargedAsShown, consumeSalePricingInTx, priceSaleInTx } from "../services/salePricing";
 import { PlaceOrderInput } from "../../packages/domain/src/schemas";
@@ -711,6 +712,13 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       // Lines are validated before pricing reads them; the engine parses the
       // same schema again, which is cheap and keeps it callable on its own.
       const placeInput = PlaceOrderInput.parse(body);
+      // A sale too large for the money columns is refused here, in words,
+      // before anything is written (E2E-08): the database would refuse it
+      // half way through, and the till would see "Failed to create order".
+      {
+        const tooLarge = saleTooLargeMessage(placeInput.lines, orgTaxRate);
+        if (tooLarge) return res.status(400).json({ message: tooLarge, code: "ORDER_TOO_LARGE" });
+      }
 
       // Rows `alertAssignedInTx` actually inserts below — pushed to `opsBus`
       // AFTER commit, the same discipline `orderTransitions.ts` and
@@ -751,7 +759,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         // The till shift is the drawer. A backdated sale's money was in a
         // drawer that has since been counted, so it joins no drawer at all:
         // putting it in today's would make today's count come up short.
-        const shiftId = isBackdated ? undefined : req.shift?.id;
+        // Decided here, under a lock on the drawer, not when the request
+        // arrived: a drawer counted while this sale was being written is not
+        // stamped with it afterwards (E2E-01). See drawerForSaleInTx.
+        const shiftId = isBackdated || !req.shift ? undefined : await drawerForSaleInTx(tx as any, req.shift);
         const cashierShift = req.cashierShift;
         // Whoever is logged in loaded this order. Recorded independently of any
         // cashier code: the user is always known on a till sale, whereas a code
@@ -1162,7 +1173,12 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       console.error("Error creating order:", error);
       // Domain messages ("Payments add up to £X but the order is £Y") still
       // reach the till; database text never does (safeErrorMessage).
-      const message = safeErrorMessage(error, "Failed to create order");
+      // A sale that does not validate gets one sentence for the till's toast,
+      // not Zod's issue list serialised (E2E-09); the list still goes as `errors`.
+      const message =
+        error?.name === "ZodError" && Array.isArray(error.issues)
+          ? plainValidationMessage(error)
+          : safeErrorMessage(error, "Failed to create order");
       // 422, not 500, for a sale the server has looked at and refused: the
       // till hands those to a manager instead of retrying them for ever.
       const refused =
@@ -1918,12 +1934,37 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
 
       // A card link already sent to the customer stays payable at Stripe
       // after its row cascades away: kill it there first, or refuse.
+      // A sale in a drawer that has been counted is part of that count: its
+      // Z report and expected cash were fixed at the close. Deleting it would
+      // rewrite a counted sheet (E2E-06), so it is refused; a refund, which is
+      // recorded in the drawer it is given from, is the way to undo it.
+      // Checked before the card link is killed at Stripe, and again below
+      // under a lock on the drawer, so a close cannot slip in between.
+      const countedDrawerMessage =
+        "This sale's drawer has already been counted, so it cannot be deleted. Refund it instead.";
+      {
+        const [pre] = await db.select({ shiftId: orders.shiftId }).from(orders).where(orderCond);
+        if (!pre) return res.status(404).json({ message: "Order not found" });
+        if (pre.shiftId) {
+          const { shifts } = await import('@shared/schema');
+          const [drawer] = await db.select({ status: shifts.status }).from(shifts).where(eq(shifts.id, pre.shiftId));
+          if (drawer && drawer.status === "closed") {
+            return res.status(409).json({ message: countedDrawerMessage, code: "ORDER_DRAWER_COUNTED" });
+          }
+        }
+      }
+
       const { retireOrderCardLinks } = await import("../services/cardLinks");
       await retireOrderCardLinks(ctx?.orgId ?? null, orderId);
 
       await db.transaction(async (tx) => {
         const [order] = await tx.select().from(orders).where(orderCond).for('update');
         if (!order) throw new Error('Order not found');
+        if (order.shiftId) {
+          const locked = await tx.execute(sql`SELECT status FROM shifts WHERE id = ${order.shiftId} FOR SHARE`);
+          const status = ((locked as any).rows ?? locked)[0]?.status;
+          if (status === "closed") throw new Error(countedDrawerMessage);
+        }
 
         await refuseIfClosedDay(tx, order);
 
@@ -2049,6 +2090,9 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         return res.status(409).json({ message: error.message, code: error.code });
       }
       console.error("Error deleting order:", error);
+      if (error?.message && /drawer has already been counted/.test(error.message)) {
+        return res.status(409).json({ message: error.message, code: "ORDER_DRAWER_COUNTED" });
+      }
       const message = error.message === 'Order not found' ? 'Order not found' : 'Failed to delete order';
       const status = error.message === 'Order not found' ? 404 : 500;
       res.status(status).json({ message });

@@ -2023,6 +2023,8 @@ export const orderItems = pgTable("order_items", {
 }, (table) => [
   index("order_items_order_id_idx").on(table.orderId),
   index("order_items_org_id_idx").on(table.orgId),
+  // A new sale counts the units already sold but not yet taken off stock, per product (migration 211).
+  index("order_items_product_id_idx").on(table.productId),
 ]);
 
 export type OrderItem = typeof orderItems.$inferSelect;
@@ -2310,7 +2312,8 @@ export const refundLines = pgTable(
     orderLineId: uuid("order_line_id")
       .references(() => orderItems.id)
       .notNull(),
-    qty: integer("qty").notNull(),
+    // Three places, like order_items.quantity: a weighed line is refunded by weight (migration 210).
+    qty: numeric("qty", { precision: 14, scale: 3, mode: "number" }).notNull(),
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   },
   (table) => [
