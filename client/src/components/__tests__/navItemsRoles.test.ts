@@ -16,7 +16,7 @@ function itemByKey(key: string) {
 
 describe("nav-items role visibility", () => {
   it("keeps Control Centre, the board, Shifts, Stock levels and Settings open to every role", () => {
-    for (const key of ["home", "orders", "shifts", "stock-levels", "settings"]) {
+    for (const key of ["home", "orders", "my-run", "shifts", "stock-levels", "settings"]) {
       expect(itemByKey(key).roles, `${key} should have no role restriction`).toBeUndefined();
     }
   });

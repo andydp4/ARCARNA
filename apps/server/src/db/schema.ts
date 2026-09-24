@@ -163,6 +163,9 @@ export const orders = pgTable('orders', {
   delivery_address: varchar('delivery_address', { length: 1024 }),
   delivery_postcode: varchar('delivery_postcode', { length: 16 }),
   delivery_notes: varchar('delivery_notes', { length: 500 }),
+  // My run's "Couldn't deliver" note — see shared/schema.ts and migration 180.
+  delivery_issue: varchar('delivery_issue', { length: 600 }),
+  delivery_issue_at: timestamp('delivery_issue_at'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })

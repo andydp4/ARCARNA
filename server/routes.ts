@@ -26,6 +26,7 @@ import { registerNeedsALookRoutes } from "./routes/needsALook";
 import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
 import { registerOrderTransitionRoutes } from "./routes/orderTransitions";
+import { registerMyRunRoutes } from "./routes/myRun";
 import { registerOperationsRoutes } from "./routes/operations";
 import { registerOpsAlertRoutes } from "./routes/opsAlerts";
 import { registerOpsStreamRoutes } from "./routes/opsStream";
@@ -97,6 +98,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerOrderRoutes(app, scoped);
   registerSaleIssueRoutes(app, scoped);
   registerOrderTransitionRoutes(app, scoped);
+  registerMyRunRoutes(app, scoped);
   registerOperationsRoutes(app, scoped);
   registerOpsAlertRoutes(app, scoped);
   registerOpsStreamRoutes(app, scoped);

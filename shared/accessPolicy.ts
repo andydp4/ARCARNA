@@ -390,6 +390,8 @@ const DELIVERY =
   "The delivery address is on the order; the driver's call reveals the phone to the assigned driver only while out for delivery, admins always, every reveal logged (Q8a, PRV-04/05).";
 const ORDER_HISTORY =
   "A cashier's order history is today plus their own last seven days; the palette searches on the server inside that bound (Q10a, CMP-06).";
+const MY_RUN =
+  "My run shows a person their own deliveries only (managers may view anyone's); the order is saved per person per day; \"Couldn't deliver\" is the assignee's or a manager's, and tells the managers (v1.2 My run).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -489,6 +491,12 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/orders/:id/customer-phone", minRole: "CASHIER", reason: DELIVERY },
   { method: "PATCH", path: "/api/orders/:id/delivery", minRole: "CASHIER", reason: DELIVERY },
   { method: "POST", path: "/api/orders/search", minRole: "CASHIER", reason: ORDER_HISTORY },
+
+  // My run (v1.2). Whose run and who may fail a delivery are checked per row
+  // in the handler; these rows are the floor.
+  { method: "GET", path: "/api/my-run", minRole: "CASHIER", reason: MY_RUN },
+  { method: "PUT", path: "/api/my-run/order", minRole: "CASHIER", reason: MY_RUN },
+  { method: "POST", path: "/api/orders/:id/couldnt-deliver", minRole: "CASHIER", reason: MY_RUN },
   { method: "GET", path: "/api/whatsapp/conversations", minRole: "CASHIER", reason: CUSTOMER_VIEW },
   { method: "GET", path: "/api/whatsapp/conversations/:id", minRole: "CASHIER", reason: CUSTOMER_VIEW },
 

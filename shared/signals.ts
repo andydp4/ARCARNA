@@ -62,6 +62,9 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   needs_a_look_weekly: { minRole: "MANAGER" },
   // A manager's bulk "Set minimum price" (PRC-05) is the owner's to know.
   bulk_min_price: { roles: ["SUPER_ADMIN"] },
+  // My run's "Couldn't deliver": the delivery is back to ready and a manager
+  // decides what next (call the customer, rebook, refund).
+  delivery_failed: { minRole: "MANAGER" },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

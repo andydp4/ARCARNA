@@ -358,7 +358,8 @@ jobs:
             server/__tests__/orderEditMoney.test.ts \
             server/__tests__/cashupInvoices.test.ts \
             server/__tests__/stockCentre.test.ts \
-            server/__tests__/truthsLayout.test.ts
+            server/__tests__/truthsLayout.test.ts \
+            server/__tests__/myRun.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

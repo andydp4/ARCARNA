@@ -105,7 +105,7 @@ export function OpsCustomerCall({
     }
   };
 
-  if (!hasAddress && !mayCall && !canCorrect) return null;
+  if (!hasAddress && !mayCall && !canCorrect && !order.deliveryIssue) return null;
 
   return (
     <div className="mt-3 space-y-2" data-testid="ops-delivery-details">
@@ -116,6 +116,15 @@ export function OpsCustomerCall({
             {[order.deliveryAddress, order.deliveryPostcode].filter(Boolean).join(", ")}
             {order.deliveryNotes && <span className="block text-muted-foreground">{order.deliveryNotes}</span>}
           </span>
+        </p>
+      )}
+      {order.deliveryIssue && (
+        // My run's "Couldn't deliver": why the last attempt failed.
+        <p className="text-sm text-amber-700 dark:text-amber-400" data-testid="ops-delivery-issue">
+          {order.deliveryIssue}
+          {order.deliveryIssueAt
+            ? ` (${new Date(order.deliveryIssueAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })})`
+            : ""}
         </p>
       )}
       {canCorrect && !editing && (

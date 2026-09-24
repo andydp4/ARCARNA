@@ -102,6 +102,7 @@ const CashierPayrollPage = lazy(() => import("@/pages/cashier-payroll"));
 const PurchaseDraftsPage = lazy(() => import("@/pages/purchase-drafts"));
 const SuppliersPage = lazy(() => import("@/pages/suppliers"));
 const StockLevelsPage = lazy(() => import("@/pages/stock-levels"));
+const MyRunPage = lazy(() => import("@/pages/my-run"));
 const SignInPage = lazy(() => import("@/pages/sign-in"));
 const SignOutPage = lazy(() => import("@/pages/sign-out"));
 const PrivacyNoticePageRaw = lazy(() => import("@/pages/privacy"));
@@ -184,6 +185,8 @@ function Router() {
               refund route below keeps its own URL: it is linked from receipts
               and emails that are already in the world. */}
           <Route path="/operations" component={OperationsCentre} />
+          {/* My run (v1.2): the driver's phone view, open to all staff. */}
+          <Route path="/my-run" component={MyRunPage} />
           <Route path="/open-orders"><Redirect to="/operations" /></Route>
           <Route path="/orders"><Redirect to="/operations" /></Route>
           <Route path="/create-order"><Redirect to="/operations?pane=order" /></Route>

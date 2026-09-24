@@ -279,6 +279,12 @@ function OpsCardInner({
             </span>
           </p>
         )}
+        {order.fulfilmentMethod === "delivery" && order.status !== "completed" && order.deliveryIssue && (
+          // My run's "Couldn't deliver" (v1.2): the note the driver left.
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-400" data-testid={`ops-card-delivery-issue-${order.id}`}>
+            {order.deliveryIssue}
+          </p>
+        )}
 
         {(derived.urgent ||
           derived.backdated ||

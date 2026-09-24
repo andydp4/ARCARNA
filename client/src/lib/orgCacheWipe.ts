@@ -1,6 +1,7 @@
 import { resolveAppPath } from "@/lib/appPaths";
 import { clearPreviewRole } from "./previewRole";
 import { clearOfflineCaches, dbHoldsUnsentSales } from "./offline-storage";
+import { clearRunSnapshots } from "./runQueue";
 import {
   legacyOfflineDbNameForOrg,
   offlineDbNameForOrg,
@@ -64,6 +65,9 @@ export async function wipeOrgOfflineData(orgId: string): Promise<void> {
  * Needs attention.
  */
 export async function wipeAllOfflineData(opts: { keepUnsentSales?: boolean } = {}): Promise<void> {
+  // My run's copy of the run (names, addresses) goes with the rest. Its queued
+  // taps stay: like unsent sales, they are sent when their person is back.
+  clearRunSnapshots();
   const names = new Set<string>([OFFLINE_DB_PREFIX_LEGACY, OFFLINE_DB_PREFIX]);
   if (typeof indexedDB.databases === "function") {
     const listed = await indexedDB.databases();
