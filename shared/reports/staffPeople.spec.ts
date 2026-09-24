@@ -167,6 +167,20 @@ describe("Fairness", () => {
     ])).toEqual({ activeHours: 2, daysWorked: 2 });
   });
 
+  it("two shift rows on one trading day get one tail and one 12-hour cap", () => {
+    const D = (hm: string) => new Date(`2026-01-12T${hm}:00Z`);
+    // A lazy shift closed at 18:30, then a fresh one opened on the next sale.
+    expect(activeTime([
+      { tradingDay: "2026-01-12", openedAt: D("06:00"), lastActivityAt: D("18:30") },
+      { tradingDay: "2026-01-12", openedAt: D("18:40"), lastActivityAt: D("23:00") },
+    ])).toEqual({ activeHours: 12, daysWorked: 1 });
+    // Split day 09:00-10:00 and 14:00-14:50 -> 09:00 to 14:50 + 10 min.
+    expect(activeTime([
+      { tradingDay: "2026-01-12", openedAt: D("14:00"), lastActivityAt: D("14:50") },
+      { tradingDay: "2026-01-12", openedAt: D("09:00"), lastActivityAt: D("10:00") },
+    ])).toEqual({ activeHours: 6, daysWorked: 1 });
+  });
+
   it("puts a part-timer on the same footing: rates per hour, per day, per 10 orders", () => {
     const r = fairnessRates({ activeHours: 4, daysWorked: 1, ordersHandled: 20, jobs: 40, completed: 20, valueBroughtIn: 400, refundsProcessed: 2, reopens: 0, deletes: 1, unreadyTaps: 0, wrongItemOrders: 0 });
     expect(r.jobsPerActiveHour).toBe(10);

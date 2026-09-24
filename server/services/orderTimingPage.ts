@@ -5,8 +5,10 @@
  *
  * Person groupings follow Q14 on the server: a manager sees cashiers and
  * themselves; groups for anyone above that are left out (counted in
- * `hiddenGroups`) but stay in the whole-team summary. While per-person
- * figures are new (the first two weeks, owner) they are marked provisional.
+ * `hiddenGroups`) and so is their work from the summary of a person grouping,
+ * or the summary minus the listed groups would be exactly their figures.
+ * While per-person figures are new (the first two weeks, owner) they are
+ * marked provisional.
  */
 import {
   ORDER_TIMING_PAGE_GROUPS,
@@ -15,9 +17,12 @@ import {
   groupOrderTiming,
   orderTimingRedFlags,
   summarizeOrderTiming,
+  timingGroupKeyOf,
+  type DerivedOrderTiming,
   type OrderTimingPageGroup,
   type OrderTimingSummary,
 } from "@shared/reports/orderTiming";
+import { isRole, roleRank } from "@shared/rbac";
 import { currentTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { loadOrderTimingFacts } from "./reportsEngine";
 import { orgTimeZone } from "./tradingDayShift";
@@ -71,7 +76,7 @@ export async function orderTimingPage(
 
   const isPerson = PERSON_TIMING_GROUPS.includes(query.groupBy);
   const people = isPerson ? await loadPeople(orgId) : new Map();
-  let hiddenGroups = 0;
+  const hiddenKeys = new Set<string>();
   const groups: OrderTimingPageResponse["groups"] = [];
   for (const g of groupOrderTiming(facts, engineGroupKey(query.groupBy))) {
     let label = g.key;
@@ -83,7 +88,7 @@ export async function orderTimingPage(
         const person = people.get(g.key);
         role = person?.role ?? null;
         if (!mayFilterEvidenceBy(viewer, { id: g.key, role })) {
-          hiddenGroups += 1;
+          hiddenKeys.add(g.key);
           continue;
         }
         label = person?.name ?? "Former member of staff";
@@ -97,7 +102,10 @@ export async function orderTimingPage(
   }
   if (isPerson) groups.sort((a, b) => a.label.localeCompare(b.label));
 
-  const summary = summarizeOrderTiming(facts);
+  const shown: DerivedOrderTiming[] =
+    hiddenKeys.size > 0 ? facts.filter((f) => !hiddenKeys.has(timingGroupKeyOf(f, engineGroupKey(query.groupBy)))) : facts;
+  const summary = summarizeOrderTiming(shown);
+  const hiddenGroups = hiddenKeys.size;
   return {
     period: { from: query.fromIso, to: query.toIso },
     groupBy: query.groupBy,
@@ -114,4 +122,42 @@ export async function orderTimingPage(
       timezone: settings.timezone,
     },
   };
+}
+
+const TIMING_PERSON_FIELDS = ["assignedUserId", "completedUserId", "inputUserId"] as const;
+/** What a person id reads as when the viewer may not see who it is. */
+export const HIDDEN_PERSON = "(hidden)";
+
+/**
+ * The ARC-T2-005 Evidence JSON lists every order with the ids of who
+ * claimed, completed and loaded it. Below admin, the ids of people the viewer
+ * may not see (Q14: other managers, admins, former staff) are masked, or
+ * filtering the rows by one id would give that person's timing — the very
+ * figures the Order Timing page withholds. Team figures are unchanged.
+ */
+export async function redactOrderTimingPeople<T extends { rows: Record<string, unknown>[] }>(
+  orgId: string,
+  payload: T,
+  viewer: EvidenceViewer,
+): Promise<T> {
+  if (viewer.role && isRole(viewer.role) && roleRank(viewer.role) >= roleRank("ADMIN")) return payload;
+  const people = await loadPeople(orgId);
+  const shown = new Map<string, boolean>();
+  const visible = (id: string) => {
+    let ok = shown.get(id);
+    if (ok === undefined) {
+      ok = mayFilterEvidenceBy(viewer, { id, role: people.get(id)?.role ?? null });
+      shown.set(id, ok);
+    }
+    return ok;
+  };
+  const rows = payload.rows.map((row) => {
+    const out = { ...row };
+    for (const field of TIMING_PERSON_FIELDS) {
+      const id = out[field];
+      if (typeof id === "string" && !visible(id)) out[field] = HIDDEN_PERSON;
+    }
+    return out;
+  });
+  return { ...payload, rows };
 }

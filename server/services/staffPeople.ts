@@ -48,6 +48,11 @@ export interface PeopleExtras {
   benefit: Map<string | null, BenefitFigures>;
   speed: Map<string | null, SpeedFigures>;
   teamSpeed: SpeedFigures;
+  /**
+   * Team speed with the given people's work left out: for a viewer who may
+   * not see them (Q14), so team minus listed rows does not give them away.
+   */
+  teamSpeedWithout: (hidden: ReadonlySet<string>) => SpeedFigures;
   active: Map<string, { activeHours: number; daysWorked: number }>;
   ordersHandled: Map<string, number>;
   /** Information only (STF-11): stars on orders each person completed. */
@@ -229,7 +234,15 @@ async function loadSpeed(orgId: string, start: Date, end: Date, filters: Perform
     userId: a.userId,
     minutes: (new Date(a.ackedAt as unknown as string).getTime() - new Date(a.createdAt as unknown as string).getTime()) / 60_000,
   }));
-  return { speed: computeSpeed(speedOrders, settings, alerts), team: teamSpeed(speedOrders, settings, alerts), settings };
+  const teamWithout = (hidden: ReadonlySet<string>): SpeedFigures => {
+    if (hidden.size === 0) return teamSpeed(speedOrders, settings, alerts);
+    const isHidden = (u: string | null) => u != null && hidden.has(u);
+    const visibleOrders = speedOrders
+      .filter((o) => ![o.loaderId, o.preparerId, o.dispatcherId, o.assigneeId, o.completerId].some(isHidden))
+      .map((o) => ({ ...o, delays: o.delays.filter((d) => !isHidden(d.userId)) }));
+    return teamSpeed(visibleOrders, settings, alerts.filter((a) => !isHidden(a.userId)));
+  };
+  return { speed: computeSpeed(speedOrders, settings, alerts), team: teamSpeed(speedOrders, settings, alerts), teamWithout, settings };
 }
 
 export async function loadActiveTime(orgId: string, fromIso: string, toIso: string, userId?: string) {
@@ -334,6 +347,7 @@ export async function loadPeopleExtras(
     benefit: opts.benefit ? computeBenefit(benefitOrders, side) : new Map(),
     speed: speed.speed,
     teamSpeed: speed.team,
+    teamSpeedWithout: speed.teamWithout,
     active,
     ordersHandled: ordersHandledBy(counted),
     satisfaction,

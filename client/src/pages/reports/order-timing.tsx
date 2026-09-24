@@ -191,7 +191,7 @@ export default function OrderTimingReport() {
           <CardDescription>
             {data?.settings &&
               `On-time settings now: collection ${data.settings.prepSlaMinutes} min when no time was promised, delivery ${data.settings.deliveryLeadMinutes} min, ${data.settings.lateGraceMinutes} min grace.`}
-            {data && data.hiddenGroups > 0 && ` ${data.hiddenGroups} people above your role are in the totals but not listed.`}
+            {data && data.hiddenGroups > 0 && ` ${data.hiddenGroups} people above your role are not listed and their orders are not in the summary.`}
             {" "}Station comparisons start once enough recorded stations exist.
           </CardDescription>
         </CardHeader>

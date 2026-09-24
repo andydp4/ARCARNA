@@ -32,14 +32,26 @@ export function activeHoursForShift(openedAt: Date, lastActivityAt: Date): numbe
   return Math.min(minutes / 60, ACTIVE_CAP_HOURS);
 }
 
+/**
+ * Active time over many shift rows. A trading day can hold more than one row
+ * (a closed lazy shift reopens on the next sale), so the rule is applied once
+ * per day: earliest opening to latest action, one 10-minute tail, one 12-hour
+ * cap. Summing per row would double the tail and cap and understate rates.
+ */
 export function activeTime(shifts: readonly ShiftSpan[]): { activeHours: number; daysWorked: number } {
-  const days = new Set<string>();
-  let hours = 0;
+  const byDay = new Map<string, { first: Date; last: Date }>();
   for (const s of shifts) {
-    days.add(s.tradingDay);
-    hours += activeHoursForShift(s.openedAt, s.lastActivityAt);
+    const d = byDay.get(s.tradingDay);
+    if (!d) {
+      byDay.set(s.tradingDay, { first: s.openedAt, last: s.lastActivityAt });
+      continue;
+    }
+    if (s.openedAt.getTime() < d.first.getTime()) d.first = s.openedAt;
+    if (s.lastActivityAt.getTime() > d.last.getTime()) d.last = s.lastActivityAt;
   }
-  return { activeHours: Math.round(hours * 100) / 100, daysWorked: days.size };
+  let hours = 0;
+  for (const d of byDay.values()) hours += activeHoursForShift(d.first, d.last);
+  return { activeHours: Math.round(hours * 100) / 100, daysWorked: byDay.size };
 }
 
 export interface FairnessInput {

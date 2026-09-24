@@ -101,6 +101,15 @@ export interface PerformanceResult {
   total: PerformanceFigures;
   /** Sum of `value` over every counted order — what `total.salesCompleted` must equal. */
   grossSettledSales: number;
+  /**
+   * Admin cover + Unattributed + the people the viewer may see (Q14). Equals
+   * `total` when nobody is hidden. A viewer who cannot see everyone gets this
+   * as their Total: the whole-team figure minus the listed rows would
+   * otherwise be exactly the hidden people's figures.
+   */
+  visibleTotal: PerformanceFigures;
+  /** Person rows the viewer may not see (left out of `visibleTotal`). */
+  hiddenPeople: number;
 }
 
 export type PerformanceBucket = { kind: "person"; userId: string } | { kind: "admin" } | { kind: "unattributed" };
@@ -209,6 +218,8 @@ export function computeStaffPerformance(
   orders: readonly PerformanceOrder[],
   people: ReadonlyMap<string, PerformancePerson>,
   activity: ReadonlyMap<string, Partial<PerformanceActivity>> = new Map(),
+  /** Who the viewer may see; everyone when omitted. */
+  isVisible: (userId: string, person: PerformancePerson) => boolean = () => true,
 ): PerformanceResult {
   const byPerson = new Map<string, Acc>();
   const admin = emptyAcc();
@@ -274,10 +285,16 @@ export function computeStaffPerformance(
   const total = emptyAcc();
   addAcc(total, admin);
   addAcc(total, unattributed);
+  const visibleTotal = emptyAcc();
+  addAcc(visibleTotal, admin);
+  addAcc(visibleTotal, unattributed);
+  let hiddenPeople = 0;
   const rows: PerformanceRow[] = [];
   for (const [userId, acc] of byPerson) {
     addAcc(total, acc);
     const person = people.get(userId)!;
+    if (isVisible(userId, person)) addAcc(visibleTotal, acc);
+    else hiddenPeople += 1;
     rows.push({ userId, name: person.name, role: person.role, ...finish(acc) });
   }
   rows.sort((a, b) => b.valueBroughtIn - a.valueBroughtIn || a.name.localeCompare(b.name));
@@ -288,6 +305,8 @@ export function computeStaffPerformance(
     unattributed: finish(unattributed),
     total: finish(total),
     grossSettledSales: fromPence(grossPence),
+    visibleTotal: finish(visibleTotal),
+    hiddenPeople,
   };
 }
 

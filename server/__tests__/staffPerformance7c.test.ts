@@ -338,4 +338,40 @@ describe.skipIf(!hasDb)("Staff Performance 7C on real data", () => {
     const res = await request(await appAs(CARA, "CASHIER")).get(`/api/my-performance?${q}`).expect(200);
     expect(res.body.satisfaction).toEqual({ average: 5, count: 1 });
   });
+
+  it("migration 171's duplicate clean-up keeps the follow-up already done on an older rating", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const file = readFileSync(path.resolve(__dirname, "../../migrations/171_staff_performance_7c.sql"), "utf8");
+    const startAt = file.indexOf("WITH ranked AS");
+    const endMarker = "(s.score_date, s.id) < (t.score_date, t.id);";
+    const block = file.slice(startAt, file.indexOf(endMarker) + endMarker.length);
+    expect(startAt).toBeGreaterThan(0);
+    const o1 = randomUUID();
+    const o2 = randomUUID();
+    const rollback = new Error("rollback");
+    let kept: Array<Record<string, unknown>> = [];
+    await db
+      .transaction(async (tx) => {
+        // A temp table shadows the real one (which already has the one-per-order index).
+        await tx.execute(sql.raw(`CREATE TEMP TABLE satisfaction_scores (id uuid, order_id uuid, score int, comment text, score_date timestamp, followed_up_at timestamp) ON COMMIT DROP`));
+        await tx.execute(sql.raw(`INSERT INTO satisfaction_scores VALUES
+          ('${randomUUID()}', '${o1}', 2, 'cold food', '2026-01-01', '2026-01-02'),
+          ('${randomUUID()}', '${o1}', 1, NULL, '2026-01-03', NULL),
+          ('${randomUUID()}', '${o2}', 4, NULL, '2026-01-03', NULL)`));
+        for (const stmt of block.split(/;\s*\n/).map((x) => x.trim()).filter(Boolean)) await tx.execute(sql.raw(stmt));
+        // Running it again changes nothing.
+        for (const stmt of block.split(/;\s*\n/).map((x) => x.trim()).filter(Boolean)) await tx.execute(sql.raw(stmt));
+        const res = await tx.execute(sql.raw(`SELECT order_id::text, score, comment, followed_up_at IS NOT NULL AS followed FROM satisfaction_scores ORDER BY score`));
+        kept = ((res as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? (res as unknown as Array<Record<string, unknown>>));
+        throw rollback;
+      })
+      .catch((e) => {
+        if (e !== rollback) throw e;
+      });
+    expect(kept).toEqual([
+      { order_id: o1, score: 1, comment: "cold food", followed: true },
+      { order_id: o2, score: 4, comment: null, followed: false },
+    ]);
+  });
 });

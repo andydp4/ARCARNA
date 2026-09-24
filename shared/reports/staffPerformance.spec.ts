@@ -139,6 +139,23 @@ describe("computeStaffPerformance", () => {
     expect(result.total.refundsProcessed).toBe(2);
   });
 
+  it("the viewer's Total leaves out people hidden from them, so Total minus listed rows gives nothing away", () => {
+    expect(result.visibleTotal).toEqual(result.total);
+    expect(result.hiddenPeople).toBe(0);
+    const cut = computeStaffPerformance(orders, people, activity, (_u, p) => p.role !== "MANAGER");
+    expect(cut.hiddenPeople).toBe(1);
+    expect(cut.total).toEqual(result.total);
+    const listed = cut.rows.filter((r) => r.role !== "MANAGER");
+    const p = (v: number) => Math.round(v * 100);
+    for (const k of ["salesCompleted", "valueBroughtIn"] as const) {
+      expect(p(cut.visibleTotal[k])).toBe(listed.reduce((s, r) => s + p(r[k]), 0) + p(cut.adminCover[k]) + p(cut.unattributed[k]));
+    }
+    for (const k of ["loaded", "completed", "deletes", "unreadyTaps"] as const) {
+      expect(cut.visibleTotal[k]).toBe(listed.reduce((s, r) => s + r[k], 0) + cut.adminCover[k] + cut.unattributed[k]);
+    }
+    expect(cut.visibleTotal.deletes).toBe(result.total.deletes - row("mo").deletes);
+  });
+
   it("with no orders every figure is zero and every ratio is empty, not NaN", () => {
     const empty = computeStaffPerformance([], people);
     expect(empty.rows).toEqual([]);

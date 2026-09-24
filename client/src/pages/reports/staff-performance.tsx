@@ -71,7 +71,8 @@ export type StaffPerformanceResponse = {
     benefit: BenefitFigures;
     speed: SpeedFigures;
   };
-  grossSettledSales: number;
+  /** Null when people are hidden from this viewer: the Total then covers only who they can see. */
+  grossSettledSales: number | null;
   channels: string[];
   targets: { version: number; setAt: string; amberOnly: boolean } | null;
   settingsInForce: SettingsInForce;
@@ -465,7 +466,7 @@ export default function StaffPerformanceReport() {
 
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="lm-card border-0 shadow-none"><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Gross settled sales</p><p className="text-2xl font-semibold" data-testid="text-performance-gross">{money(data.grossSettledSales)}</p><ChangeBadge value={data.team.total.change.salesCompleted} /></CardContent></Card>
+          <Card className="lm-card border-0 shadow-none"><CardContent className="pt-6"><p className="text-xs text-muted-foreground">{data.grossSettledSales == null ? "Sales you can see" : "Gross settled sales"}</p><p className="text-2xl font-semibold" data-testid="text-performance-gross">{money(data.grossSettledSales ?? data.team.total.salesCompleted)}</p><ChangeBadge value={data.team.total.change.salesCompleted} /></CardContent></Card>
           <Card className="lm-card border-0 shadow-none"><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Orders completed</p><p className="text-2xl font-semibold">{data.team.total.completed}</p><ChangeBadge value={data.team.total.change.completed} /></CardContent></Card>
           <Card className="lm-card border-0 shadow-none"><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Average order</p><p className="text-2xl font-semibold">{data.team.total.averageOrderValue == null ? "—" : money(data.team.total.averageOrderValue)}</p></CardContent></Card>
           <Card className="lm-card border-0 shadow-none"><CardContent className="pt-6"><p className="text-xs text-muted-foreground">Compared with</p><p className="text-base font-semibold">{data.previousPeriod.from} to {data.previousPeriod.to}</p></CardContent></Card>
@@ -477,7 +478,7 @@ export default function StaffPerformanceReport() {
           <CardTitle>People</CardTitle>
           <CardDescription>
             {SECTION_HELP[section]}
-            {data && data.hiddenPeople > 0 && ` ${data.hiddenPeople} people above your role are in the Total but not listed.`}
+            {data && data.hiddenPeople > 0 && ` ${data.hiddenPeople} people above your role are not listed and not in the Total.`}
           </CardDescription>
         </CardHeader>
         <CardContent>

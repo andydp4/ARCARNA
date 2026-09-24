@@ -170,11 +170,28 @@ describe.skipIf(!hasDb)("Staff Performance on real orders", () => {
     expect(report.team.unattributed.salesCompleted).toBe(12.34);
   });
 
-  it("a manager sees cashiers and themselves; other managers stay in the Total, unlisted", async () => {
+  it("a manager sees cashiers and themselves; another manager is in neither the rows nor any team figure", async () => {
     const report = await run({ userId: MIA, role: "MANAGER" });
     expect(report.rows.map((r) => r.userId).sort()).toEqual([CARA, CODY, MIA].sort());
     expect(report.hiddenPeople).toBe(1);
-    expect(report.team.total.salesCompleted).toBe((await run(admin)).team.total.salesCompleted);
+    // Total minus what is listed must leave nothing: otherwise it is Max's figures.
+    const pence = (v: number) => Math.round(v * 100);
+    const t = report.team;
+    for (const k of ["salesCompleted", "valueBroughtIn"] as const) {
+      const listed = report.rows.reduce((s, r) => s + pence(r[k]), 0) + pence(t.adminCover![k]) + pence(t.unattributed[k]);
+      expect(pence(t.total[k])).toBe(listed);
+    }
+    for (const k of ["completed", "loaded", "dispatched", "solo", "refundsProcessed", "deletes", "reopens"] as const) {
+      expect(t.total[k]).toBe(report.rows.reduce((s, r) => s + r[k], 0) + t.adminCover![k] + t.unattributed[k]);
+    }
+    expect(t.total.salesCompleted).toBe(177.34 - 25); // everything but Max's solo sale
+    expect(t.total.dispatched).toBe(0); // Max dispatched the one delivery
+    // The whole-team gross would be the full Total by another name.
+    expect(report.grossSettledSales).toBeNull();
+    const full = await run(admin);
+    expect(full.team.total.salesCompleted).toBe(177.34);
+    expect(full.grossSettledSales).toBe(177.34);
+    expect(full.hiddenPeople).toBe(0);
   });
 
   it("filters by fulfilment and hides Admin cover on request, without changing what the rows mean", async () => {
@@ -234,11 +251,45 @@ describe.skipIf(!hasDb)("Staff Performance on real orders", () => {
       expect(labels).not.toContain("Max Manager");
       expect(labels).not.toContain("Ada Admin");
       expect(res.body.hiddenGroups).toBe(2);
+      // The summary covers the listed groups only (plus orders nobody completed).
+      type S = { summary: { ordersConsidered: number; ordersExcluded: number } };
+      const count = (x: S) => x.summary.ordersConsidered + x.summary.ordersExcluded;
+      expect(count(res.body)).toBe(res.body.groups.reduce((n: number, g: S) => n + count(g), 0));
+      const adminView = await request(await appAs(ADA, "ADMIN")).get(`/api/evidence/order-timing?${q}&groupBy=completer`).expect(200);
+      expect(adminView.body.hiddenGroups).toBe(0);
+      expect(count(adminView.body)).toBeGreaterThan(count(res.body));
       const hours = await request(mia).get(`/api/evidence/order-timing?${q}&groupBy=hour`).expect(200);
       expect(hours.body.groups.map((g: { label: string }) => g.label)).toContain("11:00–11:59");
       expect(hours.body.provisional).toBe(false);
       await request(mia).get(`/api/evidence/order-timing?${q}&groupBy=station`).expect(400);
     });
+  });
+
+  it("the ARC-T2-005 Evidence rows mask people a manager may not see; admins see every id", async () => {
+    const appAs = async (userId: string, role: string) => {
+      const { registerReportRoutes } = await import("../routes/reports");
+      const scoped: RequestHandler = (req: any, _res, next) => {
+        req.orgContext = { orgId, locationId: null, role };
+        req.user = { id: userId, role };
+        next();
+      };
+      const app = express();
+      registerReportRoutes(app, [scoped]);
+      return app;
+    };
+    const q = "from=2026-01-12T06:00:00Z&to=2026-01-19T06:00:00Z";
+    const ids = (rows: Record<string, unknown>[]) =>
+      new Set(rows.flatMap((r) => [r.assignedUserId, r.completedUserId, r.inputUserId]).filter(Boolean));
+    const mia = await request(await appAs(MIA, "MANAGER")).get(`/api/reports/ARC-T2-005?${q}`).expect(200);
+    const seen = ids(mia.body.rows);
+    expect(seen.has(CARA)).toBe(true);
+    expect(seen.has(MIA)).toBe(true);
+    expect(seen.has(MAX)).toBe(false);
+    expect(seen.has(ADA)).toBe(false);
+    expect(seen.has("(hidden)")).toBe(true);
+    const ada = await request(await appAs(ADA, "ADMIN")).get(`/api/reports/ARC-T2-005?${q}`).expect(200);
+    expect(ids(ada.body.rows).has(MAX)).toBe(true);
+    expect(ada.body.summary).toEqual(mia.body.summary);
   });
 
   it("stamps each actor's station on the events they write (migration 170)", async () => {

@@ -18,6 +18,35 @@ BEGIN
   END IF;
 END $$;
 
+-- Before dropping the older duplicates, carry the latest follow-up (and a
+-- comment, if the kept row has none) onto the row being kept, so a low score
+-- that was already handled does not come back into the follow-up queue.
+-- A no-op once duplicates are gone.
+WITH ranked AS (
+  SELECT id, order_id,
+         row_number() OVER (PARTITION BY order_id ORDER BY score_date DESC, id DESC) AS rn
+    FROM satisfaction_scores
+   WHERE order_id IS NOT NULL
+),
+merged AS (
+  SELECT order_id,
+         max(followed_up_at) AS followed_up_at,
+         (array_agg(comment ORDER BY score_date DESC, id DESC) FILTER (WHERE comment IS NOT NULL))[1] AS comment
+    FROM satisfaction_scores
+   WHERE order_id IS NOT NULL
+   GROUP BY order_id
+  HAVING count(*) > 1
+)
+UPDATE satisfaction_scores s
+   SET followed_up_at = coalesce(s.followed_up_at, m.followed_up_at),
+       comment = coalesce(s.comment, m.comment)
+  FROM ranked r
+  JOIN merged m ON m.order_id = r.order_id
+ WHERE r.rn = 1
+   AND s.id = r.id
+   AND ((s.followed_up_at IS NULL AND m.followed_up_at IS NOT NULL)
+        OR (s.comment IS NULL AND m.comment IS NOT NULL));
+
 DELETE FROM satisfaction_scores s
  USING satisfaction_scores t
  WHERE s.order_id IS NOT NULL

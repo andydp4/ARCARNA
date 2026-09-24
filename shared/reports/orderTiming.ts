@@ -398,7 +398,8 @@ export function summarizeOrderTiming(facts: DerivedOrderTiming[]): OrderTimingSu
 
 export type TimingGroupKey = "fulfilment" | "assignee" | "completer" | "loader" | "station" | "channel" | "day" | "hourOfTradingDay";
 
-function keyFor(fact: DerivedOrderTiming, groupBy: TimingGroupKey): string {
+/** The group an order falls in for a grouping (exported so a caller can filter by it). */
+export function timingGroupKeyOf(fact: DerivedOrderTiming, groupBy: TimingGroupKey): string {
   switch (groupBy) {
     case "fulfilment":
       return fact.fulfilmentMethod;
@@ -432,7 +433,7 @@ export function groupOrderTiming(
 ): Array<{ key: string; summary: OrderTimingSummary }> {
   const buckets = new Map<string, DerivedOrderTiming[]>();
   for (const fact of facts) {
-    const key = keyFor(fact, groupBy);
+    const key = timingGroupKeyOf(fact, groupBy);
     const bucket = buckets.get(key);
     if (bucket) bucket.push(fact);
     else buckets.set(key, [fact]);

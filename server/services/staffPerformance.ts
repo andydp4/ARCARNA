@@ -15,6 +15,7 @@ import { and, eq, gte, inArray, isNull, lt, ne, notInArray, or, sql, type SQL } 
 import { db } from "../db";
 import { allowedUsers, customers, orderEvents, orderItems, orders, organizations, refunds } from "@shared/schema";
 import {
+  ADMIN_COVER_ROLES,
   computeStaffPerformance,
   changePercent,
   isPerformanceProvisional,
@@ -391,27 +392,43 @@ export interface StaffPerformanceResponse {
   provisionalUntil: string;
   filters: PerformanceQuery;
   rows: PerformanceRowOut[];
-  /** People who worked in the range but are above the viewer's line (Q14): in the Total, not listed. */
+  /**
+   * People who worked in the range but are above the viewer's line (Q14).
+   * They are left out of the rows AND out of every team figure, so the Total
+   * minus the listed rows never gives their figures away.
+   */
   hiddenPeople: number;
   team: {
     total: PerformanceFigures & { previous: Headline; change: Record<keyof Headline, number | null> };
     adminCover: PerformanceFigures | null;
     unattributed: PerformanceFigures;
-    /** Everyone's benefit, listed or not. Never "profit". */
+    /** Benefit over the people the viewer may see, Admin cover and unattributed. Never "profit". */
     benefit: BenefitFigures;
     speed: SpeedFigures;
   };
-  grossSettledSales: number;
+  /**
+   * Gross settled sales over every counted order. Null for a viewer with
+   * people hidden from them: it would be the whole-team Total by another name.
+   */
+  grossSettledSales: number | null;
   channels: string[];
   targets: TargetsInForce | null;
   settingsInForce: SettingsInForce;
 }
 
-export async function computeFor(orgId: string, timeZone: string, fromIso: string, toIso: string, filters: PerformanceFilters, people: Map<string, PerformancePerson>) {
+export async function computeFor(
+  orgId: string,
+  timeZone: string,
+  fromIso: string,
+  toIso: string,
+  filters: PerformanceFilters,
+  people: Map<string, PerformancePerson>,
+  isVisible?: (userId: string, person: PerformancePerson) => boolean,
+) {
   const start = tradingDayBounds(fromIso, timeZone).start;
   const end = tradingDayBounds(toIso, timeZone).end;
   const [counted, activity] = await Promise.all([loadCountedOrders(orgId, start, end, filters), loadActivity(orgId, start, end, filters)]);
-  return { counted, result: computeStaffPerformance(counted, people, activity) };
+  return { counted, result: computeStaffPerformance(counted, people, activity, isVisible) };
 }
 
 export async function staffPerformance(
@@ -422,9 +439,15 @@ export async function staffPerformance(
   const timeZone = await orgTimeZone(orgId);
   const people = await loadPeople(orgId);
   const prev = previousPeriod(query.fromIso, query.toIso);
+  const isVisible = (userId: string, person: PerformancePerson) => mayFilterEvidenceBy(viewer, { id: userId, role: person.role });
+  // Everyone above the viewer's line (Q14). Admin cover stays: it is its own
+  // unranked line, shown to managers as a whole.
+  const hidden = new Set(
+    [...people].filter(([u, p]) => !(ADMIN_COVER_ROLES as readonly string[]).includes(p.role) && !isVisible(u, p)).map(([u]) => u),
+  );
   const [current, previous, prov, channelRows, targets] = await Promise.all([
-    computeFor(orgId, timeZone, query.fromIso, query.toIso, query, people),
-    computeFor(orgId, timeZone, prev.from, prev.to, query, people),
+    computeFor(orgId, timeZone, query.fromIso, query.toIso, query, people, isVisible),
+    computeFor(orgId, timeZone, prev.from, prev.to, query, people, isVisible),
     performanceProvisional(orgId),
     db.selectDistinct({ channel: orders.channel }).from(orders).where(eq(orders.orgId, orgId)),
     targetsInForce(orgId),
@@ -432,19 +455,19 @@ export async function staffPerformance(
   const extras = await loadPeopleExtras(orgId, timeZone, query.fromIso, query.toIso, current.counted, query);
 
   const prevByUser = new Map(previous.result.rows.map((r) => [r.userId, r]));
-  let hiddenPeople = 0;
   const rows: PerformanceRowOut[] = [];
   for (const row of current.result.rows) {
-    if (!mayFilterEvidenceBy(viewer, { id: row.userId, role: row.role })) {
-      hiddenPeople += 1;
-      continue;
-    }
+    if (hidden.has(row.userId)) continue;
     if (query.role && row.role !== query.role) continue;
     const p = headline(prevByUser.get(row.userId));
     rows.push({ ...row, ...peopleFiguresFor(row.userId, row, extras, targets), previous: p, change: changes(row, p) });
   }
 
-  const prevTotal = headline(previous.result.total);
+  // The Total is over what this viewer may see: the whole-team Total minus
+  // the listed rows would otherwise be exactly the hidden people's figures.
+  const curTotal = current.result.visibleTotal;
+  const prevTotal = headline(previous.result.visibleTotal);
+  const hiddenPeople = current.result.hiddenPeople;
   return {
     period: { from: query.fromIso, to: query.toIso },
     previousPeriod: prev,
@@ -454,13 +477,13 @@ export async function staffPerformance(
     rows,
     hiddenPeople,
     team: {
-      total: { ...current.result.total, previous: prevTotal, change: changes(current.result.total, prevTotal) },
+      total: { ...curTotal, previous: prevTotal, change: changes(curTotal, prevTotal) },
       adminCover: query.adminCover === false ? null : current.result.adminCover,
       unattributed: current.result.unattributed,
-      benefit: sumBenefit([...extras.benefit.values()]),
-      speed: extras.teamSpeed ?? emptySpeed(),
+      benefit: sumBenefit([...extras.benefit].filter(([u]) => !(u != null && hidden.has(u))).map(([, b]) => b)),
+      speed: (hidden.size > 0 ? extras.teamSpeedWithout(hidden) : extras.teamSpeed) ?? emptySpeed(),
     },
-    grossSettledSales: current.result.grossSettledSales,
+    grossSettledSales: hidden.size > 0 ? null : current.result.grossSettledSales,
     channels: channelRows.map((c) => c.channel).filter((c): c is string => Boolean(c)).sort(),
     targets,
     settingsInForce: extras.settingsInForce,
