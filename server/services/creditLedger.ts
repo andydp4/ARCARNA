@@ -27,6 +27,8 @@ import { resolveCommissionRate } from "./cashierShiftEngine";
 import { issueInvoiceForOrder } from "./invoices";
 
 type CreditLedgerDb = Pick<typeof db, "select" | "insert" | "update">;
+/** A transaction handle, for callers that record several payments as one. */
+export type CreditLedgerTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * The credit (tick) lifecycle.
@@ -358,11 +360,13 @@ export type RecordPaymentInput = {
  * order has released exactly its whole pool — a per-instalment split would let
  * rounding leave a penny behind on an awkward three-way split.
  */
-export async function recordCreditPayment(input: RecordPaymentInput): Promise<OrderCredit> {
+export async function recordCreditPayment(input: RecordPaymentInput, outerTx?: CreditLedgerTx): Promise<OrderCredit> {
   const amount = roundMoney(input.amount);
   if (!(amount > 0)) throw new CreditError("A payment must be more than zero", 400, "CREDIT_AMOUNT_INVALID");
 
-  return db.transaction(async (tx) => {
+  // Inside a caller's transaction (a payment spread over several tabs), every
+  // slice commits or none does.
+  const run = async (tx: CreditLedgerTx): Promise<OrderCredit> => {
     const [credit] = await tx
       .select()
       .from(orderCredit)
@@ -413,7 +417,8 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
 
     await releaseCommission(input.orgId, input.orderId, payment.id, paidOn, credit, newOutstanding, tx);
     return updated;
-  });
+  };
+  return outerTx ? run(outerTx) : db.transaction(run);
 }
 
 /**

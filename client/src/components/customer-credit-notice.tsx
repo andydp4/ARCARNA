@@ -68,7 +68,9 @@ export function CustomerCreditNotice({
     enabled: !!customerId,
     // Offline or refused: say nothing rather than hold the sale up.
     retry: false,
-    staleTime: 15_000,
+    // Read afresh each time a customer is chosen: another till or the Credit
+    // List may have taken a payment or given credit since.
+    staleTime: 0,
   });
 
   const notice = data && data.customerId === customerId ? customerCreditNotice(data) : null;
@@ -118,6 +120,9 @@ export function CustomerCreditNotice({
     },
     onError: (error: Error) => {
       setProblem(error.message);
+      // A lost answer may still have been recorded: read the balance again so
+      // the notice shows what is really owed before anyone tries a second time.
+      if (customerId) void queryClient.invalidateQueries({ queryKey: customerCreditSummaryKey(customerId) });
       toast({ title: "Could not record the payment", description: error.message, variant: "destructive" });
     },
   });

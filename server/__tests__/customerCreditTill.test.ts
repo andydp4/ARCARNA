@@ -254,7 +254,9 @@ describe.skipIf(!hasDb)("already owes at order start, and Take a payment", () =>
       .from(schema.orgNotifications)
       .where(and(eq(schema.orgNotifications.orgId, orgId), eq(schema.orgNotifications.source, "credit_payment")));
     expect(signals).toHaveLength(1);
-    expect(signals[0].message).toMatch(/£10\.00 from Tab Customer by card/);
+    expect(signals[0].message).toMatch(/£10\.00 from Tab Customer by card at the till/);
+    // It was taken at the till: never "did not go through the till" (R2).
+    expect(signals[0].message).not.toMatch(/did not go through the till/);
   });
 
   it("refuses more than is owed, a transfer, a backdate or no method, and writes nothing", async () => {
@@ -274,6 +276,47 @@ describe.skipIf(!hasDb)("already owes at order start, and Take a payment", () =>
     const payments = await db.select().from(schema.creditPayments).where(eq(schema.creditPayments.orgId, orgId));
     expect(payments).toHaveLength(0);
     expect((await summary()).owed).toBe(42.5);
+    // A refused payment opens no till drawer either (R6).
+    await post("cashier", `/api/customers/${quietCustomerId}/credit-payments`, { amount: 1, method: "cash" }).expect(409);
+    await post("cashier", `/api/customers/${otherCustomerId}/credit-payments`, { amount: 1, method: "cash" }).expect(404);
+    const drawers = await db.select().from(schema.shifts).where(eq(schema.shifts.orgId, orgId));
+    expect(drawers).toHaveLength(0);
+  });
+
+  it("a payment across tabs is all or nothing when another till pays a tab at the same moment (R1)", async () => {
+    // Another till holds the newer tab and settles it while this payment is
+    // on its way. The till's £42.50 is now more than is owed: it must be
+    // refused whole, not leave the older tab's £30 recorded behind an error.
+    const { sql } = await import("drizzle-orm");
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const other = db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM order_credit WHERE order_id = ${newOrder} FOR UPDATE`);
+      locked();
+      await held;
+      await tx
+        .update(schema.orderCredit)
+        .set({ amountOutstanding: "0.00", status: "settled" })
+        .where(eq(schema.orderCredit.orderId, newOrder));
+    });
+    await isLocked;
+    as = "cashier";
+    const pending = request(app)
+      .post(`/api/customers/${customerId}/credit-payments`)
+      .send({ amount: 42.5, method: "cash" })
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 400));
+    release();
+    await other;
+    const res = await pending;
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("CREDIT_OVERPAYMENT");
+    const left = await outstandingByOrder();
+    expect(left[oldOrder]).toBe(30);
+    const payments = await db.select().from(schema.creditPayments).where(eq(schema.creditPayments.orgId, orgId));
+    expect(payments).toHaveLength(0);
   });
 
   it("has nothing to take for a customer who owes nothing", async () => {

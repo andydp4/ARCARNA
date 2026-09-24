@@ -49,17 +49,31 @@ export function registerCustomerCreditRoutes(app: Express, scoped: RequestHandle
     "/api/customers/:id/credit-payments",
     ...scoped,
     tillRoles,
-    requireOpenShift,
-    async (req: any, res) => {
+    // Checked before the drawer is opened: a refused payment must not open a
+    // till shift (and carry a float into it) as a side effect.
+    async (req: any, res, next) => {
       try {
-        const ctx = req.orgContext as { orgId: string | null; role?: string };
+        const ctx = req.orgContext as { orgId: string | null };
         if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
         const customer = await getCustomerForRole(ctx.orgId, req.params.id, "CASHIER");
         if (!customer) return res.status(404).json({ message: "Customer not found" });
-
         const before = await customerCreditSummary(ctx.orgId, req.params.id);
         const checked = checkTillCreditPayment(req.body, before.owed);
         if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
+        req.tillCreditPayment = { customer, checked };
+        next();
+      } catch (error) {
+        fail(res, error, "Could not record the payment");
+      }
+    },
+    requireOpenShift,
+    async (req: any, res) => {
+      try {
+        const ctx = req.orgContext as { orgId: string; role?: string };
+        const { customer, checked } = req.tillCreditPayment as {
+          customer: { name?: string | null };
+          checked: { amount: number; method: "cash" | "card" };
+        };
 
         const shiftId: string | null = req.shift?.id ?? null;
         const result = await payCustomerCredit({
@@ -82,6 +96,7 @@ export function registerCustomerCreditRoutes(app: Express, scoped: RequestHandle
           customerName: customer.name ?? null,
           orderIds: result.applied.map((a) => a.orderId),
           paidOn: null,
+          atTill: true,
         }).catch((e) => console.error("[CustomerCredit] payment Signal failed", e));
 
         const after = await customerCreditSummary(ctx.orgId, req.params.id);

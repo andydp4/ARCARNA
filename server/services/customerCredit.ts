@@ -13,12 +13,12 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { orderCredit } from "@shared/schema";
 import { summariseCustomerCredit, type CustomerCreditSummary } from "@shared/customerCredit";
-import { CreditError, recordCreditPayment } from "./creditLedger";
+import { CreditError, recordCreditPayment, type CreditLedgerTx } from "./creditLedger";
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-async function openTabs(orgId: string, customerId: string) {
-  return db
+async function openTabs(orgId: string, customerId: string, tx?: CreditLedgerTx) {
+  const q = (tx ?? db)
     .select({
       orderId: orderCredit.orderId,
       amountOutstanding: orderCredit.amountOutstanding,
@@ -33,6 +33,9 @@ async function openTabs(orgId: string, customerId: string) {
       ),
     )
     .orderBy(asc(orderCredit.givenOn), asc(orderCredit.createdAt));
+  // Locked, in one fixed order, when paying: a tab another till is paying
+  // right now is waited for and read again, never paid twice.
+  return tx ? q.for("update") : q;
 }
 
 /** This customer's total owed, open tab count and oldest date — nothing else. */
@@ -67,10 +70,19 @@ export async function payCustomerCredit(input: {
   note?: string | null;
   shiftId?: string | null;
 }): Promise<CustomerPaymentResult> {
-  let remaining = round(input.amount);
-  if (!(remaining > 0)) throw new CreditError("Enter how much the customer paid.", 400, "CREDIT_AMOUNT_INVALID");
+  if (!(round(input.amount) > 0)) throw new CreditError("Enter how much the customer paid.", 400, "CREDIT_AMOUNT_INVALID");
+  // One transaction: a payment spread over several tabs is recorded whole or
+  // not at all, so an error never leaves part of the money on the ledger (and
+  // in the drawer's expected cash) while the till says it failed.
+  return db.transaction((tx) => payCustomerCreditIn(tx, input));
+}
 
-  const owing = await openTabs(input.orgId, input.customerId);
+async function payCustomerCreditIn(
+  tx: CreditLedgerTx,
+  input: Parameters<typeof payCustomerCredit>[0],
+): Promise<CustomerPaymentResult> {
+  let remaining = round(input.amount);
+  const owing = await openTabs(input.orgId, input.customerId, tx);
   const owed = round(owing.reduce((sum, r) => sum + parseFloat(String(r.amountOutstanding)), 0));
   if (remaining > owed) {
     throw new CreditError(
@@ -95,7 +107,7 @@ export async function payCustomerCredit(input: {
       recordedByUserId: input.recordedByUserId ?? null,
       note: input.note ?? null,
       shiftId: input.shiftId ?? null,
-    });
+    }, tx);
     applied.push({ orderId: row.orderId, amount });
     remaining = round(remaining - amount);
   }

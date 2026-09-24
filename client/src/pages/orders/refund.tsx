@@ -3,6 +3,7 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { invalidateCustomerCreditSummaries } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,8 @@ export default function OrderRefundPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      // A refunded credit sale can change what the customer owes.
+      void invalidateCustomerCreditSummaries(queryClient);
       toast({ title: "Refund issued" });
       // ARC-048: `history.back()` left the SPA entirely when this page was
       // opened directly (a bookmark or shared link) rather than clicked
