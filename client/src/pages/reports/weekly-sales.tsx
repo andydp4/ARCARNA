@@ -118,6 +118,13 @@ export default function WeeklySalesReport() {
                   <ReportKpi label="Website" value={money(Number(s.websiteRevenue) || 0)} />
                   <ReportKpi label="Other" value={money(Number(s.otherRevenue) || 0)} />
                 </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="report-delivery-fees">
+                  <ReportKpi
+                    label="Delivery fees"
+                    value={money(Number(s.deliveryFeeRevenue) || 0)}
+                    sub={`On ${int(Number(s.deliveryFeeOrders) || 0)} deliveries, inside total revenue, before refunds`}
+                  />
+                </div>
               </>
             )}
 

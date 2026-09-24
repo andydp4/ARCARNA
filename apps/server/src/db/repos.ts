@@ -92,6 +92,8 @@ function pricingColumns(p: PricedOrder | undefined) {
     points_discount: String(p.pointsDiscount),
     vat_rate: String(p.vatRate),
     vat_amount: String(p.vatAmount),
+    // NULL, not "0", when there is none: a collection has no fee, not a £0 one.
+    delivery_fee: p.deliveryFee > 0 ? String(p.deliveryFee) : null,
   };
 }
 

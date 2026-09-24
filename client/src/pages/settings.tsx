@@ -28,6 +28,7 @@ import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
 import { PriceGuardSettings } from '@/components/settings/PriceGuardSettings'
+import { DeliveryFeeSettings } from '@/components/settings/DeliveryFeeSettings'
 import { StripeSettings } from '@/components/settings/StripeSettings'
 import { AskSettings } from '@/components/settings/AskSettings'
 import { ReviewRulesSettings } from '@/components/settings/ReviewRulesSettings'
@@ -299,6 +300,7 @@ export default function Settings() {
               )}
 
               {canEditOrgProfile && <PriceGuardSettings />}
+              {canEditOrgProfile && <DeliveryFeeSettings />}
               {canEditOrgProfile && <ReviewRulesSettings />}
 
               <Separator />

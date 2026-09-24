@@ -443,6 +443,9 @@ export type PosCartPanelProps = {
   tax: number;
   /** Org VAT/sales-tax rate as a percentage, for the label. */
   taxRatePercent?: number;
+  /** The delivery fee on the order (v1.2.1), its own line; 0 when none. */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
   total: number;
   pointsEarned: number;
   tierProgress: TierProgress | null;
@@ -496,6 +499,8 @@ export function PosCartPanel({
   promoDiscountAmount,
   tax,
   taxRatePercent,
+  deliveryFee = 0,
+  deliveryFeeName = "Delivery fee",
   total,
   pointsEarned,
   tierProgress,
@@ -738,6 +743,13 @@ export function PosCartPanel({
               <p className="text-xs pos-status-amber" data-testid="points-problem">
                 Points not applied: {pointsProblem}
               </p>
+            )}
+            {/* On top of the goods, after their discounts, before VAT (v1.2.1). */}
+            {deliveryFee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-metal-muted">{deliveryFeeName}</span>
+                <span data-testid="cart-delivery-fee">£{deliveryFee.toFixed(2)}</span>
+              </div>
             )}
             {/* No VAT line while the rate is 0 (owner Q1: not VAT registered). */}
             {(taxRatePercent ?? 0) > 0 && (

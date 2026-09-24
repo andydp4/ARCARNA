@@ -66,6 +66,8 @@ interface EditPreview {
     tierDiscount: number;
     promoDiscount: number;
     pointsDiscount: number;
+    /** The delivery fee (v1.2.1): kept as it was on an edit. */
+    deliveryFee?: number;
     vatRate: number;
     vatAmount: number;
     total: number;
@@ -330,6 +332,14 @@ export function OpsEditDialog({ order, open, onOpenChange }: OpsEditDialogProps)
                 <dt className="text-muted-foreground">Discounts kept</dt>
                 <dd className="tabular-nums text-foreground" data-testid="text-edit-discounts">
                   −{money(discounts)}
+                </dd>
+              </div>
+            )}
+            {pricing && (pricing.deliveryFee ?? 0) > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted-foreground">Delivery fee</dt>
+                <dd className="tabular-nums text-foreground" data-testid="text-edit-delivery-fee">
+                  {money(pricing.deliveryFee ?? 0)}
                 </dd>
               </div>
             )}

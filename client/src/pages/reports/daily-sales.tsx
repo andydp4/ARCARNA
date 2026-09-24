@@ -96,6 +96,15 @@ export default function DailySalesReport() {
                 />
               </div>
             )}
+            {!isLoading && data && (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="report-delivery-fees">
+                <ReportKpi
+                  label="Delivery fees"
+                  value={money(Number(s.deliveryFeeRevenue) || 0)}
+                  sub={`On ${int(Number(s.deliveryFeeOrders) || 0)} deliveries, inside total revenue, before refunds`}
+                />
+              </div>
+            )}
 
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-semibold" style={{ color: "#1E3A8A" }}>

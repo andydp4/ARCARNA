@@ -366,7 +366,8 @@ jobs:
             server/__tests__/truthsLayout.test.ts \
             server/__tests__/cardLinks.test.ts \
             server/__tests__/myRun.test.ts \
-            server/__tests__/askArcarna.test.ts
+            server/__tests__/askArcarna.test.ts \
+            server/__tests__/deliveryFee.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

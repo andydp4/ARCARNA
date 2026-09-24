@@ -8,6 +8,7 @@ import type { Role, Organization } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
 import { orgSettingsForRole } from "@shared/staffPolicy";
 import { shopPrivacyFromOrg, shopPrivacyPatchSchema } from "@shared/shopPrivacy";
+import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -93,6 +94,16 @@ function mapOrgToSettings(org: Organization) {
     priceGuardEnabled: org.priceGuardEnabled ?? false,
     // When below-minimum Signals go out (admin set, PUT /api/settings/review-rules).
     priceGuardMinSignal: org.priceGuardMinSignal ?? "immediate",
+    // The delivery fee (v1.2.1). Every role reads it: the till adds the fee.
+    // Only admins change it (PUT /api/settings/delivery-fee).
+    ...(() => {
+      const fee = deliveryFeeSettingsFrom(org);
+      return {
+        deliveryFeeName: fee.name,
+        deliveryFeePrice: fee.defaultPrice,
+        deliveryFeeCommissionable: fee.commissionable,
+      };
+    })(),
     // The shop's customer privacy notice + complaints contact (PRV-15). Public
     // by nature (shown to shop customers), so every staff role may read it.
     ...shopPrivacyFromOrg(org),

@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { isPaidLeg } from "@shared/payments/cardLink";
+import { goodsShareOfTotal, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   cashierProfiles,
   cashierShifts,
@@ -99,6 +100,8 @@ type ShiftOrderRow = {
   tierDiscount: string | null;
   promoDiscount: string | null;
   pointsDiscount: string | null;
+  deliveryFee: string | null;
+  vatRate: string | null;
 };
 
 /**
@@ -127,6 +130,8 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       tierDiscount: orders.tierDiscount,
       promoDiscount: orders.promoDiscount,
       pointsDiscount: orders.pointsDiscount,
+      deliveryFee: orders.deliveryFee,
+      vatRate: orders.vatRate,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
@@ -432,10 +437,17 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     const basis = commissionCostBasis(
       (costsByOrder.get(row.id) ?? []).map((i) => ({ quantity: i.quantity, lineTotal: i.lineTotal, unitCost: i.costPrice })),
     );
+    // The delivery fee is a service charge, not a sale of goods: left out of
+    // commission (and so its margin) unless the admin counts it (v1.2.1).
+    const goodsShare = goodsShareOfTotal(total, storedDeliveryFee(row), {
+      commissionable: org.deliveryFeeCommissionable === true,
+      vatRatePercent: Number(row.vatRate ?? 0) || 0,
+    });
     return {
       orderId: row.id,
       // A card link Stripe has not confirmed is not money in (v1.2 Stripe links).
-      paidContribution: Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * basis.knownShare,
+      paidContribution:
+        Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * goodsShare * basis.knownShare,
       stockCost: basis.stockCost,
       costMissingLines: basis.costMissingLines,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,

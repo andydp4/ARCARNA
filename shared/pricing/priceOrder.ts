@@ -11,11 +11,14 @@
  *                        the customer against the subtotal, so they do not
  *                        compound), capped by its "max discount" and by what
  *                        is left to discount
- *   4. VAT             = org rate × (subtotal − tier − promo). Prices are VAT
- *                        exclusive, as the engine always treated them.
- *   5. points          = owner Q2: £5 of points is £5 off what the customer
+ *   4. delivery fee    = a service charge on a delivery (v1.2.1), added after
+ *                        the goods' discounts: tier and promo never reduce it
+ *   5. VAT             = org rate × (subtotal − tier − promo + delivery fee).
+ *                        Prices are VAT exclusive, as the engine always
+ *                        treated them.
+ *   6. points          = owner Q2: £5 of points is £5 off what the customer
  *                        pays AFTER VAT, never off the pre-VAT price
- *   6. total           = subtotal − tier − promo + VAT − points
+ *   7. total           = subtotal − tier − promo + delivery fee + VAT − points
  *
  * Refusals are thrown as `PricingError` with a message a cashier can act on;
  * the server turns them into a refused sale, the till shows them before the
@@ -92,6 +95,8 @@ export type PriceOrderInput = {
   tiers?: PricingTier[];
   promotion?: PricingPromotion | null;
   points?: PricingPoints | null;
+  /** The delivery fee in pounds (0 or absent: none). Validated by readDeliveryFee(). */
+  deliveryFee?: number | null;
   now?: Date;
 };
 
@@ -101,8 +106,10 @@ export type PricedOrder = {
   tierDiscount: number;
   promotion: { id: string | null; code: string | null; name: string } | null;
   promoDiscount: number;
-  /** Subtotal less tier and promo — what VAT is charged on. */
+  /** Subtotal less tier and promo: the goods after discounts. */
   netAfterDiscounts: number;
+  /** The delivery fee charged on top of the goods (0 when none). VAT'd with them. */
+  deliveryFee: number;
   vatRate: number;
   vatAmount: number;
   pointsRedeemed: number;
@@ -274,9 +281,10 @@ export function priceOrder(input: PriceOrderInput): PricedOrder {
   }
 
   const netP = subtotalP - tierDiscountP - promoDiscountP;
+  const feeP = Math.max(0, toPence(num(input.deliveryFee)));
   const vatRate = Math.max(0, num(input.taxRatePercent));
-  const vatP = pct(netP, vatRate);
-  const grossP = netP + vatP;
+  const vatP = pct(netP + feeP, vatRate);
+  const grossP = netP + feeP + vatP;
 
   let pointsDiscountP = 0;
   let pointsRedeemed = 0;
@@ -302,6 +310,7 @@ export function priceOrder(input: PriceOrderInput): PricedOrder {
     promotion: promo ? { id: promo.id ?? null, code: promo.code ?? null, name: promo.name } : null,
     promoDiscount: fromPence(promoDiscountP),
     netAfterDiscounts: fromPence(netP),
+    deliveryFee: fromPence(feeP),
     vatRate,
     vatAmount: fromPence(vatP),
     pointsRedeemed,
@@ -359,6 +368,8 @@ export function priceEditedOrder(input: {
   lines: PricingLine[];
   taxRatePercent: number;
   kept: KeptDiscounts;
+  /** The order's delivery fee after the edit (kept from the order unless changed). */
+  deliveryFee?: number | null;
 }): PricedOrder {
   const { kept } = input;
   const subtotalP = input.lines.reduce((sum, l) => sum + toPence(l.quantity * l.unitPrice), 0);
@@ -383,9 +394,10 @@ export function priceEditedOrder(input: {
   }
 
   const netP = subtotalP - tierDiscountP - promoDiscountP;
+  const feeP = Math.max(0, toPence(num(input.deliveryFee)));
   const vatRate = Math.max(0, num(input.taxRatePercent));
-  const vatP = pct(netP, vatRate);
-  const grossP = netP + vatP;
+  const vatP = pct(netP + feeP, vatRate);
+  const grossP = netP + feeP + vatP;
 
   const pointsDiscountP = toPence(Math.max(0, num(kept.pointsDiscount)));
   if (pointsDiscountP > grossP) {
@@ -406,6 +418,7 @@ export function priceEditedOrder(input: {
     promotion: promo ? { id: promo.id, code: promo.code, name: promo.name } : null,
     promoDiscount: fromPence(promoDiscountP),
     netAfterDiscounts: fromPence(netP),
+    deliveryFee: fromPence(feeP),
     vatRate,
     vatAmount: fromPence(vatP),
     pointsRedeemed: pointsDiscountP > 0 ? kept.pointsRedeemed : 0,

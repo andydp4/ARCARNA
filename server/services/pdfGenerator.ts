@@ -80,6 +80,10 @@ interface InvoiceData {
   tax: number;
   /** Points, taken off after VAT */
   pointsDiscount?: number;
+  /** The delivery fee (v1.2.1): its own line, after discounts, before VAT. */
+  deliveryFee?: number;
+  /** The org's name for it; "Delivery fee" when absent. */
+  deliveryFeeName?: string;
   /**
    * The VAT rate charged, in percent. At 0 (with no tax) the invoice shows no
    * VAT line at all (v1.2 Phase 1C). Absent: derived from tax / subtotal.
@@ -443,10 +447,18 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
     y += 18;
   }
 
+  // The delivery fee, on its own line: charged on top of the goods, after
+  // their discounts, and VAT'd with them (v1.2.1).
+  if ((data.deliveryFee ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text(`${data.deliveryFeeName || 'Delivery fee'}:`, labelX, y);
+    doc.fillColor(INK).text(formatCurrency(data.deliveryFee ?? 0, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+
   // VAT at the org's actual rate — and no VAT line at all when none was
   // charged: a business that is not VAT-registered must not look as if it
   // charged VAT at 0% (v1.2 Phase 1C).
-  const net = data.subtotal - (data.discount ?? 0);
+  const net = data.subtotal - (data.discount ?? 0) + (data.deliveryFee ?? 0);
   const vatRate = data.vatRate ?? (net > 0 ? Math.round((data.tax / net) * 1000) / 10 : 0);
   if (showsVatLine(data.tax, vatRate)) {
     doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);

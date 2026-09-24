@@ -120,6 +120,11 @@ export type PosCheckoutStepProps = {
   setOrderDate: (v: string) => void;
   fulfilmentMethod: "collection" | "delivery";
   setFulfilmentMethod: (v: "collection" | "delivery") => void;
+  /** The delivery fee control (v1.2.1), shown with the delivery address. */
+  deliveryFeeSlot?: React.ReactNode;
+  /** The fee inside `total`, shown under it; 0 when none. */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
   /** Where a delivery goes (v1.2 Phase 5): asked for whenever Delivery is chosen. */
   delivery: PosDeliveryState;
   setDelivery: (v: PosDeliveryState) => void;
@@ -382,6 +387,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             {p.fulfilmentMethod === "delivery" && (
               <div className="sm:col-span-2">
                 <PosDeliveryDetails value={p.delivery} onChange={p.setDelivery} customerId={p.customerId} />
+                {p.deliveryFeeSlot ? <div className="mt-3">{p.deliveryFeeSlot}</div> : null}
               </div>
             )}
 
@@ -636,6 +642,11 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="checkout-total">
               £{p.total.toFixed(2)}
             </div>
+            {(p.deliveryFee ?? 0) > 0 && (
+              <div className="truncate text-xs text-metal-muted" data-testid="checkout-delivery-fee">
+                incl. {(p.deliveryFeeName ?? "Delivery fee").toLowerCase()} £{(p.deliveryFee ?? 0).toFixed(2)}
+              </div>
+            )}
           </div>
           <Button
             type="button"

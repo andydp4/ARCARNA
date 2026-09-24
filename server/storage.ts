@@ -1150,8 +1150,14 @@ export class DatabaseStorage implements IStorage {
       return { category: r.category, revenue, percentage: total ? (revenue / total) * 100 : 0 };
     });
 
+    // Of which delivery fees (v1.2.1), shown on their own on Sales at a glance.
+    const { deliveryFeeTakingsByDate } = await import("./services/deliveryFeeTakings");
+    const fees = await deliveryFeeTakingsByDate(orgId, fromIso, toIso);
+
     return {
       total,
+      deliveryFees: fees.total,
+      deliveryFeeOrders: fees.orders,
       byDay: dailyRevenue,
       byCategory,
       byPaymentMethod
@@ -1756,12 +1762,26 @@ export class DatabaseStorage implements IStorage {
 
     const expenses = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
+    // The delivery fee is a service charge, not goods (v1.2.1): left out of
+    // gross profit and margin unless the admin counts it, and added back
+    // below gross so operating and net profit still include the money.
+    const { deliveryFeeTakingsByDate } = await import("./services/deliveryFeeTakings");
+    const fees = await deliveryFeeTakingsByDate(orgId, fromIso, toIso);
+    const [feeOrg] = await db
+      .select({ counted: organizations.deliveryFeeCommissionable })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    const feesCounted = feeOrg?.counted === true;
+    const feesOutsideMargin = feesCounted ? 0 : fees.total;
+
     // Calculate profit margins — guarded against a zero-revenue period so an
     // empty range renders 0%, never NaN%.
-    const grossProfit = totalRevenue - totalCOGS;
-    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const marginRevenue = totalRevenue - feesOutsideMargin;
+    const grossProfit = marginRevenue - totalCOGS;
+    const grossMargin = marginRevenue > 0 ? (grossProfit / marginRevenue) * 100 : 0;
 
-    const operatingProfit = grossProfit - expenses.totalExpenses;
+    const operatingProfit = grossProfit + feesOutsideMargin - expenses.totalExpenses;
     const operatingMargin = totalRevenue > 0 ? (operatingProfit / totalRevenue) * 100 : 0;
 
     const netProfit = operatingProfit; // Could subtract taxes here if tracked
@@ -1794,8 +1814,9 @@ export class DatabaseStorage implements IStorage {
     for (let d = fromIso; d <= toIso; d = offsetDate(d, 1)) {
       const revenue = byDay.get(d)?.revenue ?? 0;
       const cogs = cogsByDate.get(d) ?? 0;
-      const dailyGrossProfit = revenue - cogs;
-      const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
+      const dayFees = feesCounted ? 0 : fees.byDate.get(d) ?? 0;
+      const dailyGrossProfit = revenue - dayFees - cogs;
+      const dailyNetProfit = dailyGrossProfit + dayFees - expenses.dailyOverhead;
       profitTrends.push({
         date: d,
         revenue,
@@ -1803,7 +1824,7 @@ export class DatabaseStorage implements IStorage {
         grossProfit: dailyGrossProfit,
         expenses: expenses.dailyOverhead,
         netProfit: dailyNetProfit,
-        grossMargin: revenue > 0 ? (dailyGrossProfit / revenue) * 100 : 0,
+        grossMargin: revenue - dayFees > 0 ? (dailyGrossProfit / (revenue - dayFees)) * 100 : 0,
         netMargin: revenue > 0 ? (dailyNetProfit / revenue) * 100 : 0,
       });
     }
@@ -1825,6 +1846,9 @@ export class DatabaseStorage implements IStorage {
         orderCount,
         averageOrderValue,
         productsMissingCost,
+        // Delivery fees inside `revenue` (v1.2.1), and whether gross profit counts them.
+        deliveryFees: fees.total,
+        deliveryFeesInMargin: feesCounted,
         // Every figure here is settled orders, net of refunds, VAT-inclusive
         // (orders.total already has VAT added on top of the net subtotal —
         // see server/services/orgTaxRate.ts) — stated so the card doesn't

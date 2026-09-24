@@ -61,6 +61,8 @@ interface OrderDetail {
   status: string;
   createdAt: string;
   refundedTotal?: number;
+  /** The delivery fee on top of the lines (v1.2.1); 0 when none. */
+  deliveryFee?: number;
   refunds?: Array<{
     id: string;
     total: string;
@@ -343,6 +345,14 @@ function OpsDetailsBody({
                 </span>
               </li>
             ))}
+            {(detail?.deliveryFee ?? 0) > 0 && (
+              <li className="flex items-center justify-between gap-3 px-3 py-2" data-testid="ops-details-delivery-fee">
+                <span className="font-medium text-foreground">Delivery fee</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  £{(detail?.deliveryFee ?? 0).toFixed(2)}
+                </span>
+              </li>
+            )}
             {!isLoading && (detail?.items?.length ?? 0) === 0 && (
               <li className="px-3 py-3 text-sm text-muted-foreground">No lines on this order.</li>
             )}

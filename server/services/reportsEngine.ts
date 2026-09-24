@@ -11,6 +11,7 @@
  * operational order fields (Order Status, Delay Log) and net-new tables
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
+import { deliveryFeeTakingsBetween } from "./deliveryFeeTakings";
 import { PAYMENT_STATUS_PAID, isCardLinkMethod } from "@shared/payments/cardLink";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -301,6 +302,8 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
   const avgOrderValue = today.aov;
 
   const byChannel = await channelBreakdown(orgId, start, end, filter);
+  // Of which delivery fees (v1.2.1): shown on their own, never a channel.
+  const fees = await deliveryFeeTakingsBetween(orgId, start, end, filter);
 
   const priorDayRevenue = async (offsetDays: number): Promise<number> => {
     const d = shiftIsoDate(dayIso, -offsetDays);
@@ -338,6 +341,10 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
       otherRevenue: byChannel.Other,
+      // Delivery fees charged on the day's settled sales, VAT included,
+      // before refunds; already inside totalRevenue (v1.2.1).
+      deliveryFeeRevenue: fees.total,
+      deliveryFeeOrders: fees.orders,
       avgOrderValue,
       vsYesterday,
       vsLastWeek,
@@ -395,6 +402,7 @@ export async function weeklySalesSummary(
   const peakDay = Object.entries(dayRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
 
   const byChannel = await channelBreakdown(orgId, start, end, filter);
+  const fees = await deliveryFeeTakingsBetween(orgId, start, end, filter);
 
   const topScopeConds = [];
   if (filter?.locationId) topScopeConds.push(eq(orders.locationId, filter.locationId));
@@ -452,6 +460,9 @@ export async function weeklySalesSummary(
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
       otherRevenue: byChannel.Other,
+      // Of which delivery fees (v1.2.1), as on Daily Sales.
+      deliveryFeeRevenue: fees.total,
+      deliveryFeeOrders: fees.orders,
       vsPrevWeek,
       peakTradingDay: peakDay,
     },

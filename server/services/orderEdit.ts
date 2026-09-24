@@ -28,6 +28,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import { orderCredit, orderPayments, promotions, shifts } from "@shared/schema";
+import { readDeliveryFee, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   PricingError,
   priceEditedOrder,
@@ -78,6 +79,9 @@ export type EditableOrderRow = {
   points_discount: string | null;
   vat_rate: string | null;
   vat_amount: string | null;
+  /** v1.2.1, migration 225. NULL (or absent on older callers): no fee. */
+  delivery_fee?: string | null;
+  fulfilment_method?: string | null;
 };
 
 export type OrderLineRow = {
@@ -98,6 +102,7 @@ export type OrderMoneySnapshot = {
   pointsDiscount: number | null;
   vatRate: number | null;
   vatAmount: number | null;
+  deliveryFee: number | null;
   total: number;
   payments: Array<{ method: string; amount: number }>;
 };
@@ -130,6 +135,7 @@ export function snapshotOrderMoney(
     pointsDiscount: money(row.points_discount),
     vatRate: money(row.vat_rate),
     vatAmount: money(row.vat_amount),
+    deliveryFee: money(row.delivery_fee),
     total: money(row.total) ?? 0,
     payments: legs.map((l) => ({ method: l.method, amount: money(l.amount) ?? 0 })),
   };
@@ -238,8 +244,29 @@ export async function keptDiscountsFor(tx: Tx, row: EditableOrderRow): Promise<K
   };
 }
 
+/**
+ * The delivery fee after an edit (v1.2.1): the body's `deliveryFee` when it
+ * sends one (0 or null removes it), else the order's own. Refused on a
+ * collection, like a new sale.
+ */
+export function editedDeliveryFee(
+  row: Pick<EditableOrderRow, "delivery_fee" | "fulfilment_method">,
+  body: Record<string, unknown> | null | undefined,
+): number {
+  if (!body || !("deliveryFee" in body)) return storedDeliveryFee({ deliveryFee: row.delivery_fee });
+  const check = readDeliveryFee(body.deliveryFee, { fulfilmentMethod: row.fulfilment_method ?? "collection" });
+  // A bad request, not the order's state: 400, like a bad delivery address.
+  if (!check.ok) throw Object.assign(new Error(check.message), { statusCode: 400, code: check.code });
+  return check.fee;
+}
+
 /** Prices the new lines, turning a pricing refusal into an edit refusal. */
-export function priceEditOrRefuse(input: { lines: PricingLine[]; taxRatePercent: number; kept: KeptDiscounts }): PricedOrder {
+export function priceEditOrRefuse(input: {
+  lines: PricingLine[];
+  taxRatePercent: number;
+  kept: KeptDiscounts;
+  deliveryFee?: number;
+}): PricedOrder {
   try {
     return priceEditedOrder(input);
   } catch (error) {
