@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { MyPerformanceCard } from "@/components/performance/MyPerformanceCard";
 import { resolveApiUrl } from "@/lib/appPaths";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
@@ -138,6 +139,10 @@ export default function Home() {
 
         <div className="mt-6">
           <OperationsSnapshot />
+        </div>
+
+        <div className="mt-6">
+          <MyPerformanceCard />
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

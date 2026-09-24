@@ -39,7 +39,7 @@ export function registerNeedsALookRoutes(app: Express, scoped: RequestHandler[])
       const q = req.query ?? {};
       const state = typeof q.state === "string" && (q.state === "all" || (EXCEPTION_STATES as readonly string[]).includes(q.state)) ? q.state : "open";
       const queue = typeof q.queue === "string" ? (q.queue as Role) : null;
-      const kind = q.kind === "price" || q.kind === "refund" ? q.kind : null;
+      const kind = q.kind === "price" || q.kind === "refund" || q.kind === "pattern" ? q.kind : null;
       const viewer = viewerOf(req);
       const inbox = await listNeedsALook(req.orgContext.orgId, viewer, { state, queue, kind });
       // Contact-details requests (v1.2 Phase 6) are a request type in this

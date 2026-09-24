@@ -398,7 +398,8 @@ export function summarizeOrderTiming(facts: DerivedOrderTiming[]): OrderTimingSu
 
 export type TimingGroupKey = "fulfilment" | "assignee" | "completer" | "loader" | "station" | "channel" | "day" | "hourOfTradingDay";
 
-function keyFor(fact: DerivedOrderTiming, groupBy: TimingGroupKey): string {
+/** The group an order falls in for a grouping (exported so a caller can filter by it). */
+export function timingGroupKeyOf(fact: DerivedOrderTiming, groupBy: TimingGroupKey): string {
   switch (groupBy) {
     case "fulfilment":
       return fact.fulfilmentMethod;
@@ -432,7 +433,7 @@ export function groupOrderTiming(
 ): Array<{ key: string; summary: OrderTimingSummary }> {
   const buckets = new Map<string, DerivedOrderTiming[]>();
   for (const fact of facts) {
-    const key = keyFor(fact, groupBy);
+    const key = timingGroupKeyOf(fact, groupBy);
     const bucket = buckets.get(key);
     if (bucket) bucket.push(fact);
     else buckets.set(key, [fact]);
@@ -466,3 +467,21 @@ export function orderTimingRedFlags(summary: OrderTimingSummary): string[] {
 }
 
 export type { DateKind, FulfilmentMethod, OpsTimingSettings };
+
+// ------------------------------------------------------------- the page (7A)
+
+/**
+ * The groupings the Order Timing page offers (v1.2 Phase 7A). Station is not
+ * offered yet: until migration 170 only the CURRENT station was known, so a
+ * comparison would re-label past work with today's rota. It returns once
+ * enough recorded stations exist.
+ */
+export const ORDER_TIMING_PAGE_GROUPS = ["fulfilment", "assignee", "completer", "loader", "hour", "day", "channel"] as const;
+export type OrderTimingPageGroup = (typeof ORDER_TIMING_PAGE_GROUPS)[number];
+
+/** Groupings whose rows are people, so the viewer rule (Q14) and "provisional" apply. */
+export const PERSON_TIMING_GROUPS: readonly OrderTimingPageGroup[] = ["assignee", "completer", "loader"];
+
+export function engineGroupKey(group: OrderTimingPageGroup): TimingGroupKey {
+  return group === "hour" ? "hourOfTradingDay" : group;
+}

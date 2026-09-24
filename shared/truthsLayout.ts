@@ -13,8 +13,12 @@ import type { Role } from "./rbac";
 export const TRUTHS_LAYOUT_EDIT_MIN_ROLE: Role = "ADMIN";
 export const TRUTHS_LAYOUT_VIEW_MIN_ROLE: Role = "MANAGER";
 
-/** More than this is a wall, not a glance; it also bounds the stored JSON. */
-export const TRUTHS_LAYOUT_MAX_WIDGETS = 30;
+/**
+ * More than this is a wall, not a glance; it also bounds the stored JSON.
+ * Raised from 30 when Order Timing and Staff Performance became available
+ * Evidence (v1.2 Phase 7): the whole catalogue must still fit, one of each.
+ */
+export const TRUTHS_LAYOUT_MAX_WIDGETS = 40;
 
 export const WIDGET_SIZES = ["small", "medium", "large"] as const;
 export type WidgetSize = (typeof WIDGET_SIZES)[number];

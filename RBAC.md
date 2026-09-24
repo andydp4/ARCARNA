@@ -34,6 +34,10 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |
 | Evidence and Truths (Q12) | No | Yes, except staff pay and managers' performance | Yes | Yes |
+| Order Timing by person and Staff Performance, with Benefit (£), Speed and Fairness (v1.2 Phase 7; provisional for the first 2 weeks) | No | Cashiers and own; Admin cover and team totals | Everyone | Everyone |
+| My performance and the weekly digest (v1.2 Phase 7C; own figures, commission, badges, override count; team median only at 4+; never cached) | Own only | Own; digest adds cashiers' rows | Own; digest adds everyone's | Everyone |
+| Staff targets (v1.2 Phase 7C; red/amber/green/grey, no pay) | Read (colours) | Read | Change, logged and versioned | Change, logged and versioned |
+| Loss-prevention patterns in Needs a look (v1.2 Phase 7C) | No | About cashiers | About cashiers and managers | All |
 | Truths at a glance: read (widgets above their role hidden) | No | Yes, without Profit Truths | Yes | Yes |
 | Truths at a glance: change the org's layout (v1.2 Phase 3) | No | No | Yes, logged | Yes, logged |
 | Exports, including the product export (Q12) | No | No | Yes, logged | Yes, logged |
@@ -87,9 +91,11 @@ Everyone signs in as themselves (Q17); there are no shared till logins.
 - **Evidence and Truths (Q12).** Every Evidence read (`/api/reports`,
   `/api/reports/:ref`), every Truths read (`/api/analytics/*`), the customer
   intelligence routes and the assistant's summary and alerts are MANAGER and
-  above. Staff KPI (`ARC-T2-002`) rates managers too, so it is ADMIN and above
-  (`EVIDENCE_REF_MIN_ROLE`), and the page is hidden while it is rebuilt: it
-  counted cashier codes, which no shift carries any more. Profit and expense
+  above. The `ARC-T2-002` JSON (Staff Performance for
+  everyone, unscoped) stays ADMIN and above (`EVIDENCE_REF_MIN_ROLE`). The
+  Staff Performance page (`/api/evidence/staff-performance`, v1.2 Phase 7)
+  is MANAGER and above with rows cut on the server: a manager sees cashiers
+  and themselves, and is refused another manager's drill-down. Profit and expense
   Evidence (`/api/profit-analysis`, `/api/expense-report`,
   `/api/expense-analytics`) is ADMIN and above. The home page hides its
   Truths panel and Evidence picks below MANAGER, so cashiers do not land on

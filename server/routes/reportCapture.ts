@@ -32,6 +32,8 @@ const satisfactionSchema = z.object({
   staffId: z.string().uuid().optional(),
   score: z.number().int().min(1).max(5),
   comment: z.string().max(2000).optional(),
+  /** Where the stars were tapped (v1.2 Phase 7C). Staff routes never claim 'customer'. */
+  source: z.enum(["board", "capture"]).optional(),
 });
 
 const partnerSchema = z.object({
@@ -100,17 +102,37 @@ export function registerReportCaptureRoutes(app: Express, scoped: RequestHandler
         customerId = customerId ?? order.customerId;
       }
 
-      const [row] = await db
-        .insert(satisfactionScores)
-        .values({
-          orgId: ctx.orgId,
-          orderId: body.orderId ?? null,
-          customerId,
-          staffId: body.staffId ?? null,
-          score: body.score,
-          comment: body.comment ?? null,
-        })
-        .returning();
+      // One rating per order, with who rated it and where (v1.2 Phase 7C,
+      // STF-11). A second tap on the same order is a correction: it replaces
+      // the first rather than counting twice. Stars are information only —
+      // no target, badge or pay reads them.
+      const values = {
+        orgId: ctx.orgId,
+        orderId: body.orderId ?? null,
+        customerId,
+        staffId: body.staffId ?? null,
+        score: body.score,
+        comment: body.comment ?? null,
+        ratedByUserId: req.user?.id ? String(req.user.id) : null,
+        source: body.source ?? "board",
+      };
+      const [row] = body.orderId
+        ? await db
+            .insert(satisfactionScores)
+            .values(values)
+            .onConflictDoUpdate({
+              target: satisfactionScores.orderId,
+              targetWhere: sql`${satisfactionScores.orderId} IS NOT NULL`,
+              set: {
+                score: values.score,
+                comment: values.comment,
+                ratedByUserId: values.ratedByUserId,
+                source: values.source,
+                scoreDate: new Date(),
+              },
+            })
+            .returning()
+        : await db.insert(satisfactionScores).values(values).returning();
 
       // A 1 or 2 needs the owner's attention today (spec flag logic).
       if (body.score <= 2) {

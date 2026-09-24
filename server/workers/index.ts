@@ -336,6 +336,10 @@ async function runHousekeeping(): Promise<void> {
     // exactly once per org per week.
     ["customer-access-weekly", async () =>
       (await import("../services/customerAccessLog")).runWeeklyCustomerAccessLine()],
+    // Staff performance (v1.2 Phase 7C): after Monday's close, last week's
+    // loss-prevention flags and the weekly digest. Exactly once per org per week.
+    ["staff-weekly", async () =>
+      (await import("../services/staffWeekly")).runDueStaffWeeks()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

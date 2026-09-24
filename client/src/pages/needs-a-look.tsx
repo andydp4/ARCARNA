@@ -25,7 +25,7 @@ import { CONTACT_FIELD_LABELS, type ContactField } from "@shared/contactAccess";
 
 type Item = {
   id: string;
-  kind: "price" | "refund";
+  kind: "price" | "refund" | "pattern";
   orderId: string | null;
   orderRef: string | null;
   subjectName: string;
@@ -65,7 +65,7 @@ type ContactRequestItem = {
   createdAt: string;
 };
 
-const KIND_LABEL = { price: "Price", refund: "Refund" } as const;
+const KIND_LABEL = { price: "Price", refund: "Refund", pattern: "Pattern" } as const;
 
 function when(iso: string | null): string {
   if (!iso) return "—";
@@ -222,8 +222,8 @@ export default function NeedsALookPage() {
       <PageHeader
         icon={ClipboardList}
         title="Needs a look"
-        question="Which flagged sales, refunds and contact requests has nobody dealt with yet?"
-        explanation="Sales below the minimum or below cost, and refunds the refund rules pick out. Nothing here was blocked. Mark each one acknowledged, explained or escalated; escalating tells the people above you."
+        question="Which flagged sales, refunds, patterns and contact requests has nobody dealt with yet?"
+        explanation="Sales below the minimum or below cost, refunds the refund rules pick out, weekly patterns (3 or more events and at least twice the person's usual, or among the team's highest weeks), and managers' requests for a customer's contact details. Nothing here was blocked, and a pattern is a question, not a finding. Mark each one acknowledged, explained or escalated; escalating tells the people above you."
       />
 
       {data && (
@@ -272,9 +272,10 @@ export default function NeedsALookPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Sales and refunds</SelectItem>
+              <SelectItem value="all">Everything</SelectItem>
               <SelectItem value="price">Sales</SelectItem>
               <SelectItem value="refund">Refunds</SelectItem>
+              <SelectItem value="pattern">Patterns</SelectItem>
             </SelectContent>
           </Select>
         </div>

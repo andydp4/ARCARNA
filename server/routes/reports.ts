@@ -212,7 +212,13 @@ export function registerReportRoutes(app: Express, scoped: RequestHandler[]): vo
           throw scopeError;
         }
       }
-      const payload = await runReport(ref, ctx.orgId, opts);
+      let payload = await runReport(ref, ctx.orgId, opts);
+      // Q14: the per-order rows name who did each job; below admin, people
+      // the viewer may not see are masked (the Order Timing page's rule).
+      if (ref.toUpperCase() === "ARC-T2-005") {
+        const { redactOrderTimingPeople } = await import("../services/orderTimingPage");
+        payload = await redactOrderTimingPeople(ctx.orgId, payload, { userId: req.user?.id ?? null, role: ctx.role });
+      }
 
       // DEVELOPER NOTE (spec): every red-flag condition writes a notification.
       if (payload.redFlags.length) {

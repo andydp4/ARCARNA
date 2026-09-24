@@ -33,6 +33,8 @@ import {
   LifeBuoy,
   Gauge,
   Eye,
+  UserCheck,
+  Target,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -198,6 +200,15 @@ export const centres: Centre[] = [
         icon: ClipboardList,
         testId: 'nav-needs-a-look',
         roles: MANAGER_ROLES
+      },
+      {
+        // My performance (v1.2 Phase 7C): every role sees their own figures.
+        // For a cashier this is the only performance page (Q14).
+        key: 'my-performance',
+        label: 'My performance',
+        href: '/my-performance',
+        icon: Gauge,
+        testId: 'nav-my-performance'
       }
     ]
   },
@@ -279,6 +290,35 @@ export const centres: Centre[] = [
         href: '/reports',
         icon: FileBarChart,
         testId: 'nav-reports-hub',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Staff Performance (v1.2 Phase 7B) replaces Staff KPI here. The
+        // server cuts the rows: a manager sees cashiers and themselves.
+        key: 'staff-performance',
+        label: 'Staff Performance',
+        href: '/reports/staff-performance',
+        icon: UserCheck,
+        testId: 'nav-staff-performance',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Staff targets (v1.2 Phase 7C): everyone reads them on My
+        // performance; managers see this page; only admins can save.
+        key: 'staff-targets',
+        label: 'Staff targets',
+        href: '/reports/staff-targets',
+        icon: Target,
+        testId: 'nav-staff-targets',
+        roles: MANAGER_ROLES
+      },
+      {
+        // Order Timing (v1.2 Phase 7A): the timing engine's page.
+        key: 'order-timing',
+        label: 'Order Timing',
+        href: '/reports/order-timing',
+        icon: Clock,
+        testId: 'nav-order-timing',
         roles: MANAGER_ROLES
       },
       {
@@ -460,6 +500,15 @@ export const centres: Centre[] = [
         href: '/cashier-payroll',
         icon: Wallet,
         testId: 'nav-cashier-payroll',
+        roles: MANAGER_ROLES
+      },
+      {
+        // The same page as the Truths Centre entry, where Staff KPI used to be.
+        key: 'staff-performance-finance',
+        label: 'Staff Performance',
+        href: '/reports/staff-performance',
+        icon: UserCheck,
+        testId: 'nav-staff-performance-finance',
         roles: MANAGER_ROLES
       },
       {

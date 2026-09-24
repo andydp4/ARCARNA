@@ -427,6 +427,12 @@ const MESSAGE_CUSTOMER =
   "\"Message the customer instead\" and invoice email: managers and above; the server sends approved templates to the number on file and never shows it; every send logged (PRV-11, Q11).";
 const ACCESS_LOG =
   "The customer data access log: each customer's Access history is admin and above; the org-wide page is the owner's alone (PRV-10, Q13a).";
+const STAFF_PERFORMANCE =
+  "Order Timing and Staff Performance are Evidence: manager and above; a manager sees cashiers and themselves, admins and the owner everyone, and a manager is refused another manager's drill-down (v1.2 Phase 7, Q14).";
+const MY_PERFORMANCE =
+  "My performance and the weekly digest are for every role and answer with the caller's own figures only; a team median only when 4+ people worked; never cached (v1.2 Phase 7C, Q14).";
+const STAFF_TARGETS =
+  "Everyone reads the targets behind their colours; only admins set them, each change a new logged version with no pay attached (v1.2 Phase 7C, Q16).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -462,6 +468,13 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "PUT", path: "/api/settings/review-rules", minRole: "ADMIN", reason: NEEDS_A_LOOK },
   { method: "POST", path: "/api/products/min-price/preview", minRole: "MANAGER", reason: BULK_MIN },
   { method: "POST", path: "/api/products/min-price/apply", minRole: "MANAGER", reason: BULK_MIN },
+  { method: "GET", path: "/api/evidence/order-timing", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/evidence/staff-performance", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/evidence/staff-performance/:userId", minRole: "MANAGER", reason: STAFF_PERFORMANCE },
+  { method: "GET", path: "/api/my-performance", minRole: "CASHIER", reason: MY_PERFORMANCE },
+  { method: "GET", path: "/api/my-performance/digest", minRole: "CASHIER", reason: MY_PERFORMANCE },
+  { method: "GET", path: "/api/staff-targets", minRole: "CASHIER", reason: STAFF_TARGETS },
+  { method: "PUT", path: "/api/staff-targets", minRole: "ADMIN", reason: STAFF_TARGETS },
 
   // The "Problem?" button (v1.2 Phase 8A, UXA-09).
   { method: "POST", path: "/api/problem-reports", minRole: "CASHIER", reason: PROBLEM_REPORT },

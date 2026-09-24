@@ -79,6 +79,13 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   contact_request: { minRole: "ADMIN" },
   contact_request_decided: { userIds: [] },
   customer_access_weekly: { roles: ["SUPER_ADMIN"] },
+  // Loss-prevention flags (v1.2 Phase 7C). Each names the person, so it
+  // reaches only people who outrank them: cashiers' to managers and admins,
+  // managers' to admins only.
+  staff_pattern: { minRole: "MANAGER" },
+  // The weekly digest's "ready" line (v1.2 Phase 7C): everyone, and it
+  // carries no figures — each person's digest is built when they open it.
+  staff_digest: { minRole: "CASHIER" },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };
