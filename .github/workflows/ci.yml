@@ -366,7 +366,13 @@ jobs:
             server/__tests__/truthsLayout.test.ts \
             server/__tests__/cardLinks.test.ts \
             server/__tests__/myRun.test.ts \
-            server/__tests__/askArcarna.test.ts
+            server/__tests__/askArcarna.test.ts \
+            server/__tests__/reconcileFigures.test.ts \
+            server/__tests__/refundMoneyRules.test.ts \
+            server/__tests__/orderDeleteClosedDay.test.ts \
+            server/__tests__/figuresAddUp.test.ts \
+            server/__tests__/invoiceRefunds.test.ts \
+            server/__tests__/dailyCloseFigures.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

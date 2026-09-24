@@ -190,19 +190,21 @@ function bucketForMethod(method: string | null): ChannelBucket {
 }
 
 /**
- * Revenue by channel/tender for every settled order in `[start, end)`.
+ * Revenue by channel/tender for `[start, end)`, on the same definition as the
+ * day's total (v1.2.1 money, M6): every order SETTLED in the window, at its
+ * settlement snapshot, split across the tender legs it was actually paid with,
+ * LESS every refund ISSUED in the window, taken off the way that refund's
+ * money actually went back. So the rows always add up to the total, and a
+ * closed day's split never changes because of a refund made later.
  *
  * A website order is bucketed by channel regardless of tender (the customer
- * never chooses a till tender online); everything else is bucketed from its
- * actual tender leg(s) in `order_payments` — a split sale lands in every
- * bucket it actually touched — falling back to the order's single
- * `payment_method` for orders recorded before split tender (migration 056).
+ * never chooses a till tender online), and so is a refund on one. A till sale
+ * with no legs (before split tender, migration 056) falls back to its single
+ * `payment_method`.
  *
- * Each order's settled value is netted against refunds issued against IT
- * (not necessarily on the same calendar day, unlike {@link settledRevenueByDay}'s
- * netting-by-day-issued) and apportioned across its tender legs
- * proportionally, so a fully-refunded order does not still show as revenue in
- * its channel even though the window-level total nets refunds by day.
+ * A refund goes back: cash or "original" (the cash drawer) to Cash, card to
+ * Card, the part taken off a tab to Credit (Tick), store credit to Gift Card
+ * (it is issued as a gift card).
  */
 async function channelBreakdown(
   orgId: string,
@@ -220,31 +222,37 @@ async function channelBreakdown(
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
   if (filter?.staffUserId) scopeConds.push(eq(orders.completedUserId, filter.staffUserId));
 
-  const orderRows = await db
-    .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds));
-  if (orderRows.length === 0) return { ...totals, cardLink };
+  const [orderRows, refundRows] = await Promise.all([
+    db
+      .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
+      .from(orders)
+      .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds)),
+    db
+      .select({
+        total: refunds.total,
+        creditAmount: refunds.creditAmount,
+        refundMethod: refunds.refundMethod,
+        channel: orders.channel,
+      })
+      .from(refunds)
+      .innerJoin(orders, eq(refunds.orderId, orders.id))
+      .where(and(eq(refunds.orgId, orgId), gte(refunds.createdAt, start), lt(refunds.createdAt, end), ...scopeConds)),
+  ]);
 
   const orderIds = orderRows.map((r) => r.id);
-  const [legRows, refundRows] = await Promise.all([
-    db
-      .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
-      .from(orderPayments)
-      // A card-link leg Stripe has not confirmed is not takings.
-      .where(
-        and(
-          eq(orderPayments.orgId, orgId),
-          inArray(orderPayments.orderId, orderIds),
-          eq(orderPayments.status, PAYMENT_STATUS_PAID),
-        ),
-      ),
-    db
-      .select({ orderId: refunds.orderId, refunded: sql<string>`COALESCE(SUM(${refunds.total}::numeric), 0)` })
-      .from(refunds)
-      .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)))
-      .groupBy(refunds.orderId),
-  ]);
+  const legRows = orderIds.length
+    ? await db
+        .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
+        .from(orderPayments)
+        // A card-link leg Stripe has not confirmed is not takings.
+        .where(
+          and(
+            eq(orderPayments.orgId, orgId),
+            inArray(orderPayments.orderId, orderIds),
+            eq(orderPayments.status, PAYMENT_STATUS_PAID),
+          ),
+        )
+    : [];
 
   const legsByOrder = new Map<string, { method: string; amount: number }[]>();
   for (const l of legRows) {
@@ -252,26 +260,45 @@ async function channelBreakdown(
     list.push({ method: l.method, amount: num(l.amount) });
     legsByOrder.set(l.orderId, list);
   }
-  const refundByOrder = new Map(refundRows.map((r) => [r.orderId, num(r.refunded)]));
 
   for (const o of orderRows) {
     const gross = num(o.settledTotal ?? o.total);
-    const net = gross - (refundByOrder.get(o.id) ?? 0);
     if (isWebsiteChannel(o.channel)) {
-      totals.Website += net;
+      totals.Website += gross;
       continue;
     }
     const legs = legsByOrder.get(o.id);
-    if (legs && legs.length > 0) {
+    const legSum = (legs ?? []).reduce((s, l) => s + l.amount, 0);
+    if (legs && legs.length > 0 && legSum > 0) {
       for (const leg of legs) {
-        const share = gross > 0 ? leg.amount / gross : 0;
-        totals[bucketForMethod(leg.method)] += net * share;
-        if (isCardLinkMethod(leg.method)) cardLink += net * share;
+        // Shared by the legs' own weights, so the order adds exactly its
+        // settled value however the legs were rounded.
+        const part = gross * (leg.amount / legSum);
+        totals[bucketForMethod(leg.method)] += part;
+        if (isCardLinkMethod(leg.method)) cardLink += part;
       }
     } else {
-      totals[bucketForMethod(o.paymentMethod)] += net;
+      totals[bucketForMethod(o.paymentMethod)] += gross;
     }
   }
+
+  for (const r of refundRows) {
+    const total = num(r.total);
+    if (isWebsiteChannel(r.channel)) {
+      totals.Website -= total;
+      continue;
+    }
+    const offTab = Math.min(total, Math.max(0, num(r.creditAmount)));
+    totals.Tick -= offTab;
+    const paidOut = total - offTab;
+    const m = String(r.refundMethod ?? "").toLowerCase();
+    if (m === "cash" || m === "original") totals.Cash -= paidOut;
+    else if (m === "card") totals.Card -= paidOut;
+    else if (m === "store_credit") totals.GiftCard -= paidOut;
+    else if (m === "credit") totals.Tick -= paidOut;
+    else totals.Other -= paidOut;
+  }
+
   for (const b of CHANNEL_BUCKETS) totals[b] = round(totals[b]);
   return { ...totals, cardLink: round(cardLink) };
 }
@@ -408,7 +435,17 @@ export async function weeklySalesSummary(
     .from(orderItems)
     .innerJoin(products, eq(orderItems.productId, products.id))
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...topScopeConds))
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        eq(orders.status, "completed"),
+        gte(orders.settledAt, start),
+        lt(orders.settledAt, end),
+        // Personal use is not a sale: its goods are not top sellers.
+        sql`LOWER(COALESCE(${orders.paymentMethod}, '')) <> 'personal_use'`,
+        ...topScopeConds,
+      ),
+    )
     .groupBy(products.name)
     .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
     .limit(5);
@@ -594,24 +631,37 @@ export async function weeklyMarginSummary(
     ...scopeConds,
   );
 
-  const { lineCostSql, lineUnitCostSql } = await import("./lineCost");
+  const { lineUnitCostSql } = await import("./lineCost");
   const known = sql`${lineUnitCostSql} IS NOT NULL`;
+  // v1.2.1 money (M7): units and revenue are what was really sold and paid
+  // for. Personal use is not a sale. Units refunded are taken back off. And a
+  // line's revenue is its share of what the sale was settled at, so a promo,
+  // tier or points discount on the sale lowers its margin — the line's list
+  // value alone overstated it.
+  const refundedQty = sql`COALESCE((SELECT SUM(rl.qty) FROM refund_lines rl WHERE rl.order_line_id = ${orderItems.id}), 0)`;
+  const refundedAmount = sql`COALESCE((SELECT SUM(rl.amount) FROM refund_lines rl WHERE rl.order_line_id = ${orderItems.id}), 0)`;
+  const netQty = sql`(CAST(${orderItems.quantity} AS DECIMAL) - ${refundedQty})`;
+  const orderLineValue = sql`(SELECT SUM(CAST(oi2.total_price AS DECIMAL)) FROM order_items oi2 WHERE oi2.order_id = ${orders.id})`;
+  const paidForLine = sql`(CASE WHEN ${orderLineValue} > 0
+    THEN CAST(${orderItems.totalPrice} AS DECIMAL) * CAST(COALESCE(${orders.settledTotal}, ${orders.total}) AS DECIMAL) / ${orderLineValue}
+    ELSE 0 END)`;
+  const netRevenue = sql`(${paidForLine} - ${refundedAmount})`;
   const grp = await db
     .select({
       productId: products.id,
       name: products.name,
-      units: sql<number>`SUM(${orderItems.quantity})`,
-      revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
-      knownUnits: sql<number>`COALESCE(SUM(${orderItems.quantity}) FILTER (WHERE ${known}), 0)`,
-      knownRevenue: sql<number>`COALESCE(SUM(CAST(${orderItems.totalPrice} AS DECIMAL)) FILTER (WHERE ${known}), 0)`,
-      knownCost: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
+      units: sql<number>`SUM(${netQty})`,
+      revenue: sql<number>`SUM(${netRevenue})`,
+      knownUnits: sql<number>`COALESCE(SUM(${netQty}) FILTER (WHERE ${known}), 0)`,
+      knownRevenue: sql<number>`COALESCE(SUM(${netRevenue}) FILTER (WHERE ${known}), 0)`,
+      knownCost: sql<number>`COALESCE(SUM(${netQty} * ${lineUnitCostSql}), 0)`,
       minSell: sql<number>`MIN(CAST(${orderItems.unitPrice} AS DECIMAL))`,
       maxSell: sql<number>`MAX(CAST(${orderItems.unitPrice} AS DECIMAL))`,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
     .innerJoin(products, eq(orderItems.productId, products.id))
-    .where(cond)
+    .where(and(cond, sql`LOWER(COALESCE(${orders.paymentMethod}, '')) <> 'personal_use'`))
     .groupBy(products.id, products.name);
 
   // The price policy (v1.2 Phase 4, owner Q3) replaces the old hard-coded

@@ -166,6 +166,14 @@ describe.skipIf(!hasDb)("price guard review: Signals, Needs a look, refunds, Evi
       .send(sale([{ productId: widgetId, quantity: 1, unitPrice: 3 }], { priceGuard: confirm(reason, [{ productId: widgetId, unitPrice: 3 }]) }))
       .expect(201);
   };
+  // Only a settled sale can be refunded (v1.2.1 money, M3): mark it handed over.
+  const settle = async (orderId: string) => {
+    const { eq, sql } = await import("drizzle-orm");
+    await db
+      .update(schema.orders)
+      .set({ status: "completed", settledAt: new Date(), settledTotal: sql`${schema.orders.total}` } as never)
+      .where(eq(schema.orders.id, orderId));
+  };
   const setRules = async (patch: Record<string, unknown>) => {
     as(adaId);
     const current = (await request(app).get("/api/settings/review-rules").expect(200)).body;
@@ -340,6 +348,7 @@ describe.skipIf(!hasDb)("price guard review: Signals, Needs a look, refunds, Evi
     const sold = await request(app).post("/api/orders").send(sale([{ productId: plainId, quantity: 8, unitPrice: 10 }])).expect(201);
     const { eq } = await import("drizzle-orm");
     const lines = await db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, sold.body.orderId));
+    await settle(sold.body.orderId);
     as(samId);
     await request(app)
       .post(`/api/orders/${sold.body.orderId}/refunds`)
@@ -438,6 +447,7 @@ describe.skipIf(!hasDb)("price guard review: Signals, Needs a look, refunds, Evi
     const res = await underMinSale(kimId);
     const { eq } = await import("drizzle-orm");
     const [line] = await db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, res.body.orderId));
+    await settle(res.body.orderId);
     as(kimId);
     await request(app)
       .post(`/api/orders/${res.body.orderId}/refunds`)

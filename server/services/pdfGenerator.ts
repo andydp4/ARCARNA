@@ -87,6 +87,8 @@ interface InvoiceData {
   vatRate?: number;
   /** Grand total */
   total: number;
+  /** Refunded against the sale since it was invoiced; shown under the total. */
+  refunded?: number;
   /** Invoice status (e.g., "Paid", "Owed") */
   status: string;
   /** The payment terms the invoice was issued on (e.g., "Net 30") */
@@ -468,8 +470,23 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(12);
   doc.text('Total:', labelX + 10, y + 8);
   doc.text(formatCurrency(data.total, currency), valueX - 5, y + 8, { align: 'right', width: valueWidth + 5 });
+  y += boxHeight;
 
-  return y + boxHeight;
+  // Refunds since the sale (v1.2.1): the sale stays as billed, and what was
+  // given back is shown under it, so the page never reads as fully paid with
+  // nothing refunded.
+  if ((data.refunded ?? 0) > 0.005) {
+    y += 8;
+    doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('Refunded:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.refunded ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+    doc.fillColor(MUTED).text('Net of refunds:', labelX, y);
+    doc.fillColor(INK).text(formatCurrency(Math.round((data.total - (data.refunded ?? 0)) * 100) / 100, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+    return y;
+  }
+
+  return y;
 }
 
 /**

@@ -253,3 +253,29 @@ describe("re-complete after reopen re-settles", () => {
     expect((resettled.event.meta.to as any).completedUserId).toBe("ana");
   });
 });
+
+describe("a backdated sale is settled on the day it is dated (v1.2.1 money, M8)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("stamps settled_at with the dated instant, not the moment it was keyed in", async () => {
+    (creditLegTotal as any).mockResolvedValue(0);
+    const t = await tables();
+    const dated = new Date("2026-09-21T11:00:00Z");
+    const row = baseOrder({ status: "pending", date_kind: "backdated", created_at: dated, settled_at: null, settled_total: null });
+    const tx = makeFakeTx(new Map([[t.orders, [row]]]));
+    const done = await completeOrderTx(tx, row, { userId: "sam" }, {});
+    expect(new Date(done.row.settled_at as Date).toISOString()).toBe(dated.toISOString());
+  });
+
+  it("leaves a live sale settled now", async () => {
+    (creditLegTotal as any).mockResolvedValue(0);
+    const t = await tables();
+    const row = baseOrder({ status: "pending", settled_at: null, settled_total: null });
+    const tx = makeFakeTx(new Map([[t.orders, [row]]]));
+    const before = Date.now();
+    const done = await completeOrderTx(tx, row, { userId: "sam" }, {});
+    expect(new Date(done.row.settled_at as Date).getTime()).toBeGreaterThanOrEqual(before);
+  });
+});

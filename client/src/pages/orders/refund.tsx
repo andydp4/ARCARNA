@@ -33,11 +33,19 @@ interface OrderDetail {
   id: string;
   customerName: string;
   total: string;
+  settledTotal?: string | null;
   paymentMethod: string;
   refundedTotal?: number;
   items: OrderLine[];
   refunds?: Array<{ lines: Array<{ orderLineId: string; qty: number }> }>;
 }
+
+const METHOD_LABELS: Record<string, string> = {
+  original: "The way it was paid",
+  cash: "Cash",
+  card: "Back to the card",
+  store_credit: "Store credit",
+};
 
 const REASON_LABELS: Record<string, string> = {
   damaged: "Damaged",
@@ -90,12 +98,19 @@ export default function OrderRefundPage() {
     });
   }, [order, alreadyRefunded]);
 
+  // A refund gives back what the customer paid for the items: the sale's
+  // settled total shared across its lines, so a discount comes off it too.
+  // The server works out the final figure the same way.
   const refundTotal = useMemo(() => {
-    return lines.reduce((sum, line) => {
+    const lineValue = lines.reduce((sum, line) => sum + line.quantity * parseFloat(line.unitPrice), 0);
+    const settled = parseFloat(String(order?.settledTotal ?? order?.total ?? lineValue));
+    const ratio = lineValue > 0 && Number.isFinite(settled) ? settled / lineValue : 1;
+    const listValue = lines.reduce((sum, line) => {
       const qty = selected[line.id] ?? 0;
       return sum + qty * parseFloat(line.unitPrice);
     }, 0);
-  }, [lines, selected]);
+    return Math.round(listValue * ratio * 100) / 100;
+  }, [lines, selected, order?.settledTotal, order?.total]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -243,7 +258,7 @@ export default function OrderRefundPage() {
                 <SelectContent>
                   {REFUND_METHODS.map((m) => (
                     <SelectItem key={m} value={m}>
-                      {m.replace("_", " ")}
+                      {METHOD_LABELS[m] ?? m.replace("_", " ")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -272,7 +287,10 @@ export default function OrderRefundPage() {
           <CardContent className="space-y-4">
             <p className="text-sm">
               Refund <strong>£{refundTotal.toFixed(2)}</strong> via{" "}
-              <strong>{refundMethod}</strong> — {REASON_LABELS[reason]}.
+              <strong>{METHOD_LABELS[refundMethod] ?? refundMethod}</strong> — {REASON_LABELS[reason]}.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              A sale on the Credit List is taken off the customer&apos;s tab first; only what they have paid is handed back.
             </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>

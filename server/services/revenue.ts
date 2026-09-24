@@ -1,6 +1,6 @@
-import { and, eq, gte, lt, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "../db";
-import { orders, refunds } from "@shared/schema";
+import { orders, organizations, refunds } from "@shared/schema";
 import type { DayKpi } from "@shared/analytics/kpi";
 import { tradingDayBounds, tradingDayFor } from "@shared/time/tradingDay";
 
@@ -87,77 +87,17 @@ export async function settledRevenueByDay(
   toDate: string,
   filter?: RevenueScopeFilter,
 ): Promise<Map<string, RevenueDay>> {
-  const [settledRows, refundRows] = await Promise.all([
-    db
-      .select({
-        day: sql<string>`to_char(${orders.settledAt}, 'YYYY-MM-DD')`.as("day"),
-        gross: sql<string>`coalesce(sum(coalesce(${orders.settledTotal}, ${orders.total})::numeric), 0)`.as("gross"),
-        txns: sql<number>`count(*)::int`.as("txns"),
-      })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.orgId, orgId),
-          eq(orders.status, SETTLED_STATUS),
-          gte(sql`date(${orders.settledAt})`, sql`${fromDate}::date`),
-          lte(sql`date(${orders.settledAt})`, sql`${toDate}::date`),
-          ...scopeConditions(filter),
-        ),
-      )
-      .groupBy(sql`1`),
-
-    // Joined to `orders` so a location/cashier scope also nets off only the
-    // refunds issued against THIS scope's own sales — refunds carry no
-    // location of their own (see shared/schema.ts), but every refund has an
-    // order, and that order's location/cashier is the right one to filter on.
-    db
-      .select({
-        day: sql<string>`to_char(${refunds.createdAt}, 'YYYY-MM-DD')`.as("day"),
-        refunded: sql<string>`coalesce(sum(${refunds.total}::numeric), 0)`.as("refunded"),
-      })
-      .from(refunds)
-      .innerJoin(orders, eq(refunds.orderId, orders.id))
-      .where(
-        and(
-          eq(refunds.orgId, orgId),
-          gte(sql`date(${refunds.createdAt})`, sql`${fromDate}::date`),
-          lte(sql`date(${refunds.createdAt})`, sql`${toDate}::date`),
-          ...scopeConditions(filter),
-        ),
-      )
-      .groupBy(sql`1`),
-  ]);
-
-  const byDay = new Map<string, RevenueDay>();
-
-  for (const row of settledRows) {
-    const gross = round(Number(row.gross) || 0);
-    const txns = row.txns ?? 0;
-    byDay.set(String(row.day), {
-      revenue: gross,
-      txns,
-      aov: txns > 0 ? round(gross / txns) : 0,
-      refundsTotal: 0,
-    });
-  }
-
-  // Refunds are netted off the day they were issued, which is not necessarily
-  // the day the order settled — a refund on Friday against Monday's sale
-  // reduces Friday. AOV stays on gross takings so it keeps meaning "typical
-  // order size" rather than moving because someone was refunded.
-  for (const row of refundRows) {
-    const day = String(row.day);
-    const refunded = round(Number(row.refunded) || 0);
-    if (refunded === 0) continue;
-    const existing = byDay.get(day) ?? { revenue: 0, txns: 0, aov: 0, refundsTotal: 0 };
-    byDay.set(day, {
-      ...existing,
-      revenue: round(existing.revenue - refunded),
-      refundsTotal: round(existing.refundsTotal + refunded),
-    });
-  }
-
-  return byDay;
+  // v1.2.1 money (M9): this used to bucket by UTC calendar date
+  // (`date(settled_at)`), so a sale in the small hours landed on a different
+  // day here (the Truths overview, the daily and monthly revenue charts) than
+  // in Daily Sales, the Control Centre and the 06:00 close. Every figure now
+  // uses the one trading day: 06:00 to 06:00 in the org's own timezone.
+  const [org] = await db
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return settledRevenueByTradingDay(orgId, org?.timezone || "Europe/London", fromDate, toDate, filter);
 }
 
 /**
@@ -196,6 +136,7 @@ export async function settledRevenueByTradingDay(
     db
       .select({
         settledAt: orders.settledAt,
+        paymentMethod: orders.paymentMethod,
         gross: sql<string>`coalesce(${orders.settledTotal}, ${orders.total})::numeric`.as("gross"),
       })
       .from(orders)
@@ -237,7 +178,9 @@ export async function settledRevenueByTradingDay(
     const day = tradingDayFor(row.settledAt, timeZone);
     const existing = byDay.get(day) ?? empty();
     existing.revenue = round(existing.revenue + (Number(row.gross) || 0));
-    existing.txns += 1;
+    // Personal use is a £0 order, not a sale: counting it would pull the
+    // average order value down (v1.2.1 money, M13).
+    if (String(row.paymentMethod ?? "").toLowerCase() !== "personal_use") existing.txns += 1;
     byDay.set(day, existing);
   }
   for (const [day, kpi] of byDay) {

@@ -123,6 +123,7 @@ async function loadShiftReportData(shiftId: string, orgId: string, client: Shift
     id: r.id,
     total: parseFloat(String(r.total)),
     refundMethod: r.refundMethod,
+    creditAmount: parseFloat(String(r.creditAmount ?? 0)),
     createdAt: r.createdAt?.toISOString() ?? "",
   }));
 

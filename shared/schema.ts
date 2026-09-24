@@ -305,6 +305,11 @@ export const insertPromotionSchema = createInsertSchema(promotions).omit({
   createdAt: true, 
   updatedAt: true,
   usageCount: true 
+}).extend({
+  // JSON carries dates as ISO strings; the Promotions page sends them that
+  // way, and a bare z.date() refused every one (v1.2.1 money, M17).
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
 });
 export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 
@@ -2252,7 +2257,10 @@ export const REFUND_REASONS = [
 ] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
 
-export const REFUND_METHODS = ["original", "cash", "store_credit"] as const;
+// What a person may ask for. The row stores how the money actually left,
+// which can also be "credit" (taken off the customer's tab): see
+// shared/refunds/refundRules.ts.
+export const REFUND_METHODS = ["original", "cash", "card", "store_credit"] as const;
 export type RefundMethod = (typeof REFUND_METHODS)[number];
 
 export const refunds = pgTable(
@@ -2271,12 +2279,21 @@ export const refunds = pgTable(
     notes: text("notes"),
     refundMethod: varchar("refund_method", { length: 16 }).notNull(),
     total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+    /**
+     * The part of `total` taken off the customer's tab rather than paid out
+     * (migration 200). Only `total - credit_amount` left the till.
+     */
+    creditAmount: numeric("credit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("refunds_order_id_idx").on(table.orderId),
     index("refunds_org_id_idx").on(table.orgId),
     index("refunds_shift_id_idx").on(table.shiftId),
+    check(
+      "refunds_refund_method_check",
+      sql`${table.refundMethod} IN ('original', 'cash', 'card', 'store_credit', 'credit')`,
+    ),
   ],
 );
 
