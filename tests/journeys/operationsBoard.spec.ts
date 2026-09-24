@@ -195,8 +195,14 @@ test.describe("Operations Centre board — every action is a real write", () => 
 
     await adminPage.getByTestId(`ops-out-${order.id}`).click();
     await expect(card).toHaveAttribute("data-alert", "false");
-    let row = await orderRow(order.id);
-    expect(row.outForDeliveryAt, "Out for delivery should write out_for_delivery_at").toBeTruthy();
+    // data-alert is already "false" before the click lands, so it cannot be
+    // the wait: poll the row, as the Delivered step below does.
+    await expect
+      .poll(async () => (await orderRow(order.id)).outForDeliveryAt, {
+        message: "Out for delivery should write out_for_delivery_at",
+        timeout: 15_000,
+      })
+      .toBeTruthy();
 
     await adminPage.getByTestId(`button-complete-order-${order.id}`).click();
     await expect.poll(async () => (await orderRow(order.id)).status, { timeout: 15_000 }).toBe("completed");
