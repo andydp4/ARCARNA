@@ -60,6 +60,7 @@ const TickList = lazy(() => import("@/pages/tick-list"));
 const NeedsAttention = lazy(() => import("@/pages/needs-attention"));
 const NeedsALook = lazy(() => import("@/pages/needs-a-look"));
 const ProblemInbox = lazy(() => import("@/pages/problem-inbox"));
+const FrictionTruths = lazy(() => import("@/pages/friction-truths"));
 const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
@@ -335,6 +336,9 @@ function Router() {
           </Route>
           <Route path="/problems">
             <RequireRole href="/problems"><ProblemInbox /></RequireRole>
+          </Route>
+          <Route path="/friction-truths">
+            <RequireRole href="/friction-truths"><FrictionTruths /></RequireRole>
           </Route>
           <Route path="/user-access">
             <RequireRole href="/user-access"><UserAccess /></RequireRole>

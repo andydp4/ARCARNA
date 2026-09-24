@@ -10,6 +10,7 @@ import {
   varchar,
   uuid,
   integer,
+  bigint,
   boolean,
   numeric,
   date,
@@ -3282,3 +3283,67 @@ export const problemReports = pgTable("problem_reports", {
 ]);
 
 export type ProblemReport = typeof problemReports.$inferSelect;
+
+/**
+ * Our own usage record (v1.2 Phase 8B, UXA-07/08, migration 131): raw events,
+ * kept 90 days. A role and a device name, never a person (Q18): there is no
+ * user column and none may be added. No screen text, typed values, money or names.
+ */
+export const usageEvents = pgTable("usage_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  kind: varchar("kind", { length: 8 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  device: varchar("device", { length: 32 }).notNull(),
+  deviceKey: varchar("device_key", { length: 64 }).notNull(),
+  appVersion: varchar("app_version", { length: 32 }),
+  screen: varchar("screen", { length: 120 }).default("").notNull(),
+  label: varchar("label", { length: 120 }).default("").notNull(),
+  activeMs: integer("active_ms").default(0).notNull(),
+  openMs: integer("open_ms").default(0).notNull(),
+  durationMs: integer("duration_ms").default(0).notNull(),
+  slow: boolean("slow").default(false).notNull(),
+  failed: boolean("failed").default(false).notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  rolled: boolean("rolled").default(false).notNull(),
+}, (table) => [
+  check("usage_events_kind_check", sql`${table.kind} IN ('screen', 'message', 'call', 'crash', 'offline', 'funnel')`),
+  index("usage_events_org_time_idx").on(table.orgId, table.occurredAt),
+  index("usage_events_device_idx").on(table.orgId, table.deviceKey, table.receivedAt),
+  index("usage_events_rolled_idx").on(table.rolled, table.orgId),
+]);
+
+/** Daily summaries of usage_events (v1.2 Phase 8B), kept 24 months. Friction Truths reads these. */
+export const usageDaily = pgTable("usage_daily", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  day: date("day").notNull(),
+  kind: varchar("kind", { length: 8 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  device: varchar("device", { length: 32 }).notNull(),
+  screen: varchar("screen", { length: 120 }).default("").notNull(),
+  label: varchar("label", { length: 120 }).default("").notNull(),
+  count: integer("count").default(0).notNull(),
+  activeMs: bigint("active_ms", { mode: "number" }).default(0).notNull(),
+  openMs: bigint("open_ms", { mode: "number" }).default(0).notNull(),
+  durationMs: bigint("duration_ms", { mode: "number" }).default(0).notNull(),
+  slow: integer("slow").default(0).notNull(),
+  failed: integer("failed").default(0).notNull(),
+}, (table) => [
+  uniqueIndex("usage_daily_key_uq").on(table.orgId, table.day, table.kind, table.role, table.device, table.screen, table.label),
+  index("usage_daily_org_day_idx").on(table.orgId, table.day),
+]);
+
+/**
+ * The owner's "improvement study" window (v1.2 Phase 8, on demand): off by
+ * default. No outside recorder is connected; when on, staff on the chosen
+ * screens see "Improvement study on this screen until <date>".
+ */
+export const usageStudyWindows = pgTable("usage_study_windows", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").default(false).notNull(),
+  screens: jsonb("screens").$type<string[]>().default([]).notNull(),
+  endsOn: date("ends_on"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

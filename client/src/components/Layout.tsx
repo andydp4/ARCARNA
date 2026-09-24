@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { ProblemButton, ProblemSheet } from '@/components/problem/ProblemSheet'
+import { StudyBanner, UsageRecorder } from '@/components/usage/UsageRecorder'
 import { navigateToLogout } from '@/lib/orgCacheWipe'
 import { PwaInstallBanner } from '@/components/PwaInstallBanner'
 import { BrandLogo } from '@/components/BrandLogo'
@@ -538,12 +539,14 @@ export function Layout({ children }: LayoutProps) {
         <main className="min-w-0 flex-1">
           {/* Per-page boundary: a crash on one page no longer blanks the whole
               app (till included); navigating away clears it. */}
+          <StudyBanner />
           <ErrorBoundary scope="page" resetKey={location}>{children}</ErrorBoundary>
         </main>
       </div>
       <WhatsAppPanel />
       <ArcarnaAssistantBar />
       {isStaff && <ProblemSheet />}
+      {isStaff && <UsageRecorder />}
       {tourCentreKey && user && user.role !== 'CUSTOMER' && <CentreTour centre={tourCentreKey} />}
     </div>
   )

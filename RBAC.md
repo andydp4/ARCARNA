@@ -24,6 +24,9 @@ that are not closed yet show up in the role-matrix test's `KNOWN_LEAKS`.
 | Refund exceptions (cash over £X, another cashier's sale, after N days, reason Other); refunds never blocked (v1.2 Phase 4) | No | Cashiers' | Cashiers' and managers' | All |
 | Press "Problem?" (header and till): a chip, optional note, screen, role, device, version, online and queue counts (v1.2 Phase 8A) | Yes | Yes | Yes | Yes |
 | Problem? inbox: read, mark fixed (the reporter is thanked with the version) or closed, logged; shows the reporter's role, never their name (v1.2 Phase 8A) | No | No | Yes | Yes |
+| Usage record sent from their device: screens and active time, message titles, slow and failed calls, crashes, offline time and sale steps, by role and device, never by name; no screen text, typed values, money or names (v1.2 Phase 8B) | Yes | Yes | Yes | Yes |
+| Friction Truths (pain per active hour, messages, active time and sale funnel by role, slow calls, device health) and the Monday top five (v1.2 Phase 8B/8C, Q18) | No | No | No | Yes |
+| Improvement-study setting (off by default, no recorder connected; staff see a banner on the chosen screens), logged (v1.2 Phase 8) | No | No | No | Change, logged |
 | Suppliers, purchase drafts (and the PO PDF), goods receipts, replenishment, transfers | No | Yes | Yes | Yes |
 | Stock levels (counts at their location, no cost; v1.2 Phase 3) | Yes | Yes | Yes | Yes |
 | Credit List and Invoices (Q11) | No | Yes | Yes | Yes |

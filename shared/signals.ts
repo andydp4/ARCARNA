@@ -67,6 +67,9 @@ export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   // addressed to the reporter alone.
   problem_report: { minRole: "ADMIN" },
   problem_report_fixed: { userIds: [] },
+  // Friction Truths' Monday top five (v1.2 Phase 8C): usage data is the
+  // owner's alone (Q18), so the owner alone gets it.
+  friction_weekly: { roles: ["SUPER_ADMIN"] },
 };
 
 export const DEFAULT_SIGNAL_AUDIENCE: SignalAudience = { minRole: "MANAGER" };

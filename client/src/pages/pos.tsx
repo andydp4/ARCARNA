@@ -77,6 +77,7 @@ import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote"
 import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
 import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
 import { ProblemButton } from "@/components/problem/ProblemSheet";
+import { recordFunnel } from "@/lib/usage";
 
 /** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
 function confirmVerb(paymentMethod: string): string {
@@ -174,6 +175,16 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const [cart, setCart] = useState<CartItem[]>([]);
   /** Which step is on screen. "pay" replaces the lines with the payment step. */
   const [view, setView] = useState<"build" | "pay">("build");
+  // Sale funnel (v1.2 Phase 8B): the step only, never what is on the sale.
+  const hadLinesRef = useRef(false);
+  useEffect(() => {
+    const has = cart.length > 0;
+    if (has && !hadLinesRef.current) recordFunnel("start");
+    hadLinesRef.current = has;
+  }, [cart.length]);
+  useEffect(() => {
+    if (view === "pay") recordFunnel("pay");
+  }, [view]);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
@@ -471,6 +482,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
+      recordFunnel("submit");
       const fingerprint = saleFingerprint(orderData);
       let ref = saleRef;
       // A sale from Needs attention is always a resend of its own reference.
@@ -531,6 +543,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       throw new Error(outcome.message);
     },
     onSuccess: async (data: any) => {
+      recordFunnel("done");
       const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
       const hadNoDueTime = dueMinutes == null && !dueTime;
 
@@ -645,6 +658,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       focusProductSearch(0);
     },
     onError: (error: any) => {
+      recordFunnel("failed");
       toast({
         title: "Order failed",
         description: error.message || "Failed to process the order",

@@ -153,6 +153,13 @@ export function customerEditForRole<T extends Record<string, unknown>>(body: T, 
 export const PROBLEM_INBOX_MIN_ROLE: Role = "ADMIN";
 
 // ---------------------------------------------------------------------------
+// Friction Truths (v1.2 Phase 8B; owner decision Q18: usage data is the
+// owner's alone, by role only, never used in staff reviews).
+// ---------------------------------------------------------------------------
+
+export const FRICTION_TRUTHS_MIN_ROLE: Role = "SUPER_ADMIN";
+
+// ---------------------------------------------------------------------------
 // Route table.
 // ---------------------------------------------------------------------------
 
@@ -215,6 +222,12 @@ const BULK_MIN =
   "Bulk \"Set minimum price\" is managers and admins, previewed first and written to price history; a manager's change tells the owner (v1.2 Phase 4, PRC-05).";
 const PROBLEM_REPORT =
   "Every member of staff can press Problem?; the inbox, and marking a report fixed or closed, is admins and the owner only. The inbox shows the reporter's role, never their name (v1.2 Phase 8A, Q18).";
+const USAGE_RECORD =
+  "Every member of staff's device sends its usage record (screens, active time, message titles, slow and failed calls, crashes, offline time), by role and device, never by name (v1.2 Phase 8B, Q18).";
+const FRICTION_TRUTHS =
+  "Friction Truths and the improvement-study setting are the owner's alone: usage data is by role only and never used in staff reviews (v1.2 Phase 8B, Q18).";
+const STUDY_WINDOW_READ =
+  "Staff devices read the improvement-study setting so the banner shows on the chosen screens (v1.2 Phase 8, on demand).";
 const NEEDS_ATTENTION =
   "Refused till sales are dealt with by a manager; a discard or a sign-out with sales unsent is logged (v1.2 Phase 1A).";
 
@@ -255,6 +268,12 @@ export const ACCESS_POLICY: readonly RouteRule[] = [
   { method: "POST", path: "/api/problem-reports", minRole: "CASHIER", reason: PROBLEM_REPORT },
   { method: "GET", path: "/api/problem-reports", minRole: "ADMIN", reason: PROBLEM_REPORT },
   { method: "POST", path: "/api/problem-reports/:id/resolve", minRole: "ADMIN", reason: PROBLEM_REPORT },
+
+  // Our own usage record and Friction Truths (v1.2 Phase 8B/8C).
+  { method: "POST", path: "/api/usage/events", minRole: "CASHIER", reason: USAGE_RECORD },
+  { method: "GET", path: "/api/usage/study-window", minRole: "CASHIER", reason: STUDY_WINDOW_READ },
+  { method: "PUT", path: "/api/usage/study-window", minRole: "SUPER_ADMIN", reason: FRICTION_TRUTHS },
+  { method: "GET", path: "/api/friction-truths", minRole: "SUPER_ADMIN", reason: FRICTION_TRUTHS },
 
   // Stock Centre › Stock levels: open to all staff, never a cost.
   { method: "GET", path: "/api/stock-levels", minRole: "CASHIER", reason: STOCK_LEVELS },

@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Truck,
   LifeBuoy,
+  Gauge,
 } from 'lucide-react'
 import type { Role } from '@shared/rbac'
 import { VOCAB } from '@/lib/vocabulary'
@@ -352,6 +353,17 @@ export const centres: Centre[] = [
         icon: LifeBuoy,
         testId: 'nav-problem-inbox',
         roles: ADMIN_ROLES
+      },
+      {
+        // Friction Truths (v1.2 Phase 8B): where staff get stuck, from our
+        // own usage record. By role and device, never by name, and the
+        // owner's alone (Q18; the server refuses everyone else).
+        key: 'friction-truths',
+        label: 'Friction Truths',
+        href: '/friction-truths',
+        icon: Gauge,
+        testId: 'nav-friction-truths',
+        roles: SUPER_ADMIN_ONLY
       },
       {
         key: 'scheduled-reports',

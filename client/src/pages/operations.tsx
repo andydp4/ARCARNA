@@ -31,6 +31,7 @@ import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
 import { OpsTour, OpsTourButton } from "@/components/operations/OpsTour";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 import POS from "@/pages/pos";
+import { setUsagePane } from "@/lib/usage";
 
 /**
  * The Operations Centre.
@@ -158,6 +159,15 @@ export function OpsShell({
   boardArrivalCount = 0,
 }: OpsShellProps) {
   const [formCollapsed, setFormCollapsed] = useState(false);
+
+  // Usage record (v1.2 Phase 8B): the board alone is an always-on
+  // information screen, scored per open hour; with the order form in front
+  // (its tab, or its pane open beside the board) this is a till.
+  const tillInFront = isTwoPane ? !formCollapsed : tab === "order";
+  useEffect(() => {
+    setUsagePane(tillInFront ? "order" : null);
+  }, [tillInFront]);
+  useEffect(() => () => setUsagePane(undefined), []);
 
   return (
     <div
