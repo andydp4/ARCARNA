@@ -20,7 +20,6 @@
 import { Pool } from "pg";
 import {
   currentTradingDay,
-  localCalendarDate,
   shiftIsoDate,
   tradingDayBounds,
   tradingDayFor,
@@ -47,7 +46,7 @@ export const CHECKS = {
   backdated: "Backdated sales are counted on the day they are dated",
   personalUse: "Personal use is not counted as sales",
   refunds: "Refunds never exceed what was paid",
-  lateNight: "Late-night sales land on the right calendar day",
+  lateNight: "Small-hours sales land on the same day in every figure",
 } as const;
 export type CheckId = keyof typeof CHECKS;
 
@@ -390,7 +389,9 @@ export async function reconcileOrg(
       say(
         "refundTender",
         `${dayName(day)}: a refund of ${gbp(p(r.total))} on sale ${short(r.order_id)}, which was paid by ${how}, was paid out of the cash drawer. ` +
-          `Check the customer was given cash; if it went back to their card, the drawer's expected cash is ${gbp(p(r.total))} too low.`,
+          (ls.some((l: any) => /tick|credit/i.test(String(l.method)))
+            ? `The sale was on the Credit List, so the customer was handed cash for goods they had not paid for; the refund should have come off their tab.`
+            : `Check the customer was given cash; if it went back to their card, the drawer's expected cash is ${gbp(p(r.total))} too low.`),
         day,
       );
     }
@@ -553,24 +554,29 @@ export async function reconcileOrg(
     }
   }
 
-  // --- 11. late night: calendar-day charts
-  const lateByDay = new Map<string, { n: number; v: number }>();
+  // --- 11. late night: the Truths overview and the revenue charts bucket by
+  // UTC calendar date (`date(settled_at)`), while Daily Sales, the Control
+  // Centre and the close use the 06:00 trading day. A sale settled between
+  // midnight and 06:00 local time can land on a different day in each.
+  const lateByDay = new Map<string, { n: number; v: number; utcDay: string }>();
   for (const o of orders) {
     if (o.status !== "completed" || !o.settled_at || isPersonal(o.payment_method)) continue;
     const at = new Date(o.settled_at);
     const utcDay = at.toISOString().slice(0, 10);
-    const localDay = localCalendarDate(at, tz);
-    if (utcDay !== localDay) {
-      const e = lateByDay.get(localDay) ?? { n: 0, v: 0 };
+    const tradingDay = tradingDayFor(at, tz);
+    if (utcDay !== tradingDay) {
+      const key = `${tradingDay}|${utcDay}`;
+      const e = lateByDay.get(key) ?? { n: 0, v: 0, utcDay };
       e.n += 1;
       e.v += p(o.settled_total ?? o.total);
-      lateByDay.set(localDay, e);
+      lateByDay.set(key, e);
     }
   }
-  for (const [day, e] of lateByDay) {
+  for (const [key, e] of lateByDay) {
+    const day = key.split("|")[0];
     say(
       "lateNight",
-      `${dayName(day)}: ${e.n} sale(s) worth ${gbp(e.v)} were settled just after midnight local time; the daily and monthly revenue charts, which count UTC days, show them on ${dayName(shiftIsoDate(day, -1))}.`,
+      `${dayName(day)}: ${e.n} sale(s) worth ${gbp(e.v)} were settled in the small hours; Daily Sales and the Control Centre count them on ${dayName(day)}, but the Truths overview and the daily and monthly revenue charts, which count UTC days, show them on ${dayName(e.utcDay)}.`,
       day,
     );
   }

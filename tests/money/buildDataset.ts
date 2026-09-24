@@ -57,6 +57,7 @@ type State = {
   journal: Journal[];
   tills: Record<string, string>; // `${day}:${user}` -> till shift id
   attempts: Array<{ day: number; what: string; status: number; body: string }>;
+  refundLines?: Array<{ orderRef: string; product: string; qty: number }>;
 };
 
 function load(): State {
@@ -290,6 +291,9 @@ class Day {
       return null;
     }
     const total = Number(r.body.refund?.total);
+    const nameOf = (pid: string) => Object.entries(this.s.products).find(([, v]) => v.id === pid)?.[0] ?? pid;
+    this.s.refundLines = this.s.refundLines ?? [];
+    lineIdx.forEach((i, k) => this.s.refundLines!.push({ orderRef: ref, product: nameOf(items[i]?.productId), qty: qty[k] }));
     // Ground truth: money goes back the way it came in. A card sale refunded
     // "to original" goes back to the card, not out of the drawer.
     const origTender = this.s.journal.find((j) => j.orderRef === ref && j.kind === "sale")?.tender ?? {};
@@ -476,6 +480,7 @@ async function tradeDay(i: number, last: number) {
       // The customer pays the difference by card.
       const j = s.journal.find((x) => x.orderRef === ref && x.kind === "sale")!;
       j.note = `edited ${j.amount} -> ${newTotal}`;
+      o.lines = [{ product: "Gadget", qty: 2 }, { product: "Widget", qty: 1 }];
       j.tender = { card: newTotal };
       j.amount = newTotal;
     }
@@ -585,7 +590,7 @@ async function payLink(s: State, orderId: string, sessionId: string, amountMinor
     },
   };
   const raw = JSON.stringify(event);
-  const sig = signStripePayload(raw, process.env.STRIPE_WEBHOOK_SECRET ?? "", Math.floor(Date.now() / 1000));
+  const sig = signStripePayload(raw, process.env.STRIPE_WEBHOOK_SECRET || "whsec_stub", Math.floor(Date.now() / 1000));
   const { baseUrl } = await import("./client");
   const res = await fetch(`${baseUrl()}/api/stripe/webhook`, {
     method: "POST",

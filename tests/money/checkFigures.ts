@@ -121,6 +121,23 @@ async function main() {
     cmp(`Weekly Sales ${from}..${to} orders`, w.body.summary?.totalOrders, n);
     const m = await get(ADMIN, `/api/reports/ARC-T2-001?from=${from}&to=${to}`, `weekly-margin.${from}`);
     fs.writeFileSync(path.join(OUT, `weekly-margin.${from}.rows.txt`), JSON.stringify(m.body.rows ?? [], null, 1));
+    // Units actually sold: settled sales in the week, less personal use, less units refunded.
+    const sold = new Map<string, number>();
+    for (const j of s.journal) {
+      const d = dayOf(j.day);
+      if (d < from || d > to) continue;
+      const lines = s.orders[j.orderRef]?.lines ?? [];
+      const deleted = s.journal.some((k: any) => k.kind === "deleted" && k.orderRef === j.orderRef);
+      if (j.kind === "sale" && !j.personalUse && !deleted) for (const l of lines) sold.set(l.product, (sold.get(l.product) ?? 0) + l.qty);
+    }
+    for (const rf of s.refundLines ?? []) {
+      const d = dayOf(s.orders[rf.orderRef]?.day ?? -99);
+      if (d >= from && d <= to) sold.set(rf.product, (sold.get(rf.product) ?? 0) - rf.qty);
+    }
+    for (const row of m.body.rows ?? []) {
+      const name = String(row.product).replace(/^Money /, "");
+      if (sold.has(name)) cmp(`Weekly Margin ${from}..${to} ${name} units sold (net of personal use and refunds)`, row.unitsSold, sold.get(name)!);
+    }
     const sp = await get(ADMIN, `/api/evidence/staff-performance?from=${from}&to=${to}`, `staff-performance.${from}`);
     let gross = 0;
     for (let d = from; d <= to; d = shiftIso(d, 1)) gross += t(d).takings + t(d).refunds;
@@ -179,7 +196,11 @@ async function main() {
   cmp("Control Centre To deliver = board Delivery lane", cc.body.toDeliver, board.body?.summary?.lanes?.delivery?.live);
   cmp("Operations board done today = Control Centre completed today", board.body?.summary?.completedToday, cc.body.ordersCompletedToday);
   cmp("Control Centre completed today (sales settled today)", cc.body.ordersCompletedToday, t(today).sales);
-  await get(ADMIN, "/api/invoices", "invoices");
+  const inv = await get(ADMIN, "/api/invoices", "invoices");
+  const settledRefs = new Set(s.journal.filter((j: any) => j.kind === "sale").map((j: any) => j.orderId));
+  for (const i of Array.isArray(inv.body) ? inv.body : inv.body?.invoices ?? []) {
+    if (i.status === "paid" && !settledRefs.has(i.orderId)) mismatches.push(`Invoice ${i.invoiceNumber} says paid, but its order ${String(i.orderId).slice(0, 8)} was never settled`);
+  }
   await get(CASHIER, "/api/my-performance", "my-performance.cashier");
   await get("money-cashier-02", "/api/my-performance", "my-performance.cashier02");
   await get(MANAGER, "/api/my-performance", "my-performance.manager");

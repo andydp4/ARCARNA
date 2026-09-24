@@ -234,12 +234,20 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     expect(r.problems.find((p) => p.check === "refunds")!.message).toContain("which was never settled");
   });
 
-  it("names a sale just after midnight BST that the calendar charts put on the day before", async () => {
-    // 00:30 BST on the 15th = 23:30 UTC on the 14th.
-    await order({ total: 40, method: "cash", createdAt: new Date("2026-06-14T23:30:00.000Z") });
+  it("names a small-hours sale that the Truths overview puts on a different day from Daily Sales", async () => {
+    // 02:00 BST on the 15th = 01:00 UTC on the 15th: trading day the 14th, UTC day the 15th.
+    await order({ total: 40, method: "cash", createdAt: new Date("2026-06-15T01:00:00.000Z") });
     const r = await run();
     expect([...checksHit(r)]).toEqual(["lateNight"]);
-    expect(r.problems[0].message).toContain("show them on Sun 14 Jun");
+    expect(r.problems[0].message).toContain("count them on Sun 14 Jun");
+    expect(r.problems[0].message).toContain("show them on Mon 15 Jun");
+  });
+
+  it("does not flag a sale just after midnight BST, which every figure puts on the same day", async () => {
+    // 00:30 BST on the 15th = 23:30 UTC on the 14th: trading day and UTC day are both the 14th.
+    await order({ total: 40, method: "cash", createdAt: new Date("2026-06-14T23:30:00.000Z") });
+    const r = await run();
+    expect([...checksHit(r)]).not.toContain("lateNight");
   });
 
   it("names commission earned on a tab payment that no payroll row carries", async () => {
