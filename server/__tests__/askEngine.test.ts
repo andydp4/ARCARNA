@@ -29,6 +29,8 @@ type Script = {
   stop_reason: string;
   usage?: Record<string, unknown>;
   throws?: unknown;
+  /** Usage on a message_start event before any text, as the real stream sends it. */
+  start?: Record<string, unknown>;
 };
 
 function message(s: Script) {
@@ -60,6 +62,7 @@ function fakeClient(scripts: Script[]) {
     if (!s) throw new Error("no more scripted turns");
     return {
       async *[Symbol.asyncIterator]() {
+        if (s.start) yield { type: "message_start", message: { usage: s.start } };
         for (const t of s.text ?? []) yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } };
         if (s.throws) throw s.throws;
       },
@@ -75,7 +78,7 @@ function fakeClient(scripts: Script[]) {
 const ctx = { orgId: "org-1", userId: "user-sam", role: "CASHIER", locationId: null };
 const config = { apiKey: "sk-test", model: "claude-opus-5", effort: "medium" as const };
 
-async function ask(scripts: Script[], question = "How am I doing?") {
+async function ask(scripts: Script[], question = "How am I doing?", extra: Partial<Parameters<typeof engine.askArcarna>[0]> = {}) {
   const fake = fakeClient(scripts);
   const events: AskStreamEvent[] = [];
   const result = await engine.askArcarna({
@@ -89,6 +92,7 @@ async function ask(scripts: Script[], question = "How am I doing?") {
     ],
     contextNote: engine.askContextNote({ role: "CASHIER", todayIso: "2026-09-24", todayLong: "Thursday 24 September 2026", timeZone: "Europe/London" }),
     onEvent: (e) => events.push(e),
+    ...extra,
   });
   return { ...fake, events, result, text: events.filter((e) => e.type === "text").map((e: any) => e.text).join("") };
 }
@@ -307,5 +311,108 @@ describe("Ask arcarna engine: errors", () => {
     expect(stream).toHaveBeenCalledTimes(2);
     expect(events.some((e) => e.type === "discard")).toBe(true);
     expect(result.outcome).toBe("answered");
+  });
+
+  it("a re-issued round takes back only its own text, not earlier rounds'", async () => {
+    executeAskTool.mockResolvedValue({ content: "{}", audit: "run_evidence", status: "Reading" });
+    const bad = new Error("Unexpected token in JSON");
+    const { events, result } = await ask([
+      {
+        text: ["Let me check this week's figures."],
+        content: [
+          { type: "text", text: "Let me check this week's figures." },
+          { type: "tool_use", id: "tu_1", name: "run_evidence", input: {} },
+        ],
+        stop_reason: "tool_use",
+      },
+      { text: ["Half a thought"], stop_reason: "tool_use", throws: bad },
+      { text: ["Sales were up."], stop_reason: "end_turn" },
+    ]);
+    // What the panel shows: text appended, cleared on each discard.
+    let shown = "";
+    for (const e of events) {
+      if (e.type === "text") shown += e.text;
+      if (e.type === "discard") shown = "";
+    }
+    expect(shown).toBe("Let me check this week's figures.\n\nSales were up.");
+    expect(result.outcome).toBe("answered");
+  });
+});
+
+describe("Ask arcarna engine: every billed token is counted", () => {
+  const start = { input_tokens: 40_000, output_tokens: 1, cache_read_input_tokens: 5_000, cache_creation_input_tokens: 0 };
+
+  it("a round the person stops mid-stream still counts its input and what was streamed", async () => {
+    const { result } = await ask([
+      { start, text: ["x".repeat(400)], stop_reason: "end_turn", throws: new Anthropic.APIUserAbortError() },
+    ]);
+    expect(result.outcome).toBe("stopped");
+    expect(result.usage.inputTokens).toBe(40_000);
+    expect(result.usage.cacheReadTokens).toBe(5_000);
+    // 400 characters streamed: at least 100 output tokens, not the 1 on message_start.
+    expect(result.usage.outputTokens).toBeGreaterThanOrEqual(100);
+  });
+
+  it("the stop in a later round keeps the earlier rounds and adds the stopped one", async () => {
+    executeAskTool.mockResolvedValue({ content: "{}", audit: "list_evidence", status: "Reading" });
+    const { result } = await ask([
+      { content: [{ type: "tool_use", id: "tu_1", name: "list_evidence", input: {} }], stop_reason: "tool_use" },
+      { start, text: ["partial"], stop_reason: "end_turn", throws: new Anthropic.APIUserAbortError() },
+    ]);
+    // 100 from the finished round plus 40,000 from the stopped one.
+    expect(result.usage.inputTokens).toBe(40_100);
+  });
+
+  it("a mid-stream API error counts the round's tokens too", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { result } = await ask([
+      { start, text: ["half"], stop_reason: "end_turn", throws: new Anthropic.InternalServerError(529, { type: "error" }, "overloaded", new Headers()) },
+    ]);
+    spy.mockRestore();
+    expect(result.outcome).toBe("error");
+    expect(result.usage.inputTokens).toBe(40_000);
+  });
+
+  it("an unparseable round that is re-issued is counted as well as the retry", async () => {
+    const { result } = await ask([
+      { start, text: ["Checking"], stop_reason: "tool_use", throws: new Error("Unexpected token in JSON") },
+      { text: ["Fine now."], stop_reason: "end_turn" },
+    ]);
+    expect(result.usage.inputTokens).toBe(40_100);
+  });
+
+  it("a finished round's own figures replace the running estimate", async () => {
+    const { result } = await ask([{ start, text: ["x".repeat(4000)], stop_reason: "end_turn" }]);
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 50, cacheWriteTokens: 10 });
+  });
+
+  it("fills the caller's usage while the round streams, so a question in flight can be counted", async () => {
+    const live = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const seen: number[] = [];
+    await ask([{ start, text: ["a", "b"], stop_reason: "end_turn" }], "q", {
+      usage: live,
+      onEvent: (e) => {
+        if (e.type === "text") seen.push(live.inputTokens);
+      },
+    });
+    expect(seen[0]).toBe(40_000);
+    expect(live.inputTokens).toBe(100);
+  });
+
+  it("stops between rounds when the caller says the spend cap is reached", async () => {
+    executeAskTool.mockResolvedValue({ content: "{}", audit: "list_evidence", status: "Reading" });
+    const mayContinue = vi.fn(async () => false);
+    const { result, text, stream } = await ask(
+      [
+        { content: [{ type: "tool_use", id: "tu_1", name: "list_evidence", input: {} }], stop_reason: "tool_use" },
+        { text: ["never sent"], stop_reason: "end_turn" },
+      ],
+      "q",
+      { mayContinue },
+    );
+    expect(mayContinue).toHaveBeenCalledTimes(1);
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(result.outcome).toBe("cut_short");
+    expect(text).toMatch(/spending limit/);
   });
 });

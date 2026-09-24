@@ -136,8 +136,7 @@ type TokenCounts = {
   cache_creation_input_tokens?: number | null;
 };
 
-function addUsage(total: AskUsage, message: BetaMessage): void {
-  const u = message.usage;
+function addUsage(total: AskUsage, u: TokenCounts & { iterations?: unknown[] | null }): void {
   // usage.iterations is per attempt and includes a declined attempt before a
   // fallback; the top-level figures cover only the attempt that answered.
   // Summing the attempts can only over-count, which is the safe side of a cap.
@@ -197,6 +196,59 @@ function logAskError(error: unknown): void {
   }
 }
 
+/**
+ * What a round has billed so far, kept in the running total as the stream
+ * goes: message_start carries the input (and cache) counts, message_delta the
+ * running totals, and finalMessage() the settled figures. So a question still
+ * in flight counts against the spend cap, and a round that never finishes
+ * (the person stopped it, the connection failed, or its tool input could not
+ * be parsed) still counts the tokens Anthropic bills for it.
+ */
+class RoundUsage {
+  private counts: TokenCounts & { iterations?: unknown[] | null } = {};
+  /** Characters streamed; a floor for output tokens the stream has not totalled yet. */
+  private chars = 0;
+  /** What this round has already put into the total. */
+  private applied = emptyAskUsage();
+
+  constructor(private readonly total: AskUsage) {}
+
+  seen(event: Anthropic.Beta.BetaRawMessageStreamEvent): void {
+    if (event.type === "message_start") {
+      this.counts = { ...(event.message.usage as TokenCounts & { iterations?: unknown[] | null }) };
+    } else if (event.type === "message_delta") {
+      const u = event.usage as TokenCounts & { iterations?: unknown[] | null };
+      for (const key of ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "iterations"] as const) {
+        if (u[key] != null) (this.counts as Record<string, unknown>)[key] = u[key];
+      }
+    } else if (event.type === "content_block_delta") {
+      const d = event.delta as { text?: string; partial_json?: string; thinking?: string };
+      this.chars += (d.text ?? d.partial_json ?? d.thinking ?? "").length;
+    } else {
+      return;
+    }
+    const now = emptyAskUsage();
+    addUsage(now, this.counts);
+    // Output is only totalled at the end of a round; roughly 4 characters a token.
+    now.outputTokens = Math.max(now.outputTokens, Math.ceil(this.chars / 4));
+    this.apply(now);
+  }
+
+  /** The finished round's own figures replace the running estimate. */
+  settle(message: BetaMessage): void {
+    const now = emptyAskUsage();
+    addUsage(now, message.usage);
+    this.apply(now);
+  }
+
+  private apply(now: AskUsage): void {
+    for (const k of Object.keys(now) as (keyof AskUsage)[]) {
+      this.total[k] += now[k] - this.applied[k];
+    }
+    this.applied = now;
+  }
+}
+
 const REFUSED =
   "arcarna can't help with that one. Try asking about your shop's sales, stock, performance or flags.";
 
@@ -209,13 +261,22 @@ export async function askArcarna(args: {
   contextNote: string;
   onEvent: (event: AskStreamEvent) => void;
   signal?: AbortSignal;
+  /**
+   * Filled in as each round is billed, so the caller can count a question
+   * still in flight against the spend cap. A fresh one when not given.
+   */
+  usage?: AskUsage;
+  /** Asked before every round after the first; false stops (the spend cap). */
+  mayContinue?: () => Promise<boolean>;
 }): Promise<AskRunResult> {
   const { client, config, ctx, onEvent, signal } = args;
-  const usage = emptyAskUsage();
+  const usage = args.usage ?? emptyAskUsage();
   const tools: string[] = [];
   const evidence = new Map<string, AskEvidenceLink>();
   let servedByFallback = false;
   let wroteText = false;
+  // Every piece of text sent so far, so a re-issued round can take back only its own.
+  let shown = "";
   const evidenceList = () => [...evidence.values()];
 
   const messages: BetaMessageParam[] = args.history.map((t) => ({ role: t.role, content: t.text }));
@@ -235,6 +296,10 @@ export async function askArcarna(args: {
   let jsonRetries = 0;
   try {
     for (let round = 0; round < ASK_MAX_ROUNDS; round++) {
+      if (round > 0 && args.mayContinue && !(await args.mayContinue())) {
+        onEvent({ type: "text", text: "\n\n(Ask arcarna has reached this month's spending limit, so it stopped here.)" });
+        return finish("cut_short");
+      }
       const stream = client.beta.messages.stream(
         {
           model: config.model,
@@ -252,30 +317,41 @@ export async function askArcarna(args: {
 
       let message: BetaMessage;
       let separated = !wroteText;
+      const shownBefore = shown;
+      const roundUsage = new RoundUsage(usage);
       try {
         for await (const event of stream) {
+          roundUsage.seen(event);
           if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text) {
             // A new round's text starts on its own paragraph.
             if (!separated) {
               onEvent({ type: "text", text: "\n\n" });
+              shown += "\n\n";
               separated = true;
             }
             wroteText = true;
+            shown += event.delta.text;
             onEvent({ type: "text", text: event.delta.text });
           }
         }
         message = await stream.finalMessage();
         jsonRetries = 0;
       } catch (error) {
+        // Whatever the round billed before it broke off stays in the total.
         // Only a tool input the SDK could not parse at all is re-issued (eager
         // input streaming); API errors go to the handler below.
         if (error instanceof Anthropic.APIError || jsonRetries++ >= 2) throw error;
-        if (wroteText) onEvent({ type: "discard" });
-        wroteText = false;
+        // Take back this round's text only; earlier rounds' text stays shown.
+        if (shown !== shownBefore) {
+          onEvent({ type: "discard" });
+          if (shownBefore) onEvent({ type: "text", text: shownBefore });
+        }
+        shown = shownBefore;
+        wroteText = shown.length > 0;
         continue;
       }
 
-      addUsage(usage, message);
+      roundUsage.settle(message);
       if (fallbackRan(message)) servedByFallback = true;
 
       // stop_reason before content: a refusal (even after a fallback) can cut

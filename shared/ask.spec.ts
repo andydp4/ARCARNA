@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ASK_DEFAULT_MODEL,
   ASK_HISTORY_TURNS,
+  askPriceFor,
   askRequestSchema,
   askSettingsSchema,
   askSuggestionsFor,
@@ -22,6 +23,16 @@ describe("Ask arcarna: shared rules", () => {
     // Cache writes 1.25x input, reads 0.1x input.
     expect(estimateCostGbp({ inputTokens: 0, outputTokens: 0, cacheWriteTokens: 1_000_000, cacheReadTokens: 1_000_000 }, 1)).toBe(6.75);
     expect(estimateCostGbp({ inputTokens: 1234, outputTokens: 567, cacheReadTokens: 0, cacheWriteTokens: 0 }, 0.79)).toBeCloseTo(0.016, 3);
+  });
+
+  it("prices the model that ran: an ARCARNA_AI_MODEL override is not priced as claude-opus-5", () => {
+    const usage = { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(estimateCostGbp(usage, 1, "claude-opus-5")).toBe(30);
+    expect(estimateCostGbp(usage, 1, "claude-fable-5-1")).toBe(60);
+    expect(estimateCostGbp(usage, 1, "claude-sonnet-5")).toBe(12);
+    // A model not in the table is priced at the dearest known rates, never the cheapest.
+    expect(askPriceFor("claude-some-future-model")).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 });
+    expect(estimateCostGbp(usage, 1, "claude-some-future-model")).toBe(60);
   });
 
   it("keeps the history to alternating question-and-answer pairs, oldest dropped", () => {

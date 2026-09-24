@@ -22,11 +22,45 @@ export type AskEffort = (typeof ASK_EFFORTS)[number];
 /** Routine questions: medium thinking effort unless ARCARNA_AI_EFFORT says otherwise. */
 export const ASK_DEFAULT_EFFORT: AskEffort = "medium";
 
+export interface AskPrice {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
 /**
- * Published claude-opus-5 prices in US dollars per million tokens: $5 in,
- * $25 out. A cache write bills 1.25x the input price and a cache read 0.1x.
+ * Published prices in US dollars per million tokens, by exact model ID. A
+ * 5-minute cache write bills 1.25x the input price; cache reads are 0.1x
+ * except on claude-fable-5-1 (0.025x). claude-opus-5 is $5 in, $25 out.
  */
-export const ASK_PRICE_USD_PER_MTOK = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 } as const;
+export const ASK_PRICES_USD_PER_MTOK: Readonly<Record<string, AskPrice>> = {
+  "claude-opus-5": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-opus-4-8": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-sonnet-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+  "claude-fable-5-1": { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 },
+  "claude-fable-5": { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
+  "claude-mythos-5": { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
+};
+
+/** The default model's price, kept for the settings card and older callers. */
+export const ASK_PRICE_USD_PER_MTOK = ASK_PRICES_USD_PER_MTOK[ASK_DEFAULT_MODEL];
+
+/**
+ * The price for an ARCARNA_AI_MODEL override. A model not in the table is
+ * priced at the dearest known rates, so the spend cap errs on the safe side.
+ */
+export function askPriceFor(model: string | null | undefined): AskPrice {
+  const known = model ? ASK_PRICES_USD_PER_MTOK[model] : undefined;
+  if (known) return known;
+  const all = Object.values(ASK_PRICES_USD_PER_MTOK);
+  return {
+    input: Math.max(...all.map((p) => p.input)),
+    output: Math.max(...all.map((p) => p.output)),
+    cacheWrite: Math.max(...all.map((p) => p.cacheWrite)),
+    cacheRead: Math.max(...all.map((p) => p.cacheRead)),
+  };
+}
 
 export const ASK_DEFAULT_SETTINGS = { monthlyCapGbp: 25, usdToGbp: 0.79 } as const;
 
@@ -96,9 +130,9 @@ export function emptyAskUsage(): AskUsage {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 }
 
-/** Estimated cost in pounds, from the published dollar price and the org's rate. Four decimals. */
-export function estimateCostGbp(usage: AskUsage, usdToGbp: number): number {
-  const p = ASK_PRICE_USD_PER_MTOK;
+/** Estimated cost in pounds, from the model's published dollar price and the org's rate. Four decimals. */
+export function estimateCostGbp(usage: AskUsage, usdToGbp: number, model: string = ASK_DEFAULT_MODEL): number {
+  const p = askPriceFor(model);
   const usd =
     (usage.inputTokens * p.input +
       usage.outputTokens * p.output +

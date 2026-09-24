@@ -5,15 +5,18 @@ import {
   ASK_ADMIN_MIN_ROLE,
   ASK_ANSWER_NOTE,
   ASK_MIN_ROLE,
-  ASK_PRICE_USD_PER_MTOK,
   ASK_RATE_LIMIT,
   askRequestSchema,
   askSettingsSchema,
+  askPriceFor,
   askSuggestionsFor,
+  emptyAskUsage,
+  estimateCostGbp,
   normaliseHistory,
   type AskSettingsView,
   type AskStatus,
   type AskStreamEvent,
+  type AskUsage,
 } from "@shared/ask";
 import { currentTradingDay } from "@shared/time/tradingDay";
 import { recordAdminAudit } from "../adminAudit";
@@ -34,6 +37,24 @@ export const ASK_ENV_LINES = [
   "# Optional: ARCARNA_AI_MODEL=claude-opus-5",
   "# Optional: ARCARNA_AI_EFFORT=medium",
 ];
+
+/**
+ * Questions still being answered, per org. Their rows are only written when
+ * they finish, so the spend cap adds their tokens so far on top of the
+ * recorded spend; otherwise questions asked together all pass the check.
+ */
+const inFlight = new Map<string, Set<{ usage: AskUsage; model: string }>>();
+
+/** Tests only. */
+export function askInFlightCount(orgId: string): number {
+  return inFlight.get(orgId)?.size ?? 0;
+}
+
+function inFlightGbp(orgId: string, usdToGbp: number): number {
+  let total = 0;
+  for (const q of inFlight.get(orgId) ?? []) total += estimateCostGbp(q.usage, usdToGbp, q.model);
+  return total;
+}
 
 const NOT_SET_UP = "Ask arcarna is not set up. An admin can switch it on in Settings › Integrations.";
 
@@ -80,6 +101,12 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
   async function answer(req: any, res: any, config: ReturnType<typeof askConfig>, body: { question: string; history: any[] }) {
     const orgId = req.orgContext.orgId as string;
     const viewer = viewerOf(req);
+    // Listen before anything is awaited: a disconnect while the checks below
+    // run would otherwise be missed and the answer paid for with no reader.
+    const controller = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) controller.abort();
+    });
     const { getAskSettings, askSpendThisMonth, recordAskQuestion } = await import("../ask/store");
     const { orgTimeZone } = await import("../services/tradingDayShift");
     let settings;
@@ -87,7 +114,7 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
     try {
       settings = await getAskSettings(orgId);
       const spend = await askSpendThisMonth(orgId);
-      if (settings.monthlyCapGbp <= 0 || spend.spentGbp >= settings.monthlyCapGbp) {
+      if (settings.monthlyCapGbp <= 0 || spend.spentGbp + inFlightGbp(orgId, settings.usdToGbp) >= settings.monthlyCapGbp) {
         return res.status(429).json({
           message: "Ask arcarna has reached this month's spending limit. An admin can raise it in Settings › Integrations.",
           code: "ASK_SPEND_CAP",
@@ -97,6 +124,7 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
     } catch (error) {
       return sendServerError(res, error, "Ask arcarna is not available just now", { log: "[Ask] before answering:" });
     }
+    if (controller.signal.aborted || res.destroyed) return;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-store, no-transform");
@@ -104,11 +132,6 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    const controller = new AbortController();
-    // The person closed the panel or lost signal: stop paying for an answer nobody reads.
-    res.on("close", () => {
-      if (!res.writableFinished) controller.abort();
-    });
     const send = (event: AskStreamEvent) => {
       if (res.writableEnded || res.destroyed) return;
       res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -123,32 +146,54 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
       year: "numeric",
       timeZone,
     }).format(now);
-    const result = await askArcarna({
-      client: createAskClient(config.apiKey!),
-      config,
-      ctx: { orgId, userId: viewer.userId, role: viewer.role, locationId: req.orgContext.locationId ?? null },
-      question: body.question,
-      history: normaliseHistory(body.history),
-      contextNote: askContextNote({ role: viewer.role, todayIso: currentTradingDay(timeZone, now), todayLong, timeZone }),
-      onEvent: send,
-      signal: controller.signal,
-    });
-
+    const live = { usage: emptyAskUsage(), model: config.model };
+    const orgInFlight = inFlight.get(orgId) ?? new Set();
+    inFlight.set(orgId, orgInFlight);
+    orgInFlight.add(live);
+    const cap = settings.monthlyCapGbp;
+    const usdToGbp = settings.usdToGbp;
+    // Between tool rounds: stop once recorded plus in-flight spend reaches the cap.
+    const mayContinue = async () => {
+      try {
+        const spend = await askSpendThisMonth(orgId);
+        return spend.spentGbp + inFlightGbp(orgId, usdToGbp) < cap;
+      } catch {
+        return false;
+      }
+    };
     try {
-      await recordAskQuestion({
-        orgId,
-        userId: viewer.userId,
-        role: viewer.role,
+      const result = await askArcarna({
+        client: createAskClient(config.apiKey!),
+        config,
+        ctx: { orgId, userId: viewer.userId, role: viewer.role, locationId: req.orgContext.locationId ?? null },
         question: body.question,
-        tools: result.tools,
-        model: result.model,
-        usage: result.usage,
-        usdToGbp: settings.usdToGbp,
-        outcome: result.outcome,
-        servedByFallback: result.servedByFallback,
+        history: normaliseHistory(body.history),
+        contextNote: askContextNote({ role: viewer.role, todayIso: currentTradingDay(timeZone, now), todayLong, timeZone }),
+        onEvent: send,
+        signal: controller.signal,
+        usage: live.usage,
+        mayContinue,
       });
-    } catch (error) {
-      console.error("[Ask] could not record the question:", (error as Error)?.name ?? "error");
+
+      try {
+        await recordAskQuestion({
+          orgId,
+          userId: viewer.userId,
+          role: viewer.role,
+          question: body.question,
+          tools: result.tools,
+          model: result.model,
+          usage: result.usage,
+          usdToGbp: settings.usdToGbp,
+          outcome: result.outcome,
+          servedByFallback: result.servedByFallback,
+        });
+      } catch (error) {
+        console.error("[Ask] could not record the question:", (error as Error)?.name ?? "error");
+      }
+    } finally {
+      orgInFlight.delete(live);
+      if (orgInFlight.size === 0 && inFlight.get(orgId) === orgInFlight) inFlight.delete(orgId);
     }
     if (!res.writableEnded) res.end();
   }
@@ -169,7 +214,7 @@ export function registerAskRoutes(app: Express, scoped: RequestHandler[]): void 
         questionsThisMonth: spend.questions,
         monthStart: spend.monthStart,
         envLines: ASK_ENV_LINES,
-        pricePerMTokUsd: { input: ASK_PRICE_USD_PER_MTOK.input, output: ASK_PRICE_USD_PER_MTOK.output },
+        pricePerMTokUsd: { input: askPriceFor(config.model).input, output: askPriceFor(config.model).output },
       };
       res.setHeader("Cache-Control", "no-store, private");
       res.json(body);

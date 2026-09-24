@@ -89,7 +89,7 @@ export async function recordAskQuestion(args: {
     outputTokens: args.usage.outputTokens,
     cacheReadTokens: args.usage.cacheReadTokens,
     cacheWriteTokens: args.usage.cacheWriteTokens,
-    costGbp: estimateCostGbp(args.usage, args.usdToGbp).toFixed(4),
+    costGbp: estimateCostGbp(args.usage, args.usdToGbp, args.model).toFixed(4),
     outcome: args.outcome,
   });
 }

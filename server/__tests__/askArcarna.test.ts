@@ -443,4 +443,90 @@ describe.skipIf(!hasDb)("Ask arcarna: tools inside the role, the route, the audi
     expect(row.question).not.toMatch(/07700/);
     expect(leaksIn(JSON.stringify(res.body))).toEqual([]);
   });
+
+  /** A client whose turns are scripted per call: usage from message_start, an optional gate. */
+  function gatedClient(turns: Array<{ usage: Record<string, number>; toolCall?: boolean; gate?: Promise<void>; onStart?: () => void }>) {
+    const calls = { n: 0 };
+    const factory = () =>
+      ({
+        beta: {
+          messages: {
+            stream: () => {
+              const t = turns[calls.n++];
+              const usage = { cache_read_input_tokens: 0, cache_creation_input_tokens: 0, iterations: null, ...t.usage };
+              const content = t.toolCall
+                ? [{ type: "tool_use", id: `tu_${calls.n}`, name: "stock_levels", input: {} }]
+                : [{ type: "text", text: "ok" }];
+              return {
+                async *[Symbol.asyncIterator]() {
+                  yield { type: "message_start", message: { usage: { ...usage, output_tokens: 1 } } };
+                  t.onStart?.();
+                  if (t.gate) await t.gate;
+                  if (!t.toolCall) yield { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } };
+                },
+                async finalMessage() {
+                  return { content, stop_reason: t.toolCall ? "tool_use" : "end_turn", usage };
+                },
+              };
+            },
+          },
+        },
+      }) as any;
+    return { factory, calls };
+  }
+
+  async function capJustAboveSpend(extraGbp: number): Promise<void> {
+    actor = "ADMIN";
+    const view = await request(app).get("/api/ask/settings");
+    const { eq } = await import("drizzle-orm");
+    const rows = await db.select().from(schema.askQuestions).where(eq(schema.askQuestions.orgId, orgId));
+    const spent = rows.reduce((sum: number, r: any) => sum + Number(r.costGbp), 0);
+    expect(view.status).toBe(200);
+    await request(app).put("/api/ask/settings").send({ monthlyCapGbp: Math.ceil((spent + extraGbp) * 100) / 100, usdToGbp: 0.8 });
+    actor = "CASHIER";
+  }
+
+  it("the spend cap counts questions still being answered, not only finished ones", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    await capJustAboveSpend(0.05);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started = false;
+    // 100k input tokens at $5/MTok = $0.50 = £0.40: well past the 5p headroom.
+    const { factory } = gatedClient([{ usage: { input_tokens: 100_000, output_tokens: 10 }, gate, onStart: () => (started = true) }]);
+    engine.setAskClientFactory(factory);
+    const first = post({ question: "How am I doing?" }).then((r) => r);
+    for (let i = 0; i < 200 && !started; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(started).toBe(true);
+    expect(routes.askInFlightCount(orgId)).toBe(1);
+
+    const second = await request(app).post("/api/ask").send({ question: "And this week?" });
+    expect(second.status).toBe(429);
+    expect(second.body.code).toBe("ASK_SPEND_CAP");
+
+    release();
+    expect((await first).status).toBe(200);
+    expect(routes.askInFlightCount(orgId)).toBe(0);
+    actor = "ADMIN";
+    await request(app).put("/api/ask/settings").send({ monthlyCapGbp: 25, usdToGbp: 0.79 });
+  });
+
+  it("the spend cap is checked again between tool rounds", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-test";
+    await capJustAboveSpend(0.05);
+    const { factory, calls } = gatedClient([
+      { usage: { input_tokens: 100_000, output_tokens: 10 }, toolCall: true },
+      { usage: { input_tokens: 10, output_tokens: 10 } },
+    ]);
+    engine.setAskClientFactory(factory);
+    const res = await post({ question: "Which products are running low?" });
+    expect(res.status).toBe(200);
+    const evs = events(res.body);
+    expect(evs.filter((e) => e.type === "text").map((e) => e.text).join("")).toMatch(/spending limit/);
+    expect(evs[evs.length - 1]).toMatchObject({ type: "done", outcome: "cut_short" });
+    // The second round was never sent.
+    expect(calls.n).toBe(1);
+    actor = "ADMIN";
+    await request(app).put("/api/ask/settings").send({ monthlyCapGbp: 25, usdToGbp: 0.79 });
+  });
 });
