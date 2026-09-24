@@ -40,4 +40,6 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "would-have-flagged", "write-off",
   // Stripe links and Phase 5 routes, merged after Phase 8 was built.
   "stripe", "card-links", "paid", "till", "cancel", "retender", "lookup-phone", "possible-duplicates", "replace-phone", "saved-address", "phone-search", "search", "customer-phone", "delivery",
+  // Phase 6, Phase 7 and My run routes, merged after Phase 8 was built.
+  "access-history", "contact-access", "contact-requests", "couldnt-deliver", "customer-access-log", "digest", "email", "message", "messaging", "my-performance", "my-run", "order", "order-timing", "reveal", "staff-performance", "staff-targets",
 ]);

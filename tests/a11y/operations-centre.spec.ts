@@ -96,7 +96,14 @@ function obscuredByAriaHidden(node: NodeResult): boolean {
  */
 async function menuSettled(page: import("@playwright/test").Page): Promise<void> {
   await page.locator('[role="menu"]').evaluate((el) =>
-    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+    Promise.all(
+      el
+        .getAnimations({ subtree: true })
+        // A looping animation (a pulse, a spinner) never finishes; only the
+        // open transition matters here.
+        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+        .map((a) => a.finished),
+    ),
   );
 }
 
