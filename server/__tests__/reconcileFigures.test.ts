@@ -130,7 +130,7 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     for (const t of ["refund_lines r USING refunds f WHERE r.refund_id = f.id AND f.org_id = $1"]) {
       await client.query(`DELETE FROM ${t}`, [orgId]);
     }
-    for (const t of ["refunds", "order_expenses", "order_credit", "credit_payments", "order_payments", "order_items", "order_events", "daily_close_runs", "orders", "organizations"]) {
+    for (const t of ["cashier_commission_entries", "refunds", "order_expenses", "order_credit", "credit_payments", "order_payments", "order_items", "order_events", "daily_close_runs", "orders", "organizations"]) {
       await client.query(`DELETE FROM ${t} WHERE ${t === "organizations" ? "id" : "org_id"} = $1`, [orgId]);
     }
     await client.end();
@@ -240,6 +240,18 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     const r = await run();
     expect([...checksHit(r)]).toEqual(["lateNight"]);
     expect(r.problems[0].message).toContain("show them on Sun 14 Jun");
+  });
+
+  it("names commission earned on a tab payment that no payroll row carries", async () => {
+    const o = await order({ total: 25, method: "tick", createdAt: at("09:00") });
+    await client.query(
+      `INSERT INTO cashier_commission_entries (org_id, order_id, user_id, role, basis, amount, accrued_on)
+       VALUES ($1,$2,'u','completer','credit_resolution',1.80,$3)`,
+      [orgId, o, DAY],
+    );
+    const r = await run();
+    const msg = r.problems.find((p) => p.check === "commissionPayroll")?.message ?? "";
+    expect(msg).toContain("£1.80 of commission earned when tabs were paid is in the commission ledger but on no payroll row");
   });
 
   it("cannot write, whatever it is asked to do", async () => {
