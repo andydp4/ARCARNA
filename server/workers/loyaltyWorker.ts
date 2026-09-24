@@ -7,7 +7,7 @@
  */
 
 import { db } from "../db";
-import { customers, loyaltyLedger } from "../../shared/schema";
+import { customers, loyaltyLedger, orders } from "../../shared/schema";
 import { and, eq } from "drizzle-orm";
 import type { IWorker } from "./index";
 import { pointsEarnedFor } from "../../shared/pricing/priceOrder";
@@ -32,6 +32,8 @@ interface OrderPayload {
 
 // Points earned per currency unit (e.g., 1 point per £1)
 const POINTS_PER_UNIT = 1;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class LoyaltyWorker implements IWorker {
   name: WorkerName = 'LoyaltyWorker';
@@ -141,12 +143,37 @@ export class LoyaltyWorker implements IWorker {
       // fast path: two runs of the same event (or two different events for
       // the same customer) could both pass it and then both write a balance
       // read earlier — double-crediting, or losing one of the updates.
+      //
+      // Lock order (v1.2.1): the ORDER row first, then the customer row —
+      // the same order completing a sale takes them in. Completion holds the
+      // order `FOR UPDATE` and then inserts `order_credit` and `invoices`,
+      // whose foreign keys take KEY SHARE on the customer row. The ledger
+      // insert below takes KEY SHARE on the order row for its own foreign
+      // key. Taking the customer first here and the order last made the two
+      // wait on each other: Postgres deadlock 40P01, a 500 on "Complete" for
+      // a tick sale completed straight after it was created. Holding the
+      // order's KEY SHARE up front means this waits for a completion in
+      // flight to commit (or it waits for us) before either touches the
+      // customer.
+      //
+      // The customer lock is NO KEY UPDATE, not UPDATE: all this changes is
+      // the points balance, never the key, and NO KEY UPDATE still queues
+      // every other balance change behind it while letting foreign-key checks
+      // (another order, credit or invoice for this customer) through.
       const applied = await db.transaction(async (tx) => {
+        if (orderId && UUID.test(orderId)) {
+          await tx
+            .select({ id: orders.id })
+            .from(orders)
+            .where(eq(orders.id, orderId))
+            .for("key share")
+            .limit(1);
+        }
         const [locked] = await tx
           .select({ loyaltyPoints: customers.loyaltyPoints })
           .from(customers)
           .where(eq(customers.id, customerId))
-          .for("update")
+          .for("no key update")
           .limit(1);
         if (!locked) return null;
 
