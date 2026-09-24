@@ -1418,7 +1418,7 @@ export default function ProductManagement() {
                           />
                         </TableCell>
                         <TableCell className="font-mono text-sm">{product.productId || '-'}</TableCell>
-                        <TableCell className="font-medium">{product.name}</TableCell>
+                        <TableCell className="font-medium [overflow-wrap:anywhere]">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm">{product.barcode || '-'}</TableCell>
                         <TableCell>£{(parseFloat(product.price || product.defaultSalePrice || '0')).toFixed(2)}</TableCell>
                         {showMinPrice && (

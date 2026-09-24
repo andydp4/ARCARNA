@@ -477,8 +477,8 @@ export default function Inventory() {
                         <CardContent className="p-4">
                           <div className="space-y-3">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="font-semibold text-base">{product.name}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-base [overflow-wrap:anywhere]">{product.name}</div>
                                 <div className="text-xs text-muted-foreground">SKU: {product.productId}</div>
                                 {product.barcode && (
                                   <div className="text-xs text-muted-foreground">{product.barcode}</div>
@@ -567,7 +567,7 @@ export default function Inventory() {
                           <TableRow key={product.id} data-testid={`inventory-row-${product.id}`}>
                             <TableCell>
                               <div>
-                                <div className="font-medium">{product.name}</div>
+                                <div className="font-medium [overflow-wrap:anywhere]">{product.name}</div>
                                 {product.barcode && (
                                   <div className="text-xs text-muted-foreground">{product.barcode}</div>
                                 )}
@@ -643,7 +643,7 @@ export default function Inventory() {
             <DialogDescription>
               {selectedProduct && (
                 <div className="mt-2">
-                  <p className="font-medium">{selectedProduct.name}</p>
+                  <p className="font-medium [overflow-wrap:anywhere]">{selectedProduct.name}</p>
                   <p className="text-sm">Current stock: {selectedProduct.stock}</p>
                   {explicitLocationId && (
                     <p className="text-xs text-muted-foreground">

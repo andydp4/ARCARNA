@@ -461,8 +461,8 @@ export function ReplenishmentTab() {
                       aria-label={`Select ${rec.productName} at ${rec.locationName} for purchase`}
                     />
                   )}
-                  <div>
-                    <CardTitle className="text-base">{rec.productName}</CardTitle>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base [overflow-wrap:anywhere]">{rec.productName}</CardTitle>
                     <CardDescription>
                       {rec.sku} · {rec.locationName} · Stock {rec.stock}
                     </CardDescription>
@@ -653,7 +653,7 @@ export function ReplenishmentTab() {
           <ul className="space-y-1 text-sm">
             {selectedItems.map((rec) => (
               <li key={recKey(rec)} className="flex justify-between gap-2">
-                <span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
                   {rec.productName} · {rec.locationName}
                 </span>
                 <span className="text-muted-foreground">
