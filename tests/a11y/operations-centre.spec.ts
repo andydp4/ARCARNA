@@ -88,6 +88,18 @@ function obscuredByAriaHidden(node: NodeResult): boolean {
  * element is dropped first (see `obscuredByAriaHidden`); a genuine "can't
  * sample this colour" incomplete still fails the test.
  */
+/**
+ * Radix menus fade and zoom in. Scanned mid-animation, a menu is partly
+ * transparent over whatever sits under it (the sidebar rail, since v1.2
+ * Phase 3), and axe reports its text colour as "could not be determined" —
+ * on slower CI runners only. Wait for the open animation to finish first.
+ */
+async function menuSettled(page: import("@playwright/test").Page): Promise<void> {
+  await page.locator('[role="menu"]').evaluate((el) =>
+    Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+  );
+}
+
 function assertNoColorContrastIssues(results: { violations: Result[]; incomplete: Result[] }): void {
   const incomplete = results.incomplete
     .filter((result) => result.id === "color-contrast")
@@ -470,6 +482,8 @@ test.describe("Operations Centre — accessibility with real cards on the board"
     await page.getByTestId(`button-order-actions-${ids["on-time"]}`).click();
     await expect(page.getByTestId(`ops-delay-open-${ids["on-time"]}`)).toBeVisible();
 
+    await menuSettled(page);
+
     let results = await new AxeBuilder({ page }).include('[role="menu"]').withTags(AXE_TAGS).analyze();
     let serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious, formatViolations(serious)).toEqual([]);
@@ -490,6 +504,8 @@ test.describe("Operations Centre — accessibility with real cards on the board"
     // item itself does not render for this identity (see the module comment).
     await page.getByTestId(`button-order-actions-${ids.ready}`).click();
     await expect(page.getByTestId(`ops-unready-${ids.ready}`)).toBeVisible();
+
+    await menuSettled(page);
 
     results = await new AxeBuilder({ page }).include('[role="menu"]').withTags(AXE_TAGS).analyze();
     serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
