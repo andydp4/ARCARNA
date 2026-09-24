@@ -39,6 +39,8 @@ type Journal = {
   tender: Record<string, number>;
   location: "main" | "second";
   by: string;
+  /** whose till took the money, when not `by` */
+  taker?: string;
   personalUse?: boolean;
   note?: string;
 };
@@ -266,6 +268,7 @@ class Day {
       tender: tenderMap,
       location: loc,
       by: completer,
+      taker: user,
       personalUse: paymentMethod === "personal_use",
     });
     return placed;
@@ -305,7 +308,13 @@ class Day {
     return total;
   }
 
-  async repay(ref: string, user: string, amount: number, method: "cash" | "card", loc: "main" | "second" = "main") {
+  /**
+   * A tab payment. Recording one is manager and above (the Credit List, Q11),
+   * so at the counter the cashier takes the money into their drawer and a
+   * manager records it: `taker` is whose drawer the cash physically went into.
+   */
+  async repay(ref: string, taker: string, amount: number, method: "cash" | "card", loc: "main" | "second" = "main") {
+    const user = MANAGER;
     const o = this.s.orders[ref];
     const r = await api(user, "POST", `/api/credit/${o.id}/payments`, { amount, method }, this.hdr(loc));
     if (!r.ok) {
@@ -313,7 +322,7 @@ class Day {
       console.warn(`  ! repay ${ref}: ${r.status} ${r.text.slice(0, 200)}`);
       return;
     }
-    this.s.journal.push({ day: this.day, kind: "repayment", orderRef: ref, orderId: o.id, amount, tender: { [method]: amount }, location: loc, by: user });
+    this.s.journal.push({ day: this.day, kind: "repayment", orderRef: ref, orderId: o.id, amount, tender: { [method]: amount }, location: loc, by: user, taker });
   }
 
   async closeTill(user: string, loc: "main" | "second") {
@@ -323,7 +332,7 @@ class Day {
     const float = loc === "main" ? 100 : 50;
     let cash = float;
     for (const j of this.s.journal) {
-      if (j.day !== this.day || j.by !== user || j.location !== loc) continue;
+      if (j.day !== this.day || (j.taker ?? j.by) !== user || j.location !== loc) continue;
       const c = j.tender.cash ?? 0;
       if (j.kind === "sale" || j.kind === "open" || j.kind === "repayment") cash += c;
       if (j.kind === "refund") cash -= c;
@@ -364,6 +373,19 @@ async function tradeDay(i: number, last: number) {
     const tab = Object.keys(s.orders).filter((k) => k.endsWith("-cashtick") && s.orders[k].day < i).pop();
     if (tab) await d.repay(tab, CASHIER2, 20, "card", "second");
   }
+  if (i === 12) {
+    // A tab payment recorded today but dated two days ago (a closed day).
+    const tab = Object.keys(s.orders).filter((k) => k.endsWith("-tick") && s.orders[k].day < i - 2).pop();
+    const cc = await api(MANAGER, "GET", "/api/control-centre", undefined, d.hdr("main"));
+    if (tab && cc.body?.tradingDay) {
+      const dt = new Date(`${cc.body.tradingDay}T12:00:00Z`);
+      dt.setUTCDate(dt.getUTCDate() - 2);
+      const paidOn = dt.toISOString().slice(0, 10);
+      const r = await api(MANAGER, "POST", `/api/credit/${s.orders[tab].id}/payments`, { amount: 5, method: "card", paidOn }, d.hdr("main"));
+      d.note(`backdated tab payment on ${tab} dated ${paidOn}`, r);
+      if (r.ok) s.journal.push({ day: i - 2, kind: "repayment", orderRef: tab, orderId: s.orders[tab].id, amount: 5, tender: { card: 5 }, location: "main", by: MANAGER, note: `recorded day ${i}, dated ${paidOn}` });
+    }
+  }
   if (i % 4 === 2 && s.promoCode) {
     await d.sale(`d${i}-promo`, CASHIER, "main", [{ product: "Gadget", qty: 2 }], "card", { promoCode: s.promoCode, customerId: s.customers.cara });
   }
@@ -380,7 +402,7 @@ async function tradeDay(i: number, last: number) {
     else d.note("issue gift card", gc);
   }
   if ((i === 6 || i === 12) && s.giftCardCode) {
-    await d.sale(`d${i}-gift`, CASHIER, "main", [{ product: "Widget", qty: 2 }], "gift_card", { giftCardCode: s.giftCardCode, giftCardAmount: 20, customerId: s.customers.cara });
+    await d.sale(`d${i}-gift`, CASHIER, "main", [{ product: "Widget", qty: i === 6 ? 2 : 1 }], "gift_card", { giftCardCode: s.giftCardCode, giftCardAmount: i === 6 ? 20 : 10, customerId: s.customers.cara });
   }
   if (i === 7) {
     // Below minimum: sold at 12 against a 15 floor.
@@ -390,12 +412,12 @@ async function tradeDay(i: number, last: number) {
     // Admin steps in and completes the cashier's order: no commission.
     await d.sale(`d${i}-admin`, CASHIER, "main", [{ product: "Gadget", qty: 1 }], "cash", {}, ADMIN);
   }
-  if (i === 12) {
-    // Points: Cara redeems what she has, if the till will take it.
+  if (i === 14) {
+    // Points: Cara redeems 100 points, if she has them.
     const cust = await api(MANAGER, "GET", `/api/customers/${s.customers.cara}`, undefined, d.hdr("main"));
     const pts = Number(cust.body?.loyaltyPoints ?? cust.body?.customer?.loyaltyPoints ?? 0);
-    if (pts >= 10) {
-      await d.sale(`d${i}-points`, CASHIER, "main", [{ product: "Gadget", qty: 1 }], "card", { customerId: s.customers.cara, redeemPoints: 10 });
+    if (pts >= 100) {
+      await d.sale(`d${i}-points`, CASHIER, "main", [{ product: "Gadget", qty: 1 }], "card", { customerId: s.customers.cara, redeemPoints: 100 });
     } else {
       s.attempts.push({ day: i, what: "points redeem skipped", status: 0, body: `points=${pts}` });
     }
@@ -415,6 +437,10 @@ async function tradeDay(i: number, last: number) {
     if (tab) await d.refund(tab, MANAGER, [0], [1], "original");
   }
 
+  // A discounted sale refunded in part: one of two Gadgets from today's promo sale.
+  if (i === 14 && s.orders[`d${i}-promo`]) {
+    await d.refund(`d${i}-promo`, CASHIER, [0], [1], "cash");
+  }
   // Void: an order taken in error and deleted the same day.
   if (i === 8) {
     const placed = await d.place(`d${i}-void`, CASHIER, "main", [{ product: "Widget", qty: 5 }], "cash");
@@ -503,6 +529,11 @@ async function tradeDay(i: number, last: number) {
     }
   }
 
+  if (isToday && s.orders[`d${i}-carried`]) {
+    const total = await d.refund(`d${i}-carried`, CASHIER, [0], [1], "cash");
+    const j = s.journal.find((x) => x.kind === "refund" && x.orderRef === `d${i}-carried`);
+    if (total && j) j.note = "unsettled order refunded";
+  }
   if (isToday) {
     // Invoices for the awkward cases: a part-paid tab, a refunded sale, a
     // discounted sale, an open order and a card link still waiting.

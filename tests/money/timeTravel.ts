@@ -14,6 +14,9 @@
  */
 import pg from "pg";
 
+/** Far enough back that no real row lives there. */
+const PARK = 20000;
+
 async function main() {
   const idx = process.argv.indexOf("--days");
   const days = idx > 0 ? Number(process.argv[idx + 1]) : 1;
@@ -36,7 +39,7 @@ async function main() {
     const byTable = new Map<string, string[]>();
     for (const r of rows) {
       const list = byTable.get(r.table_name) ?? [];
-      list.push(`"${r.column_name}" = "${r.column_name}" - interval '${days} days'`);
+      list.push(`"${r.column_name}" = "${r.column_name}" - interval '${days + PARK} days'`);
       byTable.set(r.table_name, list);
     }
     await client.query("BEGIN");
@@ -44,8 +47,16 @@ async function main() {
     // updated_at would undo the move, so user triggers are off for this
     // transaction only.
     await client.query("SET LOCAL session_replication_role = replica");
+    // Two steps, because a unique key on a date (one row per org per day)
+    // is checked row by row: moving the 23rd onto the 22nd while the 22nd is
+    // still there fails. Everything is parked far in the past first, then
+    // brought back to its place one day earlier.
     for (const [table, sets] of byTable) {
       await client.query(`UPDATE "${table}" SET ${sets.join(", ")}`);
+    }
+    for (const [table, sets] of byTable) {
+      const back = sets.map((set) => set.replace(/ - interval '\d+ days'$/, ` + interval '${PARK} days'`));
+      await client.query(`UPDATE "${table}" SET ${back.join(", ")}`);
     }
     // The one date kept as text.
     await client.query(

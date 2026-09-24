@@ -66,7 +66,7 @@ async function main() {
       d.gift += j.tender.gift_card ?? 0;
       d.tick += j.tender.tick ?? 0;
     }
-    if (j.kind === "refund") {
+    if (j.kind === "refund" && j.note !== "unsettled order refunded") {
       d.takings -= j.amount;
       d.refunds += j.amount;
     }
@@ -135,7 +135,7 @@ async function main() {
   const dr = await get(ADMIN, "/api/analytics/daily-revenue?days=30", "daily-revenue");
   for (const row of Array.isArray(dr.body) ? dr.body : []) {
     const d = String(row.date).slice(0, 10);
-    if (truth.has(d)) cmp(`Daily revenue chart ${d}`, row.revenue, t(d).takings);
+    if (truth.has(d)) cmp(`Daily revenue chart ${d} (calendar day; truth is the trading day)`, Number(row.totalRevenue ?? row.revenue), t(d).takings);
   }
   await get(ADMIN, "/api/analytics/monthly-summary", "monthly-summary");
 
@@ -151,19 +151,34 @@ async function main() {
   const tickCashier = await get(CASHIER, "/api/tick-customers", "tick-customers.cashier");
   if (tickCashier.status !== 403) mismatches.push(`Credit List as cashier: ${tickCashier.status}`);
 
-  // ---- tills and Z reports
-  const shifts = await get(ADMIN, "/api/shifts?hours=168", "shifts");
-  const list: any[] = Array.isArray(shifts.body) ? shifts.body : shifts.body?.shifts ?? [];
-  for (const sh of list) {
+  // ---- tills and Z reports: every till was counted at its ground-truth
+  // cash, so any variance is the app's expected cash being wrong.
+  const pg = await import("pg");
+  const pool = new pg.default.Pool({ connectionString: process.env.DATABASE_URL });
+  const { rows: tills } = await pool.query(
+    `SELECT id, user_id, opened_at, expected_cash, closing_count, variance FROM shifts WHERE org_id = $1 AND status = 'closed' ORDER BY opened_at`,
+    [s.orgId],
+  );
+  await pool.end();
+  const { tradingDayFor } = await import("../../shared/time/tradingDay");
+  for (const sh of tills) {
     const z = await get(ADMIN, `/api/shifts/${sh.id}/report`, `z.${sh.id.slice(0, 8)}`);
     const v = z.body?.report?.cashSummary?.variance;
-    if (v != null && Math.abs(Number(v)) > 0.005) mismatches.push(`Till ${sh.id.slice(0, 8)} (${sh.userId ?? sh.userName}, opened ${sh.openedAt}): variance ${v} against a ground-truth count`);
+    const day = tradingDayFor(new Date(sh.opened_at), "Europe/London");
+    if (v != null && Math.abs(Number(v)) > 0.005) mismatches.push(`Till ${sh.id.slice(0, 8)} (${sh.user_id}, trading day ${day}): counted ${sh.closing_count} (ground truth), app expected ${sh.expected_cash}, variance ${v}`);
+    else oks.push(`Till ${sh.id.slice(0, 8)} (${sh.user_id}, ${day}) variance 0`);
   }
   const cs = await get(ADMIN, "/api/cashier-shifts", "cashier-shifts");
   for (const c of (Array.isArray(cs.body) ? cs.body : []).slice(0, 60)) await get(ADMIN, `/api/cashier-shifts/${c.id}/summary`, `cashier-shift.${c.id.slice(0, 8)}`);
   await get(ADMIN, "/api/cashier-commission", "cashier-commission");
   await get(ADMIN, "/api/cashier-commission/payments", "cashier-commission-payments");
-  await get(ADMIN, "/api/orders/board", "ops-board");
+  const board = await get(ADMIN, "/api/orders/board", "ops-board");
+  cmp("Operations board open orders", board.body?.summary?.open, openTruth);
+  cmp("Operations board = Control Centre open orders", board.body?.summary?.open, cc.body.openOrders);
+  cmp("Control Centre To collect = board Collection lane", cc.body.toCollect, board.body?.summary?.lanes?.collection?.live);
+  cmp("Control Centre To deliver = board Delivery lane", cc.body.toDeliver, board.body?.summary?.lanes?.delivery?.live);
+  cmp("Operations board done today = Control Centre completed today", board.body?.summary?.completedToday, cc.body.ordersCompletedToday);
+  cmp("Control Centre completed today (sales settled today)", cc.body.ordersCompletedToday, t(today).sales);
   await get(ADMIN, "/api/invoices", "invoices");
   await get(CASHIER, "/api/my-performance", "my-performance.cashier");
   await get("money-cashier-02", "/api/my-performance", "my-performance.cashier02");

@@ -40,6 +40,7 @@ export const CHECKS = {
   drawers: "Each till drawer's expected cash still matches its sales",
   refundTender: "Refunds go back the way the money came in",
   shiftSheets: "Cashier shift sheets still match their orders",
+  commissionPayroll: "Every commission earned reaches the payroll",
   unsettledInSheets: "Shift sheets and Z reports count settled sales only",
   credit: "Each tab's balance is what was given less what was paid",
   refundedTabs: "A refunded credit sale is taken off the tab",
@@ -398,7 +399,10 @@ export async function reconcileOrg(
   // --- 6. cashier shift sheets
   const sheets = (
     await db.query(
-      `SELECT s.shift_id, s.gross_sales, s.closed_at FROM cashier_shift_summaries s
+      `SELECT s.shift_id, s.gross_sales, s.commission_amount, s.closed_at, c.trading_day::text AS trading_day,
+              COALESCE((SELECT SUM(e.amount) FROM cashier_commission_entries e
+                         WHERE e.cashier_shift_id = s.shift_id AND e.reversal_of IS NULL), 0) AS ledger
+         FROM cashier_shift_summaries s JOIN cashier_shifts c ON c.id = s.shift_id
         WHERE s.org_id = $1 AND s.closed_at >= $2 AND s.closed_at < $3`,
       [orgId, start, end],
     )
@@ -412,9 +416,16 @@ export async function reconcileOrg(
       )
     ).rows;
     const grossNow = rows.filter((o: any) => !isPersonal(o.payment_method)).reduce((s: number, o: any) => s + Math.max(0, p(o.total)), 0);
-    const day = tradingDayFor(new Date(sh.closed_at), tz);
+    const day = sh.trading_day ?? tradingDayFor(new Date(sh.closed_at), tz);
     if (p(sh.gross_sales) !== grossNow) {
       say("shiftSheets", `${dayName(day)}: a cashier shift sheet recorded sales of ${gbp(p(sh.gross_sales))}; its orders now come to ${gbp(grossNow)}.`, day);
+    }
+    if (p(sh.commission_amount) !== p(sh.ledger)) {
+      say(
+        "commissionPayroll",
+        `${dayName(day)}: a cashier shift sheet (the payroll row) says ${gbp(p(sh.commission_amount))} commission; the commission ledger for that shift now holds ${gbp(p(sh.ledger))}.`,
+        day,
+      );
     }
     const unsettled = rows.filter((o: any) => o.status !== "completed" && !isPersonal(o.payment_method));
     if (unsettled.length > 0) {
@@ -424,6 +435,23 @@ export async function reconcileOrg(
         day,
       );
     }
+  }
+
+  // Commission earned when a tab is paid belongs to no shift, so no shift
+  // sheet — and no payroll row — carries it.
+  for (const r of (
+    await db.query(
+      `SELECT accrued_on::text AS day, SUM(amount) AS amount, COUNT(*)::int AS n FROM cashier_commission_entries
+        WHERE org_id = $1 AND cashier_shift_id IS NULL AND reversal_of IS NULL AND accrued_on BETWEEN $2::date AND $3::date
+        GROUP BY 1 ORDER BY 1`,
+      [orgId, from, to],
+    )
+  ).rows) {
+    say(
+      "commissionPayroll",
+      `${dayName(r.day)}: ${gbp(p(r.amount))} of commission earned when tabs were paid is in the commission ledger but on no payroll row, so it is never shown as owed.`,
+      r.day,
+    );
   }
 
   // --- 7. the Credit List (whole book, not just the window: a tab is a tab)
