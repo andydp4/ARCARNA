@@ -268,6 +268,11 @@ export async function couldntDeliver(
       throw new RunError(403, "NOT_YOUR_DELIVERY", "Only the person delivering this order can say it could not be delivered.");
     }
     if (row.status === "completed") throw new RunError(409, "ORDER_COMPLETED", "This delivery is finished.");
+    // Cancelled, refunded or on hold: off the run, so not "back to ready" either
+    // (a queued tap replayed after a manager stopped the order).
+    if (row.status && OFF_RUN_STATUSES.includes(row.status)) {
+      throw new RunError(409, "ORDER_OFF_RUN", "This order is no longer on a delivery run.");
+    }
     if (!row.out_for_delivery_at) {
       throw new RunError(409, "NOT_OUT", "This delivery is not out for delivery.");
     }

@@ -9,6 +9,7 @@ import {
   replayRunTaps,
   runTapRequest,
   saveRunSnapshot,
+  splitStartable,
   writeRunQueue,
   type QueuedRunTap,
 } from "../runQueue";
@@ -110,7 +111,7 @@ describe("queued taps", () => {
   it("is sent through the same routes, with the time it was tapped", () => {
     expect(runTapRequest(tap({}))).toEqual({
       url: "/api/orders/o1/transition",
-      body: { action: "complete", label: "delivered", actualAt: "2026-09-24T10:00:00.000Z" },
+      body: { action: "complete", label: "delivered", actualAt: "2026-09-24T10:00:00.000Z", tapId: "t1" },
     });
     expect(runTapRequest(tap({ kind: "couldnt_deliver", reason: "refused", note: "said no" }))).toEqual({
       url: "/api/orders/o1/couldnt-deliver",
@@ -165,5 +166,21 @@ describe("queued taps", () => {
       );
     const after = await replayRunTaps([tap({})], { orgId: "org", userId: "u1" }, send as any, { now: 1 });
     expect(after).toEqual([]);
+  });
+
+  it("drops a Delivered the server says this same tap already completed (reopened since)", async () => {
+    const send = async () =>
+      new Response(JSON.stringify({ code: "TAP_ALREADY_APPLIED", message: "already" }), { status: 409 });
+    const after = await replayRunTaps([tap({})], { orgId: "org", userId: "u1" }, send as any, { now: 1 });
+    expect(after).toEqual([]);
+  });
+
+  it("holds back from Start run a stop whose Couldn't deliver is still waiting", () => {
+    const taps = [
+      tap({ id: "a", orderId: "o1", kind: "couldnt_deliver", reason: "no_answer", state: "waiting" }),
+      tap({ id: "b", orderId: "o2", kind: "couldnt_deliver", reason: "refused", state: "refused" }),
+    ];
+    expect(splitStartable(["o1", "o2", "o3"], taps)).toEqual({ start: ["o2", "o3"], held: ["o1"] });
+    expect(splitStartable(["o1"], [])).toEqual({ start: ["o1"], held: [] });
   });
 });

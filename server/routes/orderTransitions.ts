@@ -18,6 +18,7 @@ import {
   OpsTransitionError,
   OrderAlreadyAssignedError,
   OrderNotFoundError,
+  TapAlreadyAppliedError,
   runOrderTransition,
   TransitionBadRequestError,
   TransitionForbiddenError,
@@ -65,6 +66,9 @@ export function registerOrderTransitionRoutes(app: Express, scoped: RequestHandl
           assignedUserId: error.assignedUserId,
           assignedUserName: error.assignedUserName,
         });
+      }
+      if (error instanceof TapAlreadyAppliedError) {
+        return res.status(409).json({ message: error.message, code: error.code });
       }
       if (error instanceof OrderReopenRefusedError) {
         return res.status(409).json({ message: error.message, code: error.code });

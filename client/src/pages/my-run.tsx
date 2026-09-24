@@ -29,6 +29,7 @@ import {
   readRunSnapshot,
   replayRunTaps,
   saveRunSnapshot,
+  splitStartable,
   tapsFor,
   writeRunQueue,
   type QueuedRunTap,
@@ -190,11 +191,16 @@ export default function MyRunPage() {
   // ---- selection and Start run
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const readyStops = stops.filter((s) => stopStage(s) === "ready");
+  // A stop whose Couldn't deliver tap is still on the phone cannot be started
+  // again until that tap has gone: replayed after a new dispatch it would take
+  // the live delivery off the road.
+  const heldIds = useMemo(() => new Set(splitStartable(stops.map((s) => s.id), myTaps).held), [stops, myTaps]);
+  const startableStops = readyStops.filter((s) => !heldIds.has(s.id));
   useEffect(() => {
     // Keep only stops that are still waiting to go.
-    setSelected((prev) => new Set([...prev].filter((id) => readyStops.some((s) => s.id === id))));
+    setSelected((prev) => new Set([...prev].filter((id) => startableStops.some((s) => s.id === id))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readyStops.map((s) => s.id).join(",")]);
+  }, [startableStops.map((s) => s.id).join(",")]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -203,8 +209,17 @@ export default function MyRunPage() {
       setMessage({ kind: "error", text: "Start run needs a connection. Try again when you are back online." });
       return;
     }
-    const ids = readyStops.filter((s) => selected.has(s.id)).map((s) => s.id);
-    if (ids.length === 0) return;
+    // Checked again against the queue as it is now, not as it was drawn.
+    const { start: ids, held } = splitStartable(
+      startableStops.filter((s) => selected.has(s.id)).map((s) => s.id),
+      tapsFor(readRunQueue(), orgId, me),
+    );
+    if (ids.length === 0) {
+      if (held.length > 0) {
+        setMessage({ kind: "error", text: "Those stops have a Couldn't deliver still waiting to send. Start them once it has gone." });
+      }
+      return;
+    }
     setBusy("start");
     setMessage(null);
     const failed: string[] = [];
@@ -259,7 +274,8 @@ export default function MyRunPage() {
           ? await apiFetch(`/api/orders/${stop.id}/transition`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "complete", label: "delivered" }),
+              // The same tapId as the queued copy, so a replay after a lost answer is known for what it is.
+              body: JSON.stringify({ action: "complete", label: "delivered", tapId: queued.id }),
             })
           : await apiFetch(`/api/orders/${stop.id}/couldnt-deliver`, {
               method: "POST",
@@ -417,6 +433,7 @@ export default function MyRunPage() {
                 readOnly={readOnly}
                 online={online}
                 busy={busy === stop.id}
+                held={heldIds.has(stop.id)}
                 selected={selected.has(stop.id)}
                 onSelect={(on) =>
                   setSelected((prev) => {
@@ -436,13 +453,13 @@ export default function MyRunPage() {
         </ol>
       )}
 
-      {!readOnly && readyStops.length > 0 && (
+      {!readOnly && startableStops.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background/95 p-3 backdrop-blur">
           <div className="mx-auto flex max-w-xl items-center gap-2">
             <Button
               variant="outline"
               size="touch"
-              onClick={() => setSelected(new Set(readyStops.map((s) => s.id)))}
+              onClick={() => setSelected(new Set(startableStops.map((s) => s.id)))}
               data-testid="button-select-all-ready"
             >
               Select all
@@ -472,6 +489,7 @@ function StopCard({
   readOnly,
   online,
   busy,
+  held,
   selected,
   onSelect,
   onMove,
@@ -486,6 +504,8 @@ function StopCard({
   readOnly: boolean;
   online: boolean;
   busy: boolean;
+  /** A tap for this stop is still waiting to send: it cannot be started yet. */
+  held: boolean;
   selected: boolean;
   onSelect: (on: boolean) => void;
   onMove: (delta: -1 | 1) => void;
@@ -536,7 +556,12 @@ function StopCard({
             </p>
           )}
         </div>
-        {!readOnly && !out && (
+        {!readOnly && !out && held && (
+          <span className="shrink-0 text-xs text-muted-foreground" data-testid={`run-stop-held-${stop.shortCode}`}>
+            Waiting to send
+          </span>
+        )}
+        {!readOnly && !out && !held && (
           <label className="flex h-11 w-11 shrink-0 items-center justify-center" title="Include in Start run">
             <input
               type="checkbox"

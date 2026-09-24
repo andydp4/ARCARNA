@@ -46,7 +46,7 @@ describe.skipIf(!hasDb)("My run (database)", () => {
   const DRIVER = `run-driver-${suffix}`;
   const OTHER = `run-other-${suffix}`;
   const MANAGER = `run-manager-${suffix}`;
-  const ids = { late: "", soon: "", out: "", notReady: "", othersRun: "", collection: "", done: "", held: "" };
+  const ids = { late: "", soon: "", out: "", notReady: "", othersRun: "", collection: "", done: "", held: "", cancelledOut: "", tapped: "" };
 
   function as(role: string, user: string) {
     const agent = (method: "get" | "post" | "put", url: string) =>
@@ -105,6 +105,7 @@ describe.skipIf(!hasDb)("My run (database)", () => {
     ids.collection = await order({ fulfilmentMethod: "collection", deliveryAddress: null, deliveryPostcode: null });
     ids.done = await order({ status: "completed", settledAt: new Date(), outForDeliveryAt: new Date() });
     ids.held = await order({ status: "on-hold" });
+    ids.cancelledOut = await order({ status: "cancelled", outForDeliveryAt: new Date(now - min) });
     await db.insert(s.orderItems).values([
       { orgId, orderId: ids.soon, productId: null, quantity: 2, unitPrice: "5.00", totalPrice: "10.00" },
       { orgId, orderId: ids.soon, productId: null, quantity: 1, unitPrice: "10.00", totalPrice: "10.00" },
@@ -244,6 +245,21 @@ describe.skipIf(!hasDb)("My run (database)", () => {
     expect(repeat.status).toBe(409);
     expect(repeat.body.code).toBe("NOT_OUT");
 
+    // Cancelled while the tap waited: not put back to ready, no Signal.
+    const cancelled = await as("CASHIER", DRIVER).post(`/api/orders/${ids.cancelledOut}/couldnt-deliver`, {
+      reason: "no_answer",
+    });
+    expect(cancelled.status).toBe(409);
+    expect(cancelled.body.code).toBe("ORDER_OFF_RUN");
+    const [cancelledRow] = await db.select().from(s.orders).where(eq(s.orders.id, ids.cancelledOut));
+    expect(cancelledRow.outForDeliveryAt).not.toBeNull();
+    expect(cancelledRow.deliveryIssue).toBeNull();
+    const after = await db
+      .select({ id: s.orgNotifications.id })
+      .from(s.orgNotifications)
+      .where(and(eq(s.orgNotifications.orgId, orgId), eq(s.orgNotifications.source, "delivery_failed")));
+    expect(after).toHaveLength(1);
+
     const [audit] = await db
       .select({ action: s.adminAuditLogs.action })
       .from(s.adminAuditLogs)
@@ -258,5 +274,42 @@ describe.skipIf(!hasDb)("My run (database)", () => {
     expect(done.status).toBe(200);
     const run = await as("CASHIER", DRIVER).get("/api/my-run");
     expect(run.body.stops.map((x: any) => x.id)).not.toContain(ids.out);
+  });
+
+  it("a replayed Delivered tap cannot complete an order again after it was reopened", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Made here, not in beforeAll, so the run counts above are unchanged.
+    const [made] = await db
+      .insert(s.orders)
+      .values({
+        orgId,
+        total: "20.00",
+        paymentMethod: "cash",
+        status: "pending",
+        fulfilmentMethod: "delivery",
+        deliveryAddress: "5 Live Lane",
+        deliveryPostcode: "LV1 1VE",
+        assignedUserId: DRIVER,
+        readyAt: new Date(Date.now() - 300_000),
+        outForDeliveryAt: new Date(Date.now() - 60_000),
+      })
+      .returning();
+    ids.tapped = made.id;
+    const url = `/api/orders/${ids.tapped}/transition`;
+    const body = { action: "complete", label: "delivered", tapId: `tap-${suffix}` };
+    expect((await as("CASHIER", DRIVER).post(url, body)).status).toBe(200);
+    const reopen = await as("MANAGER", MANAGER).post(url, { action: "reopen" });
+    expect(reopen.status).toBe(200);
+
+    // The phone never heard back and sends the same tap again.
+    const replay = await as("CASHIER", DRIVER).post(url, { ...body, actualAt: new Date(Date.now() - 60_000).toISOString() });
+    expect(replay.status).toBe(409);
+    expect(replay.body.code).toBe("TAP_ALREADY_APPLIED");
+    const [row] = await db.select().from(s.orders).where(eq(s.orders.id, ids.tapped));
+    expect(row.status).not.toBe("completed");
+
+    // A new tap (a real second delivery) still completes it.
+    const fresh = await as("CASHIER", DRIVER).post(url, { ...body, tapId: `tap2-${suffix}` });
+    expect(fresh.status).toBe(200);
   });
 });

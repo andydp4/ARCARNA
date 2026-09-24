@@ -60,6 +60,8 @@ export interface CompleteOrderOptions {
   label?: "handed_over" | "delivered";
   /** When the driver actually reported delivery, if later than the tap itself. */
   actualAt?: string;
+  /** My run: the phone's id for the Delivered tap, kept on the event (see transitionOrderSchema). */
+  tapId?: string;
 }
 
 export interface CompleteOrderResult {
@@ -193,6 +195,7 @@ export async function completeOrderTx(
     label,
     fromStatus: lockedRow.status,
     ...(actualAt ? { actualAt: actualAt.toISOString() } : {}),
+    ...(options.tapId ? { tapId: options.tapId } : {}),
   };
   if (resettled) {
     // migrations/065_operations_centre.sql's `order_events_kind_check` (N2,

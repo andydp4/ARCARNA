@@ -130,7 +130,10 @@ export function runTapRequest(tap: QueuedRunTap): { url: string; body: Record<st
   if (tap.kind === "delivered") {
     return {
       url: `/api/orders/${tap.orderId}/transition`,
-      body: { action: "complete", label: "delivered", actualAt: tap.tappedAt },
+      // tapId ties the replay to this one tap: if it already completed the
+      // order (the answer was lost) and a manager has since reopened it, the
+      // server refuses rather than completing it again under the old time.
+      body: { action: "complete", label: "delivered", actualAt: tap.tappedAt, tapId: tap.id },
     };
   }
   return {
@@ -155,7 +158,24 @@ export function runTapFailure(httpStatus: number | null): "retry" | "refused" {
  * nothing left to do: the order is where the driver said it was.
  */
 export function isAlreadyDone(tap: QueuedRunTap, httpStatus: number | null, code: string | undefined, message: string): boolean {
-  return tap.kind === "delivered" && httpStatus === 409 && code === "ORDER_TRANSITION_INVALID" && /completed order/i.test(message);
+  if (tap.kind !== "delivered" || httpStatus !== 409) return false;
+  // This very tap already completed the order (and it has been reopened since).
+  if (code === "TAP_ALREADY_APPLIED") return true;
+  return code === "ORDER_TRANSITION_INVALID" && /completed order/i.test(message);
+}
+
+/**
+ * Start run must not send a stop out again while a Couldn't deliver tap for
+ * it is still waiting: the tap would replay after the new dispatch and take a
+ * live delivery off the road. Splits the chosen stops into those safe to
+ * start and those held until their tap has gone.
+ */
+export function splitStartable(
+  ids: readonly string[],
+  taps: readonly QueuedRunTap[],
+): { start: string[]; held: string[] } {
+  const waiting = new Set(taps.filter((t) => t.state !== "refused").map((t) => t.orderId));
+  return { start: ids.filter((id) => !waiting.has(id)), held: ids.filter((id) => waiting.has(id)) };
 }
 
 export function afterFailedTap(tap: QueuedRunTap, httpStatus: number | null, message: string, now: number): QueuedRunTap {
