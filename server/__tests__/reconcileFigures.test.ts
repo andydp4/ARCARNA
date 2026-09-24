@@ -240,6 +240,22 @@ describe.skipIf(!hasDb)("reconcileFigures against the database", () => {
     expect(msg).toContain("gave back £10.00 for items the customer paid £9.00 for");
   });
 
+  it("is clean for a delivery fee sale, and for refunds of its goods and of the fee (v1.2.1)", async () => {
+    // Two £10 lines, a £3 fee on top, £2 off the goods: £21 paid.
+    const o = await order({ total: 21, method: "card", createdAt: at("09:00"), lines: [[1, 10], [1, 10]], subtotal: 20, promo: 2 });
+    await client.query(`UPDATE orders SET delivery_fee = 3.00, vat_rate = 0 WHERE id = $1`, [o]);
+    // One line back at its share of the goods (£18 over £20 of lines: £9).
+    await refund(o, 9, "card", at("09:30"));
+    // The fee back on its own: a refund row with no lines.
+    await client.query(
+      `INSERT INTO refunds (id, order_id, org_id, cashier_id, reason, refund_method, total, created_at, credit_amount, delivery_fee)
+       VALUES ($1,$2,$3,'u','damaged','card',3.00,$4,0,3.00)`,
+      [randomUUID(), o, orgId, at("09:40")],
+    );
+    const r = await run();
+    expect(r.problems).toEqual([]);
+  });
+
   it("names a refund on an order that was never settled", async () => {
     const o = await order({ total: 10, method: "cash", status: "pending", createdAt: at("09:00") });
     await refund(o, 10, "cash", at("09:30"));

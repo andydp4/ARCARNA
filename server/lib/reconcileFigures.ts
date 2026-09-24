@@ -123,7 +123,7 @@ export async function reconcileOrg(
     await db.query(
       `SELECT id, status, total, settled_total, settled_at, created_at, entered_at, payment_method, date_kind,
               shift_id, cashier_shift_id, completed_cashier_shift_id,
-              subtotal, tier_discount, promo_discount, points_discount, vat_amount
+              subtotal, tier_discount, promo_discount, points_discount, vat_amount, delivery_fee, vat_rate
          FROM orders
         WHERE org_id = $1
           AND ((settled_at >= $2 AND settled_at < $3) OR (created_at >= $2 AND created_at < $3))`,
@@ -149,7 +149,7 @@ export async function reconcileOrg(
     await db.query(
       `SELECT r.id, r.order_id, r.total, r.refund_method, r.created_at, r.shift_id,
               o.status AS order_status, o.settled_total, o.total AS order_total, o.payment_method,
-              o.subtotal
+              o.subtotal, r.delivery_fee AS refund_fee, o.delivery_fee, o.vat_rate
          FROM refunds r JOIN orders o ON o.id = r.order_id
         WHERE r.org_id = $1 AND ((r.created_at >= $2 AND r.created_at < $3) OR r.order_id = ANY($4::uuid[]))`,
       [orgId, start, end, ids],
@@ -360,7 +360,8 @@ export async function reconcileOrg(
   for (const o of orders) {
     if (o.subtotal === null || o.subtotal === undefined || isPersonal(o.payment_method)) continue;
     const lineSum = (itemsBy.get(o.id) ?? []).reduce((s, it) => s + p(it.total_price), 0);
-    const expected = p(o.subtotal) - p(o.tier_discount) - p(o.promo_discount) + p(o.vat_amount) - p(o.points_discount);
+    // The delivery fee (v1.2.1) sits on top of the goods; its VAT is in vat_amount.
+    const expected = p(o.subtotal) - p(o.tier_discount) - p(o.promo_discount) + p(o.delivery_fee) + p(o.vat_amount) - p(o.points_discount);
     if (lineSum !== p(o.subtotal)) {
       say("arithmetic", `Order ${short(o.id)}: its lines add up to ${gbp(lineSum)} but its subtotal says ${gbp(p(o.subtotal))}.`);
     }
@@ -560,7 +561,8 @@ export async function reconcileOrg(
     if (r.order_status !== "completed") {
       say("refunds", `${dayName(day)}: ${gbp(p(r.total))} was refunded on order ${short(r.order_id)}, which was never settled — the refund comes off takings for money that was never counted in.`, day);
     }
-    const lineSum = (linesByRefund.get(r.id) ?? []).reduce((s, l) => s + p(l.amount), 0);
+    // A refund of the delivery fee (v1.2.1) has no line: it is on the refund row.
+    const lineSum = (linesByRefund.get(r.id) ?? []).reduce((s, l) => s + p(l.amount), 0) + p(r.refund_fee);
     if (lineSum !== p(r.total)) {
       say("refunds", `${dayName(day)}: refund on ${short(r.order_id)} totals ${gbp(p(r.total))} but its lines add up to ${gbp(lineSum)}.`, day);
     }
@@ -572,11 +574,13 @@ export async function reconcileOrg(
     const rLines = linesByRefund.get(r.id) ?? [];
     const listValue = rLines.reduce((s, l) => s + Math.round(Number(l.qty) * p(l.unit_price)), 0);
     if (orderLineValue > 0 && listValue > 0) {
-      const settled = p(r.settled_total ?? r.order_total);
+      // The fee (as charged, VAT included) is not the goods' money.
+      const feeCharged = Math.round(p(r.delivery_fee) * (1 + Number(r.vat_rate ?? 0) / 100));
+      const settled = Math.max(0, p(r.settled_total ?? r.order_total) - feeCharged);
       const paidForLines = Math.round((listValue * settled) / orderLineValue);
       // Only giving back MORE than was paid is a leak; a smaller refund (a
       // goodwill part-refund) is the refunder's call.
-      if (lineSum - paidForLines > rLines.length + 1) {
+      if (lineSum - p(r.refund_fee) - paidForLines > rLines.length + 1) {
         say(
           "refunds",
           `${dayName(day)}: refund on sale ${short(r.order_id)} gave back ${gbp(lineSum)} for items the customer paid ${gbp(paidForLines)} for (the sale's discount was not taken off the refund).`,
