@@ -114,6 +114,10 @@ export type OrderDiscounts = {
   /** Points come off after VAT (owner Q2). */
   pointsDiscount?: number | null;
   vatRate?: number | null;
+  /** Set when an active promotion (manager/admin only can create one) applied. */
+  promotion?: { id: string | null; code: string | null; name: string } | null;
+  /** What the promotion above took off the subtotal, before VAT. */
+  promoDiscount?: number | null;
 };
 
 /**
@@ -127,13 +131,19 @@ export type OrderDiscounts = {
 export function netLineTotals(
   lines: Array<{ quantity: number; unitPrice: number }>,
   pricing: OrderDiscounts | null | undefined,
+  /** Add the promotion back on, to see what the line brought in without it. */
+  ignorePromo = false,
 ): number[] {
   const gross = lines.map((l) => Math.max(0, toPence((Number(l.quantity) || 0) * (Number(l.unitPrice) || 0))));
   const subtotalP = gross.reduce((a, b) => a + b, 0);
   if (!pricing || subtotalP <= 0) return gross.map((p) => p / 100);
   const vat = Math.max(0, Number(pricing.vatRate) || 0);
   const pointsPreVatP = toPence(Math.max(0, Number(pricing.pointsDiscount) || 0) / (1 + vat / 100));
-  const netP = Math.max(0, Math.min(subtotalP, toPence(Number(pricing.netAfterDiscounts) || 0) - pointsPreVatP));
+  const promoBackP = ignorePromo ? toPence(Math.max(0, Number(pricing.promoDiscount) || 0)) : 0;
+  const netP = Math.max(
+    0,
+    Math.min(subtotalP, toPence(Number(pricing.netAfterDiscounts) || 0) + promoBackP - pointsPreVatP),
+  );
   if (netP >= subtotalP) return gross.map((p) => p / 100);
   const exact = gross.map((p) => (p * netP) / subtotalP);
   const shares = exact.map(Math.floor);

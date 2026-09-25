@@ -158,11 +158,17 @@ export class DomainEngine {
       if (!this.priceExceptions || !args.orgId) return
       if (isPriceCheckExempt({ paymentMethod: args.paymentMethod, source: args.source, pricedAtList: args.pricedAtList })) return
       const nets = netLineTotals(args.lines, args.pricing)
+      // A manager/admin created the promotion (only they can), so a breach
+      // caused entirely by it is not logged (v1.2.1 money). One still is if
+      // the line was already under its floor or cost before the promotion.
+      const hasPromo = !!args.pricing?.promotion && Number(args.pricing?.promoDiscount ?? 0) > 0
+      const netsNoPromo = hasPromo ? netLineTotals(args.lines, args.pricing, true) : nets
       const rows: PriceExceptionRecord[] = []
       args.lines.forEach((line, i) => {
         const snap = snapshotOf(line)
         const breach = underpricedLine({ ...line, netLineTotal: nets[i] }, snap)
         if (!breach || !snap) return
+        if (hasPromo && !underpricedLine({ ...line, netLineTotal: netsNoPromo[i] }, snap)) return
         const qty = Number(line.quantity) || 0
         rows.push({
           orgId: args.orgId as string,

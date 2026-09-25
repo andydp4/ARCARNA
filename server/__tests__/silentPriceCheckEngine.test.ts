@@ -232,6 +232,56 @@ describe("silent recording (PRC-03, CMP-03)", () => {
     });
   });
 
+  it("a manager-approved promotion that takes a line below its floor is not recorded (v1.2.1 money)", async () => {
+    const { engine, recorded } = makeEngine({ catalogue });
+    const pricing = priceOrder({
+      lines: [{ quantity: 1, unitPrice: 5 }],
+      taxRatePercent: 0,
+      promotion: {
+        id: "promo1",
+        name: "Staff sale",
+        code: "STAFF",
+        type: "percentage",
+        value: 30,
+        isActive: true,
+        startDate: new Date(Date.now() - 86_400_000).toISOString(),
+        endDate: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+    });
+    // £5 less 30% is £3.50, under P1's £4 minimum — only because of the promo.
+    expect(pricing.total).toBe(3.5);
+    await engine.placeOrder(
+      { orgId: ORG, paymentMethod: "cash", lines: [{ productId: P1, quantity: 1, unitPrice: 5 }] },
+      pricing,
+    );
+    expect(recorded).toHaveLength(0);
+  });
+
+  it("a promotion that discounts a line already below its floor still records the rest of the breach", async () => {
+    const { engine, recorded } = makeEngine({ catalogue });
+    const pricing = priceOrder({
+      lines: [{ quantity: 1, unitPrice: 3 }],
+      taxRatePercent: 0,
+      promotion: {
+        id: "promo1",
+        name: "Staff sale",
+        code: "STAFF",
+        type: "percentage",
+        value: 10,
+        isActive: true,
+        startDate: new Date(Date.now() - 86_400_000).toISOString(),
+        endDate: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+    });
+    // £3 is already under P1's £4 floor before the 10% comes off.
+    await engine.placeOrder(
+      { orgId: ORG, paymentMethod: "cash", lines: [{ productId: P1, quantity: 1, unitPrice: 3 }] },
+      pricing,
+    );
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ belowMinimum: true });
+  });
+
   it("personal use is not a sale and is not checked", async () => {
     const { engine, recorded } = makeEngine({ catalogue });
     await engine.placeOrder({
