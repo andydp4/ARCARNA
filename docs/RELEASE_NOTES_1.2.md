@@ -1,10 +1,32 @@
 # arcarna 1.2: release notes
 
-For everyone who works in the shop, and for the owner. Grouped by who it affects. Every page named here is in the menu under the Centre shown in brackets.
+For everyone who works in the shop, and for the owner. Grouped by who it affects. Every page named here is in the menu under the Centre shown in brackets. **v1.2.1**, a hardening round with two small new features, is covered in its own section right after this introduction; everything below it is unchanged from v1.2.
 
-The first time you sign in after the update, a short **What's new in v1.2.0** window lists the changes for your role. Each new page also shows a short tour the first time you reach it (once per account, on every device). **Replay tour** in the menu shows it again: on a page with one of these features on screen it replays that feature's tour, and on any other page it replays the Centre's tour.
+The first time you sign in after an update, a short **What's new** window lists the changes for your role. Each new page also shows a short tour the first time you reach it (once per account, on every device). **Replay tour** in the menu shows it again: on a page with one of these features on screen it replays that feature's tour, and on any other page it replays the Centre's tour.
 
 ---
+
+## v1.2.1: a hardening round, plus two small features
+
+A follow-up to v1.2, a few days later: figures checked against the shop's own data, a security sweep, hard use testing, and every page checked on desktop and phone. Nothing here needs any setup.
+
+### For everyone
+- **"This customer already owes" shows at the till.** Start an order for a customer with a Credit List balance — the till, the Operations board's order form and phone orders all show it — and a notice gives the amount, how many tabs it is spread over and the oldest one's date, with a reminder to record any payment. **Take a payment** sits right there for cash or card, part or in full. It never stops the sale.
+- **Delivery fee, on its own line.** Add the shop's delivery fee to a delivery order with one tap; the amount can be changed or removed on that order. It is never folded into a product's price: it shows as its own line on the receipt and invoice, and its own figure in the Truths Centre. It is left out of commission and margin unless an admin turns that on.
+- Refunding a sale now always gives back what the customer actually paid — including its share of a promotion or points discount — and never more than the sale actually took. A refund on a tick sale that was never paid, or a Card (link) payment still pending, is refused with a plain reason instead of paying cash out of the drawer.
+- A handful of small things staff would have hit are fixed: a double-tapped refund could refund the same item twice; the last unit could be sold at two tills at once; a very large or oddly typed amount gave a confusing error instead of a clear one.
+
+### For managers and admins
+- A promotion (only a manager or above can create one) that takes an item below its minimum or below cost no longer shows in **Truths Centre → Would have flagged**. An item that was already underpriced before the promotion still does.
+- Keying in a forgotten sale still lands it on the day it happened, in every figure, as before — up to 7 days back. It now also raises a **Signal** to managers and admins naming the date, since that day's frozen close from its own 06:00 does not know about the late entry until the owner's figures check is next run.
+- A settled sale can no longer be deleted once its drawer has been counted and closed; refund it instead, or reopen the shift first.
+- Every Centre page was checked on both a computer and a phone screen: dead links, pages that scrolled sideways, buttons too small to tap or hidden behind others, and a handful of console errors are all fixed.
+- A security sweep checked every route with two separate businesses and every role: an admin of one business could delete or take over another business's staff, and a couple of smaller holes (a script-injection spot in the receipt preview, cross-site form submissions) were closed.
+
+### For the owner
+- A read-only script, `scripts/reconcile-figures.ts`, checks the shop's live figures against a recount of the raw sales and refunds and lists anything that does not add up, in plain English. It changes nothing; run it any time, e.g. `npx tsx scripts/reconcile-figures.ts --days 30`.
+- Set the shop's real delivery fee in Settings (it starts at a guess of £3.00).
+- A database lock-up that could very occasionally show "Failed to update order" when completing a tick sale is fixed.
 
 ## Everyone
 
@@ -163,6 +185,8 @@ Ask arcarna is in this build, but it stays **off and hidden** until the owner ad
 | **Ask arcarna** | Add `ANTHROPIC_API_KEY` to the server's `.env` (optionally `ARCARNA_AI_MODEL`, default `claude-opus-5`, and `ARCARNA_AI_EFFORT`, default `medium`) and restart. Accept Anthropic's Data Processing Addendum and list Anthropic as a processor in the privacy notice (see `docs/ask-arcarna-privacy.md`). Check the £25 monthly cap in Settings › Integrations. It stays hidden until the key is set. |
 | **Niimbot label printer** | On each till that prints: open arcarna in Chrome (computer) or Bluefy (iPhone), go to **Settings › System**, **Pair a printer** and print a test label. Pairing is remembered on that device only. |
 | **WhatsApp messages** | Message the customer instead, Send payment reminder and Send by WhatsApp use approved WhatsApp templates only. In **Settings › Integrations › WhatsApp Business**, **Sync templates**, then submit them for approval in Meta's WhatsApp Manager. This includes the new `please_call_us` template. Unapproved templates are refused. Fill in the shop's phone number in **Settings › General** so "please call us" can name it. From 1 October 2026, each message costs about £0.016. |
+| **Delivery fee** | Set the real price in Settings (Delivery fee). It defaults to £3.00. |
+| **Figures check** | Run `npx tsx scripts/reconcile-figures.ts --days 30` any time — read-only, and lists anything that does not add up. |
 | **Email invoices** | Set `RESEND_API_KEY` (and the sending address) on the server. Until then, Email invoice is turned off and says why. |
 | **Price guard** | Leave it off for the silent recording period, then turn it on in **Settings › General**. |
 | **Staff targets** | Set them in **Staff targets**. The first 4 weeks are amber only. |

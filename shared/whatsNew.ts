@@ -224,7 +224,44 @@ export const WHATS_NEW: Record<string, WhatsNewItem[]> = {
         "Customer data access lists every look at customers' contact details across the shop. Friction Truths shows where staff get stuck, by role, never by name.",
     },
   ],
-};
+  "1.2.1": [
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Customers",
+      title: "\"This customer already owes\" now shows at the till",
+      detail:
+        "Start an order for a customer with a Credit List balance and a notice shows how much, over how many tabs and since when — with Take a payment right there to record cash or card against it. It never stops the sale.",
+    },
+    {
+      roles: ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "POS / Operations Centre",
+      title: "Delivery fee, on its own line",
+      detail:
+        "Add the shop's delivery fee to a delivery order with one tap. It shows as its own line on the receipt and invoice, is never hidden inside a product's price, and is left out of commission and margin unless an admin turns that on.",
+    },
+    {
+      roles: ["MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Truths Centre",
+      title: "A promotion no longer flags as underpriced",
+      detail:
+        "A sale that only goes below its minimum or below cost because of an active promotion is no longer recorded in Would have flagged — only a manager or above can create a promotion. An item that was already underpriced before the promotion still is.",
+    },
+    {
+      roles: ["MANAGER", "ADMIN", "SUPER_ADMIN"],
+      area: "Truths Centre / Signals",
+      title: "A late-entered sale now tells you",
+      detail:
+        "Keying in a forgotten sale still lands it on the day it happened, in every figure. It now also raises a Signal naming the date, since that day's frozen close does not know about it until the figures check is next run.",
+    },
+    {
+      roles: ["ADMIN", "SUPER_ADMIN"],
+      area: "Settings / behind the scenes",
+      title: "A round of fixes: money, security and every page",
+      detail:
+        "Refunds, closed-day sales and reports were checked line by line against the shop's own figures and several were fixed. A security sweep closed holes between businesses sharing arcarna. Every Centre page was checked on desktop and phone for dead links, overlaps and small buttons, and fixed. Nothing here needs any setup.",
+    },
+  ],
+}
 
 export function whatsNewForRole(version: string, role: string): WhatsNewItem[] {
   const items = WHATS_NEW[version] ?? [];
