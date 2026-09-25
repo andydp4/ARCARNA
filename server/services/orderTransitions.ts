@@ -623,7 +623,10 @@ export async function runOrderTransition(params: RunTransitionParams): Promise<R
   });
 
   if (outcome.backdatedShiftToSettle) {
-    await settleBackdatedShift(orgId, outcome.backdatedShiftToSettle);
+    await settleBackdatedShift(orgId, outcome.backdatedShiftToSettle, new Date(), {
+      orderId,
+      enteredByUserId: actor.userId ?? null,
+    });
   }
 
   // Fresh re-read AFTER commit, never reused from inside the transaction —

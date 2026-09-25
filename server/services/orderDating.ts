@@ -25,6 +25,7 @@ import {
 import { currentTradingDay } from "@shared/time/tradingDay";
 import { orgTimeZone, resolveShiftForBackdatedDay } from "./tradingDayShift";
 import { closeCashierShift, refreshClosedCashierShiftSummary } from "./cashierShiftEngine";
+import { notify } from "./signals";
 
 export type ResolvedOrderDating =
   | {
@@ -89,9 +90,30 @@ export async function settleBackdatedShift(
   orgId: string,
   shift: Pick<CashierShift, "id" | "status" | "tradingDay">,
   now: Date = new Date(),
+  /** For the Signal below. Left out where the caller has no order to hand yet. */
+  order?: { orderId?: string | null; enteredByUserId?: string | null } | null,
 ): Promise<void> {
   const timeZone = await orgTimeZone(orgId);
   if (!shift.tradingDay || shift.tradingDay >= currentTradingDay(timeZone, now)) return;
+  // The trading day this lands on already had its own 06:00 close (or would
+  // have, had the day had any sales) — its frozen figures now disagree with
+  // what shows live, until the next reconcile run (owner decision, v1.2.1
+  // money). One Signal per late sale, never blocking it.
+  await notify({
+    orgId,
+    title: `Late sale keyed in for ${shift.tradingDay}`,
+    message:
+      `A sale dated ${shift.tradingDay} was entered today, after that day's figures were closed. ` +
+      `Daily Sales, Truths and the shift report for ${shift.tradingDay} now include it; the close's own snapshot from that morning does not. ` +
+      `Run the figures check to see it named.`,
+    severity: "warning",
+    source: "backdated_into_closed_day",
+    subjectUserId: order?.enteredByUserId ?? null,
+    metadata: { orderId: order?.orderId ?? null, tradingDay: shift.tradingDay },
+  }).catch((err) => {
+    // Never let a Signal failure undo or block an already-settled sale.
+    console.warn("[orderDating] backdated_into_closed_day Signal failed:", err);
+  });
   if (shift.status === "open") {
     await closeCashierShift(orgId, shift.id, {
       closedByUserId: null,

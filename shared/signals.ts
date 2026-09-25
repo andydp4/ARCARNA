@@ -36,6 +36,10 @@ export type SignalAudience = {
 export const SIGNAL_ROUTES: Record<string, SignalAudience> = {
   personal_use: { minRole: "MANAGER" },
   daily_close: { minRole: "MANAGER" },
+  // A sale keyed in late, into a day that already had its 06:00 close
+  // (v1.2.1 money, owner decision): the day's frozen figures now differ from
+  // what is shown live, until the reconcile check is next run.
+  backdated_into_closed_day: { minRole: "MANAGER" },
   scheduled_report: { minRole: "MANAGER" },
   automation_rule: { minRole: "MANAGER" },
   report_flag: { minRole: "MANAGER" },

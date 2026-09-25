@@ -1108,7 +1108,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         await refreshClosedCashierShiftSummary(ctx.orgId, req.cashierShift.cashierShiftId);
       }
       if (backdatedShift && ctx.orgId) {
-        await settleBackdatedShift(ctx.orgId, backdatedShift);
+        await settleBackdatedShift(ctx.orgId, backdatedShift, new Date(), {
+          orderId: result?.orderId ?? null,
+          enteredByUserId: req.user?.id ?? null,
+        });
       }
 
       // Pushed AFTER commit, never from inside the transaction — a later
@@ -1686,7 +1689,10 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
       }
 
       if (outcome.backdatedShiftToSettle && ctx.orgId) {
-        await settleBackdatedShift(ctx.orgId, outcome.backdatedShiftToSettle);
+        await settleBackdatedShift(ctx.orgId, outcome.backdatedShiftToSettle, new Date(), {
+          orderId: req.params.id,
+          enteredByUserId: actorId,
+        });
       }
 
       console.log(`[Orders] Status changed ${req.params.id} (kind: ${outcome.kind ?? 'no-op'}, event: ${outcome.eventId})`);

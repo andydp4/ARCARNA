@@ -271,8 +271,14 @@ describe("dating an order", () => {
     // No drawer: today's has not seen this money, and that day's is counted.
     expect(patches.some((p) => "shift_id" in p)).toBe(false);
 
-    // And the old day's summary is brought up to date once the order is in.
-    expect(settleMock).toHaveBeenCalledWith(ORG_ID, expect.objectContaining({ id: OLD_SHIFT }));
+    // And the old day's summary is brought up to date once the order is in,
+    // with enough of the order for the "keyed in late" Signal to name it.
+    expect(settleMock).toHaveBeenCalledWith(
+      ORG_ID,
+      expect.objectContaining({ id: OLD_SHIFT }),
+      expect.any(Date),
+      expect.objectContaining({ orderId: expect.any(String), enteredByUserId: "user_1" }),
+    );
   });
 
   it("records a pre-order against its day but keeps today's shift and drawer", async () => {
