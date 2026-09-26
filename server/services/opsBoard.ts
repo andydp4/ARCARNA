@@ -33,8 +33,13 @@ import { canSeeDeliveryAddress } from "@shared/accessPolicy";
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
 const PRESENT_WITHIN_MINUTES = 15;
 
-/** Board orders: open, or completed within this many minutes (the "Done today" tray's window). */
-const RECENT_COMPLETED_MINUTES = 120;
+/**
+ * Board orders: open, or completed within this many minutes (the "Done"
+ * tray's window). 36 hours so it still shows yesterday's completed work —
+ * the owner wants to be able to check back on what was done, not just the
+ * last couple of hours.
+ */
+const RECENT_COMPLETED_MINUTES = 36 * 60;
 
 export interface OpsBoardSettings {
   prepSlaMinutes: number;
@@ -255,7 +260,7 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
  * `RECENT_COMPLETED_MINUTES`. That cutoff exists to keep `selectBoardRows`
  * (and the 150ms-at-2,000-orders card render it feeds) cheap; it is not a
  * day boundary, and reusing it for the tile means "Done today" silently
- * drops anything settled more than two hours ago — the exact bug
+ * drops anything settled outside that rolling window — the exact bug
  * `controlCentre.ts`'s `ordersCompletedToday` was written to avoid. This is
  * the same trading-day-bounded `count(*)` that field uses, against the
  * snake_case table this file's row query already reads.
