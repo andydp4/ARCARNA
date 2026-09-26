@@ -1895,18 +1895,32 @@ export class DatabaseStorage implements IStorage {
       .from(overheadExpenses)
       .where(overheadCond);
 
-    // Calculate total daily overhead
+    // Calculate total daily overhead. Postgres numeric columns come back as
+    // strings over the wire regardless of the sql<number> type hint above —
+    // Number(...) here is the actual coercion, not the type annotation. A
+    // malformed amount (or an unrecognised frequency slipping past the
+    // switch) is skipped rather than poisoning the whole sum with NaN, which
+    // used to silently turn every figure derived from it — operating profit,
+    // "Combined total" — into NaN or a wildly wrong number with no error
+    // shown anywhere.
     let totalDailyOverhead = 0;
-    overheads.forEach(expense => {
+    for (const expense of overheads) {
+      const amount = Number(expense.amount);
+      if (!Number.isFinite(amount)) {
+        console.error(`[ExpenseAnalytics] non-numeric overhead amount "${expense.amount}" (${expense.category}); skipped`);
+        continue;
+      }
       let dailyCost = 0;
       switch (expense.frequency) {
-        case 'daily': dailyCost = expense.amount; break;
-        case 'weekly': dailyCost = expense.amount / 7; break;
-        case 'monthly': dailyCost = expense.amount / 30; break;
-        case 'yearly': dailyCost = expense.amount / 365; break;
+        case 'daily': dailyCost = amount; break;
+        case 'weekly': dailyCost = amount / 7; break;
+        case 'monthly': dailyCost = amount / 30; break;
+        case 'yearly': dailyCost = amount / 365; break;
+        default:
+          console.error(`[ExpenseAnalytics] unrecognised overhead frequency "${expense.frequency}" (${expense.category}); treated as 0`);
       }
       totalDailyOverhead += dailyCost;
-    });
+    }
 
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const totalOverhead = totalDailyOverhead * daysDiff;
@@ -1920,7 +1934,16 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
       .where(orderCond);
 
-    const orderExpenseTotal = orderExpenseResult[0]?.total || 0;
+    // Postgres returns a SUM(...) aggregate as a string over the wire, same
+    // as the per-row numeric amounts above — the sql<number> type hint above
+    // does not coerce it. Adding that string to `totalOverhead` (a real JS
+    // number) is not addition: `3500 + "15.00"` is `"3500" + "15.00"`,
+    // string concatenation, giving "350015.00" — the exact shape of the
+    // owner's bug report (September's real ~£3,500 overhead read as
+    // £350,015, and a longer period whose two decimals didn't line up
+    // showed literally "£NaN"). Every figure downstream of totalExpenses
+    // (operating profit, margins) inherited the same corruption.
+    const orderExpenseTotal = Number(orderExpenseResult[0]?.total) || 0;
 
     return {
       overheadTotal: totalOverhead,
