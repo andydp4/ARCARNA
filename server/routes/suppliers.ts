@@ -13,9 +13,17 @@ import {
   supplierErrorPayload,
 } from "../services/suppliers";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Reads are manager and above too: supplier, purchasing, receiving and
+ * transfer records all carry cost prices, which cashiers never see (owner
+ * decision Q6; shared/accessPolicy.ts).
+ */
+const readRoles = requireRole(...rolesAtLeast("MANAGER"));
 
 /** Postgres rejects NUL bytes in text; strip control characters so a hostile
  *  or pasted string is cleaned rather than 500ing at the driver. */
@@ -71,7 +79,7 @@ function sendSupplierError(res: any, err: unknown) {
 }
 
 export function registerSupplierRoutes(app: Express) {
-  app.get("/api/suppliers", ...scoped, async (req: any, res) => {
+  app.get("/api/suppliers", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const rows = await listSuppliers(ctx.orgId);
@@ -126,7 +134,7 @@ export function registerSupplierRoutes(app: Express) {
     }
   });
 
-  app.get("/api/product-suppliers", ...scoped, async (req: any, res) => {
+  app.get("/api/product-suppliers", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const productId = req.query.productId as string | undefined;

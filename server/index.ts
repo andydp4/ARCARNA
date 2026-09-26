@@ -1,18 +1,26 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { trustProxySetting } from "./lib/trustProxy";
+import { registerUuidParamGuards } from "./lib/uuidParams";
 import compression from "compression";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
-import { applySecurityMiddleware, mountTieredApiRateLimits } from "./security";
+import {
+  apiResponseHardening,
+  applySecurityMiddleware,
+  createJsonBodyParser,
+  mountTieredApiRateLimits,
+  rejectCrossSiteMutations,
+} from "./security";
 import { serveStatic, log } from "./static";
 import { validateProductionEnv } from "./validateProductionEnv";
-import { IMPORT_JSON_BODY_LIMIT } from "@shared/importLimits";
 import { APP_BASE_PATH } from "./appBase";
 import { registerLegacyEposRedirects, registerDefaultLegacyBasePathRedirects } from "./legacyRedirects";
 import { withAppBase } from "@shared/appPaths";
 import { BRAND_PRODUCT_NAME } from "@shared/brand";
 import { requestIdMiddleware, type RequestWithId } from "./requestId";
 import { sentryRequestContextMiddleware } from "./sentryRequestContext";
-import { logApiJson } from "./structuredLog";
+import { httpLogMiddleware, SENTRY_CAPTURED } from "./httpLog";
+import { genericServerMessage, safeErrorMessage } from "./lib/errorScrub";
 
 validateProductionEnv();
 
@@ -39,7 +47,7 @@ const workersEnabled =
 
 /** Behind reverse proxies (Nginx, Fly, etc.) so rate limits use client IP. */
 if (isProduction) {
-  app.set("trust proxy", 1);
+  app.set("trust proxy", trustProxySetting());
 }
 
 applySecurityMiddleware(app, isProduction);
@@ -52,56 +60,15 @@ declare module 'http' {
 }
 app.use(requestIdMiddleware);
 app.use(sentryRequestContextMiddleware);
-app.use(
-  express.json({
-    limit: IMPORT_JSON_BODY_LIMIT,
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-app.use(express.urlencoded({ extended: false, limit: IMPORT_JSON_BODY_LIMIT }));
+// JSON bodies only (v1.2.1 SEC-CSRF-FORM): nothing inbound is form-encoded,
+// and parsing application/x-www-form-urlencoded let a plain HTML form on
+// another site post to the API. The 25 MB import limit applies to the import
+// and bulk routes alone (SEC-BODY-PREAUTH): every other route is parsed with
+// a small limit, so an anonymous caller cannot make the server parse 25 MB
+// before auth refuses it.
+app.use(createJsonBodyParser(APP_BASE_PATH));
 
-app.use((req: RequestWithId, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      logApiJson({
-        msg: "http_request",
-        requestId: req.requestId,
-        method: req.method,
-        path,
-        status: res.statusCode,
-        durationMs: duration,
-        responseSnippet:
-          capturedJsonResponse !== undefined
-            ? JSON.stringify(capturedJsonResponse).slice(0, 200)
-            : undefined,
-      });
-    } else {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-      log(logLine);
-    }
-  });
-
-  next();
-});
+app.use(httpLogMiddleware);
 
 process.on("unhandledRejection", (reason) => {
   console.error("[process] Unhandled promise rejection:", reason);
@@ -127,7 +94,10 @@ process.on("unhandledRejection", (reason) => {
 
   const eposApp = express();
 
+  eposApp.use(apiResponseHardening);
   mountTieredApiRateLimits(eposApp, isProduction);
+  eposApp.use(rejectCrossSiteMutations);
+  registerUuidParamGuards(eposApp);
 
   await registerRoutes(eposApp);
 
@@ -155,23 +125,29 @@ process.on("unhandledRejection", (reason) => {
 
   const server = createServer(app);
 
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     const status =
       typeof err === "object" && err !== null && "status" in err
         ? Number((err as { status?: number }).status) || 500
         : typeof err === "object" && err !== null && "statusCode" in err
           ? Number((err as { statusCode?: number }).statusCode) || 500
           : 500;
+    const requestId = (req as RequestWithId).requestId;
+    // A 4xx from middleware (bad JSON, payload too large) keeps its own text
+    // unless it reads like database output; a 5xx never echoes the error.
     const message =
-      err instanceof Error ? err.message : "Internal Server Error";
+      status >= 500
+        ? genericServerMessage(requestId)
+        : safeErrorMessage(err, "Request could not be processed");
     console.error("[express] Request error:", err);
     if (process.env.SENTRY_DSN?.trim()) {
+      res.locals[SENTRY_CAPTURED] = true;
       import("@sentry/node")
-        .then((Sentry) => Sentry.captureException(err))
+        .then((Sentry) => Sentry.captureException(err, { tags: { request_id: requestId ?? "unknown" } }))
         .catch(() => {});
     }
     if (!res.headersSent) {
-      res.status(status).json({ message });
+      res.status(status).json({ message, ...(requestId ? { requestId } : {}) });
     }
   });
 

@@ -14,7 +14,7 @@
  * is genuinely taller than the old fixed increment, and the header's own
  * accounting for that height keeps pace with it.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import PDFDocument from "pdfkit";
 import { generateInvoicePdf, generateReceiptPdf } from "../services/pdfGenerator";
 
@@ -37,7 +37,7 @@ function baseInvoice(overrides: Record<string, unknown> = {}) {
       email: "andydp4@gmail.com",
     },
     customerName: "Liam",
-    customerPhone: "+447789474582",
+    customerAddress: "1 High Street",
     items: [
       { name: "40404 T CA", quantity: 10, unitPrice: 28, total: 280 },
       { name: "40411 4 MK", quantity: 6, unitPrice: 20, total: 120 },
@@ -163,5 +163,23 @@ describe("a very long items list", () => {
       baseInvoice({ items, subtotal: 400, tax: 0, total: 400 }) as never,
     );
     expect(pdf.subarray(0, 4).toString("latin1")).toBe("%PDF");
+  });
+});
+
+describe("the invoice bills a name and an address only (v1.2 Phase 5)", () => {
+  it("never writes an email or phone, even if a caller passes one", async () => {
+    const textSpy = vi.spyOn(PDFDocument.prototype, "text");
+    try {
+      await generateInvoicePdf(
+        baseInvoice({ customerEmail: "liam@example.com", customerPhone: "+447700900123" }) as any,
+      );
+      const all = textSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(all).toContain("Liam");
+      expect(all).toContain("1 High Street");
+      expect(all).not.toContain("liam@example.com");
+      expect(all).not.toContain("7700900123");
+    } finally {
+      textSpy.mockRestore();
+    }
   });
 });

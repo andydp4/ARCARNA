@@ -1,5 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiFetch } from "@/lib/appPaths";
+import { clearPreviewRole } from "@/lib/previewRole";
 
 export type AccessState = "ok" | "pending" | "no_org" | "no_access";
 
@@ -26,6 +29,8 @@ export interface AuthUser {
   clerkTwoFactorEnabled?: boolean | null;
   /** One-time UI this account has already seen (user_ui_seen); see useSeenOnce. */
   seenUi?: string[];
+  /** Set while an admin previews a lower role: `role` is the previewed one. */
+  preview?: { role: "MANAGER" | "CASHIER"; realRole: string } | null;
 }
 
 /**
@@ -38,7 +43,7 @@ export interface AuthUser {
  */
 const AUTH_REQUEST_TIMEOUT_MS = 10_000;
 
-export async function fetchAuthUser(): Promise<AuthUser | null> {
+export async function fetchAuthUser(retriedWithoutPreview = false): Promise<AuthUser | null> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), AUTH_REQUEST_TIMEOUT_MS);
   let res: Response;
@@ -59,6 +64,13 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
       code?: string;
       isPending?: boolean;
     };
+    // A stale "Preview as role" the server will not honour (the account is no
+    // longer an admin, or a different person signed in on this tab): drop it
+    // and ask again as yourself, rather than locking the app on a 403.
+    if (!retriedWithoutPreview && typeof body.code === "string" && body.code.startsWith("PREVIEW_")) {
+      clearPreviewRole();
+      return fetchAuthUser(true);
+    }
     if (body.code === "PENDING_APPROVAL" || body.isPending) {
       return {
         id: "pending",
@@ -87,7 +99,7 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
 export function useAuth() {
   const { data: user, isLoading, error } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
-    queryFn: fetchAuthUser,
+    queryFn: () => fetchAuthUser(),
     /**
      * A `null` answer means the server said you are not signed in. That is
      * data, not an error, and React Query never retries it.
@@ -113,4 +125,46 @@ export function useAuth() {
     setupComplete: user?.setupComplete !== false,
     devAuthBypass: !!user?.runtime?.devAuthBypass,
   };
+}
+
+/**
+ * Keeps the signed-in role fresh in a tab that stays open (v1.2.1, UA-06).
+ *
+ * `/api/auth/user` is cached for the life of the tab, so someone demoted from
+ * manager to cashier kept seeing manager screens until they reloaded. The
+ * server already refuses their manager-only calls; this makes the screens
+ * follow: the role is asked for again on every move to another screen and
+ * whenever the tab comes back into focus. Invalidation keeps the current
+ * answer on screen while it refetches, so nothing flickers.
+ */
+export function AuthFreshness(): null {
+  const queryClient = useQueryClient();
+  const [location] = useLocation();
+  const first = useRef(true);
+
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    // Offline (a till mid-sale with no signal): keep the role it has.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+  }, [location, queryClient]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [queryClient]);
+
+  return null;
 }

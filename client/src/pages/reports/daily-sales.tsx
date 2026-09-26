@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ReportFrame } from "@/components/reports/ReportFrame";
 import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
 import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
-import { ReportScopeFilter, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
+import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, pct, int, screenDate, isoDate } from "@/lib/reportBrand";
@@ -51,11 +51,11 @@ export default function DailySalesReport() {
     <div className="mx-auto max-w-4xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> All reports
+          <ChevronLeft className="h-4 w-4" /> All Evidence
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs text-muted-foreground">Trading day</label>
-          <Input type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
+          <label htmlFor="daily-sales-day" className="text-xs text-muted-foreground">Trading day</label>
+          <Input id="daily-sales-day" type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
           <ReportScopeFilter value={scope} onChange={setScope} />
         </div>
       </div>
@@ -96,6 +96,15 @@ export default function DailySalesReport() {
                 />
               </div>
             )}
+            {!isLoading && data && (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="report-delivery-fees">
+                <ReportKpi
+                  label="Delivery fees"
+                  value={money(Number(s.deliveryFeeRevenue) || 0)}
+                  sub={`On ${int(Number(s.deliveryFeeOrders) || 0)} deliveries, inside total revenue, less fees refunded`}
+                />
+              </div>
+            )}
 
             <div className="mt-5">
               <h3 className="mb-2 text-sm font-semibold" style={{ color: "#1E3A8A" }}>
@@ -108,6 +117,7 @@ export default function DailySalesReport() {
                 getRowKey={(r) => r.channel}
               />
             </div>
+            <StaffFilterFootnote value={scope} />
           </>
         )}
       </ReportFrame>

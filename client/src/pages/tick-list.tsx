@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { csvDocument } from '@shared/csv'
+import { BACKDATE_LIMIT_DAYS, localIsoDate } from '@shared/orders/orderDate'
+import { shiftIsoDate } from '@shared/time/tradingDay'
 import { PageHeader } from '@/components/PageHeader'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
@@ -38,6 +41,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { CreditCustomerDetailDialog } from '@/components/CreditCustomerDetailDialog'
+import { PaymentReminderButton, PaymentReminderNote } from '@/components/payment-reminder-button'
 import { apiRequest, queryClient } from '@/lib/queryClient'
 import {
   CreditCard,
@@ -65,11 +69,23 @@ export interface TickOrder {
 export interface TickCustomer {
   id: string
   name: string
-  email: string
-  phone: string
+  /** Admin and above only (Q13a); managers get the masks (Q7, v1.2 Phase 5). */
+  email?: string
+  phone?: string
+  emailMasked?: string | null
+  phoneMasked?: string | null
   totalDebt: number
   lastOrderDate: string
   orders: TickOrder[]
+}
+
+/** What a payment did to the till, said in the toast so nobody has to guess. */
+function drawerNote(method: string | undefined, drawerShiftId: string | null | undefined, backdated = false): string {
+  if (method !== 'cash') return ''
+  if (backdated) return ' Backdated, so it is not in today\'s till.'
+  return drawerShiftId
+    ? ' Added to your till\'s expected cash.'
+    : ' No till was open for you, so it is not in any drawer\'s expected cash.'
 }
 
 export default function TickList() {
@@ -83,7 +99,12 @@ export default function TickList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [payingCustomer, setPayingCustomer] = useState<TickCustomer | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
+  // No default: how the money came in decides whether it is in the drawer's
+  // expected cash, so somebody has to say (v1.2 Phase 1C).
+  const [paymentMethod, setPaymentMethod] = useState('')
+  // Blank, or today, is today. A manager may backdate within the same window
+  // an order can be backdated; the server holds the line (FIX-12).
+  const [paymentDate, setPaymentDate] = useState('')
   const [customerToDelete, setCustomerToDelete] = useState<TickCustomer | null>(null)
 
   // Fetch tick customers from API
@@ -117,16 +138,21 @@ export default function TickList() {
 
   // Mark as paid mutation
   const markPaidMutation = useMutation({
-    mutationFn: async (customerId: string) => {
-      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`)
-      return response.json()
+    // Clearing a whole tab sends the balance the person was looking at: if
+    // more went on the tab since, the server refuses rather than clear it.
+    // "Paid by" is required: the server refuses a clear without it.
+    mutationFn: async ({ customerId, expectedBalance, method }: { customerId: string; expectedBalance: number; method: string }) => {
+      const response = await apiRequest("POST", `/api/tick-customers/${customerId}/mark-paid`, { expectedBalance, method })
+      return response.json() as Promise<{ amountSettled: number; method: string; drawerShiftId: string | null }>
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({
-        title: 'Payment Recorded',
-        description: 'Customer debt marked as paid',
+        title: 'Account cleared',
+        description: `£${Number(result.amountSettled ?? 0).toFixed(2)} received by ${result.method}.${drawerNote(result.method, result.drawerShiftId)}`,
       })
       queryClient.invalidateQueries({ queryKey: ["/api/tick-customers"] })
+      setPayingCustomer(null)
+      setPaymentAmount('')
     },
     onError: (error: any) => {
       toast({
@@ -139,8 +165,8 @@ export default function TickList() {
 
   const filteredCustomers = tickCustomers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.phone.includes(searchTerm)
+                         (customer.email ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (customer.phone ?? '').includes(searchTerm)
     
     if (filterStatus === 'all') return matchesSearch
     if (filterStatus === 'paid') return matchesSearch && customer.totalDebt === 0
@@ -156,19 +182,20 @@ export default function TickList() {
   // one hit, and the amount decides how much commission is released, so it has
   // to be the real figure rather than "all of it".
   const recordPaymentMutation = useMutation({
-    mutationFn: async ({ customerId, amount, method }: { customerId: string; amount: number; method: string }) => {
-      const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method })
+    mutationFn: async ({ customerId, amount, method, paidOn }: { customerId: string; amount: number; method: string; paidOn?: string }) => {
+      const response = await apiRequest('POST', `/api/tick-customers/${customerId}/payments`, { amount, method, paidOn })
       const body = await response.json()
       if (!response.ok) throw new Error(body?.message ?? 'Failed to record the payment')
-      return body as { amountApplied: number; remainingOwed: number }
+      return body as { amountApplied: number; remainingOwed: number; method: string; drawerShiftId: string | null }
     },
-    onSuccess: (result) => {
+    onSuccess: (result, vars) => {
       toast({
         title: 'Payment recorded',
         description:
-          result.remainingOwed > 0
+          (result.remainingOwed > 0
             ? `£${result.amountApplied.toFixed(2)} received. £${result.remainingOwed.toFixed(2)} still outstanding.`
-            : `£${result.amountApplied.toFixed(2)} received. The account is clear.`,
+            : `£${result.amountApplied.toFixed(2)} received. The account is clear.`) +
+          drawerNote(result.method, result.drawerShiftId, Boolean(vars.paidOn)),
       })
       queryClient.invalidateQueries({ queryKey: ['/api/tick-customers'] })
       setPayingCustomer(null)
@@ -182,7 +209,8 @@ export default function TickList() {
   const handleRecordPayment = (customer: TickCustomer) => {
     setPayingCustomer(customer)
     setPaymentAmount((customer.totalDebt || 0).toFixed(2))
-    setPaymentMethod('cash')
+    setPaymentMethod('')
+    setPaymentDate('')
   }
 
   const handleDeleteClick = (customer: TickCustomer) => {
@@ -206,19 +234,20 @@ export default function TickList() {
       return
     }
     
-    const headers = ['Customer', 'Email', 'Phone', 'Total Debt', 'Last Order', 'Status']
+    // No email or phone: the CSV leaves the premises, and contact details are
+    // not part of what is owed (PRV-02). The shared writer also stops a customer name
+    // like "=HYPERLINK(...)" running as a formula in a spreadsheet (FIX-14).
+    const headers = ['Customer', 'Total Debt', 'Last Order', 'Status']
     const rows = filteredCustomers.map(customer => [
       customer.name,
-      customer.email,
-      customer.phone,
       `£${(customer.totalDebt || 0).toFixed(2)}`,
-      customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A',
+      customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString("en-GB") : 'N/A',
       customer.totalDebt > 0 ? 'Pending' : 'Paid'
     ])
-    
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
-    
-    const blob = new Blob([csv], { type: 'text/csv' })
+
+    const csv = csvDocument(headers, rows)
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -253,6 +282,9 @@ export default function TickList() {
           question="Who's buying on credit, and what's outstanding?"
           explanation="Manage customer credit and outstanding payments."
         />
+        <div className="mb-4">
+          <PaymentReminderNote />
+        </div>
 
         {/* Summary Cards */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 mb-6">
@@ -311,7 +343,7 @@ export default function TickList() {
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-32" data-testid="select-filter-status">
+              <SelectTrigger className="min-h-[44px] w-full sm:w-32" data-testid="select-filter-status" aria-label="Status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -369,8 +401,8 @@ export default function TickList() {
                           </TableCell>
                           <TableCell>
                             <div className="text-sm">
-                              <div>{customer.email}</div>
-                              <div className="text-muted-foreground">{customer.phone}</div>
+                              <div>{customer.email || customer.emailMasked}</div>
+                              <div className="text-muted-foreground">{customer.phone || customer.phoneMasked}</div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -379,7 +411,7 @@ export default function TickList() {
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString() : 'N/A'}
+                              {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString("en-GB") : 'N/A'}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -390,7 +422,7 @@ export default function TickList() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -401,6 +433,7 @@ export default function TickList() {
                                 <CheckCircle className="h-4 w-4 mr-1" />
                                 Payment
                               </Button>
+                              <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} />
                               {canWriteOff && (
                               <Button
                                 size="sm"
@@ -409,7 +442,8 @@ export default function TickList() {
                                 onClick={() => handleDeleteClick(customer)}
                                 data-testid={`button-delete-${customer.id}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4 mr-1" aria-hidden />
+                                Remove
                               </Button>
                               )}
                             </div>
@@ -432,8 +466,8 @@ export default function TickList() {
                             onClick={() => setSelectedCustomer(customer)}
                           >
                             <p className="font-medium hover:underline hover:underline-offset-4">{customer.name}</p>
-                            <p className="text-sm text-muted-foreground">{customer.email}</p>
-                            <p className="text-sm text-muted-foreground">{customer.phone}</p>
+                            <p className="text-sm text-muted-foreground">{customer.email || customer.emailMasked}</p>
+                            <p className="text-sm text-muted-foreground">{customer.phone || customer.phoneMasked}</p>
                           </button>
                           <div className="text-right">
                             <p className="text-xl font-bold">£{(customer.totalDebt || 0).toFixed(2)}</p>
@@ -444,25 +478,30 @@ export default function TickList() {
                             )}
                           </div>
                         </div>
-                        <div className="flex gap-2 mt-3">
+                        {/* Wraps (v1.2.1 UI-02): three buttons side by side were
+                            530px wide on a 412px phone, and Remove sat off-screen
+                            where it could not be scrolled to. */}
+                        <div className="mt-3 flex flex-wrap gap-2" data-testid={`card-actions-${customer.id}`}>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="flex-1 min-h-[44px]"
+                            className="min-h-[44px] flex-1 basis-[7rem]"
                             onClick={() => handleRecordPayment(customer)}
                             disabled={customer.totalDebt === 0}
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
                             Payment
                           </Button>
+                          <PaymentReminderButton customerId={customer.id} disabled={customer.totalDebt === 0} className="min-h-[44px] flex-1 basis-[12rem]" />
                           {canWriteOff && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="min-h-[44px] text-destructive hover:text-destructive"
+                            className="min-h-[44px] flex-1 basis-[7rem] text-destructive hover:text-destructive"
                             onClick={() => handleDeleteClick(customer)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4 mr-1" aria-hidden />
+                            Remove
                           </Button>
                           )}
                         </div>
@@ -502,8 +541,13 @@ export default function TickList() {
               <div className="space-y-2">
                 <Label htmlFor="tick-payment-method">Paid by</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger id="tick-payment-method" className="min-h-[44px]" aria-label="Paid by">
-                    <SelectValue />
+                  <SelectTrigger
+                    id="tick-payment-method"
+                    className="min-h-[44px]"
+                    aria-label="Paid by"
+                    data-testid="select-tick-payment-method"
+                  >
+                    <SelectValue placeholder="Choose how they paid" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
@@ -514,7 +558,23 @@ export default function TickList() {
                 {/* It matters which: only the cash leg reaches the drawer, so
                     the Z-report cannot reconcile without knowing. */}
                 <p className="text-xs text-muted-foreground">
-                  Only cash payments go into the till drawer.
+                  Cash taken today goes into your open till&apos;s expected cash. Card and transfer do not.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tick-payment-date">Paid on</Label>
+                <Input
+                  id="tick-payment-date"
+                  type="date"
+                  value={paymentDate || localIsoDate()}
+                  min={shiftIsoDate(localIsoDate(), -BACKDATE_LIMIT_DAYS)}
+                  max={localIsoDate()}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="min-h-[44px]"
+                  data-testid="input-tick-payment-date"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Today unless the money arrived earlier — up to {BACKDATE_LIMIT_DAYS} days back.
                 </p>
               </div>
             </div>
@@ -522,15 +582,35 @@ export default function TickList() {
               <Button variant="outline" className="min-h-[44px]" onClick={() => setPayingCustomer(null)}>
                 Cancel
               </Button>
+              {/* Clears the whole balance shown, and is refused if it has
+                  changed since. Needs "Paid by" like any payment. */}
+              <Button
+                variant="outline"
+                className="min-h-[44px]"
+                disabled={markPaidMutation.isPending || !paymentMethod || !(payingCustomer?.totalDebt ?? 0)}
+                onClick={() =>
+                  payingCustomer &&
+                  markPaidMutation.mutate({
+                    customerId: payingCustomer.id,
+                    expectedBalance: payingCustomer.totalDebt,
+                    method: paymentMethod,
+                  })
+                }
+                data-testid="button-tick-clear-account"
+              >
+                Clear account
+              </Button>
               <Button
                 className="min-h-[44px]"
-                disabled={recordPaymentMutation.isPending || !(Number(paymentAmount) > 0)}
+                disabled={recordPaymentMutation.isPending || !paymentMethod || !(Number(paymentAmount) > 0)}
                 onClick={() =>
                   payingCustomer &&
                   recordPaymentMutation.mutate({
                     customerId: payingCustomer.id,
                     amount: Number(paymentAmount),
                     method: paymentMethod,
+                    // Only a real backdate is sent; today is left to the server's own trading day.
+                    paidOn: paymentDate && paymentDate !== localIsoDate() ? paymentDate : undefined,
                   })
                 }
                 data-testid="button-tick-record-payment"

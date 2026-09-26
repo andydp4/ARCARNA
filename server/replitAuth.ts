@@ -1,4 +1,5 @@
 import * as client from "openid-client";
+import { trustProxySetting } from "./lib/trustProxy";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
 import passport from "passport";
@@ -109,7 +110,7 @@ const getOrCreateStrategy = memoize(
 );
 
 export async function setupReplitAuth(app: Express) {
-  app.set("trust proxy", 1);
+  app.set("trust proxy", trustProxySetting());
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
@@ -198,6 +199,32 @@ export async function setupReplitAuth(app: Express) {
   });
 }
 
+type SessionAccess = {
+  claims?: { sub?: string };
+  role?: string;
+  orgId?: string | null;
+  isOwner?: boolean;
+  isAllowed?: boolean;
+};
+
+/**
+ * Re-reads the session user's role and organisation from allowed_users and
+ * writes them onto the session user. False when they no longer have access.
+ */
+export async function refreshSessionAccess(user: SessionAccess | undefined): Promise<boolean> {
+  const sub = user?.claims?.sub;
+  if (!user || !sub) return false;
+  const current = await storage.getUserRoleAndOrg(sub);
+  if (!current) {
+    user.isAllowed = false;
+    return false;
+  }
+  user.role = current.role;
+  user.orgId = current.orgId;
+  user.isOwner = current.role === "SUPER_ADMIN";
+  return true;
+}
+
 export const replitIsAuthenticated: RequestHandler = async (req, res, next) => {
   if (await tryPhase2dTestAuth(req, res, next)) return;
   if (await tryDevAuthBypass(req, res, next)) return;
@@ -217,6 +244,18 @@ export const replitIsAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(403).json({
       message: "Access pending approval",
       isPending: user.isPending,
+      code: "PENDING_APPROVAL",
+    });
+  }
+
+  // Role and organisation are read fresh on every request, as the Clerk path
+  // does (v1.2.1 SEC-REPLIT-STALE-ROLE): a copy taken at login kept a demoted
+  // or removed person's old access until their session ended.
+  const fresh = await refreshSessionAccess(req.user as SessionAccess);
+  if (!fresh) {
+    return res.status(403).json({
+      message: "Access pending approval",
+      isPending: true,
       code: "PENDING_APPROVAL",
     });
   }

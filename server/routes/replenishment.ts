@@ -16,9 +16,17 @@ import {
 import { REPLENISHMENT_ACTION_TYPES } from "@shared/schema";
 import { positiveQuantity } from "@shared/quantity";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 
 const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
 const mutateRoles = requireRole("SUPER_ADMIN", "ADMIN", "MANAGER");
+
+/**
+ * Reads are manager and above too: supplier, purchasing, receiving and
+ * transfer records all carry cost prices, which cashiers never see (owner
+ * decision Q6; shared/accessPolicy.ts).
+ */
+const readRoles = requireRole(...rolesAtLeast("MANAGER"));
 
 /**
  * Line quantities come from the shared contract, which bounds them to what the
@@ -78,7 +86,7 @@ const purchaseDraftBatchSchema = z.object({
 });
 
 export function registerReplenishmentRoutes(app: Express) {
-  app.get("/api/replenishment/recommendations", ...scoped, async (req: any, res) => {
+  app.get("/api/replenishment/recommendations", ...scoped, readRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const result = await getReplenishmentRecommendations(ctx.orgId, {

@@ -229,7 +229,7 @@ export function TransfersTab() {
             <div>
               <Label>From location</Label>
               <Select value={fromLocationId} onValueChange={setFromLocationId}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="From location">
                   <SelectValue placeholder="Select source" />
                 </SelectTrigger>
                 <SelectContent>
@@ -244,7 +244,7 @@ export function TransfersTab() {
             <div>
               <Label>To location</Label>
               <Select value={toLocationId} onValueChange={setToLocationId}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="To location">
                   <SelectValue placeholder="Select destination" />
                 </SelectTrigger>
                 <SelectContent>
@@ -268,7 +268,7 @@ export function TransfersTab() {
                       setLines(next);
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Product">
                       <SelectValue placeholder="Product" />
                     </SelectTrigger>
                     <SelectContent>
@@ -282,7 +282,7 @@ export function TransfersTab() {
                 </div>
                 <div>
                   <Label>Qty</Label>
-                  <Input
+                  <Input aria-label="Qty"
                     type="number"
                     min={1}
                     value={line.quantity}

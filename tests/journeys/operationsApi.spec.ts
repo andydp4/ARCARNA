@@ -11,7 +11,7 @@
  */
 import { expect } from "@playwright/test";
 import { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { opsAlerts } from "@shared/schema";
 import { db } from "../../server/db";
 import { ensureOpenShift, firstLocationId, okJson, placeOrder, uniqueSuffix } from "./fixtures";
@@ -99,6 +99,17 @@ test.describe("Order transitions — API journeys", () => {
 
   test("an illegal transition 409s and writes nothing (org fingerprint unchanged)", async ({ api, orgId }) => {
     const order = await orderInState(api, db, "on-time", { fulfilment: "collection" });
+    // The sale's own stock movement lands a few seconds later, from the
+    // inventory worker. Let it land first, or it is counted as a write by the
+    // refused transition.
+    await expect
+      .poll(
+        async () =>
+          (await db.execute(sql`SELECT 1 FROM inventory_movements WHERE correlation_id = ${order.id} LIMIT 1`)).rows
+            .length,
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThan(0);
 
     const before = await orgFingerprint(orgId);
     // "arrived" applies to collection orders; "out_for_delivery" does not.

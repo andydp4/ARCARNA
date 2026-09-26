@@ -73,6 +73,36 @@ async function getDefaultWebsiteOrderRuntime(): Promise<WebsiteOrderRuntime> {
         .set({ eta_given: etaGiven, original_eta: etaGiven })
         .where(eq(orders.id, orderId));
     },
+    async findShopAccountCustomer(tx, orgId, userId) {
+      const { shopAccountCustomerId } = await import("../services/customerView");
+      return shopAccountCustomerId(tx, orgId, userId);
+    },
+    async resolveWebsiteCustomer(tx, orgId, customer) {
+      const { resolveWebsiteCustomer } = await import("../services/customerView");
+      return resolveWebsiteCustomer(tx, orgId, customer);
+    },
+    async markPossibleDuplicate(tx, customerId, duplicateOf) {
+      const [{ customers }, { eq }] = await Promise.all([import("@shared/schema"), import("drizzle-orm")]);
+      await (tx as any).update(customers).set({ possibleDuplicateOf: duplicateOf }).where(eq(customers.id, customerId));
+    },
+    async linkShopAccount(tx, userId, customerId) {
+      const { linkShopAccount } = await import("../services/customerView");
+      await linkShopAccount(tx, userId, customerId);
+    },
+    async setOrderDelivery(tx, orderId, details) {
+      const [{ orders }, { eq }] = await Promise.all([
+        import(appsDbSchemaModulePath),
+        import(drizzleOrmModulePath),
+      ]);
+      await (tx as any)
+        .update(orders)
+        .set({
+          delivery_address: details.deliveryAddress,
+          delivery_postcode: details.deliveryPostcode,
+          delivery_notes: details.deliveryNotes,
+        })
+        .where(eq(orders.id, orderId));
+    },
     publishOrderCreated: (tx, eventType, correlationId, payload, options) =>
       publishEventTx(tx as never, eventType, correlationId, payload, options),
     async loadCreatedOrder(tx, orderId) {
@@ -242,7 +272,10 @@ export function createWebsitePublicHandlers(
         });
       }
       const runtime = orderRuntime ?? (await getDefaultWebsiteOrderRuntime());
-      const result = await activeService.submitPublicOrder(orgId, req.body ?? {}, runtime);
+      // A signed-in shop account's orders attach to its own customer record.
+      const user = (req as { user?: { id?: string; role?: string } }).user;
+      const shopAccountUserId = user?.role === "CUSTOMER" && user.id ? user.id : null;
+      const result = await activeService.submitPublicOrder(orgId, req.body ?? {}, runtime, { shopAccountUserId });
       res.status(201).json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {

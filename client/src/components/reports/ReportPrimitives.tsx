@@ -131,7 +131,8 @@ export function ReportTable<T>({
   return (
     <>
       {/* Desktop / tablet: the full table, still horizontally scrollable as a fallback. */}
-      <div className="hidden overflow-x-auto rounded-lg border md:block" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+      {/* Focusable so a keyboard user can scroll it sideways (UI-13). */}
+      <div tabIndex={0} className="hidden overflow-x-auto rounded-lg border md:block" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr style={{ backgroundColor: REPORT_COLORS.truthBlueDark }}>

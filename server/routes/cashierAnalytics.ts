@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { db } from "../db";
 import {
+  allowedUsers,
   cashierProfiles,
   cashierShifts,
   cashierShiftSummaries,
@@ -8,186 +9,181 @@ import {
   orders,
   users,
 } from "../../shared/schema";
-import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { requireRole } from "../auth";
+import { recordAdminAudit } from "../adminAudit";
+import { EXPORT_MIN_ROLE, rolesAtLeast } from "@shared/accessPolicy";
+import { csvDocument } from "@shared/csv";
+import { isRole, type Role } from "@shared/rbac";
+import { currentTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
+import {
+  buildPayrollMetrics,
+  canSeePayRow,
+  personKey,
+  type PayrollPerson,
+} from "@shared/reports/payroll";
+import { orgTimeZone } from "../services/tradingDayShift";
+import { shiftsInRange, tradingDayRange } from "../services/payrollRange";
 
 const VIEW_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"] as const;
+// Exports are admin only and every one is logged (Q12).
+const exportRoles = requireRole(...rolesAtLeast(EXPORT_MIN_ROLE));
 
-function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function parseRange(req: { query: Record<string, unknown> }): { from: Date; to: Date } {
-  const now = new Date();
-  const to = req.query.to ? new Date(String(req.query.to)) : now;
-  const from = req.query.from
-    ? new Date(String(req.query.from))
-    : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return { from, to };
+/**
+ * Name and role for every row key. A person is named from their org login
+ * (allowed_users), then their user record; a code-only row from its code. No
+ * email fallback — pay rows are not a contact list.
+ */
+async function loadPeople(orgId: string, keys: string[]): Promise<Map<string, PayrollPerson>> {
+  const people = new Map<string, PayrollPerson>();
+  const userIds = keys.filter((k) => !k.startsWith("code:"));
+  const codeIds = keys.filter((k) => k.startsWith("code:")).map((k) => k.slice(5));
+  if (userIds.length) {
+    const [logins, userRows] = await Promise.all([
+      db
+        .select({
+          authUserId: allowedUsers.authUserId,
+          replitUserId: allowedUsers.replitUserId,
+          name: allowedUsers.name,
+          role: allowedUsers.role,
+          orgId: allowedUsers.orgId,
+        })
+        .from(allowedUsers)
+        .where(
+          and(
+            or(inArray(allowedUsers.authUserId, userIds), inArray(allowedUsers.replitUserId, userIds)),
+            or(eq(allowedUsers.orgId, orgId), isNull(allowedUsers.orgId)),
+          ),
+        ),
+      db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, role: users.role })
+        .from(users)
+        .where(inArray(users.id, userIds)),
+    ]);
+    const loginBySubject = new Map<string, (typeof logins)[number]>();
+    for (const l of logins) {
+      if (l.authUserId) loginBySubject.set(l.authUserId, l);
+      loginBySubject.set(l.replitUserId, l);
+    }
+    const userById = new Map(userRows.map((u) => [u.id, u]));
+    for (const id of userIds) {
+      const login = loginBySubject.get(id);
+      const user = userById.get(id);
+      const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
+      const rawRole = String(login?.role ?? user?.role ?? "");
+      people.set(id, {
+        key: id,
+        name: login?.name?.trim() || fullName || "Unnamed",
+        role: isRole(rawRole) ? (rawRole as Role) : null,
+      });
+    }
+  }
+  if (codeIds.length) {
+    const codes = await db
+      .select({ id: cashierProfiles.id, code: cashierProfiles.cashierCode, name: cashierProfiles.displayName })
+      .from(cashierProfiles)
+      .where(and(eq(cashierProfiles.orgId, orgId), inArray(cashierProfiles.id, codeIds)));
+    for (const c of codes) {
+      people.set(`code:${c.id}`, { key: `code:${c.id}`, name: `${c.name} (code ${c.code})`, role: null });
+    }
+  }
+  return people;
 }
 
 export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHandler[]): void {
+  /**
+   * The Payroll table, one row per person (STF-FN3). Every figure in a row
+   * uses the same trading days: shifts by their trading day, their summaries
+   * and payments through the shift, and orders by who completed them, settled
+   * inside those days. Rows are limited to whose pay the viewer may see
+   * (canSeePayRow: Q12, Q13a).
+   */
   app.get("/api/cashier-analytics", ...scoped, requireRole(...VIEW_ROLES), async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
-      const { from, to } = parseRange(req);
-      const cashierId = req.query.cashierId as string | undefined;
+      const ctx = req.orgContext as { orgId: string; role: string };
+      const timeZone = await orgTimeZone(ctx.orgId);
+      const range = tradingDayRange(req.query, timeZone);
+      const staffId = typeof req.query.staffId === "string" && req.query.staffId ? req.query.staffId : null;
 
-      const cashiers = await db
-        .select()
-        .from(cashierProfiles)
-        .where(and(eq(cashierProfiles.orgId, ctx.orgId), ...(cashierId ? [eq(cashierProfiles.id, cashierId)] : [])));
+      const shifts = await shiftsInRange(ctx.orgId, range);
+      const shiftIds = shifts.map((s) => s.id);
 
-      const summaryConditions = [
-        eq(cashierShiftSummaries.orgId, ctx.orgId),
-        gte(cashierShiftSummaries.closedAt, from),
-        lte(cashierShiftSummaries.closedAt, to),
-        ...(cashierId ? [eq(cashierShiftSummaries.cashierId, cashierId)] : []),
-      ];
-      const summaries = await db.select().from(cashierShiftSummaries).where(and(...summaryConditions));
-
-      const shiftConditions = [
-        eq(cashierShifts.orgId, ctx.orgId),
-        gte(cashierShifts.openedAt, from),
-        lte(cashierShifts.openedAt, to),
-        ...(cashierId ? [eq(cashierShifts.cashierId, cashierId)] : []),
-      ];
-      const shifts = await db.select().from(cashierShifts).where(and(...shiftConditions));
-
-      const paymentConditions = [
-        eq(cashierCommissionPayments.orgId, ctx.orgId),
-        gte(cashierCommissionPayments.paidAt, from),
-        lte(cashierCommissionPayments.paidAt, to),
-        ...(cashierId ? [eq(cashierCommissionPayments.cashierId, cashierId)] : []),
-      ];
-      const payments = await db.select().from(cashierCommissionPayments).where(and(...paymentConditions));
-
-      // Order count / average order value / sales-per-hour: a completed-work
-      // measure, so only orders this cashier actually finished count — an
-      // order still open (pending/on-hold/awaiting-customer/urgent) is not
-      // yet a completed sale and may never become one. personal_use is
-      // excluded too, same as `buildCashierShiftBalanceSheet`'s salesOrders
-      // filter: stock leaving as a write-off is not a sale either, wherever
-      // its status ends up.
-      const orderAgg = await db
-        .select({
-          cashierId: orders.cashierId,
-          orderCount: sql<number>`COUNT(*)`,
-          totalSales: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`,
-        })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.orgId, ctx.orgId),
-            eq(orders.status, "completed"),
-            ne(orders.paymentMethod, "personal_use"),
-            gte(orders.createdAt, from),
-            lte(orders.createdAt, to),
-            sql`${orders.cashierId} IS NOT NULL`,
-            ...(cashierId ? [eq(orders.cashierId, cashierId)] : []),
+      const [summaries, payments, orderAgg] = await Promise.all([
+        shiftIds.length
+          ? db
+              .select()
+              .from(cashierShiftSummaries)
+              .where(and(eq(cashierShiftSummaries.orgId, ctx.orgId), inArray(cashierShiftSummaries.shiftId, shiftIds)))
+          : Promise.resolve([]),
+        db
+          .select()
+          .from(cashierCommissionPayments)
+          .where(
+            and(
+              eq(cashierCommissionPayments.orgId, ctx.orgId),
+              or(
+                ...(shiftIds.length ? [inArray(cashierCommissionPayments.shiftId, shiftIds)] : []),
+                and(
+                  isNull(cashierCommissionPayments.shiftId),
+                  gte(cashierCommissionPayments.paidAt, range.start),
+                  lt(cashierCommissionPayments.paidAt, range.end),
+                ),
+              ),
+            ),
           ),
-        )
-        .groupBy(orders.cashierId);
+        // A completed-work measure: only orders this person finished and that
+        // settled in the window. Personal use is stock leaving as a write-off,
+        // not a sale, so it is left out wherever its status ends up.
+        db
+          .select({
+            userId: orders.completedUserId,
+            orderCount: sql<number>`COUNT(*)::int`,
+            sales: sql<number>`COALESCE(SUM(COALESCE(${orders.settledTotal}, ${orders.total})::numeric), 0)::float8`,
+          })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.orgId, ctx.orgId),
+              eq(orders.status, "completed"),
+              ne(orders.paymentMethod, "personal_use"),
+              isNotNull(orders.completedUserId),
+              gte(orders.settledAt, range.start),
+              lt(orders.settledAt, range.end),
+            ),
+          )
+          .groupBy(orders.completedUserId),
+      ]);
 
-      const summaryByCashier = new Map<string, typeof summaries>();
-      for (const s of summaries) {
-        // Summaries for a shift with no cashier code belong to a user instead
-        // (migration 057); they are reported per user, not forced into a code
-        // bucket that does not exist.
-        if (!s.cashierId) continue;
-        const list = summaryByCashier.get(s.cashierId) ?? [];
-        list.push(s);
-        summaryByCashier.set(s.cashierId, list);
+      const keys = new Set<string>();
+      for (const r of [...shifts, ...summaries, ...payments]) {
+        const k = personKey(r.userId, r.cashierId);
+        if (k) keys.add(k);
       }
-      const shiftsByCashier = new Map<string, typeof shifts>();
-      for (const s of shifts) {
-        // A shift can belong to a user with no cashier code (migration 057).
-        // Those are grouped by user in the per-user payroll rather than being
-        // forced into a code bucket that does not exist.
-        if (!s.cashierId) continue;
-        const list = shiftsByCashier.get(s.cashierId) ?? [];
-        list.push(s);
-        shiftsByCashier.set(s.cashierId, list);
-      }
-      const paidByCashier = new Map<string, number>();
-      for (const p of payments) {
-        // A payment against a codeless shift (ARC-004) has no cashier code
-        // either — same reasoning as the two loops above: it is reported by
-        // user, not forced into a code bucket that does not exist.
-        if (!p.cashierId) continue;
-        paidByCashier.set(p.cashierId, (paidByCashier.get(p.cashierId) ?? 0) + parseFloat(String(p.amountPaid)));
-      }
-      const orderAggByCashier = new Map(orderAgg.map((o) => [o.cashierId as string, o]));
+      for (const o of orderAgg) if (o.userId) keys.add(o.userId);
+      const people = await loadPeople(ctx.orgId, [...keys]);
 
-      const metrics = cashiers.map((cashier) => {
-        const cashierSummaries = summaryByCashier.get(cashier.id) ?? [];
-        const cashierShiftsList = shiftsByCashier.get(cashier.id) ?? [];
-        const orderStats = orderAggByCashier.get(cashier.id);
-
-        const totalSales = roundMoney(cashierSummaries.reduce((s, r) => s + parseFloat(String(r.grossSales)), 0));
-        const paidSalesReceived = roundMoney(
-          cashierSummaries.reduce((s, r) => s + parseFloat(String(r.grossSales)) - parseFloat(String(r.unpaidCreditSales)), 0),
-        );
-        const creditSales = roundMoney(cashierSummaries.reduce((s, r) => s + parseFloat(String(r.creditSales)), 0));
-        const netSalesProfit = roundMoney(cashierSummaries.reduce((s, r) => s + parseFloat(String(r.netSalesProfit)), 0));
-        const commissionEarned = roundMoney(cashierSummaries.reduce((s, r) => s + parseFloat(String(r.commissionAmount)), 0));
-        const commissionPaid = roundMoney(paidByCashier.get(cashier.id) ?? 0);
-        const commissionUnpaid = roundMoney(Math.max(0, commissionEarned - commissionPaid));
-
-        const shiftDurationMs = cashierShiftsList.reduce((s, sh) => {
-          const end = sh.closedAt ? new Date(sh.closedAt).getTime() : Date.now();
-          const start = sh.openedAt ? new Date(sh.openedAt).getTime() : end;
-          return s + Math.max(0, end - start);
-        }, 0);
-        const shiftHours = shiftDurationMs / (1000 * 60 * 60);
-
-        const orderCount = Number(orderStats?.orderCount ?? 0);
-        const orderTotalSales = Number(orderStats?.totalSales ?? 0);
-
-        return {
-          cashierId: cashier.id,
-          cashierCode: cashier.cashierCode,
-          cashierName: cashier.displayName,
-          isActive: cashier.isActive,
-          totalSales,
-          paidSalesReceived,
-          creditSales,
-          netSalesProfit,
-          commissionEarned,
-          commissionPaid,
-          commissionUnpaid,
-          shiftCount: cashierShiftsList.length,
-          shiftDurationHours: roundMoney(shiftHours),
-          salesPerHour: shiftHours > 0 ? roundMoney(orderTotalSales / shiftHours) : 0,
-          profitPerHour: shiftHours > 0 ? roundMoney(netSalesProfit / shiftHours) : 0,
-          orderCount,
-          averageOrderValue: orderCount > 0 ? roundMoney(orderTotalSales / orderCount) : 0,
-        };
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role };
+      const all = buildPayrollMetrics({
+        people,
+        shifts,
+        summaries,
+        payments,
+        orders: orderAgg.filter((o): o is typeof o & { userId: string } => !!o.userId),
       });
-
-      const top = (key: keyof (typeof metrics)[number], limit = 5) =>
-        [...metrics].sort((a, b) => Number(b[key]) - Number(a[key])).slice(0, limit);
-
-      const shiftStatusCounts = {
-        open: shifts.filter((s) => s.status === "open").length,
-        closed: shifts.filter((s) => s.status === "closed").length,
-        autoClosed: shifts.filter((s) => s.status === "auto_closed").length,
-        manualClosed: shifts.filter((s) => s.status === "closed" && s.closeReason === "manual").length,
-        shiftsWithUnpaidCommission: metrics.filter((m) => m.commissionUnpaid > 0).length,
-      };
+      const metrics = all.filter((m) => canSeePayRow(viewer, m) && (!staffId || m.key === staffId));
+      const visible = new Set(metrics.map((m) => m.key));
+      const visibleShifts = shifts.filter((s) => visible.has(personKey(s.userId, s.cashierId) ?? ""));
 
       res.json({
-        range: { from: from.toISOString(), to: to.toISOString() },
+        range: { from: range.fromIso, to: range.toIso },
         metrics,
-        leaderboards: {
-          topSales: top("totalSales"),
-          topNetProfit: top("netSalesProfit"),
-          topCommission: top("commissionEarned"),
-          longestShifts: top("shiftDurationHours"),
-          bestSalesPerHour: top("salesPerHour"),
-          mostOrders: top("orderCount"),
+        shiftStatus: {
+          open: visibleShifts.filter((s) => s.status === "open").length,
+          closed: visibleShifts.filter((s) => s.status === "closed").length,
+          autoClosed: visibleShifts.filter((s) => s.status === "auto_closed").length,
+          manualClosed: visibleShifts.filter((s) => s.status === "closed" && s.closeReason === "manual").length,
+          shiftsWithUnpaidCommission: metrics.filter((m) => m.commissionUnpaid > 0).length,
         },
-        shiftStatus: shiftStatusCounts,
       });
     } catch (error) {
       console.error("[CashierAnalytics] summary:", error);
@@ -195,34 +191,26 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
     }
   });
 
-  app.get("/api/cashier-analytics/export.csv", ...scoped, requireRole(...VIEW_ROLES), async (req: any, res) => {
+  app.get("/api/cashier-analytics/export.csv", ...scoped, exportRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
-      const { from, to } = parseRange(req);
-      // LEFT joins for the same reason /api/cashier-commission uses them: a
+      const ctx = req.orgContext as { orgId: string; role: string };
+      // The same trading days and the same shifts as the Payroll table, so the
+      // export's total matches the screen it was exported from (the whole `to`
+      // day included, not only up to its midnight).
+      const range = tradingDayRange(req.query, await orgTimeZone(ctx.orgId));
+      const shiftIds = (await shiftsInRange(ctx.orgId, range)).map((s) => s.id);
+      // LEFT join for the same reason /api/cashier-commission uses one: a
       // shift opened on first sale has no cashier code, and an inner join on
       // that null would drop every shift taken since L2 out of the export —
       // quietly, leaving a CSV that looks complete and is not.
-      const summaries = await db
-        .select({
-          summary: cashierShiftSummaries,
-          cashierCode: cashierProfiles.cashierCode,
-          cashierDisplayName: cashierProfiles.displayName,
-          userFirstName: users.firstName,
-          userLastName: users.lastName,
-          userEmail: users.email,
-        })
-        .from(cashierShiftSummaries)
-        .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
-        .leftJoin(users, eq(cashierShiftSummaries.userId, users.id))
-        .where(
-          and(
-            eq(cashierShiftSummaries.orgId, ctx.orgId),
-            gte(cashierShiftSummaries.closedAt, from),
-            lte(cashierShiftSummaries.closedAt, to),
-          ),
-        )
-        .orderBy(cashierShiftSummaries.closedAt);
+      const summaries = shiftIds.length
+        ? await db
+            .select({ summary: cashierShiftSummaries, cashierCode: cashierProfiles.cashierCode })
+            .from(cashierShiftSummaries)
+            .leftJoin(cashierProfiles, eq(cashierShiftSummaries.cashierId, cashierProfiles.id))
+            .where(and(eq(cashierShiftSummaries.orgId, ctx.orgId), inArray(cashierShiftSummaries.shiftId, shiftIds)))
+            .orderBy(cashierShiftSummaries.closedAt)
+        : [];
 
       const header = [
         "cashierCode",
@@ -234,26 +222,39 @@ export function registerCashierAnalyticsRoutes(app: Express, scoped: RequestHand
         "commissionAmount",
         "businessRetainedProfit",
       ];
-      const rows = summaries.map((row) =>
+      // Names and roles resolved the same way as the table, and the same rule
+      // applied: an admin exports cashiers' pay and their own, never managers'
+      // (Q13a).
+      const keyOf = (row: (typeof summaries)[number]) => personKey(row.summary.userId, row.summary.cashierId) ?? "";
+      const people = await loadPeople(ctx.orgId, [...new Set(summaries.map(keyOf).filter(Boolean))]);
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role };
+      const visible = summaries.filter((row) => {
+        const key = keyOf(row);
+        return canSeePayRow(viewer, { key, role: people.get(key)?.role ?? null });
+      });
+      const rows = visible.map((row) =>
         [
           row.cashierCode ?? "",
-          row.cashierDisplayName ||
-            [row.userFirstName, row.userLastName].filter(Boolean).join(" ").trim() ||
-            row.userEmail ||
-            "Unknown",
+          people.get(keyOf(row))?.name ?? "Unknown",
           row.summary.closedAt?.toISOString() ?? "",
           row.summary.grossSales,
           row.summary.netSalesProfit,
           row.summary.commissionRate,
           row.summary.commissionAmount,
           row.summary.businessRetainedProfit,
-        ]
-          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-          .join(","),
+        ],
       );
-      const csv = [header.join(","), ...rows].join("\n");
+      await recordAdminAudit(req, {
+        actorUserId: req.user?.id ?? "unknown",
+        actorRole: ctx.role,
+        action: "export.payroll",
+        targetType: "payroll",
+        orgId: ctx.orgId,
+        metadata: { from: range.fromIso, to: range.toIso, rows: rows.length },
+      });
+      const csv = csvDocument(header, rows);
 
-      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", 'attachment; filename="cashier-payroll-export.csv"');
       res.send(csv);
     } catch (error) {

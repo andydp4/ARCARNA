@@ -13,6 +13,7 @@
  * rarer controls (split tender, expenses, gift card) keep their selects; they
  * sit in normal page flow where a select behaves.
  */
+import { PosDeliveryDetails, type PosDeliveryState } from "@/components/pos-delivery-details";
 import {
   ArrowLeft,
   Clock3,
@@ -22,6 +23,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  QrCode,
   Receipt,
   ShoppingBag,
   Smartphone,
@@ -38,6 +40,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ActionLoader } from "@/components/action-loader";
+import { CustomerCreditNotice } from "@/components/customer-credit-notice";
 import { GiftCardPayment, type GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import {
   BACKDATE_LIMIT_DAYS,
@@ -75,6 +78,9 @@ export const PAYMENT_OPTIONS = [
   { value: "gift_card", label: "Gift card", Icon: Ticket },
   { value: "personal_use", label: "Personal use", Icon: UserRound },
 ] as const;
+
+/** Card (link): a Stripe link the customer pays on their own phone. Offered only once Stripe is set up. */
+const CARD_LINK_OPTION = { value: "card_link", label: "Card (link)", Icon: QrCode } as const;
 
 /**
  * What this step's final action actually does, by payment method — cash,
@@ -115,6 +121,15 @@ export type PosCheckoutStepProps = {
   setOrderDate: (v: string) => void;
   fulfilmentMethod: "collection" | "delivery";
   setFulfilmentMethod: (v: "collection" | "delivery") => void;
+  /** The delivery fee control (v1.2.1), shown with the delivery address. */
+  deliveryFeeSlot?: React.ReactNode;
+  /** The fee inside `total`, shown under it; 0 when none. */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
+  /** Where a delivery goes (v1.2 Phase 5): asked for whenever Delivery is chosen. */
+  delivery: PosDeliveryState;
+  setDelivery: (v: PosDeliveryState) => void;
+  customerId: string | null;
 
   giftCardPayment: GiftCardPaymentState | null;
   setGiftCardPayment: (v: GiftCardPaymentState | null) => void;
@@ -155,6 +170,13 @@ export type PosCheckoutStepProps = {
   submitting: boolean;
   onBack: () => void;
   onConfirm: () => void;
+
+  /** The price guard's inline panel (v1.2 Phase 4), shown first when a line is below the lowest price. */
+  priceGuardPanel?: React.ReactNode;
+  /** Replaces the confirm button's label ("Confirm and take payment"). */
+  confirmLabel?: string;
+  /** Stripe is set up, so "Card (link)" is offered (v1.2 Stripe links). */
+  cardLinkEnabled?: boolean;
 };
 
 export function PosCheckoutStep(p: PosCheckoutStepProps) {
@@ -192,6 +214,8 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-2xl space-y-5">
+          <CustomerCreditNotice customerId={p.customerId} disabled={p.submitting} />
+          {p.priceGuardPanel}
           <section>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-medium text-metal-warm-white" id="payment-method-label">
@@ -230,6 +254,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
                         <SelectItem value="card">Card</SelectItem>
+                        {p.cardLinkEnabled && <SelectItem value="card_link">Card (link)</SelectItem>}
                         <SelectItem value="transfer">Transfer</SelectItem>
                         <SelectItem value="tick">On credit</SelectItem>
                       </SelectContent>
@@ -250,12 +275,13 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        className="h-11 w-11"
+                        size="sm"
+                        className="h-11 gap-1 text-destructive hover:text-destructive"
                         aria-label={`Remove payment ${index + 1}`}
                         onClick={() => p.setTenderLegs((legs) => legs.filter((_, i) => i !== index))}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                        Remove
                       </Button>
                     )}
                   </div>
@@ -286,7 +312,10 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="payment-method-label" data-testid="select-payment">
-                {PAYMENT_OPTIONS.map(({ value, label, Icon }) => (
+                {(p.cardLinkEnabled
+                  ? [PAYMENT_OPTIONS[0], PAYMENT_OPTIONS[1], CARD_LINK_OPTION, ...PAYMENT_OPTIONS.slice(2)]
+                  : PAYMENT_OPTIONS
+                ).map(({ value, label, Icon }) => (
                   <button
                     key={value}
                     type="button"
@@ -356,6 +385,13 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 ))}
               </div>
             </div>
+
+            {p.fulfilmentMethod === "delivery" && (
+              <div className="sm:col-span-2">
+                <PosDeliveryDetails value={p.delivery} onChange={p.setDelivery} customerId={p.customerId} />
+                {p.deliveryFeeSlot ? <div className="mt-3">{p.deliveryFeeSlot}</div> : null}
+              </div>
+            )}
 
             <div>
               <label className="mb-2 block text-sm font-medium text-metal-warm-white" htmlFor="order-date">
@@ -497,7 +533,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             <div className="space-y-3 px-4 pb-4">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Select value={p.expenseCategory} onValueChange={p.setExpenseCategory}>
-                  <SelectTrigger className="min-h-[44px] w-full sm:w-[130px]" data-testid="select-expense-category">
+                  <SelectTrigger className="min-h-[44px] w-full sm:w-[130px]" data-testid="select-expense-category" aria-label="Expense category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -530,11 +566,12 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                     size="sm"
                     onClick={p.onAddExpense}
                     variant="outline"
-                    className="lm-btn-outline min-h-[44px] min-w-[44px]"
+                    className="lm-btn-outline min-h-[44px] min-w-[44px] gap-1"
                     aria-label="Add expense"
                     data-testid="button-add-order-expense"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add
                   </Button>
                 </div>
               </div>
@@ -549,14 +586,15 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                         <span className="font-medium">£{expense.amount.toFixed(2)}</span>
                         <Button
                           type="button"
-                          size="icon"
+                          size="sm"
                           variant="ghost"
                           onClick={() => p.onRemoveExpense(index)}
-                          className="h-9 w-9"
+                          className="h-9 gap-1 text-destructive hover:text-destructive"
                           aria-label={`Remove expense ${expense.description}`}
                           data-testid={`button-remove-expense-${index}`}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          Remove
                         </Button>
                       </div>
                     </div>
@@ -606,12 +644,17 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
             <div className="text-2xl font-bold tabular-nums text-metal-warm-white" data-testid="checkout-total">
               £{p.total.toFixed(2)}
             </div>
+            {(p.deliveryFee ?? 0) > 0 && (
+              <div className="truncate text-xs text-metal-muted" data-testid="checkout-delivery-fee">
+                incl. {(p.deliveryFeeName ?? "Delivery fee").toLowerCase()} £{(p.deliveryFee ?? 0).toFixed(2)}
+              </div>
+            )}
           </div>
           <Button
             type="button"
             onClick={p.onConfirm}
             disabled={p.itemCount === 0 || p.submitting}
-            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : confirmActionLabel(p.paymentMethod)}
+            aria-label={p.itemCount === 0 ? "Payment disabled – add items first" : p.confirmLabel ?? confirmActionLabel(p.paymentMethod)}
             data-testid="button-confirm-payment"
             className="lm-btn-metal min-h-[52px] shrink-0 gap-2 px-5 text-base font-semibold"
             size="lg"
@@ -622,7 +665,7 @@ export function PosCheckoutStep(p: PosCheckoutStepProps) {
                 Processing…
               </>
             ) : (
-              confirmActionLabel(p.paymentMethod)
+              p.confirmLabel ?? confirmActionLabel(p.paymentMethod)
             )}
           </Button>
         </div>

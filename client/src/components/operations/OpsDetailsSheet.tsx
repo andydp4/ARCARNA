@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Check, Copy, Download, Phone, RotateCcw, X } from "lucide-react";
+import { Check, Copy, Download, RotateCcw, X } from "lucide-react";
 import { apiFetch } from "@/lib/appPaths";
 import { useToast } from "@/hooks/use-toast";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -25,6 +25,12 @@ import { formatTimeOfDay } from "@/lib/opsClock";
 import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsTimeline } from "./OpsTimeline";
 import { OpsRateChips } from "./OpsRateChips";
+import { OpsCustomerCall } from "./OpsCustomerCall";
+import { InlinePrintLabel } from "@/components/labels/PrintLabelButton";
+import { orderDueText, orderLabelInput } from "@/lib/labels/labelRequests";
+import { deriveCardState } from "@shared/orders/opsState";
+import { isAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 
 /**
  * Everything about one order that does not belong on its card.
@@ -55,6 +61,10 @@ interface OrderDetail {
   status: string;
   createdAt: string;
   refundedTotal?: number;
+  /** The delivery fee on top of the lines (v1.2.1); 0 when none. */
+  deliveryFee?: number;
+  /** The org's name for it, as on the receipt. */
+  deliveryFeeName?: string;
   refunds?: Array<{
     id: string;
     total: string;
@@ -73,18 +83,14 @@ interface OrderDetail {
   }>;
 }
 
-interface CustomerRow {
-  id: string;
-  name?: string | null;
-  phone?: string | null;
-}
-
 export interface OpsDetailsSheetProps {
   order: BoardOrder | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   settings: OpsTimingSettings;
   role?: string;
+  /** Who is looking: the driver's call is theirs only when the delivery is assigned to them (Q8a). */
+  currentUserId?: string | null;
   statusPending?: boolean;
   /** Held while the board is stale — the same rule the cards follow. */
   blockedReason?: string | null;
@@ -154,6 +160,7 @@ function OpsDetailsBody({
   order,
   settings,
   role,
+  currentUserId,
   statusPending,
   blockedReason,
   onStatusChange,
@@ -164,6 +171,7 @@ function OpsDetailsBody({
   const [copied, setCopied] = useState<string>("");
   const [downloading, setDownloading] = useState<"receipt" | "invoice" | null>(null);
   const canEditOrDelete = role !== "CASHIER";
+  const canSeeInvoices = isAtLeast(role, CREDIT_MIN_ROLE);
 
   const { data: detail, isLoading } = useQuery<OrderDetail>({
     queryKey: ["/api/orders", order.id],
@@ -173,15 +181,6 @@ function OpsDetailsBody({
       return response.json();
     },
   });
-
-  // The list projection carries no phone number and the detail endpoint does
-  // not join the customer's contact details, so the number comes from the
-  // customers query every other screen already keeps warm.
-  const { data: customers } = useQuery<CustomerRow[]>({
-    queryKey: ["/api/customers"],
-    enabled: Boolean(order.customerId),
-  });
-  const phone = customers?.find((customer) => customer.id === order.customerId)?.phone ?? null;
 
   const copy = async (value: string, label: string) => {
     try {
@@ -195,15 +194,34 @@ function OpsDetailsBody({
 
   /**
    * The receipt has its own order route; the invoice endpoint accepts an order
-   * id and synthesises the document when the async invoice worker has not
-   * written a record yet — so both are always reachable from an order.
+   * id. A tab sale always has an invoice. A plain till sale has a receipt, and
+   * gets an invoice only when the customer asks (v1.2 Phase 1C): the first
+   * press asks to confirm, then issues the next invoice number.
    */
   const download = async (kind: "receipt" | "invoice") => {
     setDownloading(kind);
     try {
       const path =
         kind === "receipt" ? `/api/orders/${order.id}/receipt.pdf` : `/api/invoices/${order.id}/pdf`;
-      const response = await apiFetch(path, { credentials: "include" });
+      let response = await apiFetch(path, { credentials: "include" });
+      if (kind === "invoice" && response.status === 404) {
+        const body = await response.clone().json().catch(() => null);
+        if (body?.code === "INVOICE_NOT_ISSUED") {
+          if (!window.confirm("This sale has a receipt. Issue a numbered invoice because the customer asked for one?")) {
+            return;
+          }
+          const issued = await apiFetch(`/api/invoices/for-order/${order.id}`, {
+            method: "POST",
+            credentials: "include",
+          });
+          if (!issued.ok) {
+            const reason = await issued.json().catch(() => null);
+            throw new Error(reason?.message ?? `${issued.status}`);
+          }
+          const invoice = (await issued.json()) as { id: string };
+          response = await apiFetch(`/api/invoices/${invoice.id}/pdf`, { credentials: "include" });
+        }
+      }
       if (!response.ok) {
         let reason = `${response.status}`;
         try {
@@ -241,14 +259,7 @@ function OpsDetailsBody({
             <p className="text-lg font-semibold text-foreground">
               {order.customerName ?? "Walk-in"}
             </p>
-            {phone && (
-              <Button asChild variant="outline" size="touch" data-testid="button-call-customer">
-                <a href={`tel:${phone}`}>
-                  <Phone className="h-4 w-4" aria-hidden />
-                  {phone}
-                </a>
-              </Button>
-            )}
+            <OpsCustomerCall key={order.id} order={order} role={role} currentUserId={currentUserId} />
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>
@@ -287,21 +298,6 @@ function OpsDetailsBody({
             )}
             Copy order number
           </Button>
-          {phone && (
-            <Button
-              size="touch"
-              variant="outline"
-              onClick={() => copy(phone, "Phone number")}
-              data-testid="button-copy-phone"
-            >
-              {copied === "Phone number" ? (
-                <Check className="h-4 w-4" aria-hidden />
-              ) : (
-                <Copy className="h-4 w-4" aria-hidden />
-              )}
-              Copy phone
-            </Button>
-          )}
         </div>
       </div>
 
@@ -351,6 +347,14 @@ function OpsDetailsBody({
                 </span>
               </li>
             ))}
+            {(detail?.deliveryFee ?? 0) > 0 && (
+              <li className="flex items-center justify-between gap-3 px-3 py-2" data-testid="ops-details-delivery-fee">
+                <span className="font-medium text-foreground">{detail?.deliveryFeeName ?? "Delivery fee"}</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  £{(detail?.deliveryFee ?? 0).toFixed(2)}
+                </span>
+              </li>
+            )}
             {!isLoading && (detail?.items?.length ?? 0) === 0 && (
               <li className="px-3 py-3 text-sm text-muted-foreground">No lines on this order.</li>
             )}
@@ -373,7 +377,7 @@ function OpsDetailsBody({
                   </span>
                 </div>
                 <p className="mt-0.5 text-muted-foreground">
-                  {refund.cashierName ?? "Staff"} · {new Date(refund.createdAt).toLocaleString()}
+                  {refund.cashierName ?? "Staff"} · {new Date(refund.createdAt).toLocaleString("en-GB")}
                 </p>
               </li>
             ))}
@@ -392,16 +396,20 @@ function OpsDetailsBody({
           <Download className="h-4 w-4" aria-hidden />
           {downloading === "receipt" ? "Preparing…" : "Receipt"}
         </Button>
-        <Button
-          size="touch"
-          variant="outline"
-          disabled={downloading !== null}
-          onClick={() => download("invoice")}
-          data-testid="button-download-invoice"
-        >
-          <Download className="h-4 w-4" aria-hidden />
-          {downloading === "invoice" ? "Preparing…" : "Invoice"}
-        </Button>
+        {/* Invoices are manager and above (owner decision Q11); the receipt
+            is what a cashier hands over. */}
+        {canSeeInvoices && (
+          <Button
+            size="touch"
+            variant="outline"
+            disabled={downloading !== null}
+            onClick={() => download("invoice")}
+            data-testid="button-download-invoice"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            {downloading === "invoice" ? "Preparing…" : "Invoice"}
+          </Button>
+        )}
         <Button asChild size="touch" variant="outline" data-testid="button-refund-order">
           <Link href={`/open-orders/${order.id}/refund`}>
             <RotateCcw className="h-4 w-4" aria-hidden />
@@ -430,6 +438,18 @@ function OpsDetailsBody({
           </>
         )}
       </div>
+
+      {/* Name only on the label, never the phone the board carries (Niimbot brief). */}
+      <InlinePrintLabel
+        request={{
+          kind: "order",
+          input: orderLabelInput(
+            order,
+            orderDueText(deriveCardState(order, new Date(), settings).dueEffective, new Date(), settings.timezone),
+          ),
+        }}
+        testId="button-print-order-label"
+      />
     </div>
   );
 }

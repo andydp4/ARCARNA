@@ -80,7 +80,7 @@ export default function CurrentStockReport() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link href="/reports" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> All reports
+          <ChevronLeft className="h-4 w-4" /> All Evidence
         </Link>
         <ReportScopeFilter value={scope} onChange={setScope} showCashier={false} />
       </div>

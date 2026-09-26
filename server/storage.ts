@@ -86,6 +86,9 @@ import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
 
 // --- Utility Functions ---
 import { parseImportInteger, parseImportNumber } from "@shared/importValues";
+import { MIN_PRICE_CLEAR_TOKEN, checkMinPrice, parseMinPriceCell } from "@shared/pricing/floor";
+import { canEditMinPrice } from "@shared/accessPolicy";
+import { recordPriceChanges } from "./services/priceHistory";
 
 function safeParseFloat(value: string | number | null | undefined, defaultValue: number = 0): number {
   return parseImportNumber(value) ?? defaultValue;
@@ -94,6 +97,15 @@ function safeParseFloat(value: string | number | null | undefined, defaultValue:
 function safeParseInt(value: string | number | null | undefined, defaultValue: number = 0): number {
   return parseImportInteger(value) ?? defaultValue;
 }
+
+export type ProductImportOptions = {
+  duplicateMode?: "skip" | "overwrite";
+  confirmed?: boolean;
+  /** The importer's role: a minimum-price column needs manager or above. */
+  role?: string | null;
+  /** Written to price history as who made the change. */
+  actorId?: string | null;
+};
 
 // --- CRITICAL NOTE: Storage <-> API Field Mapping ---
 /**
@@ -145,7 +157,7 @@ export interface IStorage {
   importProducts(
     products: any[],
     orgId: string,
-    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+    options?: ProductImportOptions,
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }>;
   importCustomers(
     customers: any[],
@@ -278,7 +290,7 @@ export interface IStorage {
   ): Promise<{ id: string; name: string; keyLookup: string; plainKey: string; createdAt: Date | null }>;
   listApiKeysForOrg(orgId: string): Promise<ApiKey[]>;
   revokeApiKey(id: string, orgId: string): Promise<void>;
-  verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null>;
+  verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[]; keyId?: string } | null>;
   getProductsForOrgPublic(orgId: string): Promise<Product[]>;
 
   createOutboundWebhook(
@@ -287,6 +299,17 @@ export interface IStorage {
   ): Promise<OutboundWebhook>;
   listOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
   listActiveOutboundWebhooksForOrg(orgId: string): Promise<OutboundWebhook[]>;
+}
+
+/** An approve/reject on a request that is not a pending, unclaimed sign-up. */
+export class ApprovalStateError extends Error {
+  constructor(
+    public readonly status: 400 | 403 | 404 | 409,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApprovalStateError";
+  }
 }
 
 export class AmbiguousStockLocationError extends Error {
@@ -526,7 +549,7 @@ export class DatabaseStorage implements IStorage {
   async importProducts(
     productList: any[],
     orgId: string,
-    options?: { duplicateMode?: "skip" | "overwrite"; confirmed?: boolean },
+    options?: ProductImportOptions,
   ): Promise<{ imported: number; skipped: number; failed: number; errors: string[] }> {
     if (!options?.confirmed) {
       throw new Error("Import requires confirmed preview (confirmed: true)");
@@ -543,9 +566,14 @@ export class DatabaseStorage implements IStorage {
           parseImportNumber(
             productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
           );
+        // Blank or missing cost is "not known": a new product stores NULL and
+        // an overwrite keeps the cost already there. It used to become £0,
+        // so re-importing a price list without a cost column wiped every cost.
         const costPrice = parseImportNumber(
           productData.costPrice ?? productData.tax,
         );
+        // Blank or missing keeps the stored minimum; the clear token clears it.
+        const minCell = parseMinPriceCell(productData.minPrice);
         const stock =
           productData.stock !== undefined ? parseImportInteger(productData.stock) : undefined;
         const stockLimit =
@@ -561,8 +589,20 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
+        if (minCell === "invalid") {
+          errors.push(
+            `Row ${failed + imported + skipped + 1}: Invalid minimum price (a number, blank to keep, or ${MIN_PRICE_CLEAR_TOKEN} to clear)`,
+          );
+          failed++;
+          continue;
+        }
+        if (minCell !== undefined && !canEditMinPrice(options.role)) {
+          errors.push(`Row ${failed + imported + skipped + 1}: Only a manager or an admin can set a minimum price`);
+          failed++;
+          continue;
+        }
+
         productData.defaultSalePrice = salePrice;
-        productData.costPrice = costPrice ?? 0;
         if (stock !== undefined) productData.stock = stock;
         if (stockLimit !== undefined) productData.stockLimit = stockLimit;
 
@@ -580,21 +620,41 @@ export class DatabaseStorage implements IStorage {
             skipped++;
             continue;
           }
-          const updatedRows = await db
-            .update(products)
-            .set({
-              name: productData.name,
-              barcode: productData.barcode ?? existingProduct.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-              costPrice: productData.costPrice ?? productData.tax ?? existingProduct.costPrice,
-              stock: 0,
-              stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
-              locationId: productData.locationId ?? existingProduct.locationId,
-              updatedAt: new Date(),
-            })
-            .where(eq(products.id, existingProduct.id))
-            .returning();
-          const updatedProduct = updatedRows[0];
+          const nextMin = minCell === undefined ? existingProduct.minPrice : minCell == null ? null : String(minCell);
+          const minProblem = checkMinPrice(nextMin, salePrice);
+          if (minProblem) {
+            errors.push(`Row ${failed + imported + skipped + 1}: ${minProblem.message}`);
+            failed++;
+            continue;
+          }
+          const updatedProduct = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .update(products)
+              .set({
+                name: productData.name,
+                barcode: productData.barcode ?? existingProduct.barcode,
+                defaultSalePrice: String(salePrice),
+                costPrice: costPrice !== undefined ? String(costPrice) : existingProduct.costPrice,
+                minPrice: nextMin,
+                stock: 0,
+                stockLimit: productData.stockLimit ?? existingProduct.stockLimit,
+                locationId: productData.locationId ?? existingProduct.locationId,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, existingProduct.id))
+              .returning();
+            if (row && orgId) {
+              await recordPriceChanges(tx, {
+                orgId,
+                productId: row.id,
+                before: existingProduct,
+                after: row,
+                changedBy: options.actorId ?? null,
+                source: "import",
+              });
+            }
+            return row;
+          });
           if (orgId && updatedProduct) {
             const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
               await import("./services/productLocationStock");
@@ -624,22 +684,43 @@ export class DatabaseStorage implements IStorage {
           }
           imported++;
         } else {
-          const [created] = await db
-            .insert(products)
-            .values({
-              productId: sku || `PRD-${Date.now()}-${imported}`,
-              name: productData.name,
-              barcode: productData.barcode,
-              defaultSalePrice: productData.defaultSalePrice ?? productData.salePrice ?? productData.price,
-              costPrice: productData.costPrice ?? productData.tax ?? 0,
-              stock: 0,
-              stockLimit: productData.stockLimit ?? 100,
-              locationId: productData.locationId,
-              orgId: orgId ?? undefined,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .returning();
+          const newMin = typeof minCell === "number" ? minCell : null;
+          const minProblem = checkMinPrice(newMin, salePrice);
+          if (minProblem) {
+            errors.push(`Row ${failed + imported + skipped + 1}: ${minProblem.message}`);
+            failed++;
+            continue;
+          }
+          const created = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .insert(products)
+              .values({
+                productId: sku || `PRD-${Date.now()}-${imported}`,
+                name: productData.name,
+                barcode: productData.barcode,
+                defaultSalePrice: String(salePrice),
+                costPrice: costPrice !== undefined ? String(costPrice) : null,
+                minPrice: newMin == null ? null : String(newMin),
+                stock: 0,
+                stockLimit: productData.stockLimit ?? 100,
+                locationId: productData.locationId,
+                orgId: orgId ?? undefined,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning();
+            if (row && orgId) {
+              await recordPriceChanges(tx, {
+                orgId,
+                productId: row.id,
+                before: {},
+                after: row,
+                changedBy: options.actorId ?? null,
+                source: "import",
+              });
+            }
+            return row;
+          });
           if (orgId && created) {
             const { ensureProductLocationStockRow, resolveProductLocationForBackfill, adjustProductLocationStock } =
               await import("./services/productLocationStock");
@@ -789,6 +870,8 @@ export class DatabaseStorage implements IStorage {
       "opsPrepSlaMinutes", "opsDueSoonLeadMinutes", "opsLateGraceMinutes",
       "opsDeliveryLeadMinutes", "opsAutoClaimOnCreate", "opsReconcilePollSeconds",
       "opsAlertOnSlaDue", "opsKeepScreenAwake",
+      // Shop privacy notice + complaints contact (migration 073).
+      "privacyNoticeUrl", "privacyNoticeText", "complaintsContactName", "complaintsContactEmail",
     ];
     for (const k of keys) {
       if (patch[k] !== undefined) allowed[k] = patch[k];
@@ -1078,8 +1161,14 @@ export class DatabaseStorage implements IStorage {
       return { category: r.category, revenue, percentage: total ? (revenue / total) * 100 : 0 };
     });
 
+    // Of which delivery fees (v1.2.1), shown on their own on Sales at a glance.
+    const { deliveryFeeTakingsByDate } = await import("./services/deliveryFeeTakings");
+    const fees = await deliveryFeeTakingsByDate(orgId, fromIso, toIso);
+
     return {
       total,
+      deliveryFees: fees.total,
+      deliveryFeeOrders: fees.orders,
       byDay: dailyRevenue,
       byCategory,
       byPaymentMethod
@@ -1228,7 +1317,10 @@ export class DatabaseStorage implements IStorage {
     }).length;
     const outOfStock = withStock.filter((p) => (p.stock ?? 0) === 0).length;
 
-    const topMovingCond = sql`${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL`;
+    // Parenthesised: unwrapped, `and(...)` below read this as
+    // "in range, OR (no order AND this org)", so every org's products with a
+    // sale in the window reached this org's Evidence and its export.
+    const topMovingCond = sql`(${orders.createdAt} >= ${fromDate} AND ${orders.createdAt} <= ${toDate} OR ${orders.createdAt} IS NULL)`;
     const topMovingWhere = and(topMovingCond, eq(products.orgId, orgId));
     const topMovingRaw = await db
       .select({
@@ -1281,52 +1373,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   async generateCSVReport(data: any, type: string): Promise<string> {
-    let csv = '';
+    // The shared writer (FIX-14): a product or customer name starting with
+    // "=" exports as text, every cell is quoted, and Excel reads it as UTF-8.
+    const { csvDocument } = await import("@shared/csv");
+    const byDay = (): unknown[][] =>
+      (data.revenue?.byDay ?? []).map((day: any) => [day.date, day.revenue, day.orders]);
 
     switch (type) {
       case 'revenue':
-        csv = 'Date,Revenue,Orders\n';
-        data.revenue.byDay.forEach((day: any) => {
-          csv += `${day.date},${day.revenue},${day.orders}\n`;
-        });
-        break;
-
+        return csvDocument(['Date', 'Revenue', 'Orders'], byDay());
       case 'orders':
-        csv = 'Product,Quantity,Revenue\n';
-        data.orders.topProducts.forEach((product: any) => {
-          csv += `${product.name},${product.quantity},${product.revenue}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Product', 'Quantity', 'Revenue'],
+          (data.orders?.topProducts ?? []).map((p: any) => [p.name, p.quantity, p.revenue]),
+        );
       case 'customers':
-        csv = 'Customer,Orders,Revenue,Loyalty Points\n';
-        data.customers.topCustomers.forEach((customer: any) => {
-          csv += `${customer.name},${customer.orders},${customer.revenue},${customer.loyalty}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Customer', 'Orders', 'Revenue', 'Loyalty Points'],
+          (data.customers?.topCustomers ?? []).map((c: any) => [c.name, c.orders, c.revenue, c.loyalty]),
+        );
       case 'inventory':
-        csv = 'Product,Sold,Remaining\n';
-        data.inventory.topMoving.forEach((item: any) => {
-          csv += `${item.product},${item.sold},${item.remaining}\n`;
-        });
-        break;
-
+        return csvDocument(
+          ['Product', 'Sold', 'Remaining'],
+          (data.inventory?.topMoving ?? []).map((i: any) => [i.product, i.sold, i.remaining]),
+        );
       case 'full':
-        // Generate comprehensive report
-        csv = 'FULL REPORT\n\n';
-        csv += 'REVENUE SUMMARY\n';
-        csv += `Total Revenue,${data.revenue.total}\n\n`;
-        csv += 'Daily Revenue\n';
-        csv += 'Date,Revenue,Orders\n';
-        data.revenue.byDay.forEach((day: any) => {
-          csv += `${day.date},${day.revenue},${day.orders}\n`;
-        });
-        csv += '\n';
-        break;
+        return csvDocument(['FULL REPORT'], [
+          [],
+          ['REVENUE SUMMARY'],
+          ['Total Revenue', data.revenue?.total],
+          [],
+          ['Daily Revenue'],
+          ['Date', 'Revenue', 'Orders'],
+          ...byDay(),
+        ]);
+      default:
+        return '';
     }
-
-    return csv;
   }
 
   async generatePDFReport(data: any, type: string, period?: string): Promise<Buffer> {
@@ -1645,15 +1728,11 @@ export class DatabaseStorage implements IStorage {
    * window (`settled_at`, `status = 'completed'`), so a line only counts once
    * the sale it belongs to has actually completed.
    *
-   * COGS itself is still costed at product cost price AS OF NOW, not a
-   * snapshot of what the cost was at the moment of sale: `order_items` carries
-   * no cost-at-sale column to read instead (checked — see the schema; the
-   * closest thing, `cashier_shift_summaries.stock_cost`, is computed the same
-   * live-cost way in `cashierShiftEngine.ts`). Adding a real snapshot is a
-   * schema change of its own, tracked separately; until then this is stated
-   * on the Profit Truths card rather than presented as an exact historical
-   * figure, and `productsMissingCost` below flags when the number is
-   * incomplete because a sold product currently has no cost price at all.
+   * COGS is costed from each line's cost snapshot (v1.2 Phase 2, PRC-06),
+   * so editing a cost today does not move a past period. Lines sold before
+   * snapshots existed fall back to the product's cost today (no backfill) —
+   * see `lineUnitCostSql`. `productsMissingCost` flags when the number is
+   * incomplete because a sold line has no known cost.
    */
   async getProfitAnalysis(startDate: Date, endDate: Date, orgId: string): Promise<any> {
     const { settledRevenueByDay } = await import("./services/revenue");
@@ -1676,14 +1755,15 @@ export class DatabaseStorage implements IStorage {
       gte(sql`date(${orders.settledAt})`, sql`${fromIso}::date`),
       lte(sql`date(${orders.settledAt})`, sql`${toIso}::date`),
     );
+    const { lineCostSql, lineUnitCostSql } = await import("./services/lineCost");
     const cogsData = await db
       .select({
-        totalCOGS: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
-        productsMissingCost: sql<number>`COUNT(DISTINCT ${products.id}) FILTER (WHERE ${products.costPrice} IS NULL)`,
+        totalCOGS: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
+        productsMissingCost: sql<number>`COUNT(DISTINCT ${orderItems.productId}) FILTER (WHERE ${lineUnitCostSql} IS NULL)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .innerJoin(products, eq(orderItems.productId, products.id))
+      .leftJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond);
 
     // Postgres numeric/decimal columns come back as strings over the wire —
@@ -1693,12 +1773,26 @@ export class DatabaseStorage implements IStorage {
 
     const expenses = await this.getExpenseAnalytics(startDate, endDate, orgId);
 
+    // The delivery fee is a service charge, not goods (v1.2.1): left out of
+    // gross profit and margin unless the admin counts it, and added back
+    // below gross so operating and net profit still include the money.
+    const { deliveryFeeTakingsByDate } = await import("./services/deliveryFeeTakings");
+    const fees = await deliveryFeeTakingsByDate(orgId, fromIso, toIso);
+    const [feeOrg] = await db
+      .select({ counted: organizations.deliveryFeeCommissionable })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    const feesCounted = feeOrg?.counted === true;
+    const feesOutsideMargin = feesCounted ? 0 : fees.total;
+
     // Calculate profit margins — guarded against a zero-revenue period so an
     // empty range renders 0%, never NaN%.
-    const grossProfit = totalRevenue - totalCOGS;
-    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const marginRevenue = totalRevenue - feesOutsideMargin;
+    const grossProfit = marginRevenue - totalCOGS;
+    const grossMargin = marginRevenue > 0 ? (grossProfit / marginRevenue) * 100 : 0;
 
-    const operatingProfit = grossProfit - expenses.totalExpenses;
+    const operatingProfit = grossProfit + feesOutsideMargin - expenses.totalExpenses;
     const operatingMargin = totalRevenue > 0 ? (operatingProfit / totalRevenue) * 100 : 0;
 
     const netProfit = operatingProfit; // Could subtract taxes here if tracked
@@ -1707,11 +1801,11 @@ export class DatabaseStorage implements IStorage {
     const dailyCOGS = await db
       .select({
         date: sql<string>`DATE(${orders.settledAt})`,
-        cogs: sql<number>`COALESCE(SUM(CAST(${orderItems.quantity} AS DECIMAL) * CAST(${products.costPrice} AS DECIMAL)), 0)`,
+        cogs: sql<number>`COALESCE(SUM(${lineCostSql}), 0)`,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .innerJoin(products, eq(orderItems.productId, products.id))
+      .leftJoin(products, eq(orderItems.productId, products.id))
       .where(cogsCond)
       .groupBy(sql`DATE(${orders.settledAt})`);
     const cogsByDate = new Map(dailyCOGS.map((c) => [String(c.date), Number(c.cogs) || 0]));
@@ -1731,8 +1825,9 @@ export class DatabaseStorage implements IStorage {
     for (let d = fromIso; d <= toIso; d = offsetDate(d, 1)) {
       const revenue = byDay.get(d)?.revenue ?? 0;
       const cogs = cogsByDate.get(d) ?? 0;
-      const dailyGrossProfit = revenue - cogs;
-      const dailyNetProfit = dailyGrossProfit - expenses.dailyOverhead;
+      const dayFees = feesCounted ? 0 : fees.byDate.get(d) ?? 0;
+      const dailyGrossProfit = revenue - dayFees - cogs;
+      const dailyNetProfit = dailyGrossProfit + dayFees - expenses.dailyOverhead;
       profitTrends.push({
         date: d,
         revenue,
@@ -1740,7 +1835,7 @@ export class DatabaseStorage implements IStorage {
         grossProfit: dailyGrossProfit,
         expenses: expenses.dailyOverhead,
         netProfit: dailyNetProfit,
-        grossMargin: revenue > 0 ? (dailyGrossProfit / revenue) * 100 : 0,
+        grossMargin: revenue - dayFees > 0 ? (dailyGrossProfit / (revenue - dayFees)) * 100 : 0,
         netMargin: revenue > 0 ? (dailyNetProfit / revenue) * 100 : 0,
       });
     }
@@ -1762,6 +1857,9 @@ export class DatabaseStorage implements IStorage {
         orderCount,
         averageOrderValue,
         productsMissingCost,
+        // Delivery fees inside `revenue` (v1.2.1), and whether gross profit counts them.
+        deliveryFees: fees.total,
+        deliveryFeesInMargin: feesCounted,
         // Every figure here is settled orders, net of refunds, VAT-inclusive
         // (orders.total already has VAT added on top of the net subtotal —
         // see server/services/orgTaxRate.ts) — stated so the card doesn't
@@ -1917,83 +2015,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInvoicesWithDetails(orgId: string): Promise<any[]> {
-    const org = await this.getOrganization(orgId);
-    const taxRate = org?.defaultTaxRate != null ? parseFloat(String(org.defaultTaxRate)) / 100 : 0.20;
-
-    const ordersData = await db
-      .select({ order: orders, customer: customers, invoice: invoices })
-      .from(orders)
-      .leftJoin(customers, eq(orders.customerId, customers.id))
-      .leftJoin(invoices, eq(invoices.orderId, orders.id))
-      .where(eq(orders.orgId, orgId))
-      .orderBy(desc(orders.createdAt));
-
-    // For each order, fetch order items with product details
-    const result = await Promise.all(
-      ordersData.map(async ({ order, customer, invoice }) => {
-        const items = await db
-          .select({
-            item: orderItems,
-            product: products,
-          })
-          .from(orderItems)
-          .leftJoin(products, eq(orderItems.productId, products.id))
-          .where(eq(orderItems.orderId, order.id));
-
-        const createdAt = order.createdAt ?? new Date();
-        const orderTotal = parseFloat(order.total);
-        // Prefer the persisted invoice record (real id, actual tax) once the
-        // InvoiceWorker has created one; fall back to a synthetic view (using
-        // the org's configured tax rate) for orders it hasn't reached yet.
-        const invoiceNumber =
-          invoice?.invoiceNumber ?? `INV-${new Date(createdAt).getFullYear()}-${order.id.slice(0, 8).toUpperCase()}`;
-        const subtotal = invoice ? parseFloat(invoice.subtotal) : orderTotal / (1 + taxRate);
-        const vat = invoice ? parseFloat(String(invoice.tax ?? "0")) : orderTotal - subtotal;
-        const dueDate = new Date(createdAt);
-        dueDate.setDate(dueDate.getDate() + 30); // 30 days payment terms
-
-        // Determine invoice status
-        // `order.status` is an untyped varchar column, not the ORDER_STATUSES
-        // enum — the domain type no longer allows 'cancelled', but the public
-        // `/v1` API (server/routes/v1.ts) writes `req.body.status` to this
-        // column with no validation, so this branch stays reachable in
-        // practice even though nothing in the domain engine can produce it.
-        let status: 'paid' | 'pending' | 'overdue' | 'cancelled' = 'pending';
-        if (order.status === 'cancelled') {
-          status = 'cancelled';
-        } else if (order.status === 'completed') {
-          status = 'paid';
-        } else if (new Date() > dueDate) {
-          status = 'overdue';
-        }
-
-        return {
-          id: invoice?.id ?? order.id,
-          invoiceNumber,
-          orderId: order.id,
-          customerId: order.customerId,
-          customerName: customer?.name || 'Walk-in Customer',
-          customerEmail: customer?.email || '',
-          date: (order.createdAt ?? new Date()).toISOString(),
-          dueDate: dueDate.toISOString(),
-          total: orderTotal,
-          subtotal,
-          vat,
-          status,
-          paymentMethod: order.paymentMethod,
-          hasGeneratedInvoice: !!invoice,
-          pdfUrl: invoice?.googleDriveLink ?? null,
-          items: items.map(({ item, product }) => ({
-            name: product?.name || 'Unknown Product',
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unitPrice),
-            total: parseFloat(item.totalPrice)
-          }))
-        };
-      })
-    );
-
-    return result;
+    // One list and one status rule (v1.2 Phase 1C): server/services/invoices.ts.
+    const { listInvoices } = await import("./services/invoices");
+    return listInvoices(orgId);
   }
 
   // Allow list operations
@@ -2243,6 +2267,14 @@ export class DatabaseStorage implements IStorage {
       patch.orgId = targetRole === "SUPER_ADMIN" ? null : updates.orgId;
     }
 
+    // Nothing on the row itself to change (a commission- or location-only
+    // edit): answer with the row as it is instead of the driver's
+    // "No values to set" (v1.2.1 SEC-500-NONUUID, related).
+    if (Object.keys(patch).length === 0) {
+      const [current] = await db.select().from(allowedUsers).where(eq(allowedUsers.replitUserId, replitUserId));
+      return current;
+    }
+
     const [updated] = await db
       .update(allowedUsers)
       .set(patch)
@@ -2296,10 +2328,18 @@ export class DatabaseStorage implements IStorage {
 
   // Approval request operations
   async getPendingApprovals(): Promise<UserApprovalRequest[]> {
+    // Only unclaimed sign-ups: a request whose person already has access (in
+    // any organisation) is not something an admin can act on here, and
+    // listing it would show one organisation's staff to another's admins.
     return db
       .select()
       .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.status, 'pending'))
+      .where(
+        and(
+          eq(userApprovalRequests.status, 'pending'),
+          sql`NOT EXISTS (SELECT 1 FROM allowed_users au WHERE au.replit_user_id = ${userApprovalRequests.replitUserId})`,
+        ),
+      )
       .orderBy(desc(userApprovalRequests.requestedAt));
   }
 
@@ -2336,65 +2376,98 @@ export class DatabaseStorage implements IStorage {
     return request;
   }
 
+  /**
+   * Approve a PENDING sign-up request (v1.2.1 SEC-APPROVE-XORG).
+   *
+   * Only an unclaimed request can be approved: its status must be "pending"
+   * and the person must not already have an allowed_users row. Anything else
+   * (an existing member of any organisation, the owner, an already-approved or
+   * rejected request) throws ApprovalStateError, so an admin cannot re-home or
+   * re-role someone through this path; User Access (PATCH) is the place for
+   * that, and it is organisation-scoped.
+   */
   async approveUser(
     replitUserId: string,
     approvedBy: string,
     options?: { role?: string; orgId?: string | null },
   ): Promise<void> {
-    await db
-      .update(userApprovalRequests)
-      .set({
-        status: "approved",
-        reviewedAt: new Date(),
-        reviewedBy: approvedBy,
-      })
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+    const role = options?.role ?? "CUSTOMER";
+    if (role === "SUPER_ADMIN") {
+      throw new ApprovalStateError(403, "Cannot approve new users as SUPER_ADMIN");
+    }
+    await db.transaction(async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(userApprovalRequests)
+        .where(eq(userApprovalRequests.replitUserId, replitUserId))
+        .for("update");
+      if (!request) throw new ApprovalStateError(404, "Approval request not found");
+      if (request.status !== "pending") {
+        throw new ApprovalStateError(409, "This request is not pending");
+      }
+      const [existing] = await tx
+        .select({ id: allowedUsers.id })
+        .from(allowedUsers)
+        .where(eq(allowedUsers.replitUserId, replitUserId))
+        .limit(1);
+      if (existing) {
+        throw new ApprovalStateError(409, "This person already has access; change it in User Access");
+      }
 
-    const [request] = await db
-      .select()
-      .from(userApprovalRequests)
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
-
-    if (request) {
-      const [approver] = await db
+      const [approver] = await tx
         .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
         .from(allowedUsers)
         .where(eq(allowedUsers.replitUserId, approvedBy));
       const approverRole = approver?.isOwner ? "SUPER_ADMIN" : (approver?.role ?? "CASHIER");
-      const role = options?.role ?? "CUSTOMER";
       const orgId =
         options?.orgId !== undefined
           ? options.orgId
           : approverRole === "SUPER_ADMIN"
-            ? options?.orgId ?? null
+            ? null
             : approver?.orgId ?? null;
 
-      if (role === "SUPER_ADMIN") {
-        throw new Error("Cannot approve new users as SUPER_ADMIN");
-      }
+      await tx
+        .update(userApprovalRequests)
+        .set({ status: "approved", reviewedAt: new Date(), reviewedBy: approvedBy })
+        .where(eq(userApprovalRequests.replitUserId, replitUserId));
 
-      await this.addAllowedUser({
+      // Plain insert, never an upsert: an existing row was refused above, and a
+      // concurrent insert fails on the unique key instead of being overwritten.
+      await tx.insert(allowedUsers).values({
         replitUserId: request.replitUserId,
         authUserId: request.authUserId ?? request.replitUserId,
         authProvider: request.authProvider ?? "replit",
         email: request.email,
         name: request.name,
         isOwner: 0,
-        orgId: role === "SUPER_ADMIN" ? null : orgId,
+        orgId,
         role: role as Role,
       });
-    }
+    });
   }
 
+  /** Reject a PENDING, unclaimed sign-up request (v1.2.1 SEC-APPROVE-XORG). */
   async rejectUser(replitUserId: string, rejectedBy: string): Promise<void> {
-    await db
+    const [existing] = await db
+      .select({ id: allowedUsers.id })
+      .from(allowedUsers)
+      .where(eq(allowedUsers.replitUserId, replitUserId))
+      .limit(1);
+    if (existing) {
+      throw new ApprovalStateError(409, "This person already has access; change it in User Access");
+    }
+    const updated = await db
       .update(userApprovalRequests)
       .set({
         status: 'rejected',
         reviewedAt: new Date(),
         reviewedBy: rejectedBy,
       })
-      .where(eq(userApprovalRequests.replitUserId, replitUserId));
+      .where(and(eq(userApprovalRequests.replitUserId, replitUserId), eq(userApprovalRequests.status, "pending")))
+      .returning({ id: userApprovalRequests.id });
+    if (updated.length === 0) {
+      throw new ApprovalStateError(404, "No pending request for this person");
+    }
   }
 
   async insertAdminAuditLog(row: InsertAdminAuditLog): Promise<void> {
@@ -2477,7 +2550,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(apiKeys.id, id), eq(apiKeys.orgId, orgId)));
   }
 
-  async verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[] } | null> {
+  async verifyApiKeyAndGetOrg(plainToken: string): Promise<{ orgId: string; scopes: string[]; keyId?: string } | null> {
     const m = plainToken.match(/^mk_live_([a-f0-9]{24})_([a-f0-9]{48})$/i);
     if (!m) return null;
     const lookup = m[1].toLowerCase();
@@ -2487,7 +2560,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(apiKeys.keyLookup, lookup), isNull(apiKeys.revokedAt)));
     for (const row of rows) {
       if (await bcrypt.compare(plainToken, row.secretHash)) {
-        return { orgId: row.orgId, scopes: (row.scopes as string[]) ?? [] };
+        // keyId: who read what, for the customer data access log (v1.2 Phase 6).
+        return { orgId: row.orgId, scopes: (row.scopes as string[]) ?? [], keyId: row.id };
       }
     }
     return null;

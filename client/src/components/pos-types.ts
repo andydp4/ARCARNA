@@ -15,6 +15,9 @@ export interface PosProduct {
   stock: number;
   stockLimit: number;
   barcode?: string | null;
+  /** The minimum-only floor the server sends with every product (v1.2 Phase 2); never cost. */
+  tillFloor?: number | null;
+  minPrice?: string | number | null;
 }
 
 export function posPrice(product: PosProduct): number {

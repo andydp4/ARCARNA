@@ -385,7 +385,13 @@ export default function UserAccess() {
                   <div className="text-center py-12 text-muted-foreground">
                     <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-30" />
                     <p>No pending approval requests</p>
-                    <p className="text-sm">New customer and staff sign-ups will appear here</p>
+                    {/* The server lists sign-ups to the platform owner only: a
+                        sign-up has no business yet, so the list is everyone's. */}
+                    <p className="text-sm">
+                      {currentUser?.role === "SUPER_ADMIN"
+                        ? "New customer and staff sign-ups will appear here"
+                        : "New sign-ups are approved by the platform owner. Once someone joins your business, they appear under Allowed users."}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -513,7 +519,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateRoleMutation.isPending}
                               >
-                                <SelectTrigger className="h-9 w-[130px]" data-testid={`role-select-${user.replitUserId}`}>
+                                <SelectTrigger aria-label="Role" className="h-9 w-[130px]" data-testid={`role-select-${user.replitUserId}`}>
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -550,7 +556,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateDefaultLocationMutation.isPending}
                               >
-                                <SelectTrigger
+                                <SelectTrigger aria-label="Default location"
                                   className="h-9 w-[160px]"
                                   data-testid={`default-location-select-${user.replitUserId}`}
                                 >
@@ -586,7 +592,7 @@ export default function UserAccess() {
                                 }
                                 disabled={updateStationMutation.isPending}
                               >
-                                <SelectTrigger
+                                <SelectTrigger aria-label="Station"
                                   className="h-9 w-[130px] capitalize"
                                   data-testid={`ops-station-select-${user.replitUserId}`}
                                 >
@@ -647,7 +653,7 @@ export default function UserAccess() {
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={approveRole} onValueChange={setApproveRole}>
-                <SelectTrigger data-testid="approve-role-select">
+                <SelectTrigger aria-label="Role" data-testid="approve-role-select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -661,7 +667,7 @@ export default function UserAccess() {
               <div className="space-y-2">
                 <Label>Organization</Label>
                 <Select value={approveOrgId} onValueChange={setApproveOrgId}>
-                  <SelectTrigger data-testid="approve-org-select">
+                  <SelectTrigger aria-label="Organization" data-testid="approve-org-select">
                     <SelectValue placeholder="Select organization" />
                   </SelectTrigger>
                   <SelectContent>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { ApiOrderRow } from "@/lib/orderTypes";
 import {
   CommandDialog,
   CommandEmpty,
@@ -15,8 +17,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useGlobalShortcut } from "@/hooks/useGlobalShortcut";
 import {
   buildCommandPaletteIndex,
+  buildOrderItems,
   COMMAND_PALETTE_SECTION_LABELS,
   ensurePaletteData,
+  getRecentPaletteIds,
   recordPaletteSelection,
   type CommandPaletteItem,
   type CommandPaletteSection,
@@ -74,10 +78,31 @@ export function CommandPalette() {
     };
   }, [open, queryClient, user?.role]);
 
-  const items = useMemo(
-    () => buildCommandPaletteIndex(queryClient, user?.role, user?.id),
-    [queryClient, user?.role, user?.id, indexVersion, open],
-  );
+  // Orders come from the server's search, inside the caller's history bound
+  // (Q10a, CMP-06), a moment after typing stops.
+  const [search, setSearch] = useState("");
+  const [term, setTerm] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const { data: foundOrders } = useQuery<ApiOrderRow[]>({
+    queryKey: ["/api/orders/search", term],
+    // POST: a typed phone number stays out of the URL and the access logs.
+    queryFn: async () => (await apiRequest("POST", "/api/orders/search", { q: term })).json() as Promise<ApiOrderRow[]>,
+    enabled: open && term.length >= 2,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  const items = useMemo(() => {
+    const base = buildCommandPaletteIndex(queryClient, user?.role, user?.id);
+    const orders = term.length >= 2 && foundOrders
+      ? buildOrderItems(foundOrders, getRecentPaletteIds(user?.id)).map((item) => ({ ...item, keywords: term }))
+      : [];
+    return [...base, ...orders];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, user?.role, user?.id, indexVersion, open, foundOrders, term]);
 
   const grouped = useMemo(() => groupItems(items), [items]);
 
@@ -94,7 +119,11 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Search pages, customers, products, orders, actions…" />
+      <CommandInput
+        placeholder="Search pages, customers, products, orders, actions…"
+        value={search}
+        onValueChange={setSearch}
+      />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         {SECTION_ORDER.map((section, sectionIndex) => {
@@ -109,7 +138,7 @@ export function CommandPalette() {
                   return (
                     <CommandItem
                       key={item.id}
-                      value={[item.label, item.subtext, item.id].filter(Boolean).join(" ")}
+                      value={[item.label, item.subtext, item.keywords, item.id].filter(Boolean).join(" ")}
                       onSelect={() => handleSelect(item)}
                     >
                       <Icon className="opacity-70" />

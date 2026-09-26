@@ -19,6 +19,7 @@
  */
 
 import PDFDocument from 'pdfkit';
+import { showsVatLine } from '@shared/invoices/invoiceRules';
 
 // ============================================================================
 // Type Definitions
@@ -61,24 +62,41 @@ interface InvoiceData {
   dueDate: string;
   /** Issuing organisation's details */
   company: InvoiceCompanyInfo;
-  /** Customer name for billing section */
+  /**
+   * The billing section is the name and the billing address, which is all a
+   * VAT invoice needs (v1.2 Phase 5). There is deliberately no email or phone
+   * field: a PDF is forwarded and printed, and neither belongs on it.
+   */
   customerName?: string;
-  /** Customer email for billing section */
-  customerEmail?: string;
-  /** Customer phone for billing section */
-  customerPhone?: string;
-  /** Customer address (multi-line supported) */
+  /** Customer billing address (multi-line supported) */
   customerAddress?: string;
   /** Line items to display in invoice table */
   items: InvoiceLineItem[];
-  /** Subtotal before tax */
+  /** The lines, before discounts and tax */
   subtotal: number;
+  /** Tier and promotion discounts, taken off before VAT */
+  discount?: number;
   /** Tax amount */
   tax: number;
+  /** Points, taken off after VAT */
+  pointsDiscount?: number;
+  /** The delivery fee (v1.2.1): its own line, after discounts, before VAT. */
+  deliveryFee?: number;
+  /** The org's name for it; "Delivery fee" when absent. */
+  deliveryFeeName?: string;
+  /**
+   * The VAT rate charged, in percent. At 0 (with no tax) the invoice shows no
+   * VAT line at all (v1.2 Phase 1C). Absent: derived from tax / subtotal.
+   */
+  vatRate?: number;
   /** Grand total */
   total: number;
-  /** Invoice status (e.g., "sent", "paid") */
+  /** Refunded against the sale since it was invoiced; shown under the total. */
+  refunded?: number;
+  /** Invoice status (e.g., "Paid", "Owed") */
   status: string;
+  /** The payment terms the invoice was issued on (e.g., "Net 30") */
+  paymentTerms?: string;
   /** Payment method used (for reference) */
   paymentMethod?: string;
 }
@@ -306,17 +324,19 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData, startY
   doc.text('Date:', labelX, y + rowHeight);
   doc.text('Due Date:', labelX, y + rowHeight * 2);
   doc.text('Status:', labelX, y + rowHeight * 3);
+  if (data.paymentTerms) doc.text('Terms:', labelX, y + rowHeight * 4);
 
   doc.fillColor(INK);
   doc.text(data.invoiceNumber, valueX, y);
   doc.text(formatDate(data.createdAt), valueX, y + rowHeight);
   doc.text(data.dueDate, valueX, y + rowHeight * 2);
   doc.text(data.status.toUpperCase(), valueX, y + rowHeight * 3);
-  let leftBottom = y + rowHeight * 3 + 14;
+  if (data.paymentTerms) doc.text(data.paymentTerms, valueX, y + rowHeight * 4, { width: 190 });
+  let leftBottom = y + rowHeight * (data.paymentTerms ? 4 : 3) + 14;
 
   // Right column: Customer billing address
   let rightBottom = y;
-  if (data.customerName || data.customerEmail) {
+  if (data.customerName || data.customerAddress) {
     const billX = 350;
     const billWidth = 195;
     doc.font('Helvetica-Bold').fontSize(10).fillColor(INK);
@@ -326,12 +346,6 @@ function renderInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData, startY
     doc.font('Helvetica').fontSize(10).fillColor(MUTED);
     if (data.customerName) {
       billY = drawLine(doc, data.customerName, billX, billY, { width: billWidth, gap: 2 });
-    }
-    if (data.customerEmail) {
-      billY = drawLine(doc, data.customerEmail, billX, billY, { width: billWidth, gap: 2 });
-    }
-    if (data.customerPhone) {
-      billY = drawLine(doc, data.customerPhone, billX, billY, { width: billWidth, gap: 2 });
     }
     if (data.customerAddress) {
       billY = drawLine(doc, data.customerAddress, billX, billY, { width: billWidth, gap: 2 });
@@ -427,11 +441,38 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   doc.fillColor(INK).text(formatCurrency(data.subtotal, currency), valueX, y, { align: 'right', width: valueWidth });
   y += 18;
 
-  // VAT at the org's actual rate
-  const vatRate = data.subtotal > 0 ? Math.round((data.tax / data.subtotal) * 1000) / 10 : 0;
-  doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);
-  doc.fillColor(INK).text(formatCurrency(data.tax, currency), valueX, y, { align: 'right', width: valueWidth });
-  y += 22;
+  // Discounts are shown so the figures add up: subtotal − discount + VAT −
+  // points = total. VAT is charged on the discounted amount.
+  if ((data.discount ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text('Discount:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.discount ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+
+  // The delivery fee, on its own line: charged on top of the goods, after
+  // their discounts, and VAT'd with them (v1.2.1).
+  if ((data.deliveryFee ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text(`${data.deliveryFeeName || 'Delivery fee'}:`, labelX, y);
+    doc.fillColor(INK).text(formatCurrency(data.deliveryFee ?? 0, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+
+  // VAT at the org's actual rate — and no VAT line at all when none was
+  // charged: a business that is not VAT-registered must not look as if it
+  // charged VAT at 0% (v1.2 Phase 1C).
+  const net = data.subtotal - (data.discount ?? 0) + (data.deliveryFee ?? 0);
+  const vatRate = data.vatRate ?? (net > 0 ? Math.round((data.tax / net) * 1000) / 10 : 0);
+  if (showsVatLine(data.tax, vatRate)) {
+    doc.fillColor(MUTED).text(`VAT (${vatRate}%):`, labelX, y);
+    doc.fillColor(INK).text(formatCurrency(data.tax, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+  if ((data.pointsDiscount ?? 0) > 0.005) {
+    doc.fillColor(MUTED).text('Points:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.pointsDiscount ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+  }
+  y += 4;
 
   // Grand total — a tinted band the width of the totals column, in the org's
   // own brand colour, with the figure in white so it cannot be mistaken for
@@ -441,8 +482,23 @@ function renderTotals(doc: PDFKit.PDFDocument, data: InvoiceData, startY: number
   doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(12);
   doc.text('Total:', labelX + 10, y + 8);
   doc.text(formatCurrency(data.total, currency), valueX - 5, y + 8, { align: 'right', width: valueWidth + 5 });
+  y += boxHeight;
 
-  return y + boxHeight;
+  // Refunds since the sale (v1.2.1): the sale stays as billed, and what was
+  // given back is shown under it, so the page never reads as fully paid with
+  // nothing refunded.
+  if ((data.refunded ?? 0) > 0.005) {
+    y += 8;
+    doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('Refunded:', labelX, y);
+    doc.fillColor(INK).text(`-${formatCurrency(data.refunded ?? 0, currency)}`, valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+    doc.fillColor(MUTED).text('Net of refunds:', labelX, y);
+    doc.fillColor(INK).text(formatCurrency(Math.round((data.total - (data.refunded ?? 0)) * 100) / 100, currency), valueX, y, { align: 'right', width: valueWidth });
+    y += 18;
+    return y;
+  }
+
+  return y;
 }
 
 /**

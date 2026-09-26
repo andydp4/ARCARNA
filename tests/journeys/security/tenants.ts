@@ -27,7 +27,7 @@ import {
 } from "@shared/schema";
 import { apiAs, authHeaders, uniqueSuffix, type Role } from "../fixtures";
 
-export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000";
+export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 5000}`;
 
 /** Every record this suite creates carries this prefix, so a stray row after a
  *  crashed run is identifiable and safe to delete by hand. */
@@ -359,7 +359,7 @@ export async function provisionOrgRecords(
   created.expenses.push(expense.id);
 
   const giftCard = await jsonOrThrow(
-    await api.post("/api/gift-cards", { data: { amount: 25 } }),
+    await api.post("/api/gift-cards", { data: { amount: 25, reason: "Journey test" } }),
     "POST /api/gift-cards",
   );
   created.giftCards.push(giftCard.giftCard.id);

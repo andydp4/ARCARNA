@@ -40,8 +40,8 @@ export default function DelayLogReport() {
         rowFlag: (r) => (!r.proactiveComms || r.delayDuration > 60 ? "red" : undefined),
         controls: (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-muted-foreground">Day</label>
-            <Input type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
+            <label htmlFor="delay-log-day" className="text-xs text-muted-foreground">Day</label>
+            <Input id="delay-log-day" type="date" value={day} max={isoDate(new Date())} onChange={(e) => setDay(e.target.value)} className="h-9 w-[160px]" />
           </div>
         ),
         kpis: (s) => [

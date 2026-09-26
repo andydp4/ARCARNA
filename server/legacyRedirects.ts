@@ -8,6 +8,7 @@ const LEGACY_EPOS_SEGMENTS = [
   "inventory",
   "products",
   "insights",
+  "truths",
   "reports",
   "analytics",
   "locations",

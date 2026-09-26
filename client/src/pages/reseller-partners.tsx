@@ -164,7 +164,7 @@ export default function ResellerPartnersPage() {
             <div className="space-y-2">
               <Label>Partner</Label>
               <Select value={partnerId} onValueChange={setPartnerId}>
-                <SelectTrigger data-testid="select-partner">
+                <SelectTrigger aria-label="Partner" data-testid="select-partner">
                   <SelectValue placeholder={isLoading ? "Loading…" : "Choose a partner"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -179,7 +179,7 @@ export default function ResellerPartnersPage() {
             <div className="space-y-2">
               <Label>Entry type</Label>
               <Select value={type} onValueChange={(v: "SUPPLY" | "PAYMENT") => setType(v)}>
-                <SelectTrigger data-testid="select-entry-type">
+                <SelectTrigger aria-label="Entry type" data-testid="select-entry-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

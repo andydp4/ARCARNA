@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  ORDER_STATUSES,
+  ORDER_CREATE_STATUSES,
   WEBSITE_BLOCK_TYPES,
   WEBSITE_FILE_PROVIDERS,
   WEBSITE_ORDER_ACCESS_MODES,
@@ -126,7 +126,7 @@ export const websiteBlockPatchSchema = z
 export const websiteOrderSettingsPatchSchema = z
   .object({
     orderAccessMode: z.enum(WEBSITE_ORDER_ACCESS_MODES).optional(),
-    defaultOrderStatus: z.enum(ORDER_STATUSES).optional(),
+    defaultOrderStatus: z.enum(ORDER_CREATE_STATUSES).optional(),
     defaultLocationId: z.string().uuid().nullable().optional(),
     allowOutOfStockOrders: z.boolean().optional(),
     minOrderValue: z.number().nonnegative().nullable().optional(),
@@ -170,6 +170,8 @@ export const publicWebsiteOrderSchema = z
         // form and any existing integration already speak "pickup".
         method: z.enum(["pickup", "delivery"]).default("pickup"),
         address: z.string().trim().max(1024).optional(),
+        // Written to the order with the address (v1.2 Phase 5, PRV-05).
+        postcode: z.string().trim().max(16).optional(),
         notes: z.string().trim().max(2000).optional(),
       })
       .strict()

@@ -10,6 +10,7 @@ import {
   varchar,
   uuid,
   integer,
+  bigint,
   boolean,
   numeric,
   date,
@@ -74,7 +75,9 @@ export const organizations = pgTable("organizations", {
   invoicePrefix: varchar("invoice_prefix", { length: 20 }).default("INV"),
   invoiceStartNumber: integer("invoice_start_number").default(1000),
   paymentTerms: varchar("payment_terms", { length: 255 }).default("Net 30"),
-  defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("20.00"),
+  /** The last invoice number issued; NULL until the first (migration 085). */
+  invoiceLastNumber: integer("invoice_last_number"),
+  defaultTaxRate: numeric("default_tax_rate", { precision: 5, scale: 2 }).default("0.00"),
   receiptFooter: varchar("receipt_footer", { length: 1024 }),
   receiptStyle: varchar("receipt_style", { length: 32 }).default("standard"),
   receiptTemplateHtml: text("receipt_template_html"),
@@ -112,6 +115,30 @@ export const organizations = pgTable("organizations", {
    * name on it is the case the rule exists to remove.
    */
   opsAutoClaimOnCreate: boolean("ops_auto_claim_on_create").default(true).notNull(),
+  /**
+   * "Price guard at the till" (v1.2 Phase 4, migration 110): admin only, off by
+   * default, every change logged. Off: the till shows nothing and the server
+   * records silently (Phase 2). On: the amber line, the reason at Pay, Signals.
+   */
+  priceGuardEnabled: boolean("price_guard_enabled").default(false).notNull(),
+  /**
+   * When per-person figures started (v1.2 Phase 7, migration 170). Order
+   * Timing by person and Staff Performance say "provisional" for the first
+   * two weeks after it, while the owner checks the team figures.
+   */
+  staffPerformanceSince: timestamp("staff_performance_since").defaultNow().notNull(),
+  /**
+   * When below-minimum Signals go out (v1.2 Phase 4, migration 111):
+   * "immediate" or "twice_daily" (a round-up at 12:00 and 18:00). Admin set.
+   * Below cost always goes immediately.
+   */
+  priceGuardMinSignal: varchar("price_guard_min_signal", { length: 12 }).default("immediate").notNull(),
+  /** Refunds rule (CMP-04, admin set): a cash refund over this raises an exception. */
+  refundCashOver: numeric("refund_cash_over", { precision: 10, scale: 2 }).default("50").notNull(),
+  /** Refunds rule: a refund this many days or more after the sale raises an exception. */
+  refundAfterDays: integer("refund_after_days").default(14).notNull(),
+  /** Price overrides Evidence: refunds by the same cashier within this many hours of a flagged sale. */
+  refundSameCashierHours: integer("refund_same_cashier_hours").default(24).notNull(),
   /** Reconciliation poll interval; the board is otherwise fed by server push. */
   opsReconcilePollSeconds: integer("ops_reconcile_poll_seconds").default(60).notNull(),
   /**
@@ -122,9 +149,24 @@ export const organizations = pgTable("organizations", {
   opsAlertOnSlaDue: boolean("ops_alert_on_sla_due").default(false).notNull(),
   /** Hold a screen wake lock while the board is open, so the tablet stays lit. */
   opsKeepScreenAwake: boolean("ops_keep_screen_awake").default(true).notNull(),
+  // The shop's customer privacy notice and complaints contact (migration 073,
+  // PRV-15). Empty until the owner writes them; see shared/shopPrivacy.ts.
+  privacyNoticeUrl: varchar("privacy_notice_url", { length: 1024 }),
+  privacyNoticeText: text("privacy_notice_text"),
+  complaintsContactName: varchar("complaints_contact_name", { length: 255 }),
+  complaintsContactEmail: varchar("complaints_contact_email", { length: 255 }),
+  // The delivery fee (v1.2.1, migration 225, shared/orders/deliveryFee.ts):
+  // a service charge on top of a delivery, not a stock product. Admin set.
+  // Commission leaves it out unless deliveryFeeCommissionable is on (off by
+  // default); margin always leaves it out.
+  deliveryFeeName: varchar("delivery_fee_name", { length: 60 }).default("Delivery fee").notNull(),
+  deliveryFeePrice: numeric("delivery_fee_price", { precision: 10, scale: 2 }).default("3.00").notNull(),
+  deliveryFeeCommissionable: boolean("delivery_fee_commissionable").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  check("organizations_delivery_fee_price_check", sql`${table.deliveryFeePrice} >= 0`),
+]);
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = typeof organizations.$inferInsert;
@@ -272,6 +314,11 @@ export const insertPromotionSchema = createInsertSchema(promotions).omit({
   createdAt: true, 
   updatedAt: true,
   usageCount: true 
+}).extend({
+  // JSON carries dates as ISO strings; the Promotions page sends them that
+  // way, and a bare z.date() refused every one (v1.2.1 money, M17).
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
 });
 export type InsertPromotionData = z.infer<typeof insertPromotionSchema>;
 
@@ -291,10 +338,23 @@ export const customers = pgTable("customers", {
   loyaltyPoints: integer("loyalty_points").default(0),
   tierId: uuid("tier_id").references(() => loyaltyTiers.id),
   totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
+  // The phone as +44 E.164, kept by a trigger from `phone` so every writer
+  // agrees (v1.2 Phase 5, PRV-06, migration 120). Exact-match lookups only.
+  // Never write it directly; shared/customerView.ts formatUkPhone is the same rule.
+  phoneE164: varchar("phone_e164", { length: 20 }),
+  // Who created the record, for the staff report (migration 120). NULL for
+  // older rows and for the website and WhatsApp.
+  createdByUserId: varchar("created_by_user_id", { length: 255 }),
+  // A website order that matched someone on phone OR email (not both) lands on
+  // a new record pointing here, for an admin to merge (migration 120).
+  possibleDuplicateOf: uuid("possible_duplicate_of"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("customers_org_id_idx").on(table.orgId),
+  index("customers_org_phone_e164_idx")
+    .on(table.orgId, table.phoneE164)
+    .where(sql`${table.phoneE164} IS NOT NULL`),
 ]);
 
 export type Customer = typeof customers.$inferSelect;
@@ -416,7 +476,9 @@ export const websiteOrderSettings = pgTable("website_order_settings", {
   ),
   check(
     "website_order_settings_status_ck",
-    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed')`,
+    // No 'completed' (migration 083): a website order must be settled by the
+    // completion path, not born settled.
+    sql`${table.defaultOrderStatus} IN ('pending', 'on-hold', 'awaiting-customer', 'urgent')`,
   ),
   check(
     "website_order_settings_min_order_value_ck",
@@ -497,6 +559,11 @@ export const products = pgTable("products", {
     precision: 10,
     scale: 2,
   }).notNull(),
+  // The lowest price this should sell for (v1.2 Phase 2, PRC-01). NULL means
+  // "follows the sale price" and is the default — no backfill, so a copied
+  // figure can never go stale. Read only through effectiveFloor()
+  // (shared/pricing/floor.ts).
+  minPrice: numeric("min_price", { precision: 10, scale: 2 }),
   // numeric, not integer: shops selling by weight or length need 0.4 of a
   // product. mode:"number" keeps these JS numbers, so the arithmetic that
   // reads them is unchanged — string-mode numeric would have turned every
@@ -531,6 +598,29 @@ export const insertProductSchema = createInsertSchema(products).omit({
   stock: true
 });
 export type InsertProductData = z.infer<typeof insertProductSchema>;
+
+/**
+ * Every change to a product's sale price, minimum or cost (v1.2 Phase 2,
+ * PRC-07): old and new, who, and where from. Values are NULL when the figure
+ * was empty (no minimum / cost unknown), never 0.
+ */
+export const productPriceHistory = pgTable("product_price_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "cascade" }).notNull(),
+  field: varchar("field", { length: 16 }).notNull(),
+  oldValue: numeric("old_value", { precision: 10, scale: 2 }),
+  newValue: numeric("new_value", { precision: 10, scale: 2 }),
+  /** The actor's user id. NULL when the system made the change. */
+  changedBy: varchar("changed_by", { length: 255 }),
+  source: varchar("source", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("product_price_history_field_check", sql`${table.field} IN ('sale', 'min', 'cost')`),
+  index("product_price_history_product_idx").on(table.orgId, table.productId, table.createdAt),
+]);
+
+export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
 
 // Per-location stock (authoritative for inventory math)
 export const productLocationStock = pgTable(
@@ -823,6 +913,13 @@ export type ReplenishmentActionType = (typeof REPLENISHMENT_ACTION_TYPES)[number
 export const ORDER_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent', 'completed'] as const;
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
+/**
+ * The statuses an order may be CREATED with (v1.2 Phase 1B). Never
+ * "completed": completing settles the order (settled total, credit leg,
+ * commission) and only the completion path does that.
+ */
+export const ORDER_CREATE_STATUSES = ['pending', 'on-hold', 'awaiting-customer', 'urgent'] as const;
+
 export const ORDER_CHANNELS = ['pos', 'web', 'api', 'whatsapp', 'phone'] as const;
 export type OrderChannel = (typeof ORDER_CHANNELS)[number];
 
@@ -852,6 +949,12 @@ export const shifts = pgTable(
     notes: text("notes"),
     reopenReason: text("reopen_reason"),
     status: varchar("status", { length: 16 }).notNull().default("open"),
+    /**
+     * True once this shift's stored expected cash includes cash tab
+     * repayments (migration 084). Shifts closed before that rule stay false,
+     * and their Z-reports say so.
+     */
+    tabCashInExpected: boolean("tab_cash_in_expected").notNull().default(false),
   },
   (table) => [
     index("shifts_org_location_idx").on(table.orgId, table.locationId),
@@ -983,6 +1086,8 @@ export const cashierShiftSummaries = pgTable(
     grossSales: numeric("gross_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cashSales: numeric("cash_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     cardSales: numeric("card_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+    // Card by Stripe link, apart from the terminal's card_sales (migration 141).
+    cardLinkSales: numeric("card_link_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     creditSales: numeric("credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     unpaidCreditSales: numeric("unpaid_credit_sales", { precision: 12, scale: 2 }).notNull().default("0"),
     stockCost: numeric("stock_cost", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -1178,19 +1283,145 @@ export const orderPayments = pgTable(
       .notNull(),
     method: varchar("method", { length: 50 }).notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    // 'awaiting' is a card-link leg Stripe has not confirmed yet: the sale is
+    // recorded, the money is not taken, and no takings figure counts it.
+    // Every other leg is 'paid' the moment it is written. (migration 140)
+    status: varchar("status", { length: 16 }).notNull().default("paid"),
+    /** Who confirmed the money, when not the till itself ("stripe"). */
+    provider: varchar("provider", { length: 16 }),
+    /** The provider's payment reference (a Stripe PaymentIntent id). */
+    providerRef: varchar("provider_ref", { length: 255 }),
+    paidAt: timestamp("paid_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("order_payments_order_idx").on(table.orderId),
     index("order_payments_org_method_idx").on(table.orgId, table.method),
+    index("order_payments_awaiting_idx")
+      .on(table.orgId, table.orderId)
+      .where(sql`${table.status} = 'awaiting'`),
     // Zero is allowed — a personal-use order is a real, recorded, zero-value
     // leg. Negative is not: giving money back is a refund.
     check("order_payments_amount_check", sql`${table.amount} >= 0`),
+    check("order_payments_status_check", sql`${table.status} IN ('paid', 'awaiting')`),
   ],
 );
 
 export type OrderPayment = typeof orderPayments.$inferSelect;
 export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * A Stripe Checkout Session made for one awaiting card-link leg (v1.2 Stripe
+ * links). The customer pays on their own phone; Stripe's signed webhook marks
+ * the leg paid. At most one link is open per leg: a double tap returns the
+ * one already made. `mismatch` is a session Stripe says was paid for a
+ * different amount or currency than the leg — the leg is left awaiting and
+ * managers get a Signal. (migration 140)
+ */
+export const cardPaymentLinks = pgTable(
+  "card_payment_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    orderId: uuid("order_id")
+      .references(() => orders.id, { onDelete: "cascade" })
+      .notNull(),
+    paymentId: uuid("payment_id")
+      .references(() => orderPayments.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: varchar("provider", { length: 16 }).notNull().default("stripe"),
+    sessionId: varchar("session_id", { length: 255 }),
+    url: text("url"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdByUserId: varchar("created_by_user_id", { length: 255 }),
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    paidAt: timestamp("paid_at"),
+    closedReason: text("closed_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("card_payment_links_session_uq")
+      .on(table.sessionId)
+      .where(sql`${table.sessionId} IS NOT NULL`),
+    uniqueIndex("card_payment_links_open_uq")
+      .on(table.paymentId)
+      .where(sql`${table.status} = 'open'`),
+    index("card_payment_links_order_idx").on(table.orgId, table.orderId),
+    check(
+      "card_payment_links_status_check",
+      sql`${table.status} IN ('open', 'paid', 'expired', 'cancelled', 'mismatch')`,
+    ),
+    check("card_payment_links_amount_check", sql`${table.amount} > 0`),
+  ],
+);
+
+export type CardPaymentLink = typeof cardPaymentLinks.$inferSelect;
+export type InsertCardPaymentLink = typeof cardPaymentLinks.$inferInsert;
+
+/** Stripe event ids already handled, so a redelivery is a no-op. (migration 140) */
+export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
+  eventId: varchar("event_id", { length: 255 }).primaryKey(),
+  type: varchar("type", { length: 100 }).notNull(),
+  outcome: varchar("outcome", { length: 32 }).notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
+
+/**
+ * Till sales the server refused (v1.2 Phase 1A, "Needs attention").
+ *
+ * A sale queued on a till while the connection was down can be refused when it
+ * is finally sent — the customer it names was removed, a gift card ran out, a
+ * split no longer adds up. It used to sit in the till's browser storage,
+ * retried every 30 seconds for ever, and was deleted with everything else on
+ * sign-out. The till now hands it here, so a manager on any device can see it,
+ * and nothing is dropped without a person deciding to (a discard is logged).
+ *
+ * `payload` is the sale exactly as the till sent it. `clientOrderId` is its
+ * reference, so a retry can never land twice. Unique per org: the till may
+ * report the same refusal more than once. (migration 081)
+ */
+export const saleIssues = pgTable(
+  "sale_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    clientOrderId: varchar("client_order_id", { length: 64 }).notNull(),
+    // Where the till was selling. A retry sells from here, so stock comes off
+    // the shelf the goods actually left.
+    locationId: uuid("location_id"),
+    // The signed-in person on the till that rang the sale — the auth subject,
+    // like orders.input_user_id, and credited as the inputter on a retry.
+    rungByUserId: varchar("rung_by_user_id", { length: 255 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    reason: text("reason").notNull(),
+    httpStatus: integer("http_status"),
+    // When the sale was made on the till, not when it was reported.
+    queuedAt: timestamp("queued_at"),
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    resolvedOrderId: uuid("resolved_order_id"),
+    resolvedByUserId: varchar("resolved_by_user_id", { length: 255 }),
+    resolvedAt: timestamp("resolved_at"),
+    discardReason: text("discard_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sale_issues_org_ref_uq").on(table.orgId, table.clientOrderId),
+    index("sale_issues_org_status_idx").on(table.orgId, table.status),
+    check("sale_issues_status_check", sql`${table.status} IN ('open', 'resolved', 'discarded')`),
+  ],
+);
+
+export type SaleIssue = typeof saleIssues.$inferSelect;
+export type InsertSaleIssue = typeof saleIssues.$inferInsert;
 
 /**
  * A tender leg as the till submits it. The legs must sum to the order total —
@@ -1274,10 +1505,18 @@ export const creditPayments = pgTable(
     // `seed-cashier`), not UUIDs.
     recordedByUserId: varchar("recorded_by_user_id", { length: 255 }),
     note: text("note"),
+    /**
+     * The till shift open for the recorder when the payment was taken today
+     * (migration 084). A cash one is part of that drawer's expected cash.
+     * NULL for backdated payments, for anyone with no till open, and for
+     * everything recorded before the rule.
+     */
+    shiftId: uuid("shift_id").references(() => shifts.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("credit_payments_order_idx").on(table.orderId),
+    index("credit_payments_shift_idx").on(table.shiftId),
     index("credit_payments_org_date_idx").on(table.orgId, table.paidOn),
     // A payment of zero or less is not a payment.
     check("credit_payments_amount_check", sql`${table.amount} > 0`),
@@ -1420,10 +1659,56 @@ export const orders = pgTable("orders", {
   // (migration 062, shared/orders/orderDate.ts)
   enteredAt: timestamp("entered_at").defaultNow(),
   dateKind: varchar("date_kind", { length: 16 }).notNull().default("live"),
+  // The till's own reference for the sale, made when the sale starts and sent
+  // on every attempt (v1.2 Phase 1A). Unique per org, so a retry after a
+  // timeout, a double tap or an offline replay returns the order that already
+  // landed instead of recording the sale twice. NULL for orders that did not
+  // come from the till (web, API). (migration 080)
+  clientOrderId: varchar("client_order_id", { length: 64 }),
+  // How the total was reached, from the one priceOrder() the till and server
+  // share (v1.2 Phase 1B, shared/pricing/priceOrder.ts):
+  //   subtotal − tierDiscount − promoDiscount + vatAmount − pointsDiscount = total
+  // NULL on orders placed before it — never recorded, so not claimed as 0.
+  // `promotionId` has no FK on purpose: deleting a spent promotion must not be
+  // blocked by, or rewrite, the sales it was used on. (migration 082)
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
+  tierDiscount: numeric("tier_discount", { precision: 10, scale: 2 }),
+  tierDiscountPercent: numeric("tier_discount_percent", { precision: 5, scale: 2 }),
+  promotionId: uuid("promotion_id"),
+  promoCode: varchar("promo_code", { length: 50 }),
+  promoDiscount: numeric("promo_discount", { precision: 10, scale: 2 }),
+  pointsRedeemed: integer("points_redeemed"),
+  pointsDiscount: numeric("points_discount", { precision: 10, scale: 2 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
+  vatAmount: numeric("vat_amount", { precision: 10, scale: 2 }),
+  // The delivery fee charged on top of the goods (v1.2.1, migration 225). Part
+  // of `total` and of takings; VAT'd with the goods (inside vatAmount); never
+  // discounted, never costed. NULL on orders from before it: no fee.
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }),
+  // Where a delivery goes (v1.2 Phase 5, PRV-05, migration 120). The order
+  // holds its own address rather than pointing at the customer's saved one:
+  // staff see it while the delivery is live, and it never exposes the
+  // customer record. Required at the till when Delivery is chosen.
+  deliveryAddress: varchar("delivery_address", { length: 1024 }),
+  deliveryPostcode: varchar("delivery_postcode", { length: 16 }),
+  deliveryNotes: varchar("delivery_notes", { length: 500 }),
+  // My run's "Couldn't deliver" (v1.2, migration 180): why the last attempt
+  // failed and when, shown on the board card. The order went back to ready.
+  deliveryIssue: varchar("delivery_issue", { length: 600 }),
+  deliveryIssueAt: timestamp("delivery_issue_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("orders_org_id_idx").on(table.orgId),
+  // A customer's past-order summary (the manager's customer view) and the
+  // board's phone search read orders by customer (v1.2 Phase 5, migration 120).
+  index("orders_customer_id_idx").on(table.customerId),
+  index("orders_promotion_idx")
+    .on(table.orgId, table.promotionId)
+    .where(sql`${table.promotionId} IS NOT NULL`),
+  uniqueIndex("orders_org_client_order_id_uq")
+    .on(table.orgId, table.clientOrderId)
+    .where(sql`${table.clientOrderId} IS NOT NULL`),
   index("orders_dated_idx")
     .on(table.orgId, table.dateKind, table.createdAt)
     .where(sql`${table.dateKind} <> 'live'`),
@@ -1469,6 +1754,7 @@ export const orders = pgTable("orders", {
     ),
   /** The board's "Done today" tray reads the last 120 minutes of settlements. */
   index("orders_settled_recent_idx").on(table.orgId, table.settledAt),
+  check("orders_delivery_fee_check", sql`${table.deliveryFee} IS NULL OR ${table.deliveryFee} >= 0`),
 ]);
 
 export type Order = typeof orders.$inferSelect;
@@ -1528,6 +1814,8 @@ export const ORDER_EVENT_KINDS = [
   "reopened",
   "status_changed",
   "deleted",
+  // A manager's edit of lines/prices, with the money before and after (083).
+  "edited",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 
@@ -1559,10 +1847,20 @@ export const orderEvents = pgTable("order_events", {
   userId: varchar("user_id", { length: 255 }),
   /** Per-kind shape — see the brief's `meta` shapes line. */
   meta: jsonb("meta"),
+  /**
+   * The actor's station at the moment they acted (v1.2 Phase 7A, migration
+   * 170): 'collection', 'delivery', 'both', or 'all' when they had none set.
+   * Stamped by a trigger from `ops_staff`, so every writer gets it.
+   */
+  station: varchar("station", { length: 16 }),
 }, (table) => [
   check(
+    "order_events_station_check",
+    sql`${table.station} IS NULL OR ${table.station} IN ('collection', 'delivery', 'both', 'all')`,
+  ),
+  check(
     "order_events_kind_check",
-    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted')`,
+    sql`${table.kind} IN ('received', 'assigned', 'unassigned', 'ready', 'unready', 'arrived', 'out_for_delivery', 'held', 'unheld', 'delayed', 'delay_cleared', 'due_set', 'completed', 'reopened', 'status_changed', 'deleted', 'edited')`,
   ),
   /** One card's own timeline. */
   index("order_events_order_idx").on(table.orgId, table.orderId, table.at),
@@ -1729,14 +2027,241 @@ export const orderItems = pgTable("order_items", {
   quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+  // Snapshots at the moment of sale (PRC-06, migration 092). All NULL on lines
+  // sold before snapshots existed — no backfill. floor_price is the minimum as
+  // it applied, never cost; unit_cost NULL = cost not known then.
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("order_items_order_id_idx").on(table.orderId),
   index("order_items_org_id_idx").on(table.orgId),
+  // A new sale counts the units already sold but not yet taken off stock, per product (migration 211).
+  index("order_items_product_id_idx").on(table.productId),
 ]);
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+// Underpriced sales, recorded silently by the order engine (PRC-03, CMP-03,
+// migration 093). Never blocks a sale. Read by "Would have flagged" (admin).
+export const priceExceptions = pgTable("price_exceptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+  /** Who set the price: the till user, or the manager who edited the order. */
+  userId: varchar("user_id", { length: 255 }),
+  /** "sale" (placed) or "edit" (a manager's change to an open order). */
+  source: varchar("source", { length: 16 }).notNull(),
+  channel: varchar("channel", { length: 16 }),
+  quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  listPrice: numeric("list_price", { precision: 10, scale: 2 }).notNull(),
+  floorPrice: numeric("floor_price", { precision: 10, scale: 2 }).notNull(),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
+  belowMinimum: boolean("below_minimum").notNull(),
+  belowCost: boolean("below_cost").notNull(),
+  underList: numeric("under_list", { precision: 12, scale: 2 }).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_exceptions_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  index("price_exceptions_org_created_idx").on(table.orgId, table.createdAt),
+  // An edit reads and replaces its order's rows.
+  index("price_exceptions_order_idx").on(table.orderId),
+]);
+
+export type PriceException = typeof priceExceptions.$inferSelect;
+
+/**
+ * The price guard's verdict on one order (v1.2 Phase 4, PRC-02, CMP-05,
+ * migration 110): the cashier's reason, whether every flagged line was
+ * confirmed, the order-level below-cost check and the "Manager agreed"
+ * question. One row per order; the lines stay in price_exceptions.
+ */
+export const priceGuardOrders = pgTable("price_guard_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+  /** Who rang the sale. */
+  userId: varchar("user_id", { length: 255 }),
+  reason: varchar("reason", { length: 24 }),
+  reasonNote: text("reason_note"),
+  /** Null when no line needed the cashier's confirmation. */
+  confirmed: boolean("confirmed"),
+  offline: boolean("offline").default(false).notNull(),
+  confirmedAt: varchar("confirmed_at", { length: 40 }),
+  /** "error" for an unconfirmed arrival or below cost; otherwise "warning". */
+  severity: varchar("severity", { length: 8 }).notNull(),
+  flaggedLines: integer("flagged_lines").default(0).notNull(),
+  unconfirmedLines: integer("unconfirmed_lines").default(0).notNull(),
+  underMinimum: numeric("under_minimum", { precision: 12, scale: 2 }).default("0").notNull(),
+  linesBelowCost: integer("lines_below_cost").default(0).notNull(),
+  orderBelowCost: boolean("order_below_cost").default(false).notNull(),
+  underCost: numeric("under_cost", { precision: 12, scale: 2 }).default("0").notNull(),
+  managerUserId: varchar("manager_user_id", { length: 255 }),
+  managerAnswer: varchar("manager_answer", { length: 8 }),
+  managerAnsweredAt: timestamp("manager_answered_at"),
+  signalId: uuid("signal_id"),
+  /** Held for the next twice-daily round-up (migration 111). */
+  signalPending: boolean("signal_pending").default(false).notNull(),
+  /**
+   * "sale": the till's sale (one per order). "edit": a manager's later edit
+   * that made a new breach, `userId` being the manager (migration 112).
+   */
+  source: varchar("source", { length: 8 }).default("sale").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("price_guard_orders_severity_check", sql`${table.severity} IN ('warning', 'error')`),
+  check("price_guard_orders_answer_check", sql`${table.managerAnswer} IS NULL OR ${table.managerAnswer} IN ('yes', 'no')`),
+  check("price_guard_orders_source_check", sql`${table.source} IN ('sale', 'edit')`),
+  uniqueIndex("price_guard_orders_sale_uq").on(table.orderId).where(sql`${table.source} = 'sale'`),
+  index("price_guard_orders_order_idx").on(table.orderId),
+  index("price_guard_orders_org_created_idx").on(table.orgId, table.createdAt),
+  index("price_guard_orders_pending_idx").on(table.orgId, table.createdAt).where(sql`${table.signalPending}`),
+]);
+
+export type PriceGuardOrder = typeof priceGuardOrders.$inferSelect;
+
+/**
+ * The Needs a look inbox (v1.2 Phase 4, CMP-02, CMP-04, migration 111): one
+ * row per exception — a flagged sale or a refund the refunds rule picks out —
+ * with its review state, reviewer and note. `subjectRole` (the role of the
+ * person it is about, when raised) picks the queue.
+ */
+export const exceptionReviews = pgTable("exception_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  /**
+   * "price" (source: price_guard_orders.id), "refund" (source: refunds.id) or
+   * "pattern" (a loss-prevention flag, v1.2 Phase 7C; source derived from
+   * org, person, measure and week).
+   */
+  kind: varchar("kind", { length: 12 }).notNull(),
+  sourceId: uuid("source_id").notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+  subjectUserId: varchar("subject_user_id", { length: 255 }),
+  subjectRole: varchar("subject_role", { length: 16 }),
+  severity: varchar("severity", { length: 8 }).notNull(),
+  summary: text("summary").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }),
+  /** Refunds: which rules picked it out. */
+  rules: jsonb("rules"),
+  state: varchar("state", { length: 12 }).default("open").notNull(),
+  reviewerId: varchar("reviewer_id", { length: 255 }),
+  note: text("note"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("exception_reviews_kind_check", sql`${table.kind} IN ('price', 'refund', 'pattern')`),
+  check("exception_reviews_state_check", sql`${table.state} IN ('open', 'acknowledged', 'explained', 'escalated')`),
+  check("exception_reviews_severity_check", sql`${table.severity} IN ('warning', 'error')`),
+  uniqueIndex("exception_reviews_source_uq").on(table.kind, table.sourceId),
+  index("exception_reviews_org_state_idx").on(table.orgId, table.state, table.createdAt),
+  index("exception_reviews_subject_idx").on(table.orgId, table.subjectUserId, table.createdAt),
+]);
+
+export type ExceptionReview = typeof exceptionReviews.$inferSelect;
+
+// Contact-details requests and 24-hour access (v1.2 Phase 6, PRV-09). See
+// migrations/160_contact_requests.sql and shared/contactAccess.ts.
+export const contactRequests = pgTable("contact_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }).notNull(),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  requesterUserId: varchar("requester_user_id", { length: 255 }).notNull(),
+  requesterRole: varchar("requester_role", { length: 16 }).notNull(),
+  reasonCode: varchar("reason_code", { length: 24 }).notNull(),
+  note: text("note").notNull(),
+  /** The contact fields asked for: any of "phone", "email", "address". */
+  fields: jsonb("fields").$type<string[]>().notNull(),
+  status: varchar("status", { length: 12 }).default("pending").notNull(),
+  /** A pending request lapses at this time (48 hours after it was made). */
+  expiresAt: timestamp("expires_at").notNull(),
+  decidedByUserId: varchar("decided_by_user_id", { length: 255 }),
+  decidedAt: timestamp("decided_at"),
+  decisionNote: text("decision_note"),
+  /** Set on approval: the grant runs 24 hours from then. */
+  grantExpiresAt: timestamp("grant_expires_at"),
+  endedByUserId: varchar("ended_by_user_id", { length: 255 }),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("contact_requests_status_check", sql`${table.status} IN ('pending', 'approved', 'declined', 'expired', 'revoked', 'ended')`),
+  check("contact_requests_reason_check", sql`${table.reasonCode} IN ('complaint', 'refund_return', 'delivery_problem', 'lost_property', 'debt_chase', 'other')`),
+  check("contact_requests_note_check", sql`char_length(btrim(${table.note})) >= 15`),
+  uniqueIndex("contact_requests_one_pending_uq")
+    .on(table.orgId, table.customerId, table.requesterUserId)
+    .where(sql`${table.status} = 'pending'`),
+  index("contact_requests_org_status_idx").on(table.orgId, table.status, table.createdAt),
+  index("contact_requests_customer_idx").on(table.orgId, table.customerId, table.createdAt),
+]);
+
+export type ContactRequest = typeof contactRequests.$inferSelect;
+
+// The customer data access log (v1.2 Phase 6, PRV-10): every look at, or
+// change to, a customer's contact details. See server/services/customerAccessLog.ts.
+export const customerAccessLog = pgTable("customer_access_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 16 }).notNull(),
+  action: varchar("action", { length: 32 }).notNull(),
+  field: varchar("field", { length: 16 }),
+  requestId: uuid("request_id").references(() => contactRequests.id, { onDelete: "set null" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata"),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("customer_access_log_customer_idx").on(table.orgId, table.customerId, table.createdAt),
+  index("customer_access_log_org_idx").on(table.orgId, table.createdAt),
+  index("customer_access_log_actor_idx").on(table.orgId, table.actorUserId, table.createdAt),
+]);
+
+export type CustomerAccessLogRow = typeof customerAccessLog.$inferSelect;
+export type InsertCustomerAccessLog = typeof customerAccessLog.$inferInsert;
+
+/**
+ * Staff targets (v1.2 Phase 7C, STF-07): set by admins only, logged and
+ * versioned. Each change is a new row with the next version and is never
+ * edited (a trigger refuses UPDATE, migration 171). `targets` is a list of
+ * shared/reports/staffTargets.ts StaffTarget. No money is attached to any.
+ */
+export const staffTargets = pgTable("staff_targets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  version: integer("version").notNull(),
+  targets: jsonb("targets").notNull(),
+  note: text("note"),
+  setByUserId: varchar("set_by_user_id", { length: 255 }).notNull(),
+  setAt: timestamp("set_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("staff_targets_org_version_uq").on(table.orgId, table.version),
+]);
+
+export type StaffTargetsRow = typeof staffTargets.$inferSelect;
+
+/**
+ * The weekly staff job (v1.2 Phase 7C): loss-prevention flags and the digest,
+ * once per org per week after Monday's close. Counts only — the digest is
+ * built per recipient at send time and never stored (migration 171).
+ */
+export const staffWeeklyRuns = pgTable("staff_weekly_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  weekStart: date("week_start").notNull(),
+  ranAt: timestamp("ran_at").defaultNow().notNull(),
+  flagsRaised: integer("flags_raised").notNull().default(0),
+  digestsSent: integer("digests_sent").notNull().default(0),
+}, (table) => [
+  uniqueIndex("staff_weekly_runs_org_week_uq").on(table.orgId, table.weekStart),
+]);
 
 // Refunds (F3)
 export const REFUND_REASONS = [
@@ -1748,7 +2273,10 @@ export const REFUND_REASONS = [
 ] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
 
-export const REFUND_METHODS = ["original", "cash", "store_credit"] as const;
+// What a person may ask for. The row stores how the money actually left,
+// which can also be "credit" (taken off the customer's tab): see
+// shared/refunds/refundRules.ts.
+export const REFUND_METHODS = ["original", "cash", "card", "store_credit"] as const;
 export type RefundMethod = (typeof REFUND_METHODS)[number];
 
 export const refunds = pgTable(
@@ -1767,12 +2295,25 @@ export const refunds = pgTable(
     notes: text("notes"),
     refundMethod: varchar("refund_method", { length: 16 }).notNull(),
     total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+    /**
+     * The part of `total` taken off the customer's tab rather than paid out
+     * (migration 200). Only `total - credit_amount` left the till.
+     */
+    creditAmount: numeric("credit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+    // The part of `total` that gave the order's delivery fee back, as charged
+    // (VAT included); NULL when none (v1.2.1, migration 226). At most once per order.
+    deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("refunds_order_id_idx").on(table.orderId),
     index("refunds_org_id_idx").on(table.orgId),
     index("refunds_shift_id_idx").on(table.shiftId),
+    check("refunds_delivery_fee_check", sql`${table.deliveryFee} IS NULL OR ${table.deliveryFee} >= 0`),
+    check(
+      "refunds_refund_method_check",
+      sql`${table.refundMethod} IN ('original', 'cash', 'card', 'store_credit', 'credit')`,
+    ),
   ],
 );
 
@@ -1789,7 +2330,8 @@ export const refundLines = pgTable(
     orderLineId: uuid("order_line_id")
       .references(() => orderItems.id)
       .notNull(),
-    qty: integer("qty").notNull(),
+    // Three places, like order_items.quantity: a weighed line is refunded by weight (migration 210).
+    qty: numeric("qty", { precision: 14, scale: 3, mode: "number" }).notNull(),
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   },
   (table) => [
@@ -1898,10 +2440,17 @@ export const satisfactionScores = pgTable(
     scoreDate: timestamp("score_date").defaultNow().notNull(),
     followedUpAt: timestamp("followed_up_at"),
     createdAt: timestamp("created_at").defaultNow(),
+    /** Who tapped the stars (v1.2 Phase 7C, migration 171). NULL on older rows. */
+    ratedByUserId: varchar("rated_by_user_id", { length: 255 }),
+    /** Where the rating came from: board | capture | customer; 'unknown' on older rows. */
+    source: varchar("source", { length: 16 }).notNull().default("unknown"),
   },
   (table) => [
     index("satisfaction_scores_org_date_idx").on(table.orgId, table.scoreDate),
     index("satisfaction_scores_customer_idx").on(table.customerId),
+    // One rating per order (migration 171 cleaned the duplicates first).
+    uniqueIndex("satisfaction_scores_order_uq").on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
+    check("satisfaction_scores_source_check", sql`${table.source} IN ('board', 'capture', 'customer', 'unknown')`),
   ],
 );
 export type SatisfactionScore = typeof satisfactionScores.$inferSelect;
@@ -1972,11 +2521,24 @@ export const invoices = pgTable("invoices", {
   dueDate: varchar("due_date", { length: 10 }),
   googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
   googleDriveLink: varchar("google_drive_link", { length: 1024 }),
+  // Migration 085. NULL on invoices written before numbering: those are not
+  // renumbered. A numbered invoice keeps the terms, name and VAT rate it was
+  // issued with.
+  sequenceNumber: integer("sequence_number"),
+  paymentTerms: varchar("payment_terms", { length: 255 }),
+  billingName: varchar("billing_name", { length: 255 }),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("invoices_org_id_idx").on(table.orgId),
   index("invoices_order_id_idx").on(table.orderId),
+  uniqueIndex("invoices_org_sequence_uq")
+    .on(table.orgId, table.sequenceNumber)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
+  uniqueIndex("invoices_order_numbered_uq")
+    .on(table.orderId)
+    .where(sql`${table.sequenceNumber} IS NOT NULL`),
 ]);
 
 export type Invoice = typeof invoices.$inferSelect;
@@ -2106,6 +2668,9 @@ export const allowedUsers = pgTable("allowed_users", {
   isOwner: integer("is_owner").default(0).notNull(), // legacy; 1 => SUPER_ADMIN
   orgId: uuid("org_id").references(() => organizations.id),
   role: roleEnum("role").default("CASHIER"),
+  // A shop account (role CUSTOMER) is linked to one customer record; its
+  // website orders attach there (v1.2 Phase 5, migration 120).
+  customerId: uuid("customer_id").references(() => customers.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("allowed_users_org_id_idx").on(table.orgId),
@@ -2236,7 +2801,16 @@ export const orgNotifications = pgTable(
     severity: varchar("severity", { length: 20 }).notNull().default("info"),
     source: varchar("source", { length: 64 }).notNull(),
     metadata: jsonb("metadata"),
+    /**
+     * Legacy org-wide read flag. No longer written: read state is per person
+     * on `org_notification_recipients` (migration 072). Kept so old rows keep
+     * their history.
+     */
     readAt: timestamp("read_at"),
+    /** Who the Signal is for — see shared/signals.ts `SignalAudience`. Null only on rows older than 072 that the backfill could not place. */
+    audience: jsonb("audience"),
+    /** The member of staff the Signal names, if any. They are never told unless the audience says so, and it only reaches people who outrank them. */
+    subjectUserId: varchar("subject_user_id", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [index("org_notifications_org_created_idx").on(table.orgId, table.createdAt)],
@@ -2244,6 +2818,39 @@ export const orgNotifications = pgTable(
 
 export type OrgNotification = typeof orgNotifications.$inferSelect;
 export type InsertOrgNotification = typeof orgNotifications.$inferInsert;
+
+/**
+ * Who a Signal was sent to, and what each of them has done with it
+ * (migration 072, v1.2 Phase 0B). One row per person per Signal, resolved at
+ * send time by `notify()` (server/services/signals.ts), so read and cleared
+ * are per person: clearing a Signal on one account leaves it on another.
+ *
+ * `userId` is the auth subject (`allowed_users.auth_user_id`, falling back to
+ * `replit_user_id`), the same value as `req.user.id`. No FK: the owner's
+ * SUPER_ADMIN login has no fixed org, and a row here must never be what
+ * blocks removing a person.
+ */
+export const orgNotificationRecipients = pgTable(
+  "org_notification_recipients",
+  {
+    notificationId: uuid("notification_id")
+      .references(() => orgNotifications.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    orgId: uuid("org_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    readAt: timestamp("read_at"),
+    dismissedAt: timestamp("dismissed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.notificationId, table.userId] }),
+    index("org_notification_recipients_user_idx").on(table.orgId, table.userId),
+  ],
+);
+
+export type OrgNotificationRecipient = typeof orgNotificationRecipients.$inferSelect;
 
 /**
  * One-time UI a person has already seen — What's New, tours, tutorials
@@ -2898,3 +3505,172 @@ export const REQUIRED_WORKERS: Record<EventType, WorkerName[]> = {
   // never enqueue a worker job just to record that it happened.
   OrderStageChanged: [],
 };
+
+// Truths at a glance (v1.2 Phase 3, migration 100): the org's one widget
+// layout, set by admins. Checked against shared/truthsLayout.ts on save.
+export const orgTruthsLayouts = pgTable("org_truths_layouts", {
+  orgId: uuid("org_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  widgets: jsonb("widgets").$type<Array<{ id: string; size: string; window: string }>>().notNull(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type OrgTruthsLayout = typeof orgTruthsLayouts.$inferSelect;
+
+/**
+ * The "Problem?" inbox (v1.2 Phase 8A, UXA-09, migration 130): one row per
+ * report from the till or the header. The inbox shows `reporterRole`, never
+ * who; `reporterUserId` is only for "Thanks, fixed in version X" (Q18).
+ */
+export const problemReports = pgTable("problem_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  reporterUserId: varchar("reporter_user_id", { length: 255 }).notNull(),
+  reporterRole: varchar("reporter_role", { length: 16 }).notNull(),
+  clientRef: varchar("client_ref", { length: 64 }).notNull(),
+  chip: varchar("chip", { length: 16 }).notNull(),
+  note: text("note"),
+  screen: varchar("screen", { length: 120 }).notNull(),
+  device: varchar("device", { length: 32 }).notNull(),
+  appVersion: varchar("app_version", { length: 32 }),
+  online: boolean("online").notNull(),
+  queue: jsonb("queue").$type<{ waiting: number; failed: number; needsAttention: number }>().notNull(),
+  status: varchar("status", { length: 8 }).default("open").notNull(),
+  fixedInVersion: varchar("fixed_in_version", { length: 32 }),
+  resolvedBy: varchar("resolved_by", { length: 255 }),
+  resolvedAt: timestamp("resolved_at"),
+  reportedAt: timestamp("reported_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  check("problem_reports_chip_check", sql`${table.chip} IN ('too_slow', 'cant_find', 'wrong_thing', 'error_message', 'other')`),
+  check("problem_reports_status_check", sql`${table.status} IN ('open', 'fixed', 'closed')`),
+  check("problem_reports_fixed_check", sql`${table.status} <> 'fixed' OR ${table.fixedInVersion} IS NOT NULL`),
+  uniqueIndex("problem_reports_client_ref_uq").on(table.orgId, table.reporterUserId, table.clientRef),
+  index("problem_reports_org_status_idx").on(table.orgId, table.status, table.createdAt),
+  index("problem_reports_reporter_idx").on(table.reporterUserId, table.createdAt),
+]);
+
+export type ProblemReport = typeof problemReports.$inferSelect;
+
+/**
+ * Our own usage record (v1.2 Phase 8B, UXA-07/08, migration 131): raw events,
+ * kept 90 days. A role and a device name, never a person (Q18): there is no
+ * user column and none may be added. No screen text, typed values, money or names.
+ */
+export const usageEvents = pgTable("usage_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  kind: varchar("kind", { length: 8 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  device: varchar("device", { length: 32 }).notNull(),
+  deviceKey: varchar("device_key", { length: 64 }).notNull(),
+  appVersion: varchar("app_version", { length: 32 }),
+  screen: varchar("screen", { length: 120 }).default("").notNull(),
+  label: varchar("label", { length: 120 }).default("").notNull(),
+  activeMs: integer("active_ms").default(0).notNull(),
+  openMs: integer("open_ms").default(0).notNull(),
+  durationMs: integer("duration_ms").default(0).notNull(),
+  slow: boolean("slow").default(false).notNull(),
+  failed: boolean("failed").default(false).notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  rolled: boolean("rolled").default(false).notNull(),
+}, (table) => [
+  check("usage_events_kind_check", sql`${table.kind} IN ('screen', 'message', 'call', 'crash', 'offline', 'funnel', 'credit')`),
+  index("usage_events_org_time_idx").on(table.orgId, table.occurredAt),
+  index("usage_events_device_idx").on(table.orgId, table.deviceKey, table.receivedAt),
+  index("usage_events_org_received_idx").on(table.orgId, table.receivedAt),
+  index("usage_events_rolled_idx").on(table.rolled, table.orgId),
+]);
+
+/** Daily summaries of usage_events (v1.2 Phase 8B), kept 24 months. Friction Truths reads these. */
+export const usageDaily = pgTable("usage_daily", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  day: date("day").notNull(),
+  kind: varchar("kind", { length: 8 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  device: varchar("device", { length: 32 }).notNull(),
+  screen: varchar("screen", { length: 120 }).default("").notNull(),
+  label: varchar("label", { length: 120 }).default("").notNull(),
+  count: integer("count").default(0).notNull(),
+  activeMs: bigint("active_ms", { mode: "number" }).default(0).notNull(),
+  openMs: bigint("open_ms", { mode: "number" }).default(0).notNull(),
+  durationMs: bigint("duration_ms", { mode: "number" }).default(0).notNull(),
+  slow: integer("slow").default(0).notNull(),
+  failed: integer("failed").default(0).notNull(),
+}, (table) => [
+  uniqueIndex("usage_daily_key_uq").on(table.orgId, table.day, table.kind, table.role, table.device, table.screen, table.label),
+  index("usage_daily_org_day_idx").on(table.orgId, table.day),
+]);
+
+/**
+ * The owner's "improvement study" window (v1.2 Phase 8, on demand): off by
+ * default. No outside recorder is connected; when on, staff on the chosen
+ * screens see "Improvement study on this screen until <date>".
+ */
+export const usageStudyWindows = pgTable("usage_study_windows", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").default(false).notNull(),
+  screens: jsonb("screens").$type<string[]>().default([]).notNull(),
+  endsOn: date("ends_on"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+// My run (v1.2, migration 180): the order a driver put their stops in, per
+// person per trading day. Ids only — the stops are always read fresh.
+export const deliveryRunOrders = pgTable("delivery_run_orders", {
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  runDate: date("run_date").notNull(),
+  orderIds: jsonb("order_ids").$type<string[]>().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.orgId, table.userId, table.runDate] }),
+]);
+
+export type DeliveryRunOrder = typeof deliveryRunOrders.$inferSelect;
+
+// Ask arcarna (v1.2, migration 190). Settings are admin-only and logged; one
+// audit row per question doubles as the org's usage record for the spend cap.
+// Never the answer; the question is scrubbed and shown to admins only.
+export const askSettings = pgTable("ask_settings", {
+  orgId: uuid("org_id").primaryKey().references(() => organizations.id, { onDelete: "cascade" }),
+  monthlyCapGbp: numeric("monthly_cap_gbp", { precision: 10, scale: 2 }).default("25.00").notNull(),
+  usdToGbp: numeric("usd_to_gbp", { precision: 8, scale: 4 }).default("0.7900").notNull(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  check("ask_settings_cap_check", sql`${table.monthlyCapGbp} >= 0`),
+  check("ask_settings_rate_check", sql`${table.usdToGbp} > 0`),
+]);
+
+export const askQuestions = pgTable("ask_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  role: varchar("role", { length: 16 }).notNull(),
+  askedAt: timestamp("asked_at").defaultNow().notNull(),
+  question: varchar("question", { length: 1000 }).default("").notNull(),
+  questionScrubbed: boolean("question_scrubbed").default(false).notNull(),
+  tools: jsonb("tools").$type<string[]>().default([]).notNull(),
+  model: varchar("model", { length: 64 }).notNull(),
+  servedByFallback: boolean("served_by_fallback").default(false).notNull(),
+  inputTokens: integer("input_tokens").default(0).notNull(),
+  outputTokens: integer("output_tokens").default(0).notNull(),
+  cacheReadTokens: integer("cache_read_tokens").default(0).notNull(),
+  cacheWriteTokens: integer("cache_write_tokens").default(0).notNull(),
+  costGbp: numeric("cost_gbp", { precision: 12, scale: 4 }).default("0").notNull(),
+  outcome: varchar("outcome", { length: 16 }).notNull(),
+}, (table) => [
+  check("ask_questions_outcome_check", sql`${table.outcome} IN ('answered', 'refused', 'cut_short', 'error', 'stopped')`),
+  index("ask_questions_org_time_idx").on(table.orgId, table.askedAt),
+  index("ask_questions_user_idx").on(table.userId, table.askedAt),
+]);
+
+export type AskQuestion = typeof askQuestions.$inferSelect;

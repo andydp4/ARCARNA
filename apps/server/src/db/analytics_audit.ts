@@ -24,10 +24,36 @@ export const AnalyticsSinkDrizzle: AnalyticsSink = {
   }
 }
 
+/**
+ * Keys whose values are personal contact details. The application log (PM2
+ * stdout on the VPS) is not a place customer contact may live (v1.2.1
+ * SEC-LOGPII): the line keeps which fields changed, never what they became.
+ */
+const CONTACT_KEY = /^(phone|mobile|email|e_?mail|address|address_?line\d*|postcode|post_?code|city|town|delivery_?(address|postcode|notes)|wa_?id|whatsapp|date_?of_?birth|dob|notes)$/i
+
+/** On a customer event the person's name is contact detail too. */
+const CUSTOMER_NAME_KEY = /^(name|first_?name|last_?name|full_?name|customer_?name)$/i
+
+export function redactAuditPayload(event: string, payload: unknown, depth = 0): unknown {
+  if (depth > 6 || payload === null || typeof payload !== 'object') return payload
+  if (Array.isArray(payload)) return payload.map((v) => redactAuditPayload(event, v, depth + 1))
+  const isCustomerEvent = /^customer/i.test(event)
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+    if (CONTACT_KEY.test(key) || (isCustomerEvent && CUSTOMER_NAME_KEY.test(key))) {
+      out[key] = value == null ? value : '[redacted]'
+    } else {
+      out[key] = redactAuditPayload(event, value, depth + 1)
+    }
+  }
+  return out
+}
+
 export const AuditPortDrizzle: AuditPort = {
   async log(event: string, payload: unknown){
     // No DB write: admin audit lives in `admin_audit_logs` (written at the route
-    // layer via recordAdminAudit). Keep a structured log line for traceability.
-    logApiJson({ kind: 'domain_audit', event, payload })
+    // layer via recordAdminAudit). Keep a structured log line for traceability,
+    // with contact details removed.
+    logApiJson({ kind: 'domain_audit', event, payload: redactAuditPayload(event, payload) })
   }
 }

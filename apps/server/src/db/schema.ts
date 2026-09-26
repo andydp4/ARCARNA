@@ -19,6 +19,10 @@ export const customers = pgTable('customers', {
   source: varchar('source', { length: 32 }),
   manual_override_protected: integer('manual_override_protected').default(0).notNull(),
   loyalty_points: integer('loyalty_points').default(0),
+  // See shared/schema.ts and migration 120. phone_e164 is kept by a trigger.
+  receipt_email_opt_in: boolean('receipt_email_opt_in').default(true).notNull(),
+  phone_e164: varchar('phone_e164', { length: 20 }),
+  created_by_user_id: varchar('created_by_user_id', { length: 255 }),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })
@@ -48,6 +52,10 @@ export const products = pgTable('products', {
   product_id: varchar('product_id',{length:100}).notNull().unique(), // SKU
   cost_price: numeric('cost_price', { precision: 10, scale: 2 }),
   default_sale_price: numeric('default_sale_price',{precision:10,scale:2}).notNull(),
+  // NULL = follows the sale price (shared/pricing/floor.ts effectiveFloor).
+  min_price: numeric('min_price', { precision: 10, scale: 2 }),
+  location_id: uuid('location_id'),
+  aliases: jsonb('aliases').$type<string[]>(),
   // Must match shared/schema.ts: these are the same physical columns, and
   // drizzle's integer mapper runs parseInt on what numeric returns, so a
   // declaration left as integer reads 0.400 as 0.
@@ -137,6 +145,29 @@ export const orders = pgTable('orders', {
   // sale is for — see shared/schema.ts and migration 062.
   entered_at: timestamp('entered_at').defaultNow(),
   date_kind: varchar('date_kind', { length: 16 }).notNull().default('live'),
+  // The till's sale reference, unique per org — see shared/schema.ts and
+  // migration 080. The unique index is declared there.
+  client_order_id: varchar('client_order_id', { length: 64 }),
+  // How the total was reached — see shared/schema.ts and migration 082.
+  subtotal: numeric('subtotal',{precision:10,scale:2}),
+  tier_discount: numeric('tier_discount',{precision:10,scale:2}),
+  tier_discount_percent: numeric('tier_discount_percent',{precision:5,scale:2}),
+  promotion_id: uuid('promotion_id'),
+  promo_code: varchar('promo_code', { length: 50 }),
+  promo_discount: numeric('promo_discount',{precision:10,scale:2}),
+  points_redeemed: integer('points_redeemed'),
+  points_discount: numeric('points_discount',{precision:10,scale:2}),
+  vat_rate: numeric('vat_rate',{precision:5,scale:2}),
+  vat_amount: numeric('vat_amount',{precision:10,scale:2}),
+  // The delivery fee on top of the goods — see shared/schema.ts and migration 225.
+  delivery_fee: numeric('delivery_fee',{precision:10,scale:2}),
+  // Delivery address on the order — see shared/schema.ts and migration 120.
+  delivery_address: varchar('delivery_address', { length: 1024 }),
+  delivery_postcode: varchar('delivery_postcode', { length: 16 }),
+  delivery_notes: varchar('delivery_notes', { length: 500 }),
+  // My run's "Couldn't deliver" note — see shared/schema.ts and migration 180.
+  delivery_issue: varchar('delivery_issue', { length: 600 }),
+  delivery_issue_at: timestamp('delivery_issue_at'),
   created_at: timestamp('created_at').defaultNow(),
   updated_at: timestamp('updated_at').defaultNow(),
 })
@@ -149,6 +180,10 @@ export const order_items = pgTable('order_items', {
   quantity: numeric('quantity', { precision: 14, scale: 3, mode: 'number' }).notNull(),
   unit_price: numeric('unit_price',{precision:10,scale:2}).notNull(),
   total_price: numeric('total_price',{precision:10,scale:2}).notNull(),
+  // PRC-06 snapshots (migration 092); see shared/schema.ts orderItems.
+  list_price: numeric('list_price',{precision:10,scale:2}),
+  floor_price: numeric('floor_price',{precision:10,scale:2}),
+  unit_cost: numeric('unit_cost',{precision:10,scale:2}),
   created_at: timestamp('created_at').defaultNow(),
 })
 

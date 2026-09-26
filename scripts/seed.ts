@@ -66,6 +66,9 @@ async function seed() {
       // the state it creates.
       .values({
         name: SEED_ORG_NAME,
+        // The demo shop is VAT-registered so the till journeys exercise VAT;
+        // a real new shop starts at 0% (not registered) until it says so.
+        defaultTaxRate: "20.00",
         setupComplete: 1,
         onboardingState: { completedSteps: [...ONBOARDING_STEPS] },
       })

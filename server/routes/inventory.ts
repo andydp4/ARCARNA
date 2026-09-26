@@ -17,6 +17,8 @@ import {
 import { resolveEditableStockLocationId } from "../services/stockLocationContext";
 import { StockError, stockErrorPayload, resolveStockLocationId } from "../services/productLocationStock";
 import { LOW_STOCK_THRESHOLD_PERCENT } from "@shared/constants/stock";
+import { productsForRole } from "@shared/accessPolicy";
+import { toStockLevelRow } from "@shared/stockLevels";
 
 /**
  * Roles allowed to look at a location other than their own resolved one —
@@ -68,10 +70,30 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
       }
 
       const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
-      res.json(list);
+      res.json(productsForRole(list, ctx.role));
     } catch (error) {
       console.error("Error fetching inventory:", error);
       res.status(500).json({ message: "Failed to fetch inventory" });
+    }
+  });
+
+  // Stock Centre › Stock levels (v1.2 Phase 3): the cashier's read-only view.
+  // Open to all staff, answered from the caller's own resolved location, and
+  // shaped by an allow-list (shared/stockLevels.ts) so no cost field can ride
+  // along — a cashier never receives what stock cost, not even to ignore it.
+  app.get("/api/stock-levels", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role: string };
+      const stockLocationId = await resolveEditableStockLocationId({
+        orgId: ctx.orgId,
+        locationId: ctx.locationId,
+        userId: req.user?.claims?.sub ?? req.user?.id ?? null,
+      });
+      const list = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
+      res.json(list.map(toStockLevelRow));
+    } catch (error) {
+      console.error("Error fetching stock levels:", error);
+      res.status(500).json({ message: "Failed to fetch stock levels" });
     }
   });
 
@@ -121,7 +143,10 @@ export function registerInventoryRoutes(app: Express, scoped: RequestHandler[]):
         locationId: ctx.locationId,
         userId: req.user?.claims?.sub ?? req.user?.id ?? null,
       });
-      const products = await storage.getProductsWithStock(ctx.orgId, stockLocationId);
+      const products = productsForRole(
+        await storage.getProductsWithStock(ctx.orgId, stockLocationId),
+        ctx.role,
+      );
       const alerts = products
         .filter(product => {
           if (product.stock == null || product.stockLimit == null) return false;

@@ -1,3 +1,4 @@
+import { csvDocument } from "@shared/csv";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -487,16 +488,17 @@ export default function PurchaseDraftsPage() {
   const exportCsv = async (draft: DraftDetail) => {
     const d = await flushBeforeExport(draft);
     if (!d) return;
-    const header = "SKU,Product,Qty,Unit cost,Line total,Supplier SKU\n";
-    const rows = d.items
-      .map((line) => {
+    // The shared writer (FIX-14): quoted, formula-safe, UTF-8 marked.
+    const csv = csvDocument(
+      ["SKU", "Product", "Qty", "Unit cost", "Line total", "Supplier SKU"],
+      d.items.map((line) => {
         const { unitCost } = lineUnitCost(line);
         const cost = unitCost != null ? unitCost.toFixed(2) : "";
         const total = unitCost != null ? (unitCost * line.quantity).toFixed(2) : "";
-        return `${line.sku},"${line.productName.replace(/"/g, '""')}",${line.quantity},${cost},${total},${line.supplierSku ?? ""}`;
-      })
-      .join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
+        return [line.sku, line.productName, line.quantity, cost, total, line.supplierSku ?? ""];
+      }),
+    );
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -704,8 +706,10 @@ export default function PurchaseDraftsPage() {
                       size="sm"
                       variant="destructive"
                       onClick={() => deleteMutation.mutate(detail.id)}
+                      className="gap-1"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                      Delete draft
                     </Button>
                   )}
                 </div>
@@ -761,7 +765,7 @@ export default function PurchaseDraftsPage() {
                         {receiving.receipts.map((r) => (
                           <li key={r.id} className="flex justify-between gap-2">
                             <span>
-                              {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                              {r.status} · {r.createdAt ? new Date(r.createdAt).toLocaleString("en-GB") : ""}
                             </span>
                             <Link href={receiptLink(r.id)} className="text-primary underline text-xs">
                               Receipt {r.id.slice(0, 8)}…
@@ -968,7 +972,7 @@ export default function PurchaseDraftsPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label>Qty received</Label>
-                      <Input
+                      <Input aria-label="Qty received"
                         type="number"
                         inputMode="decimal"
                         step="any"
@@ -987,7 +991,7 @@ export default function PurchaseDraftsPage() {
                     </div>
                     <div>
                       <Label>Damaged</Label>
-                      <Input
+                      <Input aria-label="Damaged"
                         type="number"
                         inputMode="decimal"
                         step="any"

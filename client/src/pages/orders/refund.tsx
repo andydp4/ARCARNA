@@ -3,6 +3,7 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/appPaths";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { invalidateCustomerCreditSummaries } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,11 +34,24 @@ interface OrderDetail {
   id: string;
   customerName: string;
   total: string;
+  settledTotal?: string | null;
   paymentMethod: string;
   refundedTotal?: number;
+  /** The delivery fee (v1.2.1), and what refunding it gives back (0 once it has been). */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
+  deliveryFeeRefundable?: number;
+  deliveryFeeRefunded?: number;
   items: OrderLine[];
   refunds?: Array<{ lines: Array<{ orderLineId: string; qty: number }> }>;
 }
+
+const METHOD_LABELS: Record<string, string> = {
+  original: "The way it was paid",
+  cash: "Cash",
+  card: "Back to the card",
+  store_credit: "Store credit",
+};
 
 const REASON_LABELS: Record<string, string> = {
   damaged: "Damaged",
@@ -57,6 +71,7 @@ export default function OrderRefundPage() {
   const [reason, setReason] = useState<string>(REFUND_REASONS[0]);
   const [refundMethod, setRefundMethod] = useState<string>("original");
   const [notes, setNotes] = useState("");
+  const [refundFee, setRefundFee] = useState(false);
 
   const { data: order, isLoading } = useQuery<OrderDetail>({
     queryKey: ["/api/orders", orderId],
@@ -74,7 +89,7 @@ export default function OrderRefundPage() {
       for (const line of refund.lines ?? []) {
         map.set(
           line.orderLineId,
-          (map.get(line.orderLineId) ?? 0) + line.qty,
+          (map.get(line.orderLineId) ?? 0) + Number(line.qty),
         );
       }
     }
@@ -85,17 +100,28 @@ export default function OrderRefundPage() {
     if (!order) return [];
     return order.items.map((item) => {
       const refunded = alreadyRefunded.get(item.id) ?? 0;
-      const remaining = item.quantity - refunded;
+      const remaining = Math.round((Number(item.quantity) - Number(refunded)) * 1000) / 1000;
       return { ...item, refunded, remaining };
     });
   }, [order, alreadyRefunded]);
 
+  // A refund gives back what the customer paid for the items: the sale's
+  // settled total (less its delivery fee) shared across its lines, so a
+  // discount comes off it too. The fee goes back on its own, as charged.
+  // The server works out the final figure the same way.
+  const feeRefundable = order?.deliveryFeeRefundable ?? 0;
+  const feeCharged = feeRefundable + (order?.deliveryFeeRefunded ?? 0);
   const refundTotal = useMemo(() => {
-    return lines.reduce((sum, line) => {
+    const lineValue = lines.reduce((sum, line) => sum + line.quantity * parseFloat(line.unitPrice), 0);
+    const settled = parseFloat(String(order?.settledTotal ?? order?.total ?? lineValue)) - feeCharged;
+    const ratio = lineValue > 0 && Number.isFinite(settled) ? Math.max(0, settled) / lineValue : 1;
+    const listValue = lines.reduce((sum, line) => {
       const qty = selected[line.id] ?? 0;
       return sum + qty * parseFloat(line.unitPrice);
     }, 0);
-  }, [lines, selected]);
+    const goods = Math.round(listValue * ratio * 100) / 100;
+    return Math.round((goods + (refundFee ? feeRefundable : 0)) * 100) / 100;
+  }, [lines, selected, order?.settledTotal, order?.total, refundFee, feeRefundable, feeCharged]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -107,12 +133,15 @@ export default function OrderRefundPage() {
         refundMethod,
         notes: notes.trim() || undefined,
         lines: refundLines,
+        ...(refundFee && feeRefundable > 0 ? { deliveryFee: true } : {}),
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders", orderId] });
+      // A refunded credit sale can change what the customer owes.
+      void invalidateCustomerCreditSummaries(queryClient);
       toast({ title: "Refund issued" });
       // ARC-048: `history.back()` left the SPA entirely when this page was
       // opened directly (a bookmark or shared link) rather than clicked
@@ -167,6 +196,7 @@ export default function OrderRefundPage() {
               >
                 <div className="flex items-start gap-3">
                   <Checkbox
+                    aria-label={`Refund ${line.productName}`}
                     checked={(selected[line.id] ?? 0) > 0}
                     disabled={line.remaining <= 0}
                     onCheckedChange={(checked) => {
@@ -185,8 +215,11 @@ export default function OrderRefundPage() {
                   </div>
                 </div>
                 <Input
+                  aria-label={`Quantity of ${line.productName} to refund`}
                   type="number"
                   min={0}
+                  step="any"
+                  inputMode="decimal"
                   max={line.remaining}
                   className="w-20"
                   disabled={line.remaining <= 0}
@@ -194,13 +227,31 @@ export default function OrderRefundPage() {
                   onChange={(e) => {
                     const qty = Math.min(
                       line.remaining,
-                      Math.max(0, parseInt(e.target.value, 10) || 0),
+                      // Weighed lines refund by weight (0.5): three places, like the sale.
+                      Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000) / 1000),
                     );
                     setSelected((s) => ({ ...s, [line.id]: qty }));
                   }}
                 />
               </div>
             ))}
+            {(order.deliveryFee ?? 0) > 0 && (
+              <div className="flex items-start gap-3 border-b pb-3" data-testid="refund-delivery-fee">
+                <Checkbox
+                  id="refund-delivery-fee"
+                  checked={refundFee}
+                  disabled={feeRefundable <= 0}
+                  onCheckedChange={(checked) => setRefundFee(checked === true)}
+                  data-testid="checkbox-refund-delivery-fee"
+                />
+                <Label htmlFor="refund-delivery-fee" className="font-normal">
+                  <span className="block font-medium">{order.deliveryFeeName ?? "Delivery fee"}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {feeRefundable > 0 ? `£${feeRefundable.toFixed(2)} · no stock to return` : "Already refunded"}
+                  </span>
+                </Label>
+              </div>
+            )}
             <p className="text-sm font-medium">Refund total: £{refundTotal.toFixed(2)}</p>
             <Button
               className="w-full"
@@ -222,7 +273,7 @@ export default function OrderRefundPage() {
             <div className="space-y-2">
               <Label>Reason</Label>
               <Select value={reason} onValueChange={setReason}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Reason">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -237,27 +288,28 @@ export default function OrderRefundPage() {
             <div className="space-y-2">
               <Label>Refund method</Label>
               <Select value={refundMethod} onValueChange={setRefundMethod}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Refund method">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {REFUND_METHODS.map((m) => (
                     <SelectItem key={m} value={m}>
-                      {m.replace("_", " ")}
+                      {METHOD_LABELS[m] ?? m.replace("_", " ")}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Label htmlFor="refund-notes">{reason === "other" ? "Notes (say what the reason is)" : "Notes"}</Label>
+              <Textarea id="refund-notes" value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="input-refund-notes" />
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(0)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(2)}>Review</Button>
+              {/* "Other" needs a word on what it was; the server checks too. */}
+              <Button onClick={() => setStep(2)} disabled={reason === "other" && !notes.trim()}>Review</Button>
             </div>
           </CardContent>
         </Card>
@@ -271,7 +323,10 @@ export default function OrderRefundPage() {
           <CardContent className="space-y-4">
             <p className="text-sm">
               Refund <strong>£{refundTotal.toFixed(2)}</strong> via{" "}
-              <strong>{refundMethod}</strong> — {REASON_LABELS[reason]}.
+              <strong>{METHOD_LABELS[refundMethod] ?? refundMethod}</strong> — {REASON_LABELS[reason]}.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              A sale on the Credit List is taken off the customer&apos;s tab first; only what they have paid is handed back.
             </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>

@@ -76,13 +76,18 @@ vi.mock("../../apps/server/src/engine.wiring", () => ({
 }));
 
 vi.mock("../services/orgTaxRate", () => ({
-  getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+  getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  // v1.2 Phase 1B: every order path requires the org's rate.
+  requireOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  ORG_VAT_RATE_MISSING_MESSAGE: "Set your VAT rate",
 }));
 
 vi.mock("../db", () => ({ db: {}, pool: {} }));
 
 vi.mock("../middleware/requireOpenShift", () => ({
   requireOpenShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+  // The drawer the request picked is still open in these tests.
+  drawerForSaleInTx: async (_tx: unknown, shift: { id: string }) => shift.id,
 }));
 vi.mock("../middleware/requireActiveCashierShift", () => ({
   requireActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
@@ -266,8 +271,14 @@ describe("dating an order", () => {
     // No drawer: today's has not seen this money, and that day's is counted.
     expect(patches.some((p) => "shift_id" in p)).toBe(false);
 
-    // And the old day's summary is brought up to date once the order is in.
-    expect(settleMock).toHaveBeenCalledWith(ORG_ID, expect.objectContaining({ id: OLD_SHIFT }));
+    // And the old day's summary is brought up to date once the order is in,
+    // with enough of the order for the "keyed in late" Signal to name it.
+    expect(settleMock).toHaveBeenCalledWith(
+      ORG_ID,
+      expect.objectContaining({ id: OLD_SHIFT }),
+      expect.any(Date),
+      expect.objectContaining({ orderId: expect.any(String), enteredByUserId: "user_1" }),
+    );
   });
 
   it("records a pre-order against its day but keeps today's shift and drawer", async () => {

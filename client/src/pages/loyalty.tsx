@@ -210,7 +210,7 @@ export default function LoyaltyPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-total-points">
-                  {(customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString()}
+                  {(customers as any[]).reduce((sum: number, c: any) => sum + (c.loyaltyPoints || 0), 0).toLocaleString("en-GB")}
                 </div>
               </CardContent>
             </Card>
@@ -261,21 +261,25 @@ export default function LoyaltyPage() {
                         <div className="flex gap-2">
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
+                            className="gap-1"
                             aria-label={`Edit tier ${tier.name}`}
                             onClick={() => openTierDialog(tier)}
                             data-testid={`button-edit-tier-${tier.id}`}
                           >
-                            <Edit2 className="h-4 w-4" />
+                            <Edit2 className="h-4 w-4" aria-hidden />
+                            Edit
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
+                            className="gap-1 text-destructive hover:text-destructive"
                             aria-label={`Delete tier ${tier.name}`}
                             onClick={() => deleteTier.mutate(tier.id)}
                             data-testid={`button-delete-tier-${tier.id}`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                            Delete
                           </Button>
                         </div>
                         )}

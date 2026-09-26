@@ -133,7 +133,7 @@ export default function OnboardingWizard() {
       name: productForm.name.trim(),
       productCode: productForm.productCode.trim(),
       defaultSalePrice: productForm.defaultSalePrice,
-      costPrice: "0",
+      // No cost entered here: unknown (NULL), not £0, which would read as free.
       stock: 10,
     });
     await patchStep.mutateAsync({ step: "product", completed: true });
@@ -245,7 +245,7 @@ export default function OnboardingWizard() {
                 <div className="space-y-2">
                   <Label>Shop currency</Label>
                   <Select value={currency} onValueChange={setCurrency}>
-                    <SelectTrigger className="min-h-[44px]">
+                    <SelectTrigger aria-label="Shop currency" className="min-h-[44px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

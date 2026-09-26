@@ -8,8 +8,10 @@
  * different in a butcher's to a bakery — see
  * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md § "Decisions locked".
  *
- * Saved to the account (PATCH /api/org/setup, MANAGER+), not to this browser:
- * a grace period one tablet disagrees about is worse than no grace at all.
+ * Saved to the account (PATCH /api/org/setup), not to this browser: a grace
+ * period one tablet disagrees about is worse than no grace at all. The four
+ * "on time" minutes are admin only (owner decision Q16: they are how staff are
+ * judged) and every change is logged; the switches stay with managers.
  * Cashiers read the same values back from GET /api/settings, which is the
  * board's source for them.
  *
@@ -26,6 +28,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { isAtLeast } from "@shared/accessPolicy";
+import { PAY_SETTINGS_MIN_ROLE } from "@shared/staffPolicy";
 import type { OrgSetup } from "@shared/setup";
 
 /** Field key, label, help text and the bounds `orgProfilePatchSchema` enforces. */
@@ -69,6 +74,9 @@ type MinuteKey = (typeof MINUTE_FIELDS)[number]["key"];
 export function OperationsSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const { user } = useAuth();
+  const canEditTimings = isAtLeast(user?.role, PAY_SETTINGS_MIN_ROLE);
 
   const { data: org, isLoading } = useQuery<OrgSetup>({
     queryKey: ["/api/org/setup"],
@@ -146,6 +154,11 @@ export function OperationsSettings() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
           <>
+            {!canEditTimings && (
+              <p className="text-xs text-muted-foreground" data-testid="ops-timings-admin-only">
+                The on-time settings are set by an admin.
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               {MINUTE_FIELDS.map((field) => (
                 <div key={field.key} className="space-y-2">
@@ -159,6 +172,7 @@ export function OperationsSettings() {
                       max={field.max}
                       step="1"
                       className="min-h-[44px]"
+                      disabled={!canEditTimings}
                       data-testid={`settings-${field.key}`}
                       value={minutes[field.key]}
                       onChange={(e) =>
@@ -181,7 +195,7 @@ export function OperationsSettings() {
                   cashier on it. Anyone can pass it on or release it afterwards.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Give new orders an owner automatically"
                 checked={autoClaim}
                 onCheckedChange={(v) => {
                   setAutoClaim(v);
@@ -199,7 +213,7 @@ export function OperationsSettings() {
                   prep time above, but nobody is chased about a promise the shop never made.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Alert on orders with no promised time"
                 checked={alertOnSlaDue}
                 onCheckedChange={(v) => {
                   setAlertOnSlaDue(v);
@@ -216,7 +230,7 @@ export function OperationsSettings() {
                   Stops the tablet dimming while the Operations Centre is open.
                 </p>
               </div>
-              <Switch
+              <Switch aria-label="Keep the screen awake on the board"
                 checked={keepAwake}
                 onCheckedChange={(v) => {
                   setKeepAwake(v);

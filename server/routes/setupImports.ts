@@ -1,3 +1,5 @@
+import { canSeeContactDetails } from "@shared/accessPolicy";
+import { maskEmail, maskPhone } from "@shared/customerView";
 import type { Express } from "express";
 import { storage } from "../storage";
 import { isAuthenticated, requireOrgContext, requireOrgScope, requireRole } from "../auth";
@@ -18,6 +20,14 @@ import { readBase64FromBody, readVcardTextFromBody } from "../import/importBody"
 import { products } from "@shared/schema";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
+import { recordAdminAudit } from "../adminAudit";
+import {
+  PAY_SETTING_KEYS,
+  PAY_SETTINGS_MIN_ROLE,
+  adminOnlySettingChanges,
+  orgSettingsForRole,
+} from "@shared/staffPolicy";
+import { isAtLeast } from "@shared/accessPolicy";
 
 const setupScoped = [
   isAuthenticated,
@@ -44,13 +54,41 @@ const TEMPLATES: Record<string, { filename: string; content: string }> = {
   },
 };
 
+/**
+ * An import preview names the existing customer a row duplicates. Below admin
+ * that is the name and the masks, not the existing phone and email (Q7, Q13a):
+ * a row matched on its name must not read back someone's number.
+ */
+function customerPreviewForRole<T extends { rows: Array<{ duplicateOf?: { id: string; name: string; email?: string | null; phone?: string | null } }> }>(
+  preview: T,
+  role: string | null | undefined,
+): T {
+  if (canSeeContactDetails(role)) return preview;
+  return {
+    ...preview,
+    rows: preview.rows.map((row) =>
+      row.duplicateOf
+        ? {
+            ...row,
+            duplicateOf: {
+              id: row.duplicateOf.id,
+              name: row.duplicateOf.name,
+              emailMasked: maskEmail(row.duplicateOf.email),
+              phoneMasked: maskPhone(row.duplicateOf.phone),
+            },
+          }
+        : row,
+    ),
+  };
+}
+
 export function registerSetupAndImportRoutes(app: Express) {
   app.get("/api/org/setup", ...setupScoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const org = await storage.getOrgProfile(ctx.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
-      res.json(org);
+      res.json(orgSettingsForRole(org as unknown as Record<string, unknown>, req.orgContext?.role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching org setup:", error);
       res.status(500).json({ message: "Failed to fetch organization setup" });
@@ -64,8 +102,39 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid profile data", errors: parsed.error.errors });
       }
-      const org = await storage.updateOrgProfile(ctx.orgId, parsed.data as Record<string, unknown>);
-      res.json(org);
+      const patch = parsed.data as Record<string, unknown>;
+      const role = req.orgContext?.role ?? req.user?.role;
+
+      // The commission switch, the default rate, the overhead mode and the
+      // "on time" timing settings are admin only (Q16). Only a real change is
+      // refused: the wizard and the cards send the whole form back.
+      const current = await storage.getOrgProfile(ctx.orgId);
+      if (!current) return res.status(404).json({ message: "Organization not found" });
+      const changes = adminOnlySettingChanges(current as unknown as Record<string, unknown>, patch);
+      if (changes.length > 0 && !isAtLeast(role, PAY_SETTINGS_MIN_ROLE)) {
+        return res.status(403).json({
+          message: "Only an admin can change commission, overhead or on-time settings.",
+          code: "ADMIN_ONLY_SETTING",
+          keys: changes.map((c) => c.key),
+        });
+      }
+
+      const org = await storage.updateOrgProfile(ctx.orgId, patch);
+
+      // Every change to them is logged, old value beside new.
+      for (const change of changes) {
+        const isPay = (PAY_SETTING_KEYS as readonly string[]).includes(change.key);
+        await recordAdminAudit(req, {
+          actorUserId: req.user?.id ?? "unknown",
+          actorRole: role ?? "ADMIN",
+          action: isPay ? "org.pay_setting.changed" : "org.timing_setting.changed",
+          targetType: "organization",
+          targetId: ctx.orgId,
+          orgId: ctx.orgId,
+          metadata: { setting: change.key, from: change.from, to: change.to },
+        });
+      }
+      res.json(orgSettingsForRole(org as unknown as Record<string, unknown>, role));
     } catch (error: any) {
       console.error("Error updating org setup:", error);
       res.status(400).json({ message: error.message || "Failed to update setup" });
@@ -128,8 +197,13 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ message: "rows array is required" });
       }
-      const result = await storage.importProducts(rows, ctx.orgId, { duplicateMode, confirmed: true });
       const userId = req.user?.claims?.sub ?? req.user?.id;
+      const result = await storage.importProducts(rows, ctx.orgId, {
+        duplicateMode,
+        confirmed: true,
+        role: req.orgContext?.role ?? req.user?.role,
+        actorId: userId ?? null,
+      });
       await storage.recordImportHistory({
         orgId: ctx.orgId,
         importType: "products",
@@ -167,7 +241,7 @@ export function registerSetupAndImportRoutes(app: Express) {
         duplicateMode,
         source === "csv" ? "csv" : "vcard",
       );
-      res.json({ headers: [], ...preview });
+      res.json({ headers: [], ...customerPreviewForRole(preview, req.orgContext?.role) });
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Preview failed" });
     }
@@ -199,14 +273,14 @@ export function registerSetupAndImportRoutes(app: Express) {
           duplicateMode,
           defaultCategory,
         );
-        return res.json({ headers: [], ...preview });
+        return res.json({ headers: [], ...customerPreviewForRole(preview, req.orgContext?.role) });
       }
 
       const b64 = readBase64FromBody({ contentBase64 });
       const sheet = await parseSpreadsheet(b64, fileName, mimeType);
       const mapped = mapping ? applyColumnMapping(sheet.rows, mapping) : sheet.rows;
       const preview = previewCustomerImport(mapped, existing, duplicateMode, defaultCategory);
-      res.json({ headers: sheet.headers, ...preview });
+      res.json({ headers: sheet.headers, ...customerPreviewForRole(preview, req.orgContext?.role) });
     } catch (error: any) {
       const status = error.message?.includes("exceeds") ? 413 : 400;
       res.status(status).json({ message: error.message || "Preview failed" });
@@ -252,10 +326,13 @@ export function registerSetupAndImportRoutes(app: Express) {
       if (!failed || !Array.isArray(failed)) {
         return res.status(404).json({ message: "No failed rows recorded" });
       }
-      const lines = ["error", ...failed.map((e: string) => `"${e.replace(/"/g, '""')}"`)];
-      res.setHeader("Content-Type", "text/csv");
+      // The shared writer (FIX-14): an error quoting an imported "=..." name
+      // exports as text.
+      const { csvDocument } = await import("@shared/csv");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="failed-${entry.importType}-${entry.id}.csv"`);
-      res.send(lines.join("\n"));
+      res.setHeader("Cache-Control", "no-store, private");
+      res.send(csvDocument(["error"], failed.map((e: unknown) => [String(e)])));
     } catch (error) {
       res.status(500).json({ message: "Failed to export errors" });
     }

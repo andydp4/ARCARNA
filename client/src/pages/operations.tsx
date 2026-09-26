@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigation } from "@/contexts/NavigationContext";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useOpsBoard, type OpsBoardResponse } from "@/hooks/useOpsBoard";
 import { useOpsTicker } from "@/hooks/useOpsTicker";
@@ -32,6 +31,7 @@ import { OpsShiftControls } from "@/components/operations/OpsShiftControls";
 import { OpsTour, OpsTourButton } from "@/components/operations/OpsTour";
 import type { OpsFilter } from "@/components/operations/OpsHeader";
 import POS from "@/pages/pos";
+import { setUsagePane } from "@/lib/usage";
 
 /**
  * The Operations Centre.
@@ -50,10 +50,11 @@ import POS from "@/pages/pos";
  *  - The board takes the whole viewport below the app header and each pane
  *    scrolls itself. A counter screen that scrolls as one document puts the
  *    lane you are working in off the bottom whenever the other lane grows.
- *  - The sidebar collapses to its icon rail while this page is mounted and is
- *    restored on the way out. A 1194px tablet has 938px of main width with the
- *    sidebar open and 1130px with it closed (finding G17) — nearly 200px, which
- *    is the difference between two lanes beside the form and not.
+ *  - The sidebar is an icon rail that opens OVER the page (v1.2 Phase 3), so
+ *    the board keeps its width while someone uses the menu. It used to be
+ *    forced shut on entry here: a 1194px tablet has 938px of main width with
+ *    the sidebar open and 1130px with it closed (finding G17). Only a pinned
+ *    sidebar takes width now, and pinning is the operator's own choice.
  *  - The layout switches on the width of the MAIN AREA, not the viewport
  *    (`useMainWidth`). The viewport is the wrong measurement on the one device
  *    this is designed for: the same iPad is 938px or 1130px wide inside
@@ -112,23 +113,6 @@ export function useMainWidth(): [(node: HTMLElement | null) => void, number] {
   return [ref, width];
 }
 
-/** Collapses the sidebar to its icon rail while the board is mounted. */
-function useCollapsedSidebar(): void {
-  const { sidebarOpen, setSidebarOpen } = useNavigation();
-  const wasOpenOnEntry = useRef(sidebarOpen);
-
-  useEffect(() => {
-    const restore = wasOpenOnEntry.current;
-    setSidebarOpen(false);
-    return () => {
-      if (restore) setSidebarOpen(true);
-    };
-    // Deliberately mount/unmount only, with the entry state read from a ref:
-    // re-running this whenever `sidebarOpen` changed would fight an operator
-    // who deliberately re-opened the sidebar while the board is up.
-  }, [setSidebarOpen]);
-}
-
 export interface OpsShellProps {
   /** Measured width of the main area; 0 while unknown. */
   mainRef: (node: HTMLElement | null) => void;
@@ -176,6 +160,15 @@ export function OpsShell({
 }: OpsShellProps) {
   const [formCollapsed, setFormCollapsed] = useState(false);
 
+  // Usage record (v1.2 Phase 8B): the board alone is an always-on
+  // information screen, scored per open hour; with the order form in front
+  // (its tab, or its pane open beside the board) this is a till.
+  const tillInFront = isTwoPane ? !formCollapsed : tab === "order";
+  useEffect(() => {
+    setUsagePane(tillInFront ? "order" : null);
+  }, [tillInFront]);
+  useEffect(() => () => setUsagePane(undefined), []);
+
   return (
     <div
       ref={mainRef}
@@ -193,7 +186,9 @@ export function OpsShell({
       )}
       {isTwoPane ? (
         <div className="flex min-h-0 flex-1 gap-4 p-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto @container">
+          {/* pb-40 in each scroller: room to scroll the last card clear of the
+              floating Voice and WhatsApp launchers (UI-01). */}
+          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-40 @container">
             {alertsSlot}
             {board}
           </div>
@@ -251,7 +246,7 @@ export function OpsShell({
           <TabsContent
             value="board"
             forceMount
-            className="mt-0 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto @container data-[state=inactive]:hidden"
+            className="mt-0 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-40 @container data-[state=inactive]:hidden"
           >
             {alertsSlot}
             {board}
@@ -350,7 +345,6 @@ export default function OperationsCentre() {
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  useCollapsedSidebar();
 
   const [mainRef, mainWidth] = useMainWidth();
   // 0 means "not measured yet": assume the tablet, not the phone, so the board
@@ -840,6 +834,7 @@ export default function OperationsCentre() {
               onOpenChange={(open) => !open && setDetailsOrderId(null)}
               settings={board.settings}
               role={user?.role}
+              currentUserId={user?.id ?? null}
               statusPending={detailsOrder ? pendingIds.has(detailsOrder.id) : false}
               blockedReason={blockedReason}
               onStatusChange={onSheetStatusChange}

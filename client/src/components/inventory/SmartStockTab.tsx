@@ -167,7 +167,7 @@ export function SmartStockTab() {
               <div key={r.productId} className="flex gap-2 items-start">
                 <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium">{r.name}</p>
+                  <p className="font-medium [overflow-wrap:anywhere]">{r.name}</p>
                   <p className="text-muted-foreground">{r.reorderNote}</p>
                 </div>
               </div>
@@ -200,7 +200,7 @@ export function SmartStockTab() {
             {filtered.map((row) => (
               <TableRow key={row.productId} data-testid={`smart-stock-row-${row.productId}`}>
                 <TableCell>
-                  <p className="font-medium">{row.name}</p>
+                  <p className="font-medium [overflow-wrap:anywhere]">{row.name}</p>
                   <p className="text-xs text-muted-foreground">{row.sku}</p>
                 </TableCell>
                 <TableCell className={row.anomalyNegativeStock ? "text-destructive font-medium" : ""}>
@@ -222,7 +222,7 @@ export function SmartStockTab() {
             <CardContent className="pt-4 space-y-2">
               <div className="flex justify-between items-start gap-2">
                 <div>
-                  <p className="font-medium">{row.name}</p>
+                  <p className="font-medium [overflow-wrap:anywhere]">{row.name}</p>
                   <p className="text-xs text-muted-foreground">{row.sku}</p>
                 </div>
                 {riskBadge(row.riskLevel)}

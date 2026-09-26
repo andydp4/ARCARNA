@@ -30,6 +30,9 @@ jobs:
       - name: Audit storage orgId usage
         run: node scripts/audit-storage-orgid.mjs
 
+      - name: Audit 5xx responses never echo database error text
+        run: node scripts/audit-db-error-echo.mjs
+
       - name: Audit UI wiring (dead links, unparsed mutation results)
         run: node scripts/audit-ui-wiring.mjs
 
@@ -38,6 +41,9 @@ jobs:
 
       - name: Audit migration numbering (no two migrations share a number)
         run: node scripts/audit-migration-numbers.mjs
+
+      - name: Audit customer contact fields (read only through the customer view)
+        run: node scripts/audit-contact-fields.mjs
 
       # --omit=dev deliberately: a CVE in eslint or playwright does not reach a
       # customer, and failing the build on one trains everyone to ignore this
@@ -326,7 +332,52 @@ jobs:
             server/__tests__/purchasingPipeline.integration.test.ts \
             server/__tests__/purchasingRoutes.test.ts \
             server/__tests__/uiSeen.test.ts \
-            server/__tests__/jobClaimRace.test.ts
+            server/__tests__/jobClaimRace.test.ts \
+            server/__tests__/roleMatrix.test.ts \
+            server/__tests__/customerViews.test.ts \
+            server/__tests__/customerExports.test.ts \
+            server/__tests__/contactAccess.test.ts \
+            server/__tests__/productWrites.test.ts \
+            server/__tests__/productMinPrice.test.ts \
+            server/__tests__/priceExceptions.test.ts \
+            server/__tests__/priceGuardTill.test.ts \
+            server/__tests__/needsALook.test.ts \
+            server/__tests__/problemReports.test.ts \
+            server/__tests__/usageRecord.test.ts \
+            server/__tests__/signals.test.ts \
+            server/__tests__/whatsappMarketingConsent.test.ts \
+            server/__tests__/staffKpiReplaced.test.ts \
+            server/__tests__/staffPerformance.test.ts \
+            server/__tests__/staffPerformance7c.test.ts \
+            server/__tests__/reportScopeFilter.test.ts \
+            server/__tests__/cashierAnalyticsRoutes.test.ts \
+            server/__tests__/staffPayLockdown.test.ts \
+            server/__tests__/creditLockdown.test.ts \
+            server/__tests__/overdueInvoiceCount.test.ts \
+            server/__tests__/shopPrivacyNotice.test.ts \
+            server/__tests__/previewRole.test.ts \
+            server/__tests__/tickCustomerRoutes.test.ts \
+            server/__tests__/allowedUsersOrgScope.test.ts \
+            server/__tests__/saleRecordedOnce.test.ts \
+            server/__tests__/salePricing.test.ts \
+            server/__tests__/orderEditMoney.test.ts \
+            server/__tests__/cashupInvoices.test.ts \
+            server/__tests__/stockCentre.test.ts \
+            server/__tests__/truthsLayout.test.ts \
+            server/__tests__/cardLinks.test.ts \
+            server/__tests__/myRun.test.ts \
+            server/__tests__/askArcarna.test.ts \
+            server/__tests__/reconcileFigures.test.ts \
+            server/__tests__/refundMoneyRules.test.ts \
+            server/__tests__/orderDeleteClosedDay.test.ts \
+            server/__tests__/figuresAddUp.test.ts \
+            server/__tests__/invoiceRefunds.test.ts \
+            server/__tests__/dailyCloseFigures.test.ts \
+            server/__tests__/requireOpenShift.test.ts \
+            server/__tests__/customerCreditTill.test.ts \
+            server/__tests__/deliveryFee.test.ts \
+            server/__tests__/tickCompletionDeadlock.test.ts \
+            server/__tests__/backdatedIntoClosedDaySignal.test.ts
           do
             if [ -f "$f" ]; then
               present+=("$f")

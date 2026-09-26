@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import type { ZReportData } from "@shared/reports/zReport";
+import { paymentMethodLabel } from "@shared/payments/cardLink";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ export function ZReportView({ report }: { report: ZReportData }) {
         // the obvious way for this screen to mislead somebody.
         <p className="text-sm text-muted-foreground border-l-2 border-primary pl-3">
           This shift is still running. Figures are as at{" "}
-          {new Date(report.generatedAt).toLocaleTimeString()} and will keep changing until it closes.
+          {new Date(report.generatedAt).toLocaleTimeString("en-GB")} and will keep changing until it closes.
         </p>
       )}
 
@@ -40,9 +41,9 @@ export function ZReportView({ report }: { report: ZReportData }) {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">{report.shift.locationName}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            {report.shift.cashierName} · {new Date(report.shift.openedAt).toLocaleString()}
+            {report.shift.cashierName} · {new Date(report.shift.openedAt).toLocaleString("en-GB")}
             {report.shift.closedAt &&
-              ` – ${new Date(report.shift.closedAt).toLocaleString()}`}
+              ` – ${new Date(report.shift.closedAt).toLocaleString("en-GB")}`}
           </p>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -55,6 +56,14 @@ export function ZReportView({ report }: { report: ZReportData }) {
             <span className="text-right font-medium">{money(report.refundsTotal)}</span>
             <span>Net sales</span>
             <span className="text-right font-semibold">{money(report.netSales)}</span>
+            {/* Already out of the sales above; shown so a till that took less
+                than its list prices explains itself. Older reports have none. */}
+            {(report.discountsGiven ?? 0) > 0 && (
+              <>
+                <span className="text-muted-foreground">Discounts given (included above)</span>
+                <span className="text-right text-muted-foreground">{money(report.discountsGiven)}</span>
+              </>
+            )}
           </div>
 
           <Separator />
@@ -68,7 +77,7 @@ export function ZReportView({ report }: { report: ZReportData }) {
                 {report.salesByPaymentMethod.map((row) => (
                   <li key={row.method} className="flex justify-between">
                     <span>
-                      {row.method} ({row.count})
+                      {paymentMethodLabel(row.method)} ({row.count})
                     </span>
                     <span>{money(row.total)}</span>
                   </li>
@@ -114,6 +123,16 @@ export function ZReportView({ report }: { report: ZReportData }) {
               <span className="text-right">{money(report.cashSummary.cashSales)}</span>
               <span>Cash refunds</span>
               <span className="text-right">{money(report.cashSummary.cashRefunds)}</span>
+              {/* Cash taken against tabs into this drawer: in expected cash,
+                  not in sales (v1.2 Phase 1C). */}
+              {(report.cashSummary.cashTabRepayments ?? 0) > 0 && (
+                <>
+                  <span>Cash tab repayments</span>
+                  <span className="text-right" data-testid="z-cash-tab-repayments">
+                    {money(report.cashSummary.cashTabRepayments)}
+                  </span>
+                </>
+              )}
               <span>Expected cash</span>
               <span className="text-right font-medium">
                 {money(report.cashSummary.expectedCash)}
@@ -146,6 +165,25 @@ export function ZReportView({ report }: { report: ZReportData }) {
               )}
             </div>
           </div>
+
+          {report.cashSummary.expectedCashExcludesTabRepayments && (
+            <p className="text-xs text-muted-foreground border-l-2 border-amber-500 pl-3" data-testid="z-old-rule-note">
+              This shift was closed before cash tab repayments counted towards expected cash. Any cash
+              taken against a tab on it is not in the expected figure, so the variance reads over by
+              that amount.
+            </p>
+          )}
+
+          {(report.awaitingCardPayment ?? 0) > 0 && (
+            <>
+              <Separator />
+              {/* Sold, not yet paid: in no takings figure above until Stripe confirms. */}
+              <div className="grid grid-cols-2 gap-2" data-testid="zreport-awaiting-card">
+                <span>Awaiting card payment (link)</span>
+                <span className="text-right">{money(report.awaitingCardPayment)}</span>
+              </div>
+            </>
+          )}
 
           {(report.creditGivenOut > 0 || report.creditResolved.length > 0) && (
             <>

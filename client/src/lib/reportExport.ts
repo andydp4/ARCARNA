@@ -8,6 +8,7 @@
  *
  * File name convention (spec): ARC-[REPORT-REF]-[YYYY-MM-DD].[ext]
  */
+import { csvDocument } from "@shared/csv";
 import { toPng, toJpeg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { REPORT_COLORS, isoDate } from "./reportBrand";
@@ -115,20 +116,16 @@ export interface CsvColumn<T> {
   value: (row: T) => string | number | null | undefined;
 }
 
-function csvCell(v: string | number | null | undefined): string {
-  if (v === null || v === undefined) return "";
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 /**
  * Build + download a CSV (UTF-8 with BOM for Excel). ISO dates should already
  * be formatted by the caller via `isoDate()` inside the column accessor.
  */
 export function exportCsv<T>(rows: T[], columns: CsvColumn<T>[], reportRef: string): void {
-  const head = columns.map((c) => csvCell(c.header)).join(",");
-  const body = rows.map((r) => columns.map((c) => csvCell(c.value(r))).join(",")).join("\n");
-  const csv = `﻿${head}\n${body}`;
+  // The shared writer (FIX-14): quoted, formula-safe, UTF-8 marked.
+  const csv = csvDocument(
+    columns.map((c) => c.header),
+    rows.map((r) => columns.map((c) => c.value(r))),
+  );
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   triggerBlobDownload(blob, reportFileName(reportRef, "csv"));
 }

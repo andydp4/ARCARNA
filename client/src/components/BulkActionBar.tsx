@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BulkActionDef } from "@shared/bulkActions";
 import { Button } from "@/components/ui/button";
 
@@ -7,9 +8,11 @@ type Props = {
   onAction: (actionId: BulkActionDef["id"]) => void;
   onClear: () => void;
   busy?: boolean;
+  /** Page-specific actions that open their own flow (e.g. bulk "Set minimum price"). */
+  extra?: ReactNode;
 };
 
-export function BulkActionBar({ count, actions, onAction, onClear, busy }: Props) {
+export function BulkActionBar({ count, actions, onAction, onClear, busy, extra }: Props) {
   if (count <= 0) return null;
 
   return (
@@ -26,6 +29,7 @@ export function BulkActionBar({ count, actions, onAction, onClear, busy }: Props
           {action.label}
         </Button>
       ))}
+      {extra}
       <Button size="sm" variant="ghost" disabled={busy} onClick={onClear}>
         Clear
       </Button>

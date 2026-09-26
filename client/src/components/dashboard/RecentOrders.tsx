@@ -49,9 +49,9 @@ function whenOf(iso: string | null): string {
   const now = new Date();
   const isToday =
     d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   if (isToday) return time;
-  return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} · ${time}`;
+  return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · ${time}`;
 }
 
 export function RecentOrders() {

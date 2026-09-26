@@ -1,10 +1,26 @@
 import { useEffect, useState } from "react";
-import { Wifi, WifiOff, CloudOff, Cloud } from "lucide-react";
+import { resolveAppPath } from "@/lib/appPaths";
+import { WifiOff, CloudOff, Cloud, CloudUpload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/hooks/useAuth";
+import { useSaleQueueStatus } from "@/hooks/useSaleQueueStatus";
+import { formatSaleQueueStatus } from "@shared/orders/saleReference";
+import { isAtLeast } from "@shared/accessPolicy";
 
+/**
+ * Connection state, and what the till is holding (v1.2 Phase 1A): "2 waiting
+ * · 1 failed". Waiting sales are on this till and will be sent; failed ones
+ * were refused and are on Needs attention for a manager. The pill stays up for
+ * as long as either is non-zero, online or not — a sale that has not reached
+ * arcarna is worth knowing about whatever the Wi-Fi icon says.
+ */
 export function OfflineIndicator() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showAlert, setShowAlert] = useState(!navigator.onLine);
+  const { user } = useAuth();
+  const queue = useSaleQueueStatus();
+  const status = formatSaleQueueStatus(queue.waiting, queue.failed);
+  const isManager = isAtLeast(user?.role, "MANAGER");
 
   useEffect(() => {
     const handleOnline = () => {
@@ -27,15 +43,36 @@ export function OfflineIndicator() {
     };
   }, []);
 
+  const pill = (!isOnline || status) && (
+    <div
+      className="bg-popover text-popover-foreground px-3 py-2 rounded-full shadow-lg flex items-center gap-2"
+      data-testid="offline-indicator-pill"
+      title={
+        queue.failed > 0
+          ? "Failed sales were refused by arcarna. A manager deals with them on Needs attention."
+          : queue.waiting > 0
+            ? "Waiting sales are saved on this till and will be sent automatically."
+            : undefined
+      }
+    >
+      {isOnline ? <CloudUpload className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+      <span className="text-sm font-medium" data-testid="offline-indicator-status">
+        {!isOnline ? (status ? `Offline · ${status}` : "Offline") : status}
+      </span>
+      {queue.failed > 0 && isManager && (
+        // A plain link: this sits outside the app's router, so it carries the
+        // base path itself.
+        <a href={resolveAppPath("/needs-attention")} className="text-sm underline" data-testid="offline-indicator-needs-attention">
+          Review
+        </a>
+      )}
+    </div>
+  );
+
   if (!showAlert) {
     return (
       <div className="fixed bottom-4 right-4 z-50" data-testid="offline-indicator-icon">
-        {!isOnline && (
-          <div className="bg-popover text-popover-foreground px-3 py-2 rounded-full shadow-lg flex items-center gap-2">
-            <WifiOff className="h-4 w-4" />
-            <span className="text-sm font-medium">Offline</span>
-          </div>
-        )}
+        {pill}
       </div>
     );
   }
@@ -62,14 +99,16 @@ export function OfflineIndicator() {
             <>
               <Cloud className="h-5 w-5" style={{ color: "hsl(var(--success))" }} />
               <AlertDescription className="font-medium text-foreground">
-                Back online! Data will sync automatically.
+                {queue.waiting > 0
+                  ? `Back online. Sending ${queue.waiting} saved sale${queue.waiting === 1 ? "" : "s"}.`
+                  : "Back online."}
               </AlertDescription>
             </>
           ) : (
             <>
               <CloudOff className="h-5 w-5" style={{ color: "hsl(var(--warning))" }} />
               <AlertDescription className="font-medium text-foreground">
-                You're offline. Orders will be saved and synced when connection returns.
+                No connection. Sales are saved on this till and sent when the connection is back — each one is recorded once.
               </AlertDescription>
             </>
           )}

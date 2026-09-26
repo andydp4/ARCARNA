@@ -24,15 +24,24 @@ import { apiRequest } from '@/lib/queryClient'
 import { OrgNameSettings } from '@/components/OrgNameSettings'
 import { PageHeader, LM_CARD } from '@/components/PageHeader'
 import { ImportsHub } from '@/components/settings/ImportsHub'
-import { SuppliersHub } from '@/components/settings/SuppliersHub'
 import { WhatsAppSettings } from '@/components/settings/WhatsAppSettings'
 import { CashierCommissionSettings } from '@/components/settings/CashierCommissionSettings'
 import { OperationsSettings } from '@/components/settings/OperationsSettings'
+import { PriceGuardSettings } from '@/components/settings/PriceGuardSettings'
+import { DeliveryFeeSettings } from '@/components/settings/DeliveryFeeSettings'
+import { StripeSettings } from '@/components/settings/StripeSettings'
+import { AskSettings } from '@/components/settings/AskSettings'
+import { ReviewRulesSettings } from '@/components/settings/ReviewRulesSettings'
 import { BrandingSettings } from '@/components/settings/BrandingSettings'
+import { ShopPrivacySettings } from '@/components/settings/ShopPrivacySettings'
+import { LabelPrinterSettings } from '@/components/settings/LabelPrinterSettings'
+import { getSelectedOrgId } from '@/lib/orgScope'
 import { APP_VERSION } from '@shared/version'
+import { DeviceNameSettings } from '@/components/settings/DeviceNameSettings'
 import { FeatureFlagsSettings } from '@/pages/settings/feature-flags'
 import { useAuth } from '@/hooks/useAuth'
-import { Link } from "wouter";
+import { SETTINGS_TABS } from '@/components/nav-items'
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Settings2,
   CreditCard,
@@ -82,7 +91,20 @@ export default function Settings() {
   const canEditOrgProfile = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN'
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState('general')
+  // The Settings Centre menu lists each tab (`/settings?tab=payment`), so the
+  // tab lives in the URL: a menu click, a deep link and Back all land on it.
+  const search = useSearch()
+  const [, navigate] = useLocation()
+  const tabParam = new URLSearchParams(search).get('tab')
+  // A tab this role has no trigger for (a cashier following an admin's link
+  // to Flags) falls back to General rather than showing an empty page.
+  const allowedTabs = SETTINGS_TABS.filter((t) => !t.roles || t.roles.some((r) => r === user?.role)).map((t) => t.tab)
+  const activeTab = tabParam && allowedTabs.includes(tabParam) ? tabParam : 'general'
+  const setActiveTab = (tab: string) => navigate(`/settings?tab=${encodeURIComponent(tab)}`, { replace: true })
+  useEffect(() => {
+    // Suppliers moved to the Stock Centre (v1.2 Phase 3); old links still arrive here.
+    if (tabParam === 'suppliers') navigate('/suppliers', { replace: true })
+  }, [tabParam, navigate])
   const [copiedText, setCopiedText] = useState('')
 
   const { data: orgSettings, isLoading: isLoadingSettings } = useQuery<OrgSettings>({
@@ -132,15 +154,16 @@ export default function Settings() {
         <PageHeader
           icon={Settings2}
           title="Settings"
-          question="How is Arcarna set up for your business?"
-          explanation="Business name, branding, suppliers, cashiers and flags save to your account. A few cards below are placeholders for features that aren't wired up to anything yet — each says so plainly."
+          question="How is arcarna set up for your business?"
+          explanation="Business name, branding, cashiers and flags save to your account. A few cards below are placeholders for features that aren't wired up to anything yet — each says so plainly."
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-8 min-h-[48px]">
             <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="imports">Imports</TabsTrigger>
-            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+            {/* Imports write products and suppliers carry cost prices: both are
+                manager and above on the server, so a cashier gets no tab. */}
+            {canViewCashiers && <TabsTrigger value="imports">Imports</TabsTrigger>}
             <TabsTrigger value="payment">Payment</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -151,11 +174,15 @@ export default function Settings() {
             {canManageFlags && <TabsTrigger value="flags">Flags</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="imports" className="space-y-6">
-            <ImportsHub />
-          </TabsContent>
+          {canViewCashiers && (
+            <TabsContent value="imports" className="space-y-6">
+              <ImportsHub />
+            </TabsContent>
+          )}
 
           <TabsContent value="integrations" className="space-y-6">
+            {/* Admins and the owner; the server refuses anyone else. */}
+            {canManageFlags && <AskSettings />}
             <Card className={LM_CARD}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -171,10 +198,6 @@ export default function Settings() {
               </CardContent>
             </Card>
             <WhatsAppSettings />
-          </TabsContent>
-
-          <TabsContent value="suppliers" className="space-y-6">
-            <SuppliersHub />
           </TabsContent>
 
           {canViewCashiers && (
@@ -272,6 +295,14 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
+              {canEditOrgProfile && (
+                <ShopPrivacySettings orgId={user?.orgId ?? getSelectedOrgId()} />
+              )}
+
+              {canEditOrgProfile && <PriceGuardSettings />}
+              {canEditOrgProfile && <DeliveryFeeSettings />}
+              {canEditOrgProfile && <ReviewRulesSettings />}
+
               <Separator />
 
               <Card className={LM_CARD}>
@@ -342,20 +373,22 @@ export default function Settings() {
                     <div>
                       <Label>Interface theme</Label>
                       <p className="text-sm text-muted-foreground">
-                        Arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
+                        arcarna uses a single dark “Liquid Metal” interface, tuned for long shifts
                         and shop-floor lighting. There is no light mode — it applies everywhere,
                         including menus, dropdowns and dialogs.
                       </p>
                     </div>
                   </div>
                   <Separator className="my-4" />
-                  <p className="text-xs text-muted-foreground">Arcarna v{APP_VERSION}</p>
+                  <p className="text-xs text-muted-foreground">arcarna v{APP_VERSION}</p>
                 </CardContent>
               </Card>
           </TabsContent>
 
           {/* Payment Settings */}
           <TabsContent value="payment" className="space-y-6">
+              {/* Managers and above; the server refuses anyone else. */}
+              {canViewCashiers && <StripeSettings />}
               <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -537,6 +570,8 @@ export default function Settings() {
 
           {/* System Settings */}
           <TabsContent value="system" className="space-y-6">
+              <LabelPrinterSettings />
+              <DeviceNameSettings />
               <Card className={LM_CARD}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

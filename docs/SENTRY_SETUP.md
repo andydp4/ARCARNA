@@ -59,10 +59,31 @@ old value, so use the delete+start above after editing `.env`.
 
 ## What you get
 
-- **Errors** in the browser (React error boundary + crashes)
-- **Performance** traces (sampled)
-- **Session replay** on errors (text masked for privacy)
-- **Server errors** if `SENTRY_DSN` is set (restart only, no rebuild)
+- **Errors** in the browser. Every page has its own error boundary: a crash
+  shows staff a plain message and a **reference code** (e.g. `K7QM-3XPA`);
+  search `ref:K7QM-3XPA` in Sentry Issues to find that exact crash.
+- **Stale files after a deploy** reload the page once instead of crashing.
+- **Performance** traces (sampled, `VITE_SENTRY_TRACES_SAMPLE_RATE`, default 10%).
+- **Session replay only around an error** (up to about 60 s before it), with all
+  text masked and media blocked. Whole sessions are **not** recorded
+  (`VITE_SENTRY_REPLAY_SESSION_RATE` defaults to 0). Replay is **never** loaded
+  on the shop site build (`VITE_WM_SUPPLIES_CUSTOMER_SITE=1`) and is stopped for
+  shop pages and CUSTOMER accounts on the staff build.
+- **Server errors** if `SENTRY_DSN` is set (restart only, no rebuild): uncaught
+  errors, plus an `http_5xx` event for every 5xx response (tagged with the
+  path, status and `request_id`), including routes that catch their own errors.
+
+Before relying on this, check on the VPS whether `VITE_SENTRY_DSN` and
+`VITE_SENTRY_REPLAY_SESSION_RATE` were set at build time for the staff build and
+for the shop build (`grep SENTRY .env .env.wm-supplies` on the server). If the
+DSN is not set, nothing is sent to Sentry at all.
+
+## Server logs
+
+The request log records method, path (ids replaced by `:id`), status, duration
+and request id. It never writes response bodies; for 4xx/5xx it logs only the
+error `code` and a redacted `message`. PM2 logs rotate daily and are kept for
+**14 days** (`pm2-logrotate`, configured by `scripts/deploy-production.sh`).
 
 ---
 

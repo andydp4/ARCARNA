@@ -32,6 +32,38 @@ import {
   type WebsiteCartLine,
 } from "./publicWebsite";
 import "./publicWebsite.css";
+import { hasComplaintsContact } from "@shared/shopPrivacy";
+import { privacyLinkFor, usePublicPrivacyNotice } from "@/lib/shopPrivacy";
+
+/**
+ * The shop's privacy notice and complaints contact (PRV-15). Renders nothing
+ * until the owner has filled them in (Settings → General).
+ */
+function WmPrivacyLinks() {
+  const { user } = useAuth();
+  const orgId = user?.orgId ?? null;
+  const { data } = usePublicPrivacyNotice(orgId);
+  const href = privacyLinkFor(data, orgId);
+  const complaints = data && hasComplaintsContact(data) ? data : null;
+  if (!href && !complaints) return null;
+  return (
+    <span className="wm-privacy-links" data-testid="wm-privacy-links">
+      {href ? (
+        <a href={href} data-testid="link-privacy-notice">
+          Privacy notice
+        </a>
+      ) : null}
+      {href && complaints ? " · " : null}
+      {complaints ? (
+        <span data-testid="text-complaints-contact">
+          Data protection questions or complaints:{" "}
+          {complaints.complaintsContactName ? `${complaints.complaintsContactName}, ` : ""}
+          <a href={`mailto:${complaints.complaintsContactEmail}`}>{complaints.complaintsContactEmail}</a>
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 async function getPublicJson<T>(path: string): Promise<T> {
   const headers = await withClerkAuthHeaders({ Accept: "application/json" });
@@ -108,6 +140,7 @@ function WmFooter({ theme }: { theme: PublicWebsiteTheme }) {
     <footer className="wm-footer">
       <strong>{theme.siteName}</strong>
       <span>Website orders land in Arcana for the team to process.</span>
+      <WmPrivacyLinks />
     </footer>
   );
 }
@@ -204,6 +237,7 @@ function WmPrivateAccessGate({
             <ArrowRight size={18} aria-hidden="true" />
           </a>
         ) : null}
+        <WmPrivacyLinks />
       </section>
     </main>
   );

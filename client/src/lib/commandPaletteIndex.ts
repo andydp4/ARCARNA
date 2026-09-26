@@ -8,6 +8,8 @@ import {
   Users,
   Settings,
   LayoutTemplate,
+  Truck,
+  Boxes,
 } from "lucide-react";
 import type { Customer, Product } from "@shared/schema";
 import {
@@ -32,6 +34,8 @@ export type CommandPaletteItem = {
   href?: string;
   icon?: LucideIcon;
   recentBoost?: number;
+  /** Extra words the item matches on: a server search result carries the term it was found by. */
+  keywords?: string;
 };
 
 // Labels mirror the sidebar (nav-items.ts) — both read from VOCAB so the
@@ -41,6 +45,9 @@ const PAGE_JUMP_ROUTES: Array<{ id: string; label: string; href: string; icon: L
   { id: "page-pos", label: VOCAB.createOrder, href: "/create-order", icon: ShoppingCart, minRole: "CASHIER" },
   { id: "page-orders", label: VOCAB.operations, href: "/operations", icon: LayoutGrid, minRole: "CASHIER" },
   { id: "page-products", label: "Products", href: "/products", icon: Package, minRole: "CASHIER" },
+  // Stock Centre (v1.2 Phase 3).
+  { id: "page-stock-levels", label: "Stock levels", href: "/stock-levels", icon: Boxes, minRole: "CASHIER" },
+  { id: "page-suppliers", label: "Suppliers", href: "/suppliers", icon: Truck, minRole: "MANAGER" },
   { id: "page-customers", label: "Customers", href: "/customers", icon: Users, minRole: "CASHIER" },
   { id: "page-settings", label: "Settings", href: "/settings", icon: Settings, minRole: "MANAGER" },
   {
@@ -131,9 +138,8 @@ export async function ensurePaletteData(queryClient: QueryClient, userRole?: str
   if (readArrayFromCache<Product>(queryClient, ["/api/products"]).length === 0) {
     tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/products"] }));
   }
-  if (readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]).length === 0) {
-    tasks.push(queryClient.prefetchQuery({ queryKey: ["/api/orders"] }));
-  }
+  // Orders are searched on the server as you type (Q10a, CMP-06): no device is
+  // pre-loaded with the order book to search it.
   await Promise.allSettled(tasks);
 }
 
@@ -156,6 +162,12 @@ function buildPageItems(recentIds: string[], userRole: string | undefined): Comm
     }));
 }
 
+export function customerPaletteSubtext(customer: Pick<Customer, "category" | "loyaltyPoints">): string {
+  const tier = customer.category?.trim() || "Bronze";
+  const points = Number(customer.loyaltyPoints ?? 0);
+  return `${tier} · ${points.toLocaleString("en-GB")} ${points === 1 ? "point" : "points"}`;
+}
+
 function buildCustomerItems(customers: Customer[], recentIds: string[]): CommandPaletteItem[] {
   return [...customers]
     .sort((a, b) => {
@@ -170,7 +182,9 @@ function buildCustomerItems(customers: Customer[], recentIds: string[]): Command
         id,
         section: "customers" as const,
         label: customer.name,
-        subtext: customer.email ?? customer.phone ?? undefined,
+        // Tier and points, not contact details: the palette is open to every
+        // role, and cashiers see no customer contact details (PRV-02).
+        subtext: customerPaletteSubtext(customer),
         href: "/customers",
         recentBoost: recentBoostFor(id, recentIds),
       };
@@ -203,7 +217,7 @@ function buildProductItems(
     });
 }
 
-function buildOrderItems(orders: ApiOrderRow[], recentIds: string[]): CommandPaletteItem[] {
+export function buildOrderItems(orders: ApiOrderRow[], recentIds: string[]): CommandPaletteItem[] {
   return [...orders]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10)
@@ -246,7 +260,6 @@ export function buildCommandPaletteIndex(
 
   const customers = readArrayFromCache<Customer>(queryClient, ["/api/customers"]);
   const products = readArrayFromCache<Product>(queryClient, ["/api/products"]);
-  const orders = readArrayFromCache<ApiOrderRow>(queryClient, ["/api/orders"]);
   const salesRank = productSalesRank(queryClient);
   const actions = getVisibleCommandPaletteActions(userRole);
 
@@ -254,7 +267,6 @@ export function buildCommandPaletteIndex(
     ...buildPageItems(recentIds, userRole),
     ...buildCustomerItems(customers, recentIds),
     ...buildProductItems(products, salesRank, recentIds),
-    ...buildOrderItems(orders, recentIds),
     ...buildActionItems(actions, recentIds),
   ].sort((a, b) => (b.recentBoost ?? 0) - (a.recentBoost ?? 0));
 }

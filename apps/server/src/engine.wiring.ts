@@ -14,6 +14,7 @@ async function createEngine() {
     const { OrdersRepoDrizzle, ProductsRepoDrizzle, CustomersRepoDrizzle } = await import('./db/repos')
     const { AnalyticsSinkDrizzle, AuditPortDrizzle } = await import('./db/analytics_audit')
     const { withTransaction } = await import('./db')
+    const { PriceExceptionsDrizzle } = await import('./db/priceExceptions')
     
     return new DomainEngine(
       bus,
@@ -23,7 +24,8 @@ async function createEngine() {
       InvoicesPortStub,
       AnalyticsSinkDrizzle,
       AuditPortDrizzle,
-      async (fn: any) => withTransaction(async (tx: any)=> fn(tx))
+      async (fn: any) => withTransaction(async (tx: any)=> fn(tx)),
+      PriceExceptionsDrizzle,
     )
   } else {
     // In-memory wiring (no external services required)

@@ -20,9 +20,19 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerUiSeenRoutes } from "./routes/uiSeen";
 import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerProductRoutes } from "./routes/products";
+import { registerPriceExceptionRoutes } from "./routes/priceExceptions";
+import { registerPriceGuardRoutes } from "./routes/priceGuard";
+import { registerDeliveryFeeRoutes } from "./routes/deliveryFee";
+import { registerNeedsALookRoutes } from "./routes/needsALook";
+import { registerProblemReportRoutes } from "./routes/problemReports";
+import { registerUsageRoutes } from "./routes/usage";
+import { registerAskRoutes } from "./routes/ask";
+import { registerContactAccessRoutes } from "./routes/contactAccess";
+import { registerStaffPerformanceRoutes } from "./routes/staffPerformance";
 import { registerCustomerRoutes } from "./routes/customers";
 import { registerOrderRoutes } from "./routes/orders";
 import { registerOrderTransitionRoutes } from "./routes/orderTransitions";
+import { registerMyRunRoutes } from "./routes/myRun";
 import { registerOperationsRoutes } from "./routes/operations";
 import { registerOpsAlertRoutes } from "./routes/opsAlerts";
 import { registerOpsStreamRoutes } from "./routes/opsStream";
@@ -36,6 +46,7 @@ import { registerExpenseRoutes } from "./routes/expenses";
 import { registerInvoiceRoutes } from "./routes/invoices";
 import { registerTickCustomerRoutes } from "./routes/tickCustomers";
 import { registerCreditRoutes } from "./routes/credit";
+import { registerCustomerCreditRoutes } from "./routes/customerCredit";
 import { registerSettingsOrgRoutes } from "./routes/settingsOrg";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerWorkerAdminRoutes } from "./routes/workers";
@@ -44,19 +55,26 @@ import { registerShiftRoutes } from "./routes/shifts";
 import { registerCashierRoutes } from "./routes/cashiers";
 import { registerCashierAnalyticsRoutes } from "./routes/cashierAnalytics";
 import { registerRefundRoutes } from "./routes/refunds";
+import { registerSaleIssueRoutes } from "./routes/saleIssues";
 import { registerGiftCardRoutes } from "./routes/giftCards";
 import { registerSavedViewRoutes } from "./routes/savedViews";
+import { registerTruthsLayoutRoutes } from "./routes/truthsLayout";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerV1Routes } from "./routes/v1";
 import { registerWhatsappPublicRoutes, registerWhatsappRoutes } from "./routes/whatsapp";
-import { registerAssistantPublicRoutes, registerAssistantRoutes } from "./routes/assistant";
+import { registerAssistantRoutes } from "./routes/assistant";
 import { registerWebsitePublicRoutes, registerWebsiteAdminRoutes } from "./routes/website";
+import { registerPrivacyNoticeRoutes } from "./routes/privacyNotice";
+import { registerCardLinkPublicRoutes, registerCardLinkRoutes } from "./routes/cardLinks";
 
 export async function registerRoutes(app: Express): Promise<void> {
   registerHealthRoutes(app);
   registerV1Routes(app);
   registerWhatsappPublicRoutes(app);
-  registerAssistantPublicRoutes(app);
+  // Stripe signs its webhook; the customer lands on the paid page signed out.
+  registerCardLinkPublicRoutes(app);
+  // Readable signed out: shop customers see it before signing in / ordering.
+  registerPrivacyNoticeRoutes(app);
 
   await setupAuth(app);
 
@@ -72,6 +90,15 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerChannelAuthenticatedRoutes(app, scoped);
   registerAnalyticsRoutes(app, scoped);
   registerProductRoutes(app, scoped);
+  registerPriceExceptionRoutes(app, scoped);
+  registerPriceGuardRoutes(app, scoped);
+  registerDeliveryFeeRoutes(app, scoped);
+  registerCardLinkRoutes(app, scoped);
+  registerNeedsALookRoutes(app, scoped);
+  registerProblemReportRoutes(app, scoped);
+  registerUsageRoutes(app, scoped);
+  registerAskRoutes(app, scoped);
+  registerStaffPerformanceRoutes(app, scoped);
 
   registerSetupAndImportRoutes(app);
   registerOperationalRoutes(app);
@@ -84,8 +111,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerGoodsReceiptRoutes(app);
 
   registerCustomerRoutes(app, scoped);
+  registerContactAccessRoutes(app, scoped);
   registerOrderRoutes(app, scoped);
+  registerSaleIssueRoutes(app, scoped);
   registerOrderTransitionRoutes(app, scoped);
+  registerMyRunRoutes(app, scoped);
   registerOperationsRoutes(app, scoped);
   registerOpsAlertRoutes(app, scoped);
   registerOpsStreamRoutes(app, scoped);
@@ -95,6 +125,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerRefundRoutes(app, scoped);
   registerGiftCardRoutes(app, scoped);
   registerSavedViewRoutes(app, scoped);
+  registerTruthsLayoutRoutes(app, scoped);
   registerOnboardingRoutes(app, scoped);
   registerWhatsappRoutes(app, scoped);
   registerAssistantRoutes(app, scoped);
@@ -108,6 +139,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerInvoiceRoutes(app, scoped);
   registerTickCustomerRoutes(app, scoped);
   registerCreditRoutes(app, scoped);
+  registerCustomerCreditRoutes(app, scoped);
   registerSettingsOrgRoutes(app, scoped);
   registerReceiptRoutes(app, scoped);
   registerFeatureFlagRoutes(app, scoped);

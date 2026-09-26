@@ -5,6 +5,10 @@
  * file matches the screen exactly (ARC-RPT-SPEC-001, Export Format Spec).
  * The toolbar itself is marked `data-export-exclude` so it never appears in
  * the captured image.
+ *
+ * Exports are admin only and every one is logged (Q12). The file is made in
+ * the browser, so the toolbar records the export on the server first and
+ * does not export if that is refused; below admin it does not render.
  */
 import { useState, type RefObject } from "react";
 import { Download, FileImage, FileText, Table as TableIcon, Loader2 } from "lucide-react";
@@ -17,6 +21,9 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { apiRequest } from "@/lib/queryClient";
+import { EXPORT_MIN_ROLE, isAtLeast } from "@shared/accessPolicy";
 import {
   exportNodePng,
   exportNodeJpeg,
@@ -36,11 +43,15 @@ export interface ReportExportToolbarProps<T> {
 
 export function ReportExportToolbar<T>({ targetRef, reportRef, csv }: ReportExportToolbarProps<T>) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [busy, setBusy] = useState<null | "png" | "jpeg" | "pdf" | "csv">(null);
+
+  if (!isAtLeast(user?.role, EXPORT_MIN_ROLE)) return null;
 
   async function run(kind: "png" | "jpeg" | "pdf" | "csv") {
     try {
       setBusy(kind);
+      await apiRequest("POST", "/api/evidence/exports", { ref: reportRef, format: kind });
       if (kind === "csv") {
         if (!csv) return;
         exportCsv(csv.rows, csv.columns, reportRef);
@@ -70,7 +81,7 @@ export function ReportExportToolbar<T>({ targetRef, reportRef, csv }: ReportExpo
     <div data-export-exclude="true" className="flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={busy !== null} data-testid={`export-${reportRef}`}>
+          <Button variant="outline" size="sm" className="text-foreground" disabled={busy !== null} data-testid={`export-${reportRef}`}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             <span className="ml-2">{busy ? "Exporting…" : "Export"}</span>
           </Button>

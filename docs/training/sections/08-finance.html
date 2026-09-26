@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 8. Finance: credit, invoices, expenses and pay</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section ed-manager" id="finance">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">08</div>
+    <div class="chapter-title">Finance: credit, invoices, expenses and pay</div>
+    <p class="chapter-lead">The money side of the back office: who owes the shop and how to take their repayments, invoices, the shop's running costs, and cashiers' commission. This section is for managers and above.</p>
+  </div>
+
+  <p class="eyebrow">Finance · where things are</p>
+  <h2>The money pages <span class="role role-manager">MANAGER</span></h2>
+  <p>Most of the money pages sit in the <span class="ui">Finance Centre</span>. The Credit List sits in the <span class="ui">Operations Centre</span>, because repayments usually happen over the counter. Cashiers see only their own <span class="ui">Shifts</span> in the Finance Centre; everything below is for managers and above.</p>
+  <table>
+    <tr><th>Page</th><th>Where</th><th>What it answers</th></tr>
+    <tr><td><span class="ui">Credit List</span></td><td>Operations Centre</td><td><em>Who's buying on credit, and what's outstanding?</em></td></tr>
+    <tr><td><span class="ui">Invoices</span></td><td>Finance Centre</td><td><em>Who owes you, and is it paid?</em></td></tr>
+    <tr><td><span class="ui">Expenses</span></td><td>Finance Centre</td><td><em>Where is your money going?</em></td></tr>
+    <tr><td><span class="ui">Cashier Payroll</span></td><td>Finance Centre</td><td><em>Who earned what, and has it been paid?</em></td></tr>
+    <tr><td><span class="ui">Shifts</span></td><td>Finance Centre</td><td><em>Who was on, and did the till balance?</em> Covered in Section 2.</td></tr>
+    <tr><td><span class="ui">Staff Performance</span></td><td>Finance Centre and Truths Centre</td><td>The same page in both places. Covered in Section 9.</td></tr>
+    <tr><td><span class="ui">Reseller Partners</span></td><td>Finance Centre</td><td><em>What has each partner been supplied, and what have they paid?</em></td></tr>
+  </table>
+
+  <p class="eyebrow">Operations Centre · Credit List</p>
+  <h2>The Credit List</h2>
+  <p>When a cashier puts a sale <span class="ui">On credit</span> (tick), or a split payment has an On credit part, the amount is added to that customer's tab (Section 3). The <span class="ui">Credit List</span> gathers every customer with a tab, so you can see what is owed and take repayments.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Operations Centre</span>, then <span class="ui">Credit List</span>.</li>
+    <li>The cards at the top show <span class="ui">Total Outstanding</span>, <span class="ui">Customers with Debt</span> and <span class="ui">Average Debt</span> for the customers listed.</li>
+    <li>Search by name with <span class="ui">Search customers...</span>, or use the status box to show <span class="ui">All</span>, <span class="ui">Pending</span>, <span class="ui">Partial</span> or <span class="ui">Paid</span>.</li>
+    <li>Select a customer's name to see what their balance is made up of: each order, what is still owed on it, and whether it is <span class="ui">Pending</span> or <span class="ui">Partial</span>. Select an order to see its lines.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-08-credit-list.png" alt="The Credit List with the three summary cards and a table of customers who owe money, each with Payment and Send payment reminder buttons" />
+    <figcaption>The Credit List: who owes what, with a repayment and a reminder one tap away.</figcaption>
+    <!-- SHOT: route=/tick-list ; role=manager ; viewport=desktop ; show=the page header ("OPERATIONS CENTRE", "Credit List", "Who's buying on credit, and what's outstanding?"), the payment-reminder line beneath it, the three cards (Total Outstanding, Customers with Debt, Average Debt), the search and status boxes with "Export CSV", and the Credit Customers table with columns Customer, Contact (masked), Total Debt, Last Order, Status and Actions (Payment, Send payment reminder, Remove) ; state=three fictional customers with tick sales of different sizes, one part-paid; Operations Centre tour marked seen -->
+  </figure>
+
+  <h3>Taking a repayment</h3>
+  <p>Customers often pay a bit at a time. Record exactly what they hand over; arcarna puts it against their oldest debt first.</p>
+  <ol class="steps">
+    <li>Select <span class="ui">Payment</span> on the customer's row. The window shows what is outstanding.</li>
+    <li>Enter the <span class="ui">Amount paid (£)</span>.</li>
+    <li>Choose <span class="ui">Paid by</span>: <span class="ui">Cash</span>, <span class="ui">Card</span> or <span class="ui">Transfer</span>. This is required, because only cash goes into a drawer.</li>
+    <li><span class="ui">Paid on</span> is today. If the money actually arrived earlier, pick that date, up to 7 days back.</li>
+    <li>Select <span class="ui">Record payment</span>. The message says what was received and what is still outstanding, or that the account is clear.</li>
+  </ol>
+  <p>If the customer is paying everything they owe, select <span class="ui">Clear account</span> instead. It clears the whole balance shown. If more has gone on the tab since you opened the window, arcarna refuses rather than clear an amount you have not seen, so close the window and look again.</p>
+
+  <figure>
+    <img src="../images/v12-08-record-payment.png" alt="The Record a payment window with the amount, Paid by set to Cash and Paid on set to today" />
+    <figcaption>Recording a part repayment. Cash taken today goes into your till's expected cash.</figcaption>
+    <!-- SHOT: route=/tick-list ; role=manager ; viewport=desktop ; show=the "Record a payment from Priya Shah" window: the outstanding line, "Amount paid (£)" with 20.00, "Paid by" set to Cash with the note "Cash taken today goes into your open till's expected cash. Card and transfer do not.", "Paid on" with today's date and its note, and the Cancel, Clear account and Record payment buttons ; state=Payment selected on a demo customer who owes more than £20; seed-manager has an open shift -->
+  </figure>
+
+  <table>
+    <tr><th>How it was paid</th><th>What happens to the till</th></tr>
+    <tr><td><strong>Cash, today, with your shift open</strong></td><td>Added to your till's expected cash, and shown on its own line on your Z-report, so the drawer still balances.</td></tr>
+    <tr><td><strong>Cash, with no shift open for you</strong></td><td>Recorded against the tab, but not in any drawer's expected cash. The message says so.</td></tr>
+    <tr><td><strong>Cash, backdated</strong></td><td>Recorded on the day you chose. It is not in today's till.</td></tr>
+    <tr><td><strong>Card or transfer</strong></td><td>Recorded against the tab. It never touches the drawer.</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>Manager — open your shift before taking cash</strong>
+    If a customer hands you cash for their tab, take it at a till where your own shift is open. Otherwise the cash is in the drawer but not in anyone's expected cash, and that drawer will count over.
+  </div>
+
+  <h3>Reminding a customer</h3>
+  <p><span class="ui">Send payment reminder</span> sends the customer an approved WhatsApp message saying what they owe, to the number on file. Nobody sees the number, and the send is logged. If reminders are not available (for example WhatsApp is not set up), the line under the page title says why and the button is greyed out. Each message costs about £0.016 from 1 October 2026.</p>
+
+  <h3>Removing a customer and exporting</h3>
+  <p><span class="ui">Remove</span> takes a customer off the Credit List after you confirm with <span class="ui">Remove from credit list</span>. Their running balance and its history are cleared and anything they owe stops being tracked here. It cannot be undone, so use it only when you are sure the debt is settled or will not be collected.</p>
+  <p><span class="ui">Export CSV</span> downloads the list as it is filtered: customer, total debt, last order and status. It has no phone numbers or emails.</p>
+
+  <p class="eyebrow">Finance Centre · Invoices</p>
+  <h2>Invoices</h2>
+  <p>Till sales get receipts. An <strong>invoice</strong> is issued when a sale goes on a tab, or when a customer asks for one from the order. The <span class="ui">Invoices</span> page lists them all and shows which are still to be paid.</p>
+  <table>
+    <tr><th>Card</th><th>What it adds up</th></tr>
+    <tr><td><span class="ui">Paid total</span></td><td>Invoices fully paid.</td></tr>
+    <tr><td><span class="ui">Owed</span></td><td>Still to pay, not yet due.</td></tr>
+    <tr><td><span class="ui">Overdue</span></td><td>Still to pay, past the due date.</td></tr>
+    <tr><td><span class="ui">Rows shown</span></td><td>How many invoices match your search, status and date window.</td></tr>
+  </table>
+  <p>The totals follow the filters. Search by invoice number, name or email with <span class="ui">Search by #, name, or email...</span>, pick a status, and choose a date window: <span class="ui">All dates</span>, <span class="ui">Today</span>, <span class="ui">This week</span> or <span class="ui">This month</span>.</p>
+
+  <h3>What the status means</h3>
+  <table>
+    <tr><th>Status</th><th>What it means</th></tr>
+    <tr><td><span class="ui">Paid</span></td><td>Nothing left to pay.</td></tr>
+    <tr><td><span class="ui">Part-paid</span></td><td>Some has been paid against the tab; the rest is not yet due.</td></tr>
+    <tr><td><span class="ui">Owed</span></td><td>Nothing paid yet, not yet due.</td></tr>
+    <tr><td><span class="ui">Overdue</span></td><td>Money still owed after the due date, even if part has been paid.</td></tr>
+    <tr><td><span class="ui">Void</span></td><td>The order was cancelled, or the debt was written off. It will not be chased.</td></tr>
+  </table>
+  <p>An invoice's status follows the customer's tab. Record repayments on the Credit List and the invoice updates itself; there is nothing to mark paid here.</p>
+
+  <h3>Sending or printing an invoice</h3>
+  <ol class="steps">
+    <li>Select <span class="ui">PDF</span> on the invoice's row.</li>
+    <li>Choose <span class="ui">Open PDF (new tab)</span>, <span class="ui">Print via browser</span> or <span class="ui">Download PDF</span>.</li>
+    <li>Or choose <span class="ui">Email invoice to customer</span>. arcarna sends it to the email on file, and the send is logged. Until the shop's email is set up this is greyed out, with the reason beneath it.</li>
+  </ol>
+  <p>The copy button beside an invoice number copies it, for quoting on the phone or in a bank reference.</p>
+
+  <figure>
+    <img src="../images/v12-08-invoices.png" alt="The Invoices page with the four summary cards, the filters and the invoice list, with one row's PDF menu open" />
+    <figcaption>Invoices: the totals follow the filters, and each row's PDF menu opens, prints, downloads or emails it.</figcaption>
+    <!-- SHOT: route=/invoices ; role=manager ; viewport=desktop ; show=the page header ("FINANCE CENTRE", "Invoices", "Who owes you, and is it paid?"), the four cards (Paid total, Owed, Overdue, Rows shown), the search, status and date-window boxes, and the Invoice list with columns Invoice #, Customer, Issued, Due, Total, Status, Payment and PDF; one row's PDF menu open showing Open PDF (new tab), Print via browser, Download PDF and Email invoice to customer (greyed, with its reason if email is not set up) ; state=invoices from the demo tick sales, at least one Paid, one Part-paid and one Owed -->
+  </figure>
+
+  <p class="eyebrow">Finance Centre · Expenses</p>
+  <h2>Expenses</h2>
+  <p>The <span class="ui">Expenses</span> page is where the shop's running costs are kept: rent, utilities, insurance and the like. arcarna uses them to work out what the business really made, so an expense left off makes the shop look more profitable than it is.</p>
+  <ol class="steps">
+    <li>Select <span class="ui">Add expense</span>.</li>
+    <li>Give it a <span class="ui">Name</span>, such as "Shop rent".</li>
+    <li>Choose a <span class="ui">Category</span>: <span class="ui">Rent</span>, <span class="ui">Utilities</span>, <span class="ui">Salaries</span>, <span class="ui">Insurance</span>, <span class="ui">Marketing</span>, <span class="ui">Maintenance</span>, <span class="ui">Supplies</span>, <span class="ui">Taxes</span> or <span class="ui">Other</span>.</li>
+    <li>Enter the <span class="ui">Amount</span> and how often it is paid under <span class="ui">Frequency</span>: <span class="ui">Daily</span>, <span class="ui">Weekly</span>, <span class="ui">Monthly</span> or <span class="ui">Yearly</span>.</li>
+    <li>Set the <span class="ui">Start Date</span>, and an <span class="ui">End Date (Optional)</span> if it stops, such as a fixed-term contract.</li>
+    <li>Add any notes under <span class="ui">Description (Optional)</span>, then select <span class="ui">Create</span>.</li>
+  </ol>
+  <p>The <span class="ui">Overhead Expenses</span> list shows each one with its category, amount, frequency, dates and whether it is <span class="ui">Active</span> or <span class="ui">Inactive</span>. Use the edit button on its row when an expense's amount changes (the window saves with <span class="ui">Update</span>), rather than adding a second one. If you are offline, a new expense is saved on the device and sent when the connection returns.</p>
+  <div class="ed-admin">
+    <h3>Totals and Profit Truths (admins)</h3>
+    <p>Admins also see four cards above the list for the current month: <span class="ui">Daily Overhead</span>, <span class="ui">Monthly Overhead</span>, <span class="ui">Order Expenses</span> and <span class="ui">Total Expenses</span>. <span class="ui">View reports</span> opens <span class="ui">Profit Truths</span> in the Truths Centre. These are whole-business money, so managers keep the list and the form but not the totals.</p>
+  </div>
+
+  <p class="eyebrow">Finance Centre · Cashier Payroll</p>
+  <h2>Cashier Payroll and commission</h2>
+  <p>When the shop pays cashiers commission, each closed shift earns it on that shift's profit. <span class="ui">Cashier Payroll</span> shows what each person earned, what has been paid, and what is still owed to them.</p>
+  <ol class="steps">
+    <li>Set <span class="ui">From</span> and <span class="ui">To</span>. The page starts on the last 30 days.</li>
+    <li>Leave <span class="ui">Person</span> on <span class="ui">Everyone</span>, or pick one person.</li>
+    <li>Read the cards: <span class="ui">Open shifts</span>, <span class="ui">Closed (manual)</span>, <span class="ui">Auto-closed</span> (closed by the 6am daily close), <span class="ui">Total closed</span> and <span class="ui">Unpaid commission</span> (how many shifts still have commission to pay).</li>
+  </ol>
+
+  <h3>By person</h3>
+  <table>
+    <tr><th>Column</th><th>What it means</th></tr>
+    <tr><td><span class="ui">Sales</span> and <span class="ui">Orders</span></td><td>What they sold, and how many orders, over the dates chosen.</td></tr>
+    <tr><td><span class="ui">Net profit</span></td><td>The profit on their shifts' sales, which commission is worked out from.</td></tr>
+    <tr><td><span class="ui">Commission earned</span>, <span class="ui">Paid</span> and <span class="ui">Unpaid</span></td><td>What they have earned, what has been confirmed as paid, and what is still owed. Anything owed shows in red.</td></tr>
+    <tr><td><span class="ui">Active hours</span></td><td>From the first to the last thing they did on each shift, not until the shift was closed. A shift left open overnight does not count as a long day.</td></tr>
+    <tr><td><span class="ui">Sales per active hour</span></td><td>Sales divided by active hours.</td></tr>
+  </table>
+
+  <h3>Confirming a commission payment</h3>
+  <p>The <span class="ui">Commission payment log</span> lists each closed shift with its <span class="ui">Net profit</span>, <span class="ui">Commission</span> and status (<span class="ui">paid</span>, <span class="ui">partial</span> or <span class="ui">unpaid</span>). Once you have actually paid a cashier:</p>
+  <ol class="steps">
+    <li>Find the shift in the log.</li>
+    <li>Select <span class="ui">Confirm paid — £…</span>. The button shows the amount still owed on that shift.</li>
+    <li>You see <span class="ui">Commission payment confirmed</span>, and the person's Unpaid figure drops.</li>
+  </ol>
+  <p>Nobody can confirm their own commission. The button does not appear on your own shifts.</p>
+
+  <figure>
+    <img src="../images/v12-08-cashier-payroll.png" alt="Cashier Payroll with the date and person filters, the five shift cards, the By person table and the Commission payment log with Confirm paid buttons" />
+    <figcaption>Cashier Payroll: earned, paid and still owed, by person and by shift.</figcaption>
+    <!-- SHOT: route=/cashier-payroll ; role=manager ; viewport=desktop ; show=the page header ("FINANCE CENTRE", "Cashier Payroll", "Who earned what, and has it been paid?"), the From, To and Person filters (no Export CSV for a manager), the five cards, the "By person" table with one or two cashiers, and the top of the "Commission payment log" with a "Confirm paid — £…" button on an unpaid shift ; state=cashier commission enabled with a default rate; several closed cashier shifts with sales over the last two weeks, one with commission unpaid -->
+  </figure>
+
+  <div class="callout">
+    <strong>"cost missing" on a shift</strong>
+    Commission is worked out on profit, and profit needs the cost of what was sold. If a product sold on the shift has no cost set, that line is left out of the commission and the shift shows <span class="ui">cost missing</span>. Set the product's cost in the Stock Centre (Section 6); it is not counted as pure profit.
+  </div>
+
+  <table>
+    <tr><th>Who</th><th>Whose pay they see</th></tr>
+    <tr><td><span class="role role-manager">MANAGER</span></td><td>Cashiers' rows, and their own.</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">ADMIN</span></td><td>Also cashiers' rows and their own. Managers' pay is the owner's alone.</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">OWNER</span></td><td>Everyone.</td></tr>
+  </table>
+  <div class="callout warn ed-admin">
+    <strong>Admin — exports and the commission rate</strong>
+    Admins see <span class="ui">Export CSV</span> on Cashier Payroll; every export is logged. Whether commission is paid at all, and at what rate, is set in <span class="ui">Settings › Cashiers</span>: <span class="ui">Enable cashier commission</span> and <span class="ui">Default commission rate</span>, with an optional <span class="ui">Commission override</span> for one cashier. Only admins can change them.
+  </div>
+
+  <p class="eyebrow">Finance Centre · the rest</p>
+  <h2>Shifts, Staff Performance and Reseller Partners</h2>
+  <h3>Shifts</h3>
+  <p>The Shifts page lists who is on now and how each recent till counted, with the Z-report for any shift. Managers see their cashiers' shifts and their own, and can close or reopen a shift on someone's behalf. Section 2 covers it in full.</p>
+  <h3>Staff Performance</h3>
+  <p>Listed in the Finance Centre as well as the Truths Centre, because pay conversations often start there. It is the same page either way. Section 9 explains it. Its figures are a guide: no pay decision is made from them alone.</p>
+  <h3>Reseller Partners</h3>
+  <p>If the shop supplies stock to other businesses on account, record it here.</p>
+  <ol class="steps">
+    <li>Under <span class="ui">Add a partner</span>, enter their <span class="ui">Trading name</span> and <span class="ui">Partner code</span> (codes follow the pattern PPP-01, PPP-02 and so on).</li>
+    <li>Under <span class="ui">Record supply or payment</span>, pick the <span class="ui">Partner</span> and the <span class="ui">Entry type</span>: <span class="ui">Stock supplied (they owe us)</span> or <span class="ui">Payment received</span>.</li>
+    <li>Enter the <span class="ui">Amount (£)</span>, add <span class="ui">Notes (optional)</span>, and save. A payment clears the oldest unpaid supplies first.</li>
+  </ol>
+  <p><span class="ui">View report</span> opens the Reseller Credit &amp; Payment Evidence: each partner's balance, how old it is, and any supply holds.</p>
+
+  <div class="callout">
+    <strong>A daily money routine</strong>
+    Start the day on the Shifts page and check every drawer balanced. Then open the Credit List and look at anyone whose debt has grown, and send a reminder where it is due. Once a week, confirm paid commission in Cashier Payroll and check Expenses for anything new or changed.
+  </div>
+
+</main>
+</body>
+</html>

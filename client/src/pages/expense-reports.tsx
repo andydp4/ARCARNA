@@ -1,6 +1,7 @@
+import { csvFromRecords } from "@shared/csv";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { getJson } from "@/lib/queryClient";
 import { COLORS, CHART_SERIES, CHART_PRIMARY, CHART_POSITIVE, CHART_NEGATIVE, CHART_WARNING } from "@/lib/chartColors";
 import { VOCAB } from "@/lib/vocabulary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,13 +84,16 @@ export function ExpenseReportsPage() {
   // Fetch expense report
   const { data: expenseReport, isLoading: expenseLoading } = useQuery({
     queryKey: ["/api/expense-report", startDate.toISOString(), endDate.toISOString()],
-    queryFn: () => apiRequest("GET", `/api/expense-report?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, null) as Promise<any>,
+    // Was never reading the response body (v1.2.1): every field on this page
+    // fell back to its "no data" default, since `data` was the raw fetch
+    // Response, not the parsed report.
+    queryFn: () => getJson<any>(`/api/expense-report?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`),
   });
   
   // Fetch profit analysis
   const { data: profitAnalysis, isLoading: profitLoading } = useQuery({
     queryKey: ["/api/profit-analysis", startDate.toISOString(), endDate.toISOString()],
-    queryFn: () => apiRequest("GET", `/api/profit-analysis?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, null) as Promise<any>,
+    queryFn: () => getJson<any>(`/api/profit-analysis?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`),
   });
   
   const formatCurrency = (amount: number) => {
@@ -112,19 +116,17 @@ export function ExpenseReportsPage() {
       });
       return;
     }
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      Object.keys(data[0]).join(",") +
-      "\n" +
-      data.map((e: any) => Object.values(e).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
+    // The shared writer (FIX-14): quoted, formula-safe, UTF-8 marked. A blob
+    // rather than a data: URI, which encodeURI mangled on "#" and "%".
+    const blob = new Blob([csvFromRecords(data)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `${filename}_${format(new Date(), "yyyy-MM-dd")}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast({
       title: "Download started",
       description: "Your CSV file should begin downloading shortly.",
@@ -171,7 +173,7 @@ export function ExpenseReportsPage() {
         />
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:gap-3">
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="min-h-[44px] w-full sm:w-[200px]" data-testid="select-date-range">
+            <SelectTrigger className="min-h-[44px] w-full sm:w-[200px]" data-testid="select-date-range" aria-label="Period">
               <SelectValue placeholder="Period" />
             </SelectTrigger>
             <SelectContent>
@@ -254,7 +256,7 @@ export function ExpenseReportsPage() {
             <p className="mb-3 text-xs text-muted-foreground">
               Revenue is settled orders only, net of refunds,{" "}
               {profitAnalysis?.summary?.vatTreatment || "incl. VAT"}. Cost of goods is priced at each product's
-              current cost, not a snapshot from the moment it sold — Arcarna does not yet record that.
+              current cost, not a snapshot from the moment it sold — arcarna does not yet record that.
               {Number(profitAnalysis?.summary?.productsMissingCost) > 0 && (
                 <>
                   {" "}

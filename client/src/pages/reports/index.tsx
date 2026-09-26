@@ -16,9 +16,9 @@ export default function ReportsHub() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
-        title="Reports"
-        question="Which report do you need right now?"
-        explanation="Every report follows the Arcarna brand on screen and when exported to PNG, JPEG, PDF or CSV."
+        title="Evidence"
+        question="Which Evidence do you need right now?"
+        explanation="Every report follows the arcarna brand on screen and when exported to PNG, JPEG, PDF or CSV."
         icon={FileBarChart}
       />
 
@@ -55,7 +55,7 @@ export default function ReportsHub() {
                             <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
                           ) : (
                             <Badge variant="secondary" className="ml-1 text-[9px]">
-                              Coming soon
+                              {r.statusLabel ?? "Coming soon"}
                             </Badge>
                           )}
                         </h3>

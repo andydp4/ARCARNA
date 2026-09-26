@@ -1,5 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
 import {
   CreditError,
   outstandingCredit,
@@ -7,6 +9,7 @@ import {
   voidCredit,
   writeOffCredit,
 } from "../services/creditLedger";
+import { creditPaymentTerms, drawerForCreditPayment, signalCreditPayment } from "../services/creditPaymentRules";
 
 /**
  * Credit (tick) — what is owed, and what has been paid against it.
@@ -17,6 +20,9 @@ import {
  * actually arrived, so the amount and the date both have to be real.
  */
 export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): void {
+  // The Credit List is manager and above (owner decision Q11): a cashier
+  // cannot read who owes what or record money against it.
+  const creditRoles = requireRole(...rolesAtLeast(CREDIT_MIN_ROLE));
   function fail(res: any, error: unknown, fallback: string) {
     if (error instanceof CreditError) {
       return res.status(error.status).json({ message: error.message, code: error.code });
@@ -25,7 +31,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
     return res.status(500).json({ message: fallback });
   }
 
-  app.get("/api/credit/outstanding", ...scoped, async (req: any, res) => {
+  app.get("/api/credit/outstanding", ...scoped, creditRoles, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string | null };
       if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
@@ -35,25 +41,40 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
     }
   });
 
-  app.post("/api/credit/:orderId/payments", ...scoped, async (req: any, res) => {
+  app.post("/api/credit/:orderId/payments", ...scoped, creditRoles, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string | null };
+      const ctx = req.orgContext as { orgId: string | null; role?: string };
       if (!ctx?.orgId) return res.status(403).json({ message: "Organization scope required" });
 
       const amount = Number(req.body?.amount);
       if (!Number.isFinite(amount)) {
         return res.status(400).json({ message: "A payment amount is required" });
       }
+      const role = ctx.role ?? req.user?.role;
+      const checked = await creditPaymentTerms(ctx.orgId, req.body, role);
+      if (!checked.ok) return res.status(checked.status).json({ message: checked.message, code: checked.code });
+
+      const drawerShiftId = await drawerForCreditPayment(ctx.orgId, req.user?.id, checked.terms);
       const credit = await recordCreditPayment({
         orgId: ctx.orgId,
         orderId: req.params.orderId,
         amount,
-        method: String(req.body?.method ?? "cash"),
-        paidOn: req.body?.paidOn,
+        method: checked.terms.method,
+        paidOn: checked.terms.paidOn,
         recordedByUserId: req.user?.id ?? null,
         note: req.body?.note ?? null,
+        shiftId: drawerShiftId,
       });
-      res.status(201).json(credit);
+      await signalCreditPayment({
+        orgId: ctx.orgId,
+        recorderUserId: req.user?.id,
+        recorderRole: role,
+        method: checked.terms.method,
+        amount: Math.round(amount * 100) / 100,
+        orderIds: [req.params.orderId],
+        paidOn: checked.terms.paidOn ?? null,
+      }).catch((e) => console.error("[Credit] payment Signal failed", e));
+      res.status(201).json({ ...credit, drawerShiftId });
     } catch (error) {
       fail(res, error, "Failed to record the payment");
     }
@@ -64,7 +85,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
   app.post(
     "/api/credit/:orderId/write-off",
     ...scoped,
-    requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"),
+    creditRoles,
     async (req: any, res) => {
       try {
         const ctx = req.orgContext as { orgId: string | null };
@@ -79,7 +100,7 @@ export function registerCreditRoutes(app: Express, scoped: RequestHandler[]): vo
   app.post(
     "/api/credit/:orderId/void",
     ...scoped,
-    requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"),
+    creditRoles,
     async (req: any, res) => {
       try {
         const ctx = req.orgContext as { orgId: string | null };

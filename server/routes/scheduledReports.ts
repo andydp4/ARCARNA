@@ -26,7 +26,9 @@ const createSchema = z.object({
 });
 
 export function registerScheduledReportRoutes(app: Express) {
-  app.get("/api/scheduled-reports", ...scoped, async (req: any, res) => {
+  // Scheduled Evidence is Evidence: the list and its run history are manager
+  // and above, the same line as the Evidence they deliver (STF-FN4, Q12).
+  app.get("/api/scheduled-reports", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const rows = await db
@@ -143,7 +145,7 @@ export function registerScheduledReportRoutes(app: Express) {
     },
   );
 
-  app.get("/api/scheduled-reports/:id/runs", ...scoped, async (req: any, res) => {
+  app.get("/api/scheduled-reports/:id/runs", ...scoped, requireRole("SUPER_ADMIN", "ADMIN", "MANAGER"), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const [existing] = await db

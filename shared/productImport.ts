@@ -1,5 +1,6 @@
 import type { ZodError } from "zod";
 import { productImportRowSchema } from "./setup";
+import { checkMinPrice } from "./pricing/floor";
 
 export type ProductImportPreviewRow = {
   rowIndex: number;
@@ -25,6 +26,7 @@ const FIELD_LABELS: Record<string, string> = {
   barcode: "barcode",
   defaultSalePrice: "sale price",
   costPrice: "cost price",
+  minPrice: "minimum price",
   stock: "stock",
   stockLimit: "stock limit",
 };
@@ -47,6 +49,10 @@ function canonicalProductFieldKey(header: string): string | null {
     price: "defaultSalePrice",
     sellprice: "defaultSalePrice",
     retailprice: "defaultSalePrice",
+    minprice: "minPrice",
+    minimumprice: "minPrice",
+    minsaleprice: "minPrice",
+    floorprice: "minPrice",
     productid: "productId",
     sku: "productId",
     id: "productId",
@@ -93,6 +99,9 @@ export function normalizeProductRow(raw: Record<string, string>): Record<string,
       row.Price ??
       "",
     costPrice: row.costPrice ?? row.cost_price ?? row.cost ?? row.tax ?? "",
+    // Absent or blank leaves a stored minimum as it is; "CLEAR" clears it
+    // (shared/pricing/floor.ts parseMinPriceCell).
+    minPrice: row.minPrice ?? row.min_price,
     stock: row.stock ?? row.Stock ?? row.initialStock ?? "0",
     stockLimit: row.stockLimit ?? row.stock_limit ?? "100",
   };
@@ -142,6 +151,11 @@ export function previewProductImportFromMappedRows(
     const errors: string[] = [];
     if (!parsed.success) {
       errors.push(...formatProductImportErrors(parsed.error));
+    }
+
+    if (parsed.success) {
+      const problem = checkMinPrice(parsed.data.minPrice, parsed.data.defaultSalePrice);
+      if (problem) errors.push(problem.message);
     }
 
     const sku = data.productId ? String(data.productId).trim() : "";

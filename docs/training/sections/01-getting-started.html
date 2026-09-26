@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>arcarna training — 1. Getting started &amp; the Control Centre</title>
+<title>arcarna training — 1. Getting started</title>
 <link rel="stylesheet" href="../brand.css" />
 </head>
 <body>
@@ -16,81 +16,247 @@
   <div class="chapter-open">
     <div class="chapter-num">01</div>
     <div class="chapter-title">Getting started</div>
-    <p class="chapter-lead">Who uses arcarna, how to sign in, and what the Control Centre is telling you the moment you arrive.</p>
+    <p class="chapter-lead">Who uses arcarna, how to sign in, and how to find your way: the Centres menu, the page headers, the short tours, and the two buttons that are always there when you need help.</p>
   </div>
 
   <p class="eyebrow">Roles · who does what</p>
-  <h2>Two roles, one system</h2>
-  <p>Everyone signs into the same arcarna, but what you can do depends on your role.
+  <h2>One system, several roles</h2>
+  <p>Everyone signs into the same arcarna, but what you see depends on your role. The menu only lists the pages your role can open, so two people standing at the same till can see different menus. That is deliberate, not a fault.
      Throughout this manual, look for these tags:
      <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
   <table>
     <tr><th>Role</th><th>What they do in arcarna</th></tr>
     <tr><td><span class="role role-cashier">CASHIER</span></td>
-        <td>Starts and ends their own shift, creates orders at the till, takes payments, looks up customers.</td></tr>
+        <td>Takes orders and payment on the Operations board, works the board, checks stock levels, and sees their own shifts and their own performance. A cashier never sees cost prices, and sees customers' phone numbers and emails masked (for example ••4821).</td></tr>
+    <tr><td><span class="role role-cashier">DRIVER</span></td>
+        <td>Not a separate role. Anyone with deliveries assigned to them works them from <span class="ui">My run</span> on their phone (Section 5). A cashier account is all a driver needs.</td></tr>
     <tr><td><span class="role role-manager">MANAGER</span></td>
-        <td>Everything a cashier does, plus: products and stock, customers, monitoring and amending orders, logging expenses, reading the Truths, and running end of day.</td></tr>
-    <tr><td><span class="role role-manager">ADMIN / OWNER</span></td>
-        <td>As manager, plus approving new users, settings, branding, locations and business-wide configuration.</td></tr>
+        <td>Everything a cashier does, plus: products, stock and suppliers, customers, the Credit List and invoices, expenses and cashier pay, the Truths and the Evidence, and reviewing the team's shifts.</td></tr>
+    <tr><td><span class="role role-manager">ADMIN</span></td>
+        <td>As a manager, plus: approving new people and setting their roles, locations, business-wide settings, the price guard, and business-wide profit.</td></tr>
+    <tr><td><span class="role role-manager">OWNER</span></td>
+        <td>As an admin, plus a few owner-only pages, such as the full log of who looked at customers' contact details.</td></tr>
   </table>
+  <div class="callout">
+    <strong>If a page says "You don't have access to this"</strong>
+    You followed a link or a shortcut to a page your role cannot open. Nothing is broken and nothing was changed. Select <span class="ui">Back to Control Centre</span> and carry on. If you think you should have access, ask your manager.
+  </div>
 
   <p class="eyebrow">Getting in</p>
   <h2>Signing in</h2>
   <ol class="steps">
-    <li>Open <span class="ui">arcarna.viger.cloud</span> in your browser — it works on tills, tablets and phones.</li>
-    <li>Select <span class="ui">Sign in</span> and enter your email and password on the secure account page.</li>
-    <li>First time here? A manager approves your account before you can see anything. Until they do, you'll see a <em>pending approval</em> screen — that is normal.</li>
-    <li>Once you're in, you land on the <strong>Control Centre</strong> — the home screen below.</li>
+    <li>Open <span class="ui">arcarna.viger.cloud</span> in your browser. It works on tills, tablets and phones.</li>
+    <li>The page reads <span class="ui">Sign in to continue</span>. Enter your email and password on the secure account page.</li>
+    <li>First time here? An admin has to approve your account before you can see anything. Until they do, you see an <span class="ui">Access pending</span> screen with your name. It checks again by itself every 30 seconds, or you can select <span class="ui">Check status</span>. That is normal.</li>
+    <li>Once you are approved, you land on the <strong>Control Centre</strong>, described below.</li>
   </ol>
-  <div class="callout warn">
-    <strong>Manager — approving a new person</strong>
-    New sign-ins appear under <span class="ui">Settings → User access</span>. Approve them, then set their role and location. They see no business data until you do.
+  <div class="callout">
+    <strong>On a phone, add it to your home screen</strong>
+    arcarna can sit on a phone's home screen like an app. When the offer to <span class="ui">Add to Home Screen</span> appears, accept it. Drivers especially will reach My run quicker this way.
   </div>
+  <div class="callout warn ed-admin">
+    <strong>Admin — approving a new person</strong>
+    New sign-ins wait under <span class="ui">Settings Centre › User Access</span>, in <span class="ui">Pending approvals</span>. Select <span class="ui">Approve access</span>, choose their <span class="ui">Role</span> and select <span class="ui">Approve</span>. The owner also chooses the <span class="ui">Organization</span>; an admin only chooses the role. The role starts as CUSTOMER (website-only access), so change it to the staff role they need. They see no business data until you approve them. Section 11 covers roles in full.
+  </div>
+
+  <h3>Signing out</h3>
+  <p>Select <span class="ui">Sign Out</span>, at the top right of the screen or at the bottom of the menu. If the till still holds sales it has not sent (because the connection dropped), arcarna shows <span class="ui">Sales not sent yet</span> and keeps you signed in until they have gone. That way a sale is never lost when someone signs out. Section 3 explains the offline till.</p>
+
+  <p class="eyebrow">The top of every screen</p>
+  <h2>The header</h2>
+  <p>The dark strip across the top is the same on every page. From left to right:</p>
+  <table>
+    <tr><th>Part</th><th>What it does</th></tr>
+    <tr><td><strong>Menu button</strong> (three lines)</td>
+        <td>Opens and closes the menu. On a phone this is the only way to open it.</td></tr>
+    <tr><td><strong>The arcarna mark</strong></td>
+        <td>Takes you back to the Control Centre from anywhere.</td></tr>
+    <tr class="ed-admin"><td><span class="ui">Preview as</span></td>
+        <td>Admins only. Shows the app as a manager or a cashier would see it. Covered in Section 11.</td></tr>
+    <tr><td><span class="ui">Ask arcarna</span> (speech bubble)</td>
+        <td>Opens Ask arcarna, where you can ask about the shop's figures in plain English. It only appears once Ask arcarna has been set up for your shop. On narrower screens it is just the icon. See the end of this section and Section 10.</td></tr>
+    <tr><td><span class="ui">Problem?</span></td>
+        <td>Tells the admins something went wrong on the screen you are on. See below. On a phone it shows as a lifebuoy icon.</td></tr>
+    <tr><td><strong>Signals</strong> (bell)</td>
+        <td>Messages from arcarna about things that need your attention. Which Signals you receive depends on your role.</td></tr>
+    <tr><td><strong>Your name</strong> and <span class="ui">Sign Out</span></td>
+        <td>Who is signed in on this device, and the way out.</td></tr>
+  </table>
 
   <p class="eyebrow">The home screen</p>
   <h2>The Control Centre</h2>
-  <p>This is the first screen after signing in — a calm, live answer to one question:
-     <em>how is the business doing right now?</em> It refreshes on its own every 60 seconds.</p>
+  <p>This is the first screen after signing in. It answers one question: <em>how is your business doing today?</em> It is the only page in the Control Centre, so choosing the Control Centre in the menu always brings you straight here.</p>
 
   <figure>
-    <img src="../images/01-control-centre.png" alt="The Control Centre showing today's business health and signals" />
-    <figcaption>The Control Centre — today's takings at a glance, with the menu down the left.</figcaption>
+    <img src="../images/v12-01-control-centre.png" alt="The Control Centre showing today's takings, the operations counts and the start of My performance, with the menu folded to icons on the left" />
+    <figcaption>The Control Centre as a cashier sees it, with the menu folded down to icons.</figcaption>
+    <!-- SHOT: route=/ ; role=cashier ; viewport=desktop ; show=the Control Centre: page header ("Control Centre", "How is your business doing today?"), the Today so far card with Revenue and Transactions, the operations counts (Open orders, To collect, To deliver…) and the top of the My performance card, with the sidebar collapsed to its icon rail ; state=some orders taken today; What's New and the Control Centre tour marked seen; menu not pinned -->
   </figure>
 
   <h3>What each part means</h3>
   <table>
     <tr><th>Part</th><th>What it tells you</th></tr>
-    <tr><td><strong>Today's numbers</strong></td>
-        <td><strong>Revenue</strong> — money taken so far today. <strong>Transactions</strong> — how many orders.
-        <strong>AOV</strong> (average order value) — the size of a typical sale. The two side boxes compare today with the same day last week and with this weekday's 12-month average, so a quiet Tuesday is judged against other Tuesdays.</td></tr>
-    <tr><td><strong>Business Health</strong></td>
-        <td>Money in today, money in over 7 days, orders today and new customers this week. The <span class="ui">Workers: healthy</span> badge means background jobs (invoices, stock, understanding) are running normally.</td></tr>
-    <tr><td><strong>Risk highlights</strong></td>
-        <td>What needs attention — e.g. dead stock (items that haven't sold in a long time). Managers should glance here daily.</td></tr>
+    <tr><td><strong>Today so far</strong></td>
+        <td><strong>Revenue</strong> (money taken so far today) and <strong>Transactions</strong> (how many orders), compared with last week, with yesterday and with this weekday's 12-month average, so a quiet Tuesday is judged against other Tuesdays.</td></tr>
+    <tr><td><strong>Operations counts</strong></td>
+        <td>Open orders, To collect, To deliver, Completed today, Late now, Due soon and Low stock. A quick read of how busy the board is.</td></tr>
+    <tr><td><strong>My performance</strong></td>
+        <td>Your own completed orders, value brought in and commission. Only yours. Section 2 explains it.</td></tr>
+    <tr><td><strong>Recent orders</strong></td>
+        <td>The latest orders taken.</td></tr>
+    <tr><td><strong>Next moves</strong> and <strong>The last 7 trading days</strong></td>
+        <td>What arcarna suggests doing next, and how the past week has gone.</td></tr>
+    <tr class="ed-manager"><td><strong>Worth a look</strong> and <strong>Truths overview</strong></td>
+        <td>Managers and above. A shortlist of Evidence worth opening today, and a fold-out overview of the Truths.</td></tr>
     <tr><td><strong>Quick actions</strong></td>
-        <td>Shortcuts to the most common jobs — creating an order, adding a product, and so on.</td></tr>
+        <td>Shortcuts to common jobs. <span class="ui">Create Order</span> opens the till for everyone. The others lead to pages for managers or admins; a cashier who opens one sees the no-access page described above.</td></tr>
+    <tr><td><strong>Recent activity</strong></td>
+        <td>A fold-out list of what has happened recently.</td></tr>
   </table>
 
-  <p class="eyebrow">Finding your way</p>
-  <h2>The menu, down the left</h2>
+  <p class="eyebrow">Finding your way · the Centres</p>
+  <h2>The Centres menu</h2>
+  <p>arcarna is arranged into <strong>Centres</strong>. Each Centre groups the pages for one part of the business. The main menu lists the Centres; choose one and the menu switches to that Centre's pages. You only ever see the Centres, and the pages, that your role can open.</p>
+
   <table>
-    <tr><th>Menu item</th><th>What it's for</th><th>Mainly used by</th></tr>
-    <tr><td><span class="ui">Control Centre</span></td><td>Today at a glance (this screen).</td><td>Everyone</td></tr>
-    <tr><td><span class="ui">Create Order</span></td><td>The till — build a basket and take payment. <em>(Section 3)</em></td><td>Cashiers</td></tr>
-    <tr><td><span class="ui">Open Orders</span></td><td>Monitor, amend and refund orders already created. <em>(Section 4)</em></td><td>Everyone</td></tr>
-    <tr><td><span class="ui">Products</span></td><td>Add, edit and retire products; prices and barcodes. <em>(Section 5)</em></td><td>Managers</td></tr>
-    <tr><td><span class="ui">Inventory</span></td><td>Stock levels, incoming stock and goods receiving.</td><td>Managers</td></tr>
-    <tr><td><span class="ui">Customers</span></td><td>Customer records and history. <em>(Section 6)</em></td><td>Everyone</td></tr>
-    <tr><td><span class="ui">Truths</span></td><td>Findings about the business, with the evidence behind them. <em>(Section 8)</em></td><td>Managers</td></tr>
-    <tr><td><span class="ui">Expenses</span></td><td>Log business and order costs so profit is honest. <em>(Section 7)</em></td><td>Managers</td></tr>
-    <tr><td><span class="ui">Invoices</span></td><td>View, download and email invoice PDFs for any order.</td><td>Managers</td></tr>
-    <tr><td><span class="ui">Tick List</span></td><td>Customers buying on account and what they owe.</td><td>Everyone</td></tr>
-    <tr><td><span class="ui">Settings</span></td><td>Business details, branding, users, cashiers &amp; commission, loyalty. <em>(Section 9)</em></td><td>Managers</td></tr>
+    <tr><th>Centre</th><th>What it is for</th><th>What a cashier finds there</th></tr>
+    <tr><td><span class="ui">Control Centre</span></td><td>Today at a glance.</td><td>The Control Centre itself.</td></tr>
+    <tr><td><span class="ui">Operations Centre</span></td><td>Where orders are taken and worked.</td><td><span class="ui">Operations board</span> (the till and the order board, Sections 3 and 4), <span class="ui">My run</span> (deliveries, Section 5) and <span class="ui">My performance</span> (Section 2).</td></tr>
+    <tr><td><span class="ui">Stock Centre</span></td><td>Products and stock.</td><td><span class="ui">Stock levels</span>: how many of each product your location has. Read-only, with no cost prices (Section 6).</td></tr>
+    <tr><td><span class="ui">Finance Centre</span></td><td>Money: shifts, pay, expenses and invoices.</td><td><span class="ui">Shifts</span>: your own shifts only (Section 2).</td></tr>
+    <tr><td><span class="ui">Settings Centre</span></td><td>How arcarna is set up.</td><td><span class="ui">Settings</span>, mostly to read. The jobs a cashier does here are pairing a label printer (Section 4) and naming the device under <span class="ui">This device</span>, both on the System tab.</td></tr>
+    <tr><td><span class="ui">Truths Centre</span></td><td>What the figures are telling you, with the Evidence behind them.</td><td>Not shown to cashiers.</td></tr>
+    <tr><td><span class="ui">Customer Centre</span></td><td>Customers, loyalty, promotions and gift cards.</td><td>Not shown to cashiers. At the till you still find and add customers (Section 3).</td></tr>
   </table>
+
+  <div class="ed-manager">
+    <h3>What managers also find <span class="role role-manager">MANAGER</span></h3>
+    <table>
+      <tr><th>Centre</th><th>Extra pages for managers and above</th></tr>
+      <tr><td><span class="ui">Operations Centre</span></td><td><span class="ui">Credit List</span>, <span class="ui">Needs attention</span> (till sales the server refused) and <span class="ui">Needs a look</span> (sales and refunds to review).</td></tr>
+      <tr><td><span class="ui">Stock Centre</span></td><td><span class="ui">Products</span>, <span class="ui">Stock Truths</span>, <span class="ui">Purchase Drafts</span> and <span class="ui">Suppliers</span>. Managers do not get Stock levels in the menu, because Products and Stock Truths already show it.</td></tr>
+      <tr><td><span class="ui">Truths Centre</span></td><td>Opens on <span class="ui">Truths at a glance</span>. Also <span class="ui">Evidence</span>, <span class="ui">Staff Performance</span>, <span class="ui">Staff targets</span>, <span class="ui">Order Timing</span>, <span class="ui">Customer Truths</span>, <span class="ui">Busiest Hours</span>, <span class="ui">Order Channels</span>, <span class="ui">Stock Turn</span>, <span class="ui">Price overrides</span> and <span class="ui">Scheduled Evidence</span>.</td></tr>
+      <tr><td><span class="ui">Customer Centre</span></td><td><span class="ui">Customers</span>, <span class="ui">Loyalty</span>, <span class="ui">Promotions</span> and <span class="ui">Gift Cards</span>.</td></tr>
+      <tr><td><span class="ui">Finance Centre</span></td><td><span class="ui">Expenses</span>, <span class="ui">Reseller Partners</span>, <span class="ui">Cashier Payroll</span>, <span class="ui">Staff Performance</span> (the same page as in the Truths Centre) and <span class="ui">Invoices</span>. Shifts also lists your cashiers' shifts.</td></tr>
+      <tr><td><span class="ui">Settings Centre</span></td><td><span class="ui">Rules</span>, and the <span class="ui">Imports</span>, <span class="ui">Cashiers</span> and <span class="ui">Operations</span> tabs of Settings.</td></tr>
+    </table>
+  </div>
+
+  <div class="ed-admin">
+    <h3>What admins and the owner also find</h3>
+    <table>
+      <tr><th>Who</th><th>Extra pages</th></tr>
+      <tr><td><span class="role role-manager">ADMIN</span></td><td>Truths Centre: <span class="ui">Profit Truths</span>, <span class="ui">Would have flagged</span> and <span class="ui">Problem? inbox</span>. Settings Centre: <span class="ui">User Access</span>, <span class="ui">Locations</span>, <span class="ui">Developer</span>, and the <span class="ui">Flags</span> tab of Settings.</td></tr>
+      <tr><td><span class="role role-manager">OWNER</span></td><td>Truths Centre: <span class="ui">Friction Truths</span>. Settings Centre: <span class="ui">Audit Log</span>, <span class="ui">Customer data access</span> and <span class="ui">System Activity</span>.</td></tr>
+    </table>
+  </div>
+
+  <h3>Opening and moving around the menu</h3>
+  <p>How the menu opens depends on the device you are using:</p>
+  <table>
+    <tr><th>Device</th><th>How the menu behaves</th></tr>
+    <tr><td><strong>Computer</strong> (mouse or trackpad)</td>
+        <td>The menu sits down the left as a narrow strip of icons. Point at it and it slides out over the page; move away and it tucks back half a second later. The page underneath does not move. The menu button and the Escape key also open and close it.</td></tr>
+    <tr><td><strong>Tablet</strong></td>
+        <td>Tap the menu button at the top left. The menu slides out over the page and puts itself away when you choose a page or tap outside it.</td></tr>
+    <tr><td><strong>Phone</strong></td>
+        <td>Tap the menu button. The menu slides in from the left, with <span class="ui">Sign Out</span> at the bottom.</td></tr>
+  </table>
+  <ol class="steps">
+    <li>Open the menu. You see the main menu: the list of Centres, with <span class="ui">Replay tour</span> beneath.</li>
+    <li>Choose a Centre. arcarna opens that Centre's first page and the menu switches to show only that Centre's pages, with the Centre's name above them.</li>
+    <li>Choose any page in the list. Pages with tabs, such as Settings, list their tabs underneath.</li>
+    <li>To reach another Centre, select <span class="ui">← Main menu</span> at the top of the menu, then choose the Centre you want.</li>
+  </ol>
+  <p>If you open a link to a page directly, the menu follows it and opens on that page's Centre.</p>
+
+  <figure>
+    <img src="../images/v12-01-centres-main-menu.png" alt="The menu slid out over the Control Centre, listing the Centres a cashier can open, with Replay tour beneath" />
+    <figcaption>The main menu as a cashier sees it: one line per Centre. Choose one to see its pages. Managers also see the Truths Centre and the Customer Centre.</figcaption>
+    <!-- SHOT: route=/ ; role=cashier ; viewport=desktop ; show=the sidebar slid out over the page (hover, not pinned) showing the cashier's main menu list of five Centres (Control Centre, Operations Centre, Stock Centre, Finance Centre, Settings Centre), "Replay tour" beneath, "Pin menu open" at the top and "Sign Out" at the bottom ; state=pointer resting over the sidebar so it stays open; tours and What's New marked seen -->
+  </figure>
+
+  <h3>Pinning the menu open</h3>
+  <p>On a computer or tablet, <span class="ui">Pin menu open</span> at the top of the menu keeps it open beside the page, and the page moves over to make room. Select <span class="ui">Unpin menu</span> to go back to the sliding menu. The pin is remembered on that device only, so a pinned till stays pinned for the next person.</p>
+
+  <figure>
+    <img src="../images/v12-01-centre-menu-pinned.png" alt="The menu pinned open in the Operations Centre, showing Main menu, the Centre's name, its pages and Replay tour, with the My performance page beside it" />
+    <figcaption>Inside a Centre, with the menu pinned: its pages, "← Main menu" to go back, and the Centre's name above the page title.</figcaption>
+    <!-- SHOT: route=/my-performance ; role=cashier ; viewport=desktop ; show=the sidebar pinned open inside the Operations Centre: "Unpin menu" at the top, "← Main menu", the "OPERATIONS CENTRE" title, the pages Operations board, My run and My performance (highlighted), and "Replay tour"; on the right the My performance page header with the "OPERATIONS CENTRE" eyebrow above the title ; state=menu pinned; the Ask arcarna feature tour on My performance marked seen -->
+  </figure>
+
+  <p class="eyebrow">Finding your way · page headers</p>
+  <h2>Reading a page header</h2>
+  <p>Most pages open with the same four lines, so you always know where you are and what the page is for:</p>
+  <table>
+    <tr><th>Line</th><th>What it tells you</th></tr>
+    <tr><td><strong>The small heading</strong></td><td>The Centre this page belongs to, for example <span class="ui">FINANCE CENTRE</span>.</td></tr>
+    <tr><td><strong>The title</strong></td><td>The page's name, the same as in the menu.</td></tr>
+    <tr><td><strong>The question</strong></td><td>The question the page answers, for example <em>Who was on, and did the till balance?</em></td></tr>
+    <tr><td><strong>The explanation</strong></td><td>One short line on what the page shows or what to do next.</td></tr>
+  </table>
+
+  <p class="eyebrow">Learning as you go</p>
+  <h2>Tours, Replay tour and What's New</h2>
+  <p>arcarna teaches itself in small pieces, the first time you need them.</p>
+  <h3>Centre tours</h3>
+  <p>The first time you reach a page in a Centre, a short tour points out that Centre's menu, <span class="ui">← Main menu</span>, the page header, the pin and <span class="ui">Replay tour</span>. The rest of the screen is dimmed and the part being explained is outlined.</p>
+  <ol class="steps">
+    <li>Read the step, then select <span class="ui">Next</span>. <span class="ui">Back</span> returns to the previous step.</li>
+    <li>On the last step, select <span class="ui">Got it</span>.</li>
+    <li>To stop early, select the cross at the top right of the tour box.</li>
+  </ol>
+  <p>The Operations board has its own tour of the board and the order form. Some newer pages also have a tour of their own, shown the first time you reach them: My run, the label printer card in Settings, and Ask arcarna on My performance, for example.</p>
+  <p>Each tour is shown once per person, not once per device. Once you have seen it, it will not come back on another till or on your phone.</p>
+
+  <figure>
+    <img src="../images/v12-01-centre-tour.png" alt="The first step of the Finance Centre tour, with the menu outlined and a tour box reading The Finance Centre" />
+    <figcaption>A Centre tour: the part being explained is outlined, the rest dimmed.</figcaption>
+    <!-- SHOT: route=/shifts ; role=cashier ; viewport=desktop ; show=step 1 of the Finance Centre tour: the menu's page list outlined, and the tour box "Step 1 of 5", title "The Finance Centre", with the Next button and the close cross ; state=the Finance Centre tour NOT yet seen for seed-cashier (clear its seen flag); What's New marked seen -->
+  </figure>
+
+  <h3>Replay tour</h3>
+  <p><span class="ui">Replay tour</span> at the bottom of the menu shows a tour again whenever you like. It picks the most useful one for where you are: the tour for a new feature on screen if there is one, the board tour in the Operations Centre, and otherwise the tour for the Centre you are in.</p>
+
+  <h3>What's New</h3>
+  <p>The first time you sign in after an update, a window titled <span class="ui">What's new in v1.2.1</span> lists what changed. It only lists the changes that matter to your role. Read it, then select <span class="ui">Got it</span>. Like the tours, it is shown once per person.</p>
+
+  <p class="eyebrow">When something goes wrong</p>
+  <h2>The Problem? button</h2>
+  <p>If arcarna is slow, you cannot find something, or it does something unexpected, tell the admins straight away with <span class="ui">Problem?</span>. It is in the header on every page, and on the till beside the order. It takes a few seconds, and it sends the screen you were on with it, so you do not have to explain where you were.</p>
+  <ol class="steps">
+    <li>Select <span class="ui">Problem?</span>. A full-screen panel asks <span class="ui">What went wrong?</span></li>
+    <li>Pick one: <span class="ui">Too slow</span>, <span class="ui">Can't find it</span>, <span class="ui">Did the wrong thing</span>, <span class="ui">Error message</span> or <span class="ui">Other</span>.</li>
+    <li>If you like, add a line under <span class="ui">Tell us more (optional)</span>, such as what you were trying to do.</li>
+    <li>The first time on a device, choose which device it is under <span class="ui">This device</span> (for example Till 1 or Phone 2). It is remembered, so you only do this once.</li>
+    <li>Select <span class="ui">Send</span>. You see <span class="ui">Thanks, it's reported</span>.</li>
+  </ol>
+  <p>The box headed <span class="ui">Sent with your report</span> shows exactly what goes with it: the screen, your role, the device, the version, whether you were online, and how many sales are waiting to send. Admins see your role, not your name. If the till is offline, the report is kept on the device and sent when the connection returns.</p>
+  <div class="callout warn">
+    <strong>Don't type customer details</strong>
+    Never put a customer's name, phone number, email or address in the note. Describe what happened instead: "the card link did not show a QR code" is all anyone needs.
+  </div>
+
+  <figure>
+    <img src="../images/v12-01-problem-sheet.png" alt="The Problem? panel on a phone, with Too slow selected, the optional note, This device and the Sent with your report box" />
+    <figcaption>Problem? on a phone: pick what happened, add a note if you like, and send.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=phone ; show=the Problem? sheet open full screen: "What went wrong?", the five choices with "Too slow" selected, the "Tell us more (optional)" box with the amber line "Don't type customer details.", "This device" set to Phone 1, and the top of the "Sent with your report" box ; state=device named Phone 1; tours and What's New marked seen -->
+  </figure>
+
+  <div class="callout ed-admin">
+    <strong>Admin — where reports go</strong>
+    Every report lands in the <span class="ui">Problem? inbox</span> in the Truths Centre, with the screen and the device. Mark one fixed and the person who reported it is told. Section 11 covers the inbox.
+  </div>
+
+  <p class="eyebrow">Asking a question</p>
+  <h2>Where Ask arcarna opens</h2>
+  <p><strong>Ask arcarna</strong> answers questions about the shop's own figures in plain English, such as "How am I doing this week?". It only answers from figures your role can already see, it never changes anything, and it links to the Evidence it used.</p>
+  <p>Open it from the speech-bubble icon in the header (labelled <span class="ui">Ask arcarna</span> on wide screens). It slides in from the right, over the page you are on, so you do not lose your place. If you cannot see the icon, Ask arcarna has not been set up for your shop. Section 10 explains how to ask good questions.</p>
+  <p class="ed-manager">Managers can also open it with the <span class="ui">Ask arcarna</span> button on Truths at a glance, in the Truths Centre.</p>
 
   <div class="callout">
     <strong>It keeps working offline</strong>
-    If the internet drops mid-shift, keep serving — orders queue on the device and sync automatically when the connection returns. A shop never stops trading because the broadband did.
+    If the internet drops mid-shift, keep serving. Sales are kept on the device and sent automatically when the connection returns. A shop never stops trading because the broadband did.
   </div>
 
 </main>

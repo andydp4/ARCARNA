@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { storage } from "../storage";
 import { recordAdminAudit } from "../adminAudit";
 import { requireRole } from "../auth";
+import { rolesAtLeast } from "@shared/accessPolicy";
 import {
   renderReceiptTemplate,
   buildSampleReceiptContext,
@@ -24,11 +25,11 @@ export function registerReceiptRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const token = String(req.query.token ?? "");
       if (!token) {
-        return res.status(400).send("Missing token");
+        return res.status(400).type("text/plain").send("Missing token");
       }
       const parsed = verifyUnsubscribeToken(token);
       if (!parsed) {
-        return res.status(400).send("Invalid or expired unsubscribe link");
+        return res.status(400).type("text/plain").send("Invalid or expired unsubscribe link");
       }
       const [customer] = await db
         .select()
@@ -36,7 +37,12 @@ export function registerReceiptRoutes(app: Express, scoped: RequestHandler[]): v
         .where(eq(customers.id, parsed.customerId))
         .limit(1);
       if (!customer) {
-        return res.status(404).send("Customer not found");
+        return res.status(404).type("text/plain").send("Customer not found");
+      }
+      // The link names the address the receipt went to. One for an address the
+      // customer no longer uses does not speak for their current one (SEC-UNSUBKEY).
+      if ((customer.email ?? "").trim().toLowerCase() !== parsed.email.trim().toLowerCase()) {
+        return res.status(400).type("text/plain").send("This unsubscribe link is for an older email address");
       }
       await db
         .update(customers)
@@ -98,7 +104,14 @@ export function registerReceiptRoutes(app: Express, scoped: RequestHandler[]): v
     }
   });
 
-  app.get("/api/receipts/preview", ...scoped, async (req: any, res) => {
+  /**
+   * The template rendered against a sample order, for the Receipt settings
+   * page's sandboxed preview frame. Returned as JSON, never as a page on the
+   * app's origin (v1.2.1 SEC-XSS-PREVIEW): the template is arbitrary HTML, so
+   * serving it as text/html here was a reflected XSS for any link-clicking
+   * admin. Manager and above, the same people who can edit the template.
+   */
+  app.get("/api/receipts/preview", ...scoped, requireRole(...rolesAtLeast("MANAGER")), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const template =
@@ -121,7 +134,7 @@ export function registerReceiptRoutes(app: Express, scoped: RequestHandler[]): v
         template ?? org?.receiptTemplateHtml ?? "",
         sample,
       );
-      res.type("html").send(html);
+      res.json({ html });
     } catch (error) {
       console.error("[Receipts] preview:", error);
       res.status(500).json({ message: "Failed to render preview" });

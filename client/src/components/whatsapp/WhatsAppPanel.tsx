@@ -29,6 +29,8 @@ import {
   STORAGE_WHATSAPP_SOUND_LEGACY,
 } from "@shared/storageKeys";
 import { stashWhatsappDraft } from "@/lib/whatsappDraft";
+import { isMaskedValue } from "@shared/customerView";
+import { checkTemplateConsent } from "@shared/marketingConsent";
 
 interface WhatsappStatus {
   enabled: boolean;
@@ -85,6 +87,7 @@ interface ConversationDetail {
 interface Template {
   id: string;
   templateName: string;
+  category?: string | null;
   language: string;
   status: string;
   body: string | null;
@@ -94,14 +97,16 @@ interface Template {
 interface CustomerLite {
   id: string;
   name: string;
-  phone: string | null;
+  /** Admin only (Q13a); below that the mask stands in. */
+  phone?: string | null;
+  phoneMasked?: string | null;
 }
 
 function formatTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -587,7 +592,10 @@ function ConversationView({
             <p className="truncate font-medium">
               {conversation.customerName || conversation.profileName || conversation.phone}
             </p>
-            <p className="text-xs text-muted-foreground">+{conversation.waId}</p>
+            {/* Below admin the server sends ••4821 (Q7): no "+" in front of a mask. */}
+            <p className="text-xs text-muted-foreground">
+              {isMaskedValue(conversation.waId) ? conversation.waId : `+${conversation.waId}`}
+            </p>
           </div>
           <Badge variant={conversation.customerId ? "secondary" : "outline"} className="shrink-0 text-[10px]">
             {conversation.customerId ? "Linked" : "Unlinked"}
@@ -731,14 +739,14 @@ function ConversationView({
             />
             <Button
               type="button"
-              size="icon"
-              className="h-11 w-11 shrink-0"
+              className="h-11 shrink-0 gap-1"
               onClick={onSend}
               disabled={!canSend || sending || !reply.trim()}
               aria-label="Send reply"
               data-testid="whatsapp-send"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4" aria-hidden />
+              Send
             </Button>
           </div>
         )}
@@ -782,11 +790,16 @@ function TemplateComposer({
         data-testid="whatsapp-template-select"
       >
         <option value="">Choose a template…</option>
-        {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.templateName} ({t.status})
-          </option>
-        ))}
+        {templates.map((t) => {
+          // Marketing needs the customer's recorded consent, which arcarna does
+          // not hold yet, so the server refuses these (PRV-14).
+          const blocked = !checkTemplateConsent(t, null).ok;
+          return (
+            <option key={t.id} value={t.id} disabled={blocked}>
+              {t.templateName} ({t.status}){blocked ? " — marketing, needs consent" : ""}
+            </option>
+          );
+        })}
       </select>
       {template && (
         <>
@@ -855,7 +868,9 @@ function LinkCustomerPicker({ onPick }: { onPick: (customerId: string) => void }
                 onClick={() => onPick(c.id)}
               >
                 {c.name}
-                {c.phone ? <span className="text-xs text-muted-foreground"> · {c.phone}</span> : null}
+                {c.phone || c.phoneMasked ? (
+                  <span className="text-xs text-muted-foreground"> · {c.phone || c.phoneMasked}</span>
+                ) : null}
               </button>
             </li>
           ))

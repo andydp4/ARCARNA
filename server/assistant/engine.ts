@@ -1,96 +1,35 @@
 /**
  * Arcarna Assistant orchestration — wires the pure QuickEntryEngine to
- * product lookup and order persistence. Shared by every input channel
- * (typed command bar, mic, Siri Shortcuts, future WhatsApp voice notes).
+ * product and customer lookup, for the typed command bar and the mic.
+ *
+ * v1.2 Phase 1B (owner Q19): the assistant never saves an order. A confirmed
+ * draft goes back to the app, which opens it in the till; the till prices it
+ * and takes payment, so a spoken order is charged by the same rules as any
+ * other sale. The Siri Shortcut route is gone.
  */
-import { storage } from "../storage";
-import { processQuickEntryTurn, type QuickEntryDraft, type QuickEntryTurnResult } from "./quickEntry";
-import { getProductsForAssistant, findOrCreateCustomerByName, resolveOrderLines } from "./store";
+import {
+  applyCustomerMatches,
+  needsCustomerLookup,
+  processQuickEntryTurn,
+  type QuickEntryDraft,
+  type QuickEntryTurnResult,
+} from "./quickEntry";
+import { findCustomerCandidatesByName, getProductsForAssistant } from "./store";
 
-export interface AssistantTurnResult extends QuickEntryTurnResult {
-  /** Set when action === "save": the order that was actually created. */
-  savedOrderId?: string;
-}
+export type AssistantTurnResult = QuickEntryTurnResult;
 
-/** Advances the conversation by one turn, saving the order if it's confirmed. */
+/** Advances the conversation by one turn. Reads only; writes nothing. */
 export async function runAssistantTurn(
   orgId: string,
   draft: QuickEntryDraft | null | undefined,
   text: string,
-  userId?: string,
 ): Promise<AssistantTurnResult> {
   const products = await getProductsForAssistant(orgId);
   const turn = processQuickEntryTurn(draft, text, products);
-  if (turn.action !== "save" || !turn.draft) return turn;
-
-  try {
-    const orderId = await saveQuickEntryOrder(orgId, turn.draft, products, userId);
-    return { ...turn, savedOrderId: orderId };
-  } catch (e) {
-    console.error("[assistant] failed to save order:", e);
-    const message = "Sorry, I couldn't save that order. Please try again or say no to discard it.";
-    return { action: "ask", draft: turn.draft, message, voiceResponse: message, missingFields: [] };
-  }
-}
-
-async function saveQuickEntryOrder(
-  orgId: string,
-  draft: QuickEntryDraft,
-  products: Awaited<ReturnType<typeof getProductsForAssistant>>,
-  userId?: string,
-): Promise<string> {
-  const customer = await findOrCreateCustomerByName(orgId, draft.customerName ?? "Walk-in");
-  const lines = resolveOrderLines(draft, products);
-
-  const { withTransaction } = await import("../../apps/server/src/db");
-  const { orders, order_items } = await import("../../apps/server/src/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const { publishEventTx } = await import("../eventBus");
-  const { engine } = await import("../../apps/server/src/engine.wiring");
-
-  const { orderId } = await withTransaction(async (tx) => {
-    const result = await engine.placeOrder({
-      orgId,
-      customerId: customer.id,
-      lines,
-      paymentMethod: draft.paymentMethod,
-    });
-    const [createdOrder] = await tx.select().from(orders).where(eq(orders.id, result.orderId));
-    const items = await tx.select().from(order_items).where(eq(order_items.order_id, result.orderId));
-
-    await publishEventTx(
-      tx,
-      "OrderCreated",
-      result.orderId,
-      {
-        order: {
-          orderId: result.orderId,
-          status: createdOrder?.status || "pending",
-          customerId: createdOrder?.customer_id,
-          total: parseFloat(createdOrder?.total || "0"),
-          paymentMethod: createdOrder?.payment_method,
-          items: items.map((item: typeof order_items.$inferSelect) => ({
-            lineId: item.id,
-            productId: item.product_id,
-            qty: item.quantity,
-            unitPrice: parseFloat(item.unit_price || "0"),
-            lineTotal: parseFloat(item.total_price || "0"),
-          })),
-        },
-      },
-      { actor: userId ? { type: "user", id: userId } : { type: "system", id: "arcarna-voice" }, source: "assistant-voice" },
-    );
-
-    return { orderId: result.orderId };
-  });
-
-  if (draft.expenses.length > 0) {
-    await storage.createOrderExpenses(
-      orderId,
-      draft.expenses.map((e) => ({ category: "other", description: e.label, amount: String(e.amount) })),
-      orgId,
-    );
-  }
-
-  return orderId;
+  if (!needsCustomerLookup(turn.draft)) return turn;
+  const candidates = await findCustomerCandidatesByName(orgId, turn.draft.customerName ?? "", 5);
+  return applyCustomerMatches(
+    turn.draft,
+    candidates.map((c) => ({ id: c.id, name: c.name })),
+  );
 }

@@ -9,6 +9,8 @@ import { storage } from "../storage";
 export type ApiKeyContext = {
   orgId: string;
   scopes: string[];
+  /** The key's id, so the customer data access log can say which key read contact details. */
+  keyId?: string;
 };
 
 declare module "express-serve-static-core" {

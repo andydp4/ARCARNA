@@ -1,10 +1,79 @@
 import { PlaceOrderInput, UpdateOrderInput } from './schemas'
-import type { OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSink, AuditPort } from './ports'
+import type {
+  OrdersRepo, ProductsRepo, CustomersRepo, InvoicesPort, AnalyticsSink, AuditPort,
+  PriceExceptionsPort, PriceExceptionRecord,
+} from './ports'
 import type { EventBus } from './bus'
-import type { Order, OrderId, Product, ProductId, Customer, CustomerId } from './types'
+import type { Order, OrderId, OrderLine, Product, ProductId, Customer, CustomerId } from './types'
+import { lineTotalFor, priceOrder, type PricedOrder } from '../../../shared/pricing/priceOrder'
+import {
+  isPriceCheckExempt,
+  netLineTotals,
+  snapshotFor,
+  underpricedLine,
+  type LineSnapshot,
+  type OrderDiscounts,
+} from '../../../shared/pricing/lineSnapshot'
+
+/**
+ * Who is behind an order write, for the silent price check's "by person".
+ * Passed by the route beside the input — never read from the request body.
+ */
+export type OrderWriteContext = {
+  actorUserId?: string | null
+  /** The order's org, when the repo's order does not carry it. */
+  orgId?: string | null
+  /**
+   * Set only by the server's own website checkout, which prices every line at
+   * list itself: the one sale the silent price check skips. Never derived
+   * from the order's `channel`, which a till or API caller can set to "web".
+   */
+  pricedAtList?: boolean
+}
+
+/**
+ * What identifies one recorded breach, for telling an edit's unchanged lines
+ * from changed ones. Pence and thousandths, so a numeric read back from the
+ * database as a string compares equal to the engine's number.
+ */
+function breachKey(r: PriceExceptionRecord): string {
+  const p = (v: unknown) => Math.round((Number(v) || 0) * 100)
+  return [
+    Math.round((Number(r.quantity) || 0) * 1000),
+    p(r.unitPrice),
+    p(r.underList),
+    p(r.underCost),
+    r.belowMinimum ? 1 : 0,
+    r.belowCost ? 1 : 0,
+  ].join('|')
+}
+
+function keysByProduct(rows: PriceExceptionRecord[]): Map<string, string> {
+  const grouped = new Map<string, string[]>()
+  for (const r of rows) {
+    if (!r.productId) continue
+    const list = grouped.get(r.productId) ?? []
+    list.push(breachKey(r))
+    grouped.set(r.productId, list)
+  }
+  return new Map([...grouped].map(([pid, keys]) => [pid, keys.sort().join(',')]))
+}
+
+type SnapshotFields = Pick<OrderLine, 'listPrice' | 'floorPrice' | 'unitCost'>
+
+function snapshotFields(snap: LineSnapshot | null): SnapshotFields {
+  return snap
+    ? { listPrice: snap.listPrice, floorPrice: snap.floorPrice, unitCost: snap.unitCost }
+    : {}
+}
+
+function snapshotOf(line: SnapshotFields): LineSnapshot | null {
+  if (line.listPrice == null || line.floorPrice == null) return null
+  return { listPrice: line.listPrice, floorPrice: line.floorPrice, unitCost: line.unitCost ?? null }
+}
 
 /** Fallback when no org rate is supplied. Matches the historic fixed rate. */
-export const DEFAULT_TAX_RATE_PERCENT = 20
+export const DEFAULT_TAX_RATE_PERCENT = 0
 
 export class DomainEngine {
   constructor(
@@ -16,26 +85,161 @@ export class DomainEngine {
     private readonly analytics: AnalyticsSink,
     private readonly audit: AuditPort,
     private readonly withTransaction: <T>(fn: ()=>Promise<T>)=>Promise<T>,
+    // Optional so a hand-built engine (tests, tools) still constructs; without
+    // it underpriced lines are simply not recorded.
+    private readonly priceExceptions?: PriceExceptionsPort,
   ){}
 
-  async placeOrder(input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
+  /**
+   * The list price, floor and cost of each product on the order, as they are
+   * right now (PRC-06). One read per distinct product. A product that cannot
+   * be read gets no snapshot rather than a failed sale.
+   */
+  /**
+   * Every line's product must belong to the order's own organisation
+   * (v1.2.1 SEC-ORDER-XPROD). Without this a till could ring up another
+   * tenant's product: its name, list price, floor and cost were copied onto the
+   * order and shown back. Refused as "not found" so nothing about the foreign
+   * product is disclosed.
+   */
+  private async assertProductsInOrg(orgId: string | undefined, productIds: string[]): Promise<void> {
+    if (!orgId || !this.products.foreignTo) return
+    const foreign = await this.products.foreignTo(productIds as ProductId[], orgId)
+    if (foreign.length > 0) {
+      const err: any = new Error('A product on this order was not found.')
+      err.statusCode = 400
+      err.code = 'ORDER_PRODUCT_NOT_FOUND'
+      throw err
+    }
+  }
+
+  private async snapshotLines(productIds: string[]): Promise<Map<string, LineSnapshot | null>> {
+    const out = new Map<string, LineSnapshot | null>()
+    for (const id of new Set(productIds)) {
+      let product: Product | null = null
+      try {
+        product = await this.products.findById(id as ProductId)
+      } catch (error) {
+        console.warn('[DomainEngine] snapshot read failed (line kept without one):', error)
+      }
+      out.set(id, snapshotFor(product as any))
+    }
+    return out
+  }
+
+  /**
+   * Silent recording (PRC-03, CMP-03): every line below its minimum or below
+   * known cost is written to price_exceptions. Inside the engine so the till,
+   * manager edits, the API and voice drafts are all covered by construction.
+   * It never blocks and never errors: the sale has already been decided.
+   *
+   * Lines are judged on what they brought in after the order's tier,
+   * promotion and points (owner Q3: no trade exemption), not only on their
+   * unit price, which those discounts leave at list.
+   *
+   * On an edit the order's rows are reconciled rather than added to: a
+   * product whose breach is exactly as recorded keeps its row (and who it was
+   * recorded against); any other product's rows are replaced by the breach as
+   * it now stands, or removed when the line is now fine or gone. So each
+   * breach is counted once in "Would have flagged".
+   */
+  private async recordUnderpriced(args: {
+    orgId: string | null | undefined
+    orderId: string
+    lines: OrderLine[]
+    pricing: OrderDiscounts
+    source: 'sale' | 'edit'
+    channel?: string | null
+    paymentMethod?: string | null
+    actorUserId?: string | null
+    pricedAtList?: boolean
+  }): Promise<void> {
+    try {
+      if (!this.priceExceptions || !args.orgId) return
+      if (isPriceCheckExempt({ paymentMethod: args.paymentMethod, source: args.source, pricedAtList: args.pricedAtList })) return
+      const nets = netLineTotals(args.lines, args.pricing)
+      // A manager/admin created the promotion (only they can), so a breach
+      // caused entirely by it is not logged (v1.2.1 money). One still is if
+      // the line was already under its floor or cost before the promotion.
+      const hasPromo = !!args.pricing?.promotion && Number(args.pricing?.promoDiscount ?? 0) > 0
+      const netsNoPromo = hasPromo ? netLineTotals(args.lines, args.pricing, true) : nets
+      const rows: PriceExceptionRecord[] = []
+      args.lines.forEach((line, i) => {
+        const snap = snapshotOf(line)
+        const breach = underpricedLine({ ...line, netLineTotal: nets[i] }, snap)
+        if (!breach || !snap) return
+        if (hasPromo && !underpricedLine({ ...line, netLineTotal: netsNoPromo[i] }, snap)) return
+        const qty = Number(line.quantity) || 0
+        rows.push({
+          orgId: args.orgId as string,
+          orderId: args.orderId,
+          productId: line.productId as string,
+          userId: args.actorUserId ?? null,
+          source: args.source,
+          channel: args.channel ?? null,
+          quantity: line.quantity,
+          // What each unit actually brought in after the order's discounts,
+          // which is the price the breach is about.
+          unitPrice: qty > 0 ? Math.round((nets[i] / qty) * 100) / 100 : line.unitPrice,
+          listPrice: snap.listPrice,
+          floorPrice: snap.floorPrice,
+          unitCost: snap.unitCost,
+          ...breach,
+        })
+      })
+      if (args.source === 'sale') {
+        if (rows.length) await this.priceExceptions.record(rows)
+        return
+      }
+      const before = keysByProduct(await this.priceExceptions.forOrder(args.orgId, args.orderId))
+      const now = keysByProduct(rows)
+      const changed = [...new Set([...before.keys(), ...now.keys()])].filter((pid) => before.get(pid) !== now.get(pid))
+      if (changed.length === 0) return
+      await this.priceExceptions.replaceForOrder(
+        args.orgId,
+        args.orderId,
+        changed,
+        rows.filter((r) => changed.includes(r.productId)),
+      )
+    } catch (error) {
+      console.warn('[DomainEngine] underpriced-sale recording failed (sale unaffected):', error)
+    }
+  }
+
+  /**
+   * `pricing` is the till route's server-side priceOrder() result (tier,
+   * promotion, points already validated inside the sale's transaction). It is
+   * a separate, trusted argument — never read from the request body — so a
+   * caller cannot post its own discount. Without it the sale is priced from
+   * its lines and the org rate alone, by the same function (v1.2 Phase 1B).
+   */
+  async placeOrder(
+    input: unknown,
+    pricing?: PricedOrder,
+    context: OrderWriteContext = {},
+  ): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = PlaceOrderInput.parse(input)
-    const subtotal = +dto.lines.reduce((s: number, l: any)=> s + l.quantity*l.unitPrice, 0).toFixed(2)
     // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
     // applies when a caller supplies none.
-    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
-    const vat = +(subtotal * taxRate).toFixed(2)
-    const total = +(subtotal + vat).toFixed(2)
+    const priced =
+      pricing ??
+      priceOrder({ lines: dto.lines, taxRatePercent: (dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT })
+    const { subtotal, vatAmount: vat, total } = priced
 
     const result = await this.withTransaction(async () => {
+      await this.assertProductsInOrg((dto as any).orgId, dto.lines.map((l) => l.productId as string))
       // Check stock availability for all line items
       const stockCtx = {
         orgId: (dto as any).orgId as string,
         locationId: (dto as any).locationId as string | undefined,
         orderId: undefined as string | undefined,
+        forSale: true,
       }
       const stockWarnings: string[] = []
-      for (const line of dto.lines) {
+      // Product order, so two sales locking the same stock rows (forSale)
+      // always take them in the same order and cannot deadlock.
+      const linesByProduct = [...dto.lines].sort((a, b) => String(a.productId).localeCompare(String(b.productId)))
+      for (const line of linesByProduct) {
         const availableStock = await this.products.checkStock(line.productId as any, stockCtx)
         if (availableStock < line.quantity) {
           const product = await this.products.findById(line.productId as any)
@@ -46,6 +250,7 @@ export class DomainEngine {
 
       // Determine order status based on stock availability
       const orderStatus = stockWarnings.length > 0 ? 'on-hold' : dto.status ?? 'pending'
+      const snapshots = await this.snapshotLines(dto.lines.map((l) => l.productId))
 
       // These three ride alongside the domain Order purely so OrdersRepo can
       // persist them; no engine rule reads any of them. Declared here rather
@@ -55,18 +260,36 @@ export class DomainEngine {
         orgId?: string
         locationId?: string
         fulfilmentMethod?: 'collection' | 'delivery'
+        pricing?: PricedOrder
       } = {
         id: crypto.randomUUID() as OrderId,
         customerId: dto.customerId as any,
-        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity*l.unitPrice).toFixed(2) })),
+        lines: dto.lines.map((l: any) => ({
+          ...l,
+          lineTotal: lineTotalFor(l.quantity, l.unitPrice),
+          ...snapshotFields(snapshots.get(l.productId) ?? null),
+        })),
         subtotal, vat, total, paymentMethod: dto.paymentMethod, status: orderStatus, channel: dto.channel, createdAt: new Date(),
         orgId: (dto as any).orgId,
         locationId: (dto as any).locationId,
         // Carried alongside the domain Order rather than inside it, the same way
         // orgId/locationId are: OrdersRepo persists it, no engine rule reads it.
         fulfilmentMethod: (dto as any).fulfilmentMethod,
+        // The breakdown behind `total`, persisted alongside it (migration 082).
+        pricing: priced,
       }
       await this.orders.save(order)
+      await this.recordUnderpriced({
+        orgId: order.orgId,
+        orderId: order.id,
+        lines: order.lines,
+        pricing: priced,
+        source: 'sale',
+        channel: order.channel,
+        paymentMethod: order.paymentMethod,
+        actorUserId: context.actorUserId,
+        pricedAtList: context.pricedAtList === true,
+      })
       // Stock mutations: InventoryWorker on OrderCreated (event-driven, per-location)
       
       if (order.paymentMethod === 'tick' && order.customerId) await this.customers.addTickDebt(order.customerId as any, order.total)
@@ -112,10 +335,15 @@ export class DomainEngine {
         productCode,
         name: (input as any).name,
         barcode: (input as any).barcode,
-        costPrice: (input as any).costPrice || 0,
-        salePrice: (input as any).salePrice || 0,
+        // No cost given is "cost unknown" (null), never £0: a £0 cost reads
+        // as a free item and flatters every margin (v1.2 Phase 2, PRC-F3).
+        costPrice: (input as any).costPrice ?? null,
+        salePrice: (input as any).salePrice ?? (input as any).defaultSalePrice ?? 0,
+        // No minimum given means "follows the sale price".
+        minPrice: (input as any).minPrice ?? null,
         stock: (input as any).stock || 0,
-        stockLimit: (input as any).stockLimit || 100,
+        // `??`: a par level of 0 is a choice, not a missing value.
+        stockLimit: (input as any).stockLimit ?? 100,
         categoryId: (input as any).categoryId,
         orgId: (input as any).orgId,
         createdAt: new Date(),
@@ -176,6 +404,10 @@ export class DomainEngine {
         email: (input as any).email,
         address: (input as any).address,
         source: (input as any).source,
+        // Who created it, for the staff report, and the receipt switch as the
+        // till left it (v1.2 Phase 5). The repo writes both when present.
+        ...((input as any).createdByUserId ? { createdByUserId: (input as any).createdByUserId } : {}),
+        ...(typeof (input as any).receiptEmailOptIn === 'boolean' ? { receiptEmailOptIn: (input as any).receiptEmailOptIn } : {}),
         category: (input as any).category || 'Bronze',
         loyaltyPoints: 0,
         totalSpent: 0,
@@ -247,12 +479,26 @@ export class DomainEngine {
   }
 
   // Order editing - update line items, quantities, prices
-  async updateOrder(id: string, input: unknown): Promise<{ orderId: OrderId; warnings?: string[] }> {
+  /**
+   * `pricing` is the route's re-price of the edit (priceEditedOrder(): the
+   * org's VAT rate, the sale's own discounts kept) — trusted, never read from
+   * the request body. Without it the lines are priced at the rate alone.
+   */
+  async updateOrder(
+    id: string,
+    input: unknown,
+    pricing?: PricedOrder,
+    context: OrderWriteContext = {},
+  ): Promise<{ orderId: OrderId; warnings?: string[] }> {
     const dto = UpdateOrderInput.parse(input)
     const result = await this.withTransaction(async () => {
       const orderId = id as OrderId
       const existingOrder = await this.orders.findById(orderId)
       if (!existingOrder) throw new Error('Order not found')
+      await this.assertProductsInOrg(
+        ((existingOrder as any).orgId as string | undefined) ?? context.orgId ?? (dto as any).orgId,
+        dto.lines.map((l) => l.productId as string),
+      )
 
       // SECURITY: once an order is settled ("completed"), its financials are
       // frozen. Without this, a client could re-post lines at inflated
@@ -286,13 +532,13 @@ export class DomainEngine {
       }
       // Stock deltas: InventoryWorker on OrderUpdated
 
-      // Calculate new totals
-      const subtotal = +dto.lines.reduce((s: number, l: any) => s + l.quantity * l.unitPrice, 0).toFixed(2)
-      // Rate comes from the org's settings; DEFAULT_TAX_RATE_PERCENT only
-    // applies when a caller supplies none.
-    const taxRate = ((dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT) / 100
-    const vat = +(subtotal * taxRate).toFixed(2)
-      const total = +(subtotal + vat).toFixed(2)
+      // New totals from the one pricing function, so an edit cannot price
+      // differently from a sale. Rate comes from the org's settings;
+      // DEFAULT_TAX_RATE_PERCENT only applies when a caller supplies none.
+      const priced =
+        pricing ??
+        priceOrder({ lines: dto.lines, taxRatePercent: (dto as any).taxRatePercent ?? DEFAULT_TAX_RATE_PERCENT })
+      const { subtotal, vatAmount: vat, total } = priced
 
       // Determine order status: 
       // - If warnings exist, set to on-hold
@@ -302,16 +548,43 @@ export class DomainEngine {
         ? 'on-hold' 
         : (existingOrder.status === 'on-hold' ? 'pending' : existingOrder.status)
 
+      // A product already on the order keeps the snapshot it was sold with:
+      // an edit changes what was charged, not what the list price and cost
+      // were at the sale. Only a product new to the order is snapshotted now.
+      const keptSnapshots = new Map<string, SnapshotFields>()
+      for (const l of existingOrder.lines) {
+        if (l.listPrice != null && !keptSnapshots.has(l.productId)) keptSnapshots.set(l.productId, snapshotFields(snapshotOf(l)))
+      }
+      const fresh = await this.snapshotLines(
+        dto.lines.map((l) => l.productId).filter((pid) => !keptSnapshots.has(pid)),
+      )
+
       // Update order, preserving existing metadata
-      const updatedOrder: Order = {
+      const updatedOrder: Order & { pricing?: PricedOrder } = {
         ...existingOrder,
-        lines: dto.lines.map((l: any) => ({ ...l, lineTotal: +(l.quantity * l.unitPrice).toFixed(2) })),
+        // Persisted alongside (migration 082) only when the route priced it.
+        ...(pricing ? { pricing } : {}),
+        lines: dto.lines.map((l: any) => ({
+          ...l,
+          lineTotal: lineTotalFor(l.quantity, l.unitPrice),
+          ...(keptSnapshots.get(l.productId) ?? snapshotFields(fresh.get(l.productId) ?? null)),
+        })),
         subtotal,
         vat,
         total,
         status: orderStatus,
       }
       await this.orders.save(updatedOrder)
+      await this.recordUnderpriced({
+        orgId: (existingOrder as any).orgId ?? context.orgId,
+        orderId,
+        lines: updatedOrder.lines,
+        pricing: priced,
+        source: 'edit',
+        channel: existingOrder.channel,
+        paymentMethod: existingOrder.paymentMethod,
+        actorUserId: context.actorUserId,
+      })
 
       await this.audit.log('OrderUpdated', { orderId, changes: input, newTotal: total, newStatus: orderStatus })
       await this.bus.publish({ type: 'OrderUpdated', orderId })

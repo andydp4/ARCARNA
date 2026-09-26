@@ -12,6 +12,7 @@ import {
   type WebsiteThemePatch,
   type WebsiteUploadMetadata,
 } from "@shared/website";
+import { normalisePostcode } from "@shared/orders/delivery";
 
 export interface WebsiteThemeRow {
   orgId: string;
@@ -107,7 +108,11 @@ export interface WebsiteProductRow {
 
 export interface WebsiteOrderEngine {
   createCustomer(input: unknown): Promise<{ id: string }>;
-  placeOrder(input: unknown): Promise<{ orderId: string; warnings?: string[] }>;
+  placeOrder(
+    input: unknown,
+    pricing?: undefined,
+    context?: { pricedAtList?: boolean },
+  ): Promise<{ orderId: string; warnings?: string[] }>;
 }
 
 export interface WebsiteOrderRuntime {
@@ -139,6 +144,25 @@ export interface WebsiteOrderRuntime {
    * while changing nothing.
    */
   setOrderDuePromise(tx: unknown, orderId: string, etaGiven: Date): Promise<void>;
+  /**
+   * Who the order belongs to (v1.2 Phase 5). Optional so a runtime that does
+   * not know (the unit tests' fakes) keeps the old one-record-per-order
+   * behaviour. The default runtime implements all of them.
+   */
+  findShopAccountCustomer?(tx: unknown, orgId: string, userId: string): Promise<string | null>;
+  resolveWebsiteCustomer?(
+    tx: unknown,
+    orgId: string,
+    customer: { phone?: string | null; email?: string | null },
+  ): Promise<{ kind: "matched"; customerId: string } | { kind: "new"; possibleDuplicateOf: string | null }>;
+  markPossibleDuplicate?(tx: unknown, customerId: string, duplicateOf: string): Promise<void>;
+  linkShopAccount?(tx: unknown, userId: string, customerId: string): Promise<void>;
+  /** The delivery address, on the order and never on the customer (PRV-05). */
+  setOrderDelivery?(
+    tx: unknown,
+    orderId: string,
+    details: { deliveryAddress: string | null; deliveryPostcode: string | null; deliveryNotes: string | null },
+  ): Promise<void>;
   publishOrderCreated(
     tx: unknown,
     eventType: "OrderCreated",
@@ -276,7 +300,12 @@ export function normalizeWebsiteOrderSettings(row: WebsiteOrderSettingsRow | nul
   return {
     ...DEFAULT_WEBSITE_ORDER_SETTINGS,
     orderAccessMode: row?.orderAccessMode || DEFAULT_WEBSITE_ORDER_SETTINGS.orderAccessMode,
-    defaultOrderStatus: row?.defaultOrderStatus || DEFAULT_WEBSITE_ORDER_SETTINGS.defaultOrderStatus,
+    // "completed" was once allowed here; an order born completed skips
+    // settlement, so it reads as the default (migration 083 rewrote the rows).
+    defaultOrderStatus:
+      row?.defaultOrderStatus && row.defaultOrderStatus !== "completed"
+        ? row.defaultOrderStatus
+        : DEFAULT_WEBSITE_ORDER_SETTINGS.defaultOrderStatus,
     defaultLocationId: row?.defaultLocationId ?? null,
     allowOutOfStockOrders:
       row?.allowOutOfStockOrders ?? DEFAULT_WEBSITE_ORDER_SETTINGS.allowOutOfStockOrders,
@@ -571,7 +600,12 @@ export function createWebsiteService(repository: WebsiteRepository) {
       return projectPublicProducts(await repository.listPublicProducts(orgId));
     },
 
-    async submitPublicOrder(orgId: string, input: unknown, runtime: WebsiteOrderRuntime) {
+    async submitPublicOrder(
+      orgId: string,
+      input: unknown,
+      runtime: WebsiteOrderRuntime,
+      context: { shopAccountUserId?: string | null } = {},
+    ) {
       const order = publicWebsiteOrderSchema.parse(input);
       const settings = normalizeWebsiteOrderSettings(await repository.getOrderSettings(orgId));
       assertPublicOrderAccess(settings, order);
@@ -584,16 +618,56 @@ export function createWebsiteService(repository: WebsiteRepository) {
         settings,
       });
 
+      // The org's VAT rate always applies (v1.2 Phase 1B). None set means the
+      // shop is not ready to sell: refused before anything is written, never
+      // priced at a guessed rate. The customer is not told about settings.
+      const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
+      if (taxRatePercent === undefined) {
+        throw new WebsitePublicOrderError(503, "This shop cannot take orders right now. Please contact the shop.");
+      }
+
       return runtime.withTransaction(async (tx) => {
-        const customer = await runtime.engine.createCustomer({
-          orgId,
-          name: order.customer.name,
-          phone: order.customer.phone,
-          email: order.customer.email,
-          address: order.fulfilment.method === "delivery" ? order.fulfilment.address : undefined,
-          source: "website",
-        });
-        const taxRatePercent = await runtime.getOrgTaxRatePercent(orgId);
+        // Who this is (v1.2 Phase 5): a signed-in shop account's own linked
+        // record; otherwise the one customer whose phone AND email both
+        // match; otherwise a new record — flagged for an admin to merge when
+        // it half-matched someone. The address goes on the order, never on
+        // the customer: a gift delivered elsewhere must not overwrite theirs.
+        let customerId: string | null = null;
+        if (context.shopAccountUserId && runtime.findShopAccountCustomer) {
+          customerId = await runtime.findShopAccountCustomer(tx, orgId, context.shopAccountUserId);
+        }
+        let possibleDuplicateOf: string | null = null;
+        if (!customerId && runtime.resolveWebsiteCustomer) {
+          const resolved = await runtime.resolveWebsiteCustomer(tx, orgId, {
+            phone: order.customer.phone ?? null,
+            email: order.customer.email ?? null,
+          });
+          if (resolved.kind === "matched") customerId = resolved.customerId;
+          else possibleDuplicateOf = resolved.possibleDuplicateOf;
+        }
+        let createdHere = false;
+        if (!customerId) {
+          createdHere = true;
+          const created = await runtime.engine.createCustomer({
+            orgId,
+            name: order.customer.name,
+            phone: order.customer.phone,
+            email: order.customer.email,
+            source: "website",
+          });
+          customerId = created.id;
+          if (possibleDuplicateOf && runtime.markPossibleDuplicate) {
+            await runtime.markPossibleDuplicate(tx, customerId, possibleDuplicateOf);
+          }
+        }
+        // Linked for good only to a record made for this account. A match
+        // came from the phone and email typed into the form (a parent's,
+        // when ordering for them), not from the account itself, so it
+        // attaches this one order and nothing after it.
+        if (context.shopAccountUserId && createdHere && runtime.linkShopAccount) {
+          await runtime.linkShopAccount(tx, context.shopAccountUserId, customerId);
+        }
+        const customer = { id: customerId };
         // Finding G19: the order form's own "pickup" is the board's
         // "collection" (`shared/orders/opsState.ts`'s `FulfilmentMethod`) —
         // every website order used to arrive with NO fulfilment method at
@@ -611,12 +685,24 @@ export function createWebsiteService(repository: WebsiteRepository) {
           channel: "web",
           status: settings.defaultOrderStatus,
           fulfilmentMethod,
-          ...(taxRatePercent === undefined ? {} : { taxRatePercent }),
-        });
+          taxRatePercent,
+        },
+        undefined,
+        // Every line above was priced at list by this checkout, so the silent
+        // price check skips it. Said here, by the server, rather than read
+        // from `channel: "web"`, which any till or API caller can send.
+        { pricedAtList: true });
         // Never `ready_at` (brief): a website order starts life the same
         // "received, not yet dealt with" way a till order does, promised only
         // the org's own SLA fallback — nobody has told this customer a
         // different time, so nothing should claim otherwise.
+        if (fulfilmentMethod === "delivery" && runtime.setOrderDelivery) {
+          await runtime.setOrderDelivery(tx, result.orderId, {
+            deliveryAddress: order.fulfilment.address?.trim() || null,
+            deliveryPostcode: normalisePostcode(order.fulfilment.postcode),
+            deliveryNotes: order.fulfilment.notes?.trim() ? order.fulfilment.notes.trim().slice(0, 500) : null,
+          });
+        }
         const dueMinutes = await runtime.getOpsDueMinutes(orgId, fulfilmentMethod);
         await runtime.setOrderDuePromise(tx, result.orderId, new Date(Date.now() + dueMinutes * 60_000));
         const createdOrder = await runtime.loadCreatedOrder(tx, result.orderId);

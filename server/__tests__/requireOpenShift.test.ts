@@ -83,4 +83,41 @@ describe.skipIf(!hasDb)("requireOpenShift", () => {
       );
     expect(active.map((shift) => shift.id)).toEqual([reopened.id]);
   });
+
+  describe("drawerForSaleInTx (E2E-01: a sale racing the count)", () => {
+    it("keeps a sale in its drawer while that drawer is still open", async () => {
+      const { drawerForSaleInTx } = await import("../middleware/requireOpenShift");
+      const [open] = await db
+        .insert(shifts)
+        .values({ orgId, locationId, userId, openingFloat: "10.00", status: "open" })
+        .returning();
+      const ctx = { id: open.id, orgId, locationId, userId, openingFloat: "10.00" };
+      const picked = await db.transaction((tx) => drawerForSaleInTx(tx as any, ctx));
+      expect(picked).toBe(open.id);
+    });
+
+    it("puts a sale whose drawer was counted meanwhile into the next drawer, floated at the count", async () => {
+      const { drawerForSaleInTx } = await import("../middleware/requireOpenShift");
+      const [counted] = await db
+        .insert(shifts)
+        .values({ orgId, locationId, userId, openingFloat: "10.00", status: "open" })
+        .returning();
+      // The request picked this drawer; the cashier then counted and closed it.
+      const ctx = { id: counted.id, orgId, locationId, userId, openingFloat: "10.00" };
+      await db
+        .update(shifts)
+        .set({ status: "closed", closedAt: new Date(), closingCount: "37.50" })
+        .where(eq(shifts.id, counted.id));
+
+      const picked = await db.transaction((tx) => drawerForSaleInTx(tx as any, ctx));
+      expect(picked).not.toBe(counted.id);
+      const [next] = await db.select().from(shifts).where(eq(shifts.id, picked));
+      expect(next).toMatchObject({ status: "open", userId, locationId });
+      expect(Number(next.openingFloat)).toBe(37.5);
+
+      // A second sale in the same moment joins that same next drawer.
+      const again = await db.transaction((tx) => drawerForSaleInTx(tx as any, ctx));
+      expect(again).toBe(picked);
+    });
+  });
 });

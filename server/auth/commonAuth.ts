@@ -1,4 +1,5 @@
 import type { RequestHandler, Request, Response, NextFunction } from "express";
+import { isLoopbackPeer } from "../lib/trustProxy";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { locations, shifts } from "../../shared/schema";
@@ -15,9 +16,8 @@ export async function tryPhase2dTestAuth(
 ): Promise<boolean> {
   const testUserId = (req.headers["x-test-replit-user-id"] as string) || null;
   const isTestMode = process.env.PHASE2D_TEST === "1" && process.env.NODE_ENV !== "production";
-  const clientIp = req.ip || (req as { socket?: { remoteAddress?: string } }).socket?.remoteAddress || "";
-  const isLocalhost =
-    clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
+  // The socket, not req.ip: X-Forwarded-For sets req.ip (SEC-XFF).
+  const isLocalhost = isLoopbackPeer(req);
   const testSecret = process.env.PHASE2D_TEST_SECRET;
   const secretMatch = !!testSecret && req.headers["x-test-secret"] === testSecret;
   const allowImpersonation = isTestMode && testUserId && isLocalhost && secretMatch;
@@ -104,8 +104,13 @@ export async function tryDevAuthBypass(
   return true;
 }
 
+/** Dev bypass opens every role gate — except while previewing a role, whose point is to see them shut. */
+function devBypassesGates(req: Request): boolean {
+  return isDevAuthBypassEnabled() && !(req.user as { preview?: unknown } | undefined)?.preview;
+}
+
 export const isOwner: RequestHandler = async (req, res, next) => {
-  if (isDevAuthBypassEnabled()) return next();
+  if (devBypassesGates(req)) return next();
   const user = req.user as { isOwner?: boolean } | undefined;
   if (!user?.isOwner) {
     return res.status(403).json({ message: "Access denied. Owner only." });
@@ -115,7 +120,7 @@ export const isOwner: RequestHandler = async (req, res, next) => {
 
 export function requireRole(...allowedRoles: string[]): RequestHandler {
   return async (req, res, next) => {
-    if (isDevAuthBypassEnabled()) return next();
+    if (devBypassesGates(req)) return next();
     const user = req.user as { role?: string; isOwner?: boolean } | undefined;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     const role = user.role ?? (user.isOwner ? "SUPER_ADMIN" : "CASHIER");

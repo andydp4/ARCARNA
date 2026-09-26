@@ -34,7 +34,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp, Users } from 'lucide-react'
+import { Plus, Edit, Trash2, UserPlus, Search, Phone, Mail, MapPin, Award, Contact, FileUp, Users, MessageCircle } from 'lucide-react'
 import { Skeleton } from '@/components/Skeleton'
 import { EmptyState } from '@/components/EmptyState'
 import { ContactsImport } from '@/components/import/ContactsImport'
@@ -48,6 +48,10 @@ import { BulkActionBar } from '@/components/BulkActionBar'
 import { ConfirmDestructive } from '@/components/ConfirmDestructive'
 import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useAuth } from '@/hooks/useAuth'
+import { CustomerContactDialog } from '@/components/customer-contact-dialog'
+import { canSeeContactDetails, canSeeCustomerOrderSummary } from '@shared/accessPolicy'
+import { hasContactDetails, withoutContactDetails, type CustomerMatch } from '@shared/customerView'
+import { usePhoneLookup } from '@/hooks/usePhoneLookup'
 import { getBulkActionsForRole, type BulkActionId } from '@shared/bulkActions'
 import type { Role } from '@shared/schema'
 import { executeBulkAction, downloadBlob } from '@/lib/bulkActionsClient'
@@ -137,33 +141,57 @@ export default function Customers() {
     return m
   }, [intelResp])
 
+  // "Already on the system: Jane S. (••4821), use them?" (PRV-06): the same
+  // prompt the till gives, so a shared family phone or email does not block
+  // adding a second person here.
+  const [duplicate, setDuplicate] = useState<{ message: string; matches: CustomerMatch[]; data: any } | null>(null)
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       if (!navigator.onLine) {
+        // A queued edit holds no contact details (PRV-07); the queue drops them.
         await offlineStorage.queueMutation({
           type: 'CUSTOMER_CREATE',
           method: 'POST',
           endpoint: '/api/customers',
           data
         });
-        return { offline: true };
+        return { offline: true, droppedContact: hasContactDetails(data) };
       }
-      await apiRequest('POST', '/api/customers', data);
+      const response = await apiFetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const body = await response.json().catch(() => null);
+      if (response.status === 409 && body?.code === 'CUSTOMER_POSSIBLE_DUPLICATE') {
+        return { offline: false, duplicate: { message: String(body.message), matches: (body.matches ?? []) as CustomerMatch[], data } };
+      }
+      if (!response.ok) throw new Error(body?.message ?? `${response.status}`);
       return { offline: false };
     },
     onSuccess: (data: any) => {
+      if (data?.duplicate) {
+        setDuplicate(data.duplicate)
+        return
+      }
+      setDuplicate(null)
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] })
       setShowAddDialog(false)
       resetForm()
       toast({
         title: 'Success',
-        description: data?.offline ? 'Customer saved offline and will sync when connection returns' : 'Customer created successfully',
+        description: data?.offline
+          ? data?.droppedContact
+            ? 'Customer saved offline without their contact details. Add the phone and email once the connection is back.'
+            : 'Customer saved offline and will sync when connection returns'
+          : 'Customer created successfully',
       })
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: 'Error',
-        description: 'Failed to create customer',
+        description: error?.message || 'Failed to create customer',
         variant: 'destructive',
       })
     },
@@ -171,6 +199,7 @@ export default function Customers() {
 
   const closeAddDialog = () => {
     setShowAddDialog(false)
+    setDuplicate(null)
     createMutation.reset()
     dismiss()
   }
@@ -182,11 +211,19 @@ export default function Customers() {
           type: 'CUSTOMER_UPDATE',
           method: 'PUT',
           endpoint: `/api/customers/${id}`,
-          data
+          // A queued edit holds no contact details (PRV-07): a replacement
+          // number needs a connection, like the logged write it is.
+          data: { ...data, replacePhone: undefined }
         });
         return { offline: true };
       }
       await apiRequest('PUT', `/api/customers/${id}`, data);
+      // A manager cannot read the number, only replace it (v1.2 Phase 5,
+      // PRV-08): a number typed into the box goes through "Replace number",
+      // which the server logs. Blank keeps what is there.
+      if (data?.replacePhone) {
+        await apiRequest('POST', `/api/customers/${id}/replace-phone`, { phone: data.replacePhone });
+      }
       return { offline: false };
     },
     onSuccess: (data: any) => {
@@ -234,7 +271,7 @@ export default function Customers() {
       if (saved) {
         try {
           const parsedData = JSON.parse(saved)
-          setFormData(parsedData)
+          setFormData({ name: '', phone: '', email: '', address: '', category: 'Bronze', ...withoutContactDetails(parsedData) })
           toast({
             title: 'Draft Restored',
             description: 'Your previous work has been restored',
@@ -247,8 +284,14 @@ export default function Customers() {
   }, [showAddDialog, editingCustomer])
 
   // Auto-save form data to localStorage
+  // The draft on this device holds no contact details (PRV-07): the name and
+  // tier survive a closed dialog; the phone and email are typed again.
   const autoSaveFormData = (updatedData: typeof formData) => {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(updatedData))
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(withoutContactDetails(updatedData)))
+    } catch {
+      /* storage full or blocked: the draft is a convenience */
+    }
   }
 
   const resetForm = () => {
@@ -274,7 +317,11 @@ export default function Customers() {
     }
 
     if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, data: formData })
+      // Below admin the phone box is "Replace number": sent separately, never
+      // as part of the edit (the server would drop it there).
+      const { phone, ...rest } = formData
+      const data = seesContact ? formData : { ...rest, ...(phone.trim() ? { replacePhone: phone.trim() } : {}) }
+      updateMutation.mutate({ id: editingCustomer.id, data })
     } else {
       createMutation.mutate(formData)
     }
@@ -342,20 +389,32 @@ export default function Customers() {
     }
   }
 
-  const filteredCustomers = customers.filter((customer) => 
+  // Below admin no number is on this page to search; a whole UK number is
+  // looked up on the server (exact match, PRV-06) and its matches listed.
+  const phoneLookup = usePhoneLookup(searchTerm)
+  const phoneMatchIds = new Set(phoneLookup.status === 'done' ? phoneLookup.matches.map((m) => m.id) : [])
+  const filteredCustomers = customers.filter((customer) =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone?.includes(searchTerm)
+    customer.phone?.includes(searchTerm) ||
+    phoneMatchIds.has(customer.id)
   )
 
   const { user } = useAuth()
   const canMutate = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MANAGER'
+  // Contact details are admin only (Q13a); a manager edits them without reading them.
+  const seesContact = canSeeContactDetails(user?.role)
+  // Total spent is the past-order summary: managers and above (PRV-03).
+  const seesOrderSummary = canSeeCustomerOrderSummary(user?.role)
   const bulk = useBulkSelection(filteredCustomers)
   const bulkActions = getBulkActionsForRole('customers', (user?.role ?? 'CASHIER') as Role)
   const [pendingBulkAction, setPendingBulkAction] = useState<BulkActionId | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [customerToDelete, setCustomerToDelete] = useState<{ id: string; name: string } | null>(null)
+  // "Message the customer instead", contact-details requests and, for admins,
+  // the Access history (v1.2 Phase 6).
+  const [contactCustomer, setContactCustomer] = useState<{ id: string; name: string } | null>(null)
 
   const runBulk = async (action: BulkActionId, payload?: Record<string, unknown>) => {
     setBulkBusy(true)
@@ -527,7 +586,7 @@ export default function Customers() {
                       setFormData(updated)
                       autoSaveFormData(updated)
                     }}>
-                      <SelectTrigger className="min-h-[44px]">
+                      <SelectTrigger aria-label="Category" className="min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -539,6 +598,43 @@ export default function Customers() {
                     </Select>
                   </div>
                 </div>
+                {duplicate && (
+                  <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3" role="alert" data-testid="customer-duplicate-prompt">
+                    <p className="text-sm text-foreground">{duplicate.message}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {duplicate.matches.map((match) => {
+                        const existing = customers.find((c) => c.id === match.id)
+                        return (
+                          <Button
+                            key={match.id}
+                            type="button"
+                            size="sm"
+                            disabled={!existing}
+                            onClick={() => {
+                              if (!existing) return
+                              closeAddDialog()
+                              handleEdit(existing)
+                            }}
+                            data-testid={`button-use-existing-${match.id}`}
+                          >
+                            Open {match.displayName}
+                            {match.phoneMasked ? ` (${match.phoneMasked})` : ''}
+                          </Button>
+                        )
+                      })}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={createMutation.isPending}
+                        onClick={() => createMutation.mutate({ ...duplicate.data, confirmNew: true })}
+                        data-testid="button-add-new-anyway"
+                      >
+                        No, add new
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={closeAddDialog} className="min-h-[44px]">
                     Cancel
@@ -734,18 +830,18 @@ export default function Customers() {
                             </div>
                           </div>
 
-                          {(customer.phone || customer.email) && (
+                          {(customer.phone || customer.email || customer.phoneMasked || customer.emailMasked) && (
                             <div className="space-y-1 text-sm">
-                              {customer.phone && (
+                              {(customer.phone || customer.phoneMasked) && (
                                 <div className="flex items-center gap-2">
                                   <Phone className="h-3 w-3 text-muted-foreground" />
-                                  <span>{customer.phone}</span>
+                                  <span>{customer.phone || customer.phoneMasked}</span>
                                 </div>
                               )}
-                              {customer.email && (
+                              {(customer.email || customer.emailMasked) && (
                                 <div className="flex items-center gap-2">
                                   <Mail className="h-3 w-3 text-muted-foreground" />
-                                  <span className="truncate">{customer.email}</span>
+                                  <span className="truncate">{customer.email || customer.emailMasked}</span>
                                 </div>
                               )}
                             </div>
@@ -763,10 +859,12 @@ export default function Customers() {
                               <div className="text-xs text-muted-foreground">Points</div>
                               <div className="font-medium">{customer.loyaltyPoints || 0}</div>
                             </div>
+                            {seesOrderSummary && (
                             <div>
                               <div className="text-xs text-muted-foreground">Total Spent</div>
                               <div className="font-medium">£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</div>
                             </div>
+                            )}
                             <div className="col-span-2">
                               <div className="text-xs text-muted-foreground">Store credit</div>
                               <CustomerStoreCredit customerId={customer.id} />
@@ -775,6 +873,16 @@ export default function Customers() {
 
                           {canMutate && (
                           <div className="flex gap-2 pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setContactCustomer({ id: customer.id, name: customer.name })}
+                              className="flex-1 min-h-[44px]"
+                              data-testid={`button-contact-${customer.id}`}
+                            >
+                              <MessageCircle className="h-4 w-4 mr-2" />
+                              Contact
+                            </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button
@@ -804,10 +912,11 @@ export default function Customers() {
                                     />
                                   </div>
                                   <div className="grid gap-2">
-                                    <Label htmlFor="edit-phone-mobile">Phone</Label>
+                                    <Label htmlFor="edit-phone-mobile">{seesContact ? 'Phone' : 'Replace number'}</Label>
                                     <Input
                                       id="edit-phone-mobile"
                                       value={formData.phone}
+                                      placeholder={seesContact ? undefined : (editingCustomer as any)?.phoneMasked ?? 'No number on file'}
                                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                       className="min-h-[44px]"
                                     />
@@ -834,7 +943,7 @@ export default function Customers() {
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-category-mobile">Category</Label>
                                     <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                      <SelectTrigger className="min-h-[44px]">
+                                      <SelectTrigger aria-label="Category" className="min-h-[44px]">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -891,9 +1000,13 @@ export default function Customers() {
                         <TableHead>Category</TableHead>
                         <TableHead>Intelligence</TableHead>
                         <TableHead>Loyalty Points</TableHead>
-                        <TableHead>Total Spent</TableHead>
+                        {seesOrderSummary && <TableHead>Total Spent</TableHead>}
                         <TableHead>Store credit</TableHead>
-                        <TableHead>Actions</TableHead>
+                        {/* Pinned to the right edge of the table's scroller (v1.2.1
+                            UI-09): a long name or address made the table wider
+                            than its card, and each row's Edit and Delete sat
+                            past the edge, reachable only by scrolling sideways. */}
+                        <TableHead className="sticky right-0 z-10 bg-card">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -906,27 +1019,27 @@ export default function Customers() {
                               aria-label={`Select ${customer.name}`}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{customer.name}</TableCell>
+                          <TableCell className="max-w-[14rem] break-words font-medium">{customer.name}</TableCell>
                           <TableCell>
                             <div className="space-y-1">
-                              {customer.phone && (
+                              {(customer.phone || customer.phoneMasked) && (
                                 <div className="flex items-center gap-1 text-sm">
                                   <Phone className="h-3 w-3" />
-                                  {customer.phone}
+                                  {customer.phone || customer.phoneMasked}
                                 </div>
                               )}
-                              {customer.email && (
+                              {(customer.email || customer.emailMasked) && (
                                 <div className="flex items-center gap-1 text-sm">
                                   <Mail className="h-3 w-3" />
-                                  {customer.email}
+                                  {customer.email || customer.emailMasked}
                                 </div>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
                             {customer.address && (
-                              <div className="flex items-start gap-1 text-sm">
-                                <MapPin className="h-3 w-3" />
+                              <div className="flex max-w-[16rem] items-start gap-1 break-words text-sm">
+                                <MapPin className="h-3 w-3 shrink-0" />
                                 {customer.address}
                               </div>
                             )}
@@ -965,7 +1078,7 @@ export default function Customers() {
                                   </p>
                                   {intel.lastOrderAt && (
                                     <p className="text-muted-foreground">
-                                      Last: {new Date(intel.lastOrderAt).toLocaleDateString()}
+                                      Last: {new Date(intel.lastOrderAt).toLocaleDateString("en-GB")}
                                     </p>
                                   )}
                                 </div>
@@ -973,21 +1086,34 @@ export default function Customers() {
                             })()}
                           </TableCell>
                           <TableCell>{customer.loyaltyPoints || 0}</TableCell>
-                          <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>
+                          {seesOrderSummary && <TableCell>£{(parseFloat(customer.totalSpent as any) || 0).toFixed(2)}</TableCell>}
                           <TableCell><CustomerStoreCredit customerId={customer.id} /></TableCell>
-                          <TableCell>
+                          <TableCell className="sticky right-0 z-10 bg-card" data-testid={`cell-actions-${customer.id}`}>
                             {canMutate && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col items-stretch gap-1 xl:flex-row xl:items-center xl:gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1"
+                                aria-label={`Contact ${customer.name}`}
+                                onClick={() => setContactCustomer({ id: customer.id, name: customer.name })}
+                                data-testid={`button-contact-${customer.id}`}
+                              >
+                                <MessageCircle className="h-4 w-4" aria-hidden />
+                                Contact
+                              </Button>
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button
                                     variant="ghost"
-                                    size="icon"
+                                    size="sm"
+                                    className="gap-1"
                                     aria-label={`Edit ${customer.name}`}
                                     onClick={() => handleEdit(customer)}
                                     data-testid={`button-edit-${customer.id}`}
                                   >
-                                    <Edit className="h-4 w-4" />
+                                    <Edit className="h-4 w-4" aria-hidden />
+                                    Edit
                                   </Button>
                                 </DialogTrigger>
                                 <DialogContent>
@@ -1006,10 +1132,11 @@ export default function Customers() {
                                       />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-phone">Phone</Label>
+                                      <Label htmlFor="edit-phone">{seesContact ? 'Phone' : 'Replace number'}</Label>
                                       <Input
                                         id="edit-phone"
                                         value={formData.phone}
+                                        placeholder={seesContact ? undefined : (editingCustomer as any)?.phoneMasked ?? 'No number on file'}
                                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                         className="min-h-[44px]"
                                       />
@@ -1036,7 +1163,7 @@ export default function Customers() {
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-category">Category</Label>
                                       <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                                        <SelectTrigger className="min-h-[44px]">
+                                        <SelectTrigger aria-label="Category" className="min-h-[44px]">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1060,12 +1187,14 @@ export default function Customers() {
                               </Dialog>
                               <Button
                                 variant="ghost"
-                                size="icon"
+                                size="sm"
+                                className="gap-1 text-destructive hover:text-destructive"
                                 aria-label={`Delete ${customer.name}`}
                                 onClick={() => handleDelete(customer.id)}
                                 data-testid={`button-delete-${customer.id}`}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <Trash2 className="h-4 w-4" aria-hidden />
+                                Delete
                               </Button>
                             </div>
                             )}
@@ -1109,6 +1238,11 @@ export default function Customers() {
             setCustomerToDelete(null)
           }}
           onCancel={() => setCustomerToDelete(null)}
+        />
+        <CustomerContactDialog
+          customer={contactCustomer}
+          open={contactCustomer !== null}
+          onOpenChange={(open) => { if (!open) setContactCustomer(null) }}
         />
       </div>
     </div>

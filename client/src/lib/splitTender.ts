@@ -10,7 +10,7 @@
 export type SplitLeg = { method: string; amount: string };
 
 /** Methods a split row can carry (gift card and personal use have their own flows). */
-export const SPLIT_METHODS = ["cash", "card", "transfer", "tick"] as const;
+export const SPLIT_METHODS = ["cash", "card", "card_link", "transfer", "tick"] as const;
 
 /**
  * Rows for a split that is just being switched on. The first is cash (almost

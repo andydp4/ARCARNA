@@ -68,10 +68,8 @@ export function registerHealthRoutes(app: Express): void {
         nodeEnv: process.env.NODE_ENV ?? "development",
       });
     } catch (e) {
-      res.status(503).json({
-        ok: false,
-        message: e instanceof Error ? e.message : "metrics_unavailable",
-      });
+      console.error("[health] metrics query failed:", e);
+      res.status(503).json({ ok: false, message: "metrics_unavailable" });
     }
   });
 

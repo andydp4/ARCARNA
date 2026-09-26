@@ -13,6 +13,18 @@ function isEndpointFamilyMatch(queryKey: QueryKey, endpoint: string): boolean {
 }
 
 /**
+ * "This customer already owes" at the till (v1.2.1 credit). A sale on credit,
+ * an edit, a refund or a cancel changes what a customer owes, so every
+ * customer's cached summary is refreshed with the orders; otherwise the next
+ * order for them shows the total from before.
+ */
+export function invalidateCustomerCreditSummaries(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query: Query) => query.queryKey[0] === "/api/customers" && query.queryKey[2] === "credit-summary",
+  });
+}
+
+/**
  * Invalidates all queries that belong to an API endpoint family.
  * Example: "/api/analytics" invalidates "/api/analytics/monthly-summary", etc.
  */
@@ -51,6 +63,7 @@ export async function invalidateOperationalData(
     // The Control Centre's order tiles are built from the same rows; without
     // this a checkout, edit or delete left them stale until the 60s poll.
     tasks.push(invalidateEndpointFamily(queryClient, "/api/control-centre"));
+    tasks.push(invalidateCustomerCreditSummaries(queryClient));
   }
   if (includeProducts) tasks.push(invalidateEndpointFamily(queryClient, "/api/products"));
   if (includeInventory) tasks.push(invalidateEndpointFamily(queryClient, "/api/inventory"));
@@ -84,6 +97,7 @@ export function invalidateAfterOrderStatusChange(queryClient: QueryClient) {
     invalidateEndpointFamily(queryClient, "/api/control-centre"),
     invalidateEndpointFamily(queryClient, "/api/invoices"),
     invalidateEndpointFamily(queryClient, "/api/reports"),
+    invalidateCustomerCreditSummaries(queryClient),
   ]);
 }
 

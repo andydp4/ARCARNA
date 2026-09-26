@@ -1,4 +1,6 @@
 import { db } from "../db";
+import { isPaidLeg } from "@shared/payments/cardLink";
+import { goodsShareOfTotal, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   cashierProfiles,
   cashierShifts,
@@ -23,8 +25,11 @@ import {
   buildCashierShiftBalanceSheet,
   allocateGlobalExpenseShare,
   dailyOverheadTotal,
+  isPersonalUse,
   type CashierShiftOrder,
 } from "@shared/reports/cashierShiftReport";
+import { storedDiscountTotal } from "@shared/pricing/priceOrder";
+import { commissionCostBasis, lineUnitCost } from "@shared/pricing/lineSnapshot";
 
 export class CashierShiftError extends Error {
   status: number;
@@ -73,29 +78,6 @@ export async function getOpenCashierShift(
   return open ?? null;
 }
 
-export async function startCashierShift(
-  orgId: string,
-  cashierId: string,
-  openedByUserId: string,
-): Promise<CashierShift> {
-  const [cashier] = await db
-    .select()
-    .from(cashierProfiles)
-    .where(and(eq(cashierProfiles.id, cashierId), eq(cashierProfiles.orgId, orgId)))
-    .limit(1);
-  if (!cashier) throw new CashierShiftError("Cashier profile not found", 404, "CASHIER_NOT_FOUND");
-  if (!cashier.isActive) throw new CashierShiftError("Cashier profile is deactivated", 400, "CASHIER_INACTIVE");
-
-  const existing = await getOpenCashierShift(orgId, cashierId);
-  if (existing) throw new CashierShiftError("Cashier already has an open shift", 409, "SHIFT_ALREADY_OPEN");
-
-  const [created] = await db
-    .insert(cashierShifts)
-    .values({ orgId, cashierId, openedByUserId, status: "open" })
-    .returning();
-  return created;
-}
-
 /** Bumps last-activity timestamp on a cashier shift; used to keep it alive against auto-close. */
 export async function touchCashierShiftActivity(shiftId: string): Promise<void> {
   await db
@@ -115,6 +97,11 @@ type ShiftOrderRow = {
   completedUserId: string | null;
   inputUserId: string | null;
   excludeFromCommission: boolean;
+  tierDiscount: string | null;
+  promoDiscount: string | null;
+  pointsDiscount: string | null;
+  deliveryFee: string | null;
+  vatRate: string | null;
 };
 
 /**
@@ -140,18 +127,33 @@ async function loadShiftOrders(shiftId: string): Promise<ShiftOrderRow[]> {
       completedUserId: orders.completedUserId,
       inputUserId: orders.inputUserId,
       excludeFromCommission: orders.excludeFromCommission,
+      tierDiscount: orders.tierDiscount,
+      promoDiscount: orders.promoDiscount,
+      pointsDiscount: orders.pointsDiscount,
+      deliveryFee: orders.deliveryFee,
+      vatRate: orders.vatRate,
     })
     .from(orders)
     .where(eq(sql`COALESCE(${orders.completedCashierShiftId}, ${orders.cashierShiftId})`, shiftId));
 }
 
-async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { costPrice: number | null; quantity: number }[]>> {
-  const map = new Map<string, { costPrice: number | null; quantity: number }[]>();
+type CostedLine = { costPrice: number | null; quantity: number; lineTotal: number };
+
+/**
+ * Each line's unit cost from its sale-time snapshot (PRC-06), so editing a
+ * cost does not change commission on sales already made; lines sold before
+ * snapshots fall back to today's cost. Null = unknown (usableCost rule).
+ */
+async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, CostedLine[]>> {
+  const map = new Map<string, CostedLine[]>();
   if (orderIds.length === 0) return map;
   const rows = await db
     .select({
       orderId: orderItems.orderId,
       quantity: orderItems.quantity,
+      totalPrice: orderItems.totalPrice,
+      listPrice: orderItems.listPrice,
+      unitCost: orderItems.unitCost,
       costPrice: products.costPrice,
     })
     .from(orderItems)
@@ -162,7 +164,8 @@ async function loadOrdersWithCosts(orderIds: string[]): Promise<Map<string, { co
     const list = map.get(row.orderId) ?? [];
     list.push({
       quantity: row.quantity,
-      costPrice: row.costPrice != null ? parseFloat(String(row.costPrice)) : null,
+      costPrice: lineUnitCost(row, row.costPrice),
+      lineTotal: parseFloat(String(row.totalPrice)) || 0,
     });
     map.set(row.orderId, list);
   }
@@ -183,16 +186,21 @@ async function loadOrderExpensesByOrder(orderIds: string[]): Promise<Map<string,
   return byOrder;
 }
 
-async function loadRefundsByOrder(orderIds: string[]): Promise<Map<string, number>> {
-  const byOrder = new Map<string, number>();
+async function loadRefundsByOrder(orderIds: string[]): Promise<Map<string, { total: number; fee: number }>> {
+  const byOrder = new Map<string, { total: number; fee: number }>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db
-    .select({ orderId: refunds.orderId, total: refunds.total })
+    .select({ orderId: refunds.orderId, total: refunds.total, fee: refunds.deliveryFee })
     .from(refunds)
     .where(inArray(refunds.orderId, orderIds));
   for (const row of rows) {
     if (!row.orderId) continue;
-    byOrder.set(row.orderId, (byOrder.get(row.orderId) ?? 0) + Math.max(0, parseFloat(String(row.total))));
+    const prev = byOrder.get(row.orderId) ?? { total: 0, fee: 0 };
+    byOrder.set(row.orderId, {
+      total: prev.total + Math.max(0, parseFloat(String(row.total))),
+      // The delivery fee given back (v1.2.1, migration 226), inside `total`.
+      fee: prev.fee + Math.max(0, parseFloat(String(row.fee ?? 0)) || 0),
+    });
   }
   return byOrder;
 }
@@ -234,23 +242,28 @@ function paidSalesReceivedFor(
 /** The tender legs for each order — which bucket its money actually fell into. */
 async function loadTenderLegs(
   orderIds: string[],
-): Promise<Map<string, Array<{ method: string; amount: number }>>> {
-  const byOrder = new Map<string, Array<{ method: string; amount: number }>>();
+): Promise<Map<string, Array<{ method: string; amount: number; status: string }>>> {
+  const byOrder = new Map<string, Array<{ method: string; amount: number; status: string }>>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db
     .select({
       orderId: orderPayments.orderId,
       method: orderPayments.method,
       amount: orderPayments.amount,
+      status: orderPayments.status,
     })
     .from(orderPayments)
     .where(inArray(orderPayments.orderId, orderIds));
   for (const row of rows) {
     const list = byOrder.get(row.orderId) ?? [];
-    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)), status: row.status });
     byOrder.set(row.orderId, list);
   }
   return byOrder;
+}
+
+function awaitingOnOrder(legs: Array<{ amount: number; status: string }> | undefined): number {
+  return (legs ?? []).filter((leg) => !isPaidLeg(leg)).reduce((sum, leg) => sum + leg.amount, 0);
 }
 
 /** The credit leg and remaining balance on each of these orders. */
@@ -351,10 +364,24 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
   const creditByOrder = await loadCreditAmounts(orderIds);
   const legsByOrder = await loadTenderLegs(orderIds);
   const orderExpensesTotal = [...expensesByOrder.values()].reduce((sum, v) => sum + v, 0);
-  const refundRows = [...refundsByOrder.values()].map((total) => ({ total }));
+  const refundRows = [...refundsByOrder.values()].map((r) => ({ total: r.total }));
+
+  // The delivery fee earns no commission unless the admin counts it (v1.2.1).
+  const feeCommissionable = org.deliveryFeeCommissionable === true;
+  const commissionShareOf = (o: ShiftOrderRow): number =>
+    goodsShareOfTotal(parseFloat(String(o.total)), storedDeliveryFee(o), {
+      commissionable: feeCommissionable,
+      vatRatePercent: Number(o.vatRate ?? 0) || 0,
+    });
+
+  // A refunded fee earned no commission, so it takes none back either.
+  const feeRefundedOutsideCommission = (orderId: string): number =>
+    feeCommissionable ? 0 : refundsByOrder.get(orderId)?.fee ?? 0;
 
   const shiftOrders: CashierShiftOrder[] = orderRows.map((o) => ({
     id: o.id,
+    commissionShare: commissionShareOf(o),
+    refundedOutsideCommission: feeRefundedOutsideCommission(o.id),
     total: parseFloat(String(o.total)),
     paymentMethod: o.paymentMethod,
     status: o.status ?? "pending",
@@ -404,7 +431,11 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
     orderExpensesTotal,
     globalExpenseAllocation,
     refundRows.map((r) => ({ total: parseFloat(String(r.total)) })),
-    0,
+    // Discounts given on this shift's sales (v1.2 Phase 1B) — reported, not
+    // subtracted again; personal use is not a sale and gives none.
+    orderRows
+      .filter((o) => !isPersonalUse(o.paymentMethod))
+      .reduce((sum, o) => sum + storedDiscountTotal(o), 0),
     commissionRate,
   );
 
@@ -420,18 +451,24 @@ export async function computeCashierShiftBalanceSheet(orgId: string, shift: Cash
         : isTickPayment(row.paymentMethod) && row.status !== "completed"
           ? total
           : 0;
-    const items = costsByOrder.get(row.id) ?? [];
-    const stockCost = items.reduce(
-      (sum, item) => sum + (item.costPrice == null ? 0 : item.quantity * item.costPrice),
-      0,
+    // A line with no known cost is left out of commission, revenue and all
+    // (owner Q5, "cost missing") — not counted as pure profit at £0 cost.
+    const basis = commissionCostBasis(
+      (costsByOrder.get(row.id) ?? []).map((i) => ({ quantity: i.quantity, lineTotal: i.lineTotal, unitCost: i.costPrice })),
     );
+    // The delivery fee is a service charge, not a sale of goods: left out of
+    // commission (and so its margin) unless the admin counts it (v1.2.1).
+    const goodsShare = commissionShareOf(row);
     return {
       orderId: row.id,
-      paidContribution: Math.max(0, total - deferredCredit),
-      stockCost,
+      // A card link Stripe has not confirmed is not money in (v1.2 Stripe links).
+      paidContribution:
+        Math.max(0, total - deferredCredit - awaitingOnOrder(legsByOrder.get(row.id))) * goodsShare * basis.knownShare,
+      stockCost: basis.stockCost,
+      costMissingLines: basis.costMissingLines,
       orderExpenses: expensesByOrder.get(row.id) ?? 0,
       overheadShare: 0, // filled in by the ledger, which apportions per day
-      refunds: refundsByOrder.get(row.id) ?? 0,
+      refunds: Math.max(0, (refundsByOrder.get(row.id)?.total ?? 0) - feeRefundedOutsideCommission(row.id)),
       completerCashierId: row.completedCashierId,
       inputterCashierId: row.inputCashierId,
       completerUserId: row.completedUserId,
@@ -480,6 +517,7 @@ function cashierShiftSummaryValues(
     grossSales: String(sheet.grossSales),
     cashSales: String(sheet.cashSales),
     cardSales: String(sheet.cardSales),
+    cardLinkSales: String(sheet.cardLinkSales),
     creditSales: String(sheet.creditSales),
     unpaidCreditSales: String(sheet.unpaidCreditSales),
     stockCost: String(sheet.stockCost),
@@ -598,6 +636,7 @@ export async function refreshClosedCashierShiftSummary(
         grossSales: values.grossSales,
         cashSales: values.cashSales,
         cardSales: values.cardSales,
+        cardLinkSales: values.cardLinkSales,
         creditSales: values.creditSales,
         unpaidCreditSales: values.unpaidCreditSales,
         stockCost: values.stockCost,

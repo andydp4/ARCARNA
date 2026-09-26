@@ -45,12 +45,12 @@ export default function AnalyticsDashboard() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <p className="max-w-3xl text-sm text-muted-foreground">
-        Last 30 days. For a chosen date range, charts, and CSV/PDF exports, open{" "}
+        Last 30 days. For more charts, each with its own window, open{" "}
         <Link
-          href="/insights"
+          href="/truths"
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          Truths
+          Truths at a glance
         </Link>
         .
       </p>
@@ -68,14 +68,14 @@ export default function AnalyticsDashboard() {
               type="truth"
               icon={DollarSign}
               title="Total Revenue"
-              value={`£${totalRevenue.toLocaleString()}`}
+              value={`£${totalRevenue.toLocaleString("en-GB")}`}
               footer="Last 30 days"
             />
             <InsightCard
               type="truth"
               icon={ShoppingBag}
               title="Total Orders"
-              value={totalOrders.toLocaleString()}
+              value={totalOrders.toLocaleString("en-GB")}
               footer="Last 30 days"
             />
             <InsightCard

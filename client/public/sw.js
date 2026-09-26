@@ -8,8 +8,15 @@ const API_PREFIX = SW_BASE ? `${SW_BASE}/api` : "/api";
  *  board and any text/event-stream request instead of caching them — a
  *  client still running the old handler would answer the board from a stale
  *  cache and silently swallow the SSE stream's `text/event-stream` body into
- *  its API cache logic, which reads and re-serves it as ordinary JSON. */
-const CACHE_VERSION = "7";
+ *  its API cache logic, which reads and re-serves it as ordinary JSON.
+ *  Bumped 7 -> 8 (Phase 0B): drops asset caches that may hold index.html
+ *  stored under a missing chunk's URL (the server used to answer a missing
+ *  /assets file with the app shell and a 200).
+ *  Bumped 8 -> 9 (v1.2 Phase 5, PRV-07): activate drops the old API cache,
+ *  which could hold customer, credit, invoice and WhatsApp responses.
+ *  Bumped 9 -> 10 (Phase 5 review): the order list and order details are now
+ *  no-store (per role, and this cache is per org only); drop old copies. */
+const CACHE_VERSION = "10";
 const CACHE_PREFIX = "arcarna-epos";
 const LEGACY_CACHE_PREFIX = "midnight-epos";
 const CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
@@ -63,6 +70,67 @@ function isOpsBoardOrStreamRequest(request, pathname) {
   return accept.includes("text/event-stream");
 }
 
+/**
+ * API responses this service worker never keeps (v1.2 Phase 5, PRV-07):
+ * customers, credit, invoices, WhatsApp, exports and lookups carry people's
+ * details, and a cached copy outlives the session that fetched it. The till's
+ * offline customer list is the cashier view the app itself writes to
+ * IndexedDB, so nothing here is needed offline. Matched on the path below the
+ * API prefix, by segment, so `/customers` and `/customers/:id` both match
+ * and `/tick-customers` (the Credit List) is named on its own.
+ */
+const PRIVATE_API_SEGMENTS = [
+  "customers",
+  "tick-customers",
+  "credit",
+  "invoices",
+  "whatsapp",
+  "api-keys",
+  "webhooks",
+  // v1.2 Phase 6: contact-details requests and the customer data access log.
+  // (Reveals live under /customers/ and are no-store as well.)
+  "contact-requests",
+  "customer-access-log",
+  "messaging",
+];
+
+function apiSubpath(pathname) {
+  if (pathname.startsWith(`${API_PREFIX}/`)) return pathname.slice(API_PREFIX.length + 1);
+  if (pathname.startsWith("/api/")) return pathname.slice("/api/".length);
+  return pathname.replace(/^\/+/, "");
+}
+
+function isPrivateApiPath(pathname) {
+  const sub = apiSubpath(pathname).toLowerCase();
+  const segments = sub.split("/").filter(Boolean);
+  if (segments.length === 0) return false;
+  if (PRIVATE_API_SEGMENTS.includes(segments[0])) return true;
+  // Every export and every lookup, wherever it lives (…/export, …/export.csv,
+  // …/lookup-phone, …/phone-search, analytics/rfm/customers, …/pdf).
+  return segments.some(
+    (seg) =>
+      seg === "export" ||
+      seg.startsWith("export.") ||
+      seg === "exports" ||
+      seg.includes("lookup") ||
+      seg.includes("search") ||
+      seg === "customers" ||
+      seg === "top-customers" ||
+      seg === "customer-phone" ||
+      seg === "pdf",
+  );
+}
+
+/** A response the server said not to keep ("no-store"/"private"), or a file download. */
+function mayCacheApiResponse(response) {
+  if (!response || !response.ok) return false;
+  const cacheControl = (response.headers.get("cache-control") || "").toLowerCase();
+  if (cacheControl.includes("no-store") || cacheControl.includes("private")) return false;
+  const disposition = (response.headers.get("content-disposition") || "").toLowerCase();
+  if (disposition.includes("attachment")) return false;
+  return true;
+}
+
 function isNavigationRequest(request) {
   if (request.mode === "navigate") return true;
   const accept = request.headers.get("accept") || "";
@@ -108,18 +176,33 @@ async function handleNavigationRequest(request) {
   }
 }
 
+/**
+ * Only a real file may be cached under an asset URL. An HTML body for a
+ * script/style/image request is the SPA shell standing in for a file that no
+ * longer exists (a stale chunk after a deploy); caching it would replay the
+ * "not a valid JavaScript MIME type" crash even after the server is fixed.
+ */
+function isHtmlResponse(response) {
+  return (response.headers.get("content-type") || "").toLowerCase().includes("text/html");
+}
+
+function isCacheableAssetResponse(response) {
+  if (!response || !response.ok || response.type !== "basic") return false;
+  return !isHtmlResponse(response);
+}
+
 /** Network-first for static assets; cache fallback on failure, never throw. */
 async function handleAssetRequest(request) {
   try {
     const response = await fetch(request);
-    if (response && response.ok && response.type === "basic") {
+    if (isCacheableAssetResponse(response)) {
       const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone());
     }
     return response;
   } catch {
     const cached = await caches.match(request);
-    if (cached) return cached;
+    if (cached && !isHtmlResponse(cached)) return cached;
     return new Response("", { status: 404, statusText: "Not Found" });
   }
 }
@@ -217,12 +300,19 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Straight to the network, never stored, never answered from an old copy.
+  if (isApiRequest(url.pathname) && isPrivateApiPath(url.pathname)) {
+    return;
+  }
+
   if (isApiRequest(url.pathname)) {
     const cacheKey = cacheRequestForOrg(request);
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          // A role preview's answers are that role's view, not this device's:
+          // never let them replace the real offline copy.
+          if (mayCacheApiResponse(response) && !request.headers.get("X-Preview-Role")) {
             const responseClone = response.clone();
             caches.open(API_CACHE_NAME).then((cache) => {
               cache.put(cacheKey, responseClone);

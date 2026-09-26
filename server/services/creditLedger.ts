@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { goodsShareOfTotal, storedDeliveryFee } from "@shared/orders/deliveryFee";
 import {
   cashierCommissionEntries,
   cashierProfiles,
@@ -11,6 +12,7 @@ import {
   organizations,
   products,
   refunds,
+  shifts,
   users,
   type OrderCredit,
 } from "@shared/schema";
@@ -21,9 +23,13 @@ import {
   roundMoney,
 } from "@shared/reports/orderCommission";
 import { currentTradingDay } from "@shared/time/tradingDay";
+import { commissionCostBasis, lineUnitCost } from "@shared/pricing/lineSnapshot";
 import { resolveCommissionRate } from "./cashierShiftEngine";
+import { issueInvoiceForOrder } from "./invoices";
 
 type CreditLedgerDb = Pick<typeof db, "select" | "insert" | "update">;
+/** A transaction handle, for callers that record several payments as one. */
+export type CreditLedgerTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * The credit (tick) lifecycle.
@@ -48,7 +54,7 @@ export class CreditError extends Error {
   }
 }
 
-async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
+export async function tradingDayTodayForOrg(orgId: string, client: CreditLedgerDb = db): Promise<string> {
   const [org] = await client
     .select({ timezone: organizations.timezone })
     .from(organizations)
@@ -149,6 +155,11 @@ export async function openCreditForOrder(
         updatedAt: new Date(),
       },
     });
+
+  // Money is owed, so the customer gets an invoice (v1.2 Phase 1C): numbered,
+  // on the org's terms, in the same transaction as the tab it bills. A
+  // re-completion keeps the number it was first given.
+  await issueInvoiceForOrder(client, orgId, order.id);
 }
 
 type OrderCommissionBasis = {
@@ -182,7 +193,10 @@ export async function commissionBasisFor(
   if (!order) return null;
 
   const [org] = await client
-    .select({ defaultRate: organizations.defaultCashierCommissionRate })
+    .select({
+      defaultRate: organizations.defaultCashierCommissionRate,
+      deliveryFeeCommissionable: organizations.deliveryFeeCommissionable,
+    })
     .from(organizations)
     .where(eq(organizations.id, order.orgId))
     .limit(1);
@@ -209,15 +223,27 @@ export async function commissionBasisFor(
     orgRate: org?.defaultRate,
   });
 
+  // Sale-time cost snapshots (PRC-06); a line with no known cost is left out
+  // of commission, its revenue with it (owner Q5, "cost missing").
   const itemRows = await client
-    .select({ quantity: orderItems.quantity, costPrice: products.costPrice })
+    .select({
+      quantity: orderItems.quantity,
+      totalPrice: orderItems.totalPrice,
+      listPrice: orderItems.listPrice,
+      unitCost: orderItems.unitCost,
+      costPrice: products.costPrice,
+    })
     .from(orderItems)
     .leftJoin(products, eq(orderItems.productId, products.id))
     .where(eq(orderItems.orderId, orderId));
-  const stockCost = itemRows.reduce(
-    (sum, i) => sum + (i.costPrice == null ? 0 : Number(i.quantity) * parseFloat(String(i.costPrice))),
-    0,
+  const basis = commissionCostBasis(
+    itemRows.map((i) => ({
+      quantity: Number(i.quantity),
+      lineTotal: parseFloat(String(i.totalPrice)) || 0,
+      unitCost: lineUnitCost(i, i.costPrice),
+    })),
   );
+  const stockCost = basis.stockCost;
 
   const expenseRows = await client
     .select({ amount: orderExpensesTable.amount })
@@ -226,12 +252,28 @@ export async function commissionBasisFor(
   const expenses = expenseRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0);
 
   const refundRows = await client
-    .select({ total: refunds.total })
+    .select({ total: refunds.total, fee: refunds.deliveryFee })
     .from(refunds)
     .where(eq(refunds.orderId, orderId));
-  const refundTotal = refundRows.reduce((sum, r) => sum + Math.max(0, parseFloat(String(r.total))), 0);
+  // A refunded delivery fee earned no commission (unless the admin counts
+  // the fee), so it takes none back (v1.2.1).
+  const feeCounted = org?.deliveryFeeCommissionable === true;
+  const refundTotal = refundRows.reduce(
+    (sum, r) =>
+      sum + Math.max(0, parseFloat(String(r.total)) - (feeCounted ? 0 : Math.max(0, parseFloat(String(r.fee ?? 0)) || 0))),
+    0,
+  );
 
+  // Only the known-cost share of what was collected earns commission.
   const settled = parseFloat(String(order.settledTotal ?? order.total));
+  // The delivery fee is left out unless the admin counts it (v1.2.1); the
+  // credit part below scales by the same share, so a repayment never pays
+  // commission on the fee either.
+  const goodsShare = goodsShareOfTotal(settled, storedDeliveryFee(order), {
+    commissionable: org?.deliveryFeeCommissionable === true,
+    vatRatePercent: Number(order.vatRate ?? 0) || 0,
+  });
+  const commissionable = settled * goodsShare * basis.knownShare;
   const commissionInput = {
     orderId,
     stockCost,
@@ -246,14 +288,14 @@ export async function commissionBasisFor(
   const result = buildOrderCommission(
     {
       ...commissionInput,
-      paidContribution: settled,
+      paidContribution: commissionable,
     },
     rate,
   );
   const upfrontResult = buildOrderCommission(
     {
       ...commissionInput,
-      paidContribution: Math.max(0, settled - roundMoney(creditAmountGiven)),
+      paidContribution: Math.max(0, commissionable - roundMoney(creditAmountGiven) * goodsShare * basis.knownShare),
     },
     rate,
   );
@@ -318,6 +360,13 @@ export type RecordPaymentInput = {
   paidOn?: string;
   recordedByUserId?: string | null;
   note?: string | null;
+  /**
+   * The recorder's open till shift, when the payment is taken today (v1.2
+   * Phase 1C). A cash payment stamped to it is part of that drawer's expected
+   * cash. Ignored for a backdated payment — that money went into a drawer
+   * already counted — and dropped if the shift has closed in the meantime.
+   */
+  shiftId?: string | null;
 };
 
 /**
@@ -329,11 +378,13 @@ export type RecordPaymentInput = {
  * order has released exactly its whole pool — a per-instalment split would let
  * rounding leave a penny behind on an awkward three-way split.
  */
-export async function recordCreditPayment(input: RecordPaymentInput): Promise<OrderCredit> {
+export async function recordCreditPayment(input: RecordPaymentInput, outerTx?: CreditLedgerTx): Promise<OrderCredit> {
   const amount = roundMoney(input.amount);
   if (!(amount > 0)) throw new CreditError("A payment must be more than zero", 400, "CREDIT_AMOUNT_INVALID");
 
-  return db.transaction(async (tx) => {
+  // Inside a caller's transaction (a payment spread over several tabs), every
+  // slice commits or none does.
+  const run = async (tx: CreditLedgerTx): Promise<OrderCredit> => {
     const [credit] = await tx
       .select()
       .from(orderCredit)
@@ -355,6 +406,7 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
     }
 
     const paidOn = input.paidOn ?? await tradingDayTodayForOrg(input.orgId, tx);
+    const shiftId = input.paidOn ? null : await liveShiftId(input.orgId, input.shiftId ?? null, tx);
     const [payment] = await tx
       .insert(creditPayments)
       .values({
@@ -365,6 +417,7 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
         paidOn,
         recordedByUserId: input.recordedByUserId ?? null,
         note: input.note ?? null,
+        shiftId,
       })
       .returning();
 
@@ -382,7 +435,24 @@ export async function recordCreditPayment(input: RecordPaymentInput): Promise<Or
 
     await releaseCommission(input.orgId, input.orderId, payment.id, paidOn, credit, newOutstanding, tx);
     return updated;
-  });
+  };
+  return outerTx ? run(outerTx) : db.transaction(run);
+}
+
+/**
+ * The shift to stamp, if it is still this org's and still open. Read with a
+ * share lock so a close running alongside waits for this payment rather than
+ * counting the drawer without it.
+ */
+async function liveShiftId(orgId: string, shiftId: string | null, client: CreditLedgerDb): Promise<string | null> {
+  if (!shiftId) return null;
+  const [live] = await client
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(and(eq(shifts.id, shiftId), eq(shifts.orgId, orgId), inArray(shifts.status, ["open", "reopened"])))
+    .for("share")
+    .limit(1);
+  return live?.id ?? null;
 }
 
 async function releaseCommission(

@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { isLoopbackPeer } from "../lib/trustProxy";
 import { clerkClient, getAuth } from "@clerk/express";
 import { getAuthProvider, isDevAuthBypassEnabled } from "../authRuntime";
 
@@ -20,9 +21,8 @@ export async function resolveRequestIdentity(req: Request): Promise<ResolvedIden
 
   const testUserId = (req.headers["x-test-replit-user-id"] as string) || null;
   const isTestMode = process.env.PHASE2D_TEST === "1" && process.env.NODE_ENV !== "production";
-  const clientIp = req.ip || (req as { socket?: { remoteAddress?: string } }).socket?.remoteAddress || "";
-  const isLocalhost =
-    clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "::ffff:127.0.0.1";
+  // The socket, not req.ip: X-Forwarded-For sets req.ip (SEC-XFF).
+  const isLocalhost = isLoopbackPeer(req);
   const testSecret = process.env.PHASE2D_TEST_SECRET;
   const secretMatch = !!testSecret && req.headers["x-test-secret"] === testSecret;
   if (isTestMode && testUserId && isLocalhost && secretMatch) {

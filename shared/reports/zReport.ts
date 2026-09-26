@@ -1,6 +1,8 @@
 /**
  * Pure Z-report aggregator for a closed shift.
  */
+import { isPaidLeg } from "../payments/cardLink";
+import { refundCashOut } from "../refunds/refundRules";
 
 export type ZReportOrder = {
   id: string;
@@ -21,13 +23,17 @@ export type ZReportOrder = {
    * built from the legs rather than from one column. Absent means a
    * single-tender sale, which is what every order was before split tender.
    */
-  payments?: Array<{ method: string; amount: number }>;
+  payments?: Array<{ method: string; amount: number; status?: string | null }>;
+  /** Tier, promotion and points taken off this sale (v1.2 Phase 1B). Already out of `total`. */
+  discounts?: number;
 };
 
 export type ZReportRefund = {
   id: string;
   total: number;
   refundMethod: string;
+  /** The part taken off the customer's tab, not paid out of the drawer. */
+  creditAmount?: number;
   createdAt: string;
 };
 
@@ -43,6 +49,11 @@ export type ZReportShift = {
   locationName: string;
   status: string;
   notes?: string | null;
+  /**
+   * Whether a STORED expected cash included cash tab repayments (migration
+   * 084). False on shifts closed before that rule, whose report says so.
+   */
+  tabCashInExpected?: boolean;
 };
 
 export type ZReportData = {
@@ -59,6 +70,12 @@ export type ZReportData = {
   grossSales: number;
   refundsTotal: number;
   netSales: number;
+  /**
+   * Discounts given on this shift's sales: tier, promotion and points. For
+   * information only — `grossSales` is already what customers were charged,
+   * so this is never taken off again.
+   */
+  discountsGiven: number;
   salesByPaymentMethod: Array<{ method: string; total: number; count: number }>;
   salesByCategory: Array<{ category: string; total: number }>;
   topSkus: Array<{ sku: string; name: string; qty: number; revenue: number }>;
@@ -66,9 +83,21 @@ export type ZReportData = {
     openingFloat: number;
     cashSales: number;
     cashRefunds: number;
+    /**
+     * Cash taken against tabs on this shift's drawer (v1.2 Phase 1C). It is in
+     * the drawer, so it is in expected cash; it is not a sale, so it is not in
+     * net sales.
+     */
+    cashTabRepayments: number;
     expectedCash: number;
     closingCount: number | null;
     variance: number | null;
+    /**
+     * True when this report's expected cash was fixed at close before tab
+     * repayments counted towards it: any cash taken against a tab on that
+     * shift is not in the figure, so the variance reads over by that much.
+     */
+    expectedCashExcludesTabRepayments: boolean;
   };
   /**
    * Credit handed out during this shift — sales made, goods gone, no money in.
@@ -85,6 +114,12 @@ export type ZReportData = {
    * by the value of every credit sale.
    */
   creditResolved: Array<{ givenOn: string; amount: number }>;
+  /**
+   * Card (link) payments Stripe has not confirmed yet (v1.2 Stripe links).
+   * The sale is real, the money is not in: like credit given out, it explains
+   * takings that are short of gross sales and is in no takings figure above.
+   */
+  awaitingCardPayment: number;
 };
 
 /** Credit given out during the shift, from the orders' credit records. */
@@ -98,7 +133,22 @@ export type ZReportCreditPayment = {
   amount: number;
   givenOn: string;
   method: string;
+  /**
+   * Stamped to this shift's drawer (credit_payments.shift_id). Only a cash one
+   * stamped here is part of expected cash; one merely taken while the shift
+   * was open may have gone into somebody else's drawer, or none.
+   */
+  onThisShift?: boolean;
 };
+
+/** Cash tab repayments that went into this shift's drawer. */
+export function cashTabRepaymentsFrom(payments: ZReportCreditPayment[]): number {
+  return roundMoney(
+    payments
+      .filter((p) => p.onThisShift && isCashPayment(p.method))
+      .reduce((sum, p) => sum + Math.max(0, p.amount), 0),
+  );
+}
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -114,8 +164,19 @@ function isCashPayment(method: string): boolean {
  * payment method for orders taken before split tender existed.
  */
 function tenderLegs(order: ZReportOrder): Array<{ method: string; amount: number }> {
-  if (order.payments && order.payments.length > 0) return order.payments;
+  // Only money actually taken: an awaiting card-link leg is not in any tender.
+  if (order.payments && order.payments.length > 0) return order.payments.filter(isPaidLeg);
   return [{ method: order.paymentMethod, amount: order.total }];
+}
+
+function awaitingFrom(orders: ZReportOrder[]): number {
+  return roundMoney(
+    orders.reduce(
+      (sum, order) =>
+        sum + (order.payments ?? []).filter((leg) => !isPaidLeg(leg)).reduce((s, leg) => s + leg.amount, 0),
+      0,
+    ),
+  );
 }
 
 /** Cash actually taken across a set of orders, counting only the cash legs. */
@@ -145,6 +206,7 @@ export function buildZReport(
     refunds.reduce((sum, r) => sum + Math.max(0, r.total), 0),
   );
   const netSales = roundMoney(grossSales - refundsTotal);
+  const discountsGiven = roundMoney(orders.reduce((sum, o) => sum + Math.max(0, o.discounts ?? 0), 0));
 
   // Split by tender leg: a £100 sale taken as £50 cash and £50 on tick appears
   // under both, for £50 each, rather than £100 under whichever was picked first.
@@ -175,6 +237,8 @@ export function buildZReport(
   >();
 
   for (const order of orders) {
+    // Personal use is not a sale: its goods are not the shift's top items.
+    if (String(order.paymentMethod ?? "").toLowerCase() === "personal_use") continue;
     for (const item of order.items) {
       const category = item.category?.trim() || "General";
       categoryMap.set(category, (categoryMap.get(category) ?? 0) + item.lineTotal);
@@ -205,15 +269,14 @@ export function buildZReport(
   // in the till, and expecting £100 would show a £50 variance every time.
   const cashSales = roundMoney(cashTakenFrom(orders));
   const cashRefunds = roundMoney(
-    refunds
-      .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
-      .reduce((sum, r) => sum + r.total, 0),
+    refunds.reduce((sum, r) => sum + refundCashOut(r), 0),
   );
   const openingFloat = shift.openingFloat;
+  const cashTabRepayments = cashTabRepaymentsFrom(creditPaid);
   const expectedCash =
     shift.expectedCash != null
       ? shift.expectedCash
-      : roundMoney(openingFloat + cashSales - cashRefunds);
+      : roundMoney(openingFloat + cashSales - cashRefunds + cashTabRepayments);
   const closingCount = shift.closingCount;
   const variance =
     shift.variance != null
@@ -228,6 +291,7 @@ export function buildZReport(
     orderCount: orders.length,
     grossSales,
     refundsTotal,
+    discountsGiven,
     netSales,
     salesByPaymentMethod,
     salesByCategory,
@@ -236,14 +300,17 @@ export function buildZReport(
       openingFloat,
       cashSales,
       cashRefunds,
+      cashTabRepayments,
       expectedCash,
       closingCount,
       variance,
+      expectedCashExcludesTabRepayments: shift.expectedCash != null && shift.tabCashInExpected === false,
     },
     creditGivenOut: roundMoney(
       creditGiven.reduce((sum, c) => sum + Math.max(0, c.amountGiven), 0),
     ),
     creditResolved: summariseCreditResolved(creditPaid),
+    awaitingCardPayment: awaitingFrom(orders),
   };
 }
 
@@ -270,10 +337,9 @@ export function computeExpectedCash(
   openingFloat: number,
   orders: ZReportOrder[],
   refunds: ZReportRefund[],
+  cashTabRepayments = 0,
 ): number {
   const cashSales = cashTakenFrom(orders);
-  const cashRefunds = refunds
-    .filter((r) => r.refundMethod === "cash" || r.refundMethod === "original")
-    .reduce((sum, r) => sum + r.total, 0);
-  return roundMoney(openingFloat + cashSales - cashRefunds);
+  const cashRefunds = refunds.reduce((sum, r) => sum + refundCashOut(r), 0);
+  return roundMoney(openingFloat + cashSales - cashRefunds + cashTabRepayments);
 }

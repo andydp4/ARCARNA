@@ -1,7 +1,8 @@
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import { getDb } from './index'
 import * as s from './schema'
-import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
+import type { OrdersRepo, ProductsRepo, CustomersRepo, Order, OrderId, OrderLine, ProductId, CustomerId, Product, Customer, StockContext } from '@midnight/domain'
+import type { PricedOrder } from '../../../../shared/pricing/priceOrder'
 
 /**
  * Columns an order insert must name explicitly.
@@ -64,7 +65,37 @@ export type OrderPersistenceCarrier = {
   locationId?: string | null;
   fulfilmentMethod?: "collection" | "delivery";
   channel?: "pos" | "web" | "api" | "whatsapp" | "phone";
+  pricing?: PricedOrder;
 };
+
+/** A line's list price, floor and cost snapshots (PRC-06, migration 092). */
+function snapshotColumns(l: OrderLine) {
+  const col = (v: number | null | undefined) => (v == null ? null : String(v))
+  return { list_price: col(l.listPrice), floor_price: col(l.floorPrice), unit_cost: col(l.unitCost) }
+}
+
+function snapshotNumber(v: string | null | undefined): number | null {
+  return v == null ? null : parseFloat(String(v))
+}
+
+/** priceOrder()'s breakdown as order columns (migration 082). */
+function pricingColumns(p: PricedOrder | undefined) {
+  if (!p) return {};
+  return {
+    subtotal: String(p.subtotal),
+    tier_discount: String(p.tierDiscount),
+    tier_discount_percent: p.tier ? String(p.tier.percent) : null,
+    promotion_id: p.promotion?.id ?? null,
+    promo_code: p.promotion?.code ?? null,
+    promo_discount: String(p.promoDiscount),
+    points_redeemed: p.pointsRedeemed,
+    points_discount: String(p.pointsDiscount),
+    vat_rate: String(p.vatRate),
+    vat_amount: String(p.vatAmount),
+    // NULL, not "0", when there is none: a collection has no fee, not a £0 one.
+    delivery_fee: p.deliveryFee > 0 ? String(p.deliveryFee) : null,
+  };
+}
 
 export const OrdersRepoDrizzle: OrdersRepo = {
   async save(o: Order) {
@@ -80,6 +111,8 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           payment_method: o.paymentMethod,
           status: o.status,
           channel: o.channel ?? 'pos',
+          // A manager edit re-prices the order: its breakdown moves with it.
+          ...pricingColumns((o as Order & OrderPersistenceCarrier).pricing),
         })
         .where(eq(s.orders.id, o.id as any))
       
@@ -94,6 +127,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
+          ...snapshotColumns(l),
         }
         await getDb().insert(s.order_items).values(line)
       }
@@ -113,6 +147,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         // value cannot hit the CHECK constraint and fail an otherwise good sale.
         fulfilment_method: orderWithOrg.fulfilmentMethod === "delivery" ? "delivery" : "collection",
         channel: orderWithOrg.channel ?? "pos",
+        ...pricingColumns(orderWithOrg.pricing),
       };
       await getDb().insert(s.orders).values(values)
       // `?? null` to match the order row above. PlaceOrderInput marks orgId
@@ -127,6 +162,7 @@ export const OrdersRepoDrizzle: OrdersRepo = {
           unit_price: String(l.unitPrice),
           total_price: String(l.lineTotal),
           org_id: orgId,
+          ...snapshotColumns(l),
         }
         await getDb().insert(s.order_items).values(line)
       }
@@ -148,7 +184,12 @@ export const OrdersRepoDrizzle: OrdersRepo = {
         quantity: orderLine.quantity!,
         unitPrice: parseFloat(String(orderLine.unit_price!)),
         lineTotal: parseFloat(String(orderLine.total_price!)),
+        listPrice: snapshotNumber(orderLine.list_price),
+        floorPrice: snapshotNumber(orderLine.floor_price),
+        unitCost: snapshotNumber(orderLine.unit_cost),
       })),
+      // Carried for the engine's silent price check on an edit.
+      orgId: orderRow.org_id,
       subtotal: parseFloat(String(orderRow.total!)) / 1.20,
       vat: parseFloat(String(orderRow.total!)) * 0.20 / 1.20,
       total: parseFloat(String(orderRow.total!)),
@@ -177,6 +218,53 @@ async function resolveStockCtx(p: ProductId, ctx?: StockContext): Promise<{ orgI
   return { orgId, locationId }
 }
 
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  const r = result as { rows?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>
+  return Array.isArray(r) ? r : r?.rows ?? []
+}
+
+/**
+ * Stock a new sale can take (v1.2.1, E2E-07), read inside the sale's own
+ * transaction.
+ *
+ * Stock comes off in the InventoryWorker after the sale commits, so two tills
+ * selling the last unit at once both read 1 and both sold it; the worker then
+ * refused the second movement ("Insufficient stock at location") and stock sat
+ * at 0 with two sales. Here the stock row is locked until this sale commits,
+ * which queues the second till behind the first, and sales already recorded
+ * but not yet taken off stock (no sale movement yet, in the last day) are
+ * counted as gone. The second till then sees 0 and its sale is held, exactly
+ * as it is when the two are rung one after the other.
+ */
+async function availableForSale(orgId: string, productId: string, locationId: string): Promise<number> {
+  const tx = getDb()
+  const locked = rowsOf(
+    await tx.execute(sql`
+      SELECT stock FROM product_location_stock
+      WHERE org_id = ${orgId} AND product_id = ${productId} AND location_id = ${locationId}
+      FOR UPDATE
+    `),
+  )[0]
+  const stock = Number(locked?.stock ?? 0)
+  const pending = rowsOf(
+    await tx.execute(sql`
+      SELECT COALESCE(SUM(oi.quantity), 0) AS qty
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      WHERE oi.product_id = ${productId}
+        AND o.org_id = ${orgId}
+        AND (o.location_id = ${locationId} OR o.location_id IS NULL)
+        AND o.status NOT IN ('on-hold', 'cancelled', 'voided', 'refunded')
+        AND COALESCE(o.entered_at, o.created_at) > now() - interval '1 day'
+        AND NOT EXISTS (
+          SELECT 1 FROM inventory_movements m
+          WHERE m.correlation_id = o.id::text AND m.product_id = ${productId}
+        )
+    `),
+  )[0]
+  return Math.round((stock - Number(pending?.qty ?? 0)) * 1000) / 1000
+}
+
 export const ProductsRepoDrizzle: ProductsRepo = {
   async checkStock(p: ProductId, ctx?: StockContext): Promise<number> {
     const { getProductLocationStock, resolveStockLocationId } = await import('../../../../server/services/productLocationStock')
@@ -187,6 +275,7 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     }
     if (!orgId) return 0
     const locationId = await resolveStockLocationId({ orgId, locationId: ctx?.locationId, orderId: ctx?.orderId, userId: ctx?.userId })
+    if (ctx?.forSale) return availableForSale(orgId, p as string, locationId)
     const row = await getProductLocationStock(orgId, p as string, locationId)
     return row?.stock ?? 0
   },
@@ -232,8 +321,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       product_id: product.productCode,
       name: product.name,
       barcode: product.barcode,
-      cost_price: String(product.costPrice || 0),
+      cost_price: product.costPrice == null ? null : String(product.costPrice),
       default_sale_price: String(product.salePrice || 0),
+      min_price: product.minPrice == null ? null : String(product.minPrice),
       stock: product.stock,
       stock_limit: product.stockLimit,
       created_at: product.createdAt,
@@ -253,8 +343,13 @@ export const ProductsRepoDrizzle: ProductsRepo = {
         product_id: updates.productCode,
         name: updates.name,
         barcode: updates.barcode,
-        cost_price: updates.costPrice ? String(updates.costPrice) : undefined,
-        default_sale_price: updates.salePrice ? String(updates.salePrice) : undefined,
+        // `!= null`, not truthiness: £0 is a real price and a real cost, and
+        // the old check silently kept the previous figure. A null cost clears
+        // it (unknown cost); sale price is NOT NULL so null leaves it alone.
+        cost_price: updates.costPrice === undefined ? undefined : updates.costPrice === null ? null : String(updates.costPrice),
+        default_sale_price: updates.salePrice != null ? String(updates.salePrice) : undefined,
+        // Same rule as cost: absent leaves it, null clears it (follows sale price).
+        min_price: updates.minPrice === undefined ? undefined : updates.minPrice === null ? null : String(updates.minPrice),
         stock: updates.stock,
         stock_limit: updates.stockLimit,
         updated_at: updates.updatedAt,
@@ -267,8 +362,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: updated.product_id,
       name: updated.name,
       barcode: updated.barcode,
-      costPrice: parseFloat(updated.cost_price || '0'),
+      costPrice: updated.cost_price == null ? null : parseFloat(updated.cost_price),
       salePrice: parseFloat(updated.default_sale_price),
+      minPrice: updated.min_price == null ? null : parseFloat(updated.min_price),
       stock: updated.stock,
       stockLimit: updated.stock_limit,
       categoryId: undefined,
@@ -283,6 +379,18 @@ export const ProductsRepoDrizzle: ProductsRepo = {
     const [deleted] = await getDb().delete(s.products).where(whereCond).returning({ id: s.products.id })
     if (orgId && !deleted) throw new Error('Product not found')
   },
+  async foreignTo(ids: ProductId[], orgId: string): Promise<ProductId[]> {
+    const unique = [...new Set(ids.map(String))]
+    if (unique.length === 0) return []
+    // Only well-formed ids reach Postgres; anything else cannot be a product.
+    const uuids = unique.filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+    if (uuids.length === 0) return []
+    const rows = await getDb()
+      .select({ id: s.products.id })
+      .from(s.products)
+      .where(and(inArray(s.products.id, uuids as any), sql`${s.products.org_id} IS DISTINCT FROM ${orgId}::uuid`))
+    return rows.map((r: { id: string }) => r.id as ProductId)
+  },
   async findById(id: ProductId): Promise<Product | null> {
     const [product] = await getDb().select().from(s.products).where(eq(s.products.id, id as any))
     if (!product) return null
@@ -291,8 +399,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: product.product_id,
       name: product.name,
       barcode: product.barcode,
-      costPrice: parseFloat(product.cost_price || '0'),
+      costPrice: product.cost_price == null ? null : parseFloat(product.cost_price),
       salePrice: parseFloat(product.default_sale_price),
+      minPrice: product.min_price == null ? null : parseFloat(product.min_price),
       stock: product.stock,
       stockLimit: product.stock_limit,
       categoryId: undefined,
@@ -307,8 +416,9 @@ export const ProductsRepoDrizzle: ProductsRepo = {
       productCode: product.product_id,
       name: product.name,
       barcode: product.barcode,
-      costPrice: parseFloat(product.cost_price || '0'),
+      costPrice: product.cost_price == null ? null : parseFloat(product.cost_price),
       salePrice: parseFloat(product.default_sale_price),
+      minPrice: product.min_price == null ? null : parseFloat(product.min_price),
       stock: product.stock,
       stockLimit: product.stock_limit,
       categoryId: undefined,
@@ -351,6 +461,8 @@ export const CustomersRepoDrizzle: CustomersRepo = {
       category: customer.category,
       source: c.source,
       loyalty_points: customer.loyaltyPoints,
+      ...(typeof c.receiptEmailOptIn === 'boolean' ? { receipt_email_opt_in: c.receiptEmailOptIn } : {}),
+      ...(c.createdByUserId ? { created_by_user_id: c.createdByUserId } : {}),
       created_at: customer.createdAt,
       updated_at: customer.updatedAt,
     }).returning()
@@ -371,6 +483,9 @@ export const CustomersRepoDrizzle: CustomersRepo = {
         address: updates.address,
         category: updates.category,
         loyalty_points: updates.loyaltyPoints,
+        // The receipt-email switch never saved: the column was missing here
+        // (v1.2 Phase 5, PRV-08).
+        receipt_email_opt_in: typeof (updates as any).receiptEmailOptIn === 'boolean' ? (updates as any).receiptEmailOptIn : undefined,
         updated_at: updates.updatedAt,
         ...(updates.category !== undefined ? { manual_override_protected: 1 } : {}),
       })

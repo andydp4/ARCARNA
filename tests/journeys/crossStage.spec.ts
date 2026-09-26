@@ -272,6 +272,8 @@ test.describe("cross-stage: order → documents", () => {
     expect(total, "order should have a total").toBeGreaterThan(0);
 
     const expectedAmount = total.toFixed(2);
+    // A till sale gets an invoice when the customer asks (v1.2 Phase 1C).
+    expect((await api.post(`/api/invoices/for-order/${orderId}`)).status()).toBe(201);
 
     for (const [kind, path] of [
       ["receipt", `/api/orders/${orderId}/receipt.pdf`],

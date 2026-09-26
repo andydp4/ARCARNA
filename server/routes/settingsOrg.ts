@@ -6,6 +6,9 @@ import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
 import type { Role, Organization } from "@shared/schema";
 import { recordAdminAudit } from "../adminAudit";
+import { orgSettingsForRole } from "@shared/staffPolicy";
+import { shopPrivacyFromOrg, shopPrivacyPatchSchema } from "@shared/shopPrivacy";
+import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
 import {
   insertLoyaltyTierSchema,
   insertPromotionSchema,
@@ -76,8 +79,8 @@ function mapOrgToSettings(org: Organization) {
     // Operations Centre timing policy (migration 065). Projected HERE, not
     // only on /api/org/setup, because that route is MANAGER+ and the board
     // is a cashier's screen: the people whose cards these minutes colour
-    // must be able to read them. Written from the Settings card, which is
-    // MANAGER+ like every other org setting.
+    // must be able to read them. Written from the Settings card; the four
+    // "on time" minutes are admin only (Q16, shared/staffPolicy.ts).
     opsPrepSlaMinutes: org.opsPrepSlaMinutes ?? 20,
     opsDueSoonLeadMinutes: org.opsDueSoonLeadMinutes ?? 10,
     opsLateGraceMinutes: org.opsLateGraceMinutes ?? 5,
@@ -86,6 +89,24 @@ function mapOrgToSettings(org: Organization) {
     opsReconcilePollSeconds: org.opsReconcilePollSeconds ?? 60,
     opsAlertOnSlaDue: org.opsAlertOnSlaDue ?? false,
     opsKeepScreenAwake: org.opsKeepScreenAwake ?? true,
+    // Price guard at the till (v1.2 Phase 4). Every role reads it: the till
+    // is a cashier's screen. Only admins change it (PUT /api/settings/price-guard).
+    priceGuardEnabled: org.priceGuardEnabled ?? false,
+    // When below-minimum Signals go out (admin set, PUT /api/settings/review-rules).
+    priceGuardMinSignal: org.priceGuardMinSignal ?? "immediate",
+    // The delivery fee (v1.2.1). Every role reads it: the till adds the fee.
+    // Only admins change it (PUT /api/settings/delivery-fee).
+    ...(() => {
+      const fee = deliveryFeeSettingsFrom(org);
+      return {
+        deliveryFeeName: fee.name,
+        deliveryFeePrice: fee.defaultPrice,
+        deliveryFeeCommissionable: fee.commissionable,
+      };
+    })(),
+    // The shop's customer privacy notice + complaints contact (PRV-15). Public
+    // by nature (shown to shop customers), so every staff role may read it.
+    ...shopPrivacyFromOrg(org),
   };
 }
 
@@ -103,7 +124,14 @@ const settingsPatchSchema = z.object({
   businessEmail: z.union([z.literal(""), z.string().trim().max(255).email()]).optional(),
   vatNumber: z.string().trim().max(50).optional(),
   vatRate: z.number().min(0).max(100).optional(),
-});
+}).merge(shopPrivacyPatchSchema);
+
+const PRIVACY_KEYS = [
+  "privacyNoticeUrl",
+  "privacyNoticeText",
+  "complaintsContactName",
+  "complaintsContactEmail",
+] as const;
 
 export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]): void {
   app.get("/api/settings", ...scoped, async (req: any, res) => {
@@ -113,7 +141,9 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
       if (!org) {
         return res.status(404).json({ message: "Organization not found" });
       }
-      res.json(mapOrgToSettings(org));
+      // Every role reads this (the board needs its timings); the commission
+      // rate is admin only (Q16).
+      res.json(orgSettingsForRole(mapOrgToSettings(org), req.orgContext?.role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });
@@ -145,7 +175,27 @@ export function registerSettingsOrgRoutes(app: Express, scoped: RequestHandler[]
         if (businessEmail !== undefined) patch.email = businessEmail;
         if (vatNumber !== undefined) patch.vatNumber = vatNumber;
         if (vatRate !== undefined) patch.defaultTaxRate = String(vatRate);
+        const privacyChanged: string[] = [];
+        for (const key of PRIVACY_KEYS) {
+          const value = parsed.data[key];
+          if (value === undefined) continue;
+          // Blank clears the field (and hides its link), rather than storing "".
+          patch[key] = value === "" ? null : value;
+          privacyChanged.push(key);
+        }
         const org = await storage.updateOrgProfile(ctx.orgId, patch);
+        if (privacyChanged.length > 0) {
+          // What customers are told about their data is a legal statement: keep a trail.
+          await recordAdminAudit(req, {
+            actorUserId: req.user?.id ?? "unknown",
+            actorRole: req.orgContext?.role ?? "ADMIN",
+            action: "shop_privacy.updated",
+            targetType: "organization",
+            targetId: ctx.orgId,
+            orgId: ctx.orgId,
+            metadata: { fields: privacyChanged },
+          });
+        }
         res.json(mapOrgToSettings(org));
       } catch (error: any) {
         console.error("Error updating settings:", error);

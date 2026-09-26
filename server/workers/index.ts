@@ -316,6 +316,30 @@ async function runHousekeeping(): Promise<void> {
     // exactly-once by unique key, so running it on every pass costs one query.
     ["daily-close", async () =>
       (await import("../services/dailyClose")).runDueDailyCloses()],
+    // Price guard (v1.2 Phase 4): the twice-daily below-minimum round-up and
+    // Needs a look's Monday line. Both are exactly-once, so running them on
+    // every pass costs a query each.
+    ["price-guard-digest", async () =>
+      (await import("../services/priceGuardDigest")).runDuePriceGuardDigests()],
+    ["needs-a-look-weekly", async () =>
+      (await import("../services/exceptionReviews")).runWeeklyNeedsALook()],
+    // Friction Truths (v1.2 Phase 8B/8C): count new usage into the daily
+    // summaries, send the owner's Monday top five (exactly once per week),
+    // then drop raw events after 90 days and summaries after 24 months.
+    ["usage-rollup", async () =>
+      (await import("../services/usage")).rollupUsage()],
+    ["friction-weekly", async () =>
+      (await import("../services/usage")).runWeeklyFrictionTopFive()],
+    ["usage-purge", async () =>
+      (await import("../services/usage")).purgeUsage()],
+    // The owner's weekly customer data line (v1.2 Phase 6, PRV-10), Mondays,
+    // exactly once per org per week.
+    ["customer-access-weekly", async () =>
+      (await import("../services/customerAccessLog")).runWeeklyCustomerAccessLine()],
+    // Staff performance (v1.2 Phase 7C): after Monday's close, last week's
+    // loss-prevention flags and the weekly digest. Exactly once per org per week.
+    ["staff-weekly", async () =>
+      (await import("../services/staffWeekly")).runDueStaffWeeks()],
     ["reconciliation", async () => runReconciliation()],
   ];
   for (const [name, fn] of tasks) {

@@ -311,32 +311,38 @@ export default function PromotionsPage() {
                       <Link href={`/promotions/${promo.id}/lift`}>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="sm"
+                          className="gap-1"
                           aria-label="View lift report"
                           data-testid={`button-lift-${promo.id}`}
                         >
-                          <TrendingUp className="h-4 w-4" />
+                          <TrendingUp className="h-4 w-4" aria-hidden />
+                          Lift
                         </Button>
                       </Link>
                       {canMutate && (
                       <>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
+                        className="gap-1"
                         aria-label="Edit promotion"
                         onClick={() => openPromoDialog(promo)}
                         data-testid={`button-edit-${promo.id}`}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Edit2 className="h-4 w-4" aria-hidden />
+                        Edit
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
+                        size="sm"
+                        className="gap-1 text-destructive hover:text-destructive"
                         aria-label="Delete promotion"
                         onClick={() => deletePromo.mutate(promo.id)}
                         data-testid={`button-delete-${promo.id}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                        Delete
                       </Button>
                       </>
                       )}
@@ -461,7 +467,7 @@ export default function PromotionsPage() {
                       <FormLabel>Discount Type</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-type">
+                          <SelectTrigger aria-label="Select type" data-testid="select-type">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                         </FormControl>

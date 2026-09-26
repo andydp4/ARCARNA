@@ -137,6 +137,26 @@ const MANAGER_AND_UP: Probe[] = [
   { method: "post", path: "/api/products/import", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:121" },
   { method: "post", path: "/api/customers/import/preview", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:176" },
   { method: "post", path: "/api/customers/import", body: {}, deny: [403, 429], allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/setupImports.ts:216" },
+
+  // Phase 0B (FIX-02): product create, edit, delete and aliases are manager
+  // and above (productWriteRoles). Once pinned in UNGUARDED_MUTATIONS.
+  { method: "post", path: "/api/products", body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/products.ts:152" },
+  { method: "put", path: `/api/products/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/products.ts:189" },
+  { method: "patch", path: `/api/products/${ABSENT}/aliases`, body: { aliases: "not-an-array" }, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/products.ts:221" },
+  { method: "delete", path: `/api/products/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/products.ts:269" },
+
+  // Also once in UNGUARDED_MUTATIONS; each now has mutateRoles.
+  { method: "put", path: `/api/customers/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/customers.ts:134" },
+  { method: "delete", path: `/api/customers/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/customers.ts:150" },
+  { method: "post", path: "/api/promotions", body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/promotions.ts:33" },
+  { method: "patch", path: `/api/promotions/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/promotions.ts:49" },
+  { method: "delete", path: `/api/promotions/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/promotions.ts:66" },
+  { method: "post", path: "/api/loyalty-tiers", body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/loyalty.ts:92" },
+  { method: "patch", path: `/api/loyalty-tiers/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/loyalty.ts:108" },
+  { method: "delete", path: `/api/loyalty-tiers/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/loyalty.ts:125" },
+  { method: "post", path: "/api/overhead-expenses", body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/expenses.ts:37" },
+  { method: "put", path: `/api/overhead-expenses/${ABSENT}`, body: {}, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/expenses.ts:53" },
+  { method: "delete", path: `/api/overhead-expenses/${ABSENT}`, allow: ["SUPER_ADMIN", "ADMIN", "MANAGER"], where: "server/routes/expenses.ts:69" },
 ];
 
 /**
@@ -226,22 +246,10 @@ const ADMIN_ONLY: Probe[] = [
  * Every entry here is reported as a Phase 5.1 finding.
  */
 const UNGUARDED_MUTATIONS: Probe[] = [
-  { method: "post", path: "/api/products", body: {}, allow: [], where: "server/routes/products.ts:68" },
-  { method: "put", path: `/api/products/${ABSENT}`, body: {}, allow: [], where: "server/routes/products.ts:94" },
-  { method: "patch", path: `/api/products/${ABSENT}/aliases`, body: { aliases: "not-an-array" }, allow: [], where: "server/routes/products.ts:122" },
-  { method: "delete", path: `/api/products/${ABSENT}`, allow: [], where: "server/routes/products.ts:142" },
-  { method: "post", path: "/api/customers", body: {}, allow: [], where: "server/routes/customers.ts:77" },
-  { method: "put", path: `/api/customers/${ABSENT}`, body: {}, allow: [], where: "server/routes/customers.ts:89" },
-  { method: "delete", path: `/api/customers/${ABSENT}`, allow: [], where: "server/routes/customers.ts:104" },
-  { method: "post", path: "/api/promotions", body: {}, allow: [], where: "server/routes/promotions.ts:31" },
-  { method: "patch", path: `/api/promotions/${ABSENT}`, body: {}, allow: [], where: "server/routes/promotions.ts:47" },
-  { method: "delete", path: `/api/promotions/${ABSENT}`, allow: [], where: "server/routes/promotions.ts:64" },
-  { method: "post", path: "/api/loyalty-tiers", body: {}, allow: [], where: "server/routes/loyalty.ts:90" },
-  { method: "patch", path: `/api/loyalty-tiers/${ABSENT}`, body: {}, allow: [], where: "server/routes/loyalty.ts:106" },
-  { method: "delete", path: `/api/loyalty-tiers/${ABSENT}`, allow: [], where: "server/routes/loyalty.ts:123" },
-  { method: "post", path: "/api/overhead-expenses", body: {}, allow: [], where: "server/routes/expenses.ts:30" },
-  { method: "put", path: `/api/overhead-expenses/${ABSENT}`, body: {}, allow: [], where: "server/routes/expenses.ts:46" },
-  { method: "delete", path: `/api/overhead-expenses/${ABSENT}`, allow: [], where: "server/routes/expenses.ts:62" },
+  // Deliberately open to a cashier: the till adds a new customer at the sale
+  // (createRoles). Everything else that sat here has since gained a guard and
+  // moved into MANAGER_AND_UP (Phase 0B).
+  { method: "post", path: "/api/customers", body: {}, allow: [], where: "server/routes/customers.ts:104" },
 ];
 
 async function send(api: APIRequestContext, probe: Probe) {
@@ -457,7 +465,7 @@ test.describe("5.1 characterisation — mutating routes with no role guard", () 
     }
     await cashier.dispose();
 
-    // Pinned expectation: none of these are role-guarded today.
+    // Pinned expectation: none of these are role-guarded today (by design).
     expect(
       refused,
       "a route here has gained a role guard — good news; move it into MANAGER_AND_UP or ADMIN_ONLY",
@@ -466,16 +474,15 @@ test.describe("5.1 characterisation — mutating routes with no role guard", () 
       UNGUARDED_MUTATIONS.length,
     );
     console.log(
-      `[5.1 FINDING] ${reachable.length} mutating routes have no role guard; a CASHIER reaches the handler:\n  ` +
-        reachable.join("\n  "),
+      `[5.1] ${reachable.length} mutating route(s) open to a CASHIER by design:\n  ` + reachable.join("\n  "),
     );
   });
 
-  test("a CASHIER can really delete a product — the unguarded case, proven end to end", async () => {
+  test("a CASHIER cannot delete a product — the Phase 0B guard, proven end to end", async () => {
     test.skip(bypassOn, ROLE_GATE_OFF_REASON);
-    // The characterisation test above only reads status codes against absent
-    // ids. This one uses a real product, so the finding is a demonstrated
-    // deletion rather than an inference from a 404.
+    // The probes above only read status codes against absent ids. This one
+    // uses a real product, so the guard is shown to stop a real deletion
+    // (it once went through: the 5.1 finding this test used to pin).
     const admin = await apiAs("ADMIN", orgAId);
     const created = await admin.post("/api/products", {
       data: {
@@ -493,14 +500,11 @@ test.describe("5.1 characterisation — mutating routes with no role guard", () 
     const del = await cashier.delete(`/api/products/${product.id}`);
     const after = await admin.get(`/api/products/${product.id}`);
     await cashier.dispose();
+    await admin.delete(`/api/products/${product.id}`);
     await admin.dispose();
 
-    console.log(
-      `[5.1 FINDING] DELETE /api/products/:id as CASHIER → ${del.status()}; ` +
-        `follow-up GET → ${after.status()} (no requireRole at server/routes/products.ts:142)`,
-    );
-    expect(del.status(), "characterised: no role guard, so the delete succeeds").toBe(200);
-    expect(after.status(), "and the product is really gone").toBe(404);
+    expect(del.status(), "productWriteRoles refuses a cashier (server/routes/products.ts:269)").toBe(403);
+    expect(after.status(), "and the product is still there").toBe(200);
   });
 });
 

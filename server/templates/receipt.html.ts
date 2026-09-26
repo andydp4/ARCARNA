@@ -19,6 +19,12 @@ export type ReceiptRenderContext = {
   };
   unsubscribeUrl: string;
   footer?: string;
+  /**
+   * The shop's privacy notice link and complaints contact (PRV-15). Absent or
+   * empty fields render nothing. Rendered even on a custom template: use
+   * {{privacy}} to place it, otherwise it goes just before </body>.
+   */
+  privacy?: { noticeUrl?: string | null; complaintsName?: string; complaintsEmail?: string };
 };
 
 export const DEFAULT_RECEIPT_TEMPLATE = `<!DOCTYPE html>
@@ -64,6 +70,7 @@ export const DEFAULT_RECEIPT_TEMPLATE = `<!DOCTYPE html>
     <tr><td class="label">Loyalty earned</td><td>{{order.loyaltyEarned}} pts</td></tr>
   </table>
   <p class="footer">{{footer}}</p>
+  {{privacy}}
   <p class="unsub"><a href="{{unsubscribeUrl}}">Unsubscribe</a> from email receipts.</p>
 </body>
 </html>`;
@@ -107,6 +114,21 @@ function renderLineBlock(html: string, lines: ReceiptLine[]): string {
   return html.replace(blockRe, rows);
 }
 
+function renderPrivacyBlock(privacy: ReceiptRenderContext["privacy"]): string {
+  if (!privacy) return "";
+  const parts: string[] = [];
+  if (privacy.noticeUrl && /^https?:\/\//i.test(privacy.noticeUrl)) {
+    parts.push(`How we use your information: <a href="${escapeHtml(privacy.noticeUrl)}">privacy notice</a>.`);
+  }
+  if (privacy.complaintsEmail) {
+    const who = privacy.complaintsName ? `${escapeHtml(privacy.complaintsName)}, ` : "";
+    const email = escapeHtml(privacy.complaintsEmail);
+    parts.push(`Data protection questions or complaints: ${who}<a href="mailto:${email}">${email}</a>.`);
+  }
+  if (parts.length === 0) return "";
+  return `<p class="privacy" style="margin-top:16px;font-size:11px;color:#666">${parts.join("<br />")}</p>`;
+}
+
 export function renderReceiptTemplate(
   templateHtml: string,
   ctx: ReceiptRenderContext,
@@ -129,6 +151,12 @@ export function renderReceiptTemplate(
   };
   for (const [key, value] of Object.entries(scalars)) {
     html = replaceScalar(html, key, value);
+  }
+  const privacyBlock = renderPrivacyBlock(ctx.privacy);
+  if (html.includes("{{privacy}}")) {
+    html = html.replace(/\{\{privacy\}\}/g, privacyBlock);
+  } else if (privacyBlock) {
+    html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${privacyBlock}</body>`) : html + privacyBlock;
   }
   return html;
 }

@@ -10,7 +10,7 @@
  */
 export const VOCAB = {
   controlCentre: "Control Centre", // was: Dashboard / Home
-  truthsHub: "Truths Hub", // was: Insights / Reports / Analytics hub
+  truthsAtAGlance: "Truths at a glance", // was: Truths Hub / Insights (v1.2 Phase 3)
   stockTruths: "Stock Truths", // was: Inventory
   customerTruths: "Customer Truths", // was: RFM / Customer Segments
   profitTruths: "Profit Truths", // was: Profit Analysis / Expense reports

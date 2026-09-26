@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 9. Truths and Evidence</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section ed-manager" id="truths-evidence">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">09</div>
+    <div class="chapter-title">Truths and Evidence</div>
+    <p class="chapter-lead">The Truths Centre is where the figures tell you how the business is really doing, with the Evidence behind every number. This section covers Truths at a glance, the Evidence pages, Needs a look, Staff Performance, staff targets and Order Timing, and who can see each one.</p>
+  </div>
+
+  <p class="eyebrow">Truths Centre · what it is for</p>
+  <h2>Truths first, Evidence behind them</h2>
+  <p>A <strong>Truth</strong> is a short, plain answer about the business: how sales are going, which products move, when you are busiest. <strong>Evidence</strong> is the detailed page behind it, with the rows that add up to the answer. Every figure says which window it covers, such as <em>This week</em> or <em>Last 30 days</em>, so a number is never read without knowing the period.</p>
+  <p>The Truths Centre is for <span class="role role-manager">MANAGER</span> and above. Cashiers do not see it in their menu. A cashier's own figures live on <span class="ui">My performance</span> in the Operations Centre, which Section 2 explains.</p>
+
+  <h3>Who can see what</h3>
+  <table>
+    <tr><th>Role</th><th>In the Truths Centre</th></tr>
+    <tr><td><span class="role role-cashier">CASHIER</span></td>
+        <td>Nothing. Their own figures and the targets behind their colours are on My performance (Section 2).</td></tr>
+    <tr><td><span class="role role-manager">MANAGER</span></td>
+        <td>Reads Truths at a glance and opens every page of Evidence. Sees <span class="ui">Staff Performance</span> and <span class="ui">Order Timing</span> for cashiers and themselves. Works the cashiers' queue in <span class="ui">Needs a look</span>. Reads the staff targets. Cannot export.</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">ADMIN</span></td>
+        <td>As a manager, plus: sets the Truths at a glance layout, exports Evidence, sets staff targets, and sees <span class="ui">Profit Truths</span>, <span class="ui">Would have flagged</span> and the <span class="ui">Problem? inbox</span>. Sees everyone in Staff Performance and works the managers' queue in Needs a look too.</td></tr>
+    <tr class="ed-admin"><td><span class="role role-manager">OWNER</span></td>
+        <td>As an admin, plus <span class="ui">Friction Truths</span> and every queue in Needs a look, including the admins'.</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>Only admins export</strong>
+    Managers can open and read any Evidence, but only admins and the owner can save it as a file. Every export is logged with who made it and when. If you need a copy for a meeting, ask an admin.
+  </div>
+
+  <p class="eyebrow">Truths Centre · the landing page</p>
+  <h2>Truths at a glance</h2>
+  <p>Choosing the Truths Centre opens <span class="ui">Truths at a glance</span>. It answers <em>What should you know about your business right now?</em> with a set of cards, called widgets. The whole business sees the same layout, chosen by an admin. The line under the title reads <em>Your admin chose these widgets. Each one says which window it covers.</em></p>
+  <p>Until an admin changes it, the layout shows: <strong>Sales at a glance</strong> (revenue, orders, active customers and average order value), <strong>Revenue by day</strong>, <strong>Revenue by category</strong>, <strong>Payment methods</strong>, <strong>Orders by hour</strong>, <strong>Top products</strong>, <strong>New and returning customers</strong>, <strong>Top customers</strong>, <strong>Stock movement</strong> and the <strong>Evidence guide</strong>, a list of every piece of Evidence and what it shows.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Truths Centre</span>. Truths at a glance opens.</li>
+    <li>Read each widget's window before its figures. A widget that has nothing to show says so, for example <em>No sales in this window.</em></li>
+    <li>To see the detail behind a widget, select <span class="ui">Open</span> on it. Its full page opens.</li>
+    <li>If Ask arcarna is set up, the <span class="ui">Ask arcarna</span> button at the top right opens it here too (Section 10).</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-09-truths-at-a-glance.png" alt="Truths at a glance as a manager sees it, with the Sales at a glance and Revenue by day widgets across the top and the Ask arcarna button in the page header" />
+    <figcaption>Truths at a glance: one layout for the whole business. Each widget names its window.</figcaption>
+    <!-- SHOT: route=/truths ; role=manager ; viewport=desktop ; show=the page header ("TRUTHS CENTRE" eyebrow, "Truths at a glance", "What should you know about your business right now?", "Your admin chose these widgets…") with the "Ask arcarna" button on the right, then the first widgets of the default layout: Sales at a glance (full width) and Revenue by day, each showing its window ("This month") ; state=two weeks of demo orders; default layout (no admin changes); ANTHROPIC_API_KEY set so the Ask arcarna button shows; Truths Centre tour and Ask feature tour marked seen; menu collapsed -->
+  </figure>
+
+  <div class="ed-admin">
+    <h3>Changing the layout <span class="role role-manager">ADMIN</span></h3>
+    <p>Only admins and the owner see <span class="ui">Edit layout</span>. What you save is what everyone sees, so change it with care. Widgets a viewer's role may not see, such as <strong>Profit Truths</strong>, are left out of their view entirely rather than shown locked.</p>
+    <ol class="steps">
+      <li>Select <span class="ui">Edit layout</span>. A bar reads <span class="ui">Editing the org's layout.</span></li>
+      <li>To add a widget, pick one under <span class="ui">Add a widget</span> (grouped as Truths, Evidence and Guides; admin-only ones say <em>(admins only)</em>), then select <span class="ui">Add widget</span>. A layout holds at most 40 widgets.</li>
+      <li>Under each widget, choose its <span class="ui">Size</span> (<em>Small (a third)</em>, <em>Medium (half)</em> or <em>Large (full width)</em>) and, where offered, its <span class="ui">Window</span>.</li>
+      <li>Use <span class="ui">Move up</span> and <span class="ui">Move down</span> to order them, and <span class="ui">Remove</span> to take one away.</li>
+      <li>Select <span class="ui">Save layout</span>, or <span class="ui">Cancel</span> to leave it as it was. You see <em>Layout saved</em>: <em>Everyone in the org now sees this layout.</em> Every save is logged.</li>
+    </ol>
+    <p>Below the widgets, admins also have <span class="ui">Full report export</span>: choose a <span class="ui">Window</span> and a <span class="ui">Format</span> (CSV or PDF), then <span class="ui">Download full report</span> for revenue, orders, customers and stock over that window. Like every export, it is logged.</p>
+  </div>
+
+  <p class="eyebrow">Truths Centre · the detail</p>
+  <h2>Evidence</h2>
+  <p><span class="ui">Evidence</span> in the Truths Centre menu lists every Evidence page, grouped in four tiers: <em>Tier 1 · Basic</em>, <em>Tier 2 · Operational Intelligence</em>, <em>Tier 3 · Customer Intelligence</em> and <em>Tier 4 · Advanced &amp; Predictive</em>. Each card shows:</p>
+  <table>
+    <tr><th>On the card</th><th>What it means</th></tr>
+    <tr><td><strong>Reference</strong>, such as ARC-T1-001</td><td>The Evidence's fixed name. Useful when you tell someone which page you mean.</td></tr>
+    <tr><td><strong>How often</strong> (DAILY, WEEKLY, MONTHLY…)</td><td>The period it is designed for.</td></tr>
+    <tr><td><strong>Title and purpose</strong></td><td>What it shows, in one line, for example <em>Daily Sales Summary</em>.</td></tr>
+    <tr><td><strong>Formats</strong></td><td>The file types an admin can export it as.</td></tr>
+    <tr><td><span class="ui">Coming soon</span></td><td>Planned Evidence. The card is greyed out and does not open yet.</td></tr>
+  </table>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Truths Centre</span>, then <span class="ui">Evidence</span>.</li>
+    <li>Select a card. The Evidence opens with its reference, tier, purpose and period at the top, the headline figures, then the table of rows.</li>
+    <li>Where the page has dates, set them above the Evidence.</li>
+    <li>Select <span class="ui">All Evidence</span> at the top left to go back to the list.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-09-evidence-hub.png" alt="The Evidence page listing Tier 1 and Tier 2 cards, each with its reference, frequency, title, purpose and formats" />
+    <figcaption>Evidence: every page, grouped by tier. Greyed cards are coming soon.</figcaption>
+    <!-- SHOT: route=/reports ; role=manager ; viewport=desktop ; show=the page header ("Evidence", "Which Evidence do you need right now?") and the "Tier 1 · Basic" and "Tier 2 · Operational Intelligence" rows of cards, including one greyed "Coming soon" card (ARC-T1-006 Order Issues) ; state=none; tours marked seen; menu collapsed -->
+  </figure>
+
+  <div class="ed-admin">
+    <h3>Exporting Evidence <span class="role role-manager">ADMIN</span></h3>
+    <p>Admins see an <span class="ui">Export</span> button at the top of each Evidence page. Choose <span class="ui">PDF</span>, <span class="ui">PNG image</span>, <span class="ui">JPEG image</span> or, where offered, <span class="ui">CSV data</span>. The file matches the screen. arcarna records the export on the server first; if that fails, nothing is exported. Managers never see the button.</p>
+  </div>
+
+  <h3>Other pages in the Truths Centre</h3>
+  <table>
+    <tr><th>Page</th><th>The question it answers</th></tr>
+    <tr><td><span class="ui">Customer Truths</span></td><td>Which customers are loyal, at risk, or lost?</td></tr>
+    <tr><td><span class="ui">Busiest Hours</span></td><td>When are you busiest? Average revenue by weekday and hour.</td></tr>
+    <tr><td><span class="ui">Order Channels</span></td><td>Where do your orders come from?</td></tr>
+    <tr><td><span class="ui">Stock Turn</span></td><td>What sells fast, and what sits?</td></tr>
+    <tr><td><span class="ui">Price overrides</span></td><td>Who sold below the minimum or below cost, on what, and why? Grouped by cashier, by product and by the reason given at Pay. <em>Unconfirmed</em> means the sale arrived without a reason. You only see people you outrank.</td></tr>
+    <tr><td><span class="ui">Scheduled Evidence</span></td><td>Which Evidence arrives automatically? Snapshots delivered to your Signals, with their run history. Nothing is emailed.</td></tr>
+    <tr class="ed-admin"><td><span class="ui">Profit Truths</span></td><td>Admins only. Revenue, cost of goods, gross and net profit for the whole business.</td></tr>
+  </table>
+
+  <p class="eyebrow">Operations Centre · exceptions to review</p>
+  <h2>Needs a look</h2>
+  <p>arcarna never stops a sale or a refund. Instead, anything unusual is recorded and lands in <span class="ui">Needs a look</span> (Operations Centre), so someone above the person involved can check it. It answers <em>Which flagged sales, refunds, patterns and contact requests has nobody dealt with yet?</em></p>
+  <table>
+    <tr><th>Kind</th><th>What puts it here</th></tr>
+    <tr><td><strong>Price</strong> (shown under <em>Sales</em>)</td><td>A sale line below its minimum price or below cost, with the reason the cashier gave at the till.</td></tr>
+    <tr><td><strong>Refund</strong></td><td>A refund the refund rules pick out. Always: a refund on another cashier's sale, and any refund with the reason "Other". By default also: a cash refund over £50, and a refund 14 or more days after the sale. Admins set the amount and the days.</td></tr>
+    <tr><td><strong>Pattern</strong></td><td>A week in which one person had 3 or more such events and at least twice their usual, or was among the team's highest weeks. A pattern is a question, not a finding.</td></tr>
+  </table>
+
+  <h3>Whose items you see</h3>
+  <p>You only see items about people <strong>below</strong> your role, and never your own. A manager works the <em>Cashiers</em> queue. <span class="ed-admin">Admins work the cashiers' and managers' queues; the owner sees every queue, including the admins'.</span> Nobody reviews themselves.</p>
+
+  <h3>Working through the list</h3>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Operations Centre</span>, then <span class="ui">Needs a look</span>. The line at the top shows how many items are <em>unreviewed for over 7 days</em>. Aim to keep it at nought.</li>
+    <li>Narrow the list if you like: <span class="ui">Queue</span> (<em>All my queues</em>, or one queue with its open count), <span class="ui">State</span> (<em>Open</em>, <em>Acknowledged</em>, <em>Explained</em>, <em>Escalated</em> or <em>All</em>) and <span class="ui">Kind</span> (<em>Everything</em>, <em>Sales</em>, <em>Refunds</em> or <em>Patterns</em>). It opens on Open.</li>
+    <li>Read the card: the kind, its state, the person's name, when it happened and a one-line summary.</li>
+    <li>If it helps, add a line under <span class="ui">Note (optional)</span>, such as what the cashier told you.</li>
+    <li>Choose one: <span class="ui">Acknowledged</span> (seen, nothing more needed), <span class="ui">Explained</span> (there was a good reason) or <span class="ui">Escalated</span> (someone above you should look). Escalating tells the people above you.</li>
+    <li>Changed your mind? Select <span class="ui">Reopen</span> on a reviewed item to put it back to Open. The card keeps who reviewed it, when, and the note.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-09-needs-a-look.png" alt="Needs a look as a manager sees it, with the unreviewed line, the Queue, State and Kind filters, and two open cards for a below-minimum sale and a cash refund" />
+    <figcaption>Needs a look: one card per item, with the three review buttons.</figcaption>
+    <!-- SHOT: route=/needs-a-look ; role=manager ; viewport=desktop ; show=the page header ("Needs a look"), the line "N unreviewed for over 7 days", the Queue ("All my queues"), State ("Open") and Kind ("Everything") filters, and two open cards: a "Price" card for a below-minimum sale by a cashier (e.g. Priya Shah) and a "Refund" card, each with "Note (optional)" and the Acknowledged / Explained / Escalated buttons ; state=demo data includes at least one below-minimum sale with a reason and one cash refund over £50, both by seed-cashier; the Needs a look tour marked seen -->
+  </figure>
+
+  <div class="callout">
+    <strong>When a cashier names you under "Manager agreed"</strong>
+    If a cashier sells below the minimum and chooses <em>Manager agreed</em> with your name, you get a Signal (the bell) asking you to confirm. Select <span class="ui">Yes, I agreed</span> or <span class="ui">No</span>. A No is passed to the owner. The sale stands either way.
+  </div>
+
+  <div class="callout warn ed-admin">
+    <strong>Admin — contact-details requests land here too</strong>
+    Admins and the owner also see a <span class="ui">Contact details requests</span> list at the top of Needs a look, where a manager has asked for a customer's phone or email. Select <span class="ui">Approve for 24 hours</span> or <span class="ui">Decline</span>, and <span class="ui">Revoke access</span> to end a live approval early. Section 7 covers this in full. The refund rules and when below-minimum Signals go out are set under <span class="ui">Signals and refund rules</span> in Settings (Section 11).
+  </div>
+
+  <div class="ed-admin">
+    <p class="eyebrow">Truths Centre · admins only</p>
+    <h2>Would have flagged <span class="role role-manager">ADMIN</span></h2>
+    <p><span class="ui">Would have flagged</span> answers <em>Which sales went below the minimum price or below cost?</em> arcarna checks every till sale, manager edit, API order and voice draft, and records these quietly. No sale was stopped because of it. Website orders sell at the list price and are not checked.</p>
+    <p>It is for admins and the owner only, so a manager never reviews, or sees the absence of, flags about prices they set themselves.</p>
+    <ol class="steps">
+      <li>Open the menu, choose <span class="ui">Truths Centre</span>, then <span class="ui">Would have flagged</span>.</li>
+      <li>Set <span class="ui">From</span> and <span class="ui">To</span>.</li>
+      <li>Read the totals: <strong>Sales lines</strong>, <strong>Below cost</strong>, <strong>£ under list</strong> and <strong>£ under cost</strong>.</li>
+      <li><strong>By product</strong> lists the biggest £ under list first. <strong>By person</strong> shows who set the price: the person on the till, or the manager who edited the order.</li>
+    </ol>
+    <figure>
+      <img src="../images/v12-09-would-have-flagged.png" alt="Would have flagged for the last two weeks, with the four totals and the By product table" />
+      <figcaption>Would have flagged: the sales that went below the minimum or below cost, recorded quietly.</figcaption>
+      <!-- SHOT: route=/reports/would-have-flagged ; role=admin ; viewport=desktop ; show=the page header ("Would have flagged", "Which sales went below the minimum price or below cost?"), the From and To dates, the four tiles (Sales lines, Below cost, £ under list, £ under cost) and the top of the "By product" table ; state=demo data includes several sales below minimum price and at least one below cost over the last two weeks; tours marked seen -->
+    </figure>
+  </div>
+
+  <p class="eyebrow">Truths Centre · the team</p>
+  <h2>Staff Performance</h2>
+  <p><span class="ui">Staff Performance</span> answers <em>Who did what, and what did it bring in?</em> It counts completed orders settled in the dates you pick, less personal use: the same orders as the sales Evidence, so the rows add up to the sales you took. It is listed in both the Truths Centre and the Finance Centre; it is the same page.</p>
+  <p>A manager sees cashiers and themselves. <span class="ed-admin">Admins and the owner see everyone.</span> When people above your role are left out, a line says how many, and that they are not in the Total.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Truths Centre</span>, then <span class="ui">Staff Performance</span>. It opens on <em>Last week</em>.</li>
+    <li>Choose <span class="ui">Dates</span> (Today, Yesterday, This week, Last week, Last 4 weeks, This month, Last month, or Custom with <span class="ui">From</span> and <span class="ui">To</span>). You can also filter by <span class="ui">Location</span>, <span class="ui">Role</span>, <span class="ui">Fulfilment</span> and <span class="ui">Channel</span>, and switch <span class="ui">Show admin cover</span> on or off.</li>
+    <li>Read the four tiles at the top: <strong>Gross settled sales</strong>, <strong>Orders completed</strong>, <strong>Average order</strong>, and the earlier period it is <strong>Compared with</strong>.</li>
+    <li>Choose a tab under <strong>People</strong>: <span class="ui">Volume</span>, <span class="ui">Value</span>, <span class="ui">Quality</span>, <span class="ui">Benefit</span>, <span class="ui">Speed</span> or <span class="ui">Fairness</span>. On a phone, each person is a card instead of a table row.</li>
+    <li>Select a person to open their own page: their figures, an <strong>8-week trend</strong>, and the <strong>Orders</strong> behind them.</li>
+  </ol>
+
+  <table>
+    <tr><th>Tab</th><th>What it shows</th></tr>
+    <tr><td><span class="ui">Volume</span></td><td>Each job counted on its own: Loaded, Prepared, Completed, Collected, Delivered, Dispatched. <em>Solo</em> is an order the same person loaded and completed. <em>Still open</em> is what they loaded that is not completed yet.</td></tr>
+    <tr><td><span class="ui">Value</span></td><td><em>Sales completed</em> and <em>Value brought in</em>. Value brought in is split like commission: all of it when solo, otherwise 90% to whoever completed it and 10% to whoever loaded it.</td></tr>
+    <tr><td><span class="ui">Quality</span></td><td>Wrong-item refunds, reopens, unready taps, refunds processed, deletes and completing others' orders.</td></tr>
+    <tr><td><span class="ui">Benefit</span></td><td><em>Net benefit</em>: margin contributed, less discount given, price-exception cost and personal use. It is <strong>not profit</strong>: wages, overheads and refunds are not in it.</td></tr>
+    <tr><td><span class="ui">Speed</span></td><td>Collection and delivery on time, first promise kept, stage times (the median and the slowest 10%), and how quickly they acknowledged what the board flagged for them (<em>Alert to acknowledge</em>).</td></tr>
+    <tr><td><span class="ui">Fairness</span></td><td>Rates that put part-timers on the same footing: jobs and value per active hour, value per day, refunds and wrong items per 10 orders, <em>KPIs met</em> and <em>Badges</em>.</td></tr>
+  </table>
+  <p>The rows <strong>Admin cover</strong> (admins and the owner, counted but never ranked), <strong>Unattributed</strong> (nobody named, or an account since removed) and <strong>Total</strong> sit at the bottom. There is no ranking column, no bonus and no pay figure anywhere on the page.</p>
+
+  <figure>
+    <img src="../images/v12-09-staff-performance.png" alt="Staff Performance for last week with the four tiles and the People table on the Volume tab, one row per cashier and the Admin cover, Unattributed and Total rows" />
+    <figcaption>Staff Performance: one row per person, with the team rows at the bottom.</figcaption>
+    <!-- SHOT: route=/reports/staff-performance ; role=manager ; viewport=desktop ; show=the page header ("Staff Performance", "Who did what, and what did it bring in?"), the Dates / Location / Role / Fulfilment / Channel filters and "Show admin cover", the four tiles (Gross settled sales, Orders completed, Average order, Compared with) and the People card on the Volume tab with rows for the demo cashiers plus Admin cover, Unattributed and Total ; state=Dates set to "Last 4 weeks" so the two weeks of demo orders show; orders completed by at least two different cashiers; the Staff Performance tour marked seen -->
+  </figure>
+
+  <div class="callout warn">
+    <strong>Read per-person figures with care</strong>
+    The figures are a guide. No pay decision is made from them alone. While per-person figures are new, the page shows a <em>Provisional</em> note with a date: they are being checked against the team totals until then, so do not act on them before it.
+  </div>
+
+  <p class="eyebrow">Truths Centre · what counts as on track</p>
+  <h2>Staff targets</h2>
+  <p>The colours on Staff Performance and on each person's My performance come from <span class="ui">Staff targets</span>. It answers <em>What counts as on track?</em> Everyone can read the targets behind their own colours; managers also have this page in the menu.</p>
+  <table>
+    <tr><th>Colour</th><th>What it means</th></tr>
+    <tr><td><strong>Green</strong></td><td>Target met.</td></tr>
+    <tr><td><strong>Amber</strong></td><td>Close.</td></tr>
+    <tr><td><strong>Red</strong></td><td>Not close. For the first four weeks after targets are first set, nothing shows red.</td></tr>
+    <tr><td><strong>Grey</strong></td><td>Too little data yet to judge.</td></tr>
+  </table>
+  <p>Only rates and percentages carry a target, such as <em>Collections ready on time</em>, <em>Customer named on the sale</em> or <em>Refunds per 10 orders</em>. <strong>KPIs met</strong> is the number of greens out of the targets with enough data. Targets carry no pay. The <span class="ui">In force</span> card shows the current version and when it was set; if none has been set, every colour is grey.</p>
+
+  <div class="ed-admin">
+    <h3>Setting targets <span class="role role-manager">ADMIN</span></h3>
+    <ol class="steps">
+      <li>Open <span class="ui">Staff targets</span> in the Truths Centre. Admins see <span class="ui">Change the targets</span>.</li>
+      <li>Tick each measure you want to use, then fill in <span class="ui">Green at least</span> and <span class="ui">Amber at least</span> (they read <em>at most</em> for measures where lower is better). <span class="ui">Data needed</span> is how much data a person must have before they get a colour; leave it blank for the default.</li>
+      <li>If you like, add <span class="ui">Why the change (optional)</span>.</li>
+      <li>Select <span class="ui">Save as a new version</span>. The old version stays in the <span class="ui">History</span> table and in the admin log.</li>
+    </ol>
+  </div>
+
+  <p class="eyebrow">Truths Centre · how fast orders move</p>
+  <h2>Order Timing</h2>
+  <p><span class="ui">Order Timing</span> answers <em>How fast do orders move, and where do they wait?</em> On time means ready (for a collection) or handed over (for a delivery) by the promised time plus the grace. Choose <span class="ui">Dates</span> and <span class="ui">Group by</span> (Fulfilment, Assignee, Completer, Loader, Hour received, Day or Channel) to see where time is lost. Section 4 walks through the page in full.</p>
+  <p>As with Staff Performance, a manager sees cashiers and themselves when grouping by person, and people above your role are not listed and not in the summary. Per-person groupings carry a <em>Provisional until …</em> badge while they are new.</p>
+
+  <div class="callout">
+    <strong>Ask instead of searching</strong>
+    If Ask arcarna is set up, you can ask it things like "Who has the most unreviewed flags in Needs a look?" or "How did we do last Saturday vs the one before?". It reads the same Evidence, inside your role, and links to it under the answer. Section 10 explains.
+  </div>
+
+</main>
+</body>
+</html>

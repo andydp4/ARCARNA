@@ -9,7 +9,8 @@
  */
 import type { Express, RequestHandler } from "express";
 import { z } from "zod";
-import { OPS_STATIONS, opsStaff } from "@shared/schema";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { OPS_STATIONS, allowedUsers, opsStaff } from "@shared/schema";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 
@@ -106,6 +107,22 @@ export function registerOperationsRoutes(app: Express, scoped: RequestHandler[])
         const parsed = stationBodySchema.safeParse(req.body ?? {});
         if (!parsed.success) {
           return res.status(400).json({ message: "Invalid station request", errors: parsed.error.errors });
+        }
+        // v1.2.1 SEC-STATION-XORG: only someone with access to this
+        // organisation (a SUPER_ADMIN row, org NULL, has access to every org).
+        const { db } = await import("../db");
+        const [member] = await db
+          .select({ id: allowedUsers.id })
+          .from(allowedUsers)
+          .where(
+            and(
+              eq(allowedUsers.replitUserId, targetUserId),
+              or(eq(allowedUsers.orgId, ctx.orgId), isNull(allowedUsers.orgId)),
+            ),
+          )
+          .limit(1);
+        if (!member) {
+          return res.status(404).json({ message: "No one by that id works here" });
         }
         await setStation(ctx.orgId, targetUserId, parsed.data);
         await recordAdminAudit(req, {

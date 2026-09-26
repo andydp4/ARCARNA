@@ -60,9 +60,9 @@ function ExpenseRowInner({ expense, onEdit, onDelete, canMutate = true }: Expens
         {formatCurrency(expense.amount)}
       </TableCell>
       <TableCell className="capitalize">{expense.frequency}</TableCell>
-      <TableCell>{new Date(expense.startDate).toLocaleDateString()}</TableCell>
+      <TableCell>{new Date(expense.startDate).toLocaleDateString("en-GB")}</TableCell>
       <TableCell>
-        {expense.endDate ? new Date(expense.endDate).toLocaleDateString() : "-"}
+        {expense.endDate ? new Date(expense.endDate).toLocaleDateString("en-GB") : "-"}
       </TableCell>
       <TableCell>
         <span
@@ -81,16 +81,20 @@ function ExpenseRowInner({ expense, onEdit, onDelete, canMutate = true }: Expens
             variant="outline"
             onClick={() => onEdit(expense)}
             data-testid={`button-edit-expense-${expense.id}`}
+            className="gap-1"
           >
-            <Edit className="h-4 w-4" />
+            <Edit className="h-4 w-4" aria-hidden />
+            Edit
           </Button>
           <Button
             size="sm"
             variant="destructive"
             onClick={() => onDelete(expense.id)}
             data-testid={`button-delete-expense-${expense.id}`}
+            className="gap-1"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" aria-hidden />
+            Delete
           </Button>
         </div>
         )}

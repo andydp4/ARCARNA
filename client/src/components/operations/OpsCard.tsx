@@ -1,4 +1,6 @@
-import { memo, type KeyboardEvent } from "react";
+import { memo, useState, type KeyboardEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { CardLinkDialog } from "@/components/card-link/CardLinkDialog";
 import {
   AlertTriangle,
   BellRing,
@@ -7,6 +9,7 @@ import {
   Check,
   Clock,
   Globe2,
+  MapPin,
   Pause,
   type LucideIcon,
 } from "lucide-react";
@@ -266,8 +269,28 @@ function OpsCardInner({
           {elapsed && <span className="tabular-nums">{elapsed} here</span>}
         </p>
 
+        {/* Where a live delivery goes (v1.2 Phase 5, Q8a): every member of
+            staff sees it while the delivery is live; the card leaves the board
+            when it is completed. No phone here: the assigned driver asks for
+            it from the order's details, and that reveal is logged. */}
+        {order.fulfilmentMethod === "delivery" && order.status !== "completed" && (order.deliveryAddress || order.deliveryPostcode) && (
+          <p className="flex items-start gap-1.5 text-xs text-foreground" data-testid={`ops-card-address-${order.id}`}>
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="min-w-0 break-words">
+              {[order.deliveryAddress, order.deliveryPostcode].filter(Boolean).join(", ")}
+            </span>
+          </p>
+        )}
+        {order.fulfilmentMethod === "delivery" && order.status !== "completed" && order.deliveryIssue && (
+          // My run's "Couldn't deliver" (v1.2): the note the driver left.
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-400" data-testid={`ops-card-delivery-issue-${order.id}`}>
+            {order.deliveryIssue}
+          </p>
+        )}
+
         {(derived.urgent ||
           derived.backdated ||
+          order.awaitingCardPayment ||
           order.dateKind === "preorder" ||
           derived.pastDueWhileHeldOrReady ||
           (derived.state === "ready" && derived.customerHere)) && (
@@ -288,6 +311,7 @@ function OpsCardInner({
                 Backdated
               </span>
             )}
+            {order.awaitingCardPayment && <AwaitingCardBadge order={order} />}
             {order.dateKind === "preorder" && (
               <span className="rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                 Pre-order
@@ -344,3 +368,43 @@ function OpsCardInner({
  * itself normally change, and the handlers are stable callbacks from the page.
  */
 export const OpsCard = memo(OpsCardInner);
+
+/**
+ * "Awaiting card payment" (v1.2 Stripe links). Sold, not paid: Stripe has not
+ * confirmed the card link. Tapping it reopens the link (the QR, send it
+ * again, or take another payment), so a sale left waiting at the till can be
+ * finished from the board.
+ */
+function AwaitingCardBadge({ order }: { order: BoardOrder }) {
+  const [open, setOpen] = useState(false);
+  const { data: status } = useQuery<{ enabled: boolean; whatsapp: boolean }>({
+    queryKey: ["/api/card-links/till"],
+    staleTime: 5 * 60_000,
+  });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="rounded-md border border-warning px-1.5 py-0.5 text-[11px] font-semibold text-warning focus:outline-none focus-visible:ring-2 focus-visible:ring-metal-titanium"
+        data-testid={`ops-card-awaiting-card-${order.id}`}
+      >
+        Awaiting card payment
+      </button>
+      {open && (
+        <CardLinkDialog
+          orderId={order.id}
+          amount={Number(order.total) || 0}
+          longLived={order.channel === "phone" || order.channel === "whatsapp"}
+          whatsappAvailable={status?.whatsapp === true}
+          hasCustomer={!!order.customerId}
+          onFinished={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}

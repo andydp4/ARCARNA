@@ -47,7 +47,7 @@ function repo(): WebsiteRepository {
 function runtime(overrides: Partial<WebsiteOrderRuntime> = {}): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
-    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
     getOpsDueMinutes: vi.fn().mockImplementation(async (_orgId, fulfilmentMethod) =>
       fulfilmentMethod === "delivery" ? 45 : 20,
     ),
@@ -83,6 +83,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "collection" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 
@@ -93,6 +95,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "delivery" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 
@@ -107,6 +111,8 @@ describe("website fulfilment mapping", () => {
 
     expect(rt.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ fulfilmentMethod: "collection" }),
+      undefined,
+      { pricedAtList: true },
     );
   });
 });

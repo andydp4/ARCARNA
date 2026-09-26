@@ -154,6 +154,19 @@ fi
 pm2 start ecosystem.config.cjs
 pm2 save
 
+# Log retention: PM2 never rotated logs/pm2-*.log, so they grew forever (and
+# used to hold response snippets with customer data). Rotate daily, keep 14
+# days, compress. Idempotent: install once, re-assert the settings every deploy.
+# Never fails the deploy — a missing module only means logs are not rotated.
+echo "=== log rotation (pm2-logrotate, 14 days) ==="
+if ! pm2 describe pm2-logrotate >/dev/null 2>&1; then
+  pm2 install pm2-logrotate >/dev/null 2>&1 || echo "  WARNING: could not install pm2-logrotate; logs are NOT rotated."
+fi
+pm2 set pm2-logrotate:retain 14 >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *' >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:max_size 50M >/dev/null 2>&1 || true
+pm2 set pm2-logrotate:compress true >/dev/null 2>&1 || true
+
 echo "=== health check ==="
 sleep 4
 # Read APP_BASE_PATH from .env rather than from whatever this shell happens to

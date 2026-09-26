@@ -1,7 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { apiFetch } from "@/lib/appPaths";
+import { PosCustomerPhoneMatches } from "@/components/pos-customer-phone-matches";
+import { formatUkPhone, type CustomerMatch } from "@shared/customerView";
 import { useToast } from "@/hooks/use-toast";
+import { CustomerCreditNotice } from "@/components/customer-credit-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,8 +38,14 @@ export interface PosCartItem {
 export interface PosCustomer {
   id: string;
   name: string;
+  /** Present for admins only (Q13a); below that the hints below stand in. */
   phone?: string | null;
   email?: string | null;
+  hasEmail?: boolean;
+  phoneLast4?: string | null;
+  /** ••4821 and j•••@gmail.com (v1.2 Phase 5, Q7). */
+  phoneMasked?: string | null;
+  emailMasked?: string | null;
   /** Undefined/true = the customer accepts a receipt email; false opts out. */
   receiptEmailOptIn?: boolean | null;
   category: string;
@@ -160,12 +170,18 @@ function CustomerPicker({
                 <div>{customer.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {customer.category} • {customer.loyaltyPoints} pts
+                  {customer.phoneMasked ? ` • ${customer.phoneMasked}` : ""}
                 </div>
               </li>
             ))}
+            <PosCustomerPhoneMatches
+              query={customerSearch}
+              excludeIds={new Set(filteredCustomers.map((c) => c.id))}
+              onPick={pick}
+            />
             {/* A search that matches nobody is where a new customer is most
                 likely to be standing. Say so rather than showing a blank list. */}
-            {customerSearch.trim() && filteredCustomers.length === 0 && (
+            {customerSearch.trim() && filteredCustomers.length === 0 && !formatUkPhone(customerSearch) && (
               <li role="presentation" className="px-2 py-3 text-center text-xs text-muted-foreground">
                 No customer matches "{customerSearch.trim()}". Add them above.
               </li>
@@ -216,17 +232,36 @@ function NewCustomerPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "Already on the system: Jane S. (••4821), use them?" (v1.2 Phase 5,
+  // PRV-06): the cashier can type a number they cannot read back, so the
+  // server says who already has it before a second record is made.
+  const [duplicate, setDuplicate] = useState<{ message: string; matches: CustomerMatch[] } | null>(null);
+
   const createMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/customers", {
-        name: name.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        source: "pos",
+    mutationFn: async (confirmNew: boolean = false) => {
+      const response = await apiFetch("/api/customers", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          source: "pos",
+          ...(confirmNew ? { confirmNew: true } : {}),
+        }),
       });
-      return (await response.json()) as PosCustomer;
+      const body = await response.json().catch(() => null);
+      if (response.status === 409 && body?.code === "CUSTOMER_POSSIBLE_DUPLICATE") {
+        setDuplicate({ message: body.message, matches: body.matches ?? [] });
+        return null;
+      }
+      if (!response.ok) throw new Error(body?.message ?? `${response.status}`);
+      return body as PosCustomer;
     },
     onSuccess: async (customer) => {
+      if (!customer) return;
+      setDuplicate(null);
       await queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       onCreated(customer);
       toast({
@@ -251,6 +286,17 @@ function NewCustomerPanel({
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   const canSave = name.trim().length > 0 && !createMutation.isPending && !offline;
 
+  const pickExisting = async (match: CustomerMatch) => {
+    try {
+      const res = await apiFetch(`/api/customers/${match.id}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}`);
+      onCreated((await res.json()) as PosCustomer);
+      setDuplicate(null);
+    } catch {
+      toast({ title: "Could not select the customer", description: "Search for them by name instead.", variant: "destructive" });
+    }
+  };
+
   return (
     <div
       className="mt-2 space-y-3 rounded-lg border border-border bg-card p-3"
@@ -269,11 +315,34 @@ function NewCustomerPanel({
             : "Name is all that is needed now. The rest can be filled in later."}
         </p>
       </div>
+      {duplicate && (
+        <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2" role="alert" data-testid="customer-duplicate-prompt">
+          <p className="text-sm text-foreground">{duplicate.message}</p>
+          <div className="flex flex-wrap gap-2">
+            {duplicate.matches.map((match) => (
+              <Button key={match.id} type="button" size="sm" onClick={() => pickExisting(match)} data-testid={`button-use-existing-${match.id}`}>
+                Use {match.displayName}
+                {match.phoneMasked ? ` (${match.phoneMasked})` : ""}
+              </Button>
+            ))}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={createMutation.isPending}
+              onClick={() => createMutation.mutate(true)}
+              data-testid="button-add-new-anyway"
+            >
+              No, add new
+            </Button>
+          </div>
+        </div>
+      )}
       <form
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSave) createMutation.mutate();
+          if (canSave) createMutation.mutate(false);
         }}
       >
         <div className="space-y-1">
@@ -358,12 +427,15 @@ export type PosCartPanelProps = {
   promoCode: string;
   setPromoCode: (v: string) => void;
   appliedPromo: { name?: string } | null;
-  setAppliedPromo: (p: unknown) => void;
+  setAppliedPromo: (p: null) => void;
+  /** Why the applied promotion is not in the price (priceOrder refused it), or null. */
+  promoProblem?: string | null;
+  /** Why the points are not in the price, or null. */
+  pointsProblem?: string | null;
   validatePromoMutation: Pick<UseMutationResult<unknown, Error, string>, "mutate" | "isPending">;
   customerTier: {
     name?: string;
-    discountPercentage?: string | number;
-    pointsMultiplier?: number;
+    discountPercentage?: string | number | null;
   } | null;
   loyaltyDiscount: number;
   subtotal: number;
@@ -372,6 +444,9 @@ export type PosCartPanelProps = {
   tax: number;
   /** Org VAT/sales-tax rate as a percentage, for the label. */
   taxRatePercent?: number;
+  /** The delivery fee on the order (v1.2.1), its own line; 0 when none. */
+  deliveryFee?: number;
+  deliveryFeeName?: string;
   total: number;
   pointsEarned: number;
   tierProgress: TierProgress | null;
@@ -415,6 +490,8 @@ export function PosCartPanel({
   setPromoCode,
   appliedPromo,
   setAppliedPromo,
+  promoProblem = null,
+  pointsProblem = null,
   validatePromoMutation,
   customerTier,
   loyaltyDiscount,
@@ -423,6 +500,8 @@ export function PosCartPanel({
   promoDiscountAmount,
   tax,
   taxRatePercent,
+  deliveryFee = 0,
+  deliveryFeeName = "Delivery fee",
   total,
   pointsEarned,
   tierProgress,
@@ -489,6 +568,9 @@ export function PosCartPanel({
           />
         )}
 
+        {/* Already owes on credit (v1.2.1): information, never a block. */}
+        <CustomerCreditNotice customerId={selectedCustomer?.id ?? null} disabled={orderSubmitting} className="mt-2" />
+
         {selectedCustomer && customerTier && (
           <Card className="lm-card-muted mt-2">
             <CardContent className="p-3">
@@ -503,7 +585,9 @@ export function PosCartPanel({
                 </Badge>
               </div>
               <div className="mt-1 text-xs text-metal-muted">
-                {customerTier.discountPercentage}% discount • {customerTier.pointsMultiplier}x points
+                {/* The tier's points multiplier is not shown: no sale has ever
+                    earned by it, and showing it promised points nobody got. */}
+                {Number(customerTier.discountPercentage ?? 0)}% discount
               </div>
               {tierProgress?.nextTier && (
                 <div className="mt-2">
@@ -600,14 +684,22 @@ export function PosCartPanel({
               }}
               disabled={orderSubmitting || !promoCode || validatePromoMutation.isPending}
               data-testid="button-apply-promo"
-              className="lm-btn-outline min-h-[44px] min-w-[44px]"
+              className="lm-btn-outline min-h-[44px] min-w-[44px] gap-1"
             >
-              <Tag className="h-4 w-4" />
+              <Tag className="h-4 w-4" aria-hidden />
+              Apply
             </Button>
           </div>
           {appliedPromo && (
             <div className="mt-2 flex items-center justify-between lm-card-muted mt-2 flex items-center justify-between rounded-md p-2">
-              <span className="text-sm text-metal-warm-white">{appliedPromo.name}</span>
+              <span className="text-sm text-metal-warm-white">
+                {appliedPromo.name}
+                {promoProblem && (
+                  <span className="block text-xs pos-status-amber" data-testid="promo-problem">
+                    Not applied: {promoProblem}
+                  </span>
+                )}
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -616,10 +708,11 @@ export function PosCartPanel({
                   setPromoCode("");
                 }}
                 data-testid="button-remove-promo"
-                className="min-h-[44px] min-w-[44px]"
+                className="min-h-[44px] min-w-[44px] gap-1"
                 disabled={orderSubmitting}
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden />
+                Remove
               </Button>
             </div>
           )}
@@ -650,16 +743,32 @@ export function PosCartPanel({
                 <span data-testid="promo-discount">-£{promoDiscountAmount.toFixed(2)}</span>
               </div>
             )}
+            {pointsProblem && (
+              <p className="text-xs pos-status-amber" data-testid="points-problem">
+                Points not applied: {pointsProblem}
+              </p>
+            )}
+            {/* On top of the goods, after their discounts, before VAT (v1.2.1). */}
+            {deliveryFee > 0 && (
+              <div className="flex justify-between">
+                <span className="text-metal-muted">{deliveryFeeName}</span>
+                <span data-testid="cart-delivery-fee">£{deliveryFee.toFixed(2)}</span>
+              </div>
+            )}
+            {/* No VAT line while the rate is 0 (owner Q1: not VAT registered). */}
+            {(taxRatePercent ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-metal-muted">VAT ({taxRatePercent}%)</span>
+                <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
+              </div>
+            )}
+            {/* After VAT (owner Q2): points are money off what the customer pays. */}
             {pointsRedemptionAmount > 0 && (
               <div className="pos-status-emerald flex justify-between">
                 <span>Points redeemed ({redeemPoints})</span>
                 <span data-testid="points-redemption">-£{pointsRedemptionAmount.toFixed(2)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-metal-muted">Tax{taxRatePercent != null ? ` (${taxRatePercent}%)` : ""}</span>
-              <span data-testid="cart-tax">£{tax.toFixed(2)}</span>
-            </div>
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>

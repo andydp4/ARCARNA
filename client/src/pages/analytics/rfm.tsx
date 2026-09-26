@@ -21,6 +21,8 @@ import { RFM_SEGMENTS, type RfmSegment } from "@shared/analytics/rfm";
 import { Skeleton } from "@/components/Skeleton";
 import { Download, RefreshCw, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { EXPORT_MIN_ROLE, isAtLeast } from "@shared/accessPolicy";
 
 // Semantic badge classes (styles/tokens/arcarna.css) rather than raw Tailwind
 // steps — the -700/-300 light/dark pairs assumed a light mode this app lacks.
@@ -42,6 +44,8 @@ type RfmSummary = {
 
 export default function RfmAnalyticsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canExport = isAtLeast(user?.role, EXPORT_MIN_ROLE);
   const [selectedSegment, setSelectedSegment] = useState<RfmSegment>("Champions");
 
   const { data: summary, isLoading } = useQuery<RfmSummary>({
@@ -112,7 +116,7 @@ export default function RfmAnalyticsPage() {
           />
           {summary?.computedAt && (
             <p className="text-metal-muted text-xs mt-1">
-              Last run {new Date(summary.computedAt).toLocaleString()}
+              Last run {new Date(summary.computedAt).toLocaleString("en-GB")}
             </p>
           )}
         </div>
@@ -155,10 +159,13 @@ export default function RfmAnalyticsPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{selectedSegment} customers</CardTitle>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          {/* The customer export carries emails: admin only and logged (Q12). */}
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {segmentLoading ? (
@@ -168,7 +175,6 @@ export default function RfmAnalyticsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
                   <TableHead>R</TableHead>
                   <TableHead>F</TableHead>
                   <TableHead>M</TableHead>
@@ -178,7 +184,7 @@ export default function RfmAnalyticsPage() {
               <TableBody>
                 {(segmentData?.customers ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No customers in this segment yet.
                     </TableCell>
                   </TableRow>
@@ -186,7 +192,6 @@ export default function RfmAnalyticsPage() {
                   segmentData.customers.map((c: any) => (
                     <TableRow key={c.customerId}>
                       <TableCell className="font-medium">{c.name}</TableCell>
-                      <TableCell>{c.email || "—"}</TableCell>
                       <TableCell>{c.recencyScore}</TableCell>
                       <TableCell>{c.frequencyScore}</TableCell>
                       <TableCell>{c.monetaryScore}</TableCell>

@@ -5,15 +5,16 @@ import {
   creditPayments,
   dailyCloseRuns,
   orderCredit,
+  orderExpenses,
   orderPayments,
   orders,
   organizations,
-  orgNotifications,
   shifts,
 } from "@shared/schema";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { lastClosedTradingDay, shiftIsoDate, tradingDayBounds } from "@shared/time/tradingDay";
 import { closeCashierShift } from "./cashierShiftEngine";
+import { notify } from "./signals";
 import { isPersonalUse } from "@shared/reports/cashierShiftReport";
 
 /**
@@ -209,7 +210,8 @@ async function totalsForDay(
     ? await client
         .select({ method: orderPayments.method, amount: orderPayments.amount })
         .from(orderPayments)
-        .where(inArray(orderPayments.orderId, orderIds))
+        // An unconfirmed card link is not takings (v1.2 Stripe links).
+        .where(and(inArray(orderPayments.orderId, orderIds), eq(orderPayments.status, "paid")))
     : [];
   const sumLegs = (matches: (m: string) => boolean) =>
     round(
@@ -239,11 +241,17 @@ async function totalsForDay(
       ),
     );
 
-  const personalUseCost = round(
-    legs
-      .filter((l) => isPersonalUse(l.method))
-      .reduce((sum, l) => sum + parseFloat(String(l.amount)), 0),
-  );
+  // Personal use at what the goods COST, as the till books it (the order's
+  // personal_use expense), not the sale price its payment leg carries (v1.2.1
+  // money, M12).
+  const personalIds = dayOrders.filter((o) => isPersonalUse(o.paymentMethod)).map((o) => o.id);
+  const personalRows = personalIds.length
+    ? await client
+        .select({ amount: orderExpenses.amount })
+        .from(orderExpenses)
+        .where(and(inArray(orderExpenses.orderId, personalIds), eq(orderExpenses.category, "personal_use")))
+    : [];
+  const personalUseCost = round(personalRows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0));
 
   const total = (rows: Array<{ amount: string }>) =>
     round(rows.reduce((sum, r) => sum + parseFloat(String(r.amount)), 0));
@@ -269,7 +277,10 @@ async function totalsForDay(
     orderCount: sales.length,
     grossSales,
     cashSales: sumLegs((m) => m === "cash" || m.includes("cash")),
-    cardSales: sumLegs((m) => m === "card" || m.includes("card")),
+    // Card terminal money only: gift card and Card (link) money are not in
+    // the terminal's batch, so counting them here would never reconcile
+    // (v1.2.1 money, M12).
+    cardSales: sumLegs((m) => m === "card"),
     creditGiven: total(creditGivenRows),
     creditResolved: total(creditPaidRows),
     personalUseCost,
@@ -314,17 +325,20 @@ async function raiseSignals(
     );
   }
 
-  await client.insert(orgNotifications).values({
-    orgId,
-    title: `Trading day closed — ${tradingDay}`,
-    message: lines.join(" "),
-    severity: "info",
-    source: "daily_close",
-    metadata: { tradingDay, ...totals },
-  });
+  await notify(
+    {
+      orgId,
+      title: `Trading day closed — ${tradingDay}`,
+      message: lines.join(" "),
+      severity: "info",
+      source: "daily_close",
+      metadata: { tradingDay, ...totals },
+    },
+    client,
+  );
 
   if (totals.uncountedDrawers > 0) {
-    await client.insert(orgNotifications).values({
+    await notify({
       orgId,
       title: `${totals.uncountedDrawers} drawer${totals.uncountedDrawers === 1 ? "" : "s"} not counted`,
       // Deliberately not closed for them: a drawer closed without a count can
@@ -336,7 +350,7 @@ async function raiseSignals(
       severity: "warning",
       source: "daily_close",
       metadata: { tradingDay, uncountedDrawers: totals.uncountedDrawers },
-    });
+    }, client);
   }
 }
 

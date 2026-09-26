@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { ownExceptionCount } from "../services/exceptionReviews";
 import { z } from "zod";
 import { db } from "../db";
 import {
@@ -7,14 +8,12 @@ import {
   cashierShiftSummaries,
   cashierCommissionPayments,
   organizations,
-  orgNotifications,
   users,
 } from "../../shared/schema";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import {
-  startCashierShift,
   closeCashierShift,
   getOpenCashierShift,
   computeCashierShiftBalanceSheet,
@@ -22,6 +21,22 @@ import {
 } from "../services/cashierShiftEngine";
 import { createCashierShiftReplayToken } from "../services/cashierShiftReplayToken";
 import { resolveUserName } from "../services/userDisplayName";
+import { notify } from "../services/signals";
+import { shiftsInRange, tradingDayRange } from "../services/payrollRange";
+import { orgTimeZone } from "../services/tradingDayShift";
+import { loadStaffRole, loadStaffRoles } from "../services/staffRoles";
+import { rolesAtLeast } from "@shared/accessPolicy";
+import { canSeePayRow } from "@shared/reports/payroll";
+import {
+  STAFF_LIST_MIN_ROLE,
+  canSeeCommissionRates,
+  cashierProfileForRole,
+  mayConfirmCommissionPayment,
+  maySeeShiftSheet,
+  shiftSheetForRole,
+  type ShiftSheetOwner,
+} from "@shared/staffPolicy";
+import type { Role } from "@shared/rbac";
 
 const MANAGE_CASHIERS_ROLES = ["SUPER_ADMIN", "ADMIN"] as const;
 const ALL_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const;
@@ -39,10 +54,6 @@ const updateCashierSchema = z.object({
   pinCode: z.string().trim().max(16).optional().nullable(),
   defaultCommissionRate: z.coerce.number().min(0).max(100).optional().nullable(),
   isActive: z.boolean().optional(),
-});
-
-const startShiftSchema = z.object({
-  cashierId: z.string().uuid("Valid cashierId is required"),
 });
 
 /**
@@ -67,6 +78,31 @@ const commissionPaymentSchema = z
   .refine((v) => !!v.cashierId || !!v.userId || !!v.shiftId, {
     message: "One of cashierId, userId or shiftId is required to identify who is being paid",
   });
+
+type CashierShiftRow = typeof cashierShifts.$inferSelect;
+
+/**
+ * Whose shift sheet this is. A lazy shift belongs to its user. A legacy
+ * coded shift has no user, only a cashier code — codes were only ever
+ * cashiers — and belongs to whoever opened it under that code.
+ */
+function shiftOwner(shift: CashierShiftRow, roles: Map<string, Role | null>): ShiftSheetOwner {
+  if (shift.userId) return { userId: shift.userId, role: roles.get(shift.userId) ?? null };
+  return { userId: shift.openedByUserId, role: "CASHIER" };
+}
+
+function viewerOf(req: any): { userId: string | null; role: string | null } {
+  return { userId: req.user?.id ?? null, role: req.orgContext?.role ?? req.user?.role ?? null };
+}
+
+async function canViewShiftSheet(req: any, orgId: string, shift: CashierShiftRow): Promise<boolean> {
+  const viewer = viewerOf(req);
+  if (viewer.role === "SUPER_ADMIN" || viewer.role === "ADMIN") return true;
+  const roles = await loadStaffRoles(orgId, [shift.userId]);
+  return maySeeShiftSheet(viewer, shiftOwner(shift, roles));
+}
+
+const NOT_YOUR_SHIFT = "You can only see your own shift sheet.";
 
 function formatMoney(amount: number, currency = "GBP"): string {
   try {
@@ -96,7 +132,9 @@ function cashierShiftWithReplayToken(shift: typeof cashierShifts.$inferSelect) {
 export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): void {
   // ---------------- Cashier profiles ----------------
 
-  app.get("/api/cashiers", ...scoped, async (req: any, res) => {
+  // The staff list is manager and above. PINs never leave the server, and the
+  // commission override is admin only (cashierProfileForRole).
+  app.get("/api/cashiers", ...scoped, requireRole(...rolesAtLeast(STAFF_LIST_MIN_ROLE)), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
       const includeInactive = req.query.includeInactive === "true";
@@ -107,7 +145,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .from(cashierProfiles)
         .where(and(...conditions))
         .orderBy(cashierProfiles.cashierCode);
-      res.json(rows);
+      res.json(rows.map((row) => cashierProfileForRole(row, viewerOf(req).role)));
     } catch (error) {
       console.error("[Cashiers] list:", error);
       res.status(500).json({ message: "Failed to list cashier profiles" });
@@ -146,10 +184,14 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         targetType: "cashier_profile",
         targetId: created.id,
         orgId: ctx.orgId,
-        metadata: { cashierCode: created.cashierCode },
+        metadata: {
+          cashierCode: created.cashierCode,
+          defaultCommissionRate: created.defaultCommissionRate,
+          pinSet: !!created.pinCode,
+        },
       });
 
-      res.status(201).json(created);
+      res.status(201).json(cashierProfileForRole(created, viewerOf(req).role));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       console.error("[Cashiers] create:", error);
@@ -170,6 +212,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       }
       if (body.isActive !== undefined) patch.isActive = body.isActive;
 
+      // The old rate goes on the log beside the new one: a rate change is a pay change.
+      const [before] = await db
+        .select({ defaultCommissionRate: cashierProfiles.defaultCommissionRate })
+        .from(cashierProfiles)
+        .where(and(eq(cashierProfiles.id, req.params.id), eq(cashierProfiles.orgId, ctx.orgId)))
+        .limit(1);
+
       const [updated] = await db
         .update(cashierProfiles)
         .set(patch)
@@ -184,10 +233,17 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         targetType: "cashier_profile",
         targetId: updated.id,
         orgId: ctx.orgId,
-        metadata: { patch: body },
+        // Never the PIN itself: the audit log is read by more people than set it.
+        metadata: {
+          patch: { ...body, pinCode: undefined },
+          pinChanged: body.pinCode !== undefined,
+          ...(body.defaultCommissionRate !== undefined
+            ? { commissionRate: { from: before?.defaultCommissionRate ?? null, to: updated.defaultCommissionRate } }
+            : {}),
+        },
       });
 
-      res.json(updated);
+      res.json(cashierProfileForRole(updated, viewerOf(req).role));
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
       console.error("[Cashiers] update:", error);
@@ -215,7 +271,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         orgId: ctx.orgId,
       });
 
-      res.json(updated);
+      res.json(cashierProfileForRole(updated, viewerOf(req).role));
     } catch (error) {
       console.error("[Cashiers] deactivate:", error);
       res.status(500).json({ message: "Failed to deactivate cashier profile" });
@@ -227,53 +283,53 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
   app.get("/api/cashier-shifts", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
+      const viewer = viewerOf(req);
       const conditions = [eq(cashierShifts.orgId, ctx.orgId)];
       if (req.query.cashierId) conditions.push(eq(cashierShifts.cashierId, req.query.cashierId as string));
       if (req.query.status) conditions.push(eq(cashierShifts.status, req.query.status as string));
+      // A cashier's list is their own shifts, filtered in the query so the
+      // 200-row cap is theirs too rather than the whole team's.
+      if (viewer.role === "CASHIER") {
+        const me = viewer.userId ?? "";
+        conditions.push(
+          or(eq(cashierShifts.userId, me), and(isNull(cashierShifts.userId), eq(cashierShifts.openedByUserId, me)))!,
+        );
+      }
       const rows = await db
         .select()
         .from(cashierShifts)
         .where(and(...conditions))
         .orderBy(desc(cashierShifts.openedAt))
         .limit(200);
-      res.json(rows);
+      const roles = await loadStaffRoles(ctx.orgId, rows.map((r) => r.userId));
+      res.json(rows.filter((row) => maySeeShiftSheet(viewer, shiftOwner(row, roles))));
     } catch (error) {
       console.error("[CashierShifts] list:", error);
       res.status(500).json({ message: "Failed to list cashier shifts" });
     }
   });
 
-  app.post("/api/cashier-shifts/start", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
-    try {
-      const ctx = req.orgContext as { orgId: string };
-      const userId = req.user?.id ?? "unknown";
-      const body = startShiftSchema.parse(req.body ?? {});
-
-      const shift = await startCashierShift(ctx.orgId, body.cashierId, userId);
-
-      await recordAdminAudit(req, {
-        actorUserId: userId,
-        actorRole: req.orgContext?.role ?? "CASHIER",
-        action: "cashier_shift.opened",
-        targetType: "cashier_shift",
-        targetId: shift.id,
-        orgId: ctx.orgId,
-        metadata: { cashierId: body.cashierId },
-      });
-
-      res.status(201).json(cashierShiftWithReplayToken(shift));
-    } catch (error) {
-      if (error instanceof z.ZodError) return res.status(400).json({ message: "Invalid request", errors: error.errors });
-      if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
-      console.error("[CashierShifts] start:", error);
-      res.status(500).json({ message: "Failed to start cashier shift" });
-    }
-  });
+  // POST /api/cashier-shifts/start is retired (STF-FN1). It opened a shift
+  // under a cashier code, which nothing in the app does any more: shifts open
+  // lazily on first sale, keyed by the person. Left in place it let any role
+  // open coded shifts through the API, which is what emptied the staff
+  // Evidence in the first place.
 
   app.post("/api/cashier-shifts/:id/end", ...scoped, requireRole(...ALL_ROLES), async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string; role?: string };
       const userId = req.user?.id ?? "unknown";
+
+      // Ending a shift returns its sheet, so only someone who may read that
+      // sheet may end it (a manager: cashiers' and their own).
+      const [target] = await db
+        .select()
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.id, req.params.id), eq(cashierShifts.orgId, ctx.orgId)))
+        .limit(1);
+      if (target && ctx.role !== "CASHIER" && !(await canViewShiftSheet(req, ctx.orgId, target))) {
+        return res.status(403).json({ message: NOT_YOUR_SHIFT });
+      }
 
       const { shift, summary } = await closeCashierShift(ctx.orgId, req.params.id, {
         closedByUserId: userId,
@@ -292,7 +348,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         metadata: { commissionAmount: summary.commissionAmount, netSalesProfit: summary.netSalesProfit },
       });
 
-      res.json({ shift, summary });
+      res.json({ shift, summary: shiftSheetForRole(summary as Record<string, unknown>, viewerOf(req).role) });
     } catch (error) {
       if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
       console.error("[CashierShifts] end:", error);
@@ -309,10 +365,19 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(eq(cashierShifts.id, req.params.id), eq(cashierShifts.orgId, ctx.orgId)))
         .limit(1);
       if (!shift) return res.status(404).json({ message: "Cashier shift not found" });
+      if (!(await canViewShiftSheet(req, ctx.orgId, shift))) {
+        return res.status(403).json({ message: NOT_YOUR_SHIFT });
+      }
+
+      // Price overrides on this shift (v1.2 Phase 4, PRC-09): a count only —
+      // the one figure a cashier sees about their own flagged sales.
+      const priceOverrideCount = shift.userId
+        ? await ownExceptionCount(ctx.orgId, shift.userId, shift.openedAt, shift.closedAt ?? null)
+        : 0;
 
       if (shift.status === "open") {
         const { sheet } = await computeCashierShiftBalanceSheet(ctx.orgId, shift);
-        return res.json({ shift, summary: sheet, live: true });
+        return res.json({ shift, summary: shiftSheetForRole(sheet, viewerOf(req).role), live: true, priceOverrideCount });
       }
 
       const [summary] = await db
@@ -320,7 +385,7 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .from(cashierShiftSummaries)
         .where(eq(cashierShiftSummaries.shiftId, shift.id))
         .limit(1);
-      res.json({ shift, summary: summary ?? null, live: false });
+      res.json({ shift, summary: summary ? shiftSheetForRole(summary, viewerOf(req).role) : null, live: false, priceOverrideCount });
     } catch (error) {
       if (error instanceof CashierShiftError) return res.status(error.status).json({ message: error.message, code: error.code });
       console.error("[CashierShifts] summary:", error);
@@ -355,6 +420,9 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
     try {
       const ctx = req.orgContext as { orgId: string };
       const shift = await getOpenCashierShift(ctx.orgId, req.params.cashierId);
+      if (shift && !(await canViewShiftSheet(req, ctx.orgId, shift))) {
+        return res.status(403).json({ message: NOT_YOUR_SHIFT });
+      }
       res.json({ shift: shift ? cashierShiftWithReplayToken(shift) : null });
     } catch (error) {
       console.error("[CashierShifts] current:", error);
@@ -369,8 +437,16 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       const ctx = req.orgContext as { orgId: string };
       const conditions = [eq(cashierShiftSummaries.orgId, ctx.orgId)];
       if (req.query.cashierId) conditions.push(eq(cashierShiftSummaries.cashierId, req.query.cashierId as string));
-      if (req.query.from) conditions.push(gte(cashierShiftSummaries.closedAt, new Date(req.query.from as string)));
-      if (req.query.to) conditions.push(lte(cashierShiftSummaries.closedAt, new Date(req.query.to as string)));
+      // A range means the same trading days, and so the same shifts, as the
+      // Payroll table beside it. A raw `closedAt <= new Date(to)` stopped at
+      // midnight UTC at the start of `to`, so shifts closed on the last day had
+      // no row and no "Confirm paid" button.
+      if (req.query.from || req.query.to) {
+        const range = tradingDayRange(req.query, await orgTimeZone(ctx.orgId));
+        const shiftIds = (await shiftsInRange(ctx.orgId, range)).map((s) => s.id);
+        if (!shiftIds.length) return res.json([]);
+        conditions.push(inArray(cashierShiftSummaries.shiftId, shiftIds));
+      }
 
       // LEFT joins, both of them.
       //
@@ -405,8 +481,18 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         paidMap.set(row.shiftId, (paidMap.get(row.shiftId) ?? 0) + parseFloat(String(row.amountPaid)));
       }
 
+      // Only the rows whose pay this viewer may see (Q12, Q13a), and the rate
+      // each was paid at only for admins (Q16).
+      const viewer = viewerOf(req);
+      const payRoles = await loadStaffRoles(ctx.orgId, summaries.map((row) => row.summary.userId));
+      const showRates = canSeeCommissionRates(viewer.role);
+      const visible = summaries.filter((row) => {
+        const key = row.summary.userId ?? `code:${row.summary.cashierId ?? ""}`;
+        return canSeePayRow(viewer, { key, role: row.summary.userId ? payRoles.get(row.summary.userId) ?? null : null });
+      });
+
       res.json(
-        summaries.map((row) => {
+        visible.map((row) => {
           const commissionAmount = parseFloat(String(row.summary.commissionAmount));
           const paid = paidMap.get(row.summary.shiftId) ?? 0;
           // Whoever the shift belonged to, named however we can name them: the
@@ -417,8 +503,10 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
             .filter(Boolean)
             .join(" ")
             .trim();
+          const { commissionRate, ...summary } = row.summary;
           return {
-            ...row.summary,
+            ...summary,
+            ...(showRates ? { commissionRate } : {}),
             cashierCode: row.cashierCode,
             cashierName:
               row.cashierDisplayName || userName || row.userEmail || "Unknown",
@@ -450,7 +538,13 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         .where(and(...conditions))
         .orderBy(desc(cashierCommissionPayments.paidAt))
         .limit(500);
-      res.json(rows);
+      const viewer = viewerOf(req);
+      const payRoles = await loadStaffRoles(ctx.orgId, rows.map((r) => r.userId));
+      res.json(
+        rows.filter((r) =>
+          canSeePayRow(viewer, { key: r.userId ?? `code:${r.cashierId ?? ""}`, role: r.userId ? payRoles.get(r.userId) ?? null : null }),
+        ),
+      );
     } catch (error) {
       console.error("[CashierCommission] payments list:", error);
       res.status(500).json({ message: "Failed to load commission payments" });
@@ -463,30 +557,25 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
       const userId = req.user?.id ?? "unknown";
       const body = commissionPaymentSchema.parse(req.body ?? {});
 
-      // Legacy path, UNCHANGED: a cashier code was named, so it must resolve
-      // to a real profile in this org exactly as it always has.
       let cashier: typeof cashierProfiles.$inferSelect | null = null;
       let payeeCashierId: string | null = body.cashierId ?? null;
       let payeeUserId: string | null = body.userId ?? null;
 
-      if (payeeCashierId) {
-        const [found] = await db
-          .select()
-          .from(cashierProfiles)
-          .where(and(eq(cashierProfiles.id, payeeCashierId), eq(cashierProfiles.orgId, ctx.orgId)))
-          .limit(1);
-        if (!found) return res.status(404).json({ message: "Cashier profile not found" });
-        cashier = found;
-      } else if (!payeeUserId && body.shiftId) {
-        // ARC-004: no code and no userId were sent, but a shift was — the
-        // shift itself is the source of truth for who it belongs to, whether
-        // that is a legacy code or (since migration 057/058) a user.
+      if (body.shiftId) {
+        // The shift is the source of truth for whose pay this is (ARC-004),
+        // whatever identity the client also sent. Trusting a sent userId let
+        // a manager name anyone as payee while the payment landed on their own
+        // shift — and /api/cashier-commission sums payments by shift, so their
+        // own commission read as paid, confirmed by themselves.
         const [shift] = await db
           .select({ cashierId: cashierShifts.cashierId, userId: cashierShifts.userId })
           .from(cashierShifts)
           .where(and(eq(cashierShifts.id, body.shiftId), eq(cashierShifts.orgId, ctx.orgId)))
           .limit(1);
         if (!shift) return res.status(404).json({ message: "Cashier shift not found" });
+        if ((body.cashierId && body.cashierId !== shift.cashierId) || (body.userId && body.userId !== shift.userId)) {
+          return res.status(400).json({ message: "That shift belongs to someone else" });
+        }
         payeeCashierId = shift.cashierId;
         payeeUserId = shift.userId;
         if (payeeCashierId) {
@@ -497,11 +586,28 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
             .limit(1);
           cashier = found ?? null;
         }
+      } else if (payeeCashierId) {
+        // Legacy path: a cashier code was named, so it must resolve to a real
+        // profile in this org exactly as it always has.
+        const [found] = await db
+          .select()
+          .from(cashierProfiles)
+          .where(and(eq(cashierProfiles.id, payeeCashierId), eq(cashierProfiles.orgId, ctx.orgId)))
+          .limit(1);
+        if (!found) return res.status(404).json({ message: "Cashier profile not found" });
+        cashier = found;
       }
 
       if (!payeeCashierId && !payeeUserId) {
         return res.status(400).json({ message: "Could not identify who this payment is for" });
       }
+
+      // No one confirms their own pay; below the owner, only cashiers' (Q13a).
+      const verdict = mayConfirmCommissionPayment(viewerOf(req), {
+        userId: payeeUserId,
+        role: await loadStaffRole(ctx.orgId, payeeUserId),
+      });
+      if (!verdict.ok) return res.status(verdict.status).json({ message: verdict.message, code: "COMMISSION_CONFIRM_FORBIDDEN" });
 
       const [payment] = await db
         .insert(cashierCommissionPayments)
@@ -526,12 +632,15 @@ export function registerCashierRoutes(app: Express, scoped: RequestHandler[]): v
         : await resolveUserName(payeeUserId ?? "unknown");
       const message = `Commission paid — ${payeeLabel} received ${amountLabel}`;
 
-      await db.insert(orgNotifications).values({
+      // Pay is admin business: this goes to admins (and the owner), never
+      // team-wide, and not to the person paid (shared/signals.ts).
+      await notify({
         orgId: ctx.orgId,
         title: "Cashier commission paid",
         message,
         severity: "info",
         source: "cashier_commission",
+        subjectUserId: payeeUserId ?? null,
         metadata: {
           cashierId: payeeCashierId,
           cashierCode: cashier?.cashierCode ?? null,

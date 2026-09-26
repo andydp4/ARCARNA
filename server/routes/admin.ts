@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "../db";
-import { storage } from "../storage";
+import { storage, ApprovalStateError } from "../storage";
 import { isAuthenticated, isOwner, requireRole, requireOrgContext, requireOrgScope, requireSuperAdminMfa } from "../auth";
 import { getAuthRuntimeSnapshot, getAuthProvider } from "../authRuntime";
 import { canAssignRole, canManageUser, isRole } from "@shared/rbac";
@@ -19,6 +19,7 @@ import {
   users,
   locations,
   opsStaff,
+  allowedUsers,
 } from "@shared/schema";
 
 /**
@@ -98,7 +99,16 @@ export function registerAdminRoutes(app: Express): void {
         (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       const headerOrg = req.headers["x-org-id"] as string | undefined;
       const queryOrg = req.query?.orgId as string | undefined;
-      const resolvedOrgId = headerOrg || queryOrg || roleAndOrg?.orgId || undefined;
+      const ownOrgId = roleAndOrg?.orgId ?? undefined;
+      // Only the owner may name an org. Anyone else is pinned to their own:
+      // trusting X-Org-Id / ?orgId= let an org A admin list org B's staff,
+      // emails and commission rates.
+      const askedOrgId = headerOrg || queryOrg || undefined;
+      if (role !== "SUPER_ADMIN" && askedOrgId && askedOrgId !== ownOrgId) {
+        return res.status(403).json({ message: "You can only list your own organization's users" });
+      }
+      const resolvedOrgId = role === "SUPER_ADMIN" ? askedOrgId || ownOrgId : ownOrgId;
+      if (role !== "SUPER_ADMIN" && !resolvedOrgId) return res.json([]);
       const allowedUserRows =
         role === "SUPER_ADMIN" && !headerOrg && !queryOrg
           ? await storage.adminGetAllAllowedUsers()
@@ -115,18 +125,38 @@ export function registerAdminRoutes(app: Express): void {
   app.delete("/api/admin/allowed-users/:replitUserId", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), requireSuperAdminMfa, async (req: any, res) => {
     try {
       const { replitUserId } = req.params;
-      
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const rob = await storage.getUserRoleAndOrg(actorId);
+      const actorRole = (req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER")) as Role;
+
       // Prevent owner from removing themselves
       const owner = await storage.getOwner();
       if (owner && owner.replitUserId === replitUserId) {
         return res.status(400).json({ message: "Cannot remove owner from allowed users" });
       }
-      
+
+      // v1.2.1 SEC-DELETE-XORG: the target must be someone the actor manages.
+      // An admin reaches only their own organisation's rows, and never a
+      // SUPER_ADMIN or owner row (org NULL), which only the owner may remove.
+      const [target] = await db
+        .select({ orgId: allowedUsers.orgId, role: allowedUsers.role, isOwner: allowedUsers.isOwner })
+        .from(allowedUsers)
+        .where(eq(allowedUsers.replitUserId, replitUserId))
+        .limit(1);
+      if (!target) return res.status(404).json({ message: "User not found" });
+      if (actorRole !== "SUPER_ADMIN") {
+        if (target.isOwner === 1 || target.role === "SUPER_ADMIN") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        if (!canManageUser(actorRole, rob?.orgId ?? null, target.orgId ?? null)) {
+          return res.status(404).json({ message: "User not found" });
+        }
+      }
+      if (actorId === replitUserId) {
+        return res.status(400).json({ message: "You cannot remove your own access" });
+      }
+
       await storage.removeAllowedUser(replitUserId);
-      const actorId = req.user.claims?.sub ?? req.user.id;
-      const rob = await storage.getUserRoleAndOrg(actorId);
-      const actorRole =
-        req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
       await recordAdminAudit(req, {
         actorUserId: actorId,
         actorRole,
@@ -134,6 +164,7 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: rob?.orgId ?? null,
+        metadata: { previousRole: target.role ?? null, targetOrgId: target.orgId ?? null },
       });
       res.json({ message: "User removed from allowed list" });
     } catch (error) {
@@ -145,6 +176,14 @@ export function registerAdminRoutes(app: Express): void {
   // Get pending approval requests (owner only)
   app.get("/api/admin/pending-approvals", isAuthenticated, requireRole('SUPER_ADMIN', 'ADMIN'), async (req: any, res) => {
     try {
+      // A sign-up has no business yet, so the list is platform-wide: every
+      // stranger's name and email. Only the platform owner (SUPER_ADMIN) reads
+      // it; an org admin sees an empty list rather than another business's
+      // hires. Owner decision noted in the v1.2.1 e2e hand-off.
+      const actorId = req.user.claims?.sub ?? req.user.id;
+      const rob = await storage.getUserRoleAndOrg(actorId);
+      const actorRole = req.user.role ?? rob?.role ?? (req.user.isOwner ? "SUPER_ADMIN" : "CASHIER");
+      if (actorRole !== "SUPER_ADMIN") return res.json([]);
       const requests = await storage.getPendingApprovals();
       res.json(requests);
     } catch (error) {
@@ -247,7 +286,16 @@ export function registerAdminRoutes(app: Express): void {
         targetType: "allowed_user",
         targetId: replitUserId,
         orgId: roleAndOrg?.orgId ?? null,
-        metadata: { role, orgId, commissionRate: parsedCommissionRate, defaultLocationId: parsedDefaultLocationId },
+        // What it was, not just what it is now: a demotion and a promotion to
+        // the same role must read differently in the log.
+        metadata: {
+          role,
+          previousRole: targetUser.role ?? null,
+          orgId,
+          previousOrgId: orgId !== undefined ? targetUser.orgId ?? null : undefined,
+          commissionRate: parsedCommissionRate,
+          defaultLocationId: parsedDefaultLocationId,
+        },
       });
       const [refreshedWithLocation] = await attachDefaultLocationIds([updated]);
       res.json(refreshedWithLocation);
@@ -290,6 +338,9 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json({ message: "User approved successfully" });
     } catch (error: any) {
+      if (error instanceof ApprovalStateError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Error approving user:", error);
       res.status(400).json({ message: error.message || "Failed to approve user" });
     }
@@ -315,6 +366,9 @@ export function registerAdminRoutes(app: Express): void {
       });
       res.json({ message: "User rejected" });
     } catch (error) {
+      if (error instanceof ApprovalStateError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("Error rejecting user:", error);
       res.status(500).json({ message: "Failed to reject user" });
     }

@@ -224,11 +224,13 @@ export default function RulesPage() {
                   onCheckedChange={() => toggleMutation.mutate(r)}
                   aria-label="Toggle rule"
                 />
-                <Button variant="outline" size="icon" onClick={() => openEdit(r)} aria-label="Edit">
-                  <Pencil className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-1" onClick={() => openEdit(r)}>
+                  <Pencil className="h-4 w-4" aria-hidden />
+                  Edit
                 </Button>
-                <Button variant="outline" size="icon" onClick={() => setHistoryRule(r)} aria-label="History">
-                  <History className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="gap-1" onClick={() => setHistoryRule(r)}>
+                  <History className="h-4 w-4" aria-hidden />
+                  History
                 </Button>
               </div>
             </div>
@@ -274,7 +276,7 @@ export default function RulesPage() {
           <div className="space-y-3 py-2">
             <div>
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div>
               <Label>Trigger</Label>
@@ -282,7 +284,7 @@ export default function RulesPage() {
                 value={form.triggerEventType}
                 onValueChange={(v) => setForm({ ...form, triggerEventType: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Trigger">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -295,7 +297,7 @@ export default function RulesPage() {
             <div className="flex gap-4">
               <div className="flex-1">
                 <Label>Priority (lower runs first)</Label>
-                <Input
+                <Input aria-label="Priority (lower runs first)"
                   type="number"
                   value={form.priority}
                   onChange={(e) => setForm({ ...form, priority: parseInt(e.target.value, 10) || 0 })}
@@ -303,6 +305,7 @@ export default function RulesPage() {
               </div>
               <div className="flex items-end gap-2 pb-2">
                 <Switch
+                  aria-label="Enabled"
                   checked={!!form.isEnabled}
                   onCheckedChange={(c) => setForm({ ...form, isEnabled: c ? 1 : 0 })}
                 />
@@ -311,7 +314,7 @@ export default function RulesPage() {
             </div>
             <div>
               <Label>Condition JSON</Label>
-              <Textarea
+              <Textarea aria-label="Condition JSON"
                 rows={8}
                 className="font-mono text-xs"
                 value={form.conditionJson}
@@ -320,7 +323,7 @@ export default function RulesPage() {
             </div>
             <div>
               <Label>Action JSON</Label>
-              <Textarea
+              <Textarea aria-label="Action JSON"
                 rows={8}
                 className="font-mono text-xs"
                 value={form.actionJson}

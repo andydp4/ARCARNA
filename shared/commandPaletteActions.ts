@@ -47,9 +47,9 @@ export const commandPaletteActions: CommandPaletteAction[] = [
   },
   {
     id: "action-insights",
-    label: "Open Truths Hub",
-    keywords: ["reports", "analytics", "dashboard", "revenue", "insights", "truths"],
-    href: "/insights",
+    label: "Open Truths at a glance",
+    keywords: ["reports", "analytics", "revenue", "insights", "truths", "widgets"],
+    href: "/truths",
     minRole: "MANAGER",
   },
   {

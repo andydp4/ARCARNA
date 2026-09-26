@@ -15,18 +15,32 @@ function itemByKey(key: string) {
 }
 
 describe("nav-items role visibility", () => {
-  it("keeps Control Centre, Sell, and Settings open to every role", () => {
-    for (const key of ["home", "pos", "orders", "shifts", "invoices", "tick-list", "settings"]) {
+  it("keeps Control Centre, the board, Shifts, Stock levels and Settings open to every role", () => {
+    for (const key of ["home", "orders", "my-run", "shifts", "stock-levels", "settings"]) {
       expect(itemByKey(key).roles, `${key} should have no role restriction`).toBeUndefined();
     }
   });
 
-  it("hides Stock, Understand, and (non-Settings) Operate/Administer items from CASHIER", () => {
-    const hiddenFromCashierGroups = ["stock", "understand", "operate", "administer"];
+  it("guards the shop website settings page to managers and above (FIX-15)", () => {
+    for (const href of ["/settings/wm-supplies-website", "/admin/wm-supplies/website"]) {
+      expect(rolesForHref(href)?.slice().sort(), href).toEqual(["ADMIN", "MANAGER", "SUPER_ADMIN"]);
+    }
+  });
+
+  it("keeps Invoices and the Credit List to managers and above (owner decision Q11)", () => {
+    for (const key of ["invoices", "tick-list"]) {
+      expect(itemByKey(key).roles?.slice().sort(), key).toEqual(["ADMIN", "MANAGER", "SUPER_ADMIN"]);
+    }
+  });
+
+  it("hides Stock, Truths, Customer and (non-Settings) admin items from CASHIER", () => {
+    const hiddenFromCashierGroups = ["stock", "truths", "customer", "settings"];
     for (const groupKey of hiddenFromCashierGroups) {
       const group = navGroups.find((g) => g.key === groupKey)!;
       for (const item of group.items) {
-        if (item.key === "settings") continue; // deliberately open to all roles
+        // Deliberately open to all roles: Settings, and the cashier's own
+        // cost-free Stock levels view.
+        if (item.key === "settings" || item.key === "stock-levels") continue;
         expect(
           item.roles?.includes("CASHIER"),
           `${item.key} should not list CASHIER in its roles`,
@@ -36,7 +50,7 @@ describe("nav-items role visibility", () => {
   });
 
   it("gives MANAGER the Stock group and most of Operate, but not Profit Truths", () => {
-    for (const key of ["products", "inventory", "purchase-drafts", "customers", "loyalty", "promotions", "gift-cards", "expenses", "reseller-partners", "cashier-payroll"]) {
+    for (const key of ["products", "inventory", "purchase-drafts", "suppliers", "customers", "loyalty", "promotions", "gift-cards", "expenses", "reseller-partners", "cashier-payroll"]) {
       expect(itemByKey(key).roles, `${key} should include MANAGER`).toContain("MANAGER");
     }
     expect(itemByKey("profit").roles, "profit (whole-business P&L) should exclude MANAGER").not.toContain("MANAGER");

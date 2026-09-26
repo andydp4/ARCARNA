@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>arcarna training — 4. The Operations board</title>
+<link rel="stylesheet" href="../brand.css" />
+</head>
+<body>
+<main class="section" id="operations">
+
+  <div class="brand-band">
+    <img src="../images/brand/arcarna-wordmark.png" alt="arcarna" />
+    <span class="band-tag">Staff training manual</span>
+  </div>
+
+  <div class="chapter-open">
+    <div class="chapter-num">04</div>
+    <div class="chapter-title">The Operations board</div>
+    <p class="chapter-lead">Every order that still needs doing, who has it and whether it is late. How to move orders along, change them, refund them, hand over the paperwork and print labels.</p>
+  </div>
+
+  <p class="eyebrow">What this screen is for</p>
+  <h2>One board for every order in progress</h2>
+  <p>Once a sale is taken (Section 3) it becomes a card on the <strong>Operations board</strong>.
+     The board answers three questions at a glance: <em>what needs doing now, who is it for, and is
+     it late?</em> Cards move by themselves as colleagues work on other tills, so there is nothing to
+     refresh. Everyone uses it:
+     <span class="role role-cashier">CASHIER</span> <span class="role role-manager">MANAGER</span></p>
+  <p>Open it from <span class="ui">Operations Centre › Operations board</span>. On a computer the new
+     order form sits beside it; on a phone, use the <span class="ui">Board</span> tab.</p>
+
+  <figure>
+    <img src="../images/v12-04-board.png" alt="The Operations board with station controls, search, filters, the four count tiles, the colour key and the Collection and Delivery lanes of order cards" />
+    <figcaption>The Operations board: counts and colour key across the top, then a lane for collection and one for delivery.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the board with the new order pane collapsed (arrow button) so both lanes are wide: the "Your station" picker and "Take a break", the "Who is on" strip, "Search this board", the Mine / Unassigned / All filters, the Open / Late now / Due soon / Done today tiles, the colour key, and the Collection and Delivery lanes each with 2–4 cards in different states (one READY, one LATE, one DUE SOON, one held) ; state=about 8 open fictional orders today, some claimed by other staff, one on hold, one with a due time already passed; the Board tour already dismissed -->
+  </figure>
+
+  <h3>Across the top</h3>
+  <table>
+    <tr><th>Part</th><th>What it is for</th></tr>
+    <tr><td><span class="ui">Your station</span></td>
+        <td>Where you are working today: <span class="ui">Collection</span>, <span class="ui">Delivery</span>, <span class="ui">Both</span> or <span class="ui">None</span>.</td></tr>
+    <tr><td><span class="ui">Take a break</span></td>
+        <td>Marks you as on break. While you are, <span class="ui">Hand over my orders…</span> passes everything you are holding to someone on the board, and <span class="ui">Release all</span> puts it back for anyone to take.</td></tr>
+    <tr><td><strong>Who is on</strong></td>
+        <td>The people on the board now, greyed out when away or on break.</td></tr>
+    <tr><td><span class="ui">Search this board</span></td>
+        <td>Find a card by order number, customer or payment.</td></tr>
+    <tr><td><span class="ui">Mine</span> · <span class="ui">Unassigned</span> · <span class="ui">All</span></td>
+        <td>Orders you are looking after, orders nobody has taken yet, or everything. The till remembers your choice.</td></tr>
+    <tr><td><strong>Sound</strong></td>
+        <td>If it reads <span class="ui">Tap to enable sound</span>, tap it so arcarna can chime when an order needs you. After that it reads <span class="ui">Sound on</span> or <span class="ui">Sound off</span>, and tapping switches between them.</td></tr>
+    <tr><td><strong>Count tiles</strong></td>
+        <td><strong>Open</strong> orders, orders <strong>Late now</strong>, orders <strong>Due soon</strong>, and orders <strong>Done today</strong>.</td></tr>
+    <tr><td><span class="ui">Board tour</span></td>
+        <td>Replays the short tour of this screen.</td></tr>
+  </table>
+  <p>A strip above the lanes lists what needs you: <em>Assigned to you</em>, <em>Customer waiting</em>,
+     <em>Due soon</em> or <em>Running late</em>, each with its order number. Tap the words to jump to
+     the card, or <span class="ui">Ack</span> to say you have seen it.</p>
+  <div class="callout warn">
+    <strong>The board is not up to date</strong>
+    If the connection drops for long enough, a banner says so and the card buttons are paused, so
+    nobody acts on an old picture. They come back as soon as the board catches up.
+  </div>
+
+  <p class="eyebrow">Reading the board</p>
+  <h2>Lanes and cards</h2>
+  <p>There are two lanes: <strong>Collection</strong> and <strong>Delivery</strong>. Each card is one
+     order. A coloured band across the top and a chip with words and an icon say what state it is in;
+     a clock beside the chip counts down to the due time, or up once it is late. Colour is never the
+     only clue: the words always say the same thing.</p>
+  <table>
+    <tr><th>Chip</th><th>Plain meaning</th></tr>
+    <tr><td><strong>ON TIME</strong></td><td>Promised for a time that is not close yet. <strong>NO TIME GIVEN</strong> means nobody promised a time, so the shop's usual time is used.</td></tr>
+    <tr><td><strong>DUE SOON</strong></td><td>The due time is close.</td></tr>
+    <tr><td><strong>LATE</strong></td><td>Past the due time, with how long by. <strong>OVERDUE · NO TIME GIVEN</strong> is the same for an order with no promise.</td></tr>
+    <tr><td><strong>CUSTOMER WAITING</strong></td><td>The customer is here and the order is not ready. Clear these first.</td></tr>
+    <tr><td><strong>DELAYED</strong></td><td>Someone recorded a delay and a new time.</td></tr>
+    <tr><td><strong>READY</strong></td><td>Made up and waiting to be handed over. A delivery on its way shows <strong>ON THE ROAD</strong>.</td></tr>
+    <tr><td><strong>HELD</strong></td><td>Paused, with a dashed outline. Its clock stops.</td></tr>
+    <tr><td><strong>YESTERDAY</strong></td><td>Still open from an earlier day.</td></tr>
+    <tr><td><strong>FOR …</strong></td><td>A pre-order for a later day.</td></tr>
+    <tr><td><strong>DONE</strong></td><td>Handed over or delivered.</td></tr>
+  </table>
+  <p>Under each lane are three folded strips: <span class="ui">Earlier days — still open</span>,
+     <span class="ui">Scheduled</span> (pre-orders for a later day) and <span class="ui">Done</span>
+     (orders finished in the last two hours).</p>
+
+  <h3>What a card shows</h3>
+  <table>
+    <tr><th>Part</th><th>What it tells you</th></tr>
+    <tr><td><strong>#Code and name</strong></td><td>The short order number and the customer, or <em>Walk-in</em>.</td></tr>
+    <tr><td><strong>Total and payment</strong></td><td>For example £18.40 Cash.</td></tr>
+    <tr><td><strong>The small line</strong></td><td>When it is due, how it came in (Walk-in, Phone, WhatsApp or the website), who keyed it in (<em>Loaded by</em>), when it arrived (<em>In at</em>) and how long it has been here.</td></tr>
+    <tr><td><strong>Address</strong></td><td>On a live delivery, the address and postcode. Never a phone number.</td></tr>
+    <tr><td><strong>Badges</strong></td><td><em>Urgent</em>, <em>Backdated</em>, <em>Pre-order</em>, <em>Past due</em>, <em>Customer here</em>, and <span class="ui">Awaiting card payment</span> for a Card (link) sale not yet paid (tap it to reopen the QR code).</td></tr>
+    <tr><td><strong>Who is dealing</strong></td><td><em>You dealing</em>, or a colleague's name.</td></tr>
+  </table>
+
+  <p class="eyebrow">Moving an order along</p>
+  <h2>One main button per card</h2>
+  <p>Each card has one main button, and it always shows the next step. Tap it and the card moves on.</p>
+  <ol class="steps">
+    <li><span class="ui">Take it</span>: you are dealing with this order. If a colleague took it a
+        moment before you, arcarna says <em>Someone got there first</em> and names them.</li>
+    <li><span class="ui">Ready</span>: it is made up and waiting.</li>
+    <li>For a delivery, <span class="ui">Out for delivery</span>: it has left the shop.</li>
+    <li><span class="ui">Handed over</span> (collection) or <span class="ui">Delivered</span>
+        (delivery): done. A message offers <span class="ui">Undo</span> in case you tapped the wrong card.</li>
+  </ol>
+  <p>A collection card also shows <span class="ui">Handed over</span> at every stage, for a customer
+     who takes the goods straight away, and <span class="ui">Customer here</span> to tell the board
+     they have arrived. A held card's main button is <span class="ui">Resume</span>. Every card has
+     <span class="ui">View</span> for its details.</p>
+  <div class="callout">
+    <strong>Undo has a time limit</strong>
+    The person who finished an order can undo it within 10 minutes. After that, or for someone
+    else's order, ask a manager. The same goes for undoing <span class="ui">Ready</span> with
+    <span class="ui">Not ready</span>.
+  </div>
+
+  <h3>More actions</h3>
+  <p>The three-dot button on a card holds everything else.</p>
+  <table>
+    <tr><th>Action</th><th>What it does</th><th>Who</th></tr>
+    <tr><td><span class="ui">Pass to…</span></td><td>Gives the order to someone else on the board.</td><td>The person dealing with it, or a manager</td></tr>
+    <tr><td><span class="ui">Release</span></td><td>Puts it back for anyone to take.</td><td>The person dealing with it, or a manager</td></tr>
+    <tr><td><span class="ui">Not ready</span></td><td>Takes it back out of Ready.</td><td>Whoever marked it ready, within 10 minutes, or a manager</td></tr>
+    <tr><td><span class="ui">Put on hold…</span> / <span class="ui">Resume</span></td><td>Pauses it, with an optional reason, and starts it again.</td><td>Everyone</td></tr>
+    <tr><td><span class="ui">Delay…</span></td><td>Records why it is late and a new time (see below).</td><td>Everyone</td></tr>
+    <tr><td><span class="ui">Set due…</span></td><td>Gives an order with no promise a due time: a few minutes from now, or a time.</td><td>Everyone</td></tr>
+    <tr><td><span class="ui">Mark urgent</span></td><td>Adds the Urgent badge and moves it up the lane.</td><td>Everyone</td></tr>
+    <tr><td><span class="ui">Rate…</span></td><td>On a finished order, one to five stars for how the customer found it.</td><td>Everyone</td></tr>
+    <tr><td><span class="ui">Details, delay &amp; documents</span></td><td>Opens the order's details.</td><td>Everyone</td></tr>
+    <tr class="ed-manager"><td><span class="ui">Edit lines</span></td><td>Changes what was sold.</td><td>Managers and admins</td></tr>
+    <tr class="ed-manager"><td><span class="ui">Delete order…</span></td><td>Removes an order taken in error.</td><td>Managers and admins</td></tr>
+  </table>
+
+  <h3>Running late</h3>
+  <p>When an order will miss its time, record it so the board and the customer both know.</p>
+  <ol class="steps">
+    <li>Open <span class="ui">Delay…</span> on the card, or the <em>Running late?</em> box in its details.</li>
+    <li>Choose <span class="ui">What is holding it up</span>: Stock unavailable, Queue overload,
+        System issue, Prep error or Other.</li>
+    <li>Optionally fill in <span class="ui">What to tell the customer</span>.</li>
+    <li>Pick a <span class="ui">New time</span>: <span class="ui">+10 min</span>, <span class="ui">+20 min</span>,
+        <span class="ui">+30 min</span>, or type a time. Switch on <span class="ui">I have just told the customer</span>
+        if you have.</li>
+  </ol>
+
+  <p class="eyebrow">Looking inside an order</p>
+  <h2>The order's details</h2>
+  <p>Select <span class="ui">View</span> on a card. On a computer the details slide in from the right;
+     on a phone they open inside the board. Looking changes nothing.</p>
+
+  <figure>
+    <img src="../images/v12-04-details.png" alt="An order's details panel with the customer, total, status, timeline, line items and the Receipt, Issue refund and Print label buttons" />
+    <figcaption>An order's details: who it is for, what is on it, and everything you can do with it.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the details sheet open on the right for a completed-today or ready collection order: "Order #…" heading, Customer and Total, Received / Promised / Loaded by, "Copy order number", the Status select, the Timeline, Line items, and the button row Receipt and Issue refund, then Print label (a cashier has no Invoice, Edit lines or Delete order…) ; state=a fictional named customer's order with 2–3 lines; View pressed on its card -->
+  </figure>
+
+  <table>
+    <tr><th>Part</th><th>What it shows or does</th></tr>
+    <tr><td><strong>Customer and total</strong></td><td>Who it is for, the total, how it was paid and how it came in. Any money refunded shows in red.</td></tr>
+    <tr><td><strong>Times</strong></td><td>When it was received, the time promised, any revised time, and who keyed it in.</td></tr>
+    <tr><td><span class="ui">Copy order number</span></td><td>Copies the full order number to paste into a message.</td></tr>
+    <tr><td><strong>Status</strong></td><td>Pending, On Hold, Awaiting Customer, Urgent or Completed. The card buttons do the same job and are quicker.</td></tr>
+    <tr><td><strong>Timeline</strong></td><td>Each step so far: received, assigned, put on hold, ready, customer arrived, out for delivery, handed over or delivered.</td></tr>
+    <tr><td><strong>Line items and refunds</strong></td><td>Each product with quantity and price, then any refunds with who made them.</td></tr>
+    <tr><td><span class="ui">Receipt</span></td><td>Downloads the receipt PDF to hand or send to the customer.</td></tr>
+    <tr class="ed-manager"><td><span class="ui">Invoice</span></td><td>Managers and admins: downloads the invoice PDF (see below).</td></tr>
+    <tr><td><span class="ui">Issue refund</span></td><td>Starts a refund (see below).</td></tr>
+    <tr><td><span class="ui">Print label</span></td><td>Prints an order label (see below).</td></tr>
+  </table>
+  <p>For a delivery, the details also hold the address, the driver's call and a way to correct the
+     address. Those are covered in Section 5.</p>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Manager tasks</p>
+    <h2>Amending and deleting an order</h2>
+    <p>Changing what was sold, or removing an order, is a <span class="role role-manager">MANAGER</span>
+       job. A cashier does not see these buttons and should ask a manager.</p>
+
+    <h3>Editing the lines</h3>
+    <ol class="steps">
+      <li>Choose <span class="ui">Edit lines</span> from the card's three-dot menu or the details panel.
+          The <em>Edit order #…</em> window opens.</li>
+      <li>Add a product with the search box, change a line's <span class="ui">Quantity</span> or
+          <span class="ui">Unit price</span>, or use <span class="ui">Remove line</span>. A price is needed on
+          every line: use 0 for something given free.</li>
+      <li>Check the foot of the window: <strong>Subtotal</strong>, <strong>Discounts kept</strong>
+          (when the sale had any), <strong>VAT</strong> with the rate used, and <strong>Total</strong>. The order
+          keeps its discounts, and the shop's own VAT rate is used.</li>
+      <li>Select <span class="ui">Save changes</span>. arcarna confirms with the new total.</li>
+    </ol>
+
+    <h3>Deleting an order</h3>
+    <p>Deleting is permanent. Use it only for an order taken in error. A return or a cancellation is a
+       refund, so the record stays honest.</p>
+    <ol class="steps">
+      <li>Choose <span class="ui">Delete order…</span>. The window asks <em>Delete this order?</em></li>
+      <li>Tick <span class="ui">I understand this order will be permanently deleted.</span></li>
+      <li>Select <span class="ui">Delete permanently</span>. Stock reserved for the order is released.
+          Customer and payment records elsewhere are not affected.</li>
+    </ol>
+  </div>
+
+  <p class="eyebrow">Giving money back</p>
+  <h2>Refunding an order</h2>
+  <p>A refund returns money for some or all of an order: a damaged item, the wrong product, or a change
+     of mind. It keeps a full record of what was returned, why and by whom. Open the order's details and
+     select <span class="ui">Issue refund</span>. The refund runs in three short steps.</p>
+  <ol class="steps">
+    <li><strong>Select lines.</strong> Tick each item being returned and set the quantity. Each line says
+        how many are still refundable, so nothing can be refunded twice. The
+        <strong>Refund total</strong> adds up as you go. Select <span class="ui">Continue</span>.</li>
+    <li><strong>Reason &amp; method.</strong> Choose the <span class="ui">Reason</span> and the
+        <span class="ui">Refund method</span>, and add <span class="ui">Notes</span> if useful.
+        <em>Other</em> needs a note saying what the reason is. Select <span class="ui">Review</span>.</li>
+    <li><strong>Confirm refund.</strong> Check the amount, method and reason, then select
+        <span class="ui">Confirm refund</span>. It appears under the order's refunds straight away.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-04-refund.png" alt="The Issue refund screen, first step: order lines with tick boxes, refundable quantities and the refund total" />
+    <figcaption>Issue refund, step one: choose what is coming back.</figcaption>
+    <!-- SHOT: route=/open-orders/:id/refund ; role=cashier ; viewport=desktop ; show=the "Issue refund" page header ("What are we refunding, and why?"), the "Select lines" card with each line's name, "£… each · N refundable", one line ticked with quantity 1, "Refund total: £…" and Continue ; state=use the id of a completed fictional cash order with at least two lines and no refunds yet -->
+  </figure>
+
+  <table>
+    <tr><th>Reason</th><th>When to use it</th></tr>
+    <tr><td><strong>Damaged</strong></td><td>The item was damaged.</td></tr>
+    <tr><td><strong>Wrong item</strong></td><td>The customer was given the wrong product.</td></tr>
+    <tr><td><strong>Customer changed mind</strong></td><td>A return with nothing wrong with the goods.</td></tr>
+    <tr><td><strong>Defect</strong></td><td>The item is faulty.</td></tr>
+    <tr><td><strong>Other</strong></td><td>Anything else. Say what it was in the notes.</td></tr>
+  </table>
+  <table>
+    <tr><th>Method</th><th>What it means</th></tr>
+    <tr><td><strong>original</strong></td><td>Back the way the customer paid. The usual choice.</td></tr>
+    <tr><td><strong>cash</strong></td><td>Cash from the drawer.</td></tr>
+    <tr><td><strong>store credit</strong></td><td>Credit for the customer to spend later, issued as a gift card for the amount.</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Refunds can be partial, and Card (link) is different</strong>
+    Refund one line, or part of one, and come back later for the rest. Money taken by
+    Card (link) is refunded in Stripe, not in arcarna.
+  </div>
+  <div class="callout warn ed-manager">
+    <strong>Manager — refunds that need a look</strong>
+    Refunds are never blocked, but some are picked out for <span class="ui">Needs a look</span>:
+    a refund on another cashier's sale, a refund with the reason <em>Other</em>, and, by default, a cash
+    refund over £50 or a refund 14 or more days after the sale. Admins set the amount and the days in
+    <span class="ui">Settings › General</span><span class="ed-admin"> (Section 11)</span>. Section 9 explains Needs a look.
+  </div>
+
+  <p class="eyebrow">The paperwork</p>
+  <h2>Receipts and invoices</h2>
+  <p>Every till sale has a <strong>receipt</strong>. Anyone can download it from the order's details
+     with <span class="ui">Receipt</span>.</p>
+  <div class="ed-manager">
+    <p>An <strong>invoice</strong> is the formal, numbered document a business customer keeps for their
+       accounts. Invoices are for <span class="role role-manager">MANAGER</span> and above. arcarna issues
+       one when a sale goes on a tab, or when a customer asks for one.</p>
+    <ol class="steps">
+      <li>From an order's details, select <span class="ui">Invoice</span>.</li>
+      <li>If the sale only has a receipt, arcarna asks whether to issue a numbered invoice because the
+          customer asked for one. Confirm, and the PDF downloads.</li>
+      <li>To find, print or send invoices later, open <span class="ui">Finance Centre › Invoices</span>.
+          Its tiles show <strong>Paid total</strong>, <strong>Owed</strong>, <strong>Overdue</strong> and
+          <strong>Rows shown</strong> for whatever the search, status and date window are showing.</li>
+      <li>Each row's <span class="ui">PDF</span> menu has <span class="ui">Open PDF (new tab)</span>,
+          <span class="ui">Print via browser</span>, <span class="ui">Download PDF</span> and
+          <span class="ui">Email invoice to customer</span>. arcarna sends the email itself; if email
+          is not set up yet, that choice is greyed out and says why. Section 8 covers invoices in full.</li>
+    </ol>
+  </div>
+
+  <p class="eyebrow">Labels</p>
+  <h2>Printing an order label</h2>
+  <p>arcarna prints 50 × 30 mm labels on a Niimbot B1 label printer over Bluetooth. An order label
+     carries the order code, the customer's name only, collection or delivery, the due time, the number
+     of items and a QR code that opens the order. It never carries a phone number.</p>
+  <ol class="steps">
+    <li>Open the order's details and select <span class="ui">Print label</span>. A preview of the label
+        appears, exactly as it will print.</li>
+    <li>Under the preview, a line says whether a printer is connected, for example
+        <em>Connected to B1-… · battery 80%</em>.</li>
+    <li>Set <span class="ui">Copies</span> if you need more than one, then select
+        <span class="ui">Print</span>. The first time, the browser asks you to choose the printer.</li>
+    <li>Select <span class="ui">Hide label</span> when you are done.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-04-label.png" alt="The order details with the label preview open, the printer status line, Copies and Print" />
+    <figcaption>Print label: the preview shows exactly what the printer will produce.</figcaption>
+    <!-- SHOT: route=/operations ; role=cashier ; viewport=desktop ; show=the details sheet scrolled to the bottom with Print label expanded: the 50 × 30 mm label preview (order code, customer name, Collection, due time, items, QR code), the printer status line, Copies and the Print button ; state=View opened on an open collection order for a fictional customer with a due time; no printer needs to be connected (the line will read "No printer connected on this device yet"). The Copies and Print controls only show when the browser has Web Bluetooth; headless Chromium may show the "Bluetooth is turned off or blocked in this browser" notice instead (launch with Web Bluetooth enabled, or capture the notice and change the alt text and caption to match). The preview renders either way -->
+  </figure>
+
+  <table>
+    <tr><th>Device</th><th>Can it print?</th></tr>
+    <tr><td><strong>Chrome or Edge on a computer</strong></td><td>Yes.</td></tr>
+    <tr><td><strong>iPhone or iPad</strong></td><td>Only in the free <strong>Bluefy</strong> app. Open arcarna there to print.</td></tr>
+    <tr><td><strong>Safari on a Mac</strong></td><td>No. Open arcarna in Chrome instead.</td></tr>
+  </table>
+  <p>If the device cannot print, the label panel says what to do instead of showing
+     <span class="ui">Print</span>.</p>
+  <div class="callout">
+    <strong>Pairing the printer, once per till</strong>
+    Each till that prints pairs once, in <span class="ui">Settings › System</span>, on the
+    <em>Devices · Label printer</em> card: select <span class="ui">Pair a printer</span>, choose the B1,
+    and print the test label. Pairing is remembered on that device only. The same card has
+    <span class="ui">Connect</span>, <span class="ui">Disconnect</span> and
+    <span class="ui">Forget this printer</span>.
+  </div>
+  <p class="ed-manager">Managers also have a label button on each product in
+     <span class="ui">Stock Centre › Products</span>. A product label shows the name, price and barcode,
+     never the cost (Section 6).</p>
+
+  <div class="ed-manager">
+    <p class="eyebrow">Manager · how fast orders move</p>
+    <h2>Order Timing</h2>
+    <p><span class="ui">Truths Centre › Order Timing</span> answers <em>how fast do orders move, and where do
+       they wait?</em> It is Evidence, for <span class="role role-manager">MANAGER</span> and above. On time
+       means ready (collection) or handed over (delivery) by the promised time plus the shop's grace minutes.</p>
+    <ol class="steps">
+      <li>Pick the <span class="ui">Dates</span>: Today, Yesterday, This week, Last week, Last 4 weeks,
+          This month, Last month, or <span class="ui">Custom</span> with <span class="ui">From</span> and <span class="ui">To</span>.</li>
+      <li>Choose <span class="ui">Group by</span>: Fulfilment, Assignee (who claimed it), Completer,
+          Loader (who keyed it in), Hour received, Day or Channel.</li>
+      <li>Read the tiles, then the table row by row.</li>
+    </ol>
+
+    <figure>
+      <img src="../images/v12-04-order-timing.png" alt="Order Timing Evidence with date and group-by controls, headline tiles and a table grouped by fulfilment" />
+      <figcaption>Order Timing, grouped by fulfilment, for the last four weeks.</figcaption>
+      <!-- SHOT: route=/reports/order-timing ; role=manager ; viewport=desktop ; show=the Order Timing page header, the Dates and Group by controls, the headline tiles (Orders timed, On time, Promise kept, Median received → completed, Collection on time, Delivery on time, Customer waiting, Counted, not timed), the on-time settings line, and the table grouped by Fulfilment ; state=Dates set to Last 4 weeks; ~30 fictional orders over two weeks, most claimed, readied and completed through the board -->
+    </figure>
+
+    <table>
+      <tr><th>Figure</th><th>What it means</th></tr>
+      <tr><td><strong>Orders timed</strong></td><td>Orders the timings are worked out from.</td></tr>
+      <tr><td><strong>On time</strong></td><td>The share finished by the promise plus the grace.</td></tr>
+      <tr><td><strong>Promise kept</strong></td><td>The share that met a time actually promised to the customer.</td></tr>
+      <tr><td><strong>Median received → completed</strong></td><td>The typical time from arriving to being done.</td></tr>
+      <tr><td><strong>Median to claim / ready / complete</strong></td><td>In the table: where the time goes, stage by stage.</td></tr>
+      <tr><td><strong>Slowest 10%</strong></td><td>How long the slowest orders took.</td></tr>
+      <tr><td><strong>Delayed · Customer waiting</strong></td><td>How many had a recorded delay, or kept a customer waiting.</td></tr>
+      <tr><td><strong>Counted, not timed</strong></td><td>Backdated, carried-over and assumed-ready orders: counted, but left out of the timings.</td></tr>
+    </table>
+    <div class="callout warn">
+      <strong>Manager — read per-person rows with care</strong>
+      Grouping by assignee, completer or loader shows people. Those figures carry a
+      <em>Provisional until …</em> badge for the first two weeks; check them against the team totals before acting on them. Staff
+      Performance is in Section 9.
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

@@ -147,7 +147,10 @@ vi.mock("../../apps/server/src/engine.wiring", () => ({
 // giving the mocked `db` below a full select().from().where().limit() chain
 // it does not otherwise need.
 vi.mock("../services/orgTaxRate", () => ({
-  getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+  getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  // v1.2 Phase 1B: every order path requires the org's rate.
+  requireOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
+  ORG_VAT_RATE_MISSING_MESSAGE: "Set your VAT rate",
 }));
 
 // The route's other static imports (giftCardService, loyaltyRedemptionService,
@@ -158,6 +161,8 @@ vi.mock("../db", () => ({ db: {}, pool: {} }));
 
 vi.mock("../middleware/requireOpenShift", () => ({
   requireOpenShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
+  // The drawer the request picked is still open in these tests.
+  drawerForSaleInTx: async (_tx: unknown, shift: { id: string }) => shift.id,
 }));
 vi.mock("../middleware/requireActiveCashierShift", () => ({
   requireActiveCashierShift: ((_req: any, _res: any, next: any) => next()) as RequestHandler,
@@ -316,8 +321,10 @@ describe("a sale on credit needs a customer", () => {
     appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn(appDbMock.db),
     );
-    const { orderEvents } = await import("@shared/schema");
+    const { orderEvents, orderPayments } = await import("@shared/schema");
     appDbMock.state.rowsByTable.set(orderEvents, []); // no prior `completed` event — first settle, not a resettle
+    // No card link waiting (v1.2 Stripe links), so completion goes ahead.
+    appDbMock.state.rowsByTable.set(orderPayments, []);
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();
@@ -368,8 +375,10 @@ describe("a sale on credit needs a customer", () => {
     appDbMock.withTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn(appDbMock.db),
     );
-    const { orderEvents } = await import("@shared/schema");
+    const { orderEvents, orderPayments } = await import("@shared/schema");
     appDbMock.state.rowsByTable.set(orderEvents, []);
+    // No card link waiting (v1.2 Stripe links), so completion goes ahead.
+    appDbMock.state.rowsByTable.set(orderPayments, []);
     creditLedgerMock.creditLegTotal.mockResolvedValue(70);
 
     const handler = patchHandler();
@@ -408,5 +417,23 @@ describe("a sale on credit needs a customer", () => {
       expect.objectContaining({ from: "pending", to: "completed" }),
       { source: "api-orders" },
     );
+  });
+});
+
+describe("reading the org's VAT rate", () => {
+  it("refuses the sale (422) only when no rate is set; a failed read stays a 500 so it is retried", async () => {
+    const { requireOrgTaxRatePercent } = await import("../services/orgTaxRate");
+    const sale = { lines: [{ productId: "p1", quantity: 1, unitPrice: 20 }], paymentMethod: "cash" };
+
+    vi.mocked(requireOrgTaxRatePercent).mockRejectedValueOnce(
+      Object.assign(new Error("no rate"), { code: "ORG_VAT_RATE_MISSING" }),
+    );
+    const missing = await placeOrder(sale);
+    expect(missing.status).toBe(422);
+    expect(missing.payload.message).toBe("Set your VAT rate");
+
+    vi.mocked(requireOrgTaxRatePercent).mockRejectedValueOnce(new Error("Connection terminated unexpectedly"));
+    const blip = await placeOrder(sale);
+    expect(blip.status).toBe(500);
   });
 });

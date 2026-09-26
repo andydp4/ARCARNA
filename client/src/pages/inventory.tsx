@@ -40,6 +40,13 @@ import { parseNonNegativeQuantityInput } from "@shared/quantity";
 import { Sparkles, ArrowRightLeft, PackageSearch, PackageCheck } from "lucide-react";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { usableCost } from "@shared/purchasing/purchaseLines";
+
+/** Blank or £0 is a cost nobody entered: say so rather than show £0.00. */
+function inventoryCostLabel(value: string | number | null | undefined): string {
+  const cost = usableCost(value)
+  return cost == null ? 'No cost set' : `£${cost.toFixed(2)}`
+}
 
 interface Product {
   id: string;
@@ -216,11 +223,11 @@ export default function Inventory() {
   const getStockStatus = (product: Product) => {
     const stockPercentage = (product.stock / product.stockLimit) * 100;
     if (product.stock === 0) {
-      return { status: "Out of Stock", variant: "destructive" as const, color: "text-red-600" };
+      return { status: "Out of Stock", variant: "destructive" as const, color: "text-red-400" };
     } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
-      return { status: "Low Stock", variant: "destructive" as const, color: "text-orange-600" };
+      return { status: "Low Stock", variant: "destructive" as const, color: "text-orange-400" };
     } else if (stockPercentage <= 50) {
-      return { status: "Medium Stock", variant: "secondary" as const, color: "text-yellow-600" };
+      return { status: "Medium Stock", variant: "secondary" as const, color: "text-yellow-400" };
     }
     return { status: "In Stock", variant: "outline" as const, color: "text-green-600" };
   };
@@ -358,7 +365,7 @@ export default function Inventory() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-orange-600">{lowStockProducts.length}</p>
+              <p className="text-2xl font-bold text-orange-400">{lowStockProducts.length}</p>
             </CardContent>
           </Card>
           <Card className={LM_CARD}>
@@ -366,7 +373,7 @@ export default function Inventory() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Out of Stock</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-red-600">{outOfStockProducts.length}</p>
+              <p className="text-2xl font-bold text-red-400">{outOfStockProducts.length}</p>
             </CardContent>
           </Card>
         </div>
@@ -470,8 +477,8 @@ export default function Inventory() {
                         <CardContent className="p-4">
                           <div className="space-y-3">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="font-semibold text-base">{product.name}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-base [overflow-wrap:anywhere]">{product.name}</div>
                                 <div className="text-xs text-muted-foreground">SKU: {product.productId}</div>
                                 {product.barcode && (
                                   <div className="text-xs text-muted-foreground">{product.barcode}</div>
@@ -484,9 +491,7 @@ export default function Inventory() {
                               <div>
                                 <div className="text-xs text-muted-foreground">Cost Price</div>
                                 <div className="font-medium">
-                                  £{typeof product.costPrice === 'string' 
-                                    ? parseFloat(product.costPrice).toFixed(2) 
-                                    : (product.costPrice || 0).toFixed(2)}
+                                  {inventoryCostLabel(product.costPrice)}
                                 </div>
                               </div>
                               <div>
@@ -506,7 +511,7 @@ export default function Inventory() {
                                   {product.stock} / {product.stockLimit}
                                 </span>
                               </div>
-                              <Progress value={stockPercentage} className="h-2" />
+                              <Progress value={stockPercentage} className="h-2" aria-label={`Stock level of ${product.name}`} />
                             </div>
                             
                             <div className="flex gap-2 pt-2">
@@ -562,7 +567,7 @@ export default function Inventory() {
                           <TableRow key={product.id} data-testid={`inventory-row-${product.id}`}>
                             <TableCell>
                               <div>
-                                <div className="font-medium">{product.name}</div>
+                                <div className="font-medium [overflow-wrap:anywhere]">{product.name}</div>
                                 {product.barcode && (
                                   <div className="text-xs text-muted-foreground">{product.barcode}</div>
                                 )}
@@ -570,9 +575,7 @@ export default function Inventory() {
                             </TableCell>
                             <TableCell>{product.productId}</TableCell>
                             <TableCell>
-                              £{typeof product.costPrice === 'string' 
-                                ? parseFloat(product.costPrice).toFixed(2) 
-                                : (product.costPrice || 0).toFixed(2)}
+                              {inventoryCostLabel(product.costPrice)}
                             </TableCell>
                             <TableCell>
                               £{typeof product.defaultSalePrice === 'string' 
@@ -586,7 +589,7 @@ export default function Inventory() {
                                     {product.stock} / {product.stockLimit}
                                   </span>
                                 </div>
-                                <Progress value={stockPercentage} className="h-2" />
+                                <Progress value={stockPercentage} className="h-2" aria-label={`Stock level of ${product.name}`} />
                               </div>
                             </TableCell>
                             <TableCell>
@@ -600,8 +603,10 @@ export default function Inventory() {
                                   onClick={() => openAdjustmentDialog(product, "add")}
                                   disabled={locationFilter === ALL_LOCATIONS}
                                   data-testid={`button-add-stock-${product.id}`}
+                                  className="gap-1"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  <Plus className="h-3 w-3" aria-hidden />
+                                  Add
                                 </Button>
                                 <Button
                                   size="sm"
@@ -638,7 +643,7 @@ export default function Inventory() {
             <DialogDescription>
               {selectedProduct && (
                 <div className="mt-2">
-                  <p className="font-medium">{selectedProduct.name}</p>
+                  <p className="font-medium [overflow-wrap:anywhere]">{selectedProduct.name}</p>
                   <p className="text-sm">Current stock: {selectedProduct.stock}</p>
                   {explicitLocationId && (
                     <p className="text-xs text-muted-foreground">

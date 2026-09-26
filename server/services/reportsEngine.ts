@@ -11,6 +11,8 @@
  * operational order fields (Order Status, Delay Log) and net-new tables
  * (Satisfaction, Reseller, Staff KPI) are added alongside their schema.
  */
+import { deliveryFeeTakingsBetween } from "./deliveryFeeTakings";
+import { PAYMENT_STATUS_PAID, isCardLinkMethod } from "@shared/payments/cardLink";
 import { db } from "../db";
 import { storage } from "../storage";
 import {
@@ -32,11 +34,13 @@ import {
   orderEvents,
   opsStaff,
   locations,
+  priceExceptions,
 } from "@shared/schema";
 import { and, eq, sql, gte, lte, lt, inArray, or } from "drizzle-orm";
 import { orgTimeZone } from "./tradingDayShift";
 import { currentTradingDay, tradingDayBounds, tradingDayFor, shiftIsoDate } from "@shared/time/tradingDay";
 import { settledRevenueByTradingDay, type RevenueScopeFilter } from "./revenue";
+import { evidenceStaffRole, mayFilterEvidenceBy, type EvidenceViewer } from "./evidenceStaff";
 import type { OpsTimingSettings } from "@shared/orders/opsState";
 import {
   deriveOrderTiming,
@@ -44,6 +48,7 @@ import {
   orderTimingRedFlags,
   type TimingOrderInput,
   type OrderTimingSummary,
+  type DerivedOrderTiming,
 } from "@shared/reports/orderTiming";
 import { wasProactiveDelayComms } from "@shared/reports/delayLog";
 import { hasEnoughDataForChurnScore } from "@shared/analytics/churnThreshold";
@@ -70,19 +75,25 @@ function num(v: unknown): number {
 }
 
 /**
- * ARC-026: a `locationId`/`cashierId` from another org (a stale link, a typo,
+ * ARC-026: a `locationId`/`staffUserId` from another org (a stale link, a typo,
  * or a forged query param) must 404 the report, never silently fall back to
  * scoping the whole org's data instead — the caller asked to see ONE
  * location/cashier's numbers, and org-wide numbers under that label would be
  * a wrong answer presented as a right one, not a graceful degradation.
  */
 export class ReportScopeError extends Error {
-  statusCode = 404;
+  constructor(message: string, public statusCode: 403 | 404 = 404) {
+    super(message);
+  }
 }
 
 export interface ReportScopeFilter {
   locationId?: string;
-  cashierId?: string;
+  /**
+   * A person's user id (the auth subject on `orders.completed_user_id`), not
+   * a cashier code (STF-FN2). See revenue.ts scopeConditions.
+   */
+  staffUserId?: string;
 }
 
 /**
@@ -95,12 +106,12 @@ export interface ReportScopeFilter {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Confirms a caller-supplied location/cashier filter actually belongs to this
+ * Confirms a caller-supplied location/staff filter actually belongs to this
  * org before any report query is scoped to it. Same shape as the
  * `orders`/`locations` ownership check `POST /api/shifts/open` already uses
  * (server/routes/shifts.ts) — id + org id, nothing implicitly inherited.
  */
-export async function validateReportScope(orgId: string, filter: ReportScopeFilter): Promise<void> {
+export async function validateReportScope(orgId: string, filter: ReportScopeFilter, viewer?: EvidenceViewer): Promise<void> {
   if (filter.locationId) {
     if (!UUID_RE.test(filter.locationId)) throw new ReportScopeError(`Location ${filter.locationId} not found`);
     const [loc] = await db
@@ -110,14 +121,14 @@ export async function validateReportScope(orgId: string, filter: ReportScopeFilt
       .limit(1);
     if (!loc) throw new ReportScopeError(`Location ${filter.locationId} not found`);
   }
-  if (filter.cashierId) {
-    if (!UUID_RE.test(filter.cashierId)) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
-    const [c] = await db
-      .select({ id: cashierProfiles.id })
-      .from(cashierProfiles)
-      .where(and(eq(cashierProfiles.id, filter.cashierId), eq(cashierProfiles.orgId, orgId)))
-      .limit(1);
-    if (!c) throw new ReportScopeError(`Cashier ${filter.cashierId} not found`);
+  if (filter.staffUserId) {
+    // User ids are auth subjects ("user_…"), not UUIDs, so there is no UUID
+    // pre-check here; the lookup is a plain varchar comparison.
+    const role = await evidenceStaffRole(orgId, filter.staffUserId);
+    if (role === null) throw new ReportScopeError(`Staff member ${filter.staffUserId} not found`);
+    if (viewer && !mayFilterEvidenceBy(viewer, { id: filter.staffUserId, role })) {
+      throw new ReportScopeError("You can filter Evidence by cashiers and yourself only", 403);
+    }
   }
 }
 
@@ -180,50 +191,69 @@ function bucketForMethod(method: string | null): ChannelBucket {
 }
 
 /**
- * Revenue by channel/tender for every settled order in `[start, end)`.
+ * Revenue by channel/tender for `[start, end)`, on the same definition as the
+ * day's total (v1.2.1 money, M6): every order SETTLED in the window, at its
+ * settlement snapshot, split across the tender legs it was actually paid with,
+ * LESS every refund ISSUED in the window, taken off the way that refund's
+ * money actually went back. So the rows always add up to the total, and a
+ * closed day's split never changes because of a refund made later.
  *
  * A website order is bucketed by channel regardless of tender (the customer
- * never chooses a till tender online); everything else is bucketed from its
- * actual tender leg(s) in `order_payments` — a split sale lands in every
- * bucket it actually touched — falling back to the order's single
- * `payment_method` for orders recorded before split tender (migration 056).
+ * never chooses a till tender online), and so is a refund on one. A till sale
+ * with no legs (before split tender, migration 056) falls back to its single
+ * `payment_method`.
  *
- * Each order's settled value is netted against refunds issued against IT
- * (not necessarily on the same calendar day, unlike {@link settledRevenueByDay}'s
- * netting-by-day-issued) and apportioned across its tender legs
- * proportionally, so a fully-refunded order does not still show as revenue in
- * its channel even though the window-level total nets refunds by day.
+ * A refund goes back: cash or "original" (the cash drawer) to Cash, card to
+ * Card, the part taken off a tab to Credit (Tick), store credit to Gift Card
+ * (it is issued as a gift card).
  */
 async function channelBreakdown(
   orgId: string,
   start: Date,
   end: Date,
   filter?: ReportScopeFilter,
-): Promise<Record<ChannelBucket, number>> {
+): Promise<Record<ChannelBucket, number> & { cardLink: number }> {
   const totals: Record<ChannelBucket, number> = { Cash: 0, Card: 0, Tick: 0, GiftCard: 0, Website: 0, Other: 0 };
+  // The part of Card that came by Stripe link rather than the terminal (v1.2
+  // Stripe links): already inside Card, shown separately so each reconciles
+  // against its own statement.
+  let cardLink = 0;
 
   const scopeConds = [];
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) scopeConds.push(eq(orders.completedUserId, filter.staffUserId));
 
-  const orderRows = await db
-    .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds));
-  if (orderRows.length === 0) return totals;
+  const [orderRows, refundRows] = await Promise.all([
+    db
+      .select({ id: orders.id, total: orders.total, settledTotal: orders.settledTotal, paymentMethod: orders.paymentMethod, channel: orders.channel })
+      .from(orders)
+      .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...scopeConds)),
+    db
+      .select({
+        total: refunds.total,
+        creditAmount: refunds.creditAmount,
+        refundMethod: refunds.refundMethod,
+        channel: orders.channel,
+      })
+      .from(refunds)
+      .innerJoin(orders, eq(refunds.orderId, orders.id))
+      .where(and(eq(refunds.orgId, orgId), gte(refunds.createdAt, start), lt(refunds.createdAt, end), ...scopeConds)),
+  ]);
 
   const orderIds = orderRows.map((r) => r.id);
-  const [legRows, refundRows] = await Promise.all([
-    db
-      .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
-      .from(orderPayments)
-      .where(and(eq(orderPayments.orgId, orgId), inArray(orderPayments.orderId, orderIds))),
-    db
-      .select({ orderId: refunds.orderId, refunded: sql<string>`COALESCE(SUM(${refunds.total}::numeric), 0)` })
-      .from(refunds)
-      .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)))
-      .groupBy(refunds.orderId),
-  ]);
+  const legRows = orderIds.length
+    ? await db
+        .select({ orderId: orderPayments.orderId, method: orderPayments.method, amount: orderPayments.amount })
+        .from(orderPayments)
+        // A card-link leg Stripe has not confirmed is not takings.
+        .where(
+          and(
+            eq(orderPayments.orgId, orgId),
+            inArray(orderPayments.orderId, orderIds),
+            eq(orderPayments.status, PAYMENT_STATUS_PAID),
+          ),
+        )
+    : [];
 
   const legsByOrder = new Map<string, { method: string; amount: number }[]>();
   for (const l of legRows) {
@@ -231,27 +261,47 @@ async function channelBreakdown(
     list.push({ method: l.method, amount: num(l.amount) });
     legsByOrder.set(l.orderId, list);
   }
-  const refundByOrder = new Map(refundRows.map((r) => [r.orderId, num(r.refunded)]));
 
   for (const o of orderRows) {
     const gross = num(o.settledTotal ?? o.total);
-    const net = gross - (refundByOrder.get(o.id) ?? 0);
     if (isWebsiteChannel(o.channel)) {
-      totals.Website += net;
+      totals.Website += gross;
       continue;
     }
     const legs = legsByOrder.get(o.id);
-    if (legs && legs.length > 0) {
+    const legSum = (legs ?? []).reduce((s, l) => s + l.amount, 0);
+    if (legs && legs.length > 0 && legSum > 0) {
       for (const leg of legs) {
-        const share = gross > 0 ? leg.amount / gross : 0;
-        totals[bucketForMethod(leg.method)] += net * share;
+        // Shared by the legs' own weights, so the order adds exactly its
+        // settled value however the legs were rounded.
+        const part = gross * (leg.amount / legSum);
+        totals[bucketForMethod(leg.method)] += part;
+        if (isCardLinkMethod(leg.method)) cardLink += part;
       }
     } else {
-      totals[bucketForMethod(o.paymentMethod)] += net;
+      totals[bucketForMethod(o.paymentMethod)] += gross;
     }
   }
+
+  for (const r of refundRows) {
+    const total = num(r.total);
+    if (isWebsiteChannel(r.channel)) {
+      totals.Website -= total;
+      continue;
+    }
+    const offTab = Math.min(total, Math.max(0, num(r.creditAmount)));
+    totals.Tick -= offTab;
+    const paidOut = total - offTab;
+    const m = String(r.refundMethod ?? "").toLowerCase();
+    if (m === "cash" || m === "original") totals.Cash -= paidOut;
+    else if (m === "card") totals.Card -= paidOut;
+    else if (m === "store_credit") totals.GiftCard -= paidOut;
+    else if (m === "credit") totals.Tick -= paidOut;
+    else totals.Other -= paidOut;
+  }
+
   for (const b of CHANNEL_BUCKETS) totals[b] = round(totals[b]);
-  return totals;
+  return { ...totals, cardLink: round(cardLink) };
 }
 
 /**
@@ -279,6 +329,8 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
   const avgOrderValue = today.aov;
 
   const byChannel = await channelBreakdown(orgId, start, end, filter);
+  // Of which delivery fees (v1.2.1): shown on their own, never a channel.
+  const fees = await deliveryFeeTakingsBetween(orgId, start, end, filter);
 
   const priorDayRevenue = async (offsetDays: number): Promise<number> => {
     const d = shiftIsoDate(dayIso, -offsetDays);
@@ -310,17 +362,26 @@ export async function dailySalesSummary(orgId: string, day?: Date, filter?: Repo
       ordersProcessed,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      // Of which by Stripe card link (provider: Stripe).
+      cardLinkRevenue: byChannel.cardLink,
       tickRevenue: byChannel.Tick,
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
       otherRevenue: byChannel.Other,
+      // Delivery fees charged on the day's settled sales, VAT included,
+      // less fees refunded that day; already inside totalRevenue (v1.2.1).
+      deliveryFeeRevenue: fees.total,
+      deliveryFeeOrders: fees.orders,
       avgOrderValue,
       vsYesterday,
       vsLastWeek,
       fourWeekDailyAvg,
     },
     rows: CHANNEL_BUCKETS.map((c) => ({
-      channel: CHANNEL_LABELS[c],
+      channel:
+        c === "Card" && byChannel.cardLink > 0
+          ? `${CHANNEL_LABELS[c]} (incl. ${byChannel.cardLink.toFixed(2)} by card link, Stripe)`
+          : CHANNEL_LABELS[c],
       revenue: byChannel[c],
       share: totalRevenue ? (byChannel[c] / totalRevenue) * 100 : 0,
     })),
@@ -368,10 +429,11 @@ export async function weeklySalesSummary(
   const peakDay = Object.entries(dayRevenue).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
 
   const byChannel = await channelBreakdown(orgId, start, end, filter);
+  const fees = await deliveryFeeTakingsBetween(orgId, start, end, filter);
 
   const topScopeConds = [];
   if (filter?.locationId) topScopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) topScopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) topScopeConds.push(eq(orders.completedUserId, filter.staffUserId));
   const top = await db
     .select({
       name: products.name,
@@ -381,7 +443,17 @@ export async function weeklySalesSummary(
     .from(orderItems)
     .innerJoin(products, eq(orderItems.productId, products.id))
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(and(eq(orders.orgId, orgId), eq(orders.status, "completed"), gte(orders.settledAt, start), lt(orders.settledAt, end), ...topScopeConds))
+    .where(
+      and(
+        eq(orders.orgId, orgId),
+        eq(orders.status, "completed"),
+        gte(orders.settledAt, start),
+        lt(orders.settledAt, end),
+        // Personal use is not a sale: its goods are not top sellers.
+        sql`LOWER(COALESCE(${orders.paymentMethod}, '')) <> 'personal_use'`,
+        ...topScopeConds,
+      ),
+    )
     .groupBy(products.name)
     .orderBy(sql`SUM(${orderItems.quantity}) DESC`)
     .limit(5);
@@ -419,10 +491,15 @@ export async function weeklySalesSummary(
       avgOrderValue,
       cashRevenue: byChannel.Cash,
       cardRevenue: byChannel.Card,
+      // Of which by Stripe card link (provider: Stripe).
+      cardLinkRevenue: byChannel.cardLink,
       tickRevenue: byChannel.Tick,
       giftCardRevenue: byChannel.GiftCard,
       websiteRevenue: byChannel.Website,
       otherRevenue: byChannel.Other,
+      // Of which delivery fees (v1.2.1), as on Daily Sales.
+      deliveryFeeRevenue: fees.total,
+      deliveryFeeOrders: fees.orders,
       vsPrevWeek,
       peakTradingDay: peakDay,
     },
@@ -523,13 +600,24 @@ export async function currentStockLevels(orgId: string, locationId?: string): Pr
 }
 
 /**
+ * The Weekly Margin flag under the price policy (owner Q3): below cost is red,
+ * below minimum amber, otherwise within policy. Margin % is shown, not judged.
+ */
+export function weeklyMarginPolicyFlag(b: { belowMinimum: number; belowCost: number }): "below_cost" | "below_minimum" | "ok" {
+  if (b.belowCost > 0) return "below_cost";
+  if (b.belowMinimum > 0) return "below_minimum";
+  return "ok";
+}
+
+/**
  * ARC-T2-001 Weekly Margin Summary — realised margin per product for a week.
  *
  * Scoped to settled orders in the trading week (06:00–06:00 local), not a
- * server-local-midnight `createdAt` window (ARC-023/027). Margin is still
- * costed at today's `products.cost_price`, not a snapshot of what the cost
- * was at the moment of sale — `order_items` carries no cost-at-sale column to
- * read instead (see the same caveat on `storage.getProfitAnalysis`, ARC-025).
+ * server-local-midnight `createdAt` window (ARC-023/027). Margin is costed
+ * from each line's cost snapshot (v1.2 Phase 2, PRC-06), so a cost edited
+ * today does not change last week's margin; lines sold before snapshots fall
+ * back to today's cost (`lineUnitCostSql`). Units whose cost is unknown are
+ * left out of the margin and counted as `costMissingUnits`, never costed at £0.
  *
  * `filter` (ARC-026) scopes the margin calc to one location and/or cashier —
  * validate a caller-supplied filter with {@link validateReportScope} first.
@@ -545,7 +633,7 @@ export async function weeklyMarginSummary(
   const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
   const scopeConds = [];
   if (filter?.locationId) scopeConds.push(eq(orders.locationId, filter.locationId));
-  if (filter?.cashierId) scopeConds.push(eq(orders.completedCashierId, filter.cashierId));
+  if (filter?.staffUserId) scopeConds.push(eq(orders.completedUserId, filter.staffUserId));
   const cond = and(
     eq(orders.orgId, orgId),
     eq(orders.status, "completed"),
@@ -554,36 +642,84 @@ export async function weeklyMarginSummary(
     ...scopeConds,
   );
 
+  const { lineUnitCostSql } = await import("./lineCost");
+  const known = sql`${lineUnitCostSql} IS NOT NULL`;
+  // v1.2.1 money (M7): units and revenue are what was really sold and paid
+  // for. Personal use is not a sale. Units refunded are taken back off. And a
+  // line's revenue is its share of what the sale was settled at, so a promo,
+  // tier or points discount on the sale lowers its margin — the line's list
+  // value alone overstated it.
+  const refundedQty = sql`COALESCE((SELECT SUM(rl.qty) FROM refund_lines rl WHERE rl.order_line_id = ${orderItems.id}), 0)`;
+  const refundedAmount = sql`COALESCE((SELECT SUM(rl.amount) FROM refund_lines rl WHERE rl.order_line_id = ${orderItems.id}), 0)`;
+  const netQty = sql`(CAST(${orderItems.quantity} AS DECIMAL) - ${refundedQty})`;
+  const orderLineValue = sql`(SELECT SUM(CAST(oi2.total_price AS DECIMAL)) FROM order_items oi2 WHERE oi2.order_id = ${orders.id})`;
+  // The delivery fee (as charged, VAT included) is not any product's money:
+  // it comes off before the settled total is shared across the lines.
+  const feeCharged = sql`ROUND(COALESCE(${orders.deliveryFee}, 0) * (1 + COALESCE(${orders.vatRate}, 0) / 100), 2)`;
+  const goodsSettled = sql`GREATEST(CAST(COALESCE(${orders.settledTotal}, ${orders.total}) AS DECIMAL) - ${feeCharged}, 0)`;
+  const paidForLine = sql`(CASE WHEN ${orderLineValue} > 0
+    THEN CAST(${orderItems.totalPrice} AS DECIMAL) * ${goodsSettled} / ${orderLineValue}
+    ELSE 0 END)`;
+  const netRevenue = sql`(${paidForLine} - ${refundedAmount})`;
   const grp = await db
     .select({
+      productId: products.id,
       name: products.name,
-      costPrice: products.costPrice,
-      units: sql<number>`SUM(${orderItems.quantity})`,
-      revenue: sql<number>`SUM(CAST(${orderItems.totalPrice} AS DECIMAL))`,
+      units: sql<number>`SUM(${netQty})`,
+      revenue: sql<number>`SUM(${netRevenue})`,
+      knownUnits: sql<number>`COALESCE(SUM(${netQty}) FILTER (WHERE ${known}), 0)`,
+      knownRevenue: sql<number>`COALESCE(SUM(${netRevenue}) FILTER (WHERE ${known}), 0)`,
+      knownCost: sql<number>`COALESCE(SUM(${netQty} * ${lineUnitCostSql}), 0)`,
       minSell: sql<number>`MIN(CAST(${orderItems.unitPrice} AS DECIMAL))`,
       maxSell: sql<number>`MAX(CAST(${orderItems.unitPrice} AS DECIMAL))`,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
     .innerJoin(products, eq(orderItems.productId, products.id))
+    .where(and(cond, sql`LOWER(COALESCE(${orders.paymentMethod}, '')) <> 'personal_use'`))
+    .groupBy(products.id, products.name);
+
+  // The price policy (v1.2 Phase 4, owner Q3) replaces the old hard-coded
+  // "margin below 20%" flag: a product is flagged when it was sold below its
+  // minimum or below cost this week, whatever its margin.
+  const policy = await db
+    .select({
+      productId: priceExceptions.productId,
+      belowMinimum: sql<number>`COUNT(*) FILTER (WHERE ${priceExceptions.belowMinimum})`,
+      belowCost: sql<number>`COUNT(*) FILTER (WHERE ${priceExceptions.belowCost})`,
+    })
+    .from(priceExceptions)
+    .innerJoin(orders, eq(priceExceptions.orderId, orders.id))
     .where(cond)
-    .groupBy(products.name, products.costPrice);
+    .groupBy(priceExceptions.productId);
+  const policyBy = new Map(policy.map((p) => [p.productId, { belowMinimum: num(p.belowMinimum), belowCost: num(p.belowCost) }]));
 
   const redFlags: string[] = [];
   let totalMarginAll = 0;
   const rows = grp.map((g) => {
     const units = num(g.units);
     const revenue = num(g.revenue);
-    const cost = num(g.costPrice);
+    const knownUnits = num(g.knownUnits);
+    const knownRevenue = num(g.knownRevenue);
     const avgSell = units ? revenue / units : 0;
-    const grossMargin = avgSell - cost;
-    const marginPct = avgSell ? (grossMargin / avgSell) * 100 : 0;
-    const totalMargin = grossMargin * units;
+    // Average snapshot cost per unit over the units whose cost is known; null
+    // when none is known ("No cost set"), never £0 — a £0 cost is a 100% margin.
+    const cost = knownUnits > 0 ? num(g.knownCost) / knownUnits : null;
+    const knownAvgSell = knownUnits ? knownRevenue / knownUnits : 0;
+    const grossMargin = cost == null ? null : knownAvgSell - cost;
+    const marginPct = grossMargin == null ? null : knownAvgSell ? (grossMargin / knownAvgSell) * 100 : 0;
+    const totalMargin = grossMargin == null ? 0 : grossMargin * knownUnits;
+    const costMissingUnits = Math.max(0, units - knownUnits);
     totalMarginAll += totalMargin;
-    if (marginPct < 20) redFlags.push(`${g.name} margin ${marginPct.toFixed(1)}% is below 20% — review pricing.`);
+    const breaches = policyBy.get(g.productId) ?? { belowMinimum: 0, belowCost: 0 };
+    const policyFlag = weeklyMarginPolicyFlag(breaches);
+    if (breaches.belowCost > 0) redFlags.push(`${g.name}: ${breaches.belowCost} sale line(s) below cost this week.`);
+    else if (breaches.belowMinimum > 0) redFlags.push(`${g.name}: ${breaches.belowMinimum} sale line(s) below the minimum price this week.`);
+    if (costMissingUnits > 0) redFlags.push(`${g.name}: ${costMissingUnits} unit(s) sold with no cost set are left out of the margin.`);
     return {
       product: g.name,
       unitsSold: units,
+      costMissingUnits,
       costPrice: cost,
       avgSellPrice: avgSell,
       minSellPrice: num(g.minSell),
@@ -591,6 +727,9 @@ export async function weeklyMarginSummary(
       grossMargin,
       marginPct,
       totalMargin,
+      belowMinimumLines: breaches.belowMinimum,
+      belowCostLines: breaches.belowCost,
+      policyFlag,
     };
   });
   rows.sort((a, b) => b.totalMargin - a.totalMargin);
@@ -603,7 +742,10 @@ export async function weeklyMarginSummary(
     summary: {
       products: rows.length,
       totalMargin: totalMarginAll,
-      avgMarginPct: rows.length ? rows.reduce((s, r) => s + r.marginPct, 0) / rows.length : 0,
+      avgMarginPct: (() => {
+        const costed = rows.filter((r) => r.marginPct != null);
+        return costed.length ? costed.reduce((s, r) => s + (r.marginPct ?? 0), 0) / costed.length : 0;
+      })(),
     },
     rows,
     redFlags,
@@ -1363,6 +1505,95 @@ function flattenTimingSummary(summary: OrderTimingSummary): Record<string, numbe
  * of these against a real reopen + re-complete.
  */
 export async function orderTimingReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
+  const { facts } = await loadOrderTimingFacts(orgId, from, to);
+  if (facts.length === 0) {
+    return {
+      ref: "ARC-T2-005",
+      title: "Order Timing & Service Levels",
+      generatedAt: new Date().toISOString(),
+      period: { from: from.toISOString(), to: to.toISOString() },
+      summary: flattenTimingSummary(summarizeOrderTiming([])),
+      rows: [],
+      redFlags: [],
+    };
+  }
+  const summary = summarizeOrderTiming(facts);
+  const redFlags = orderTimingRedFlags(summary);
+
+  const rows = facts.map((f) => ({
+    orderId: f.id.slice(0, 8),
+    fulfilmentMethod: f.fulfilmentMethod,
+    channel: f.channel,
+    tradingDay: f.tradingDay,
+    excluded: f.excluded === false ? null : f.excluded,
+    hasPromise: f.hasPromise,
+    onTime: f.onTime,
+    promiseKept: f.promiseKept,
+    latenessMinutes: f.latenessMinutes,
+    receivedToClaimedMinutes: f.receivedToClaimedMinutes,
+    receivedToReadyMinutes: f.receivedToReadyMinutes,
+    readyToHandoverMinutes: f.readyToHandoverMinutes,
+    arrivedToHandoverMinutes: f.arrivedToHandoverMinutes,
+    dispatchToDeliveredMinutes: f.dispatchToDeliveredMinutes,
+    receivedToCompletedMinutes: f.receivedToCompletedMinutes,
+    wasDelayed: f.wasDelayed,
+    revisedPromiseKept: f.revisedPromiseKept,
+    customerWaitingIncident: f.customerWaitingIncident,
+    heldMinutes: Math.round((f.heldSeconds / 60) * 10) / 10,
+    assignedUserId: f.assignedUserId,
+    completedUserId: f.completedUserId,
+    inputUserId: f.inputUserId,
+    station: f.station,
+  }));
+
+  return {
+    ref: "ARC-T2-005",
+    title: "Order Timing & Service Levels",
+    generatedAt: new Date().toISOString(),
+    period: { from: from.toISOString(), to: to.toISOString() },
+    summary: flattenTimingSummary(summary),
+    rows,
+    redFlags,
+  };
+}
+
+/**
+ * The timing report's per-order facts and the settings they were judged
+ * against — shared by the Evidence payload above and the Order Timing page
+ * (v1.2 Phase 7A), so both read the same orders by the same rule.
+ */
+export async function loadOrderTimingFacts(
+  orgId: string,
+  from: Date,
+  to: Date,
+): Promise<{ facts: DerivedOrderTiming[]; settings: OpsTimingSettings }> {
+  const { inputs, settings } = await loadOrderTimingInputs(orgId, from, to);
+  return { facts: inputs.map((input) => deriveOrderTiming(input, settings)), settings };
+}
+
+/**
+ * Who did what on an order, beside its timing input — what Staff Performance's
+ * Speed (v1.2 Phase 7C) needs to credit a verdict to a person. Read from the
+ * same events in the same pass, so a person's figure and the team's can never
+ * be computed from different orders.
+ */
+export interface TimingOrderPeople {
+  /** Whoever marked it ready last (the `ready` event). */
+  preparerId: string | null;
+  /** Whoever sent it out (the `out_for_delivery` event). */
+  dispatcherId: string | null;
+  /** `original_eta ?? eta_given`: the first promise. */
+  firstPromiseAt: Date | null;
+  delays: Array<{ userId: string | null; at: Date; customerTold: boolean }>;
+  delayNotifiedAt: Date | null;
+  locationId: string | null;
+}
+
+export async function loadOrderTimingInputs(
+  orgId: string,
+  from: Date,
+  to: Date,
+): Promise<{ inputs: TimingOrderInput[]; settings: OpsTimingSettings; people: Map<string, TimingOrderPeople> }> {
   const timezone = await orgTimeZone(orgId);
   const [org] = await db
     .select({
@@ -1381,16 +1612,6 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
     dueSoonLeadMinutes: org?.dueSoonLeadMinutes ?? 10,
     lateGraceMinutes: org?.lateGraceMinutes ?? 5,
   };
-
-  const emptyPayload = (): ReportPayload => ({
-    ref: "ARC-T2-005",
-    title: "Order Timing & Service Levels",
-    generatedAt: new Date().toISOString(),
-    period: { from: from.toISOString(), to: to.toISOString() },
-    summary: flattenTimingSummary(summarizeOrderTiming([])),
-    rows: [],
-    redFlags: [],
-  });
 
   const orderRows = await db
     .select({
@@ -1412,6 +1633,9 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
       assignedUserId: orders.assignedUserId,
       completedUserId: orders.completedUserId,
       inputUserId: orders.inputUserId,
+      originalEta: orders.originalEta,
+      delayNotificationSentAt: orders.delayNotificationSentAt,
+      locationId: orders.locationId,
     })
     .from(orders)
     .where(
@@ -1424,20 +1648,31 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
       ),
     );
 
-  if (orderRows.length === 0) return emptyPayload();
+  const people = new Map<string, TimingOrderPeople>();
+  if (orderRows.length === 0) return { inputs: [], settings, people };
 
   const orderIds = orderRows.map((r) => r.id);
   const events = await db
-    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta })
+    .select({ orderId: orderEvents.orderId, kind: orderEvents.kind, at: orderEvents.at, meta: orderEvents.meta, userId: orderEvents.userId })
     .from(orderEvents)
     .where(
       and(
         eq(orderEvents.orgId, orgId),
         inArray(orderEvents.orderId, orderIds),
-        inArray(orderEvents.kind, ["assigned", "delayed", "unheld", "ready", "completed"]),
+        inArray(orderEvents.kind, ["assigned", "delayed", "unheld", "ready", "completed", "out_for_delivery"]),
       ),
     )
     .orderBy(orderEvents.orderId, orderEvents.at);
+  for (const r of orderRows) {
+    people.set(r.id, {
+      preparerId: null,
+      dispatcherId: null,
+      firstPromiseAt: r.originalEta ?? r.etaGiven ?? null,
+      delays: [],
+      delayNotifiedAt: r.delayNotificationSentAt ?? null,
+      locationId: r.locationId ?? null,
+    });
+  }
 
   const claimedAtByOrder = new Map<string, Date>();
   const wasDelayedByOrder = new Set<string>();
@@ -1455,6 +1690,14 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
 
   for (const e of events) {
     const meta = (e.meta ?? {}) as Record<string, unknown>;
+    const who = people.get(e.orderId);
+    if (who) {
+      if (e.kind === "ready") who.preparerId = e.userId ?? null;
+      else if (e.kind === "out_for_delivery") who.dispatcherId = e.userId ?? null;
+      else if (e.kind === "delayed") {
+        who.delays.push({ userId: e.userId ?? null, at: new Date(e.at as unknown as string), customerTold: meta.customerTold === true });
+      }
+    }
     switch (e.kind) {
       case "assigned":
         if (!claimedAtByOrder.has(e.orderId)) claimedAtByOrder.set(e.orderId, new Date(e.at as unknown as string));
@@ -1521,45 +1764,7 @@ export async function orderTimingReport(orgId: string, from: Date, to: Date): Pr
     readyAssumed: readyAssumedByOrder.get(r.id) ?? false,
   }));
 
-  const facts = timingInputs.map((input) => deriveOrderTiming(input, settings));
-  const summary = summarizeOrderTiming(facts);
-  const redFlags = orderTimingRedFlags(summary);
-
-  const rows = facts.map((f) => ({
-    orderId: f.id.slice(0, 8),
-    fulfilmentMethod: f.fulfilmentMethod,
-    channel: f.channel,
-    tradingDay: f.tradingDay,
-    excluded: f.excluded === false ? null : f.excluded,
-    hasPromise: f.hasPromise,
-    onTime: f.onTime,
-    promiseKept: f.promiseKept,
-    latenessMinutes: f.latenessMinutes,
-    receivedToClaimedMinutes: f.receivedToClaimedMinutes,
-    receivedToReadyMinutes: f.receivedToReadyMinutes,
-    readyToHandoverMinutes: f.readyToHandoverMinutes,
-    arrivedToHandoverMinutes: f.arrivedToHandoverMinutes,
-    dispatchToDeliveredMinutes: f.dispatchToDeliveredMinutes,
-    receivedToCompletedMinutes: f.receivedToCompletedMinutes,
-    wasDelayed: f.wasDelayed,
-    revisedPromiseKept: f.revisedPromiseKept,
-    customerWaitingIncident: f.customerWaitingIncident,
-    heldMinutes: Math.round((f.heldSeconds / 60) * 10) / 10,
-    assignedUserId: f.assignedUserId,
-    completedUserId: f.completedUserId,
-    inputUserId: f.inputUserId,
-    station: f.station,
-  }));
-
-  return {
-    ref: "ARC-T2-005",
-    title: "Order Timing & Service Levels",
-    generatedAt: new Date().toISOString(),
-    period: { from: from.toISOString(), to: to.toISOString() },
-    summary: flattenTimingSummary(summary),
-    rows,
-    redFlags,
-  };
+  return { inputs: timingInputs, settings, people };
 }
 
 /**
@@ -1728,133 +1933,59 @@ export async function resellerCredit(orgId: string): Promise<ReportPayload> {
 }
 
 /**
- * The bonus scheme (ARC-RPT-SPEC-001) has {@link TOTAL_KPI_COMPONENTS} KPI
- * components. Today only two have real, measurable data — order accuracy (no
- * refund) and average satisfaction score — and a tier plus a payable £ figure
- * is a claim about someone's pay, not a display nicety. Extrapolating "no
- * refunds on my one order this week" into a 7-component PLATINUM score (a
- * live bug: one refund-free order scored 30 points from a "≤2 orders"
- * shortcut, plus a 20-point base, projected to a full PLATINUM tier and a
- * payable £150) states a specific, false number. Until every component is
- * actually measured for that person, this reports "INSUFFICIENT DATA" and no
- * £ figure — never a tier extrapolated from a subset (ARC-024).
+ * ARC-T2-002 Staff Performance (v1.2 Phase 7B) — replaces Staff KPI, which
+ * counted cashier codes and paid £50/£100/£150 bonus tiers from them. Keyed by
+ * login; no bonus figures (Q16: no pay link). This JSON is everyone,
+ * unscoped, so it stays ADMIN and above (EVIDENCE_REF_MIN_ROLE); the page
+ * uses `/api/evidence/staff-performance`, which cuts rows per viewer.
  */
-const TOTAL_KPI_COMPONENTS = 7;
-
-export type StaffBonusTier = "PLATINUM" | "GOLD" | "SILVER" | "BELOW STANDARD" | "INSUFFICIENT DATA";
-
-/** ARC-T2-002 Staff KPI Performance Report — weekly KPIs from available signals. */
-export async function staffKpiPerformance(orgId: string, weekStart: Date, weekEnd: Date): Promise<ReportPayload> {
-  const timezone = await orgTimeZone(orgId);
-  const { start } = tradingDayBounds(isoDateOnly(weekStart), timezone);
-  const { end } = tradingDayBounds(isoDateOnly(weekEnd), timezone);
-
-  const staff = await db
-    .select({ id: cashierProfiles.id, name: cashierProfiles.displayName })
-    .from(cashierProfiles)
-    .where(and(eq(cashierProfiles.orgId, orgId), eq(cashierProfiles.isActive, true)));
-
-  const redFlags: string[] = [];
-  const rows: Record<string, unknown>[] = [];
-  for (const st of staff) {
-    // Orders SETTLED this week and attributed to this cashier as the one who
-    // completed them — `completedCashierId`, not the legacy `cashierId`
-    // column, which is overwritten to whoever last touched the order and is
-    // not necessarily who did the commission-earning work (migration 051).
-    const ord = await db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.orgId, orgId),
-          eq(orders.status, "completed"),
-          eq(orders.completedCashierId, st.id),
-          gte(orders.settledAt, start),
-          lt(orders.settledAt, end),
-        ),
-      );
-    const orderIds = ord.map((o) => o.id);
-    const ordersHandled = orderIds.length;
-
-    // Order accuracy: orders without a refund / total.
-    let refunded = 0;
-    if (orderIds.length) {
-      const rf = await db
-        .select({ n: sql<number>`COUNT(DISTINCT ${refunds.orderId})` })
-        .from(refunds)
-        .where(and(eq(refunds.orgId, orgId), inArray(refunds.orderId, orderIds)));
-      refunded = num(rf[0]?.n);
-    }
-    const accuracy = ordersHandled ? ((ordersHandled - refunded) / ordersHandled) * 100 : null;
-
-    // Satisfaction average attributed to this staff member.
-    const sat = await db
-      .select({ avg: sql<number>`AVG(${satisfactionScores.score})`, n: sql<number>`COUNT(*)` })
-      .from(satisfactionScores)
-      .where(and(eq(satisfactionScores.orgId, orgId), eq(satisfactionScores.staffId, st.id), gte(satisfactionScores.scoreDate, start), lt(satisfactionScores.scoreDate, end)));
-    const satisfaction = num(sat[0]?.n) ? num(sat[0]?.avg) : null;
-
-    // KPIs at target from what we can actually measure (accuracy ≥98, satisfaction ≥4.8).
-    let atTarget = 0;
-    let measured = 0;
-    if (accuracy !== null) {
-      measured++;
-      if (accuracy >= 98) atTarget++;
-    }
-    if (satisfaction !== null) {
-      measured++;
-      if (satisfaction >= 4.8) atTarget++;
-    }
-
-    let bonusTier: StaffBonusTier;
-    let bonusPayable: number | null;
-    if (measured < TOTAL_KPI_COMPONENTS) {
-      // Never extrapolate a full-scheme tier from a subset of KPIs.
-      bonusTier = "INSUFFICIENT DATA";
-      bonusPayable = null;
-    } else if (atTarget === TOTAL_KPI_COMPONENTS) {
-      bonusTier = "PLATINUM";
-      bonusPayable = 150;
-    } else if (atTarget >= 5) {
-      bonusTier = "GOLD";
-      bonusPayable = 100;
-    } else if (atTarget >= 3) {
-      bonusTier = "SILVER";
-      bonusPayable = 50;
-    } else {
-      bonusTier = "BELOW STANDARD";
-      bonusPayable = 0;
-    }
-    if (bonusTier === "BELOW STANDARD" && ordersHandled > 0) redFlags.push(`${st.name} is BELOW STANDARD this week — review.`);
-
-    rows.push({
-      staff: st.name,
-      ordersHandled,
-      orderAccuracyRate: accuracy,
-      satisfactionScore: satisfaction,
-      kpisAtTarget: atTarget,
-      kpisMeasured: measured,
-      kpisTotal: TOTAL_KPI_COMPONENTS,
-      bonusTier,
-      bonusPayable,
-    });
-  }
-  rows.sort((a, b) => num(b.bonusPayable) - num(a.bonusPayable));
-
+export async function staffPerformanceReport(orgId: string, from: Date, to: Date): Promise<ReportPayload> {
+  const { staffPerformance } = await import("./staffPerformance");
+  const report = await staffPerformance(
+    orgId,
+    { fromIso: isoDateOnly(from), toIso: isoDateOnly(to), adminCover: true },
+    { userId: null, role: "SUPER_ADMIN" },
+  );
+  const line = (staff: string, role: string, f: (typeof report.team)["unattributed"]) => ({
+    staff,
+    role,
+    loaded: f.loaded,
+    prepared: f.prepared,
+    completed: f.completed,
+    collected: f.collected,
+    delivered: f.delivered,
+    dispatched: f.dispatched,
+    solo: f.solo,
+    stillOpen: f.stillOpen,
+    salesCompleted: f.salesCompleted,
+    valueBroughtIn: f.valueBroughtIn,
+    averageOrderValue: f.averageOrderValue,
+    wrongItemRatePercent: f.wrongItemRatePercent,
+    reopens: f.reopens,
+    unreadyTaps: f.unreadyTaps,
+    refundsProcessed: f.refundsProcessed,
+    deletes: f.deletes,
+    completedOthers: f.completedOthers,
+  });
+  const rows = [
+    ...report.rows.map((r) => line(r.name, r.role, r)),
+    ...(report.team.adminCover ? [line("Admin cover", "TEAM", report.team.adminCover)] : []),
+    line("Unattributed", "TEAM", report.team.unattributed),
+    line("Total", "TEAM", report.team.total),
+  ];
   return {
     ref: "ARC-T2-002",
-    title: "Staff KPI Performance Report",
+    title: "Staff Performance",
     generatedAt: new Date().toISOString(),
-    period: { from: start.toISOString(), to: end.toISOString() },
+    period: { from: report.period.from, to: report.period.to },
     summary: {
-      staff: rows.length,
-      platinum: rows.filter((r) => r.bonusTier === "PLATINUM").length,
-      belowStandard: rows.filter((r) => r.bonusTier === "BELOW STANDARD").length,
-      insufficientData: rows.filter((r) => r.bonusTier === "INSUFFICIENT DATA").length,
-      totalBonus: rows.reduce((s, r) => s + num(r.bonusPayable), 0),
+      staff: report.rows.length,
+      grossSettledSales: report.grossSettledSales,
+      salesCompleted: report.team.total.salesCompleted,
+      provisional: report.provisional ? "yes" : "no",
     },
     rows,
-    redFlags,
+    redFlags: [],
   };
 }
 
@@ -1864,12 +1995,12 @@ export type ReportRef = "ARC-T1-001" | "ARC-T1-002" | "ARC-T1-004" | "ARC-T2-005
 export async function runReport(
   ref: string,
   orgId: string,
-  opts: { from?: Date; to?: Date; locationId?: string; cashierId?: string } = {},
+  opts: { from?: Date; to?: Date; locationId?: string; staffUserId?: string } = {},
 ): Promise<ReportPayload> {
-  // ARC-026: callers MUST validate opts.locationId/cashierId belong to this
+  // ARC-026: callers MUST validate opts.locationId/staffUserId belong to this
   // org before calling runReport — the route layer does this once here
   // rather than in every branch below.
-  const filter: ReportScopeFilter = { locationId: opts.locationId, cashierId: opts.cashierId };
+  const filter: ReportScopeFilter = { locationId: opts.locationId, staffUserId: opts.staffUserId };
   switch (ref) {
     case "ARC-T1-001":
       return dailySalesSummary(orgId, opts.from, filter);
@@ -1897,7 +2028,7 @@ export async function runReport(
     case "ARC-T2-002": {
       const to = opts.to ?? new Date();
       const from = opts.from ?? new Date(to.getTime() - 6 * 86400000);
-      return staffKpiPerformance(orgId, from, to);
+      return staffPerformanceReport(orgId, from, to);
     }
     case "ARC-T2-003": {
       const to = opts.to ?? new Date();

@@ -56,6 +56,11 @@ export default defineConfig({
           "server/__tests__/opsAlertSweep.test.ts",
           "server/__tests__/orderTimingReport.test.ts",
           "server/__tests__/opsBoardSuperAdminStaff.test.ts",
+          // v1.2 Phase 0B: imports the WhatsApp store, which reaches ../db at
+          // load. Runs by name in the unit-db job instead.
+          "server/__tests__/whatsappMarketingConsent.test.ts",
+          // v1.2 Stripe links: imports ../db at load. Runs by name in unit-db.
+          "server/__tests__/cardLinks.test.ts",
         ],
     testTimeout: 30_000,
   },

@@ -5,4 +5,4 @@
  * customer was shown one total and charged another. Both sides now read the
  * org's configured rate and fall back to this only when none is set.
  */
-export const DEFAULT_TAX_RATE_PERCENT = 20;
+export const DEFAULT_TAX_RATE_PERCENT = 0;

@@ -31,7 +31,11 @@
  * omitted) is unchanged, because a standalone form's container is the
  * viewport.
  */
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { deliveryOrderFields, EMPTY_POS_DELIVERY, type PosDeliveryState } from "@/components/pos-delivery-details";
+import { PosDeliveryFee, effectiveDeliveryFee } from "@/components/pos-delivery-fee";
+import { DELIVERY_FEE_NAME_DEFAULT, DELIVERY_FEE_PRICE_DEFAULT, readDeliveryFee } from "@shared/orders/deliveryFee";
+import { Link } from "wouter";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DEFAULT_TAX_RATE_PERCENT } from "@shared/tax";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -51,7 +55,18 @@ import { posPrice, type PosProduct, type PosChannel } from "@/components/pos-typ
 import { PosCartPanel, type PosCartPanelProps, type PosCartItem, type PosCustomer } from "@/components/pos-cart-panel";
 import { ActionLoader } from "@/components/action-loader";
 import { computeTierProgress } from "@shared/loyalty/progress";
+import { PricingError, priceOrder, tierForPoints, type PricingPromotion, type PricingTier } from "@shared/pricing/priceOrder";
 import { consumeWhatsappDraft } from "@/lib/whatsappDraft";
+import { consumeSaleIssueDraft, readSaleIssuePayload, type SaleIssueDraft } from "@/lib/saleIssueDraft";
+import {
+  checkSaleLanded,
+  newClientOrderId,
+  referenceForAttempt,
+  saleFingerprint,
+  sendLeftSaleUncertain,
+  sendSale,
+  type SentSale,
+} from "@/lib/saleQueue";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { playScanFailBeep, playScanSuccessBeep } from "@/lib/posAudio";
 import { useAuth } from "@/hooks/useAuth";
@@ -60,9 +75,31 @@ import type { LocationPickerOption } from "@shared/schema";
 import type { GiftCardPaymentState } from "@/pages/pos/payments/GiftCardPayment";
 import type { OpsBoardStaffRow } from "@/hooks/useOpsBoard";
 import { cn } from "@/lib/utils";
+import { usePriceGuard } from "@/hooks/usePriceGuard";
+import { buildConfirmation, choiceProblem, flaggedCartLines } from "@/lib/priceGuard";
+import { PriceGuardLineNote } from "@/components/price-guard/PriceGuardLineNote";
+import { PriceGuardPayPanel } from "@/components/price-guard/PriceGuardPayPanel";
+import { ShiftPriceOverrideCount } from "@/components/price-guard/ShiftPriceOverrideCount";
+import { CardLinkDialog } from "@/components/card-link/CardLinkDialog";
+import { cardLinkAmountOf, type CardLinkSale } from "@/lib/cardLinkSale";
+import { ProblemButton } from "@/components/problem/ProblemSheet";
+import { recordFunnel } from "@/lib/usage";
+
+/** "Confirm and take payment" (v1.2 Phase 4); the same verbs as the step's own button. */
+function confirmVerb(paymentMethod: string): string {
+  return paymentMethod === "tick" ? "place order" : "take payment";
+}
 
 type Product = PosProduct;
 type Customer = PosCustomer;
+
+/**
+ * Whether the customer has an email on file. Below admin the address itself
+ * is not sent (Q13a), only `hasEmail`; the receipt worker looks it up.
+ */
+function customerHasEmail(customer: Customer | null | undefined): boolean {
+  return !!customer && (!!customer.email || customer.hasEmail === true);
+}
 type CartItem = PosCartItem;
 
 export interface PosEmbeddedProps {
@@ -109,6 +146,7 @@ function MyShiftSummary() {
   const { data: summaryData } = useQuery<{
     shift: { openedAt: string };
     summary: { grossSales: string | number; commissionAmount: string | number } | null;
+    priceOverrideCount?: number;
   }>({
     queryKey: ["/api/cashier-shifts", shiftId, "summary"],
     queryFn: async () => {
@@ -132,6 +170,12 @@ function MyShiftSummary() {
       <span className="font-medium text-foreground">£{grossSales.toFixed(2)}</span>
       {" · commission "}
       <span className="font-medium text-foreground">£{commission.toFixed(2)}</span>
+      <ShiftPriceOverrideCount count={summaryData.priceOverrideCount} />
+      {" · "}
+      {/* v1.2 Phase 7C: the full picture of their own work, for every role. */}
+      <Link href="/my-performance" className="underline underline-offset-2" data-testid="link-my-performance">
+        My performance
+      </Link>
     </p>
   );
 }
@@ -142,6 +186,16 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const [cart, setCart] = useState<CartItem[]>([]);
   /** Which step is on screen. "pay" replaces the lines with the payment step. */
   const [view, setView] = useState<"build" | "pay">("build");
+  // Sale funnel (v1.2 Phase 8B): the step only, never what is on the sale.
+  const hadLinesRef = useRef(false);
+  useEffect(() => {
+    const has = cart.length > 0;
+    if (has && !hadLinesRef.current) recordFunnel("start");
+    hadLinesRef.current = has;
+  }, [cart.length]);
+  useEffect(() => {
+    if (view === "pay") recordFunnel("pay");
+  }, [view]);
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
@@ -164,12 +218,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Defaults to collection: the overwhelming majority of till sales are handed
   // over at the counter, so the common path stays a single tap.
   const [fulfilmentMethod, setFulfilmentMethod] = useState<"collection" | "delivery">("collection");
+  const [delivery, setDelivery] = useState<PosDeliveryState>(EMPTY_POS_DELIVERY);
+  // The delivery fee as typed (v1.2.1); null when none is on the order.
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState<string | null>(null);
   const [giftCardPayment, setGiftCardPayment] = useState<GiftCardPaymentState | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<any>(null);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-  const [customerTier, setCustomerTier] = useState<any>(null);
+  const [appliedPromo, setAppliedPromo] = useState<PricingPromotion | null>(null);
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [pointsRedemptionAmount, setPointsRedemptionAmount] = useState(0);
   const [redeemPanelOpen, setRedeemPanelOpen] = useState(false);
@@ -193,6 +248,18 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // least-loaded present station member → Unassigned); a specific id is the
   // inputter's explicit override, sent as `assignedUserId`.
   const [assigneeUserId, setAssigneeUserId] = useState("");
+  // The sale's reference (v1.2 Phase 1A), made when the sale starts and sent
+  // on every attempt at it — a retry after a timeout, a double tap, an offline
+  // replay — so the server records it once. A new one only once this sale has
+  // landed or been kept on the till; a refused attempt keeps it, because that
+  // attempt recorded nothing.
+  const [saleRef, setSaleRef] = useState<string>(() => newClientOrderId());
+  // What was last sent under saleRef, so a changed cart is never sent under a
+  // reference an earlier (possibly recorded) attempt already used.
+  const lastSentRef = useRef<SentSale | null>(null);
+  // A refused sale a manager opened from Needs attention to fix. It keeps the
+  // sale's own reference and is sent as a resend of that sale.
+  const [editingIssue, setEditingIssue] = useState<SaleIssueDraft | null>(null);
 
   const { data: currentShiftData } = useQuery<{
     shift: { id: string; status: string; locationId?: string } | null;
@@ -211,6 +278,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // payment" rather than after, from a 400. No new endpoint: this is the same
   // /api/auth/user and /api/locations data other pages already fetch.
   const { user: authUser } = useAuth();
+  // Card (link) (v1.2 Stripe links): offered only when Stripe is set up; the
+  // sale waiting on one is shown over the till until paid or re-tendered.
+  const { data: cardLinkStatus } = useQuery<{ enabled: boolean; whatsapp: boolean }>({
+    queryKey: ["/api/card-links/till"],
+    staleTime: 5 * 60_000,
+  });
+  const [cardLinkSale, setCardLinkSale] = useState<CardLinkSale | null>(null);
   const { data: posLocations = [] } = useQuery<LocationPickerOption[]>({
     queryKey: ["/api/locations"],
   });
@@ -234,12 +308,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   const staff = staffData?.staff ?? [];
 
   useEffect(() => {
-    if (selectedCustomer?.email && selectedCustomer.receiptEmailOptIn !== false) {
+    if (customerHasEmail(selectedCustomer) && selectedCustomer?.receiptEmailOptIn !== false) {
       setEmailReceipt(true);
     } else {
       setEmailReceipt(false);
     }
-  }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.receiptEmailOptIn]);
+  }, [selectedCustomer?.id, selectedCustomer?.email, selectedCustomer?.hasEmail, selectedCustomer?.receiptEmailOptIn]);
 
   // Fetch products
   const { data: products = [], isLoading: productsLoading } = useQuery<PosProduct[]>({
@@ -275,30 +349,94 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       matched.push({ product, quantity, customPrice: price, subtotal: price * quantity });
     }
     if (matched.length > 0) setCart(matched);
+    let customerPicked = false;
     if (draft.customerId) {
       const customer = customers.find((c) => c.id === draft.customerId);
-      if (customer) setSelectedCustomer(customer);
+      if (customer) {
+        setSelectedCustomer(customer);
+        customerPicked = true;
+      }
     }
+    const fromVoice = draft.source === "voice";
     // The order came in over WhatsApp regardless of whether every line matched.
-    setChannel("whatsapp");
+    // A voice draft is a till sale like any other.
+    if (!fromVoice) setChannel("whatsapp");
     setDraftConsumed(true);
+    const itemsPart =
+      matched.length > 0
+        ? `${matched.length} item(s) added at the till's prices${unmatched.length ? `; ${unmatched.length} not matched` : ""}.`
+        : "No catalogue products matched. Add items manually.";
+    const customerPart =
+      fromVoice && !customerPicked && draft.customerName ? ` Pick the customer for "${draft.customerName}".` : "";
+    const notePart = fromVoice && draft.note ? ` ${draft.note}.` : "";
     toast({
-      title: "WhatsApp draft loaded",
-      description:
-        matched.length > 0
-          ? `${matched.length} item(s) added${unmatched.length ? `; ${unmatched.length} not matched` : ""}. Review before checkout.`
-          : "No catalogue products matched the message. Add items manually.",
+      title: fromVoice ? "Voice draft opened" : "WhatsApp draft loaded",
+      description: `${itemsPart}${customerPart}${notePart} Review before checkout.`,
     });
   }, [draftConsumed, productsLoading, customersLoading, products, customers, toast]);
+
+  // Edit from Needs attention: put the refused sale back on the till.
+  const [issueDraftConsumed, setIssueDraftConsumed] = useState(false);
+  useEffect(() => {
+    if (issueDraftConsumed || productsLoading || customersLoading) return;
+    setIssueDraftConsumed(true);
+    const draft = consumeSaleIssueDraft();
+    if (!draft) return;
+    const sale = readSaleIssuePayload(draft.payload);
+    const matched: CartItem[] = [];
+    let unmatched = 0;
+    for (const line of sale.lines) {
+      const product = products.find((p) => p.id === line.productId) as PosProduct | undefined;
+      if (!product) {
+        unmatched += 1;
+        continue;
+      }
+      matched.push({ product, quantity: line.quantity, customPrice: line.unitPrice, subtotal: line.quantity * line.unitPrice });
+    }
+    setCart(matched);
+    const customer = sale.customerId ? customers.find((c) => c.id === sale.customerId) : undefined;
+    setSelectedCustomer(customer ?? null);
+    if (sale.paymentMethod && sale.paymentMethod !== "split") setPaymentMethod(sale.paymentMethod);
+    if (sale.payments && sale.payments.length > 1) {
+      setSplitPayment(true);
+      setTenderLegs(sale.payments.map((leg) => ({ method: leg.method, amount: leg.amount.toFixed(2) })));
+    }
+    setFulfilmentMethod(sale.fulfilmentMethod);
+    setDelivery({ ...EMPTY_POS_DELIVERY, ...sale.delivery });
+    setDeliveryFeeInput(sale.deliveryFee != null ? sale.deliveryFee.toFixed(2) : null);
+    if (sale.channel === "pos" || sale.channel === "phone" || sale.channel === "whatsapp") setChannel(sale.channel);
+    if (sale.personalUseReason) setPersonalUseReason(sale.personalUseReason);
+    if (sale.orderDate) setOrderDate(sale.orderDate);
+    if (sale.expenses.length > 0) setOrderExpenses(sale.expenses);
+    setSaleRef(draft.clientOrderId);
+    setEditingIssue(draft);
+    const notes = [
+      unmatched ? `${unmatched} line(s) are no longer in the catalogue` : "",
+      sale.customerId && !customer ? "the customer was not found" : "",
+      sale.dropped.length ? `apply the ${sale.dropped.join(" and ")} again if still wanted` : "",
+    ].filter(Boolean);
+    toast({
+      title: "Editing a sale from Needs attention",
+      description: notes.length ? `Check it before taking payment: ${notes.join("; ")}.` : "Check it, then take payment.",
+    });
+  }, [issueDraftConsumed, productsLoading, customersLoading, products, customers, toast]);
 
   // Tax rate must come from the org, not a constant: the till previously
   // showed 10% while the server charged 20%, so the customer was quoted one
   // total and charged another.
-  const { data: orgSettings } = useQuery<{ vatEnabled?: boolean; vatRate?: number }>({
+  const { data: orgSettings } = useQuery<{
+    vatEnabled?: boolean;
+    vatRate?: number;
+    priceGuardEnabled?: boolean;
+    deliveryFeeName?: string;
+    deliveryFeePrice?: number;
+  }>({
     queryKey: ["/api/settings"],
   });
+  // Price guard at the till (v1.2 Phase 4): off, the till shows nothing.
+  const priceGuard = usePriceGuard(orgSettings?.priceGuardEnabled);
 
-  const { data: loyaltyTiers = [] } = useQuery<any[]>({
+  const { data: loyaltyTiers = [] } = useQuery<Array<PricingTier & { color?: string | null }>>({
     queryKey: ["/api/loyalty-tiers"],
   });
 
@@ -318,11 +456,13 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     );
   }, [selectedCustomer, loyaltyTiers]);
 
-  // Filter customers for search
+  // Filter customers for search. Below admin there is no number here to
+  // search (not even the last four: no partial matches, PRV-06); a whole
+  // number is looked up on the server by the picker instead.
   const filteredCustomers = customers.filter(
     (customer) =>
       customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      (customer.phone && customer.phone.includes(customerSearch)) ||
+      (!!customer.phone && customer.phone.includes(customerSearch)) ||
       (customer.email && customer.email.toLowerCase().includes(customerSearch.toLowerCase()))
   );
 
@@ -372,76 +512,109 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
   // Place order mutation
   const placeOrderMutation = useMutation({
     mutationFn: async (orderData: any) => {
-      const queueOffline = async () => {
-        console.log('[POS] Queueing order mutation offline');
-        try {
-          await offlineStorage.queueMutation({
-            type: 'ORDER_CREATE',
-            method: 'POST',
-            endpoint: '/api/orders',
-            data: orderData,
-          });
-          console.log('[POS] Order mutation queued successfully');
-        } catch (queueError) {
-          console.error('[POS] Failed to queue mutation:', queueError);
-          throw queueError;
+      recordFunnel("submit");
+      const fingerprint = saleFingerprint(orderData);
+      let ref = saleRef;
+      // A sale from Needs attention is always a resend of its own reference.
+      if (!editingIssue) {
+        const decided = await referenceForAttempt(saleRef, lastSentRef.current, fingerprint);
+        if (decided.kind === "landed") return { ...decided.body, earlierAttemptRecorded: true };
+        if (decided.kind === "unknown") {
+          throw new Error(
+            "arcarna could not confirm whether the first try of this sale was recorded, so the changed sale was not sent. Check the connection and try again.",
+          );
         }
-
-        return { offline: true, orderId: null };
+        if (decided.ref !== saleRef) {
+          ref = decided.ref;
+          setSaleRef(ref);
+        }
+      }
+      lastSentRef.current = { ref, fingerprint };
+      const payload = {
+        ...orderData,
+        clientOrderId: ref,
+        ...(editingIssue ? { saleIssueId: editingIssue.issueId, saleIssueMode: "edit" } : {}),
+      };
+      const keepOnTill = async (why: "offline" | "timeout") => {
+        // A manager's edit is a resend of a sale arcarna already holds on
+        // Needs attention; keeping a second copy here would only confuse.
+        if (editingIssue) {
+          throw new Error("No connection, so the edit was not sent. The sale is still on Needs attention — try again when you are back online.");
+        }
+        // A card link is paid while the customer is here; it cannot wait in a queue.
+        if (cardLinkAmountOf(payload) !== null) {
+          throw new Error("Card (link) needs a connection. Choose another way to pay.");
+        }
+        await offlineStorage.queueMutation({
+          type: 'ORDER_CREATE',
+          method: 'POST',
+          endpoint: '/api/orders',
+          data: payload,
+          clientOrderId: ref,
+          queuedByUserId: (authUser as { id?: string } | null)?.id,
+        });
+        return { offline: true, why, orderId: null };
       };
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+      if (!navigator.onLine) return keepOnTill("offline");
 
-        const response = await apiFetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData),
-          credentials: 'include',
-          signal: controller.signal
-        });
+      const outcome = await sendSale(payload);
+      if (outcome.ok) return outcome.body;
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const text = await response.text() || response.statusText;
-          if (response.status === 409 && text.includes("CASHIER_SHIFT_REQUIRED")) {
-            // A readable toast rather than the raw response body (which is
-            // what fell through to the generic `throw` below before N6).
-            let message = "An active cashier shift is required before taking sales.";
-            try {
-              const parsed = JSON.parse(text);
-              if (typeof parsed?.message === "string") message = parsed.message;
-            } catch {
-              /* the default message above already covers this */
-            }
-            throw new Error(message);
-          }
-          throw new Error(`${response.status}: ${text}`);
+      if (sendLeftSaleUncertain(outcome)) {
+        // No answer, or a 5xx that may have come after the commit. On a slow
+        // line the sale may well have been recorded, so ask before saying
+        // anything — the cashier should hear the truth. Keeping it would
+        // still be safe: the reference makes the replay a repeat.
+        if (navigator.onLine) {
+          const landed = await checkSaleLanded(ref);
+          if (landed.result === "landed") return { ...landed.body, landedAfterTimeout: true };
         }
-
-        return response.json();
-      } catch (error) {
-        const isNetworkError = !navigator.onLine ||
-          (error as Error).name === 'AbortError' ||
-          (error as Error).message.includes('Failed to fetch') ||
-          (error as Error).message.includes('NetworkError');
-
-        if (isNetworkError) {
-          return queueOffline();
+        if (outcome.status === null) {
+          return keepOnTill(navigator.onLine && outcome.timedOut ? "timeout" : "offline");
         }
-        throw error;
       }
+      throw new Error(outcome.message);
     },
-    onSuccess: async (data: any) => {
+    onSuccess: async (data: any, variables: any) => {
+      recordFunnel("done");
       const createdOrderId: string | undefined = data?.orderId ?? data?.order?.id;
+      const cardLinkAmount = cardLinkAmountOf(variables);
+      if (createdOrderId && !data?.offline && cardLinkAmount !== null) {
+        setCardLinkSale({
+          orderId: createdOrderId,
+          amount: cardLinkAmount,
+          longLived: channel === "phone" || channel === "whatsapp",
+          hasCustomer: !!selectedCustomer?.id,
+        });
+      }
       const hadNoDueTime = dueMinutes == null && !dueTime;
 
       if (data?.offline) {
+        // It used to say "You're offline" for every failure, including a
+        // server that was merely slow while the till was online.
         toast({
-          title: "Order Saved Offline",
-          description: "You're offline. Order will sync automatically when connection returns.",
+          title: "Sale saved on this till",
+          description:
+            data.why === "timeout"
+              ? "arcarna did not answer in time, so this sale is saved on this till and will be sent automatically. It will only be recorded once."
+              : "No connection. This sale is saved on this till and will be sent when the connection is back. It will only be recorded once.",
+        });
+      } else if (data?.earlierAttemptRecorded) {
+        // The first try landed after all; the changes made since were not sent.
+        const recordedTotal = Number(data?.order?.total);
+        toast({
+          title: "The first try of this sale was recorded",
+          description: `It was recorded${Number.isFinite(recordedTotal) ? ` at £${recordedTotal.toFixed(2)}` : ""}. The changes made after it were not sent — edit that order if the sale changed.`,
+          variant: "destructive",
+          duration: 10000,
+        });
+      } else if (data?.duplicate || data?.landedAfterTimeout) {
+        toast({
+          title: "Order placed",
+          description: data?.landedAfterTimeout
+            ? "The connection was slow, but the sale reached arcarna."
+            : "This sale was already recorded, so nothing was added twice.",
         });
       } else if (data?.warnings && data.warnings.length > 0) {
         // Order was created but with stock warnings
@@ -451,6 +624,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
           variant: "destructive",
           duration: 8000,
         });
+      } else if (cardLinkAmount !== null) {
+        toast({ title: "Order recorded", description: "Waiting for the card payment by link." });
       } else {
         toast({
           title: "Order Placed",
@@ -479,12 +654,23 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         embedded?.onPlaced(createdOrderId);
       }
 
+      if (editingIssue) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/sale-issues/summary"] });
+      }
+      setEditingIssue(null);
+      setSaleRef(newClientOrderId());
       setCart([]);
       setSelectedCustomer(null);
+      // One customer's promotion must not follow the next sale.
+      setAppliedPromo(null);
+      setPromoCode("");
       setView("build");
       // Back to the default, or one delivery quietly marks every later sale on
       // this till as a delivery too.
       setFulfilmentMethod("collection");
+      setDelivery(EMPTY_POS_DELIVERY);
+      setDeliveryFeeInput(null);
       // Same reason: one backdated entry must not quietly date every later
       // sale on this till to last week.
       setOrderDate(localIsoDate());
@@ -519,6 +705,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       focusProductSearch(0);
     },
     onError: (error: any) => {
+      recordFunnel("failed");
       toast({
         title: "Order failed",
         description: error.message || "Failed to process the order",
@@ -594,24 +781,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     void addProductByBarcode(code);
   });
 
-  // Update customer tier when customer is selected
-  useEffect(() => {
-    if (selectedCustomer && loyaltyTiers.length > 0) {
-      const sortedTiers = [...loyaltyTiers].sort((a: any, b: any) => b.pointsRequired - a.pointsRequired);
-      const tier = sortedTiers.find((t: any) => selectedCustomer.loyaltyPoints >= t.pointsRequired);
-      setCustomerTier(tier);
-
-      // Calculate loyalty discount based on tier
-      if (tier) {
-        setLoyaltyDiscount(parseFloat(tier.discountPercentage || 0));
-      } else {
-        setLoyaltyDiscount(0);
-      }
-    } else {
-      setCustomerTier(null);
-      setLoyaltyDiscount(0);
-    }
-  }, [selectedCustomer, loyaltyTiers]);
+  // The customer's tier, by the same rule priceOrder() prices with.
+  const customerTier = useMemo(
+    () => (selectedCustomer ? tierForPoints(selectedCustomer.loyaltyPoints ?? 0, loyaltyTiers) : null),
+    [selectedCustomer, loyaltyTiers],
+  );
 
   useEffect(() => {
     setRedeemPoints(0);
@@ -652,22 +826,71 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setDueTime("");
   }, []);
 
-  // Calculate totals with discounts
-  const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const loyaltyDiscountAmount = (subtotal * loyaltyDiscount) / 100;
-  const promoDiscountAmount = appliedPromo ?
-    (appliedPromo.type === 'percentage' ? (subtotal * parseFloat(appliedPromo.value)) / 100 : parseFloat(appliedPromo.value))
-    : 0;
-  const totalDiscount = loyaltyDiscountAmount + promoDiscountAmount + pointsRedemptionAmount;
-  const discountedSubtotal = Math.max(0, subtotal - totalDiscount);
   // Mirrors the server: organizations.default_tax_rate, surfaced as vatRate.
   const taxRatePercent =
     orgSettings?.vatEnabled === false ? 0 : (orgSettings?.vatRate ?? DEFAULT_TAX_RATE_PERCENT);
-  const tax = +(discountedSubtotal * (taxRatePercent / 100)).toFixed(2);
-  const total = +(discountedSubtotal + tax).toFixed(2);
 
-  // Calculate loyalty points earned (1 point per dollar spent, with tier multiplier)
-  const pointsEarned = Math.floor(total * (customerTier?.pointsMultiplier || 1));
+  // The delivery fee this sale is priced with (v1.2.1): only on a delivery,
+  // never on personal use, and only once the typed amount reads as money.
+  const deliveryFeeName = orgSettings?.deliveryFeeName || DELIVERY_FEE_NAME_DEFAULT;
+  const deliveryFee = effectiveDeliveryFee(deliveryFeeInput, {
+    fulfilmentMethod,
+    isPersonalUse: paymentMethod === "personal_use",
+  });
+
+  // One price (v1.2 Phase 1B): the same priceOrder() the server records the
+  // sale with, so the total shown here — offline too — is the total charged
+  // and every tender is checked against it. A promotion or points the rules
+  // refuse are left off and said why, rather than shown and then refused.
+  const { pricing, promoProblem, pointsProblemMessage } = useMemo(() => {
+    const lines = cart.map((item) => ({ quantity: item.quantity, unitPrice: item.customPrice }));
+    const base = {
+      lines,
+      taxRatePercent,
+      deliveryFee,
+      customer: selectedCustomer ? { loyaltyPoints: selectedCustomer.loyaltyPoints ?? 0 } : null,
+      tiers: loyaltyTiers,
+    };
+    const points =
+      redeemPoints > 0 && selectedCustomer
+        ? {
+            points: redeemPoints,
+            // The preview's own amount when settings have not loaded (offline, first run).
+            redemptionRate: loyaltySettings?.redemptionRate ?? pointsRedemptionAmount / redeemPoints,
+            minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 0,
+            balance: selectedCustomer.loyaltyPoints ?? 0,
+          }
+        : null;
+    let promoProblem: string | null = null;
+    let pointsProblemMessage: string | null = null;
+    const attempt = (promotion: typeof appliedPromo, pts: typeof points) =>
+      priceOrder({ ...base, promotion, points: pts });
+    try {
+      return { pricing: attempt(appliedPromo, points), promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+    }
+    // Drop the refused part and try again; a second refusal drops both.
+    try {
+      const pricing = promoProblem ? attempt(null, points) : attempt(appliedPromo, null);
+      return { pricing, promoProblem, pointsProblemMessage };
+    } catch (e) {
+      if (!(e instanceof PricingError)) throw e;
+      if (e.code.startsWith("PROMO_")) promoProblem = e.message;
+      else pointsProblemMessage = e.message;
+      return { pricing: attempt(null, null), promoProblem, pointsProblemMessage };
+    }
+  }, [cart, taxRatePercent, deliveryFee, selectedCustomer, loyaltyTiers, appliedPromo, redeemPoints, loyaltySettings, pointsRedemptionAmount]);
+  const subtotal = pricing.subtotal;
+  const loyaltyDiscountAmount = pricing.tierDiscount;
+  const loyaltyDiscount = pricing.tier?.percent ?? 0;
+  const promoDiscountAmount = pricing.promoDiscount;
+  const tax = pricing.vatAmount;
+  const total = pricing.total;
+  // Earned on what is paid — the server's rule, not a tier multiplier it never applied.
+  const pointsEarned = pricing.pointsEarned;
 
   // What is still to be taken on a split payment. Negative means over-tendered.
   const splitRemaining =
@@ -687,6 +910,12 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     const verdict = classifyOrderDate(orderDate, localIsoDate());
     return verdict.ok && verdict.dating.kind === "preorder";
   }, [orderDate]);
+
+  // The lines the Pay panel asks about. Personal use keeps its own Signal.
+  const guardLines = useMemo(
+    () => (priceGuard.enabled && paymentMethod !== "personal_use" ? flaggedCartLines(cart) : []),
+    [priceGuard.enabled, paymentMethod, cart],
+  );
 
   // Handle checkout: move to the payment step.
   const handleCheckout = useCallback(() => {
@@ -808,7 +1037,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
       return;
     }
 
+    // A delivery needs somewhere to go (v1.2 Phase 5); the server refuses it too.
+    if (fulfilmentMethod === "delivery" && (!delivery.address.trim() || !delivery.postcode.trim())) {
+      toast({
+        title: "Add the delivery address",
+        description: "A delivery needs the address and postcode before payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // A fee typed as something that is not money is said here, not dropped.
+    if (fulfilmentMethod === "delivery" && deliveryFeeInput !== null && paymentMethod !== "personal_use") {
+      const feeCheck = readDeliveryFee(deliveryFeeInput, { fulfilmentMethod });
+      if (!feeCheck.ok) {
+        toast({ title: `Check the ${deliveryFeeName.toLowerCase()}`, description: feeCheck.message, variant: "destructive" });
+        return;
+      }
+    }
+
     const orderData: any = {
+      ...deliveryOrderFields(fulfilmentMethod, delivery, selectedCustomer?.id ?? null),
+      // On top of the goods (v1.2.1); the server prices it and checks the total.
+      ...(deliveryFee > 0 ? { deliveryFee } : {}),
       lines: cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -907,10 +1158,35 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     if (selectedCustomer?.id) {
       orderData.customerId = selectedCustomer.id;
     }
-    if (redeemPoints > 0) {
-      orderData.redeemPoints = redeemPoints;
+    // Only what the price above actually used, so the server prices the same
+    // sale; it re-checks everything inside the sale and refuses a mismatch.
+    if (pricing.pointsRedeemed > 0) {
+      orderData.redeemPoints = pricing.pointsRedeemed;
     }
-    orderData.sendEmailReceipt = emailReceipt && !!selectedCustomer?.email;
+    if (pricing.promotion && appliedPromo?.code) {
+      orderData.promoCode = appliedPromo.code;
+    }
+    if (paymentMethod !== "personal_use") {
+      orderData.expectedTotal = total;
+    }
+    orderData.sendEmailReceipt = emailReceipt && customerHasEmail(selectedCustomer);
+
+    // Price guard: one reason for the sale. Kept in the sale itself, so a
+    // sale that has to queue offline carries its confirmation with it.
+    if (guardLines.length > 0) {
+      const problem = choiceProblem(priceGuard.choice);
+      if (problem) {
+        toast({ title: "Give a reason for the price", description: problem, variant: "destructive" });
+        return;
+      }
+      orderData.priceGuard = buildConfirmation(priceGuard.choice, guardLines);
+      if (priceGuard.choice.reason) priceGuard.afterSale(priceGuard.choice.reason);
+    }
+
+    if (cardLinkAmountOf(orderData) !== null && !navigator.onLine) {
+      toast({ title: "No connection", description: "Card (link) needs a connection. Choose another way to pay.", variant: "destructive" });
+      return;
+    }
 
     placeOrderMutation.mutate(orderData);
   };
@@ -949,6 +1225,8 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     setPromoCode,
     appliedPromo: appliedPromo as { name?: string } | null,
     setAppliedPromo,
+    promoProblem,
+    pointsProblem: pointsProblemMessage,
     validatePromoMutation,
     customerTier: customerTier as PosCartPanelProps["customerTier"],
     loyaltyDiscount,
@@ -957,12 +1235,15 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
     promoDiscountAmount,
     tax,
     taxRatePercent,
+    deliveryFee,
+    deliveryFeeName,
     total,
     pointsEarned,
     tierProgress,
     minRedeemPoints: loyaltySettings?.minRedeemPoints ?? 100,
     redeemPoints,
-    pointsRedemptionAmount,
+    // What the price actually took off — 0 when the points were refused.
+    pointsRedemptionAmount: pricing.pointsDiscount,
     redeemPanelOpen,
     redeemInput,
     setRedeemInput,
@@ -983,13 +1264,34 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
         embedded ? "h-full" : "pos-viewport",
       )}
     >
+      {cardLinkSale && (
+        <CardLinkDialog
+          key={cardLinkSale.orderId}
+          orderId={cardLinkSale.orderId}
+          amount={cardLinkSale.amount}
+          longLived={cardLinkSale.longLived}
+          hasCustomer={cardLinkSale.hasCustomer}
+          whatsappAvailable={cardLinkStatus?.whatsapp === true}
+          onFinished={(how) => {
+            setCardLinkSale(null);
+            if (how === "left_waiting") {
+              toast({ title: "Still awaiting card payment", description: "The order shows on the Ops board until it is paid." });
+            }
+            void invalidateAfterPosCheckout(queryClient);
+          }}
+        />
+      )}
       {view === "pay" ? (
         <div className="min-h-0 flex-1">
           <PosCheckoutStep
             total={total}
             itemCount={cartItemCount}
             customerName={selectedCustomer?.name ?? null}
-            customerEmail={selectedCustomer?.email ?? null}
+            customerEmail={
+              selectedCustomer?.email ??
+              selectedCustomer?.emailMasked ??
+              (customerHasEmail(selectedCustomer) ? "the email on file" : null)
+            }
             paymentMethod={paymentMethod}
             setPaymentMethod={setPaymentMethod}
             personalUseReason={personalUseReason}
@@ -1003,6 +1305,22 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             setOrderDate={setOrderDate}
             fulfilmentMethod={fulfilmentMethod}
             setFulfilmentMethod={setFulfilmentMethod}
+            delivery={delivery}
+            setDelivery={setDelivery}
+            deliveryFeeSlot={
+              paymentMethod === "personal_use" ? null : (
+                <PosDeliveryFee
+                  value={deliveryFeeInput}
+                  onChange={setDeliveryFeeInput}
+                  name={deliveryFeeName}
+                  defaultPrice={orgSettings?.deliveryFeePrice ?? DELIVERY_FEE_PRICE_DEFAULT}
+                  disabled={submitting}
+                />
+              )
+            }
+            deliveryFee={deliveryFee}
+            deliveryFeeName={deliveryFeeName}
+            customerId={selectedCustomer?.id ?? null}
             giftCardPayment={giftCardPayment}
             setGiftCardPayment={setGiftCardPayment}
             channel={channel}
@@ -1031,6 +1349,17 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             submitting={submitting}
             onBack={() => setView("build")}
             onConfirm={processPayment}
+            priceGuardPanel={
+              <PriceGuardPayPanel
+                lines={guardLines}
+                choice={priceGuard.choice}
+                onChange={priceGuard.setChoice}
+                managers={priceGuard.managers}
+                disabled={submitting}
+              />
+            }
+            confirmLabel={guardLines.length > 0 ? `Confirm and ${confirmVerb(paymentMethod)}` : undefined}
+            cardLinkEnabled={cardLinkStatus?.enabled === true}
           />
         </div>
       ) : (
@@ -1040,7 +1369,10 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
             {embedded ? (
               (sellingLocation || noLocationWillResolve) && (
                 <div className="shrink-0 px-4 pb-2 pt-3">
-                  <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-metal-muted">Step 1 of 2 · Build the order</p>
+                    <ProblemButton compact />
+                  </div>
                   {sellingLocation ? (
                     <p className="mt-1 text-xs text-metal-muted" data-testid="pos-selling-location">
                       Selling at <span className="font-medium text-foreground">{sellingLocation.name}</span>
@@ -1062,6 +1394,7 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   title="Create Order"
                   question={narrow ? undefined : "What is this customer buying?"}
                   explanation={narrow ? undefined : "Type a code or name, scan, or tap a top seller. Fix quantity and price on the line."}
+                  action={<ProblemButton compact />}
                 />
                 {sellingLocation ? (
                   <p className="mt-2 text-xs text-metal-muted" data-testid="pos-selling-location">
@@ -1077,6 +1410,29 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   </p>
                 ) : null}
                 <MyShiftSummary />
+              </div>
+            )}
+            {editingIssue && (
+              <div
+                className="mx-4 mt-2 shrink-0 rounded-lg border border-metal-edge px-3 py-2 text-xs sm:mx-6"
+                style={{ backgroundColor: "color-mix(in srgb, var(--warning) 12%, var(--card))" }}
+                data-testid="pos-editing-sale-issue"
+              >
+                <span className="font-medium text-foreground">Editing a sale from Needs attention</span>
+                {editingIssue.rungByName ? ` · rung by ${editingIssue.rungByName}` : ""}. It is recorded once, as
+                their sale, when you take payment.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => {
+                    setEditingIssue(null);
+                    setSaleRef(newClientOrderId());
+                    setCart([]);
+                  }}
+                  data-testid="pos-editing-sale-issue-cancel"
+                >
+                  Stop editing
+                </button>
               </div>
             )}
 
@@ -1097,6 +1453,11 @@ export default function POS({ embedded }: { embedded?: PosEmbeddedProps } = {}) 
                   onChange={setCart}
                   disabled={submitting}
                   aboveLines={<PosTopSellers products={products} onAdd={addToCart} disabled={submitting} />}
+                  renderLineNote={
+                    priceGuard.enabled
+                      ? (line, index, setPrice) => <PriceGuardLineNote line={line} index={index} onUsePrice={setPrice} />
+                      : undefined
+                  }
                 />
               )}
 

@@ -7,15 +7,27 @@ describe("bulkActions role gating", () => {
     expect(isBulkActionAllowed("products", "export", "CUSTOMER")).toBe(false);
   });
 
-  it("allows cashiers export but not delete on customers", () => {
-    const actions = getBulkActionsForRole("customers", "CASHIER");
-    expect(actions.some((a) => a.id === "export")).toBe(true);
-    expect(actions.some((a) => a.id === "delete")).toBe(false);
+  it("gives cashiers no customer bulk actions at all", () => {
+    expect(getBulkActionsForRole("customers", "CASHIER")).toEqual([]);
     expect(isBulkActionAllowed("customers", "delete", "CASHIER")).toBe(false);
+  });
+
+  it("keeps the customer export (contact details) to admins", () => {
+    expect(isBulkActionAllowed("customers", "export", "CASHIER")).toBe(false);
+    expect(isBulkActionAllowed("customers", "export", "MANAGER")).toBe(false);
+    expect(isBulkActionAllowed("customers", "export", "ADMIN")).toBe(true);
+    expect(isBulkActionAllowed("customers", "export", "SUPER_ADMIN")).toBe(true);
   });
 
   it("allows managers destructive actions", () => {
     expect(isBulkActionAllowed("customers", "delete", "MANAGER")).toBe(true);
     expect(isBulkActionAllowed("products", "delete", "MANAGER")).toBe(true);
+  });
+
+  it("keeps the product export (cost prices) to admins", () => {
+    expect(isBulkActionAllowed("products", "export", "CASHIER")).toBe(false);
+    expect(isBulkActionAllowed("products", "export", "MANAGER")).toBe(false);
+    expect(isBulkActionAllowed("products", "export", "ADMIN")).toBe(true);
+    expect(isBulkActionAllowed("products", "export", "SUPER_ADMIN")).toBe(true);
   });
 });

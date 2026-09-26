@@ -12,12 +12,15 @@ import {
   orderPayments,
   creditPayments,
 } from "../../shared/schema";
-import { and, eq, desc, gte, lte, inArray, or } from "drizzle-orm";
+import { and, eq, desc, gte, lte, inArray, isNull, or } from "drizzle-orm";
 import { requireRole } from "../auth";
 import { recordAdminAudit } from "../adminAudit";
 import { buildZReport } from "@shared/reports/zReport";
+import { storedDiscountTotal } from "@shared/pricing/priceOrder";
 import { resolveUserName, resolveUserNames } from "../services/userDisplayName";
 import type { ZReportOrder, ZReportRefund } from "@shared/reports/zReport";
+import { maySeeShiftSheet } from "@shared/staffPolicy";
+import { loadStaffRoles } from "../services/staffRoles";
 
 /** Default window for the shifts list, and the ceiling a caller may ask for. */
 const DEFAULT_WINDOW_HOURS = 48;
@@ -38,15 +41,17 @@ const reopenBodySchema = z.object({
   reason: z.string().min(3).max(2000),
 });
 
-async function loadShiftReportData(shiftId: string, orgId: string) {
-  const [shift] = await db
+type ShiftReportDb = Pick<typeof db, "select">;
+
+async function loadShiftReportData(shiftId: string, orgId: string, client: ShiftReportDb = db) {
+  const [shift] = await client
     .select()
     .from(shifts)
     .where(and(eq(shifts.id, shiftId), eq(shifts.orgId, orgId)))
     .limit(1);
   if (!shift) return null;
 
-  const [location] = await db
+  const [location] = await client
     .select({ name: locations.name })
     .from(locations)
     .where(eq(locations.id, shift.locationId))
@@ -54,32 +59,33 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
 
   const cashierName = await resolveUserName(shift.userId);
 
-  const shiftOrders = await db
+  const shiftOrders = await client
     .select()
     .from(orders)
     .where(eq(orders.shiftId, shiftId));
 
   const shiftOrderIds = shiftOrders.map((o) => o.id);
   const legRows = shiftOrderIds.length
-    ? await db
+    ? await client
         .select({
           orderId: orderPayments.orderId,
           method: orderPayments.method,
           amount: orderPayments.amount,
+          status: orderPayments.status,
         })
         .from(orderPayments)
         .where(inArray(orderPayments.orderId, shiftOrderIds))
     : [];
-  const legsByOrder = new Map<string, Array<{ method: string; amount: number }>>();
+  const legsByOrder = new Map<string, Array<{ method: string; amount: number; status: string }>>();
   for (const row of legRows) {
     const list = legsByOrder.get(row.orderId) ?? [];
-    list.push({ method: row.method, amount: parseFloat(String(row.amount)) });
+    list.push({ method: row.method, amount: parseFloat(String(row.amount)), status: row.status });
     legsByOrder.set(row.orderId, list);
   }
 
   const zOrders: ZReportOrder[] = [];
   for (const order of shiftOrders) {
-    const items = await db
+    const items = await client
       .select({
         productId: orderItems.productId,
         productName: products.name,
@@ -96,6 +102,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       total: parseFloat(String(order.total)),
       paymentMethod: order.paymentMethod,
       payments: legsByOrder.get(order.id),
+      discounts: storedDiscountTotal(order),
       createdAt: order.createdAt?.toISOString() ?? "",
       items: items.map((i) => ({
         productId: i.productId ?? "",
@@ -107,7 +114,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     });
   }
 
-  const shiftRefunds = await db
+  const shiftRefunds = await client
     .select()
     .from(refunds)
     .where(eq(refunds.shiftId, shiftId));
@@ -116,6 +123,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
     id: r.id,
     total: parseFloat(String(r.total)),
     refundMethod: r.refundMethod,
+    creditAmount: parseFloat(String(r.creditAmount ?? 0)),
     createdAt: r.createdAt?.toISOString() ?? "",
   }));
 
@@ -123,20 +131,24 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
   // the credit records: an order's status cannot say whether money arrived.
   const orderIds = shiftOrders.map((o) => o.id);
   const creditGiven = orderIds.length
-    ? await db
+    ? await client
         .select({ orderId: orderCredit.orderId, amountGiven: orderCredit.amountGiven })
         .from(orderCredit)
         .where(inArray(orderCredit.orderId, orderIds))
     : [];
 
-  // Settlements taken while this shift was open, whatever day the debt was
-  // given — that is the whole point of the line.
+  // Settlements taken on this shift, whatever day the debt was given — that
+  // is the whole point of the line. Payments stamped to this drawer (v1.2
+  // Phase 1C) belong to it; unstamped ones taken while it was open still show
+  // here as information, as they always did, but never count as its cash.
+  // One stamped to ANOTHER drawer is that drawer's.
   const shiftWindowEnd = shift.closedAt ?? new Date();
   const creditPaid = shift.openedAt
-    ? await db
+    ? await client
         .select({
           amount: creditPayments.amount,
           method: creditPayments.method,
+          shiftId: creditPayments.shiftId,
           givenOn: orderCredit.givenOn,
         })
         .from(creditPayments)
@@ -144,8 +156,14 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
         .where(
           and(
             eq(creditPayments.orgId, orgId),
-            gte(creditPayments.createdAt, shift.openedAt),
-            lte(creditPayments.createdAt, shiftWindowEnd),
+            or(
+              eq(creditPayments.shiftId, shift.id),
+              and(
+                isNull(creditPayments.shiftId),
+                gte(creditPayments.createdAt, shift.openedAt),
+                lte(creditPayments.createdAt, shiftWindowEnd),
+              ),
+            ),
           ),
         )
     : [];
@@ -165,6 +183,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       locationName: location?.name ?? "Location",
       status: shift.status,
       notes: shift.notes,
+      tabCashInExpected: shift.tabCashInExpected,
     },
     zOrders,
     zRefunds,
@@ -176,6 +195,7 @@ async function loadShiftReportData(shiftId: string, orgId: string) {
       amount: parseFloat(String(p.amount)),
       givenOn: String(p.givenOn),
       method: p.method,
+      onThisShift: p.shiftId === shift.id,
     })),
   );
 
@@ -213,7 +233,7 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
 
   app.get("/api/shifts", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string; locationId: string | null };
+      const ctx = req.orgContext as { orgId: string; locationId: string | null; role?: string };
       const status = (req.query.status as string) || undefined;
 
       /**
@@ -241,6 +261,10 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
       if (ctx.locationId) {
         conditions.push(eq(shifts.locationId, ctx.locationId));
       }
+      // Cashiers read only their own shift sheets (STF-FN4); in the query, so
+      // the row cap is theirs rather than the team's.
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role ?? req.user?.role ?? null };
+      if (viewer.role === "CASHIER") conditions.push(eq(shifts.userId, viewer.userId ?? ""));
 
       const rows = await db
         .select({
@@ -266,9 +290,14 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
       // The page's whole question is "who was on". Sending only the user id
       // meant it could never answer that, which is what it did.
       const names = await resolveUserNames(rows.map((row) => row.userId));
+      // Managers: cashiers' shifts and their own, not other managers' or admins'.
+      const roles = await loadStaffRoles(ctx.orgId, rows.map((row) => row.userId));
+      const visible = rows.filter((row) =>
+        maySeeShiftSheet(viewer, { userId: row.userId, role: roles.get(row.userId) ?? null }),
+      );
 
       res.json(
-        rows.map((row) => ({
+        visible.map((row) => ({
           ...row,
           userName: names.get(row.userId) ?? row.userId,
         })),
@@ -324,6 +353,10 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
           });
         }
 
+        // The pre-check above and this insert are two steps: a second tap
+        // arriving between them meets the one-open-shift index
+        // (shifts_one_open_per_user_location_idx). It gets the same 409 as a
+        // tap a moment later, not a 500.
         const [created] = await db
           .insert(shifts)
           .values({
@@ -333,7 +366,26 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
             openingFloat: String(body.openingFloat),
             status: "open",
           })
+          .onConflictDoNothing()
           .returning();
+        if (!created) {
+          const [winner] = await db
+            .select()
+            .from(shifts)
+            .where(
+              and(
+                eq(shifts.orgId, ctx.orgId),
+                eq(shifts.locationId, body.locationId),
+                eq(shifts.userId, userId),
+                inArray(shifts.status, ACTIVE_TILL_SHIFT_STATUSES),
+              ),
+            )
+            .limit(1);
+          return res.status(409).json({
+            message: "You already have an open shift at this location",
+            shift: winner ?? null,
+          });
+        }
 
         await recordAdminAudit(req, {
           actorUserId: userId,
@@ -375,32 +427,51 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
         if (shift.status !== "open" && shift.status !== "reopened") {
           return res.status(400).json({ message: "Shift is not open" });
         }
-        if (
-          req.orgContext?.role === "CASHIER" &&
-          shift.userId !== userId
-        ) {
-          return res.status(403).json({ message: "Cannot close another cashier's shift" });
+        // Closing returns the Z-report, so only someone who may read this
+        // sheet may close it: a cashier their own, a manager cashiers' and
+        // their own (maySeeShiftSheet), the same line as GET /:id/report.
+        const viewer = { userId: (userId as string | undefined) ?? null, role: req.orgContext?.role ?? req.user?.role ?? null };
+        const ownerRole = (await loadStaffRoles(ctx.orgId, [shift.userId])).get(shift.userId) ?? null;
+        if (!maySeeShiftSheet(viewer, { userId: shift.userId, role: ownerRole })) {
+          return res.status(403).json({
+            message: viewer.role === "CASHIER" ? "Cannot close another cashier's shift" : "You can only close shifts whose sheet you can see.",
+          });
         }
 
-        const loaded = await loadShiftReportData(shift.id, ctx.orgId);
-        if (!loaded) return res.status(404).json({ message: "Shift not found" });
+        // Locked for the count: a tab repayment being stamped to this drawer
+        // right now (credit ledger, share lock) either lands first and is
+        // counted, or finds the shift closed and is not stamped to it.
+        const closedResult = await db.transaction(async (tx) => {
+          const [locked] = await tx
+            .select({ status: shifts.status })
+            .from(shifts)
+            .where(eq(shifts.id, shift.id))
+            .for("update")
+            .limit(1);
+          if (!locked || (locked.status !== "open" && locked.status !== "reopened")) return null;
+          const loaded = await loadShiftReportData(shift.id, ctx.orgId, tx);
+          if (!loaded) return null;
 
-        const expectedCash = loaded.report.cashSummary.expectedCash;
-        const variance = Math.round((body.closingCount - expectedCash) * 100) / 100;
-        const now = new Date();
-
-        const [closed] = await db
-          .update(shifts)
-          .set({
-            status: "closed",
-            closedAt: now,
-            closingCount: String(body.closingCount),
-            expectedCash: String(expectedCash),
-            variance: String(variance),
-            notes: body.notes ?? shift.notes,
-          })
-          .where(eq(shifts.id, shift.id))
-          .returning();
+          const expectedCash = loaded.report.cashSummary.expectedCash;
+          const variance = Math.round((body.closingCount - expectedCash) * 100) / 100;
+          const [row] = await tx
+            .update(shifts)
+            .set({
+              status: "closed",
+              closedAt: new Date(),
+              closingCount: String(body.closingCount),
+              expectedCash: String(expectedCash),
+              variance: String(variance),
+              // Worked out with cash tab repayments in (migration 084).
+              tabCashInExpected: true,
+              notes: body.notes ?? shift.notes,
+            })
+            .where(eq(shifts.id, shift.id))
+            .returning();
+          return { closed: row, expectedCash, variance };
+        });
+        if (!closedResult) return res.status(400).json({ message: "Shift is not open" });
+        const { closed, expectedCash, variance } = closedResult;
 
         const finalReport = await loadShiftReportData(shift.id, ctx.orgId);
 
@@ -481,9 +552,14 @@ export function registerShiftRoutes(app: Express, scoped: RequestHandler[]): voi
 
   app.get("/api/shifts/:id/report", ...scoped, async (req: any, res) => {
     try {
-      const ctx = req.orgContext as { orgId: string };
+      const ctx = req.orgContext as { orgId: string; role?: string };
       const loaded = await loadShiftReportData(req.params.id, ctx.orgId);
       if (!loaded) return res.status(404).json({ message: "Shift not found" });
+      const viewer = { userId: (req.user?.id as string | undefined) ?? null, role: ctx.role ?? req.user?.role ?? null };
+      const ownerRole = (await loadStaffRoles(ctx.orgId, [loaded.shift.userId])).get(loaded.shift.userId) ?? null;
+      if (!maySeeShiftSheet(viewer, { userId: loaded.shift.userId, role: ownerRole })) {
+        return res.status(403).json({ message: "You can only see your own shift sheet." });
+      }
       res.json({ shift: loaded.shift, report: loaded.report });
     } catch (error) {
       console.error("[Shifts] report:", error);

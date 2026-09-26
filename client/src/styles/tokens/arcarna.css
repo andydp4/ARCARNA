@@ -28,6 +28,11 @@
      for the off-white rather than sitting on the threshold.
      Everything red inherits this, including --destructive in liquid-metal.css. */
   --danger: hsl(2 78% 46%);
+  /* Red TEXT on the dark surfaces (v1.2.1 UI-13): --danger is tuned for
+     off-white text painted ON it, and as text on the page background it
+     measured 3.5:1. This is about 6:1 there. Used by text-destructive only;
+     bg-destructive keeps --danger. */
+  --danger-text: hsl(2 90% 66%);
 
   /* ── Operations Centre — card-state tokens ────────────────────────────
    * docs/briefs/PHASE_N_OPERATIONS_CENTRE.md, "Colour resolution": named

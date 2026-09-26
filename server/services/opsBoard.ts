@@ -28,6 +28,7 @@ import { currentTradingDay, tradingDayBounds } from "@shared/time/tradingDay";
 import type { CardState } from "@shared/orders/opsState";
 import { deriveCardState, isLiveLaneState } from "@shared/orders/opsState";
 import { listFor, type OpsAlertListItem } from "./opsAlerts";
+import { canSeeDeliveryAddress } from "@shared/accessPolicy";
 
 /** Presence: seen within this many minutes counts as "here" (brief, "Stations & presence"). */
 const PRESENT_WITHIN_MINUTES = 15;
@@ -62,7 +63,6 @@ export interface BoardOrderPayload {
   shortCode: string;
   customerId: string | null;
   customerName: string | null;
-  customerPhone: string | null;
   total: string;
   paymentMethod: string;
   channel: string;
@@ -96,7 +96,22 @@ export interface BoardOrderPayload {
   itemCount: number;
   /** First few order lines, formatted "<qty>× <name>" — see the module doc for why the shape is free here. */
   itemsPreview: string[];
+  /**
+   * Where a delivery goes (v1.2 Phase 5, PRV-05). Null on a collection. Every
+   * member of staff sees it while the delivery is live; once it is completed,
+   * only managers and above (boardOrderForViewer). The customer's phone is
+   * not on the board at all: the driver asks for it (POST
+   * /api/orders/:id/customer-phone), and that reveal is logged.
+   */
+  deliveryAddress: string | null;
+  deliveryPostcode: string | null;
+  deliveryNotes: string | null;
+  /** My run's "Couldn't deliver" note and when it was left (migration 180). Same visibility as the address. */
+  deliveryIssue: string | null;
+  deliveryIssueAt: string | null;
   updatedAt: string | null;
+  /** A card link Stripe has not confirmed yet (v1.2 Stripe links): "Awaiting card payment". */
+  awaitingCardPayment: boolean;
 }
 
 export interface OpsBoardSummary {
@@ -131,6 +146,13 @@ export interface OpsBoardPayload {
   summary: OpsBoardSummary;
 }
 
+/** Loaded lazily, like every db read in this file, so importing it needs no database. */
+async function awaitingCardOrderIds(orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const { awaitingCardOrderIds: load } = await import("./cardLinks");
+  return load(orderIds);
+}
+
 function iso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -140,7 +162,6 @@ type RawOrderRow = {
   id: string;
   customerId: string | null;
   customerName: string | null;
-  customerPhone: string | null;
   total: string;
   paymentMethod: string;
   channel: string | null;
@@ -167,6 +188,11 @@ type RawOrderRow = {
   inputUserId: string | null;
   completedUserId: string | null;
   locationId: string | null;
+  deliveryAddress: string | null;
+  deliveryPostcode: string | null;
+  deliveryNotes: string | null;
+  deliveryIssue: string | null;
+  deliveryIssueAt: Date | null;
   updatedAt: Date | null;
 };
 
@@ -179,7 +205,6 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
       id: orders.id,
       customerId: orders.customer_id,
       customerName: customers.name,
-      customerPhone: customers.phone,
       total: orders.total,
       paymentMethod: orders.payment_method,
       channel: orders.channel,
@@ -206,6 +231,11 @@ async function selectBoardRows(orgId: string, cutoff: Date): Promise<RawOrderRow
       inputUserId: orders.input_user_id,
       completedUserId: orders.completed_user_id,
       locationId: orders.location_id,
+      deliveryAddress: orders.delivery_address,
+      deliveryPostcode: orders.delivery_postcode,
+      deliveryNotes: orders.delivery_notes,
+      deliveryIssue: orders.delivery_issue,
+      deliveryIssueAt: orders.delivery_issue_at,
       updatedAt: orders.updated_at,
     })
     .from(orders)
@@ -334,6 +364,7 @@ function projectBoardOrder(
   names: Map<string, string>,
   items: ItemAggregate | undefined,
   handoverOverride: Date | undefined,
+  awaitingCardPayment = false,
 ): BoardOrderPayload {
   const fulfilmentMethod: "collection" | "delivery" = row.fulfilmentMethod === "delivery" ? "delivery" : "collection";
   const dateKind: "live" | "backdated" | "preorder" =
@@ -343,7 +374,6 @@ function projectBoardOrder(
     shortCode: row.id.slice(0, 8),
     customerId: row.customerId,
     customerName: row.customerName?.trim() ? row.customerName.trim() : null,
-    customerPhone: row.customerPhone ?? null,
     total: row.total,
     paymentMethod: row.paymentMethod,
     channel: row.channel ?? "pos",
@@ -376,7 +406,15 @@ function projectBoardOrder(
     locationId: row.locationId,
     itemCount: items?.count ?? 0,
     itemsPreview: items?.preview ?? [],
+    // On a delivery only. Removed per viewer by boardOrderForViewer once the
+    // order is completed and the viewer is below manager (Q8a).
+    deliveryAddress: fulfilmentMethod === "delivery" ? (row.deliveryAddress ?? null) : null,
+    deliveryPostcode: fulfilmentMethod === "delivery" ? (row.deliveryPostcode ?? null) : null,
+    deliveryNotes: fulfilmentMethod === "delivery" ? (row.deliveryNotes ?? null) : null,
+    deliveryIssue: fulfilmentMethod === "delivery" ? (row.deliveryIssue ?? null) : null,
+    deliveryIssueAt: fulfilmentMethod === "delivery" ? iso(row.deliveryIssueAt) : null,
     updatedAt: iso(row.updatedAt),
+    awaitingCardPayment,
   };
 }
 
@@ -512,9 +550,10 @@ export async function getOpsBoard(
   const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
 
   const completedTodayCount = await countCompletedToday(orgId, bounds);
-  const [items, handoverOverrides] = await Promise.all([
+  const [items, handoverOverrides, awaitingCard] = await Promise.all([
     selectItemAggregates(orderIds),
     selectActualHandoverTimes(orgId, completedIds),
+    awaitingCardOrderIds(rows.filter((r) => r.status !== "completed").map((r) => r.id)),
   ]);
 
   const nameIds = new Set<string>();
@@ -526,7 +565,7 @@ export async function getOpsBoard(
   const names = await resolveUserNames(nameIds);
 
   const orders = rows.map((row) =>
-    projectBoardOrder(row, names, items.get(row.id), handoverOverrides.get(row.id)),
+    projectBoardOrder(row, names, items.get(row.id), handoverOverrides.get(row.id), awaitingCard.has(row.id)),
   );
 
   const openByAssignee = new Map<string, number>();
@@ -624,7 +663,6 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
       id: orders.id,
       customerId: orders.customer_id,
       customerName: customers.name,
-      customerPhone: customers.phone,
       total: orders.total,
       paymentMethod: orders.payment_method,
       channel: orders.channel,
@@ -651,6 +689,11 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
       inputUserId: orders.input_user_id,
       completedUserId: orders.completed_user_id,
       locationId: orders.location_id,
+      deliveryAddress: orders.delivery_address,
+      deliveryPostcode: orders.delivery_postcode,
+      deliveryNotes: orders.delivery_notes,
+      deliveryIssue: orders.delivery_issue,
+      deliveryIssueAt: orders.delivery_issue_at,
       updatedAt: orders.updated_at,
     })
     .from(orders)
@@ -659,15 +702,22 @@ export async function getOpsBoardOrder(orgId: string, orderId: string): Promise<
     .limit(1);
   if (!row) return null;
 
-  const [items, names, handoverOverrides] = await Promise.all([
+  const [items, names, handoverOverrides, awaitingCard] = await Promise.all([
     selectItemAggregates([row.id as string]),
     resolveUserNames(
       [row.inputUserId, row.completedUserId, row.assignedUserId].filter((v): v is string => Boolean(v)),
     ),
     row.status === "completed" ? selectActualHandoverTimes(orgId, [row.id as string]) : Promise.resolve(new Map<string, Date>()),
+    awaitingCardOrderIds([row.id as string]),
   ]);
 
-  return projectBoardOrder(row as unknown as RawOrderRow, names, items.get(row.id as string), handoverOverrides.get(row.id as string));
+  return projectBoardOrder(
+    row as unknown as RawOrderRow,
+    names,
+    items.get(row.id as string),
+    handoverOverrides.get(row.id as string),
+    awaitingCard.has(row.id as string),
+  );
 }
 
 /**
@@ -691,4 +741,53 @@ function laneCounts(
     else if (isLiveLaneState(state)) live++;
   }
   return { live, carriedOver, scheduled };
+}
+
+/**
+ * One board card as one viewer may see it (Q8a): the delivery address goes
+ * once the order is completed, unless the viewer is a manager or above. The
+ * board and the live stream both send cards through here, so a card pushed
+ * over the stream can never show more than one fetched by a poll.
+ */
+export function boardOrderForViewer(order: BoardOrderPayload, role: string | null | undefined): BoardOrderPayload {
+  if (canSeeDeliveryAddress(role, order)) return order;
+  return {
+    ...order,
+    deliveryAddress: null,
+    deliveryPostcode: null,
+    deliveryNotes: null,
+    deliveryIssue: null,
+    deliveryIssueAt: null,
+  };
+}
+
+export function boardPayloadForViewer(payload: OpsBoardPayload, role: string | null | undefined): OpsBoardPayload {
+  return { ...payload, orders: payload.orders.map((o) => boardOrderForViewer(o, role)) };
+}
+
+/**
+ * The board's phone search (PRV-04): ids of the orders now on the board whose
+ * customer's formatted phone is exactly `formattedPhone`. The number is
+ * compared in the database and never returned.
+ */
+export async function findBoardOrderIdsByPhone(
+  orgId: string,
+  formattedPhone: string,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const { db } = await import("../../apps/server/src/db");
+  const { orders, customers } = await import("../../apps/server/src/db/schema");
+  const cutoff = new Date(now.getTime() - RECENT_COMPLETED_MINUTES * 60_000);
+  const rows = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .innerJoin(customers, eq(orders.customer_id, customers.id))
+    .where(
+      and(
+        eq(orders.org_id, orgId),
+        eq(customers.phone_e164, formattedPhone),
+        or(ne(orders.status, "completed"), gte(orders.settled_at, cutoff)),
+      ),
+    );
+  return rows.map((r) => r.id as string);
 }

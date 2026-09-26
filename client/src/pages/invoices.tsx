@@ -8,6 +8,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
@@ -28,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Search, DollarSign, Clock, AlertCircle } from "lucide-react";
 import { InvoiceRow, InvoiceCard, type InvoiceListItem } from "@/components/invoice-row";
+import { INVOICE_STATUSES, INVOICE_STATUS_LABELS, type InvoiceStatus } from "@shared/invoices/invoiceRules";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { InvoicesPageSkeleton } from "@/components/reporting-skeletons";
 import { PageHeader } from "@/components/PageHeader";
@@ -50,7 +52,7 @@ interface Invoice extends InvoiceListItem {
 export default function Invoices() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "pending" | "overdue">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | InvoiceStatus>("all");
   const [selectedPeriod, setSelectedPeriod] = useState<"all" | "today" | "week" | "month">("month");
 
   const {
@@ -92,16 +94,18 @@ export default function Invoices() {
     [periodInvoices, searchTerm, filterStatus]
   );
 
+  // One rule for every figure (v1.2 Phase 1C): owed and overdue are what is
+  // still to pay, so a part-paid invoice counts only its remainder.
   const { totalRevenue, pendingRevenue, overdueRevenue } = useMemo(() => {
     let paid = 0;
-    let pending = 0;
+    let owed = 0;
     let overdue = 0;
     for (const inv of filteredInvoices) {
       if (inv.status === "paid") paid += inv.total;
-      else if (inv.status === "pending") pending += inv.total;
-      else if (inv.status === "overdue") overdue += inv.total;
+      else if (inv.status === "owed" || inv.status === "part-paid") owed += inv.amountDue;
+      else if (inv.status === "overdue") overdue += inv.amountDue;
     }
-    return { totalRevenue: paid, pendingRevenue: pending, overdueRevenue: overdue };
+    return { totalRevenue: paid, pendingRevenue: owed, overdueRevenue: overdue };
   }, [filteredInvoices]);
 
   const copyInvoiceNumber = useCallback(
@@ -182,35 +186,24 @@ export default function Invoices() {
     [fetchInvoicePdfBlob, toast]
   );
 
+  // Invoices are emailed from the server through Resend (v1.2 Phase 6,
+  // PRV-11): nobody on the till needs the customer's address. When email is
+  // not set up the menu item is off and says why.
+  const { data: messaging } = useQuery<{ email: boolean; emailReason: string | null }>({
+    queryKey: ["/api/messaging/status"],
+    staleTime: 60_000,
+  });
   const emailInvoice = useCallback(
-    async (invoiceId: string, customerEmail: string, invoiceNumber: string) => {
+    async (invoiceId: string, _customerEmail: string, invoiceNumber: string) => {
       try {
-        const blob = await fetchInvoicePdfBlob(invoiceId);
-        if (!blob) {
-          toast({ title: "Error", description: "Could not generate invoice PDF", variant: "destructive" });
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${invoiceNumber}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        const subject = encodeURIComponent(`Invoice ${invoiceNumber}`);
-        const body = encodeURIComponent(
-          `Dear Customer,\n\nPlease find your invoice attached (downloaded to your device — attach it to this email).\n\nThank you for your business.`
-        );
-        window.open(`mailto:${customerEmail}?subject=${subject}&body=${body}`, "_blank");
-        toast({
-          title: "PDF downloaded",
-          description: "Attach the downloaded file to the email that just opened.",
-        });
-      } catch {
-        toast({ title: "Error", description: "Failed to prepare email", variant: "destructive" });
+        const res = await apiRequest("POST", `/api/invoices/${invoiceId}/email`);
+        const out = (await res.json()) as { to?: string | null };
+        toast({ title: "Invoice emailed", description: `${invoiceNumber} sent${out.to ? ` to ${out.to}` : ""}.` });
+      } catch (e) {
+        toast({ title: "Not sent", description: e instanceof Error ? e.message : "Failed to email the invoice", variant: "destructive" });
       }
     },
-    [fetchInvoicePdfBlob, toast]
+    [toast]
   );
 
   if (invoicesInitialLoad) {
@@ -224,7 +217,7 @@ export default function Invoices() {
           icon={FileText}
           title="Invoices"
           question="Who owes you, and is it paid?"
-          explanation="Totals follow your status, search, and date window. PDFs are generated on the fly when you open, print, or download them."
+          explanation="Till sales get receipts. An invoice is issued when a sale goes on a tab, or when a customer asks for one from the order. Totals follow your status, search, and date window."
           action={
             invoicesFetching ? (
               <p className="text-xs text-muted-foreground" aria-live="polite">
@@ -249,14 +242,14 @@ export default function Invoices() {
           </Card>
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Owed</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-2xl font-bold tabular-nums tracking-tight">
                 £{(isNaN(pendingRevenue) ? 0 : pendingRevenue).toFixed(2)}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Awaiting payment</p>
+              <p className="mt-1 text-xs text-muted-foreground">Still to pay, not yet due</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -268,7 +261,7 @@ export default function Invoices() {
               <div className="text-2xl font-bold tabular-nums tracking-tight text-destructive">
                 £{(isNaN(overdueRevenue) ? 0 : overdueRevenue).toFixed(2)}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Past due date</p>
+              <p className="mt-1 text-xs text-muted-foreground">Still to pay, past due date</p>
             </CardContent>
           </Card>
           <Card className="border-border/60 shadow-sm">
@@ -297,19 +290,21 @@ export default function Invoices() {
                 data-testid="input-search-invoices"
               />
             </div>
-            <Select value={filterStatus} onValueChange={(value: "all" | "paid" | "pending" | "overdue") => setFilterStatus(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-[140px]">
+            <Select value={filterStatus} onValueChange={(value: "all" | InvoiceStatus) => setFilterStatus(value)}>
+              <SelectTrigger aria-label="Status" className="min-h-[44px] w-full sm:w-[140px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
+                {INVOICE_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {INVOICE_STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={selectedPeriod} onValueChange={(value: "all" | "today" | "week" | "month") => setSelectedPeriod(value)}>
-              <SelectTrigger className="min-h-[44px] w-full sm:w-[160px]">
+              <SelectTrigger aria-label="Date window" className="min-h-[44px] w-full sm:w-[160px]">
                 <SelectValue placeholder="Date window" />
               </SelectTrigger>
               <SelectContent>
@@ -320,12 +315,9 @@ export default function Invoices() {
               </SelectContent>
             </Select>
             </div>
-            {/* No "Create invoice" action: invoices are raised automatically by
-                invoiceWorker when an order settles, and there is no
-                POST /api/invoices to call. The button that used to sit here had
-                no onClick and never could have had one — it advertised a manual
-                flow this system does not have, so operators clicked it, nothing
-                happened, and the page looked broken rather than automatic. */}
+            {/* No "Create invoice" action here: an invoice is raised when a
+                sale goes on a tab, or from the order itself when a customer
+                asks (its "Invoice" button). */}
           </CardContent>
         </Card>
 
@@ -342,7 +334,7 @@ export default function Invoices() {
                 <EmptyState
                   icon={FileText}
                   title="No invoices yet"
-                  body="Created invoices will appear here after you bill customers from orders or create them manually."
+                  body="Till sales get receipts. Invoices appear here when a sale goes on a tab, or when a customer asks for one from the order."
                   cta={{ label: "View orders", href: "/operations" }}
                   secondary={{ label: "Manage customers", href: "/customers" }}
                 />
@@ -392,6 +384,7 @@ export default function Invoices() {
                       onPrint={printInvoice}
                       onDownload={downloadInvoicePdf}
                       onEmail={emailInvoice}
+                      emailDisabledReason={messaging && !messaging.email ? messaging.emailReason : null}
                     />
                   )}
                 >
@@ -404,6 +397,7 @@ export default function Invoices() {
                       onPrint={printInvoice}
                       onDownload={downloadInvoicePdf}
                       onEmail={emailInvoice}
+                      emailDisabledReason={messaging && !messaging.email ? messaging.emailReason : null}
                     />
                   ))}
                 </ResponsiveTable>

@@ -34,7 +34,7 @@ function repo(overrides: Partial<WebsiteRepository> = {}): WebsiteRepository {
 function runtime(): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({ tx: true })),
-    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
     // N3a: the board's SLA fallback for a website order (finding G19).
     getOpsDueMinutes: vi.fn().mockResolvedValue(20),
     setOrderDuePromise: vi.fn().mockResolvedValue(undefined),
@@ -272,6 +272,8 @@ describe("public website order submission", () => {
         paymentMethod: "transfer",
         lines: [{ productId, quantity: 2, unitPrice: 15 }],
       }),
+      undefined,
+      { pricedAtList: true },
     );
     expect(orderRuntime.engine.createCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ source: "website", name: "Ada Buyer" }),
@@ -307,16 +309,17 @@ describe("public website order submission", () => {
     expect(configured.getOrgTaxRatePercent).toHaveBeenCalledWith("org-1");
     expect(configured.engine.placeOrder).toHaveBeenCalledWith(
       expect.objectContaining({ taxRatePercent: 5 }),
+      undefined,
+      { pricedAtList: true },
     );
 
-    // An org with no configured rate must send no key at all, so the engine
-    // applies its own default rather than being handed an undefined rate.
+    // v1.2 Phase 1B: an org with no configured rate is refused before
+    // anything is written, never priced at a fallback rate.
     const unset = runtime();
     unset.getOrgTaxRatePercent = vi.fn().mockResolvedValue(undefined);
-    await service.submitPublicOrder("org-1", order, unset);
-    expect(unset.engine.placeOrder).toHaveBeenCalledWith(
-      expect.not.objectContaining({ taxRatePercent: expect.anything() }),
-    );
+    await expect(service.submitPublicOrder("org-1", order, unset)).rejects.toMatchObject({ statusCode: 503 });
+    expect(unset.engine.placeOrder).not.toHaveBeenCalled();
+    expect(unset.engine.createCustomer).not.toHaveBeenCalled();
   });
 
   it("rejects unavailable products, stock shortages, and minimum order misses", () => {
@@ -505,5 +508,83 @@ describe("public product projection", () => {
     ]);
 
     expect(products.map((product) => product.sku)).toEqual(["A", "B"]);
+  });
+});
+
+describe("website orders: who they belong to and where they go (v1.2 Phase 5)", () => {
+  const productId = "00000000-0000-4000-8000-000000000001";
+  const products = [
+    { id: productId, productId: "SKU-1", name: "Cups", defaultSalePrice: "15.00", availableForWebsite: true, stock: 10 },
+  ];
+  const delivery = {
+    customer: { name: "Jane Smith", phone: "07700 904821", email: "jane@example.com" },
+    fulfilment: { method: "delivery" as const, address: "5 Gift Road", postcode: "gf1 1ft", notes: "leave with neighbour" },
+    items: [{ productId, quantity: 1 }],
+  };
+
+  function phase5Runtime(resolved: { kind: "matched"; customerId: string } | { kind: "new"; possibleDuplicateOf: string | null }) {
+    const rt = runtime();
+    return {
+      ...rt,
+      findShopAccountCustomer: vi.fn().mockResolvedValue(null),
+      resolveWebsiteCustomer: vi.fn().mockResolvedValue(resolved),
+      markPossibleDuplicate: vi.fn().mockResolvedValue(undefined),
+      linkShopAccount: vi.fn().mockResolvedValue(undefined),
+      setOrderDelivery: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("writes the address to the order, never to the customer", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.setOrderDelivery).toHaveBeenCalledWith({ tx: true }, "order-1", {
+      deliveryAddress: "5 Gift Road",
+      deliveryPostcode: "GF1 1FT",
+      deliveryNotes: "leave with neighbour",
+    });
+    const created = (rt.engine.createCustomer as any).mock.calls[0][0];
+    expect(created).not.toHaveProperty("address");
+  });
+
+  it("attaches to the one customer whose phone AND email both match", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "matched", customerId: "jane-1" });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.engine.createCustomer).not.toHaveBeenCalled();
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "jane-1" });
+  });
+
+  it("a half-match makes a new record flagged for an admin to merge", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: "jane-1" });
+    await service.submitPublicOrder("org-1", delivery, rt);
+    expect(rt.engine.createCustomer).toHaveBeenCalled();
+    expect(rt.markPossibleDuplicate).toHaveBeenCalledWith({ tx: true }, "customer-1", "jane-1");
+  });
+
+  it("a signed-in shop account's order goes to its linked customer", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
+    rt.findShopAccountCustomer.mockResolvedValue("linked-1");
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect(rt.resolveWebsiteCustomer).not.toHaveBeenCalled();
+    expect(rt.engine.createCustomer).not.toHaveBeenCalled();
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "linked-1" });
+  });
+
+  it("an unlinked shop account is linked to the record made for its first order", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "new", possibleDuplicateOf: null });
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect(rt.linkShopAccount).toHaveBeenCalledWith({ tx: true }, "shop-user", "customer-1");
+  });
+
+  it("a match on typed-in details attaches the order but never links the account to that person", async () => {
+    const service = createWebsiteService(repo({ listWebsiteOrderProducts: vi.fn().mockResolvedValue(products) }));
+    const rt = phase5Runtime({ kind: "matched", customerId: "parent-1" });
+    await service.submitPublicOrder("org-1", delivery, rt, { shopAccountUserId: "shop-user" });
+    expect((rt.engine.placeOrder as any).mock.calls[0][0]).toMatchObject({ customerId: "parent-1" });
+    expect(rt.linkShopAccount).not.toHaveBeenCalled();
   });
 });

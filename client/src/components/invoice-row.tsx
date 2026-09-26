@@ -26,28 +26,36 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPaymentLabel } from "@/lib/paymentLabel";
+import { INVOICE_STATUS_LABELS, type InvoiceStatus } from "@shared/invoices/invoiceRules";
 
 export interface InvoiceListItem {
   id: string;
   invoiceNumber: string;
   customerName: string;
   customerEmail: string;
+  /** j•••@gmail.com: what a manager sees (v1.2 Phase 5, Q7). */
+  customerEmailMasked?: string | null;
   date: string;
   dueDate: string;
   total: number;
-  status: "paid" | "pending" | "overdue" | "cancelled";
+  /** Still to pay, under the same rule as the status. */
+  amountDue: number;
+  status: InvoiceStatus;
+  /** Refunded against the sale since; 0 when nothing was. */
+  refunded?: number;
   paymentMethod: string;
 }
 
-function InvoiceStatusBadge({ status }: { status: string }) {
-  const variants = {
-    paid: { color: "default" as const, icon: CheckCircle },
-    pending: { color: "secondary" as const, icon: Clock },
-    overdue: { color: "destructive" as const, icon: AlertCircle },
-    cancelled: { color: "outline" as const, icon: AlertCircle },
+function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
+  const variants: Record<InvoiceStatus, { color: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle }> = {
+    paid: { color: "default", icon: CheckCircle },
+    "part-paid": { color: "secondary", icon: Clock },
+    owed: { color: "secondary", icon: Clock },
+    overdue: { color: "destructive", icon: AlertCircle },
+    void: { color: "outline", icon: AlertCircle },
   };
 
-  const variant = variants[status as keyof typeof variants];
+  const variant = variants[status] ?? variants.owed;
   const Icon = variant.icon;
 
   return (
@@ -55,13 +63,30 @@ function InvoiceStatusBadge({ status }: { status: string }) {
       variant={variant.color}
       className={cn(
         "shrink-0 gap-1 font-medium",
-        status === "pending" && "ring-2 ring-amber-400/40",
+        (status === "owed" || status === "part-paid") && "ring-2 ring-amber-400/40",
         status === "overdue" && "ring-2 ring-destructive/30"
       )}
+      data-testid={`invoice-status-${status}`}
     >
       <Icon className="h-3 w-3 shrink-0" />
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {INVOICE_STATUS_LABELS[status] ?? status}
     </Badge>
+  );
+}
+
+/** Total, and what is still to pay when that is less. */
+function InvoiceAmount({ invoice }: { invoice: InvoiceListItem }) {
+  const showsDue = invoice.amountDue > 0 && invoice.amountDue !== invoice.total;
+  return (
+    <span className="inline-flex flex-col items-end">
+      <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+      {showsDue && (
+        <span className="text-xs text-muted-foreground">£{invoice.amountDue.toFixed(2)} to pay</span>
+      )}
+      {(invoice.refunded ?? 0) > 0 && (
+        <span className="text-xs text-muted-foreground">£{(invoice.refunded ?? 0).toFixed(2)} refunded</span>
+      )}
+    </span>
   );
 }
 
@@ -72,6 +97,8 @@ export type InvoiceRowProps = {
   onPrint: (invoiceId: string, invoiceNumber: string) => void;
   onDownload: (invoiceId: string, invoiceNumber: string) => void;
   onEmail: (invoiceId: string, customerEmail: string, invoiceNumber: string) => void;
+  /** Set when email is not set up: the item is off and this says why (v1.2 Phase 6). */
+  emailDisabledReason?: string | null;
 };
 
 /** The PDF actions menu, shared between the desktop row and the mobile card. */
@@ -81,8 +108,9 @@ function InvoicePdfMenu({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
   className,
-}: Pick<InvoiceRowProps, "invoice" | "onViewPdf" | "onPrint" | "onDownload" | "onEmail"> & {
+}: Pick<InvoiceRowProps, "invoice" | "onViewPdf" | "onPrint" | "onDownload" | "onEmail" | "emailDisabledReason"> & {
   className?: string;
 }) {
   return (
@@ -126,12 +154,18 @@ function InvoicePdfMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={!!emailDisabledReason}
           onClick={() => onEmail(invoice.id, invoice.customerEmail, invoice.invoiceNumber)}
           data-testid={`button-email-${invoice.id}`}
         >
           <Mail className="mr-2 h-4 w-4" />
-          Download & email invoice
+          Email invoice to customer
         </DropdownMenuItem>
+        {emailDisabledReason && (
+          <p className="px-2 pb-2 text-xs text-muted-foreground" data-testid={`text-email-disabled-${invoice.id}`}>
+            {emailDisabledReason}
+          </p>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -144,6 +178,7 @@ function InvoiceRowInner({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
 }: InvoiceRowProps) {
   return (
     <TableRow className="group align-middle">
@@ -166,13 +201,13 @@ function InvoiceRowInner({
       <TableCell className="min-w-0 max-w-[14rem] lg:max-w-[18rem]">
         <div className="text-sm leading-snug">
           <div className="truncate font-medium text-foreground">{invoice.customerName}</div>
-          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail}</div>
+          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail || invoice.customerEmailMasked}</div>
         </div>
       </TableCell>
       <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
         <span className="inline-flex items-center gap-1.5 text-sm">
           <Calendar className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-          {new Date(invoice.date).toLocaleDateString(undefined, {
+          {new Date(invoice.date).toLocaleDateString("en-GB", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -180,14 +215,14 @@ function InvoiceRowInner({
         </span>
       </TableCell>
       <TableCell className="whitespace-nowrap tabular-nums text-sm text-muted-foreground">
-        {new Date(invoice.dueDate).toLocaleDateString(undefined, {
+        {new Date(invoice.dueDate).toLocaleDateString("en-GB", {
           month: "short",
           day: "numeric",
           year: "numeric",
         })}
       </TableCell>
       <TableCell className="whitespace-nowrap text-right tabular-nums">
-        <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+        <InvoiceAmount invoice={invoice} />
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <InvoiceStatusBadge status={invoice.status} />
@@ -204,6 +239,7 @@ function InvoiceRowInner({
           onPrint={onPrint}
           onDownload={onDownload}
           onEmail={onEmail}
+          emailDisabledReason={emailDisabledReason}
         />
       </TableCell>
     </TableRow>
@@ -218,7 +254,8 @@ export const InvoiceRow = memo(
     prev.onViewPdf === next.onViewPdf &&
     prev.onPrint === next.onPrint &&
     prev.onDownload === next.onDownload &&
-    prev.onEmail === next.onEmail
+    prev.onEmail === next.onEmail &&
+    prev.emailDisabledReason === next.emailDisabledReason
 );
 
 /**
@@ -234,6 +271,7 @@ function InvoiceCardInner({
   onPrint,
   onDownload,
   onEmail,
+  emailDisabledReason,
 }: InvoiceRowProps) {
   return (
     <Card className="border-border/60 shadow-sm" data-testid={`card-invoice-${invoice.id}`}>
@@ -258,14 +296,14 @@ function InvoiceCardInner({
 
         <div className="text-sm leading-snug">
           <div className="truncate font-medium text-foreground">{invoice.customerName}</div>
-          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail}</div>
+          <div className="truncate text-xs text-muted-foreground">{invoice.customerEmail || invoice.customerEmailMasked}</div>
         </div>
 
         <div className="mt-2 space-y-1 border-t pt-2">
           <ResponsiveCardRow label="Issued">
             <span className="inline-flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-              {new Date(invoice.date).toLocaleDateString(undefined, {
+              {new Date(invoice.date).toLocaleDateString("en-GB", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
@@ -273,7 +311,7 @@ function InvoiceCardInner({
             </span>
           </ResponsiveCardRow>
           <ResponsiveCardRow label="Due">
-            {new Date(invoice.dueDate).toLocaleDateString(undefined, {
+            {new Date(invoice.dueDate).toLocaleDateString("en-GB", {
               month: "short",
               day: "numeric",
               year: "numeric",
@@ -285,7 +323,7 @@ function InvoiceCardInner({
             </Badge>
           </ResponsiveCardRow>
           <ResponsiveCardRow label="Total">
-            <span className="text-base font-semibold tracking-tight">£{invoice.total.toFixed(2)}</span>
+            <InvoiceAmount invoice={invoice} />
           </ResponsiveCardRow>
         </div>
 
@@ -295,6 +333,7 @@ function InvoiceCardInner({
           onPrint={onPrint}
           onDownload={onDownload}
           onEmail={onEmail}
+          emailDisabledReason={emailDisabledReason}
           className="mt-3 min-h-[44px] w-full justify-center"
         />
       </CardContent>
@@ -310,5 +349,6 @@ export const InvoiceCard = memo(
     prev.onViewPdf === next.onViewPdf &&
     prev.onPrint === next.onPrint &&
     prev.onDownload === next.onDownload &&
-    prev.onEmail === next.onEmail
+    prev.onEmail === next.onEmail &&
+    prev.emailDisabledReason === next.emailDisabledReason
 );

@@ -1,8 +1,10 @@
 import { useAuth } from "@/hooks/useAuth";
+import { MyPerformanceCard } from "@/components/performance/MyPerformanceCard";
 import { resolveApiUrl } from "@/lib/appPaths";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import AnalyticsDashboard from "@/components/analytics-dashboard";
+import { EVIDENCE_MIN_ROLE, isAtLeast } from "@shared/accessPolicy";
 import { ControlCentreGreeting } from "@/components/dashboard/ControlCentreGreeting";
 import { ControlCentreToday } from "@/components/dashboard/ControlCentreToday";
 import { QuickActionCard } from "@/components/dashboard/QuickActionCard";
@@ -74,7 +76,10 @@ function Disclosure({
 
 export default function Home() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  // Truths and Evidence are manager and above on the server (FIX-03), so a
+  // cashier's home leaves them out rather than landing on refusals.
+  const seesEvidence = isAtLeast(user?.role, EVIDENCE_MIN_ROLE);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -136,6 +141,10 @@ export default function Home() {
           <OperationsSnapshot />
         </div>
 
+        <div className="mt-6">
+          <MyPerformanceCard />
+        </div>
+
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <RecentOrders />
           <div className="flex flex-col gap-6">
@@ -144,9 +153,11 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-6">
-          <BestReports />
-        </div>
+        {seesEvidence && (
+          <div className="mt-6">
+            <BestReports />
+          </div>
+        )}
 
         {/* Promoted out of a disclosure — the primary way to act on this page,
             so it should not need a click just to appear. */}
@@ -170,9 +181,11 @@ export default function Home() {
           <ActivityTimeline limit={15} />
         </Disclosure>
 
-        <Disclosure title="Truths overview" testId="section-truths-overview">
-          <AnalyticsDashboard />
-        </Disclosure>
+        {seesEvidence && (
+          <Disclosure title="Truths overview" testId="section-truths-overview">
+            <AnalyticsDashboard />
+          </Disclosure>
+        )}
       </div>
     </div>
   );

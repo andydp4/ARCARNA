@@ -19,7 +19,12 @@ export const PlaceOrderInput = z.object({
   // 'split' is a label, not a tender: the route sets it when an order has 2+
   // distinct payment legs (each recorded separately in order_payments), never
   // a leg's own method. See shared/schema.ts's orderPayments doc comment.
-  paymentMethod: z.enum(['cash','card','transfer','tick','gift_card','split']),
+  // personal_use: stock leaving for staff use. The route zeroes the total and
+  // books the cost as an expense; it was missing here, so every such sale
+  // was refused as an invalid payment method.
+  // card_link: a Stripe Checkout link the customer pays on their own phone
+  // (v1.2 Stripe links). Its leg is written 'awaiting' until Stripe confirms.
+  paymentMethod: z.enum(['cash','card','card_link','transfer','tick','gift_card','split','personal_use']),
   orgId: z.string().uuid().optional(),
   locationId: z.string().uuid().optional(),
   // Must be declared even though nothing in the engine branches on it: this is
@@ -32,7 +37,12 @@ export const PlaceOrderInput = z.object({
   // existing callers keep the previous fixed 20% behaviour.
   taxRatePercent: z.number().min(0).max(100).optional(),
   channel: z.enum(['pos','web','api','whatsapp','phone']).default('pos'),
-  status: z.enum(['pending','on-hold','awaiting-customer','urgent','completed']).optional(),
+  // Never 'completed' (v1.2 Phase 1B): completing is a settlement — the
+  // settled total, the credit leg, commission — and only the completion path
+  // (server/services/orderCompletion.ts) does it. An order born "completed"
+  // skipped all of that. A caller that sends it is refused, not quietly
+  // downgraded, so an integration finds out.
+  status: z.enum(['pending','on-hold','awaiting-customer','urgent']).optional(),
   // The calendar date the order is FOR, when that is not today: a missed day
   // being keyed in afterwards, or a pre-order. Declared so it survives parsing
   // (this object strips unknown keys); the route, not the engine, acts on it —
@@ -77,5 +87,11 @@ export const PlaceOrderInput = z.object({
     .optional(),
 })
 export type PlaceOrderDTO = z.infer<typeof PlaceOrderInput>
-export const UpdateOrderInput = z.object({ lines: z.array(OrderLineInput).min(1) })
+// taxRatePercent is set by the route from the shop's own settings, never the
+// client. Without it here Zod stripped it and every edit fell back to the
+// engine default instead of the shop's rate.
+export const UpdateOrderInput = z.object({
+  lines: z.array(OrderLineInput).min(1),
+  taxRatePercent: z.number().min(0).max(100).optional(),
+})
 export type UpdateOrderDTO = z.infer<typeof UpdateOrderInput>

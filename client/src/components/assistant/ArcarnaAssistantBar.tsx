@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { Mic, MicOff, Send, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +8,21 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getSpeechProvider } from "@/lib/speech";
 import { STORAGE_VOICE_ENABLED } from "@shared/storageKeys";
+import { stashWhatsappDraft } from "@/lib/whatsappDraft";
 
 interface QuickEntryTurnResponse {
-  action: "ask" | "save" | "cancel";
+  action: "ask" | "draft" | "cancel";
   draft: unknown | null;
   message: string;
   voiceResponse: string;
   missingFields: string[];
-  savedOrderId?: string;
+  /** Set on "draft": what the till opens with (v1.2 Phase 1B). */
+  tillDraft?: {
+    customerId: string | null;
+    customerName: string | null;
+    items: Array<{ sku: string; name: string; quantity: number }>;
+    note?: string;
+  };
 }
 
 interface LogEntry {
@@ -22,9 +30,14 @@ interface LogEntry {
   text: string;
 }
 
-/** Arcarna Voice — floating typed/mic command bar driving the QuickEntryEngine. */
+/**
+ * Arcarna Voice — floating typed/mic command bar driving the QuickEntryEngine.
+ * It drafts orders; it never saves one. A confirmed draft opens in the till,
+ * which prices it and takes payment (v1.2 Phase 1B, owner Q19).
+ */
 export function ArcarnaAssistantBar() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -71,8 +84,17 @@ export function ArcarnaAssistantBar() {
       if (voiceOn && speech.isSupported()) {
         speech.speak(result.voiceResponse).catch(() => {});
       }
-      if (result.action === "save") {
-        toast({ title: "Order saved", description: result.message });
+      if (result.action === "draft" && result.tillDraft) {
+        stashWhatsappDraft({
+          conversationId: "",
+          source: "voice",
+          customerId: result.tillDraft.customerId,
+          customerName: result.tillDraft.customerName,
+          note: result.tillDraft.note,
+          items: result.tillDraft.items.map((i) => ({ sku: i.sku, name: i.name, quantity: i.quantity })),
+        });
+        setOpen(false);
+        navigate("/create-order");
       }
     } catch (e: any) {
       const message = e?.message || "Something went wrong.";
@@ -108,11 +130,15 @@ export function ArcarnaAssistantBar() {
       <Button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-24 right-5 z-40 h-12 w-12 rounded-full p-0 shadow-lg"
+        // Icon-only on a phone (UI-01): the labelled pill covered the till's
+        // Customer select; a 48px circle stacked over the WhatsApp launcher
+        // covers as little as it can.
+        className="fixed bottom-20 right-5 z-40 h-12 w-12 gap-2 rounded-full p-0 shadow-lg sm:bottom-24 sm:w-auto sm:px-4"
         data-testid="arcarna-voice-launcher"
-        aria-label="Arcarna Voice"
+        aria-label="arcarna Voice"
       >
-        <Mic className="h-5 w-5" />
+        <Mic className="h-5 w-5" aria-hidden />
+        <span className="hidden sm:inline">Voice</span>
       </Button>
 
       {open && (
@@ -120,17 +146,17 @@ export function ArcarnaAssistantBar() {
           className="fixed bottom-40 right-5 z-40 flex w-full max-w-sm flex-col rounded-lg border border-border bg-background shadow-xl"
           data-testid="arcarna-voice-panel"
           role="dialog"
-          aria-label="Arcarna Voice"
+          aria-label="arcarna Voice"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <span className="font-semibold">Arcarna Voice</span>
+            <span className="font-semibold">arcarna Voice</span>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={toggleVoice}
-                aria-label={voiceOn ? "Mute Arcarna's voice" : "Enable Arcarna's voice"}
+                aria-label={voiceOn ? "Mute arcarna's voice" : "Enable arcarna's voice"}
                 data-testid="arcarna-voice-toggle"
               >
                 {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
@@ -140,7 +166,7 @@ export function ArcarnaAssistantBar() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => setOpen(false)}
-                aria-label="Close Arcarna Voice"
+                aria-label="Close arcarna Voice"
                 data-testid="arcarna-voice-close"
               >
                 <X className="h-4 w-4" />
@@ -182,13 +208,14 @@ export function ArcarnaAssistantBar() {
             <Button
               type="button"
               variant={listening ? "destructive" : "outline"}
-              size="icon"
-              className="h-9 w-9 shrink-0"
+              size="sm"
+              className="h-9 shrink-0 gap-1"
               onClick={handleMic}
               aria-label={listening ? "Stop listening" : "Speak a command"}
               data-testid="arcarna-voice-mic"
             >
-              {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              {listening ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}
+              {listening ? "Stop" : "Speak"}
             </Button>
             <Input
               value={input}
@@ -199,12 +226,13 @@ export function ArcarnaAssistantBar() {
             />
             <Button
               type="submit"
-              size="icon"
+              size="sm"
               aria-label="Send message to the assistant"
-              className="h-9 w-9 shrink-0"
+              className="h-9 shrink-0 gap-1"
               disabled={busy || !input.trim()}
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4" aria-hidden />
+              Send
             </Button>
           </form>
         </div>

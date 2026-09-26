@@ -348,7 +348,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Location</Label>
             <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Location">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -364,7 +364,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Action</Label>
             <Select value={actionType} onValueChange={setActionType}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Action">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -379,7 +379,7 @@ export function ReplenishmentTab() {
           <div>
             <Label>Risk</Label>
             <Select value={risk} onValueChange={setRisk}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Risk">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -392,8 +392,9 @@ export function ReplenishmentTab() {
             </Select>
           </div>
           <div>
-            <Label>Coverage (days)</Label>
+            <Label htmlFor="replenishment-coverage">Coverage (days)</Label>
             <Input
+              id="replenishment-coverage"
               type="number"
               min={1}
               value={targetCoverageDays}
@@ -401,8 +402,8 @@ export function ReplenishmentTab() {
             />
           </div>
           <div>
-            <Label>Search</Label>
-            <Input placeholder="Product or SKU" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Label htmlFor="replenishment-search">Search</Label>
+            <Input id="replenishment-search" placeholder="Product or SKU" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </CardContent>
       </Card>
@@ -460,8 +461,8 @@ export function ReplenishmentTab() {
                       aria-label={`Select ${rec.productName} at ${rec.locationName} for purchase`}
                     />
                   )}
-                  <div>
-                    <CardTitle className="text-base">{rec.productName}</CardTitle>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base [overflow-wrap:anywhere]">{rec.productName}</CardTitle>
                     <CardDescription>
                       {rec.sku} · {rec.locationName} · Stock {rec.stock}
                     </CardDescription>
@@ -523,7 +524,7 @@ export function ReplenishmentTab() {
                     fixed replaces it. */}
                 {canMutate && rec.actionType.includes("BUY") && !rec.selectedSupplier && (
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/settings?tab=suppliers">
+                    <Link href="/suppliers">
                       <PackagePlus className="h-4 w-4 mr-1" />
                       No supplier mapped — add one
                     </Link>
@@ -652,7 +653,7 @@ export function ReplenishmentTab() {
           <ul className="space-y-1 text-sm">
             {selectedItems.map((rec) => (
               <li key={recKey(rec)} className="flex justify-between gap-2">
-                <span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
                   {rec.productName} · {rec.locationName}
                 </span>
                 <span className="text-muted-foreground">

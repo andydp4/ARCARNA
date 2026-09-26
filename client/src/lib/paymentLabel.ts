@@ -17,6 +17,8 @@
 // staff the word "tick" any more.
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   tick: "Credit",
+  // A Stripe link paid on the customer's phone, kept apart from terminal card.
+  card_link: "Card (link)",
 };
 
 export function formatPaymentLabel(method: string) {

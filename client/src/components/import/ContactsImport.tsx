@@ -271,12 +271,10 @@ export function ContactsImport({
           data-testid="input-contacts-file"
         />
 
+        {/* A drop target only (UI-13 nested-interactive): it used to be a
+            role="button" wrapped round the real button, which is the one
+            keyboard and screen-reader users need. */}
         <div
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
-          }}
           onDragOver={(e) => {
             e.preventDefault();
             setDragOver(true);
@@ -321,7 +319,7 @@ export function ContactsImport({
           <div className="space-y-2">
             <Label>Customer group (category)</Label>
             <Select value={defaultCategory} onValueChange={setDefaultCategory}>
-              <SelectTrigger className="min-h-[44px]" data-testid="contacts-default-category">
+              <SelectTrigger aria-label="Customer group (category)" className="min-h-[44px]" data-testid="contacts-default-category">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -339,7 +337,7 @@ export function ContactsImport({
           <div className="space-y-2">
             <Label>Duplicate handling</Label>
             <Select value={duplicateMode} onValueChange={setDuplicateMode}>
-              <SelectTrigger className="min-h-[44px]" data-testid="contacts-duplicate-mode">
+              <SelectTrigger aria-label="Duplicate handling" className="min-h-[44px]" data-testid="contacts-duplicate-mode">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -388,7 +386,7 @@ export function ContactsImport({
               className="text-sm font-medium text-foreground"
               data-testid="contacts-preview-list-count"
             >
-              Showing all {filteredRows.length.toLocaleString()} contacts — scroll the table to browse
+              Showing all {filteredRows.length.toLocaleString("en-GB")} contacts — scroll the table to browse
               every row.
             </p>
             {preview.summary.valid === 0 && (
@@ -555,8 +553,8 @@ export function ContactsImport({
             </div>
             {searchTerm && filteredRows.length < preview.rows.length && (
               <p className="text-xs text-muted-foreground">
-                Search matches {filteredRows.length.toLocaleString()} of{" "}
-                {preview.rows.length.toLocaleString()} contacts. Selection is kept for contacts not
+                Search matches {filteredRows.length.toLocaleString("en-GB")} of{" "}
+                {preview.rows.length.toLocaleString("en-GB")} contacts. Selection is kept for contacts not
                 shown in the filtered list.
               </p>
             )}

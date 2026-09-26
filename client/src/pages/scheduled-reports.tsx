@@ -155,22 +155,24 @@ export default function ScheduledReportsPage() {
                   {r.reportType} · {r.frequency}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Next: {r.nextRunAt ? new Date(r.nextRunAt).toLocaleString() : "—"} · Last:{" "}
-                  {r.lastRunAt ? new Date(r.lastRunAt).toLocaleString() : "—"}
+                  Next: {r.nextRunAt ? new Date(r.nextRunAt).toLocaleString("en-GB") : "—"} · Last:{" "}
+                  {r.lastRunAt ? new Date(r.lastRunAt).toLocaleString("en-GB") : "—"}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant={r.isEnabled ? "default" : "secondary"}>
                   {r.isEnabled ? "Enabled" : "Disabled"}
                 </Badge>
-                <Switch checked={!!r.isEnabled} onCheckedChange={() => toggleMutation.mutate(r)} />
+                <Switch aria-label={`${r.name}: on`} checked={!!r.isEnabled} onCheckedChange={() => toggleMutation.mutate(r)} />
                 <Button
                   variant="outline"
-                  size="icon"
+                  size="sm"
+                  className="gap-1"
                   aria-label={`View run history for ${r.name}`}
                   onClick={() => setHistoryId(r.id)}
                 >
-                  <History className="h-4 w-4" />
+                  <History className="h-4 w-4" aria-hidden />
+                  History
                 </Button>
               </div>
             </div>
@@ -208,12 +210,12 @@ export default function ScheduledReportsPage() {
           <div className="space-y-3 py-2">
             <div>
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div>
               <Label>Report type</Label>
               <Select value={form.reportType} onValueChange={(v) => setForm({ ...form, reportType: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Report type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -228,7 +230,7 @@ export default function ScheduledReportsPage() {
             <div>
               <Label>Frequency</Label>
               <Select value={form.frequency} onValueChange={(v) => setForm({ ...form, frequency: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Frequency">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -264,6 +266,7 @@ export default function ScheduledReportsPage() {
             </div>
             <div className="flex items-center gap-2">
               <Switch
+                aria-label="Enable immediately"
                 checked={!!form.isEnabled}
                 onCheckedChange={(c) => setForm({ ...form, isEnabled: c ? 1 : 0 })}
               />

@@ -90,7 +90,12 @@ describe.skipIf(!hasDb)("tick customer settlement routes", () => {
       givenOn: "2026-08-01",
     });
 
-    const res = await request(app).post(`/api/tick-customers/${customerId}/mark-paid`).expect(200);
+    // Clearing the whole tab needs the exact balance being cleared.
+    const res = await request(app)
+      .post(`/api/tick-customers/${customerId}/mark-paid`)
+      // "Paid by" is required to clear an account (v1.2 Phase 1C).
+      .send({ expectedBalance: 125.5, method: "cash" })
+      .expect(200);
     expect(res.body.ordersSettled).toBe(1);
     expect(res.body.amountSettled).toBe(125.5);
 

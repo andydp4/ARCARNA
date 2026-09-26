@@ -11,6 +11,7 @@ import {
 } from "@shared/bulkActions";
 import type { Role } from "@shared/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { csvFromRecords } from "@shared/csv";
 
 type OrgContext = { orgId: string; role: Role; userId?: string };
 
@@ -55,6 +56,22 @@ async function handleCustomerBulk(
       .select()
       .from(customers)
       .where(and(eq(customers.orgId, ctx.orgId), inArray(customers.id, ids)));
+    // Every export is logged (Q12): it is a customer list with contact details.
+    await recordAdminAudit(req, {
+      actorUserId,
+      actorRole: ctx.role,
+      action: "bulk.export",
+      targetType: "customer",
+      orgId: ctx.orgId,
+      metadata: { count: rows.length, ids },
+    });
+    // And one row per customer in the customer data access log (v1.2 Phase 6,
+    // PRV-10), so each one's Access history shows the export. No log, no file.
+    const { recordAccessFromRequest } = await import("../services/customerAccessLog");
+    await recordAccessFromRequest(
+      req,
+      rows.map((row) => ({ orgId: ctx.orgId, customerId: row.id, action: "export" as const, metadata: { kind: "customer_list" } })),
+    );
     return { ok: true as const, result: { rows, format: "csv" } };
   }
 
@@ -112,6 +129,15 @@ async function handleProductBulk(
       .select()
       .from(products)
       .where(and(eq(products.orgId, ctx.orgId), inArray(products.id, ids)));
+    // Every export is logged: it carries cost prices off the premises.
+    await recordAdminAudit(req, {
+      actorUserId,
+      actorRole: ctx.role,
+      action: "bulk.export",
+      targetType: "product",
+      orgId: ctx.orgId,
+      metadata: { count: rows.length, ids },
+    });
     return { ok: true as const, result: { rows, format: "csv" } };
   }
 
@@ -139,19 +165,7 @@ async function handleProductBulk(
 }
 
 
+/** The shared writer: quoted, formula-safe, UTF-8 marked (FIX-14). */
 export function rowsToCsv(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return "";
-  const keys = Object.keys(rows[0]);
-  const header = keys.join(",");
-  const lines = rows.map((row) =>
-    keys
-      .map((key) => {
-        const val = row[key];
-        if (val == null) return "";
-        const str = String(val);
-        return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-      })
-      .join(","),
-  );
-  return [header, ...lines].join("\n");
+  return csvFromRecords(rows);
 }

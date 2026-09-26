@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
 import { isAuthenticated, requireOrgContext, requireOrgScope } from "../auth";
 import {
   getSmartStock,
@@ -6,14 +6,20 @@ import {
   getNotifications,
   getBusinessHealth,
 } from "../services/operationalIntelligence";
-import { getControlCentreSnapshot } from "../services/controlCentre";
-import { db } from "../db";
-import { orgNotifications } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { controlCentreForRole, getControlCentreSnapshot } from "../services/controlCentre";
+import { markSignals } from "../services/signals";
 
-const scoped = [isAuthenticated, requireOrgContext, requireOrgScope];
+const defaultScoped: RequestHandler[] = [isAuthenticated, requireOrgContext, requireOrgScope];
 
-export function registerOperationalRoutes(app: Express) {
+/** Who is asking, for per-person Signals. Role comes from the org context, as every role gate does. */
+function viewerOf(req: any): { userId: string; role: string } | null {
+  const userId = req.user?.id ?? req.user?.claims?.sub;
+  const role = req.orgContext?.role ?? req.user?.role;
+  if (!userId || !role) return null;
+  return { userId: String(userId), role: String(role) };
+}
+
+export function registerOperationalRoutes(app: Express, scoped: RequestHandler[] = defaultScoped) {
   app.get("/api/inventory/smart-stock", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
@@ -47,7 +53,9 @@ export function registerOperationalRoutes(app: Express) {
   app.get("/api/notifications", ...scoped, async (req: any, res) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const items = await getNotifications(ctx.orgId);
+      const viewer = viewerOf(req);
+      if (!viewer) return res.status(401).json({ message: "Unauthorized" });
+      const items = await getNotifications(ctx.orgId, viewer);
       res.json({ items });
     } catch (error) {
       console.error("Error fetching notifications:", error);
@@ -75,26 +83,42 @@ export function registerOperationalRoutes(app: Express) {
     try {
       const ctx = req.orgContext as { orgId: string };
       const data = await getControlCentreSnapshot(ctx.orgId);
-      res.json(data);
+      res.json(controlCentreForRole(data, (ctx as { role?: string }).role ?? req.user?.role));
     } catch (error) {
       console.error("Error fetching Control Centre snapshot:", error);
       res.status(500).json({ message: "Failed to fetch Control Centre snapshot" });
     }
   });
 
-  app.patch("/api/org-notifications/:id/read", ...scoped, async (req: any, res) => {
+  // Read and cleared are per person (v1.2 Phase 0B): each of these touches
+  // only the caller's own recipient row, and only for a Signal they may see —
+  // anything else is a 404, so the route never confirms a Signal exists.
+  const markRoute = (dismiss: boolean) => async (req: any, res: any) => {
     try {
       const ctx = req.orgContext as { orgId: string };
-      const [updated] = await db
-        .update(orgNotifications)
-        .set({ readAt: new Date() })
-        .where(and(eq(orgNotifications.id, req.params.id), eq(orgNotifications.orgId, ctx.orgId)))
-        .returning({ id: orgNotifications.id });
-      if (!updated) return res.status(404).json({ message: "Not found" });
+      const viewer = viewerOf(req);
+      if (!viewer) return res.status(401).json({ message: "Unauthorized" });
+      const touched = await markSignals(ctx.orgId, viewer, [String(req.params.id)], { dismiss });
+      if (touched.length === 0) return res.status(404).json({ message: "Not found" });
       res.json({ ok: true });
     } catch (error) {
-      console.error("Error marking notification read:", error);
-      res.status(500).json({ message: "Failed to update notification" });
+      console.error("Error updating Signal:", error);
+      res.status(500).json({ message: "Failed to update Signal" });
+    }
+  };
+  app.patch("/api/org-notifications/:id/read", ...scoped, markRoute(false));
+  app.post("/api/org-notifications/:id/dismiss", ...scoped, markRoute(true));
+
+  app.post("/api/org-notifications/read-all", ...scoped, async (req: any, res) => {
+    try {
+      const ctx = req.orgContext as { orgId: string };
+      const viewer = viewerOf(req);
+      if (!viewer) return res.status(401).json({ message: "Unauthorized" });
+      const touched = await markSignals(ctx.orgId, viewer, "all");
+      res.json({ ok: true, count: touched.length });
+    } catch (error) {
+      console.error("Error marking Signals read:", error);
+      res.status(500).json({ message: "Failed to update Signals" });
     }
   });
 }

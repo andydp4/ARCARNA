@@ -219,7 +219,7 @@ export function ReceivingTab() {
         <div className="flex gap-2 items-center">
           <Label className="sr-only">Status</Label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger aria-label="Status" className="w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -261,7 +261,7 @@ export function ReceivingTab() {
                     >
                       Draft {r.purchaseDraftId.slice(0, 8)}…
                     </Link>{" "}
-                    · {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                    · {r.createdAt ? new Date(r.createdAt).toLocaleString("en-GB") : ""}
                   </CardDescription>
                 </div>
                 <Badge variant={statusVariant[r.status] ?? "outline"}>{r.status}</Badge>
@@ -313,7 +313,7 @@ export function ReceivingTab() {
               </p>
               {detail.receivedAt && (
                 <p>
-                  Received {new Date(detail.receivedAt).toLocaleString()}
+                  Received {new Date(detail.receivedAt).toLocaleString("en-GB")}
                   {detail.receivedBy ? ` by ${detail.receivedBy}` : ""}
                 </p>
               )}
@@ -391,7 +391,7 @@ export function ReceivingTab() {
                     setOverDeliveryKey(null);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Select draft">
                     <SelectValue placeholder="Select draft" />
                   </SelectTrigger>
                   <SelectContent>
@@ -406,7 +406,7 @@ export function ReceivingTab() {
             </div>
             <div>
               <Label>Supplier reference (optional)</Label>
-              <Input
+              <Input aria-label="Supplier reference (optional)"
                 value={supplierReference}
                 onChange={(e) => setSupplierReference(e.target.value)}
                 placeholder="Supplier's delivery note or invoice number"
@@ -425,7 +425,7 @@ export function ReceivingTab() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label>Qty received</Label>
-                    <Input
+                    <Input aria-label="Qty received"
                       type="number"
                       inputMode="decimal"
                       step="any"
@@ -444,7 +444,7 @@ export function ReceivingTab() {
                   </div>
                   <div>
                     <Label>Damaged</Label>
-                    <Input
+                    <Input aria-label="Damaged"
                       type="number"
                       inputMode="decimal"
                       step="any"

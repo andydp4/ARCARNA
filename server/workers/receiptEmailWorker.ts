@@ -2,6 +2,8 @@
  * ReceiptEmailWorker — sends branded HTML receipts via Resend on OrderCreated.
  */
 
+import { deliveryFeeSettingsFrom } from "@shared/orders/deliveryFee";
+import { receiptMoney } from "../services/receiptMoney";
 import { db } from "../db";
 import {
   processedEvents,
@@ -19,6 +21,8 @@ import { signUnsubscribeToken } from "../services/receiptSigning";
 import { storage } from "../storage";
 import { APP_BASE_PATH } from "../appBase";
 import { apiPathWithBase } from "@shared/appPaths";
+import { privacyNoticeHref, shopPrivacyFromOrg } from "@shared/shopPrivacy";
+import { privacyTextPageUrl } from "../routes/privacyNotice";
 
 const POINTS_PER_UNIT = 1;
 
@@ -216,9 +220,10 @@ export class ReceiptEmailWorker implements IWorker {
         .where(eq(orderItems.orderId, orderId));
 
       const currency = org.currency || "GBP";
-      const orderTotal = parseFloat(order.total || "0");
-      const subtotal = +(orderTotal / 1.2).toFixed(2);
-      const tax = +(orderTotal - subtotal).toFixed(2);
+      // Stored VAT and the delivery fee as its own line (server/services/receiptMoney.ts).
+      const money = receiptMoney(order, items, deliveryFeeSettingsFrom(org).name);
+      const orderTotal = money.total;
+      const { subtotal, tax } = money;
       const loyaltyEarned = Math.floor(orderTotal * POINTS_PER_UNIT);
       const paymentMethod =
         payload.order?.paymentMethod || order.paymentMethod || "unknown";
@@ -237,15 +242,23 @@ export class ReceiptEmailWorker implements IWorker {
           tax: formatMoney(tax, currency),
           paymentMethod,
           loyaltyEarned: String(loyaltyEarned),
-          lines: items.map((item) => ({
-            name: item.productName || "Item",
-            qty: item.quantity,
-            price: formatMoney(parseFloat(item.unitPrice || "0"), currency),
-            lineTotal: formatMoney(parseFloat(item.totalPrice || "0"), currency),
+          lines: money.lines.map((line) => ({
+            name: line.name,
+            qty: line.qty,
+            price: formatMoney(line.unitPrice, currency),
+            lineTotal: formatMoney(line.lineTotal, currency),
           })),
         },
         unsubscribeUrl: unsubUrl,
         footer: org.receiptFooter || "Thank you for your purchase.",
+        privacy: (() => {
+          const info = shopPrivacyFromOrg(org);
+          return {
+            noticeUrl: privacyNoticeHref(info, privacyTextPageUrl(orgId)),
+            complaintsName: info.complaintsContactName,
+            complaintsEmail: info.complaintsContactEmail,
+          };
+        })(),
       });
 
       const { Resend } = await import("resend");

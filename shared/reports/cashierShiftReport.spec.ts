@@ -28,6 +28,46 @@ describe("buildCashierShiftBalanceSheet", () => {
     expect(sheet.businessRetainedProfit).toBe(40);
   });
 
+  it("leaves a delivery fee out of commission but keeps it in net profit (v1.2.1)", () => {
+    // £53 taken: £50 of goods costing £20 and a £3 fee (0% VAT). The fee is
+    // 3/53 of the order's money.
+    const order = {
+      id: "o1",
+      total: 53,
+      paymentMethod: "cash",
+      status: "completed",
+      createdAt: "2026-06-01T10:00:00Z",
+      items: [{ quantity: 1, costPrice: 20 }],
+    };
+    const counted = buildCashierShiftBalanceSheet([order], 0, 0, [], 0, 10);
+    const outside = buildCashierShiftBalanceSheet([{ ...order, commissionShare: 50 / 53 }], 0, 0, [], 0, 10);
+    expect(counted.netSalesProfit).toBe(33);
+    expect(outside.netSalesProfit).toBe(33);
+    expect(counted.commissionAmount).toBe(3.3);
+    expect(outside.commissionAmount).toBe(3);
+    // Unpaid credit is not money in, so its fee share is not taken off twice.
+    const onCredit = buildCashierShiftBalanceSheet(
+      [{ ...order, paymentMethod: "tick", creditOutstanding: 53, commissionShare: 50 / 53 }],
+      0,
+      0,
+      [],
+      0,
+      10,
+    );
+    expect(onCredit.commissionAmount).toBe(0);
+    // The fee given back: net profit falls by it, commission does not.
+    const feeRefunded = buildCashierShiftBalanceSheet(
+      [{ ...order, commissionShare: 50 / 53, refundedOutsideCommission: 3 }],
+      0,
+      0,
+      [{ total: 3 }],
+      0,
+      10,
+    );
+    expect(feeRefunded.netSalesProfit).toBe(30);
+    expect(feeRefunded.commissionAmount).toBe(3);
+  });
+
   it("never pays commission on negative net sales profit", () => {
     const orders = [
       {

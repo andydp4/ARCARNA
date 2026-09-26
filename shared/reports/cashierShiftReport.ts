@@ -3,12 +3,19 @@
  *
  * Commission is calculated from net sales profit, not gross sales:
  *   netSalesProfit = paidSalesReceived - stockCost - orderExpenses
- *                    - allocatedGlobalExpenses - refunds - discounts
+ *                    - allocatedGlobalExpenses - refunds
+ *
+ * `discounts` (tier, promotion, points) is reported, not subtracted: since
+ * v1.2 Phase 1B an order's total IS what the customer was charged, so the
+ * discount is already out of paidSalesReceived. Taking it off again would
+ * cut commission for every discount given. (It was always passed as 0 before
+ * this release, so no historic figure changes.)
  *   commissionAmount = Math.max(0, netSalesProfit) * commissionRate
  *
  * Unpaid credit/tick sales are tracked separately and excluded from
  * paidSalesReceived until marked paid.
  */
+import { isCardLinkMethod, isPaidLeg } from "../payments/cardLink";
 
 export const CALCULATION_VERSION = 1;
 
@@ -36,12 +43,20 @@ export type CashierShiftOrder = {
    * Absent means the caller predates split tender; the whole total is then
    * attributed to `paymentMethod`, which is what a single-tender sale is.
    */
-  payments?: Array<{ method: string; amount: number }>;
+  payments?: Array<{ method: string; amount: number; status?: string | null }>;
   items: Array<{
     quantity: number;
     /** Unit cost price; null when the product has no recorded cost. */
     costPrice: number | null;
   }>;
+  /**
+   * The share of this order's money that earns commission, 0–1 (v1.2.1): a
+   * delivery fee is left out unless the admin counts it. It stays in net
+   * profit; only the commission on it is left out. Absent: 1.
+   */
+  commissionShare?: number;
+  /** Refunded money on this order that earned no commission (a refunded delivery fee). Absent: 0. */
+  refundedOutsideCommission?: number;
 };
 
 export type CashierShiftRefund = {
@@ -51,7 +66,12 @@ export type CashierShiftRefund = {
 export type CashierShiftBalanceSheet = {
   grossSales: number;
   cashSales: number;
+  /** Card taken on the terminal. */
   cardSales: number;
+  /** Card taken by Stripe link and confirmed (v1.2 Stripe links), apart from the terminal's. */
+  cardLinkSales: number;
+  /** Card links Stripe has not confirmed: sold, not taken, in no figure above. */
+  awaitingCardPayment: number;
   creditSales: number;
   unpaidCreditSales: number;
   paidSalesReceived: number;
@@ -93,8 +113,14 @@ export function isPersonalUse(method: string): boolean {
  * payment method for callers that predate split tender.
  */
 function tenderLegs(order: CashierShiftOrder): Array<{ method: string; amount: number }> {
-  if (order.payments && order.payments.length > 0) return order.payments;
+  // Money taken only: an awaiting card-link leg is in no tender.
+  if (order.payments && order.payments.length > 0) return order.payments.filter(isPaidLeg);
   return [{ method: order.paymentMethod, amount: order.total }];
+}
+
+/** The part of a sale still waiting on a card link. */
+function awaitingOn(order: CashierShiftOrder): number {
+  return (order.payments ?? []).filter((leg) => !isPaidLeg(leg)).reduce((sum, leg) => sum + leg.amount, 0);
 }
 
 /**
@@ -117,8 +143,10 @@ function isCashPayment(method: string): boolean {
   return m === "cash" || m.includes("cash");
 }
 
+/** Terminal card. Card (link) is counted on its own line. */
 function isCardPayment(method: string): boolean {
   const m = method.toLowerCase();
+  if (isCardLinkMethod(m)) return false;
   return m === "card" || m.includes("card");
 }
 
@@ -131,8 +159,8 @@ function isCardPayment(method: string): boolean {
  *   expenses (see `allocateGlobalExpenseShare`), summed across the days the
  *   shift spans.
  * @param refunds Refunds issued against orders in this shift.
- * @param discounts Discount total, if tracked (defaults to 0 — ARCANA does not
- *   yet capture per-order discount amounts separately from totals).
+ * @param discounts Discounts given on these sales (tier + promotion + points),
+ *   for the report only — already out of the order totals, never subtracted.
  * @param commissionRate Effective commission rate for the shift, as a percentage
  *   (e.g. 20 for 20%).
  */
@@ -165,11 +193,13 @@ export function buildCashierShiftBalanceSheet(
     );
   const cashSales = takenBy(isCashPayment);
   const cardSales = takenBy(isCardPayment);
+  const cardLinkSales = takenBy(isCardLinkMethod);
   const creditSales = takenBy(isTickPayment);
   const unpaidCreditSales = roundMoney(
     salesOrders.reduce((sum, o) => sum + outstandingCreditOn(o), 0),
   );
-  const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales);
+  const awaitingCardPayment = roundMoney(salesOrders.reduce((sum, o) => sum + awaitingOn(o), 0));
+  const paidSalesReceived = roundMoney(grossSales - unpaidCreditSales - awaitingCardPayment);
 
   let stockCost = 0;
   let hasIncompleteCostData = false;
@@ -194,11 +224,23 @@ export function buildCashierShiftBalanceSheet(
       stockCost -
       roundedOrderExpenses -
       roundedGlobalAllocation -
-      refundsTotal -
-      roundedDiscounts,
+      refundsTotal,
   );
 
-  const commissionAmount = roundMoney(Math.max(0, netSalesProfit) * (commissionRate / 100));
+  // Money received that earns no commission (a delivery fee, v1.2.1): the
+  // same share of each order the commission ledger leaves out, so the live
+  // "commission so far" agrees with what the shift accrues when it closes.
+  const outsideCommission = roundMoney(
+    salesOrders.reduce((sum, o) => {
+      const share = o.commissionShare === undefined ? 1 : Math.min(1, Math.max(0, o.commissionShare));
+      if (share >= 1) return sum;
+      const received = Math.max(0, Math.max(0, o.total) - outstandingCreditOn(o) - awaitingOn(o));
+      return sum + received * (1 - share);
+    }, 0) -
+      // …and a fee given back took no commission, so it gives none back.
+      salesOrders.reduce((sum, o) => sum + Math.max(0, o.refundedOutsideCommission ?? 0), 0),
+  );
+  const commissionAmount = roundMoney(Math.max(0, netSalesProfit - outsideCommission) * (commissionRate / 100));
   const businessRetainedProfit = roundMoney(netSalesProfit - commissionAmount);
 
   // What the goods taken for personal use cost, shown so it is visible rather
@@ -219,6 +261,8 @@ export function buildCashierShiftBalanceSheet(
     grossSales,
     cashSales,
     cardSales,
+    cardLinkSales,
+    awaitingCardPayment,
     creditSales,
     unpaidCreditSales,
     paidSalesReceived,

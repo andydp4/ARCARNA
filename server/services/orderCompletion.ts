@@ -60,6 +60,8 @@ export interface CompleteOrderOptions {
   label?: "handed_over" | "delivered";
   /** When the driver actually reported delivery, if later than the tap itself. */
   actualAt?: string;
+  /** My run: the phone's id for the Delivered tap, kept on the event (see transitionOrderSchema). */
+  tapId?: string;
 }
 
 export interface CompleteOrderResult {
@@ -122,6 +124,19 @@ export async function completeOrderTx(
     .limit(1);
   const resettled = Boolean(priorCompleted);
 
+  // Card (link) (v1.2 Stripe links): money Stripe has not confirmed is not
+  // money taken, and completing is what settles the order. Handing the goods
+  // over waits for the payment, or for the till to take another tender.
+  const { orderPayments } = await import("@shared/schema");
+  const awaiting = await tx
+    .select({ id: orderPayments.id })
+    .from(orderPayments)
+    .where(and(eq(orderPayments.orderId, orderId), eq(orderPayments.status, "awaiting")))
+    .limit(1);
+  if (awaiting.length > 0) {
+    throw new AwaitingCardPaymentError();
+  }
+
   const paymentMethod = String(lockedRow.payment_method ?? "");
   const orderTotal = parseFloat(String(lockedRow.total ?? "0"));
   const creditAmountToOpen = await creditLegTotal(orderId, paymentMethod, orderTotal, tx);
@@ -148,6 +163,15 @@ export async function completeOrderTx(
   const label = options.label ?? (fulfilmentMethod === "delivery" ? "delivered" : "handed_over");
   const actualAt = options.actualAt ? new Date(options.actualAt) : undefined;
   const now = new Date();
+  // A backdated sale is settled on the day it is dated, not the day it was
+  // keyed in (v1.2.1 money, M8): its cashier shift and commission already
+  // follow the dated day, and the takings must too, or the shift sheet and
+  // Daily Sales disagree. `created_at` carries the dated instant (orderDating).
+  // A pre-order is settled when it is completed: that is when the money is in.
+  const settledAt =
+    lockedRow.date_kind === "backdated" && lockedRow.created_at
+      ? new Date(lockedRow.created_at as string | Date)
+      : now;
 
   // Settlement snapshot — rewritten every time this runs (first settle AND
   // every re-settle), from the CURRENT row: reopen is refused once the
@@ -160,7 +184,7 @@ export async function completeOrderTx(
     // float, so a figure like "12.50" cannot lose its trailing zero on the way
     // back into a numeric(10,2) column.
     settled_total: lockedRow.total,
-    settled_at: now,
+    settled_at: settledAt,
     updated_at: now,
     exclude_from_commission: isCommissionExemptRole(actor.role),
     ...(actor.userId ? { completed_user_id: actor.userId } : {}),
@@ -193,6 +217,7 @@ export async function completeOrderTx(
     label,
     fromStatus: lockedRow.status,
     ...(actualAt ? { actualAt: actualAt.toISOString() } : {}),
+    ...(options.tapId ? { tapId: options.tapId } : {}),
   };
   if (resettled) {
     // migrations/065_operations_centre.sql's `order_events_kind_check` (N2,
@@ -231,6 +256,16 @@ export async function completeOrderTx(
 export type ReopenRefusalCode = "ORDER_REOPEN_REFUSED" | "ORDER_REOPEN_CLOSED_DAY";
 
 /** Thrown by `reopenOrderTx` for every business-rule refusal — the route maps it to 409. */
+/** Completing an order whose card link Stripe has not yet confirmed. */
+export class AwaitingCardPaymentError extends Error {
+  readonly statusCode = 409;
+  readonly code = "ORDER_AWAITING_CARD_PAYMENT";
+  constructor() {
+    super("This order is awaiting card payment. Complete it once the customer has paid, or take another payment at the till.");
+    this.name = "AwaitingCardPaymentError";
+  }
+}
+
 export class OrderReopenRefusedError extends Error {
   readonly code: ReopenRefusalCode;
   constructor(message: string, code: ReopenRefusalCode = "ORDER_REOPEN_REFUSED") {
@@ -248,6 +283,34 @@ export interface ReopenOrderResult {
   row: OrderRow;
   event: { kind: "reopened"; meta: Record<string, unknown> };
   creditVoided: boolean;
+}
+
+/**
+ * Whether the trading day a sale was settled on has already been closed by
+ * the 06:00 close. A closed day's figures are frozen: its takings, drawers,
+ * shift sheets and commission were worked out from these rows, so nothing may
+ * take a settled sale back out of it (reopen, delete). A refund or a new
+ * order is the tool for a mistake noticed afterwards.
+ */
+export async function settlementDayClosed(
+  tx: any,
+  orgId: string,
+  settledAt: Date,
+): Promise<{ tradingDay: string; closed: boolean }> {
+  const { organizations, dailyCloseRuns } = await import("@shared/schema");
+  const [org] = await tx
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  const timezone = org?.timezone ?? "Europe/London";
+  const tradingDay = currentTradingDay(timezone, settledAt);
+  const [closeRun] = await tx
+    .select({ id: dailyCloseRuns.id })
+    .from(dailyCloseRuns)
+    .where(and(eq(dailyCloseRuns.orgId, orgId), eq(dailyCloseRuns.tradingDay, tradingDay)))
+    .limit(1);
+  return { tradingDay, closed: !!closeRun };
 }
 
 /**
@@ -274,8 +337,7 @@ export async function reopenOrderTx(
   actor: ReopenOrderActor,
 ): Promise<ReopenOrderResult> {
   const { orders } = await import("../../apps/server/src/db/schema");
-  const { orderEvents, orderCredit, refunds: refundsTable, creditPayments, organizations, dailyCloseRuns } =
-    await import("@shared/schema");
+  const { orderEvents, orderCredit, refunds: refundsTable, creditPayments } = await import("@shared/schema");
 
   const orgId = String(lockedRow.org_id);
   const orderId = String(lockedRow.id);
@@ -309,20 +371,9 @@ export async function reopenOrderTx(
     }
   }
 
-  const [org] = await tx
-    .select({ timezone: organizations.timezone })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1);
-  const timezone = org?.timezone ?? "Europe/London";
   const settledAt = lockedRow.settled_at ? new Date(lockedRow.settled_at as string | Date) : new Date();
-  const tradingDay = currentTradingDay(timezone, settledAt);
-  const [closeRun] = await tx
-    .select({ id: dailyCloseRuns.id })
-    .from(dailyCloseRuns)
-    .where(and(eq(dailyCloseRuns.orgId, orgId), eq(dailyCloseRuns.tradingDay, tradingDay)))
-    .limit(1);
-  if (closeRun) {
+  const { tradingDay, closed } = await settlementDayClosed(tx, orgId, settledAt);
+  if (closed) {
     throw new OrderReopenRefusedError(
       `The trading day of ${tradingDay} has already closed — use a refund or a new order instead.`,
       "ORDER_REOPEN_CLOSED_DAY",

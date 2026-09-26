@@ -43,7 +43,7 @@ function createService() {
 function createOrderRuntime(): WebsiteOrderRuntime {
   return {
     withTransaction: vi.fn(async (fn) => fn({})),
-    getOrgTaxRatePercent: vi.fn().mockResolvedValue(undefined),
+    getOrgTaxRatePercent: vi.fn().mockResolvedValue(0),
     // N3a: the board's SLA fallback for a website order (finding G19) — a
     // fixed value here since these route tests do not assert on it.
     getOpsDueMinutes: vi.fn().mockResolvedValue(20),
@@ -199,7 +199,7 @@ describe("website public handlers", () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.body).toEqual({ orderId: "order-1", eventId: "event-1" });
-    expect(service.submitPublicOrder).toHaveBeenCalledWith(ORG_ID, body, runtime);
+    expect(service.submitPublicOrder).toHaveBeenCalledWith(ORG_ID, body, runtime, { shopAccountUserId: null });
   });
 
   it("turns public order validation and access errors into HTTP responses", async () => {
