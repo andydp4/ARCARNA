@@ -332,6 +332,15 @@ export const centres: Centre[] = [
         roles: MANAGER_ROLES
       },
       {
+        // Order audit (v1.2.1): every stage, actor, and money detail for one order.
+        key: 'order-audit',
+        label: 'Order Audit',
+        href: '/reports/order-audit',
+        icon: ScrollText,
+        testId: 'nav-order-audit',
+        roles: MANAGER_ROLES
+      },
+      {
         key: 'rfm',
         label: VOCAB.customerTruths,
         href: '/analytics/rfm',

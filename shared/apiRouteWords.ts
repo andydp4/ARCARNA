@@ -44,4 +44,6 @@ export const API_ROUTE_WORDS: ReadonlySet<string> = new Set([
   "access-history", "contact-access", "contact-requests", "couldnt-deliver", "customer-access-log", "digest", "email", "message", "messaging", "my-performance", "my-run", "order", "order-timing", "reveal", "staff-performance", "staff-targets",
   // The shift rota (v1.2.1): recurring patterns, date overrides, time-off requests.
   "rota", "busy", "patterns", "overrides", "time-off", "decide",
+  // Order Audit (v1.2.1): every stage, actor and money detail for one order.
+  "order-audit",
 ]);

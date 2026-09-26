@@ -86,6 +86,7 @@ const DelayLogReport = lazy(() => import("@/pages/reports/delay-log"));
 const StaffPerformanceReport = lazy(() => import("@/pages/reports/staff-performance"));
 const StaffPerformancePerson = lazy(() => import("@/pages/reports/staff-performance-person"));
 const OrderTimingReport = lazy(() => import("@/pages/reports/order-timing"));
+const OrderAuditReport = lazy(() => import("@/pages/reports/order-audit"));
 const StaffTargetsPage = lazy(() => import("@/pages/reports/staff-targets"));
 const MyPerformancePage = lazy(() => import("@/pages/my-performance"));
 const SatisfactionReport = lazy(() => import("@/pages/reports/satisfaction"));
@@ -292,6 +293,9 @@ function Router() {
           </Route>
           <Route path="/reports/order-timing">
             <RequireRole href="/reports"><OrderTimingReport /></RequireRole>
+          </Route>
+          <Route path="/reports/order-audit">
+            <RequireRole href="/reports"><OrderAuditReport /></RequireRole>
           </Route>
           <Route path="/reports/satisfaction">
             <RequireRole href="/reports"><SatisfactionReport /></RequireRole>
