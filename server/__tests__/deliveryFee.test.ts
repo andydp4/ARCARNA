@@ -383,8 +383,13 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     expect(byDate.total).toBe(5.5);
 
     const { storage } = await import("../storage");
-    const from = new Date(`${today}T00:00:00.000Z`);
-    const to = new Date(`${today}T23:59:59.999Z`);
+    // getProfitAnalysis collapses its arguments to calendar-date strings
+    // before expanding each into its own trading day (06:00 to 06:00), so a
+    // window has to span the calendar dates either side of "now" — in the
+    // small hours, before the shop's own rollover, the sale just placed is
+    // still on the PREVIOUS trading day, which "today" alone would miss.
+    const from = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    const to = new Date(Date.now() + 25 * 60 * 60 * 1000);
     const profit = await storage.getProfitAnalysis(from, to, orgId);
     // £105.50 taken: £100 of goods costing £40, and £5.50 of fees.
     expect(profit.summary.revenue).toBeCloseTo(105.5, 6);
@@ -400,7 +405,10 @@ describe.skipIf(!hasDb)("the delivery fee", () => {
     // Weekly Margin shares each sale's settled total across its lines; the fee
     // is taken off first, so no product is credited with fee money.
     const { weeklyMarginSummary } = await import("../services/reportsEngine");
-    const week = await weeklyMarginSummary(orgId, new Date(), new Date());
+    // Yesterday to tomorrow, not "now" for both ends: in the small hours,
+    // before the shop's own 06:00 rollover, the sale just settled is still on
+    // the previous trading day, which a same-day window would miss.
+    const week = await weeklyMarginSummary(orgId, new Date(Date.now() - 25 * 60 * 60 * 1000), new Date(Date.now() + 25 * 60 * 60 * 1000));
     const rows = (week as any).rows as Array<{ avgSellPrice: number | null; unitsSold: number }>;
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) expect(r.avgSellPrice ?? 0).toBeLessThanOrEqual(25 + 1e-6);

@@ -1,7 +1,7 @@
 import { csvFromRecords } from "@shared/csv";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { getJson } from "@/lib/queryClient";
 import { COLORS, CHART_SERIES, CHART_PRIMARY, CHART_POSITIVE, CHART_NEGATIVE, CHART_WARNING } from "@/lib/chartColors";
 import { VOCAB } from "@/lib/vocabulary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,13 +84,16 @@ export function ExpenseReportsPage() {
   // Fetch expense report
   const { data: expenseReport, isLoading: expenseLoading } = useQuery({
     queryKey: ["/api/expense-report", startDate.toISOString(), endDate.toISOString()],
-    queryFn: () => apiRequest("GET", `/api/expense-report?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, null) as Promise<any>,
+    // Was never reading the response body (v1.2.1): every field on this page
+    // fell back to its "no data" default, since `data` was the raw fetch
+    // Response, not the parsed report.
+    queryFn: () => getJson<any>(`/api/expense-report?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`),
   });
   
   // Fetch profit analysis
   const { data: profitAnalysis, isLoading: profitLoading } = useQuery({
     queryKey: ["/api/profit-analysis", startDate.toISOString(), endDate.toISOString()],
-    queryFn: () => apiRequest("GET", `/api/profit-analysis?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`, null) as Promise<any>,
+    queryFn: () => getJson<any>(`/api/profit-analysis?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`),
   });
   
   const formatCurrency = (amount: number) => {
