@@ -26,8 +26,8 @@ import { OpsDelayInline } from "./OpsDelayInline";
 import { OpsTimeline } from "./OpsTimeline";
 import { OpsRateChips } from "./OpsRateChips";
 import { OpsCustomerCall } from "./OpsCustomerCall";
-import { InlinePrintLabel } from "@/components/labels/PrintLabelButton";
-import { orderDueText, orderLabelInput } from "@/lib/labels/labelRequests";
+import { OrderLabelPrintPanel } from "@/components/labels/OrderLabelPrintPanel";
+import { orderDueText } from "@/lib/labels/labelRequests";
 import { deriveCardState } from "@shared/orders/opsState";
 import { isAtLeast } from "@shared/accessPolicy";
 import { CREDIT_MIN_ROLE } from "@shared/creditPolicy";
@@ -65,6 +65,8 @@ interface OrderDetail {
   deliveryFee?: number;
   /** The org's name for it, as on the receipt. */
   deliveryFeeName?: string;
+  deliveryAddress?: string | null;
+  deliveryPostcode?: string | null;
   refunds?: Array<{
     id: string;
     total: string;
@@ -77,6 +79,7 @@ interface OrderDetail {
     id: string;
     productId: string;
     productName: string;
+    stockNumber?: string | null;
     quantity: number;
     unitPrice: string;
     total: string;
@@ -170,6 +173,7 @@ function OpsDetailsBody({
   const { toast } = useToast();
   const [copied, setCopied] = useState<string>("");
   const [downloading, setDownloading] = useState<"receipt" | "invoice" | null>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const canEditOrDelete = role !== "CASHIER";
   const canSeeInvoices = isAtLeast(role, CREDIT_MIN_ROLE);
 
@@ -439,17 +443,36 @@ function OpsDetailsBody({
         )}
       </div>
 
-      {/* Name only on the label, never the phone the board carries (Niimbot brief). */}
-      <InlinePrintLabel
-        request={{
-          kind: "order",
-          input: orderLabelInput(
-            order,
-            orderDueText(deriveCardState(order, new Date(), settings).dueEffective, new Date(), settings.timezone),
-          ),
-        }}
-        testId="button-print-order-label"
-      />
+      {/* Order label, picking list, type & payment, packaging, and — for a
+          delivery — a Delivery note (name/phone/postcode, owner decision).
+          The phone is only ever fetched at print time, never held here. */}
+      <div className="space-y-3">
+        <Button
+          size="touch"
+          variant="outline"
+          onClick={() => setLabelsOpen((v) => !v)}
+          aria-expanded={labelsOpen}
+          data-testid="button-print-order-label"
+        >
+          {labelsOpen ? "Hide labels" : "Print labels"}
+        </Button>
+        {labelsOpen && detail && (
+          <OrderLabelPrintPanel
+            order={{
+              id: order.id,
+              shortCode: order.shortCode,
+              customerName: order.customerName,
+              fulfilmentMethod: order.fulfilmentMethod,
+              itemCount: order.itemCount,
+              paymentMethodText: formatPaymentLabel(order.paymentMethod),
+              items: (detail.items ?? []).map((i) => ({ stockNumber: i.stockNumber ?? null, quantity: i.quantity })),
+              deliveryAddress: detail.deliveryAddress,
+              deliveryPostcode: detail.deliveryPostcode,
+            }}
+            dueText={orderDueText(deriveCardState(order, new Date(), settings).dueEffective, new Date(), settings.timezone)}
+          />
+        )}
+      </div>
     </div>
   );
 }

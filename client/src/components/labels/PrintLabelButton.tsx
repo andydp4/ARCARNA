@@ -54,27 +54,3 @@ export function PrintLabelButton({
     </>
   );
 }
-
-/**
- * "Print label" for an order on the Ops board: expands in place rather than
- * opening a dialog, because on a phone the details panel shares the screen
- * with the order form and the till never mounts a dialog over it.
- */
-export function InlinePrintLabel({ request, testId }: { request: LabelRequest; testId?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="space-y-3">
-      <Button
-        size="touch"
-        variant="outline"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        data-testid={testId}
-      >
-        <Tag className="h-4 w-4" aria-hidden />
-        {open ? "Hide label" : "Print label"}
-      </Button>
-      {open && <LabelPrintPanel request={request} />}
-    </div>
-  );
-}

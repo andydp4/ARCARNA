@@ -6,9 +6,12 @@
  * truncation rules are tested without a canvas. `renderLabel.ts` turns the
  * returned spec into pixels.
  *
- * Privacy: the order label is built from `OrderLabelInput`, which has no
- * phone, email or address field on purpose — a label leaves the shop on a
- * bag. Customer NAME only (Niimbot brief, Build → Label templates).
+ * Privacy: `OrderLabelInput`, `PickingListInput`, `OrderInfoInput` and
+ * `PackagingLabelInput` deliberately carry no phone, email or address — a
+ * label leaves the shop on a bag, customer NAME only (Niimbot brief, Build →
+ * Label templates). `DeliveryNoteInput` is the one deliberate exception: it
+ * is the label that goes out with a driver, who needs the phone and postcode
+ * to find the door — an explicit owner call, not an oversight.
  */
 import { encode as encodeQr } from "uqr";
 import type { BarcodeSymbol } from "./barcode";
@@ -318,6 +321,239 @@ export function buildProductLabel(input: ProductLabelInput, measure: Measure, ge
     y += Math.round(name.size * LINE);
   }
   items.push({ kind: "text", x: margin, y, text: price.text, size: price.size, bold: true, maxWidth: colW, align: "left" });
+
+  return { geometry, items };
+}
+
+// ── Picking list label ───────────────────────────────────────────────────
+
+export interface PickingListLine {
+  stockNumber: string;
+  quantity: number;
+}
+
+export interface PickingListInput {
+  shortCode: string;
+  lines: PickingListLine[];
+}
+
+const PICKING_ROWS_PER_LABEL = 6;
+
+/**
+ * One or more labels: a Stock Number / Quantity table (Niimbot brief). An
+ * order with more lines than fit on one label continues onto the next, each
+ * headed "Picking n/total" so a picker can tell the set is complete.
+ */
+export function buildPickingLabels(
+  input: PickingListInput,
+  measure: Measure,
+  geometry: LabelGeometry = B1_GEOMETRY,
+): LabelSpec[] {
+  const { width: W, height: H, dotsPerMm } = geometry;
+  const s = dotsPerMm / 8;
+  const d = (n: number) => Math.round(n * s);
+  const margin = d(8);
+  const lines = input.lines.length ? input.lines : [{ stockNumber: "-", quantity: 0 }];
+  const pages: PickingListLine[][] = [];
+  for (let i = 0; i < lines.length; i += PICKING_ROWS_PER_LABEL) {
+    pages.push(lines.slice(i, i + PICKING_ROWS_PER_LABEL));
+  }
+
+  return pages.map((page, pageIndex) => {
+    const colW = W - 2 * margin;
+    const items: LabelItem[] = [];
+    let y = margin;
+
+    const header =
+      pages.length > 1
+        ? `#${input.shortCode} Picking ${pageIndex + 1}/${pages.length}`
+        : `#${input.shortCode} Picking`;
+    const title = fitText(header, colW, { max: d(20), min: d(13), bold: true }, measure);
+    items.push({ kind: "text", x: margin, y, text: title.text, size: title.size, bold: true, maxWidth: colW, align: "left" });
+    y += Math.round(title.size * LINE) + d(3);
+
+    const qtyColW = d(48);
+    const codeColW = colW - qtyColW;
+    const rowsLeft = H - margin - y;
+    const rowH = Math.max(d(16), Math.floor(rowsLeft / PICKING_ROWS_PER_LABEL));
+    const rowSize = Math.max(d(11), Math.min(d(17), rowH - d(4)));
+
+    for (const line of page) {
+      const code = fitText(line.stockNumber || "-", codeColW - d(4), { max: rowSize, min: d(10), bold: false }, measure);
+      items.push({ kind: "text", x: margin, y, text: code.text, size: code.size, bold: false, maxWidth: codeColW - d(4), align: "left" });
+      const qty = fitText(`x${Math.max(0, Math.floor(line.quantity))}`, qtyColW, { max: rowSize, min: d(10), bold: true }, measure);
+      items.push({ kind: "text", x: margin + codeColW, y, text: qty.text, size: qty.size, bold: true, maxWidth: qtyColW, align: "left" });
+      y += rowH;
+    }
+
+    return { geometry, items };
+  });
+}
+
+// ── Order info label (type + payment) ────────────────────────────────────
+
+export interface OrderInfoInput {
+  shortCode: string;
+  customerName: string | null;
+  fulfilmentMethod: "collection" | "delivery";
+  /** Already formatted, e.g. "Cash", "Card", "On account" (formatPaymentLabel). */
+  paymentMethodText: string;
+}
+
+/** Fulfilment type (Collection/Delivery) and how it was paid, on one label. */
+export function buildOrderInfoLabel(
+  input: OrderInfoInput,
+  measure: Measure,
+  geometry: LabelGeometry = B1_GEOMETRY,
+): LabelSpec {
+  const { width: W, height: H, dotsPerMm } = geometry;
+  const s = dotsPerMm / 8;
+  const d = (n: number) => Math.round(n * s);
+  const margin = d(8);
+  const colW = W - 2 * margin;
+  const items: LabelItem[] = [];
+  let y = margin;
+
+  const code = fitText(`#${input.shortCode}`, colW, { max: d(32), min: d(20), bold: true }, measure);
+  items.push({ kind: "text", x: margin, y, text: code.text, size: code.size, bold: true, maxWidth: colW, align: "left" });
+  y += Math.round(code.size * LINE) + d(2);
+
+  const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(22), min: d(16), bold: true }, measure);
+  items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
+  y += Math.round(name.size * LINE) + d(4);
+
+  const methodText = input.fulfilmentMethod === "delivery" ? "DELIVERY" : "COLLECTION";
+  const pad = d(4);
+  const method = fitText(methodText, colW - 2 * pad, { max: d(20), min: d(15), bold: true }, measure);
+  const boxW = Math.min(colW, Math.ceil(measure(method.text, method.size, true)) + 2 * pad);
+  const boxH = Math.round(method.size * LINE) + pad;
+  items.push({ kind: "rect", x: margin, y, w: boxW, h: boxH });
+  items.push({
+    kind: "text", x: margin + pad, y: y + Math.round(pad / 2), text: method.text, size: method.size,
+    bold: true, maxWidth: colW - 2 * pad, align: "left", inverse: true,
+  });
+  y += boxH + d(6);
+
+  const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(20), min: d(14), bold: false }, measure);
+  items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
+
+  return { geometry, items };
+}
+
+// ── Packaging label (name only) ──────────────────────────────────────────
+
+export interface PackagingLabelInput {
+  shortCode: string;
+  customerName: string | null;
+}
+
+/**
+ * Straight on the bag: nothing but the customer's name, big and centred, plus
+ * the order's short code in small print for a mismatch to be traced back
+ * (Niimbot brief, template 3's plainer, decorative style).
+ */
+export function buildPackagingLabel(
+  input: PackagingLabelInput,
+  measure: Measure,
+  geometry: LabelGeometry = B1_GEOMETRY,
+): LabelSpec {
+  const { width: W, height: H, dotsPerMm } = geometry;
+  const s = dotsPerMm / 8;
+  const d = (n: number) => Math.round(n * s);
+  const margin = d(10);
+  const colW = W - 2 * margin;
+  const items: LabelItem[] = [];
+
+  const codeSize = d(14);
+  const name = wrapText(input.customerName?.trim() || "Walk-in", colW, 2, { max: d(40), min: d(20), bold: true }, measure);
+  const blockH = name.lines.length * Math.round(name.size * LINE);
+  let y = Math.max(margin, Math.round((H - blockH - Math.round(codeSize * LINE) - margin) / 2));
+  for (const line of name.lines) {
+    items.push({ kind: "text", x: margin, y, text: line, size: name.size, bold: true, maxWidth: colW, align: "center" });
+    y += Math.round(name.size * LINE);
+  }
+
+  const code = fitText(`#${input.shortCode}`, colW, { max: codeSize, min: d(11), bold: false }, measure);
+  items.push({
+    kind: "text", x: margin, y: H - margin - Math.round(code.size * LINE), text: code.text, size: code.size,
+    bold: false, maxWidth: colW, align: "center",
+  });
+
+  return { geometry, items };
+}
+
+// ── Delivery note label ──────────────────────────────────────────────────
+
+export interface DeliveryNoteInput {
+  shortCode: string;
+  customerName: string | null;
+  /** Revealed on demand, the same "Show number to call" gate as the board (never cached). */
+  phone: string | null;
+  address: string | null;
+  postcode: string | null;
+  paymentMethodText: string;
+  /** An open Stripe Card (link) checkout for this order, if there is one right now. */
+  payLinkUrl?: string | null;
+}
+
+/**
+ * Customer name, phone and postcode on a label that leaves with the driver
+ * (owner decision: delivery drivers need it to find the door and confirm who
+ * they're handing to — see the module note on buildOrderLabel for why the
+ * *other* labels deliberately leave contact details off).
+ */
+export function buildDeliveryNoteLabel(
+  input: DeliveryNoteInput,
+  measure: Measure,
+  geometry: LabelGeometry = B1_GEOMETRY,
+): LabelSpec {
+  const { width: W, height: H, dotsPerMm } = geometry;
+  const s = dotsPerMm / 8;
+  const d = (n: number) => Math.round(n * s);
+  const margin = d(8);
+  const items: LabelItem[] = [];
+
+  let textRight = W - margin;
+  if (input.payLinkUrl) {
+    const qr = encodeQr(input.payLinkUrl, { ecc: "M", border: 0 });
+    const qrScale = Math.min(Math.floor(d(120) / qr.size), Math.floor((H - 2 * margin) / qr.size));
+    if (qrScale >= 3) {
+      const qrPx = qr.size * qrScale;
+      const qrX = W - margin - qrPx;
+      items.push({ kind: "qr", x: qrX, y: margin, scale: qrScale, modules: qr.data, payload: input.payLinkUrl });
+      const cap = fitText("Scan to pay", qrPx, { max: d(12), min: d(10), bold: false }, measure);
+      items.push({ kind: "text", x: qrX, y: margin + qrPx + d(2), text: cap.text, size: cap.size, bold: false, maxWidth: qrPx, align: "center" });
+      textRight = qrX - d(8);
+    }
+  }
+  const colW = textRight - margin;
+  let y = margin;
+
+  const code = fitText(`#${input.shortCode}`, colW, { max: d(22), min: d(16), bold: true }, measure);
+  items.push({ kind: "text", x: margin, y, text: code.text, size: code.size, bold: true, maxWidth: colW, align: "left" });
+  y += Math.round(code.size * LINE);
+
+  const name = fitText(input.customerName?.trim() || "Walk-in", colW, { max: d(22), min: d(16), bold: true }, measure);
+  items.push({ kind: "text", x: margin, y, text: name.text, size: name.size, bold: true, maxWidth: colW, align: "left" });
+  y += Math.round(name.size * LINE) + d(2);
+
+  if (input.phone) {
+    const phone = fitText(input.phone, colW, { max: d(17), min: d(13), bold: false }, measure);
+    items.push({ kind: "text", x: margin, y, text: phone.text, size: phone.size, bold: false, maxWidth: colW, align: "left" });
+    y += Math.round(phone.size * LINE);
+  }
+
+  const addr = [input.address, input.postcode].filter((v) => v?.trim()).join(", ");
+  if (addr) {
+    const wrapped = wrapText(addr, colW, 2, { max: d(16), min: d(12), bold: false }, measure);
+    for (const line of wrapped.lines) {
+      items.push({ kind: "text", x: margin, y, text: line, size: wrapped.size, bold: false, maxWidth: colW, align: "left" });
+      y += Math.round(wrapped.size * LINE);
+    }
+  }
+
+  const pay = fitText(`Pay: ${input.paymentMethodText}`, colW, { max: d(16), min: d(12), bold: false }, measure);
+  items.push({ kind: "text", x: margin, y, text: pay.text, size: pay.size, bold: false, maxWidth: colW, align: "left" });
 
   return { geometry, items };
 }

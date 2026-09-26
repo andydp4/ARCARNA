@@ -1280,6 +1280,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         id: order_items.id,
         productId: order_items.product_id,
         productName: products.name,
+        // The shop's own stock number for the picking-list label (Niimbot brief).
+        stockNumber: products.product_id,
         quantity: order_items.quantity,
         unitPrice: order_items.unit_price,
         totalPrice: order_items.total_price,
@@ -1386,6 +1388,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           id: item.id,
           productId: item.productId,
           productName: item.productName,
+          stockNumber: item.stockNumber ?? null,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           total: item.totalPrice,

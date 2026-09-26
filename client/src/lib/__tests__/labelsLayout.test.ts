@@ -7,7 +7,11 @@ import { encode as encodeQr } from "uqr";
 import {
   B1_GEOMETRY,
   ELLIPSIS,
+  buildDeliveryNoteLabel,
+  buildOrderInfoLabel,
   buildOrderLabel,
+  buildPackagingLabel,
+  buildPickingLabels,
   buildProductLabel,
   fitText,
   formatLabelPrice,
@@ -221,5 +225,110 @@ describe("product label", () => {
     const price = spec.items.find((i): i is TextItem => i.kind === "text" && i.text === "£24.00")!;
     expect(price.size).toBeGreaterThan(44);
     expectInside(spec);
+  });
+});
+
+describe("picking list label", () => {
+  it("one label: a Stock Number / Quantity row per line", () => {
+    const [spec] = buildPickingLabels(
+      { shortCode: "3F2A9C1E", lines: [{ stockNumber: "WM-0042", quantity: 2 }, { stockNumber: "WM-0099", quantity: 1 }] },
+      measure,
+    );
+    expect(texts(spec)).toEqual(["#3F2A9C1E Picking", "WM-0042", "x2", "WM-0099", "x1"]);
+    expectInside(spec);
+  });
+
+  it("continues onto further labels past 6 lines, each headed with its page", () => {
+    const lines = Array.from({ length: 8 }, (_, i) => ({ stockNumber: `WM-${i}`, quantity: i + 1 }));
+    const specs = buildPickingLabels({ shortCode: "ABCD1234", lines }, measure);
+    expect(specs.length).toBe(2);
+    expect(texts(specs[0])[0]).toBe("#ABCD1234 Picking 1/2");
+    expect(texts(specs[1])[0]).toBe("#ABCD1234 Picking 2/2");
+    for (const spec of specs) expectInside(spec);
+  });
+
+  it("an order with no lines still prints a label rather than throwing", () => {
+    const specs = buildPickingLabels({ shortCode: "EMPTY001", lines: [] }, measure);
+    expect(specs.length).toBe(1);
+    expectInside(specs[0]);
+  });
+});
+
+describe("order info label (type & payment)", () => {
+  it("short code, name, fulfilment method and payment", () => {
+    const spec = buildOrderInfoLabel(
+      { shortCode: "3F2A9C1E", customerName: "Priya Shah", fulfilmentMethod: "delivery", paymentMethodText: "Card" },
+      measure,
+    );
+    expect(texts(spec)).toEqual(["#3F2A9C1E", "Priya Shah", "DELIVERY", "Pay: Card"]);
+    expectInside(spec);
+  });
+
+  it("walk-in collection paid on account", () => {
+    const spec = buildOrderInfoLabel(
+      { shortCode: "AAAA1111", customerName: null, fulfilmentMethod: "collection", paymentMethodText: "On account" },
+      measure,
+    );
+    expect(texts(spec)).toEqual(["#AAAA1111", "Walk-in", "COLLECTION", "Pay: On account"]);
+    expectInside(spec);
+  });
+});
+
+describe("packaging label", () => {
+  it("centres the customer's name and nothing else but the short code", () => {
+    const spec = buildPackagingLabel({ shortCode: "3F2A9C1E", customerName: "Priya Shah" }, measure);
+    expect(texts(spec)).toEqual(["Priya Shah", "#3F2A9C1E"]);
+    expect(spec.items.every((i) => i.kind !== "text" || i.align === "center")).toBe(true);
+    expectInside(spec);
+  });
+
+  it("walk-in when there is no name", () => {
+    const spec = buildPackagingLabel({ shortCode: "AAAA1111", customerName: null }, measure);
+    expect(texts(spec)[0]).toBe("Walk-in");
+    expectInside(spec);
+  });
+});
+
+describe("delivery note label", () => {
+  const base = {
+    shortCode: "3F2A9C1E",
+    customerName: "Priya Shah",
+    phone: "07700 900123",
+    address: "12 Elm Street",
+    postcode: "SW1A 1AA",
+    paymentMethodText: "Cash",
+  };
+
+  it("carries name, phone, address and payment — the one label allowed to (owner decision)", () => {
+    const spec = buildDeliveryNoteLabel(base, measure);
+    expect(JSON.stringify(spec)).toContain("07700");
+    expect(texts(spec)).toEqual(["#3F2A9C1E", "Priya Shah", "07700 900123", "12 Elm Street, SW1A 1AA", "Pay: Cash"]);
+    expectInside(spec);
+  });
+
+  it("no phone revealed and no address: still a usable label", () => {
+    const spec = buildDeliveryNoteLabel({ ...base, phone: null, address: null, postcode: null }, measure);
+    expect(texts(spec)).toEqual(["#3F2A9C1E", "Priya Shah", "Pay: Cash"]);
+    expectInside(spec);
+  });
+
+  it("adds a scannable pay-link QR when one is open, clear of the text column", () => {
+    const url = "https://pay.example.com/cs_test_abc123";
+    const spec = buildDeliveryNoteLabel({ ...base, payLinkUrl: url }, measure);
+    const qr = spec.items.find((i) => i.kind === "qr");
+    if (qr?.kind !== "qr") throw new Error("no qr");
+    expect(qr.payload).toBe(url);
+    expect(qr.scale).toBeGreaterThanOrEqual(3);
+    const qrBox = itemBounds(qr, measure);
+    for (const item of spec.items) {
+      if (item.kind === "qr") continue;
+      expect(overlaps(itemBounds(item, measure), qrBox)).toBe(false);
+    }
+    expectInside(spec);
+  });
+
+  it("no QR at all without an open pay link", () => {
+    const spec = buildDeliveryNoteLabel({ ...base, payLinkUrl: null }, measure);
+    expect(spec.items.some((i) => i.kind === "qr")).toBe(false);
   });
 });
