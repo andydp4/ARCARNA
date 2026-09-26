@@ -41,6 +41,35 @@ describe("apiRequest error messages", () => {
     await expect(apiRequest("POST", "/api/customers", {})).rejects.toThrow("name is required");
   });
 
+  it("surfaces errors[0].message from a route that caught its own ZodError ({message:'Invalid data', errors:[...]})", async () => {
+    // The loyalty tiers, promotions and 19 other routes catch a ZodError
+    // directly and reply with this exact shape — the top-level `message` is
+    // always the same generic "Invalid data", so a page toasting only that
+    // told the person nothing about what was actually wrong (v1.2.1).
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(400, {
+        message: "Invalid data",
+        errors: [{ message: "Expected string, received number", path: ["discountPercentage"] }],
+      }),
+    ) as unknown as typeof fetch;
+
+    const { apiRequest } = await import("../queryClient");
+    await expect(apiRequest("POST", "/api/loyalty-tiers", {})).rejects.toThrow("Expected string, received number");
+  });
+
+  it("prefers details[0].message over errors[0].message when a body somehow carries both", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse(400, {
+        message: "Invalid data",
+        details: [{ message: "the real reason" }],
+        errors: [{ message: "a different reason" }],
+      }),
+    ) as unknown as typeof fetch;
+
+    const { apiRequest } = await import("../queryClient");
+    await expect(apiRequest("POST", "/api/x", {})).rejects.toThrow("the real reason");
+  });
+
   it("falls back to the top-level message when there is no details[0].message", async () => {
     global.fetch = vi.fn().mockResolvedValue(
       jsonResponse(404, { message: "Customer not found" }),

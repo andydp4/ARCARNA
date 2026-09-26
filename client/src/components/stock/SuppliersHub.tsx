@@ -89,7 +89,7 @@ function costCheckLabel(check: SupplierCostCheck | undefined): string {
   }
 }
 
-type Product = { id: string; name: string; productId: string };
+type Product = { id: string; name: string; productId: string; costPrice?: string | number | null };
 
 export function SuppliersHub() {
   const { toast } = useToast();
@@ -342,7 +342,22 @@ export function SuppliersHub() {
             </CardDescription>
           </div>
           {canMutate && (
-            <Button size="sm" onClick={() => setMappingOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setMappingForm({
+                  productId: "",
+                  supplierId: "",
+                  supplierSku: "",
+                  costPrice: "",
+                  packSize: "1",
+                  minOrderQty: "1",
+                  leadTimeOverrideDays: "",
+                  isPreferred: false,
+                });
+                setMappingOpen(true);
+              }}
+            >
               <Plus className="h-4 w-4 mr-1" />
               Add supplier price
             </Button>
@@ -511,7 +526,18 @@ export function SuppliersHub() {
               <Label>Product</Label>
               <Select
                 value={mappingForm.productId}
-                onValueChange={(v) => setMappingForm({ ...mappingForm, productId: v })}
+                onValueChange={(v) => {
+                  // Defaults the supplier price to the product's own cost
+                  // price — the shop only needs to type something different
+                  // when this supplier actually charges more or less.
+                  const product = products.find((p) => p.id === v);
+                  const cardCost = product?.costPrice != null ? Number(product.costPrice) : null;
+                  setMappingForm({
+                    ...mappingForm,
+                    productId: v,
+                    costPrice: cardCost != null && Number.isFinite(cardCost) ? cardCost.toFixed(2) : mappingForm.costPrice,
+                  });
+                }}
               >
                 <SelectTrigger aria-label="Product">
                   <SelectValue placeholder="Select product" />
@@ -555,6 +581,11 @@ export function SuppliersHub() {
                   value={mappingForm.costPrice}
                   onChange={(e) => setMappingForm({ ...mappingForm, costPrice: e.target.value })}
                 />
+                {mappingForm.productId && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Starts as the product card's cost price — change it only if this supplier charges more or less.
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="mapping-sku">Supplier's code</Label>

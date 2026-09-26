@@ -16,6 +16,15 @@ import { getPreviewRole } from "./previewRole";
  * message out of that JSON when there is one; fall back to the raw
  * status+text for a genuine non-JSON failure (an HTML 500 page, a proxy
  * error) where there's nothing better to show.
+ *
+ * A second, older shape from routes that catch a ZodError directly (rather
+ * than through the shared validation middleware) answers
+ * {"message":"Invalid data","errors":[{"message":"...","path":[...]}]} — the
+ * top-level `message` there is always the same generic word, so a page that
+ * shows only that (as many did) told the person nothing about what was
+ * actually wrong with what they typed. `errors[0].message` is checked first
+ * for exactly that reason: it is Zod's own field-level reason, and the one
+ * worth showing.
  */
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -30,8 +39,11 @@ async function throwIfResNotOk(res: Response) {
       const body = JSON.parse(text);
       if (body && typeof body === "object") {
         const detailMessage = Array.isArray(body.details) ? body.details[0]?.message : undefined;
+        const zodMessage = Array.isArray(body.errors) ? body.errors[0]?.message : undefined;
         if (typeof detailMessage === "string" && detailMessage) {
           parsedMessage = detailMessage;
+        } else if (typeof zodMessage === "string" && zodMessage) {
+          parsedMessage = zodMessage;
         } else if (typeof body.message === "string" && body.message) {
           parsedMessage = body.message;
         }

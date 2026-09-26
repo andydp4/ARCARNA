@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
 import { int, screenDate, isoDate, orDash } from "@/lib/reportBrand";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 
 interface Row {
   orderId: string;
@@ -23,7 +24,7 @@ function timeOf(iso: string | null): string {
 }
 
 export default function DelayLogReport() {
-  const [day, setDay] = useState(() => isoDate(new Date()));
+  const [day, setDay] = useDefaultTradingDay();
 
   return (
     <ReportView<Row>
