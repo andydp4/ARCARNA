@@ -223,6 +223,15 @@ export interface IStorage {
   deleteOverheadExpense(id: string, orgId: string): Promise<void>;
   getOrderExpenses(orderId: string, orgId: string): Promise<OrderExpense[]>;
   createOrderExpenses(orderId: string, expenses: InsertOrderExpense[], orgId: string): Promise<void>;
+  getOrderExpenseList(startDate: Date, endDate: Date, orgId: string): Promise<Array<{
+    id: string;
+    orderId: string;
+    createdAt: string;
+    category: string;
+    description: string | null;
+    amount: number;
+    addedByUserId: string | null;
+  }>>;
   getExpenseAnalytics(startDate: Date, endDate: Date, orgId: string): Promise<{
     overheadTotal: number;
     orderExpenseTotal: number;
@@ -1697,6 +1706,8 @@ export class DatabaseStorage implements IStorage {
       total: parseFloat(day.orderExpenses.toString()) + analytics.dailyOverhead,
     }));
 
+    const orderExpenseList = await this.getOrderExpenseList(startDate, endDate, orgId);
+
     return {
       summary: analytics,
       // ARC-025: an empty category (or no overhead/order expenses at all in
@@ -1711,12 +1722,53 @@ export class DatabaseStorage implements IStorage {
         percentage: analytics.orderExpenseTotal > 0 ? (cat.total / analytics.orderExpenseTotal) * 100 : 0,
       })),
       dailyTrends: enhancedTrends,
+      // The individual rows behind orderExpensesByCategory (owner ask: "where
+      // can I see a list of expenses logged against orders"). addedByUserId
+      // is a raw id here; the route resolves it to a display name.
+      orderExpenseList,
       period: {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         days: daysDiff,
       },
     };
+  }
+
+  /**
+   * Every individual order-expense row for the period, newest first — the
+   * audit list Profit Truths had no screen for at all: only a per-category
+   * total, never which order or who logged it. Amount is coerced to a real
+   * number here (the same wire-string issue getExpenseAnalytics had), so a
+   * caller adding these up never repeats that bug.
+   */
+  async getOrderExpenseList(startDate: Date, endDate: Date, orgId: string): Promise<Array<{
+    id: string;
+    orderId: string;
+    createdAt: string;
+    category: string;
+    description: string | null;
+    amount: number;
+    addedByUserId: string | null;
+  }>> {
+    const rows = await db
+      .select({
+        id: orderExpenses.id,
+        orderId: orderExpenses.orderId,
+        createdAt: orders.createdAt,
+        category: orderExpenses.category,
+        description: orderExpenses.description,
+        amount: orderExpenses.amount,
+        addedByUserId: orderExpenses.addedByUserId,
+      })
+      .from(orderExpenses)
+      .innerJoin(orders, eq(orderExpenses.orderId, orders.id))
+      .where(and(between(orders.createdAt, startDate, endDate), eq(orders.orgId, orgId)))
+      .orderBy(desc(orders.createdAt));
+    return rows.map((r) => ({
+      ...r,
+      createdAt: new Date(r.createdAt as unknown as string).toISOString(),
+      amount: Number(r.amount) || 0,
+    }));
   }
 
   /**

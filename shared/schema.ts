@@ -2007,6 +2007,10 @@ export const orderExpenses = pgTable("order_expenses", {
   category: varchar("category", { length: 100 }).notNull(), // travel, shipping, packaging, other
   description: varchar("description", { length: 500 }),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  // Who logged it, for the Profit Truths audit list. Varchar with no FK, same
+  // as orders.input_user_id — the till's external auth id, not a DB user row.
+  // Null on every row from before this column existed.
+  addedByUserId: varchar("added_by_user_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
