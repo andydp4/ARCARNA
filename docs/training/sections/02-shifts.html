@@ -172,6 +172,42 @@
     </div>
   </div>
 
+  <p class="eyebrow">Finance Centre · Rota</p>
+  <h2>The Rota</h2>
+  <p>The <span class="ui">Rota</span> page (Finance Centre, next to <span class="ui">Shifts</span>) is a 14-day forward view of who is working, built from each person's recurring weekly pattern plus any one-off cover, swap or approved day off. It is separate from the Shifts page: Shifts records what actually happened at the till; the Rota records what is <em>planned</em>. Everyone — <span class="role role-cashier">CASHIER</span>, <span class="role role-manager">MANAGER</span> and admin — can open it and see the whole team's grid, not just their own row.</p>
+  <ol class="steps">
+    <li>Open the menu, choose <span class="ui">Finance Centre</span>, then <span class="ui">Rota</span>.</li>
+    <li>The grid runs 14 days forward from the date box at the top. Each row is one person; each column is one day. A cell reads the shift's hours, <span class="ui">Off</span>, or a dash for a day nobody has said anything about yet.</li>
+    <li>A day with more than one shift for the same person — a split shift, or an overnight shift plus a separate evening one — shows both, stacked in the cell.</li>
+  </ol>
+
+  <figure>
+    <img src="../images/v12-02-rota-grid.png" alt="The Rota grid: staff down the left, 14 days across the top, cells showing working hours, Off, or unscheduled" />
+    <figcaption>The Rota: 14 days forward, one row per person.</figcaption>
+    <!-- SHOT: route=/rota ; role=manager ; viewport=desktop ; show=the page header ("Rota", "Who's on, and who's asked for time off?"), the date box, the grid with a few staff rows showing a mix of working-hours cells, an "Off" cell and a dash, and the day headers with the "N on" count under each date ; state=at least two staff with a recurring pattern set, one approved day off in the next 14 days -->
+  </figure>
+
+  <h3>Requesting a day off <span class="role role-cashier">CASHIER</span></h3>
+  <p>Select <span class="ui">Request time off</span> at the top of the Rota page, give the dates and, if you like, a reason, then send it. It goes to your manager as pending. You can cancel your own request while it is still pending; once it is decided, you cannot.</p>
+
+  <div class="ed-manager">
+    <h3>Recurring patterns and busy-times overlay <span class="role role-manager">MANAGER</span></h3>
+    <p>Only a manager or admin can set a recurring pattern, add a one-off cover or swap, or decide a time-off request — the grid itself is open to everyone, but changing it is not.</p>
+    <ol class="steps">
+      <li>Select <span class="ui">Add recurring pattern</span>, choose the staff member, the day of the week, a start and end time, and the date it starts from. It repeats every week until you remove it or give it an end date.</li>
+      <li>To cover a one-off absence or swap a shift, select the cell for that person and date, choose <span class="ui">Working</span> or <span class="ui">Off</span> and, if working, the hours, then save. This never changes the recurring pattern underneath — it just overrides that one date.</li>
+      <li>Pending time-off requests sit in a card at the top of the page. <span class="ui">Approve</span> writes an <span class="ui">Off</span> entry on every date in the request automatically; <span class="ui">Decline</span> leaves the pattern as it was.</li>
+    </ol>
+    <p>Behind the grid's day headers, a manager or admin sees a faint shading — busier days shade darker, using the shop's own sales-by-hour figures (the same data behind <span class="ui">Busiest Hours</span> in Truths). It is there to help judge whether a quiet Tuesday needs one person on, or a Friday needs three.</p>
+    <div class="callout">
+      <strong>Starting from nothing? Load a template</strong>
+      If the rota is empty, <span class="ui">Load starting template</span> offers a ready-made pattern — a driver plus two workers, covering a light midweek and a busier Friday/Saturday — and asks which of your own staff plays each role. It adds the recurring shifts for you; you can edit or delete any of them afterwards like any other pattern.
+    </div>
+  </div>
+
+  <h3>Printing the rota</h3>
+  <p><span class="ui">Print / PDF</span>, at the top of the page, prints just the grid — no menus, no buttons. Use your browser's own print dialog to print it on paper, or choose <span class="ui">Save as PDF</span> (or your device's equivalent) to keep or share a copy.</p>
+
   <p class="eyebrow">Operations Centre · My performance</p>
   <h2>My performance</h2>
   <p><span class="ui">My performance</span> (Operations Centre) shows how your own work is going, for any dates you choose. It is yours alone: nobody else's figures are shown and there is no ranking. The figures are a guide; no pay decision is made from them alone. Everyone has this page, whatever their role.</p>

@@ -5,12 +5,13 @@ import type { LaneCard, StripCardHandlers } from "./OpsLane";
 import { OpsCard, type OpsCardProps } from "./OpsCard";
 
 /**
- * Completed orders — "Done (n)" (brief: the last 120 minutes, `ops-done-tray-<lane>`).
+ * Completed orders — "Done (n)" (brief: the last 36 hours, `ops-done-tray-<lane>`).
  *
  * Promoted out of `OpsLane.tsx`'s inline strip (N1) into its own file per this
- * package's touch list. The 120-minute window itself is enforced upstream —
+ * package's touch list. The window itself is enforced upstream —
  * `GET /api/orders/board`'s own predicate is `status <> 'completed' OR
- * settled_at >= now() − 120 min` (`server/services/opsBoard.ts`, N3a) — so
+ * settled_at >= now() − RECENT_COMPLETED_MINUTES` (`server/services/opsBoard.ts`,
+ * N3a; 36 hours, so yesterday's work is still there to check back on) — so
  * every completed card this tray is ever handed is already inside that
  * window; there is nothing left for the client to filter a second time.
  *

@@ -55,11 +55,24 @@ export default function StaffTargetsPage() {
 
   const save = useMutation({
     mutationFn: async () => {
+      for (const k of TARGET_METRIC_KEYS) {
+        if (!draft[k].on) continue;
+        const def = TARGET_METRICS[k];
+        if (!Number.isFinite(Number(draft[k].green)) || draft[k].green.trim() === "") {
+          throw new Error(`${def.label}: enter a green value.`);
+        }
+        if (!Number.isFinite(Number(draft[k].amber)) || draft[k].amber.trim() === "") {
+          throw new Error(`${def.label}: enter an amber value.`);
+        }
+        if (draft[k].minData.trim() !== "" && !Number.isFinite(Number(draft[k].minData))) {
+          throw new Error(`${def.label}: "data needed" must be a number.`);
+        }
+      }
       const targets = TARGET_METRIC_KEYS.filter((k) => draft[k].on).map((k) => ({
         metric: k,
         green: Number(draft[k].green),
         amber: Number(draft[k].amber),
-        ...(draft[k].minData ? { minData: Number(draft[k].minData) } : {}),
+        ...(draft[k].minData.trim() ? { minData: Number(draft[k].minData) } : {}),
       }));
       const res = await apiRequest("PUT", "/api/staff-targets", { targets, ...(note.trim() ? { note: note.trim() } : {}) });
       return res.json();

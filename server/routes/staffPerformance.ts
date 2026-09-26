@@ -33,13 +33,13 @@ export function registerStaffPerformanceRoutes(app: Express, scoped: RequestHand
     userId: req.user?.id ? String(req.user.id) : null,
     role: String(req.orgContext?.role ?? req.user?.role ?? ""),
   });
-  const fail = (res: any, error: unknown, what: string) => {
+  const fail = (res: any, error: unknown, what: string, action: "load" | "save" = "load") => {
     if (error instanceof PerformanceError || error instanceof ReportScopeError || error instanceof TargetsError) {
       const status = error instanceof ReportScopeError ? error.statusCode : error.status;
       return res.status(status).json({ message: error.message });
     }
-    console.error(`[StaffPerformance] ${what}:`, error);
-    return res.status(500).json({ message: `Failed to load ${what}` });
+    console.error(`[StaffPerformance] ${action} ${what}:`, error);
+    return res.status(500).json({ message: `Failed to ${action} ${what}` });
   };
   // Named figures about people: never kept by a browser or a proxy.
   const noStore = (res: any) => res.setHeader("Cache-Control", "no-store, private");
@@ -107,7 +107,7 @@ export function registerStaffPerformanceRoutes(app: Express, scoped: RequestHand
       const isAdmin = rolesAtLeast(TARGETS_MIN_ROLE).includes(viewer.role as never);
       res.json({ ...current, canEdit: isAdmin, history: isAdmin ? await targetHistory(orgId) : [] });
     } catch (error) {
-      fail(res, error, "targets");
+      fail(res, error, "the targets");
     }
   });
 
@@ -127,7 +127,7 @@ export function registerStaffPerformanceRoutes(app: Express, scoped: RequestHand
       });
       res.json(saved);
     } catch (error) {
-      fail(res, error, "targets");
+      fail(res, error, "the targets", "save");
     }
   });
 

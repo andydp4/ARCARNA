@@ -121,6 +121,14 @@ export function registerExpenseRoutes(app: Express, scoped: RequestHandler[]): v
       }
       
       const report = await storage.getExpenseReport(startDate, endDate, ctx.orgId);
+      const { resolveUserNames } = await import("../services/userDisplayName");
+      const names = await resolveUserNames(
+        report.orderExpenseList.map((r: { addedByUserId: string | null }) => r.addedByUserId).filter((id: string | null): id is string => !!id),
+      );
+      report.orderExpenseList = report.orderExpenseList.map((r: { addedByUserId: string | null }) => ({
+        ...r,
+        addedByName: r.addedByUserId ? (names.get(r.addedByUserId) ?? null) : null,
+      }));
       res.json(report);
     } catch (error) {
       console.error("Error fetching expense report:", error);

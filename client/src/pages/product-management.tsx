@@ -40,6 +40,8 @@ import {
   AlertTitle,
 } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { FlagBadge } from '@/components/reports/ReportPrimitives'
+import type { FlagLevel } from '@/lib/reportBrand'
 import { useToast } from '@/hooks/use-toast'
 import { Skeleton } from '@/components/Skeleton'
 import { EmptyState } from '@/components/EmptyState'
@@ -670,16 +672,17 @@ export default function ProductManagement() {
     void runBulk(action)
   }
 
-  const getStockStatus = (product: any) => {
+  // Same traffic-light meaning as everywhere else stock is judged: red/amber/green.
+  const getStockStatus = (product: any): { status: string; flag: FlagLevel } => {
     const stockPercentage = (product.stock / (product.stockLimit || 100)) * 100
     if (product.stock === 0) {
-      return { status: 'Out of Stock', variant: 'destructive' as const }
+      return { status: 'Out of Stock', flag: 'red' }
     } else if (stockPercentage <= LOW_STOCK_THRESHOLD_PERCENT) {
-      return { status: 'Low Stock', variant: 'destructive' as const }
+      return { status: 'Low Stock', flag: 'amber' }
     } else if (stockPercentage <= 50) {
-      return { status: 'Medium Stock', variant: 'secondary' as const }
+      return { status: 'Medium Stock', flag: 'blue' }
     }
-    return { status: 'In Stock', variant: 'outline' as const }
+    return { status: 'In Stock', flag: 'green' }
   }
 
   return (
@@ -1283,9 +1286,9 @@ export default function ProductManagement() {
                                   </Badge>
                                 </div>
                               </div>
-                              <Badge variant={stockStatus.variant} className="ml-2">
-                                {stockStatus.status}
-                              </Badge>
+                              <span className="ml-2">
+                                <FlagBadge level={stockStatus.flag}>{stockStatus.status}</FlagBadge>
+                              </span>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1448,9 +1451,9 @@ export default function ProductManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={stockStatus.variant}>
+                          <FlagBadge level={stockStatus.flag}>
                             {stockStatus.status}
-                          </Badge>
+                          </FlagBadge>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">

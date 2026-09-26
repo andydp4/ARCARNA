@@ -92,9 +92,6 @@ test.describe("v1.2.1 ui fixes", () => {
     expect((await uncovered(select)).ok, "Customer select under a launcher").toBe(true);
     const pay = await uncovered(page.getByTestId("mobile-checkout-button"));
     expect(pay.ok, `pay button under ${pay.by}`).toBe(true);
-    // The Voice launcher is a compact circle on a phone, not a labelled pill.
-    const voice = await page.getByTestId("arcarna-voice-launcher").boundingBox();
-    expect(voice!.width).toBeLessThanOrEqual(56);
     await page.context().close();
   });
 

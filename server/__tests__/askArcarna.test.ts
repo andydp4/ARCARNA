@@ -186,6 +186,7 @@ describe.skipIf(!hasDb)("Ask arcarna: tools inside the role, the route, the audi
     ["stock_levels", {}],
     ["stock_levels", { search: "canary" }],
     ["staff_targets", {}],
+    ["draft_order", { text: "Canary Customer wants 1 Canary Widget" }],
   ];
   const roles: R[] = ["CASHIER", "MANAGER", "ADMIN", "SUPER_ADMIN"];
 
@@ -258,6 +259,29 @@ describe.skipIf(!hasDb)("Ask arcarna: tools inside the role, the route, the audi
     expect(body.rows[0]).toMatchObject({ name: "Canary Widget", stock: 2 });
     expect(Object.keys(body.rows[0]).sort()).toEqual(["barcode", "name", "sku", "status", "stock", "stockLimit"]);
     expect(r.evidence?.route).toBe("/stock-levels");
+  });
+
+  it("draft_order resolves a clean request into a till draft, never saving anything", async () => {
+    const r = await tools.executeAskTool("draft_order", { text: "Canary Customer wants 3 Canary Widget" }, ctxFor("CASHIER"));
+    expect(r.isError).toBeUndefined();
+    expect(JSON.parse(r.content)).toMatchObject({ ready: true });
+    expect(r.tillDraft).toMatchObject({
+      customerId: ids.customerId,
+      customerName: "Canary Customer",
+      items: [{ sku: `ASK-${tag}`, name: "Canary Widget", quantity: 3 }],
+    });
+  });
+
+  it("draft_order sends a walk-in (unmatched name) to the till to pick the customer", async () => {
+    const r = await tools.executeAskTool("draft_order", { text: "Walk-in wants 1 Canary Widget" }, ctxFor("CASHIER"));
+    expect(JSON.parse(r.content)).toMatchObject({ ready: true });
+    expect(r.tillDraft?.customerId).toBeNull();
+  });
+
+  it("draft_order never guesses: no product mentioned comes back not ready, with no till draft", async () => {
+    const r = await tools.executeAskTool("draft_order", { text: "Bunny wants something nice" }, ctxFor("CASHIER"));
+    expect(JSON.parse(r.content)).toMatchObject({ ready: false });
+    expect(r.tillDraft).toBeUndefined();
   });
 
   it("an unknown tool or a bad input is an error result, not a crash", async () => {

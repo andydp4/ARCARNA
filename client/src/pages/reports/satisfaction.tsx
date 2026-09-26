@@ -6,6 +6,7 @@ import { FlagBadge } from "@/components/reports/ReportPrimitives";
 import { REPORT_COLORS } from "@/lib/reportBrand";
 import { int, pct, screenDate, isoDate, orDash } from "@/lib/reportBrand";
 import { mondayWeekBounds } from "@/lib/weekBounds";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 
 interface Row {
   customer: string | null;
@@ -57,7 +58,7 @@ function SatisfactionHistogram({ summary }: { summary: Record<string, any> }) {
 }
 
 export default function SatisfactionReport() {
-  const [anchor, setAnchor] = useState(() => isoDate(new Date()));
+  const [anchor, setAnchor] = useDefaultTradingDay();
   const bounds = mondayWeekBounds(new Date(anchor));
 
   return (

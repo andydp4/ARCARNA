@@ -166,18 +166,22 @@ export type CommissionPaymentVerdict = { ok: true } | { ok: false; status: 403; 
 
 /**
  * Whether the viewer may confirm a commission payment to this payee. No one
- * confirms their own. Below the owner, only cashiers' pay (and code-only
- * history, which was only ever cashiers) — the same rows canSeePayRow shows
- * them; managers' and admins' pay is the owner's (Q13a).
+ * confirms their own — except the owner: everyone else's self-payment has
+ * someone above them to confirm it instead, but nobody outranks the owner,
+ * so applying the same rule to them would mean their own commission could
+ * never be confirmed by anyone, ever. Below the owner, only cashiers' pay
+ * (and code-only history, which was only ever cashiers) — the same rows
+ * canSeePayRow shows them; managers' and admins' pay is the owner's (Q13a).
  */
 export function mayConfirmCommissionPayment(
   viewer: ShiftSheetViewer,
   payee: { userId: string | null | undefined; role: Role | null | undefined },
 ): CommissionPaymentVerdict {
-  if (viewer.userId && payee.userId && viewer.userId === payee.userId) {
+  const role = viewer.role;
+  const isSelf = Boolean(viewer.userId && payee.userId && viewer.userId === payee.userId);
+  if (isSelf && role !== "SUPER_ADMIN") {
     return { ok: false, status: 403, message: "You cannot confirm your own commission payment. Ask someone else to confirm it." };
   }
-  const role = viewer.role;
   if (!role || !isRole(role) || roleRank(role) < roleRank("MANAGER")) {
     return { ok: false, status: 403, message: "Only a manager or admin can confirm commission payments." };
   }

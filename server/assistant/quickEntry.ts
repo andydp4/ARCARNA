@@ -3,8 +3,10 @@
  *
  * Pure logic (no DB access): given the in-progress draft and the latest
  * utterance, decides what's still missing, what to ask next, and when the
- * draft is ready. Driven turn-by-turn by the typed command bar and the mic —
- * the caller persists `draft` between turns and hands it back.
+ * draft is ready. Driven by Ask arcarna's draft_order tool (server/ask/
+ * tools.ts), which calls it fresh each time rather than holding a draft
+ * between turns — one request either resolves cleanly or comes back asking
+ * for whatever was unclear.
  *
  * v1.2 Phase 1B (owner Q19): the assistant no longer SAVES orders. It
  * produces a draft that opens in the till, where the till prices it (no single

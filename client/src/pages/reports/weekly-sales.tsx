@@ -10,6 +10,7 @@ import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
 import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
 import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, int, screenDate, isoDate, orDash } from "@/lib/reportBrand";
 import { mondayWeekBounds } from "@/lib/weekBounds";
@@ -26,7 +27,7 @@ interface ProductRow {
 
 export default function WeeklySalesReport() {
   const frameRef = useRef<HTMLDivElement>(null);
-  const [anchor, setAnchor] = useState(() => isoDate(new Date()));
+  const [anchor, setAnchor] = useDefaultTradingDay();
   const bounds = mondayWeekBounds(new Date(anchor));
   const [scope, setScope] = useState<ReportScopeValue>({});
   const { data, isLoading, error } = useReport(META.ref, { ...bounds, ...scope });

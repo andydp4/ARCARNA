@@ -289,8 +289,8 @@ export interface OpsAlertListItem {
  * Brief: "`listFor` returns only unacked, unresolved rows whose order is in
  * the board payload" — the last clause matters as much as the first two: a
  * row for an order the caller cannot currently see (already rolled out of
- * the board's own 120-minute "Done today" window, say) must not surface
- * either, or the rail could point at a card that is not on the screen.
+ * the board's own "Done" window, say) must not surface either, or the rail
+ * could point at a card that is not on the screen.
  */
 export async function listFor(orgId: string, userId: string | null, orderIds: string[]): Promise<OpsAlertListItem[]> {
   if (!userId || orderIds.length === 0) return [];

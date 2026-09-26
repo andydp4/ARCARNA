@@ -94,11 +94,13 @@ describe("admin-only settings (Q16)", () => {
 });
 
 describe("confirming commission payments", () => {
-  it("nobody confirms their own", () => {
-    for (const role of ["MANAGER", "ADMIN", "SUPER_ADMIN"]) {
+  it("nobody confirms their own — except the owner, who has no one above them to ask", () => {
+    for (const role of ["MANAGER", "ADMIN"]) {
       const verdict = mayConfirmCommissionPayment({ userId: "u1", role }, { userId: "u1", role: role as any });
       expect(verdict.ok, role).toBe(false);
     }
+    const owner = mayConfirmCommissionPayment({ userId: "u1", role: "SUPER_ADMIN" }, { userId: "u1", role: "SUPER_ADMIN" });
+    expect(owner.ok).toBe(true);
   });
 
   it("below the owner, only cashiers' pay", () => {

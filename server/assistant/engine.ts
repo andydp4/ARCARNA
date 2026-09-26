@@ -1,11 +1,13 @@
 /**
  * Arcarna Assistant orchestration — wires the pure QuickEntryEngine to
- * product and customer lookup, for the typed command bar and the mic.
+ * product and customer lookup. Called directly by Ask arcarna's draft_order
+ * tool (server/ask/tools.ts); the standalone typed/mic command bar this used
+ * to serve over HTTP is gone (v1.2.1: Ask arcarna replaced it entirely).
  *
- * v1.2 Phase 1B (owner Q19): the assistant never saves an order. A confirmed
+ * v1.2 Phase 1B (owner Q19): the assistant never saves an order. A resolved
  * draft goes back to the app, which opens it in the till; the till prices it
- * and takes payment, so a spoken order is charged by the same rules as any
- * other sale. The Siri Shortcut route is gone.
+ * and takes payment, so an order started this way is charged by the same
+ * rules as any other sale. The Siri Shortcut route is gone.
  */
 import {
   applyCustomerMatches,

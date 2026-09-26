@@ -8,6 +8,12 @@ import { scrubContactDetails } from "./scrubContact";
  * from the shop's own Evidence, read-only and only inside their role. Shared
  * by the server (route, engine, tools) and the app (panel, settings card), so
  * the limits and the stream's event shapes cannot drift apart.
+ *
+ * v1.2.1: the one thing it can start, never save — "create an order for
+ * Bunny, 50 Product 1" resolves the customer and products (read-only lookups,
+ * the same ones arcarna Voice already used) and opens a draft in the till,
+ * where the till prices it, checks stock and takes payment. Nothing is
+ * written to an order until a person does that in the till themselves.
  */
 
 /** Every member of staff may ask; each tool then checks the asker's role again. */
@@ -184,14 +190,23 @@ export interface AskEvidenceLink {
   route: string;
 }
 
+/** What the till opens with, once an order request resolves cleanly (see draft_order). */
+export interface AskTillDraft {
+  customerId: string | null;
+  customerName: string | null;
+  items: Array<{ sku: string; name: string; quantity: number }>;
+  note?: string;
+}
+
 /**
  * The stream the app reads (server-sent events on the POST's response):
- *  text      a piece of the answer as it is written
- *  status    what arcarna is looking at now ("Reading Weekly Sales Summary")
- *  evidence  the pages used so far
- *  discard   throw away the answer shown so far (a refusal mid-answer)
- *  done      finished; outcome says how
- *  error     a friendly message; nothing technical
+ *  text        a piece of the answer as it is written
+ *  status      what arcarna is looking at now ("Reading Weekly Sales Summary")
+ *  evidence    the pages used so far
+ *  discard     throw away the answer shown so far (a refusal mid-answer)
+ *  till_draft  an order resolved cleanly; the app opens it in the till
+ *  done        finished; outcome says how
+ *  error       a friendly message; nothing technical
  */
 export type AskOutcome = "answered" | "refused" | "cut_short" | "error" | "stopped";
 export type AskStreamEvent =
@@ -199,6 +214,7 @@ export type AskStreamEvent =
   | { type: "status"; text: string }
   | { type: "evidence"; items: AskEvidenceLink[] }
   | { type: "discard" }
+  | { type: "till_draft"; draft: AskTillDraft }
   | { type: "done"; outcome: AskOutcome; evidence: AskEvidenceLink[] }
   | { type: "error"; message: string; code?: string };
 

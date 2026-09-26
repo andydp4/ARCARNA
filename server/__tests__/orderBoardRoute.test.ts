@@ -259,7 +259,7 @@ describe("getOpsBoard", () => {
     expect(payload.tradingDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("builds its predicate from org, status<>completed and a 120-minute settled_at cutoff", async () => {
+  it("builds its predicate from org, status<>completed and a 36-hour settled_at cutoff", async () => {
     const now = new Date("2026-09-12T12:00:00Z");
     await getOpsBoard(ORG_ID, null, { now });
 
@@ -269,8 +269,8 @@ describe("getOpsBoard", () => {
     expect(flat).toContain("status");
     expect(flat).toContain("completed");
     expect(flat).toContain("settled_at");
-    // 120 minutes before `now` — the "Done today" tray's own window.
-    expect(flat).toContainEqual(new Date(now.getTime() - 120 * 60_000));
+    // 36 hours before `now` — the "Done" tray's own window.
+    expect(flat).toContainEqual(new Date(now.getTime() - 36 * 60 * 60_000));
   });
 
   it("takes summary.completedToday from countCompletedToday, not from filtering the row-limited orders list", async () => {
@@ -278,9 +278,9 @@ describe("getOpsBoard", () => {
     // Deliberately at odds with `appsOrderRows`, which the mock's no-op WHERE
     // would happily let a naive `orders.filter(status === "completed")`
     // count instead — that was the bug (ARC-032): "Done today" silently
-    // dropping anything settled more than 120 minutes ago. If this ever
-    // reads 0 or 1 again, `summary.completedToday` has been wired back to
-    // `orders`/`rows` instead of the dedicated trading-day query.
+    // dropping anything settled outside the Done tray's own window. If this
+    // ever reads 0 or 1 again, `summary.completedToday` has been wired back
+    // to `orders`/`rows` instead of the dedicated trading-day query.
     state.completedTodayCount = 7;
     state.appsOrderRows = [orderRow({ id: "open-1", status: "pending" })];
 
@@ -289,7 +289,7 @@ describe("getOpsBoard", () => {
     expect(payload.summary.completedToday).toBe(7);
   });
 
-  it("bounds countCompletedToday's predicate by org, status=completed and today's trading day, not the 120-minute cutoff", async () => {
+  it("bounds countCompletedToday's predicate by org, status=completed and today's trading day, not the Done tray's rolling cutoff", async () => {
     const now = new Date("2026-09-12T12:00:00Z");
     await getOpsBoard(ORG_ID, null, { now });
 
@@ -305,7 +305,7 @@ describe("getOpsBoard", () => {
     expect(flat).toContainEqual(new Date("2026-09-12T05:00:00.000Z"));
     expect(flat).toContainEqual(new Date("2026-09-13T05:00:00.000Z"));
     // Not the row query's rolling cutoff — a day boundary, not a recency one.
-    expect(flat).not.toContainEqual(new Date(now.getTime() - 120 * 60_000));
+    expect(flat).not.toContainEqual(new Date(now.getTime() - 36 * 60 * 60_000));
   });
 
   it("returns the exact contract shape", async () => {

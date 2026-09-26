@@ -10,6 +10,7 @@ import { ReportExportToolbar } from "@/components/reports/ReportExportToolbar";
 import { ReportKpi, ReportKpiSkeleton, ReportTable, type ReportColumn } from "@/components/reports/ReportPrimitives";
 import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
 import { useReport } from "@/hooks/useReport";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 import { reportByRef } from "@/lib/reportCatalog";
 import { money, moneyDelta, pct, int, screenDate, isoDate } from "@/lib/reportBrand";
 import type { CsvColumn } from "@/lib/reportExport";
@@ -24,7 +25,7 @@ interface ChannelRow {
 
 export default function DailySalesReport() {
   const frameRef = useRef<HTMLDivElement>(null);
-  const [day, setDay] = useState(() => isoDate(new Date()));
+  const [day, setDay] = useDefaultTradingDay();
   const [scope, setScope] = useState<ReportScopeValue>({});
   const { data, isLoading, error } = useReport(META.ref, { from: day, to: day, ...scope });
 
