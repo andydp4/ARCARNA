@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "crypto";
 import { eq, inArray } from "drizzle-orm";
-import { orders, organizations, orderItems, products, overheadExpenses } from "@shared/schema";
+import { orders, organizations, orderItems, products, overheadExpenses, orderExpenses } from "@shared/schema";
 import { storage } from "../storage";
 
 const hasDb = !!process.env.DATABASE_URL;
@@ -30,6 +30,7 @@ describe.skipIf(!hasDb)("Profit Truths matches the settled-revenue definition", 
   });
 
   afterEach(async () => {
+    await db.delete(orderExpenses).where(eq(orderExpenses.orgId, orgId));
     await db.delete(orderItems).where(eq(orderItems.orgId, orgId));
     await db.delete(orders).where(eq(orders.orgId, orgId));
     await db.delete(products).where(eq(products.orgId, orgId));
@@ -143,5 +144,73 @@ describe.skipIf(!hasDb)("Profit Truths matches the settled-revenue definition", 
     expect(marketing).toBeDefined();
     expect(Number.isNaN(marketing.percentage)).toBe(false);
     expect(marketing.percentage).toBe(0);
+  });
+
+  /**
+   * ARC-052: `SUM(...)` on the order-expenses side comes back from Postgres
+   * as a string, same as every other numeric aggregate here — adding that to
+   * `totalOverhead` (a real JS number) is not addition, it's string
+   * concatenation. `3500 + "15.00"` gave `"350015.00"` (read by the owner as
+   * an eye-watering operating loss on a real shop), and a period whose two
+   * decimals didn't line up gave a string that fails to parse back into a
+   * number at all — shown on screen as literally "£NaN".
+   */
+  it("combines overhead and order expenses by addition, not string concatenation", async () => {
+    const productId = randomUUID();
+    const orderId = randomUUID();
+    await db.insert(products).values({
+      id: productId,
+      orgId,
+      name: "Profit Test Widget",
+      productId: `PTW-${productId}`,
+      defaultSalePrice: "20.00",
+      costPrice: "5.00",
+    } as never);
+    await db.insert(orders).values({
+      id: orderId,
+      orgId,
+      total: "20.00",
+      paymentMethod: "cash",
+      status: "completed",
+      settledTotal: "20.00",
+      settledAt: new Date("2026-01-15T10:00:00.000Z"),
+      createdAt: new Date("2026-01-15T10:00:00.000Z"),
+    } as never);
+    await db.insert(orderExpenses).values({
+      orgId,
+      orderId,
+      category: "shipping",
+      amount: "15.00",
+    } as never);
+    await db.insert(overheadExpenses).values({
+      id: randomUUID(),
+      orgId,
+      name: "Rent",
+      category: "rent",
+      amount: "3500.00",
+      frequency: "monthly",
+      startDate: new Date("2026-01-01T00:00:00.000Z"),
+      isActive: 1,
+    } as never);
+
+    // A 30-day January window: £3,500/month overhead comes to £3,500 here,
+    // plus the £15 order expense — £3,515, never "£350,015" or NaN.
+    const analytics = await storage.getExpenseAnalytics(
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-30T23:59:59.999Z"),
+      orgId,
+    );
+    expect(analytics.overheadTotal).toBeCloseTo(3500, 0);
+    expect(analytics.orderExpenseTotal).toBe(15);
+    expect(analytics.totalExpenses).toBeCloseTo(3515, 0);
+    expect(typeof analytics.totalExpenses).toBe("number");
+    expect(Number.isNaN(analytics.totalExpenses)).toBe(false);
+
+    const report = await storage.getExpenseReport(
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-30T23:59:59.999Z"),
+      orgId,
+    );
+    expect(report.summary.totalExpenses).toBeCloseTo(3515, 0);
   });
 });

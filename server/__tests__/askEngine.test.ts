@@ -136,6 +136,7 @@ describe("Ask arcarna engine: the request", () => {
       "would_have_flagged",
       "stock_levels",
       "staff_targets",
+      "draft_order",
     ]);
   });
 

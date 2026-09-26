@@ -74,10 +74,10 @@ export default function LoyaltyPage() {
       setEditingTier(null);
       tierForm.reset();
     },
-    onError: () => {
+    onError: (error: unknown) => {
       toast({
-        title: "Error",
-        description: "Failed to save loyalty tier.",
+        title: "Could not save the loyalty tier",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     },

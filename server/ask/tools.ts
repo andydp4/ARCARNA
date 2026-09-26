@@ -1,6 +1,10 @@
 /**
- * Ask arcarna's tools (v1.2): read-only functions over the Evidence and
- * Truths services the app already has. Nothing here writes.
+ * Ask arcarna's tools (v1.2): mostly read-only functions over the Evidence and
+ * Truths services the app already has. The one exception is draft_order,
+ * which never writes an order either — it resolves a customer and products
+ * (read-only lookups, the same ones arcarna Voice already used) and hands
+ * back a draft for the app to open in the till, where a person prices it,
+ * checks stock and takes payment.
  *
  * Each tool checks the asker's role on the server with the SAME rules as the
  * route that serves the page (shared/accessPolicy.ts, the Evidence refs above
@@ -25,7 +29,7 @@ import {
 } from "@shared/accessPolicy";
 import { REPORT_CATALOG, reportByRef } from "@shared/evidenceCatalog";
 import { NEEDS_A_LOOK_MIN_ROLE } from "@shared/review/exceptions";
-import type { AskEvidenceLink } from "@shared/ask";
+import type { AskEvidenceLink, AskTillDraft } from "@shared/ask";
 import type { Role } from "@shared/rbac";
 
 export interface AskToolContext {
@@ -45,6 +49,8 @@ export interface AskToolResult {
   audit: string;
   /** A short "Reading …" line for the app while the tool runs. */
   status: string;
+  /** Set by draft_order once a request resolves cleanly: the app opens this in the till. */
+  tillDraft?: AskTillDraft;
 }
 
 const ROLE_WORDS: Record<string, string> = {
@@ -136,6 +142,7 @@ const INPUTS = {
     .object({ search: z.string().max(80).optional(), status: z.enum(["out", "low", "ok", "any"]).optional() })
     .strict(),
   staff_targets: z.object({}).strict(),
+  draft_order: z.object({ text: z.string().min(1).max(240) }).strict(),
 } as const;
 
 export type AskToolName = keyof typeof INPUTS;
@@ -225,6 +232,17 @@ export const ASK_TOOLS: Anthropic.Beta.BetaTool[] = [
     name: "staff_targets",
     description: "The staff targets in force (what the colours on My performance are measured against). Every role.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "draft_order",
+    description:
+      "Starts an order from a plain request ('create an order for Bunny, 50 Product 1, for tomorrow'). Resolves the customer and products against the shop's real records and opens a draft in the till — it never saves an order itself; the till still prices it, checks stock and takes payment. Every role. Rewrite the request into `text` in exactly this shape before calling: '<Customer name, or Walk-in> wants <quantity> <product name>[ and <quantity> <product name>...][, for today/tomorrow/<weekday>].' e.g. 'Bunny wants 50 Product 1 and 2 Coke, for tomorrow.' If the person did not name a customer, use 'Walk-in'. If a product or quantity is unclear, ask them rather than guessing one. Each call is independent — nothing from an earlier call is remembered — so if the result comes back not ready (something unclear or missing), ask the person for it, then call again with the WHOLE order restated, not just the missing part.",
+    input_schema: {
+      type: "object",
+      properties: { text: { type: "string", description: "The request, rewritten into the shape above." } },
+      required: ["text"],
+      additionalProperties: false,
+    },
   },
 ].map((tool) => ({ ...tool, eager_input_streaming: true }) as Anthropic.Beta.BetaTool);
 
@@ -413,6 +431,22 @@ async function run(name: AskToolName, input: any, ctx: AskToolContext): Promise<
         evidence: page,
       };
     }
+    case "draft_order": {
+      // Same engine arcarna Voice uses (server/assistant/engine.ts): read-only
+      // customer/product lookups, never a save. A single request either
+      // resolves cleanly (a named or "Walk-in" customer, at least one matched
+      // product) or comes back asking for whatever was unclear — never guessed.
+      const { runAssistantTurn } = await import("../assistant/engine");
+      const { tillDraftFrom } = await import("../assistant/quickEntry");
+      const result = await runAssistantTurn(ctx.orgId, null, String(input.text));
+      if (result.draft?.status === "confirming") {
+        return {
+          content: JSON.stringify({ ready: true, message: "Opened in the till for the cashier to price and take payment." }),
+          tillDraft: tillDraftFrom(result.draft),
+        };
+      }
+      return { content: JSON.stringify({ ready: false, message: result.message, missingFields: result.missingFields }) };
+    }
   }
 }
 
@@ -426,6 +460,7 @@ const STATUS: Record<AskToolName, string> = {
   would_have_flagged: "Reading Would have flagged",
   stock_levels: "Reading Stock levels",
   staff_targets: "Reading Staff targets",
+  draft_order: "Working out the order",
 };
 
 export function isAskToolName(name: string): name is AskToolName {

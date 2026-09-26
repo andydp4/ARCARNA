@@ -80,10 +80,10 @@ export default function PromotionsPage() {
       setEditingPromo(null);
       promoForm.reset();
     },
-    onError: () => {
+    onError: (error: unknown) => {
       toast({
-        title: "Error",
-        description: "Failed to save promotion.",
+        title: "Could not save the promotion",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     },

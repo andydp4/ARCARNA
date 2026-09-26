@@ -21,7 +21,6 @@ export const STORAGE_SALE_ISSUE_DRAFT = "arcarna.saleIssue.draft";
 export const STORAGE_WHATSAPP_SOUND = "arcarna.whatsapp.sound";
 export const STORAGE_WHATSAPP_SOUND_LEGACY = "midnight.whatsapp.sound";
 
-export const STORAGE_VOICE_ENABLED = "arcarna.voice.enabled";
 export const STORAGE_VOICE_STYLE = "arcarna.voice.style";
 
 // Operations Centre — per-device preferences (docs/briefs/PHASE_N_OPERATIONS_CENTRE.md).

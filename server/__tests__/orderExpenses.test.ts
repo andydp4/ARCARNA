@@ -41,21 +41,33 @@ describe("orderExpenseInputSchema", () => {
 
 describe("buildOrderExpenseRows", () => {
   it("has no parameter through which `total` could reach it — the type signature is the guarantee", () => {
-    // buildOrderExpenseRows(orgId, orderId, lines) — three parameters, none of
-    // them the order total. Asserted structurally via arity rather than by
-    // trying to prove a negative about the runtime value.
+    // buildOrderExpenseRows(orgId, orderId, lines, addedByUserId = null) —
+    // four parameters, none of them the order total. Function.length counts
+    // only up to the first defaulted parameter, so it reads 3 here (orgId,
+    // orderId, lines) rather than 4 — still the same structural guarantee:
+    // nothing after it, defaulted or not, is `total`.
     expect(buildOrderExpenseRows.length).toBe(3);
   });
 
-  it("maps each line to an insertable row, rounding the amount and defaulting a missing description", () => {
-    const rows = buildOrderExpenseRows("org-1", "order-1", [
-      { category: "delivery_fuel", description: "Fuel", amount: 4.567 },
-      { category: "packaging", amount: 1.2 },
-    ]);
+  it("maps each line to an insertable row, rounding the amount, defaulting a missing description, and stamping who added it", () => {
+    const rows = buildOrderExpenseRows(
+      "org-1",
+      "order-1",
+      [
+        { category: "delivery_fuel", description: "Fuel", amount: 4.567 },
+        { category: "packaging", amount: 1.2 },
+      ],
+      "user-42",
+    );
     expect(rows).toEqual([
-      { orgId: "org-1", orderId: "order-1", category: "delivery_fuel", description: "Fuel", amount: "4.57" },
-      { orgId: "org-1", orderId: "order-1", category: "packaging", description: null, amount: "1.2" },
+      { orgId: "org-1", orderId: "order-1", category: "delivery_fuel", description: "Fuel", amount: "4.57", addedByUserId: "user-42" },
+      { orgId: "org-1", orderId: "order-1", category: "packaging", description: null, amount: "1.2", addedByUserId: "user-42" },
     ]);
+  });
+
+  it("defaults addedByUserId to null when not given", () => {
+    const rows = buildOrderExpenseRows("org-1", "order-1", [{ category: "other", amount: 1 }]);
+    expect(rows[0].addedByUserId).toBeNull();
   });
 
   it("returns an empty array for no expense lines", () => {

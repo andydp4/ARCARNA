@@ -183,13 +183,15 @@ export function buildOrderExpenseRows(
   orgId: string,
   orderId: string,
   lines: OrderExpenseInput[],
-): Array<{ orgId: string; orderId: string; category: string; description: string | null; amount: string }> {
+  addedByUserId: string | null = null,
+): Array<{ orgId: string; orderId: string; category: string; description: string | null; amount: string; addedByUserId: string | null }> {
   return lines.map((line) => ({
     orgId,
     orderId,
     category: line.category,
     description: line.description ?? null,
     amount: String(roundMoney(line.amount)),
+    addedByUserId,
   }));
 }
 
@@ -967,7 +969,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         // Checkout expenses (owner, Q12) — rows only, never the total.
         if (expenseLines.length > 0) {
           const { orderExpenses } = await import("@shared/schema");
-          await tx.insert(orderExpenses).values(buildOrderExpenseRows(ctx.orgId!, result.orderId, expenseLines));
+          await tx.insert(orderExpenses).values(buildOrderExpenseRows(ctx.orgId!, result.orderId, expenseLines, userId));
         }
 
         if (usesGiftCard && createdOrder) {
@@ -1041,6 +1043,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
               category: 'personal_use',
               description: `Personal use — ${body.personalUseReason}`,
               amount: String(stockCost),
+              addedByUserId: userId,
             });
           }
           await publishEventTx(tx, 'PersonalUseRecorded', result.orderId, {
@@ -1280,6 +1283,8 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
         id: order_items.id,
         productId: order_items.product_id,
         productName: products.name,
+        // The shop's own stock number for the picking-list label (Niimbot brief).
+        stockNumber: products.product_id,
         quantity: order_items.quantity,
         unitPrice: order_items.unit_price,
         totalPrice: order_items.total_price,
@@ -1386,6 +1391,7 @@ export function registerOrderRoutes(app: Express, scoped: RequestHandler[]): voi
           id: item.id,
           productId: item.productId,
           productName: item.productName,
+          stockNumber: item.stockNumber ?? null,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           total: item.totalPrice,

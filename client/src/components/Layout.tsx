@@ -21,7 +21,6 @@ import { BrandLogo } from '@/components/BrandLogo'
 import { BRAND_PRODUCT_NAME } from '@shared/brand'
 import { isAtLeast } from '@shared/accessPolicy'
 import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
-import { ArcarnaAssistantBar } from '@/components/assistant/ArcarnaAssistantBar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PreviewRoleBanner, PreviewRoleMenu } from '@/components/PreviewRole'
 import { CentreTour, startCentreTour } from '@/components/tour/CentreTour'
@@ -563,7 +562,6 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
       <WhatsAppPanel />
-      <ArcarnaAssistantBar />
       {isStaff && <ProblemSheet />}
       {isStaff && <AskPanel />}
       {isStaff && <UsageRecorder />}

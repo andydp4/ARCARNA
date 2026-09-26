@@ -65,6 +65,7 @@ const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
+const RotaPage = lazy(() => import("@/pages/rota"));
 const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
 const ReportsHub = lazy(() => import("@/pages/reports/index"));
 const ResellerPartnersPage = lazy(() => import("@/pages/reseller-partners"));
@@ -85,6 +86,7 @@ const DelayLogReport = lazy(() => import("@/pages/reports/delay-log"));
 const StaffPerformanceReport = lazy(() => import("@/pages/reports/staff-performance"));
 const StaffPerformancePerson = lazy(() => import("@/pages/reports/staff-performance-person"));
 const OrderTimingReport = lazy(() => import("@/pages/reports/order-timing"));
+const OrderAuditReport = lazy(() => import("@/pages/reports/order-audit"));
 const StaffTargetsPage = lazy(() => import("@/pages/reports/staff-targets"));
 const MyPerformancePage = lazy(() => import("@/pages/my-performance"));
 const SatisfactionReport = lazy(() => import("@/pages/reports/satisfaction"));
@@ -209,6 +211,7 @@ function Router() {
             {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
           </Route>
           <Route path="/shifts" component={ShiftsPage} />
+          <Route path="/rota" component={RotaPage} />
           <Route path="/gift-cards">
             <RequireRole href="/gift-cards"><GiftCardsPage /></RequireRole>
           </Route>
@@ -290,6 +293,9 @@ function Router() {
           </Route>
           <Route path="/reports/order-timing">
             <RequireRole href="/reports"><OrderTimingReport /></RequireRole>
+          </Route>
+          <Route path="/reports/order-audit">
+            <RequireRole href="/reports"><OrderAuditReport /></RequireRole>
           </Route>
           <Route path="/reports/satisfaction">
             <RequireRole href="/reports"><SatisfactionReport /></RequireRole>

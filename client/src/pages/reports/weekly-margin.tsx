@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ReportView } from "@/components/reports/ReportView";
 import { FlagBadge } from "@/components/reports/ReportPrimitives";
 import { ReportScopeFilter, StaffFilterFootnote, type ReportScopeValue } from "@/components/reports/ReportScopeFilter";
+import { useDefaultTradingDay } from "@/hooks/useDefaultTradingDay";
 import { money, int, pct, screenDate, isoDate } from "@/lib/reportBrand";
 import { mondayWeekBounds } from "@/lib/weekBounds";
 import type { FlagLevel } from "@/lib/reportBrand";
@@ -55,7 +56,7 @@ function flagText(r: Row): string {
 }
 
 export default function WeeklyMarginReport() {
-  const [anchor, setAnchor] = useState(() => isoDate(new Date()));
+  const [anchor, setAnchor] = useDefaultTradingDay();
   const bounds = mondayWeekBounds(new Date(anchor));
   const [scope, setScope] = useState<ReportScopeValue>({});
 

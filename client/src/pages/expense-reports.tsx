@@ -1,5 +1,6 @@
 import { csvFromRecords } from "@shared/csv";
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { getJson } from "@/lib/queryClient";
 import { COLORS, CHART_SERIES, CHART_PRIMARY, CHART_POSITIVE, CHART_NEGATIVE, CHART_WARNING } from "@/lib/chartColors";
@@ -11,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   TrendingUp,
   TrendingDown,
@@ -497,6 +499,61 @@ export function ExpenseReportsPage() {
                 </LineChart>
               </ResponsiveContainer>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Order expense audit list — there was previously no screen at all
+              listing individual order-level expenses, only the category
+              totals above (owner ask: "where can I see a list of expenses
+              logged against orders"). */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Order expenses, line by line</CardTitle>
+              <CardDescription>Every order-level expense in this period, newest first</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {(expenseReport?.orderExpenseList?.length ?? 0) === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No order expenses in this period.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Order</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Added by</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenseReport.orderExpenseList.map((row: {
+                      id: string;
+                      orderId: string;
+                      createdAt: string;
+                      category: string;
+                      description: string | null;
+                      amount: number;
+                      addedByName: string | null;
+                    }) => (
+                      <TableRow key={row.id} data-testid={`order-expense-row-${row.id}`}>
+                        <TableCell>
+                          <Link href={`/operations?order=${row.orderId}`} className="font-medium underline-offset-4 hover:underline">
+                            #{row.orderId.slice(0, 8).toUpperCase()}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                          {format(new Date(row.createdAt), "d MMM yyyy")}
+                        </TableCell>
+                        <TableCell className="capitalize">{row.category.replace(/_/g, " ")}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{row.description ?? "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{row.addedByName ?? "—"}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">{formatCurrency(row.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

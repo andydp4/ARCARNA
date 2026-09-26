@@ -109,7 +109,8 @@
     <tr><td><span class="ui">Stock Turn</span></td><td>What sells fast, and what sits?</td></tr>
     <tr><td><span class="ui">Price overrides</span></td><td>Who sold below the minimum or below cost, on what, and why? Grouped by cashier, by product and by the reason given at Pay. <em>Unconfirmed</em> means the sale arrived without a reason. You only see people you outrank.</td></tr>
     <tr><td><span class="ui">Scheduled Evidence</span></td><td>Which Evidence arrives automatically? Snapshots delivered to your Signals, with their run history. Nothing is emailed.</td></tr>
-    <tr class="ed-admin"><td><span class="ui">Profit Truths</span></td><td>Admins only. Revenue, cost of goods, gross and net profit for the whole business.</td></tr>
+    <tr class="ed-admin"><td><span class="ui">Profit Truths</span></td><td>Admins only. Revenue, cost of goods, gross and net profit for the whole business, plus a line-by-line list of every expense logged against an order — what it was, who added it, and against which order — so an odd expense figure can be traced back to its cause.</td></tr>
+    <tr><td><span class="ui">Order Audit</span></td><td>The full, timestamped story of one order — every stage, who did each part of it, the customer, the loyalty/promo boost applied, the payment split and any refund.</td></tr>
   </table>
 
   <p class="eyebrow">Operations Centre · exceptions to review</p>
@@ -229,6 +230,18 @@
   <h2>Order Timing</h2>
   <p><span class="ui">Order Timing</span> answers <em>How fast do orders move, and where do they wait?</em> On time means ready (for a collection) or handed over (for a delivery) by the promised time plus the grace. Choose <span class="ui">Dates</span> and <span class="ui">Group by</span> (Fulfilment, Assignee, Completer, Loader, Hour received, Day or Channel) to see where time is lost. Section 4 walks through the page in full.</p>
   <p>As with Staff Performance, a manager sees cashiers and themselves when grouping by person, and people above your role are not listed and not in the summary. Per-person groupings carry a <em>Provisional until …</em> badge while they are new.</p>
+
+  <p class="eyebrow">Truths Centre · one order's full story</p>
+  <h2>Order Audit</h2>
+  <p><span class="ui">Order Audit</span> answers <em>what exactly happened on this order, and who did each part of it?</em> Where Order Timing shows how fast orders move in general, Order Audit is the opposite zoom: one order, everything about it, on one screen.</p>
+  <ol class="steps">
+    <li>Choose a date range at the top — the usual presets, or <span class="ui">Custom</span> — and the list fills with every order in that window: date, customer, who entered it, who completed it, payment method, status and total.</li>
+    <li>Select a row to open the full breakdown: the items sold, the money (subtotal, VAT, tier discount, any promo code and its discount, any loyalty points redeemed, the delivery fee and the total), the payment split if more than one method was used, any loyalty points earned, any refund and who gave it, and finally the timeline — every stage the order passed through, when, and by whom.</li>
+  </ol>
+  <div class="callout">
+    <strong>Where a strange figure usually gets explained</strong>
+    If a report shows a total that does not look right, Order Audit is where to check it: it has every input that figure was built from, not just the figure itself.
+  </div>
 
   <div class="callout">
     <strong>Ask instead of searching</strong>

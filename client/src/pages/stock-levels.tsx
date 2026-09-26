@@ -5,8 +5,9 @@ import { PageHeader, LM_CARD } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { FlagBadge } from "@/components/reports/ReportPrimitives";
 import { ErrorState } from "@/components/ErrorState";
+import type { FlagLevel } from "@/lib/reportBrand";
 import type { StockLevelRow, StockLevelStatus } from "@shared/stockLevels";
 
 const STATUS_LABEL: Record<StockLevelStatus, string> = {
@@ -15,10 +16,11 @@ const STATUS_LABEL: Record<StockLevelStatus, string> = {
   ok: "In stock",
 };
 
-const STATUS_VARIANT: Record<StockLevelStatus, "destructive" | "secondary" | "outline"> = {
-  out: "destructive",
-  low: "secondary",
-  ok: "outline",
+/** Same traffic-light meaning as everywhere else stock is judged (red/amber/green). */
+const STATUS_FLAG: Record<StockLevelStatus, FlagLevel> = {
+  out: "red",
+  low: "amber",
+  ok: "green",
 };
 
 function formatCount(n: number): string {
@@ -87,7 +89,7 @@ export default function StockLevelsPage() {
                       <p className="text-xs text-muted-foreground">{r.sku}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
-                      <Badge variant={STATUS_VARIANT[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+                      <FlagBadge level={STATUS_FLAG[r.status]}>{STATUS_LABEL[r.status]}</FlagBadge>
                       <span className="w-14 text-right text-lg font-semibold tabular-nums text-metal-warm-white">
                         {formatCount(r.stock)}
                       </span>
