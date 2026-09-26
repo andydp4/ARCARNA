@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Shield,
   CalendarClock,
+  CalendarDays,
   Timer,
   Ticket,
   Clock,
@@ -483,6 +484,15 @@ export const centres: Centre[] = [
         href: '/shifts',
         icon: Timer,
         testId: 'nav-shifts'
+      },
+      {
+        // Everyone; a cashier's grid holds only their own row plus who else
+        // is on — the server scopes editing to manager+ (server/routes/rota.ts).
+        key: 'rota',
+        label: 'Rota',
+        href: '/rota',
+        icon: CalendarDays,
+        testId: 'nav-rota'
       },
       {
         key: 'expenses',

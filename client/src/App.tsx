@@ -65,6 +65,7 @@ const Invoices = lazy(() => import("@/pages/invoices"));
 const OperationsCentre = lazy(() => import("@/pages/operations"));
 const OrderRefundPage = lazy(() => import("@/pages/orders/refund"));
 const ShiftsPage = lazy(() => import("@/pages/shifts"));
+const RotaPage = lazy(() => import("@/pages/rota"));
 const GiftCardsPage = lazy(() => import("@/pages/gift-cards"));
 const ReportsHub = lazy(() => import("@/pages/reports/index"));
 const ResellerPartnersPage = lazy(() => import("@/pages/reseller-partners"));
@@ -209,6 +210,7 @@ function Router() {
             {(params) => <Redirect to={`/open-orders/${params.id}/refund`} />}
           </Route>
           <Route path="/shifts" component={ShiftsPage} />
+          <Route path="/rota" component={RotaPage} />
           <Route path="/gift-cards">
             <RequireRole href="/gift-cards"><GiftCardsPage /></RequireRole>
           </Route>

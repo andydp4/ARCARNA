@@ -1066,6 +1066,134 @@ export const cashierShifts = pgTable(
   ],
 );
 
+/**
+ * The rota (v1.2.1): what a cashier is PLANNED to work, distinct from
+ * `cashierShifts` (what they actually clocked). A pattern here never opens,
+ * blocks, or requires an actual shift — the two are read together only on
+ * the Rota page, never joined for money or attendance purposes.
+ *
+ * A recurring weekly template. `effectiveUntil` null means "still in force".
+ * Resolving what a person is rota'd for on a given date: an override for
+ * that exact date wins if one exists (server/services/rota.ts), else the
+ * pattern whose day-of-week matches and whose effective range covers it.
+ */
+export const shiftPatterns = pgTable(
+  "shift_patterns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    locationId: uuid("location_id").references(() => locations.id),
+    /** 0 = Sunday .. 6 = Saturday, matching shared/analytics/hourOfDay.ts's dow. */
+    dayOfWeek: integer("day_of_week").notNull(),
+    startTime: varchar("start_time", { length: 5 }).notNull(), // "09:00"
+    endTime: varchar("end_time", { length: 5 }).notNull(), // "17:00"
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveUntil: date("effective_until"),
+    isActive: integer("is_active").notNull().default(1),
+    createdByUserId: varchar("created_by_user_id", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("shift_patterns_org_user_idx").on(table.orgId, table.userId),
+    index("shift_patterns_org_dow_idx").on(table.orgId, table.dayOfWeek),
+  ],
+);
+export type ShiftPattern = typeof shiftPatterns.$inferSelect;
+export type InsertShiftPattern = typeof shiftPatterns.$inferInsert;
+
+/**
+ * A specific date's rota entry overriding whatever the pattern says — a
+ * one-off cover, a swap, or (status "off") the resolved effect of an
+ * approved time-off request. One row per person per date: the second write
+ * for the same day replaces the first, it does not stack.
+ */
+export const shiftOverrides = pgTable(
+  "shift_overrides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    date: date("date").notNull(),
+    status: varchar("status", { length: 16 }).notNull(), // "working" | "off"
+    startTime: varchar("start_time", { length: 5 }), // set when status = "working"
+    endTime: varchar("end_time", { length: 5 }),
+    note: varchar("note", { length: 500 }),
+    /** Set when this row exists because a time-off request was approved. */
+    timeOffRequestId: uuid("time_off_request_id"),
+    createdByUserId: varchar("created_by_user_id", { length: 255 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [uniqueIndex("shift_overrides_org_user_date_idx").on(table.orgId, table.userId, table.date)],
+);
+export type ShiftOverride = typeof shiftOverrides.$inferSelect;
+export type InsertShiftOverride = typeof shiftOverrides.$inferInsert;
+
+/**
+ * A cashier's own "book a day off" request. Approving one writes a
+ * `shiftOverrides` row (status "off") for every date in range — the rota
+ * grid never has to read this table to know what to show, only to know
+ * what is still awaiting a decision.
+ */
+export const timeOffRequests = pgTable(
+  "time_off_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    reason: varchar("reason", { length: 500 }),
+    status: varchar("status", { length: 16 }).notNull().default("pending"), // pending | approved | declined | cancelled
+    decidedByUserId: varchar("decided_by_user_id", { length: 255 }),
+    decidedAt: timestamp("decided_at"),
+    decisionNote: varchar("decision_note", { length: 500 }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("time_off_requests_org_user_idx").on(table.orgId, table.userId),
+    index("time_off_requests_org_status_idx").on(table.orgId, table.status),
+  ],
+);
+export type TimeOffRequest = typeof timeOffRequests.$inferSelect;
+export type InsertTimeOffRequest = typeof timeOffRequests.$inferInsert;
+
+export const insertShiftPatternSchema = createInsertSchema(shiftPatterns)
+  .omit({ id: true, createdAt: true, updatedAt: true, createdByUserId: true, orgId: true })
+  .extend({
+    dayOfWeek: z.number().int().min(0).max(6),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM"),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM"),
+    effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    effectiveUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").nullable().optional(),
+  });
+export type InsertShiftPatternInput = z.infer<typeof insertShiftPatternSchema>;
+
+export const insertShiftOverrideSchema = z
+  .object({
+    userId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    status: z.enum(["working", "off"]),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM").optional(),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM").optional(),
+    note: z.string().max(500).optional(),
+  })
+  .refine((v) => v.status !== "working" || (v.startTime && v.endTime), {
+    message: "Start and end time are required for a working day",
+    path: ["startTime"],
+  });
+export type InsertShiftOverrideInput = z.infer<typeof insertShiftOverrideSchema>;
+
+export const insertTimeOffRequestSchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  reason: z.string().max(500).optional(),
+});
+export type InsertTimeOffRequestInput = z.infer<typeof insertTimeOffRequestSchema>;
+
 export type CashierShift = typeof cashierShifts.$inferSelect;
 export type InsertCashierShift = typeof cashierShifts.$inferInsert;
 
